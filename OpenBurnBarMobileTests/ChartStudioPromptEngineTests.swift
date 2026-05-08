@@ -34,11 +34,22 @@ final class ChartStudioPromptEngineTests: XCTestCase {
         XCTAssertTrue(prompt.contains("swift_chart"))
         XCTAssertTrue(prompt.contains("mermaid"))
         XCTAssertTrue(prompt.contains("insight"))
+        XCTAssertTrue(prompt.contains("ascii"))
         XCTAssertTrue(prompt.contains("composed"))
+
+        // Skill awareness
+        XCTAssertTrue(prompt.contains("HERMES SKILLS"))
+        XCTAssertTrue(prompt.contains("ascii-art"))
+        XCTAssertTrue(prompt.contains("architecture-diagram"))
 
         // Examples
         XCTAssertTrue(prompt.contains("EXAMPLES"))
         XCTAssertTrue(prompt.contains("sequenceDiagram"))
+
+        // ASCII rules teach the model the legal character families.
+        XCTAssertTrue(prompt.contains("box-drawing"))
+        XCTAssertTrue(prompt.contains("half-blocks"))
+        XCTAssertTrue(prompt.contains("▉") || prompt.contains("▇"))
 
         // Data digest is appended
         XCTAssertTrue(prompt.contains("DIGEST"))

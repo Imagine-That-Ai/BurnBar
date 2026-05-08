@@ -8,6 +8,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Conversation Atoms (macOS, iOS, iPadOS).** Hermes responses on every
+  surface — dashboard chat panel, popover strip, mobile `ChatView`,
+  `HermesTabView` — are now rendered through `HermesRichBubble` instead of a
+  flat `Text(...)`. Hermes is instructed (via the new shared
+  `HermesSystemPromptBuilder`) to wrap entities in `[label](burnbar://...)`
+  markdown links, which a two-pass `HermesAtomParser` decodes into typed
+  `HermesAtom` values: cost, session, provider, model, window, tool,
+  project, tokens, quota, and Hermes runtime. Each atom renders as a tappable
+  `HermesAtomChip` (SF-Symbol + label, accent per kind, atomic — never breaks
+  across lines) that opens a quick-look detail (sheet on iOS, popover on
+  macOS) wired through `HermesAtomNavigator`. A regex fallback also turns
+  raw `$amounts` and known model identifiers into chips even when Hermes
+  forgets to emit links. Bubbles wrap inside a `StreamingBubble` that
+  measures the in-flight text via Pretext on every SSE chunk and animates
+  `frame(height:)` between snapshots — and on completion runs
+  `shrinkWrapWidth(targetLines: 4)` to animate the bubble's width down to its
+  tightest comfortable size. Pretext infrastructure (`PretextEngine`,
+  `PretextTypes`, themed `index.html` shell, `pretext.bundle.min.js`) was
+  hoisted into `OpenBurnBarCore` so iOS and macOS share one bridge and one
+  resource bundle (`Bundle.module`). New tests in
+  `OpenBurnBarCoreTests/HermesAtomParserTests.swift` cover markdown-link
+  extraction, regex fallback, mixed runs, malformed URL fallback, and
+  ordering preservation. **Docs:**
+  [`docs/CONVERSATION_ATOMS.md`](docs/CONVERSATION_ATOMS.md) covers the URL
+  scheme, the prompt directive, and the cross-platform component map.
+- **Hermes chat attachments (macOS, iOS, iPadOS).** The Hermes composer now
+  accepts file attachments on every surface — dashboard chat panel, popover
+  strip, and mobile `ChatView`. Users can attach images, PDFs, audio,
+  documents, and arbitrary files via paperclip menu, drag-and-drop, paste,
+  Files-app picker, Photos-library picker, and on iPhone/iPad camera capture.
+  Attachments are stored in a per-thread workspace (`HermesChats/<thread>/
+  attachments/`), persist with the chat history on macOS (new
+  `chat_message_attachments` migration + JSON column), and roundtrip across
+  cloud sync as metadata only — never as binaries. Wire format follows the
+  OpenAI multimodal spec (`image_url`, `input_audio`) with capability-based
+  graceful degradation to inline text or workspace-path references when the
+  active backend lacks vision/audio. Added 8 new encoder tests
+  (`HermesAttachmentEncoderTests`).
 - **iOS Pulse: Trend Atlas + Chart Studio.** Replaced the single-purpose
   `TrendSparkCard` with a tap-driven canvas system.
   - **Trend Atlas card** rotates three intricate scenes — provider-stacked

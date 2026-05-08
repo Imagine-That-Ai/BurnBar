@@ -52,9 +52,7 @@ struct HermesQuickAskCard: View {
         let recent = Array(service.messages.suffix(3))
         if recent.isEmpty {
             HStack(alignment: .top, spacing: 10) {
-                Text("☿")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(MobileTheme.hermesAureate)
+                HermesLiveGlyph(size: 24, isLive: service.isStreaming)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Ask about your burn")
                         .font(MobileTheme.Typography.body)
@@ -69,13 +67,17 @@ struct HermesQuickAskCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(recent) { msg in
                     HStack(alignment: .top, spacing: 6) {
-                        Text(msg.role == .user ? "You" : "☿")
-                            .font(MobileTheme.Typography.tiny)
-                            .fontWeight(.bold)
-                            .foregroundStyle(msg.role == .user
-                                ? MobileTheme.Colors.textMuted
-                                : MobileTheme.hermesAureate)
-                            .frame(width: 28, alignment: .leading)
+                        Group {
+                            if msg.role == .user {
+                                Text("You")
+                                    .font(MobileTheme.Typography.tiny)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                            } else {
+                                HermesLiveGlyph(size: 14, isLive: msg.isStreaming)
+                            }
+                        }
+                        .frame(width: 28, alignment: .leading)
                         Text(msg.text)
                             .font(MobileTheme.Typography.tiny)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)

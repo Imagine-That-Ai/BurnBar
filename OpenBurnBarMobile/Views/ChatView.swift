@@ -259,7 +259,7 @@ struct HermesChatBubble: View {
             )
     }
 
-    private var bubbleStroke: some ShapeStyle {
+    private var bubbleStroke: AnyShapeStyle {
         if message.isError {
             return AnyShapeStyle(MobileTheme.Colors.error)
         }

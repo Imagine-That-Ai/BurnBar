@@ -4,20 +4,58 @@ import OpenBurnBarCore
 
 // MARK: - Native Chart View
 //
-// Renders a `ChartSpec` using Swift Charts. We split per (axis-type, mark-type)
-// pair into small explicit views so the Swift type-checker doesn't choke on
-// a giant Chart-builder closure.
+// Renders a `ChartSpec` using Swift Charts with Aurora polish:
+//   - gradient area fills under line / area charts
+//   - glow shadows behind key marks
+//   - rounded-top bar marks with vertical gradient
+//   - larger scatter points with soft halo
+//   - warm donut palette with inner gradient ring
+//   - subtle chart background wash + card shadow in full mode
 
 struct NativeChartView: View {
+    enum DisplayMode {
+        case full
+        case gallery
+    }
+
     let spec: ChartSpec
+    var displayMode: DisplayMode = .full
+
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
-            header
+        VStack(alignment: .leading, spacing: displayMode == .gallery ? 6 : MobileTheme.Spacing.sm) {
+            if displayMode == .full {
+                header
+            }
             chartContent
-                .frame(minHeight: 220, idealHeight: 260)
+                .frame(height: chartHeight)
+                .background(chartBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .accessibilityChartDescriptor(self)
             legend
+        }
+    }
+
+    var chartHeightForTesting: CGFloat {
+        chartHeight
+    }
+
+    private var chartHeight: CGFloat {
+        switch displayMode {
+        case .full:
+            switch spec.kind {
+            case .donut: return 260
+            case .heatmap: return 240
+            default: return 260
+            }
+        case .gallery:
+            switch spec.kind {
+            case .donut: return 150
+            case .scatter: return 170
+            case .heatmap: return 155
+            default: return 165
+            }
         }
     }
 
@@ -36,7 +74,7 @@ struct NativeChartView: View {
 
     @ViewBuilder
     private var legend: some View {
-        if spec.series.count > 1 {
+        if displayMode == .full && spec.series.count > 1 {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(Array(spec.series.enumerated()), id: \.offset) { index, series in
@@ -59,6 +97,26 @@ struct NativeChartView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
         .background(Capsule().fill(MobileTheme.Colors.surface.opacity(0.5)))
+    }
+
+    /// Subtle warm wash behind the plot area.
+    private var chartBackground: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        MobileTheme.ember.opacity(colorScheme == .dark ? 0.04 : 0.02),
+                        MobileTheme.amber.opacity(colorScheme == .dark ? 0.02 : 0.01),
+                        Color.clear
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(MobileTheme.Colors.border.opacity(0.15), lineWidth: 0.5)
+            )
     }
 
     @ViewBuilder
@@ -155,6 +213,31 @@ struct NativeChartView: View {
     }
 }
 
+// MARK: - Helpers
+
+private extension Color {
+    func gradientFill(topOpacity: Double = 0.35, bottomOpacity: Double = 0.02) -> some ShapeStyle {
+        LinearGradient(
+            colors: [self.opacity(topOpacity), self.opacity(bottomOpacity)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    func glowShadow(radius: CGFloat = 6) -> some ViewModifier {
+        _GlowShadow(color: self, radius: radius)
+    }
+}
+
+private struct _GlowShadow: ViewModifier {
+    let color: Color
+    let radius: CGFloat
+    func body(content: Content) -> some View {
+        content
+            .shadow(color: color.opacity(0.35), radius: radius, x: 0, y: radius * 0.3)
+    }
+}
+
 // MARK: - Time-series subviews
 
 private struct TimeLineChart: View {
@@ -164,23 +247,24 @@ private struct TimeLineChart: View {
 
     var body: some View {
         Chart {
-            ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
+            ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
+                let color = palette[idx % palette.count]
                 ForEach(series.points, id: \.self) { point in
                     let date = point.x.asDate ?? Date()
-                    LineMark(x: .value("Date", date, unit: .day), y: .value("Y", point.y))
-                        .foregroundStyle(by: .value("Series", series.name))
-                        .interpolationMethod(.catmullRom)
-                        .lineStyle(StrokeStyle(lineWidth: 2.5))
                     if fillArea {
                         AreaMark(x: .value("Date", date, unit: .day), y: .value("Y", point.y))
-                            .foregroundStyle(by: .value("Series", series.name))
+                            .foregroundStyle(color.gradientFill(topOpacity: 0.30, bottomOpacity: 0.02))
                             .interpolationMethod(.catmullRom)
-                            .opacity(0.18)
                     }
+                    LineMark(x: .value("Date", date, unit: .day), y: .value("Y", point.y))
+                        .foregroundStyle(color)
+                        .interpolationMethod(.catmullRom)
+                        .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                        .shadow(color: color.opacity(0.25), radius: 5, x: 0, y: 2)
                 }
             }
         }
-        .chartForegroundStyleScale(domain: spec.series.map(\.name), range: palette)
+        .chartLegend(.hidden)
         .modifier(StudioChartChrome(xKind: .time))
     }
 }
@@ -190,16 +274,24 @@ private struct TimeBarChart: View {
     let palette: [Color]
     var body: some View {
         Chart {
-            ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
+            ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
+                let color = palette[idx % palette.count]
                 ForEach(series.points, id: \.self) { point in
                     let date = point.x.asDate ?? Date()
                     BarMark(x: .value("Date", date, unit: .day), y: .value("Y", point.y))
-                        .foregroundStyle(by: .value("Series", series.name))
-                        .cornerRadius(4)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [color.opacity(0.85), color.opacity(0.35)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .cornerRadius(5)
+                        .shadow(color: color.opacity(0.18), radius: 4, x: 0, y: 2)
                 }
             }
         }
-        .chartForegroundStyleScale(domain: spec.series.map(\.name), range: palette)
+        .chartLegend(.hidden)
         .modifier(StudioChartChrome(xKind: .time))
     }
 }
@@ -210,7 +302,8 @@ private struct TimeStackedAreaChart: View {
     @State private var selected: Date?
     var body: some View {
         Chart {
-            ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
+            ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
+                let color = palette[idx % palette.count]
                 ForEach(series.points, id: \.self) { point in
                     let date = point.x.asDate ?? Date()
                     AreaMark(
@@ -218,12 +311,19 @@ private struct TimeStackedAreaChart: View {
                         y: .value("Y", point.y),
                         stacking: .standard
                     )
-                    .foregroundStyle(by: .value("Series", series.name))
+                    .foregroundStyle(color.gradientFill(topOpacity: 0.45, bottomOpacity: 0.06))
                     .interpolationMethod(.catmullRom)
+
+                    // Thin glow line on top for definition
+                    LineMark(x: .value("Date", date, unit: .day), y: .value("Y", point.y))
+                        .foregroundStyle(color)
+                        .interpolationMethod(.catmullRom)
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                        .shadow(color: color.opacity(0.20), radius: 4, x: 0, y: 1)
                 }
             }
         }
-        .chartForegroundStyleScale(domain: spec.series.map(\.name), range: palette)
+        .chartLegend(.hidden)
         .chartXSelection(value: $selected)
         .modifier(StudioChartChrome(xKind: .time))
     }
@@ -234,16 +334,18 @@ private struct TimeScatterChart: View {
     let palette: [Color]
     var body: some View {
         Chart {
-            ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
+            ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
+                let color = palette[idx % palette.count]
                 ForEach(series.points, id: \.self) { point in
                     let date = point.x.asDate ?? Date()
                     PointMark(x: .value("Date", date, unit: .day), y: .value("Y", point.y))
-                        .foregroundStyle(by: .value("Series", series.name))
-                        .symbolSize(60)
+                        .foregroundStyle(color)
+                        .symbolSize(90)
+                        .shadow(color: color.opacity(0.30), radius: 6, x: 0, y: 2)
                 }
             }
         }
-        .chartForegroundStyleScale(domain: spec.series.map(\.name), range: palette)
+        .chartLegend(.hidden)
         .modifier(StudioChartChrome(xKind: .time))
     }
 }
@@ -255,16 +357,18 @@ private struct NumericScatterChart: View {
     let palette: [Color]
     var body: some View {
         Chart {
-            ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
+            ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
+                let color = palette[idx % palette.count]
                 ForEach(series.points, id: \.self) { point in
                     let x = point.x.asDouble ?? 0
                     PointMark(x: .value("X", x), y: .value("Y", point.y))
-                        .foregroundStyle(by: .value("Series", series.name))
-                        .symbolSize(60)
+                        .foregroundStyle(color)
+                        .symbolSize(90)
+                        .shadow(color: color.opacity(0.30), radius: 6, x: 0, y: 2)
                 }
             }
         }
-        .chartForegroundStyleScale(domain: spec.series.map(\.name), range: palette)
+        .chartLegend(.hidden)
         .modifier(StudioChartChrome(xKind: .auto))
     }
 }
@@ -274,16 +378,24 @@ private struct NumericBarChart: View {
     let palette: [Color]
     var body: some View {
         Chart {
-            ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
+            ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
+                let color = palette[idx % palette.count]
                 ForEach(series.points, id: \.self) { point in
                     let x = point.x.asDouble ?? 0
                     BarMark(x: .value("X", x), y: .value("Y", point.y))
-                        .foregroundStyle(by: .value("Series", series.name))
-                        .cornerRadius(4)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [color.opacity(0.85), color.opacity(0.35)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .cornerRadius(5)
+                        .shadow(color: color.opacity(0.18), radius: 4, x: 0, y: 2)
                 }
             }
         }
-        .chartForegroundStyleScale(domain: spec.series.map(\.name), range: palette)
+        .chartLegend(.hidden)
         .modifier(StudioChartChrome(xKind: .auto))
     }
 }
@@ -293,17 +405,23 @@ private struct NumericLineChart: View {
     let palette: [Color]
     var body: some View {
         Chart {
-            ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
+            ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
+                let color = palette[idx % palette.count]
                 ForEach(series.points, id: \.self) { point in
                     let x = point.x.asDouble ?? 0
-                    LineMark(x: .value("X", x), y: .value("Y", point.y))
-                        .foregroundStyle(by: .value("Series", series.name))
+                    AreaMark(x: .value("X", x), y: .value("Y", point.y))
+                        .foregroundStyle(color.gradientFill(topOpacity: 0.28, bottomOpacity: 0.02))
                         .interpolationMethod(.catmullRom)
-                        .lineStyle(StrokeStyle(lineWidth: 2.5))
+
+                    LineMark(x: .value("X", x), y: .value("Y", point.y))
+                        .foregroundStyle(color)
+                        .interpolationMethod(.catmullRom)
+                        .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                        .shadow(color: color.opacity(0.25), radius: 5, x: 0, y: 2)
                 }
             }
         }
-        .chartForegroundStyleScale(domain: spec.series.map(\.name), range: palette)
+        .chartLegend(.hidden)
         .modifier(StudioChartChrome(xKind: .auto))
     }
 }
@@ -315,24 +433,43 @@ private struct CategoricalBarChart: View {
     let palette: [Color]
     var body: some View {
         Chart {
-            ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
+            ForEach(Array(spec.series.enumerated()), id: \.offset) { idx, series in
+                let color = palette[idx % palette.count]
                 ForEach(series.points, id: \.self) { point in
                     BarMark(
                         x: .value("X", point.x.asString ?? "—"),
                         y: .value("Y", point.y)
                     )
-                    .foregroundStyle(by: .value("Series", series.name))
-                    .cornerRadius(4)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [color.opacity(0.85), color.opacity(0.35)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .cornerRadius(5)
+                    .shadow(color: color.opacity(0.18), radius: 4, x: 0, y: 2)
                 }
             }
         }
-        .chartForegroundStyleScale(domain: spec.series.map(\.name), range: palette)
+        .chartLegend(.hidden)
         .modifier(StudioChartChrome(xKind: .auto))
     }
 }
 
 private struct CategoricalHeatmapChart: View {
     let spec: ChartSpec
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var heatmapPalette: [Color] {
+        [
+            MobileTheme.ember.opacity(colorScheme == .dark ? 0.12 : 0.06),
+            MobileTheme.amber.opacity(colorScheme == .dark ? 0.35 : 0.22),
+            MobileTheme.ember.opacity(colorScheme == .dark ? 0.65 : 0.45),
+            MobileTheme.blaze.opacity(colorScheme == .dark ? 0.85 : 0.65)
+        ]
+    }
+
     var body: some View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
@@ -345,9 +482,15 @@ private struct CategoricalHeatmapChart: View {
                         y: .value("Series", seriesName)
                     )
                     .foregroundStyle(by: .value("Intensity", intensity))
+                    .cornerRadius(4)
                 }
             }
         }
+        .chartForegroundStyleScale(
+            domain: spec.series.flatMap { $0.points.map(\.y) }.sorted(),
+            range: heatmapPalette
+        )
+        .chartLegend(.hidden)
         .modifier(StudioChartChrome(xKind: .auto))
     }
 }
@@ -355,21 +498,60 @@ private struct CategoricalHeatmapChart: View {
 private struct DonutChart: View {
     let spec: ChartSpec
     let palette: [Color]
+
+    private var sliceLabels: [String] {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for series in spec.series {
+            for point in series.points {
+                let label = point.label ?? point.x.asString ?? series.name
+                if seen.insert(label).inserted {
+                    ordered.append(label)
+                }
+            }
+        }
+        return ordered
+    }
+
+    /// Aurora-warm donut palette: ember → whimsy → amber → mercury → blaze → aureate.
+    private var donutPalette: [Color] {
+        let warm: [Color] = [
+            MobileTheme.ember,
+            MobileTheme.whimsy,
+            MobileTheme.amber,
+            MobileTheme.hermesMercury,
+            MobileTheme.blaze,
+            MobileTheme.hermesAureate
+        ]
+        return zip(sliceLabels, 0...).map { _, idx in warm[idx % warm.count] }
+    }
+
     var body: some View {
         Chart {
             ForEach(Array(spec.series.enumerated()), id: \.offset) { _, series in
                 ForEach(series.points, id: \.self) { point in
+                    let label = point.label ?? (point.x.asString ?? series.name)
+                    let color = donutPalette[sliceLabels.firstIndex(of: label) ?? 0]
                     SectorMark(
                         angle: .value("Value", point.y),
                         innerRadius: .ratio(0.55),
                         angularInset: 1.5
                     )
-                    .cornerRadius(3)
-                    .foregroundStyle(by: .value("Slice", point.label ?? (point.x.asString ?? series.name)))
+                    .cornerRadius(4)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [color.opacity(0.95), color.opacity(0.55)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                 }
             }
         }
+        .chartForegroundStyleScale(domain: sliceLabels, range: donutPalette)
         .chartLegend(.hidden)
+        // Soft outer glow around the donut
+        .shadow(color: MobileTheme.ember.opacity(0.08), radius: 18, x: 0, y: 6)
         .chartEntrance()
     }
 }
@@ -382,9 +564,12 @@ private struct RuleOnlyChart: View {
                 ForEach(series.points, id: \.self) { point in
                     RuleMark(y: .value("Y", point.y))
                         .foregroundStyle(MobileTheme.amber)
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                        .shadow(color: MobileTheme.amber.opacity(0.25), radius: 6, x: 0, y: 0)
                 }
             }
         }
+        .chartLegend(.hidden)
         .modifier(StudioChartChrome(xKind: .auto))
     }
 }
@@ -407,9 +592,14 @@ private struct StudioChartChrome: ViewModifier {
                     }
                 }
                 .chartYAxis {
-                    AxisMarks(position: .leading) { _ in
+                    AxisMarks(position: .leading) { value in
                         AxisGridLine().foregroundStyle(MobileTheme.Colors.border.opacity(0.20))
-                        AxisValueLabel().foregroundStyle(MobileTheme.Colors.textMuted)
+                        AxisValueLabel {
+                            if let v = value.as(Double.self) {
+                                Text(v.humanReadableNumber())
+                                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                            }
+                        }
                     }
                 }
                 .chartEntrance()
@@ -422,9 +612,14 @@ private struct StudioChartChrome: ViewModifier {
                     }
                 }
                 .chartYAxis {
-                    AxisMarks(position: .leading) { _ in
+                    AxisMarks(position: .leading) { value in
                         AxisGridLine().foregroundStyle(MobileTheme.Colors.border.opacity(0.20))
-                        AxisValueLabel().foregroundStyle(MobileTheme.Colors.textMuted)
+                        AxisValueLabel {
+                            if let v = value.as(Double.self) {
+                                Text(v.humanReadableNumber())
+                                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                            }
+                        }
                     }
                 }
                 .chartEntrance()
@@ -434,8 +629,8 @@ private struct StudioChartChrome: ViewModifier {
 
 // MARK: - Accessibility
 
-@MainActor extension NativeChartView: AXChartDescriptorRepresentable {
-    func makeChartDescriptor() -> AXChartDescriptor {
+extension NativeChartView: AXChartDescriptorRepresentable {
+    @MainActor func makeChartDescriptor() -> AXChartDescriptor {
         let allPoints = spec.series.flatMap { series -> [(String, Double, String)] in
             series.points.map { (series.name, $0.y, $0.x.asString ?? "—") }
         }

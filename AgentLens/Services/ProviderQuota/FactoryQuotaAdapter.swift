@@ -10,7 +10,7 @@ import Foundation
 ///    This is the canonical source — zero config, zero auth, always available.
 /// 2. **Factory billing API** — `GET api.factory.ai/api/organization/subscription/usage`
 ///    Returns org-level billing data when the user's organization has billing configured.
-///    Requires Chrome cookie auth or WKWebView login.
+///    Requires an explicit OpenBurnBar-owned Factory login session.
 /// 3. **Unavailable** — when neither source yields data.
 ///
 /// ## Data returned
@@ -25,12 +25,6 @@ import Foundation
 struct FactoryQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Constants
-
-    private static let factorySessionsPath = (
-        "~/.factory/sessions" as NSString
-    ).expandingTildeInPath
-
-    // MARK: - Fetch
 
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         // 1. Try the billing API first (org billing data is authoritative for plan limits)
@@ -63,7 +57,9 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
     // MARK: - Droid Session Snapshot
 
     private func fetchDroidSessionSnapshot(context: ProviderQuotaAdapterContext) async -> ProviderQuotaSnapshot? {
-        let sessionsURL = URL(fileURLWithPath: Self.factorySessionsPath)
+        let sessionsURL = context.homeDirectoryURL
+            .appendingPathComponent(".factory", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
         let fileManager = context.fileManager
 
         guard fileManager.fileExists(atPath: sessionsURL.path) else { return nil }
@@ -227,10 +223,10 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - Personal Account Dashboard Scraper
 
-    /// Tries the cookie-based dashboard scraper for personal (non-org) Factory accounts.
-    /// Uses the same Chrome-cookie + HTML-scraping approach as OllamaCloudScraper.
+    /// Tries the app-owned-session dashboard scraper for personal (non-org) Factory accounts.
     private func fetchFactoryPersonalSnapshot(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        guard let usage = await FactoryDashboardScraper.fetchPersonalUsage(session: context.session) else {
+        guard let cookieHeader = resolveFactorySessionCookie(context: context),
+              let usage = await FactoryDashboardScraper.fetchPersonalUsage(cookieHeader: cookieHeader, session: context.session) else {
             throw QuotaServiceError.invalidResponse("Factory dashboard scraper found no usage data.")
         }
 
@@ -265,7 +261,7 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
             source: .officialAPI,
             confidence: .exact,
             managementURL: "https://app.factory.ai/settings/billing",
-            statusMessage: "\(planLabel)\(emailSuffix) — scraped from Factory dashboard.",
+            statusMessage: "\(planLabel)\(emailSuffix) — Factory dashboard via OpenBurnBar login session.",
             buckets: buckets
         )
     }
@@ -343,27 +339,28 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
                 sourceLabel: "environment override"
             )
         }
-        // 2. Chrome/Safari cookie auto-extraction
-        if let extractedCookie = FactoryCookieExtractor.extractCookieHeader() {
-            let bearerToken = quotaNonEmpty(context.environment["FACTORY_BEARER_TOKEN"])
-                ?? FactoryCookieExtractor.extractBearerToken(from: extractedCookie)
-            return FactorySessionCredentialEnvelope(
-                cookieHeader: extractedCookie,
-                bearerToken: bearerToken ?? factoryBearerToken(fromCookieHeader: extractedCookie),
-                sourceLabel: "browser cookie store"
-            )
-        }
-
-        // 3. WKWebView login flow
-        if let loginCookie = await FactoryLoginHelper.runLoginFlow() {
-            let bearerToken = FactoryCookieExtractor.extractBearerToken(from: loginCookie)
+        // 2. OpenBurnBar-owned login session captured through explicit provider setup.
+        if let loginCookie = resolveFactorySessionCookie(context: context) {
             return FactorySessionCredentialEnvelope(
                 cookieHeader: loginCookie,
-                bearerToken: bearerToken ?? factoryBearerToken(fromCookieHeader: loginCookie),
-                sourceLabel: "WKWebView login"
+                bearerToken: FactoryCookieExtractor.extractBearerToken(from: loginCookie)
+                    ?? factoryBearerToken(fromCookieHeader: loginCookie),
+                sourceLabel: "OpenBurnBar login session"
             )
         }
 
+        return nil
+    }
+
+    private func resolveFactorySessionCookie(context: ProviderQuotaAdapterContext) -> String? {
+        if let envCookie = quotaNonEmpty(context.environment["FACTORY_COOKIE_HEADER"]) {
+            return envCookie
+        }
+        for identifier in ["factory_cookie_header", "factory_cookie"] {
+            if let stored = quotaNonEmpty(context.resolvedAPIKeys[identifier] ?? nil) {
+                return stored
+            }
+        }
         return nil
     }
 

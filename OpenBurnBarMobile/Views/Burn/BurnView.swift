@@ -360,24 +360,43 @@ struct BurnView: View {
                         .foregroundStyle(
                             LinearGradient(
                                 colors: [
-                                    MobileTheme.ember.opacity(0.45),
-                                    MobileTheme.amber.opacity(0.04)
+                                    MobileTheme.ember.opacity(0.50),
+                                    MobileTheme.amber.opacity(0.18),
+                                    MobileTheme.blaze.opacity(0.02)
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
                         )
                         .interpolationMethod(.catmullRom)
+
                         LineMark(
                             x: .value("Date", point.date, unit: .day),
                             y: .value("Tokens", point.value)
                         )
-                        .foregroundStyle(MobileTheme.primaryGradient)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
+                        .foregroundStyle(MobileTheme.ember)
+                        .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                         .interpolationMethod(.catmullRom)
+                        .shadow(color: MobileTheme.ember.opacity(0.25), radius: 5, x: 0, y: 2)
                     }
                 }
                 .frame(height: 180)
+                .chartBackground { chartProxy in
+                    GeometryReader { geometry in
+                        let frame = geometry.frame(in: .local)
+                        LinearGradient(
+                            colors: [
+                                MobileTheme.ember.opacity(0.04),
+                                MobileTheme.amber.opacity(0.02),
+                                Color.clear
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .frame(width: frame.width, height: frame.height)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                }
                 .chartXAxis {
                     AxisMarks(values: .stride(by: .day, count: max(1, dashboard.dailyPoints.count / 5))) { _ in
                         AxisValueLabel(format: .dateTime.month().day())
@@ -385,10 +404,16 @@ struct BurnView: View {
                     }
                 }
                 .chartYAxis {
-                    AxisMarks(position: .leading) { _ in
-                        AxisValueLabel().foregroundStyle(MobileTheme.Colors.textMuted)
+                    AxisMarks(position: .leading) { value in
+                        AxisValueLabel {
+                            if let v = value.as(Double.self) {
+                                Text(v.humanReadableNumber())
+                                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                            }
+                        }
                     }
                 }
+                .chartEntrance()
             }
         }
     }

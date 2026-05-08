@@ -60,9 +60,9 @@ Cline, Roo Code, Augment, Gemini CLI, Goose, OpenClaw, Windsurf — each detects
 - `HermesQuotaAdapter.swift` — richest data of any adapter (tokens, cost, models, sessions)
 - `KiloCodeQuotaAdapter.swift` — parses JSON from VS Code extension storage
 - `StubQuotaAdapter.swift` — 7 adapters that detect install and return `.unavailable` with links
-- `OllamaCloudScraper.swift` — Chrome cookie + HTML scraping for Ollama Cloud usage %
-- `FactoryDashboardScraper.swift` — same pattern for Factory personal accounts
-- `ChromeCookieReader` — shared PBKDF2 + AES decryption (lives in `OllamaCloudScraper.swift:189`)
+- `OllamaCloudScraper.swift` — OpenBurnBar login session + HTML scraping for Ollama Cloud usage %
+- `FactoryDashboardScraper.swift` — same OpenBurnBar-owned session pattern for Factory personal accounts
+- Provider login setup — explicit WKWebView connect buttons store OpenBurnBar-owned session credentials; quota refresh does not read browser Keychain items
 
 ### Existing UI to work with
 

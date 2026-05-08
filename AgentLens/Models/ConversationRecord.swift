@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Conversation Source Type
 
@@ -149,6 +150,9 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
     let cliUsed: String?
     /// Populated for assistant streams that emit tool events; empty means treat `content` as plain text.
     let transcriptPieces: [ChatTranscriptPiece]
+    /// Files the user attached when sending this message. Persisted with the
+    /// transcript so attachments stay visible after a chat is reopened.
+    let attachments: [HermesAttachment]
 
     init(
         id: String = UUID().uuidString,
@@ -156,7 +160,8 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         content: String,
         timestamp: Date = Date(),
         cliUsed: String? = nil,
-        transcriptPieces: [ChatTranscriptPiece] = []
+        transcriptPieces: [ChatTranscriptPiece] = [],
+        attachments: [HermesAttachment] = []
     ) {
         self.id = id
         self.role = role
@@ -164,6 +169,22 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         self.timestamp = timestamp
         self.cliUsed = cliUsed
         self.transcriptPieces = transcriptPieces
+        self.attachments = attachments
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, role, content, timestamp, cliUsed, transcriptPieces, attachments
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        role = try container.decode(ChatMessageRole.self, forKey: .role)
+        content = try container.decode(String.self, forKey: .content)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        cliUsed = try container.decodeIfPresent(String.self, forKey: .cliUsed)
+        transcriptPieces = try container.decodeIfPresent([ChatTranscriptPiece].self, forKey: .transcriptPieces) ?? []
+        attachments = try container.decodeIfPresent([HermesAttachment].self, forKey: .attachments) ?? []
     }
 
     /// Pieces for display (legacy rows use a single synthetic text piece from `content`).
@@ -176,6 +197,46 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
     /// Joined text segments for persistence / search parity.
     static func joinedText(from pieces: [ChatTranscriptPiece]) -> String {
         pieces.filter { $0.kind == .text }.map(\.value).joined()
+    }
+}
+
+/// Groups consecutive `.toolUse` transcript pieces for horizontal strip rendering.
+/// Used by both the dashboard `ChatMessageView` and the popover `HermesPopoverBubble`.
+enum TranscriptGroup: Identifiable {
+    case toolGroup([ChatTranscriptPiece])
+    case single(ChatTranscriptPiece)
+
+    var id: String {
+        switch self {
+        case .toolGroup(let pieces):
+            return "tg-\(pieces.first?.id ?? UUID().uuidString)"
+        case .single(let piece):
+            return piece.id
+        }
+    }
+
+    /// Partitions transcript pieces into groups: consecutive `.toolUse` pieces
+    /// become `.toolGroup`, individual `.text` pieces become `.single`.
+    static func group(_ transcript: [ChatTranscriptPiece]) -> [TranscriptGroup] {
+        var groups: [TranscriptGroup] = []
+        var pendingTools: [ChatTranscriptPiece] = []
+
+        for piece in transcript {
+            switch piece.kind {
+            case .toolUse:
+                pendingTools.append(piece)
+            case .text:
+                if !pendingTools.isEmpty {
+                    groups.append(.toolGroup(pendingTools))
+                    pendingTools = []
+                }
+                groups.append(.single(piece))
+            }
+        }
+        if !pendingTools.isEmpty {
+            groups.append(.toolGroup(pendingTools))
+        }
+        return groups
     }
 }
 

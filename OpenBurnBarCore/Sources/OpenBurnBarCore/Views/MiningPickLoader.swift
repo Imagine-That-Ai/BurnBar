@@ -41,6 +41,7 @@ public struct MiningPickLoader: View {
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.uiMode) private var uiMode
 
     private var size: CGFloat {
         switch style {
@@ -59,18 +60,22 @@ public struct MiningPickLoader: View {
     }
 
     public var body: some View {
-        VStack(spacing: spacing) {
-            iconStack
-            if let label, !label.isEmpty {
-                Text(label)
-                    .font(labelFont)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+        if uiMode == .cooking {
+            CookingLoader(style, label: label, tint: tint)
+        } else {
+            VStack(spacing: spacing) {
+                iconStack
+                if let label, !label.isEmpty {
+                    Text(label)
+                        .font(labelFont)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(label ?? "Loading")
+            .accessibilityAddTraits(.updatesFrequently)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(label ?? "Loading")
-        .accessibilityAddTraits(.updatesFrequently)
     }
 
     private var spacing: CGFloat {

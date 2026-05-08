@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - Settings Manager
 
@@ -382,6 +383,11 @@ final class SettingsManager {
         set { chatBackend.hermesRemoteRelayEnabled = newValue }
     }
 
+    var hermesRealtimeRelayURL: String {
+        get { chatBackend.hermesRealtimeRelayURL }
+        set { chatBackend.hermesRealtimeRelayURL = newValue }
+    }
+
     var chatBackendOnboardingCompleted: Bool {
         get { chatBackend.chatBackendOnboardingCompleted }
         set { chatBackend.chatBackendOnboardingCompleted = newValue }
@@ -605,9 +611,34 @@ final class SettingsManager {
         set { quotas.smartHubQuotaRefreshURL = newValue }
     }
 
+    var smartHubQuotaTimePeriod: SmartHubTimePeriod {
+        get { quotas.smartHubQuotaTimePeriod }
+        set { quotas.smartHubQuotaTimePeriod = newValue }
+    }
+
     var smartHubQuotaVoiceRefreshURL: String {
         get { quotas.smartHubQuotaVoiceRefreshURL }
         set { quotas.smartHubQuotaVoiceRefreshURL = newValue }
+    }
+
+    var smartHubHomeAssistantRecoveryWebhookURL: String {
+        get { quotas.smartHubHomeAssistantRecoveryWebhookURL }
+        set { quotas.smartHubHomeAssistantRecoveryWebhookURL = newValue }
+    }
+
+    var castSelectedDeviceServiceName: String {
+        get { quotas.castSelectedDeviceServiceName }
+        set { quotas.castSelectedDeviceServiceName = newValue }
+    }
+
+    var castSelectedDeviceFriendlyName: String {
+        get { quotas.castSelectedDeviceFriendlyName }
+        set { quotas.castSelectedDeviceFriendlyName = newValue }
+    }
+
+    var castSelectedDeviceModel: String {
+        get { quotas.castSelectedDeviceModel }
+        set { quotas.castSelectedDeviceModel = newValue }
     }
 
     // MARK: Provider Paths

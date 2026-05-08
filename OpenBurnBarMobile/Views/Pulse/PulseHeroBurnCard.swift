@@ -13,6 +13,7 @@ struct PulseHeroBurnCard: View {
     let dailyPoints: [RollupDailyPoint]
     let topProvider: AgentProvider?
     @Binding var displayMode: UsageDisplayMode
+    var scope: PulseTimelineScope = .day
 
     var body: some View {
         AuroraGlassCard(variant: .hero, cornerRadius: AuroraDesign.Shape.heroCorner, padding: AuroraDesign.Layout.heroPadding) {
@@ -38,15 +39,17 @@ struct PulseHeroBurnCard: View {
 
     private var topRow: some View {
         HStack {
-            Text("TODAY · LIVE")
+            Text(scope.headerLabel)
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)
                 .tracking(2)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
-            Circle()
-                .fill(MobileTheme.success)
-                .frame(width: 6, height: 6)
-                .modifier(BreathingPulse())
+            if scope == .minute || scope == .hour || scope == .day {
+                Circle()
+                    .fill(MobileTheme.success)
+                    .frame(width: 6, height: 6)
+                    .modifier(BreathingPulse())
+            }
             Spacer()
             modeToggle
         }
@@ -80,17 +83,26 @@ struct PulseHeroBurnCard: View {
     @ViewBuilder
     private var deltaRow: some View {
         if let trailingTotal, let total {
-            let avg = (trailingTotal.costUsd / 7.0)
+            let divisor: Double = scope == .week ? 7.0 : (scope == .month ? 30.0 : 7.0)
+            let avg = (trailingTotal.costUsd / divisor)
             let pct = avg > 0 ? ((total.costUsd - avg) / avg) * 100 : 0
             HStack(spacing: 6) {
                 Image(systemName: pct >= 0 ? "arrow.up.right" : "arrow.down.right")
                     .font(.system(size: 11, weight: .bold))
-                Text(String(format: "%@ %.0f%%", pct >= 0 ? "Ahead of" : "Below", abs(pct)) + " your 7-day average")
+                Text(String(format: "%@ %.0f%%", pct >= 0 ? "Ahead of" : "Below", abs(pct)) + " your \(trailingLabel) average")
                     .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)
             }
             .foregroundStyle(pct >= 0 ? MobileTheme.amber : MobileTheme.success)
             .padding(.top, 2)
+        }
+    }
+
+    private var trailingLabel: String {
+        switch scope {
+        case .minute, .hour, .day: return "7-day"
+        case .week:                return "30-day"
+        case .month:               return "90-day"
         }
     }
 

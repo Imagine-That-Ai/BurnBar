@@ -19,6 +19,8 @@ struct RootTabView: View {
     @State private var router = PulseRouter()
     @State private var motionStore = MotionStore()
     @State private var hermesService = HermesService()
+    @State private var studioPresenter = ChartStudioPresenter()
+    @State private var isHermesKeyboardVisible = false
 
     // Per-tab navigation paths
     @State private var pulsePath = NavigationPath()
@@ -42,14 +44,41 @@ struct RootTabView: View {
                     userDisplayName: authStore.currentIdentity?.displayName
                                   ?? authStore.currentIdentity?.email
                 )
+                .opacity(isHermesKeyboardVisible ? 0 : 1)
+                .animation(.easeInOut(duration: 0.2), value: isHermesKeyboardVisible)
+                .allowsHitTesting(!isHermesKeyboardVisible)
+            }
+
+            // Floating Chart Studio button — only visible while Studio is
+            // minimized. Sits above the nav tray, follows the user across
+            // tabs.
+            ChartStudioFloatingButton(presenter: studioPresenter)
+
+            // Full-screen Studio overlay. We host it here (not as a
+            // `.fullScreenCover` on an individual card) so the user can
+            // minimize it and keep navigating.
+            if studioPresenter.mode == .fullscreen, let snap = studioPresenter.snapshot {
+                ChartStudioView(
+                    digest: snap.digest,
+                    hermesService: hermesService,
+                    onClose: { studioPresenter.dismiss() },
+                    onMinimize: { studioPresenter.minimize() }
+                )
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(10)
             }
         }
         .environment(\.motionStore, motionStore)
+        .environment(\.chartStudioPresenter, studioPresenter)
         .onAppear {
             applyScreenshotRouteIfNeeded()
         }
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged)) { notification in
+            isHermesKeyboardVisible = notification.userInfo?["focused"] as? Bool ?? false
         }
     }
 
@@ -105,7 +134,7 @@ struct RootTabView: View {
                 switch route {
                 case .sync: CloudSyncDetailsView(syncStore: syncHealthStore)
                 case .settings: SettingsHubView(authStore: authStore)
-                case .devices:  iPadDevicesSettingsView()
+                case .devices:  iPadDevicesSettingsView(hermesService: hermesService)
                 }
             }
         }

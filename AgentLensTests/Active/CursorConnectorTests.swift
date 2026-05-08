@@ -193,12 +193,16 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertFalse(normalized.hasNoExplicitBuckets)
     }
 
-    func test_proxyScript_resolvesProviderKeysFromKeychainMetadata() {
+    func test_proxyScript_resolvesProviderKeysThroughSecretBrokerOnly() {
         let script = CursorConnectorManager.proxyScript()
 
-        XCTAssertTrue(script.contains("keychain_service"))
-        XCTAssertTrue(script.contains("keychain_account"))
-        XCTAssertTrue(script.contains("find-generic-password"))
+        XCTAssertTrue(script.contains("secret_broker_url"))
+        XCTAssertTrue(script.contains("secret_broker_token"))
+        XCTAssertTrue(script.contains("route_id"))
+        XCTAssertFalse(script.contains("keychain_service"))
+        XCTAssertFalse(script.contains("keychain_account"))
+        XCTAssertFalse(script.contains("find-generic-password"))
+        XCTAssertFalse(script.contains("/usr/bin/security"))
     }
 
     func test_proxyScript_preservesDeepSeekReasoningContentAcrossResponsesConversion() {

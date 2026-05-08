@@ -63,6 +63,25 @@ enum HermesMobileSetupWizardState {
     static let completionKey = "com.openburnbar.mobile.hermesSetupWizardCompleted"
 }
 
+enum HermesMobileChatPreferences {
+    /// `@AppStorage` key for the opt-in tokens-per-second footer on assistant
+    /// bubbles. Defaults to `false` so existing chat surfaces stay unchanged
+    /// until the user explicitly enables it.
+    static let showMessageTPSKey = "hermesShowMessageTPS"
+    /// `@AppStorage` key for opting into pretext-powered rich text rendering
+    /// in assistant bubbles. Defaults to `true` — pretext degrades gracefully
+    /// to native `Text` while measurement is in flight, and adds visible
+    /// chips for `@mentions` and `` `code spans` `` when ready.
+    static let usePretextRenderingKey = "hermesUsePretextRendering"
+}
+
+extension Notification.Name {
+    /// Posted by `HermesChatView` when its text input focus changes so that
+    /// `RootTabView` can hide the floating `AuroraNavigationTray` while the
+    /// user is typing.
+    static let hermesKeyboardFocusChanged = Notification.Name("hermesKeyboardFocusChanged")
+}
+
 private struct HermesMobileSetupWizardView: View {
     @Binding var isPresented: Bool
     @Binding var hasCompletedSetup: Bool
@@ -118,9 +137,7 @@ private struct HermesMobileSetupWizardView: View {
         AuroraGlassCard(variant: .hermes, cornerRadius: AuroraDesign.Shape.heroCorner) {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
                 HStack(spacing: 12) {
-                    Text("☿")
-                        .font(.system(size: 44, weight: .bold))
-                        .foregroundStyle(AuroraDesign.Gradients.mercuryFoil)
+                    HermesLiveGlyph(size: 44, isLive: false)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Hermes in 1-2-3")
                             .font(MobileTheme.Typography.title)
@@ -592,9 +609,8 @@ private struct ConversationRow: View {
     // MARK: - Chips
 
     private var modelChip: some View {
-        HStack(spacing: 6) {
-            Text("☿")
-                .font(.system(size: 10, weight: .bold))
+        HStack(spacing: 5) {
+            HermesLiveGlyph(size: 12, isLive: false)
             Text(session.model?.nilIfBlank ?? "hermes")
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)
@@ -838,6 +854,10 @@ struct HermesChatView: View {
     @State private var showSetupWizard = false
     @State private var didAutoPresentSetupWizard = false
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
+    @AppStorage(HermesMobileChatPreferences.showMessageTPSKey) private var showMessageTPS = false
+    @AppStorage(HermesMobileChatPreferences.usePretextRenderingKey) private var usePretextRendering = true
+    @State private var showPretextPlayground = false
+    @State private var atomRouter = HermesAtomRouter()
     @FocusState private var inputFocused: Bool
     @Namespace private var bubbleNamespace
 
@@ -873,7 +893,11 @@ struct HermesChatView: View {
                                 welcomeBlock
                             } else {
                                 ForEach(service.messages) { message in
-                                    HermesMessageBubble(message: message)
+                                    HermesMessageBubble(
+                                        message: message,
+                                        showTPS: showMessageTPS,
+                                        usePretextRendering: usePretextRendering
+                                    )
                                         .id(message.id)
                                 }
                                 if service.isStreaming {
@@ -913,12 +937,20 @@ struct HermesChatView: View {
 
                 inputBar
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, inputFocused ? 0 : 8)
             }
             // Reserve bottom space so the floating AuroraNavigationTray
             // never overlaps content. The tray is pillHeight(50) + bottomInset(14)
             // = 64pt; we add a comfortable 70pt so content lands above it.
-            .padding(.bottom, 70)
+            // Collapse to zero when the keyboard is up since the tray is hidden.
+            .padding(.bottom, inputFocused ? 0 : 70)
+        }
+        .onChange(of: inputFocused) { _, focused in
+            NotificationCenter.default.post(
+                name: .hermesKeyboardFocusChanged,
+                object: nil,
+                userInfo: ["focused": focused]
+            )
         }
         .navigationTitle(navigationTitleText)
         .navigationBarTitleDisplayMode(.inline)
@@ -940,6 +972,18 @@ struct HermesChatView: View {
                         showSetupWizard = true
                     } label: {
                         Label("Setup Guide", systemImage: "list.number")
+                    }
+                    Divider()
+                    Toggle(isOn: $showMessageTPS) {
+                        Label("Show tokens/sec", systemImage: "speedometer")
+                    }
+                    Toggle(isOn: $usePretextRendering) {
+                        Label("Rich text (mentions · code)", systemImage: "text.alignleft")
+                    }
+                    Button {
+                        showPretextPlayground = true
+                    } label: {
+                        Label("Text Layout Playground", systemImage: "textformat.size")
                     }
                     Divider()
                     Button(role: .destructive) {
@@ -992,11 +1036,32 @@ struct HermesChatView: View {
                 }
             )
         }
+        .sheet(isPresented: $showPretextPlayground) {
+            PretextPlayground()
+        }
+        .sheet(item: Binding(
+            get: { atomRouter.pending },
+            set: { atomRouter.pending = $0 }
+        )) { pending in
+            HermesAtomDetailSheet(
+                atom: pending.atom,
+                label: pending.label,
+                onOpen: { atomRouter.confirm(pending) }
+            )
+        }
+        .environment(\.hermesAtomNavigator, atomRouter)
         .task(id: route) { await applyRoute() }
         .task {
             // Idempotent: refreshRuntime coalesces concurrent callers and loads
             // both remote relay discovery and selected-host reachability.
             await service.refreshRuntime()
+            // Warm the offscreen Pretext WKWebView so the first assistant
+            // turn doesn't stall on initial load. Idempotent.
+            PretextEngine.shared.start()
+            // Reserved hook for surfaces that want a synchronous handler;
+            // notifications still fire from `confirm(_:)` for ambient
+            // listeners (e.g. RootTabView).
+            atomRouter.onPerform = { _ in }
         }
         .onAppear {
             presentSetupWizardIfNeeded()
@@ -1188,9 +1253,7 @@ struct HermesChatView: View {
         AuroraGlassCard(variant: .hermes, cornerRadius: AuroraDesign.Shape.heroCorner) {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
                 HStack(spacing: 12) {
-                    Text("☿")
-                        .font(.system(size: 38, weight: .bold))
-                        .foregroundStyle(AuroraDesign.Gradients.mercuryFoil)
+                    HermesLiveGlyph(size: 42, isLive: service.isStreaming)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Hermes")
                             .font(MobileTheme.Typography.title)
@@ -1317,6 +1380,14 @@ struct HermesChatView: View {
                             )
                     )
             )
+            // Catch return-key inserts on multi-line text fields where
+            // `.onSubmit` can be unreliable, and treat them as send.
+            .onChange(of: input) { oldValue, newValue in
+                if newValue.hasSuffix("\n"), !service.isStreaming {
+                    input = oldValue
+                    send()
+                }
+            }
     }
 
     private var sendButton: some View {
@@ -1909,6 +1980,11 @@ func hermesAgentProvider(for raw: String) -> AgentProvider {
 
 struct HermesMessageBubble: View {
     let message: HermesChatMessage
+    var showTPS: Bool = false
+    /// When true, assistant text is rendered through `PretextRichBubble` so
+    /// `@mentions` and `` `code spans` `` get inline chips and pretext line
+    /// breaking. Falls back to native `Text` if the engine isn't ready.
+    var usePretextRendering: Bool = true
 
     var isUser: Bool { message.role == .user }
 
@@ -1935,11 +2011,11 @@ struct HermesMessageBubble: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                userBubbleShape
                     .fill(MobileTheme.Colors.surfaceElevated.opacity(0.85))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                userBubbleShape
                     .stroke(MobileTheme.chatUserStroke, lineWidth: 1)
             )
     }
@@ -1947,64 +2023,287 @@ struct HermesMessageBubble: View {
     @ViewBuilder
     private var assistantStack: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // "via Hermes" badge
-            HStack(spacing: 4) {
-                Text("☿")
-                    .font(.system(size: 10, weight: .bold))
-                Text("via Hermes")
-                    .font(MobileTheme.Typography.tiny)
-                    .fontWeight(.semibold)
-            }
-            .foregroundStyle(MobileTheme.hermesAureate)
-            .padding(.leading, 6)
+            modelBadge
+                .padding(.leading, 6)
 
             if !message.text.isEmpty || message.toolCalls.isEmpty {
-                Text(message.text)
-                    .font(MobileTheme.Typography.body)
-                    .foregroundStyle(message.isError ? MobileTheme.Colors.error : MobileTheme.Colors.textPrimary)
+                assistantTextBody
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        assistantBubbleShape
                             .fill(MobileTheme.Colors.surface.opacity(0.85))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        assistantBubbleShape
                             .stroke(message.isError ? AnyShapeStyle(MobileTheme.error) : AnyShapeStyle(AuroraDesign.Gradients.mercuryFoil), lineWidth: message.isError ? 1.5 : 1)
                     )
                     .overlay {
                         if !message.isError {
                             MercuryShimmerOverlay()
-                                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                .clipShape(assistantBubbleShape)
                         }
                     }
             }
 
-            ForEach(message.toolCalls) { tool in
-                HStack(spacing: 8) {
-                    Image(systemName: "wrench.and.screwdriver.fill")
-                        .font(.system(size: 11, weight: .bold))
-                    Text(tool.name)
-                        .font(MobileTheme.Typography.tiny)
-                        .fontWeight(.semibold)
-                    Spacer(minLength: 8)
-                    Text(tool.status)
+            if !message.toolCalls.isEmpty {
+                toolCallsStrip
+            }
+
+            tpsFooter
+        }
+    }
+
+    // MARK: - Tool Calls Strip
+
+    /// Horizontally scrollable tool strip, most recent on the left.
+    private var toolCallsStrip: some View {
+        let reversedCalls = Array(message.toolCalls.reversed())
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(reversedCalls) { tool in
+                    toolCallPill(tool)
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func toolCallPill(_ tool: HermesToolCall) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: toolCallIcon(for: tool.name))
+                .font(.system(size: 11, weight: .bold))
+            Text(tool.name)
+                .font(MobileTheme.Typography.tiny)
+                .fontWeight(.semibold)
+            Spacer(minLength: 8)
+            Text(tool.status)
+                .font(MobileTheme.Typography.tiny)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+        }
+        .foregroundStyle(MobileTheme.hermesAureate)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.75))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(AuroraDesign.Gradients.mercuryFoil, lineWidth: 0.75)
+        )
+    }
+
+    private func toolCallIcon(for name: String) -> String {
+        let n = name.lowercased()
+        if n.contains("read") || n.contains("file") || n.contains("write") { return "doc.text" }
+        if n.contains("bash") || n.contains("exec") || n.contains("run") || n.contains("terminal") { return "terminal" }
+        if n.contains("search") || n.contains("grep") || n.contains("glob") || n.contains("find") { return "magnifyingglass" }
+        if n.contains("web") || n.contains("browser") || n.contains("fetch") || n.contains("http") { return "globe" }
+        if n.contains("edit") || n.contains("patch") || n.contains("replace") { return "pencil.and.outline" }
+        if n.contains("memory") || n.contains("skill") || n.contains("learn") { return "brain" }
+        if n.contains("image") || n.contains("vision") || n.contains("screenshot") { return "photo" }
+        return "wrench.and.screwdriver.fill"
+    }
+
+    /// Honest "via Hermes" header. Renders one of three states:
+    /// - `via Hermes · gpt-5.5` — server confirmed model (no asterisk needed).
+    /// - `via Hermes · asked gpt-5.5 → got minimax-m2.7` — server routed to a
+    ///   different model than the user requested.
+    /// - `via Hermes · gpt-5.5 (requested)` — server never confirmed which
+    ///   model it ran. We say "requested" so the user knows we're echoing
+    ///   their pick rather than asserting a fact.
+    @ViewBuilder
+    private var modelBadge: some View {
+        HStack(spacing: 5) {
+            HermesLiveGlyph(size: 16, isLive: message.isStreaming)
+            Text(modelBadgeText)
+                .font(MobileTheme.Typography.tiny)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(MobileTheme.hermesAureate)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(modelBadgeAccessibilityLabel)
+    }
+
+    private var modelBadgeText: String {
+        let requested = message.requestedModelID?.nilIfBlank
+        let response = message.responseModelID?.nilIfBlank
+
+        if message.serverRoutedToDifferentModel,
+           let requested,
+           let response {
+            return "via Hermes · asked \(requested) → got \(response)"
+        }
+        if let response {
+            return "via Hermes · \(response)"
+        }
+        if let requested {
+            return "via Hermes · \(requested) (requested)"
+        }
+        if let fallback = message.modelName?.nilIfBlank {
+            return "via Hermes · \(fallback) (requested)"
+        }
+        return "via Hermes"
+    }
+
+    private var modelBadgeAccessibilityLabel: String {
+        if message.serverRoutedToDifferentModel,
+           let requested = message.requestedModelID?.nilIfBlank,
+           let response = message.responseModelID?.nilIfBlank {
+            return "Hermes routed: requested \(requested), server ran \(response)."
+        }
+        if let response = message.responseModelID?.nilIfBlank {
+            return "Hermes ran model \(response)."
+        }
+        if let requested = message.requestedModelID?.nilIfBlank {
+            return "Hermes was requested \(requested). Server did not confirm the model."
+        }
+        return "Hermes assistant message."
+    }
+
+    @ViewBuilder
+    private var tpsFooter: some View {
+        if shouldRenderTPS, let display = message.tokensPerSecondDisplayText {
+            HStack(spacing: 5) {
+                Image(systemName: "speedometer")
+                    .font(.system(size: 9, weight: .bold))
+                Text(display)
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+                if message.isTokensPerSecondEstimated {
+                    Text("est.")
                         .font(MobileTheme.Typography.tiny)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }
-                .foregroundStyle(MobileTheme.hermesAureate)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(MobileTheme.Colors.surface.opacity(0.75))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(AuroraDesign.Gradients.mercuryFoil, lineWidth: 0.75)
+            }
+            .foregroundStyle(MobileTheme.Colors.textSecondary)
+            .padding(.leading, 6)
+            .padding(.top, 2)
+            .frame(minHeight: 16, alignment: .leading)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(tpsAccessibilityLabel(display))
+        } else if shouldRenderBufferedNotice {
+            // Stream was buffered by a relay/proxy so wall-clock would lie.
+            // Tell the user we're hiding the rate instead of fabricating one.
+            HStack(spacing: 5) {
+                Image(systemName: "speedometer")
+                    .font(.system(size: 9, weight: .bold))
+                Text("rate hidden — buffered stream")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+            }
+            .foregroundStyle(MobileTheme.Colors.textMuted)
+            .padding(.leading, 6)
+            .padding(.top, 2)
+            .frame(minHeight: 16, alignment: .leading)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Generation rate hidden because the stream was buffered.")
+        }
+    }
+
+    private var shouldRenderTPS: Bool {
+        showTPS && !isUser && !message.isError
+    }
+
+    /// Surface the buffered notice only when (a) the user opted into TPS,
+    /// (b) the server gave us a token count and (c) we deliberately suppressed
+    /// the rate because the wall-clock was implausibly short.
+    private var shouldRenderBufferedNotice: Bool {
+        showTPS
+            && !isUser
+            && !message.isError
+            && message.tokensPerSecond == nil
+            && message.outputTokenCount.map { $0 > 0 } ?? false
+            && message.generationDurationSource == .bufferedWallClock
+    }
+
+    private func tpsAccessibilityLabel(_ display: String) -> String {
+        let prefix: String
+        switch message.generationDurationSource {
+        case .providerEvalDuration: prefix = ""
+        case .wallClock:            prefix = "Estimated "
+        case .bufferedWallClock:    prefix = "Estimated "
+        case nil:                   prefix = "Estimated "
+        }
+        return "\(prefix)Generation speed \(display)"
+    }
+
+    /// Routes to either pretext rich rendering or plain native `Text` based on
+    /// the user's preference and whether the message is in an error state.
+    /// Streaming and error messages always use plain Text — streaming because
+    /// pretext can't keep up with chunk-by-chunk text mutation, error because
+    /// the contract is "render exactly what the server returned".
+    @ViewBuilder
+    private var assistantTextBody: some View {
+        if usePretextRendering, !message.isError, !message.isStreaming {
+            // Completed assistant turn — atom-aware rich rendering, with
+            // streaming-stable height + shrink-wrap width applied by the
+            // wrapper.
+            StreamingBubble(
+                text: message.text,
+                isStreaming: false,
+                isError: false,
+                baseSize: 15,
+                lineHeight: 21
+            ) {
+                HermesRichBubble(
+                    text: message.text,
+                    baseColor: MobileTheme.Colors.textPrimary,
+                    mentionColor: MobileTheme.hermesAureate,
+                    codeColor: MobileTheme.Colors.textPrimary,
+                    codeBackground: MobileTheme.Colors.surfaceElevated
                 )
             }
+        } else if usePretextRendering, !message.isError, message.isStreaming {
+            // In-flight — plain Text inside StreamingBubble so the bubble's
+            // outer frame animates smoothly even while text mutates.
+            StreamingBubble(
+                text: message.text,
+                isStreaming: true,
+                isError: false,
+                baseSize: 15,
+                lineHeight: 21
+            ) {
+                Text(message.text)
+                    .font(MobileTheme.Typography.body)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else {
+            Text(message.text)
+                .font(MobileTheme.Typography.body)
+                .foregroundStyle(message.isError ? MobileTheme.Colors.error : MobileTheme.Colors.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var userBubbleShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            cornerRadii: RectangleCornerRadii(
+                topLeading: 18,
+                bottomLeading: 18,
+                bottomTrailing: 6,
+                topTrailing: 18
+            ),
+            style: .continuous
+        )
+    }
+
+    private var assistantBubbleShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            cornerRadii: RectangleCornerRadii(
+                topLeading: 18,
+                bottomLeading: 6,
+                bottomTrailing: 18,
+                topTrailing: 18
+            ),
+            style: .continuous
+        )
     }
 }
 

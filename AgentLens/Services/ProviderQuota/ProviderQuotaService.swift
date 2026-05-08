@@ -526,6 +526,9 @@ final class ProviderQuotaService {
             }
         }
         resolvedKeys["cursor_cookie"] = keyStore.apiKey(for: "cursor_cookie")
+        for identifier in ["factory_cookie_header", "factory_cookie", "ollama_cookie_header", "ollama_cookie", "kimi_auth_token"] {
+            resolvedKeys[identifier] = keyStore.apiKey(for: identifier)
+        }
 
         return ProviderQuotaAdapterContext(
             appPaths: appPaths,
@@ -628,6 +631,8 @@ final class ProviderQuotaService {
             identifiers.append("minimax")
         case .zai:
             identifiers.append(contentsOf: ["zai", "z_ai"])
+        case .kimi:
+            identifiers.append("kimi_auth_token")
         default:
             break
         }

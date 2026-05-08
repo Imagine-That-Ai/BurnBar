@@ -22,6 +22,7 @@ struct TrendAtlasCard: View {
     @State private var scene: AtlasScene = .spend
     @State private var showingStudio: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.chartStudioPresenter) private var presenter
 
     enum AtlasScene: String, Hashable, CaseIterable, Identifiable {
         case spend, models, cache
@@ -100,6 +101,9 @@ struct TrendAtlasCard: View {
             }
         }
         .fullScreenCover(isPresented: $showingStudio) {
+            // Fallback presentation when no global presenter is wired (e.g.
+            // previews / standalone snapshots). Production paths route
+            // through `RootTabView`'s presenter so Studio can be minimized.
             ChartStudioView(
                 digest: digest,
                 hermesService: hermesService,
@@ -226,6 +230,10 @@ struct TrendAtlasCard: View {
 
     private func openStudio() {
         HapticBus.sheetOpen()
-        showingStudio = true
+        if let presenter {
+            presenter.present(digest: digest)
+        } else {
+            showingStudio = true
+        }
     }
 }

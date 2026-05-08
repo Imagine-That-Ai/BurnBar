@@ -178,6 +178,8 @@ The external launch settings that cannot be inferred from the working tree alone
 
 Quota reporting is separate from spend history. Codex quota comes from the latest local rollout/session snapshot, Claude Code quota comes from the local statusline bridge, MiniMax and Z.ai use official API responses, Ollama reports local model inventory plus cloud-plan routing state, and Factory / Droid remaining is an explicit estimate from OpenBurnBar-tracked raw monthly tokens rather than Factory billable tokens.
 
+Claude Code and Codex can also refresh quota remotely from iOS/iPadOS through on-demand quota sync. Codex supports hosted or self-hosted sync; Claude Code uses a self-hosted runner so provider auth stays in the user's own environment. See [Claude Code and Codex Remote Quota Sync](docs/HOSTED_QUOTA_SYNC.md).
+
 Factory exact quota no longer reuses session state from other local apps in this source release. If you want OpenBurnBar to call the official Factory quota API, provide explicit `FACTORY_COOKIE_HEADER` and/or `FACTORY_BEARER_TOKEN` environment overrides; otherwise OpenBurnBar falls back to plan-tier estimation.
 
 ### Cursor agent provider scope (narrower on purpose)

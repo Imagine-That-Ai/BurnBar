@@ -58,9 +58,22 @@ enum VelocityForecaster {
         let elapsed = now.timeIntervalSince(startOfDay)
         let progress = max(0.001, min(1, elapsed / secondsInDay))
 
-        // Linear extrapolation of today's run-rate to a full day.
-        let projectedCost = todayCost / progress
-        let projectedTokens = Int(Double(todayTokens) / progress)
+        // Blended forecast: mix today's linear extrapolation with the
+        // 7-day daily average, weighting today more as the day progresses.
+        // This prevents wild projections early in the morning when a single
+        // burst session gets divided by a tiny progress fraction.
+        let linearCost = todayCost / progress
+        let linearTokens = Double(todayTokens) / progress
+
+        let dailyAvgTokens = sevenDayTokens > 0 ? Double(sevenDayTokens) / 7.0 : linearTokens
+        let historicalCost = sevenDayCost > 0 ? sevenDayCost / 7.0 : linearCost
+
+        // Sigmoid-ish weight: today's data dominates after ~40% of the day.
+        // Before that, lean heavily on the historical average so a 2am burst
+        // doesn't claim you'll spend 24× your normal rate.
+        let todayWeight = min(1.0, progress * 2.0)  // 0→0, 0.25→0.5, 0.5→1.0
+        let projectedCost = linearCost * todayWeight + historicalCost * (1.0 - todayWeight)
+        let projectedTokens = Int(linearTokens * todayWeight + dailyAvgTokens * (1.0 - todayWeight))
 
         // Pace is relative to the 7-day daily average.
         let dailyAvgCost = sevenDayCost / 7.0

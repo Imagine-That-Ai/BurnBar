@@ -12,6 +12,7 @@ struct AuthGateView: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("uiMode") private var uiMode: String = UIMode.standard.rawValue
 
     var body: some View {
         Group {
@@ -41,6 +42,7 @@ struct AuthGateView: View {
             }
         }
         .animation(.snappy(duration: 0.25), value: authStore.state)
+        .environment(\.uiMode, UIMode(rawValue: uiMode) ?? .standard)
     }
 
     // MARK: - Device-Specific Root

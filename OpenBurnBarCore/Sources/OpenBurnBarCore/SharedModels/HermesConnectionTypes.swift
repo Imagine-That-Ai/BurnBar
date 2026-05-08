@@ -26,6 +26,10 @@ public struct HermesConnectionRecord: Codable, Identifiable, Sendable, Equatable
     public var relayPublicKey: String?
     public var relayKeyVersion: Int?
     public var relayEncryption: String?
+    public var realtimeRelayURL: String?
+    public var realtimeRelayStatus: String?
+    public var realtimeRelayLastSeenAt: Date?
+    public var realtimeRelayProtocolVersion: Int?
     public var capabilities: [String]
     public var lastSeenAt: Date?
     public var createdAt: Date
@@ -43,6 +47,10 @@ public struct HermesConnectionRecord: Codable, Identifiable, Sendable, Equatable
         relayPublicKey: String? = nil,
         relayKeyVersion: Int? = nil,
         relayEncryption: String? = nil,
+        realtimeRelayURL: String? = nil,
+        realtimeRelayStatus: String? = nil,
+        realtimeRelayLastSeenAt: Date? = nil,
+        realtimeRelayProtocolVersion: Int? = nil,
         capabilities: [String] = [],
         lastSeenAt: Date? = nil,
         createdAt: Date = Date(),
@@ -59,6 +67,10 @@ public struct HermesConnectionRecord: Codable, Identifiable, Sendable, Equatable
         self.relayPublicKey = relayPublicKey
         self.relayKeyVersion = relayKeyVersion
         self.relayEncryption = relayEncryption
+        self.realtimeRelayURL = realtimeRelayURL
+        self.realtimeRelayStatus = realtimeRelayStatus
+        self.realtimeRelayLastSeenAt = realtimeRelayLastSeenAt
+        self.realtimeRelayProtocolVersion = realtimeRelayProtocolVersion
         self.capabilities = capabilities
         self.lastSeenAt = lastSeenAt
         self.createdAt = createdAt

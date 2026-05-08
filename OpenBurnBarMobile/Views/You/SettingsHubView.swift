@@ -12,6 +12,7 @@ struct SettingsHubView: View {
 
     @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
     @AppStorage("usageDisplayMode") private var usageDisplayMode: String = "currency"
+    @AppStorage("uiMode") private var uiMode: String = UIMode.standard.rawValue
     @AppStorage("dailyBudget") private var dailyBudget: Double = 50.0
     @AppStorage("dailyDigestEnabled") private var dailyDigestEnabled: Bool = false
     @AppStorage("dailyDigestHour") private var dailyDigestHour: Int = 9
@@ -40,6 +41,12 @@ struct SettingsHubView: View {
                         SettingsLabel(icon: "number.square.fill", color: MobileTheme.ember, title: "Default display")
                     }
                 } header: { groupHeader("Appearance") }
+
+                Section {
+                    UIModePicker(selection: $uiMode)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                        .listRowBackground(Color.clear)
+                } header: { groupHeader("UI Mode") }
 
                 Section {
                     HStack {

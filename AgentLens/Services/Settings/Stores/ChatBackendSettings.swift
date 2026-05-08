@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Chat Backend Settings
 
@@ -42,6 +43,10 @@ final class ChatBackendSettings {
 
     var hermesRemoteRelayEnabled: Bool = false {
         didSet { persistence.set(hermesRemoteRelayEnabled, forKey: "hermesRemoteRelayEnabled") }
+    }
+
+    var hermesRealtimeRelayURL: String = HermesRealtimeRelayProtocol.defaultHostedRelayURLString {
+        didSet { persistence.set(hermesRealtimeRelayURL, forKey: "hermesRealtimeRelayURL") }
     }
 
     var chatBackendOnboardingCompleted: Bool = false {
@@ -103,6 +108,10 @@ final class ChatBackendSettings {
         self.hermesChatModelOverride = persistence.string(forKey: "hermesChatModelOverride")
         self.hermesGatewayBaseURL = persistence.string(forKey: "hermesGatewayBaseURL", defaultValue: "http://127.0.0.1:8642")
         self.hermesRemoteRelayEnabled = persistence.bool(forKey: "hermesRemoteRelayEnabled")
+        self.hermesRealtimeRelayURL = persistence.string(
+            forKey: "hermesRealtimeRelayURL",
+            defaultValue: HermesRealtimeRelayProtocol.defaultHostedRelayURLString
+        )
         self.chatBackendOnboardingCompleted = persistence.bool(forKey: "chatBackendOnboardingCompleted")
         self.hermesSetupWizardCompleted = persistence.bool(forKey: "hermesSetupWizardCompleted")
         self.switcherOnboardingCompleted = persistence.bool(forKey: "switcherOnboardingCompleted")

@@ -1,35 +1,313 @@
 import Foundation
+import FirebaseAppCheck
 import FirebaseAuth
 import FirebaseFirestore
 import OpenBurnBarCore
 
 // MARK: - Hermes Chat Message
 
+enum HermesTokenCountSource: String, Equatable {
+    case providerUsage
+    case estimatedText
+}
+
+/// Where the elapsed time used for `tokensPerSecond` came from.
+///
+/// - `providerEvalDuration`: server-reported generation duration (e.g. Ollama's
+///   `eval_duration` nanoseconds, or any other provider-supplied number we
+///   normalise to seconds). This is the only fully trustworthy source — the
+///   provider measured it next to the model.
+/// - `wallClock`: time between the first SSE chunk we received and the final
+///   chunk. Reliable for non-buffered streams but easily skewed by relays or
+///   proxies that buffer a whole response into a single burst.
+/// - `bufferedWallClock`: same as `wallClock`, but the elapsed window was
+///   short enough to be physically implausible for the reported token count.
+///   We expose the marker so the UI can suppress the (lying) rate instead of
+///   shipping "720 tok/s on a 31B local model" type numbers.
+enum HermesGenerationDurationSource: String, Equatable {
+    case providerEvalDuration
+    case wallClock
+    case bufferedWallClock
+}
+
+struct HermesTokenUsageStats: Equatable {
+    var promptTokens: Int?
+    var outputTokens: Int?
+    var totalTokens: Int?
+    /// Generation duration (output-only) if the provider reported it. Already
+    /// normalised to seconds. Ollama's `eval_duration` is in nanoseconds and is
+    /// converted before reaching this struct.
+    var generationDurationSeconds: TimeInterval?
+    /// End-to-end provider wall-clock (input + generation), for diagnostics.
+    var totalDurationSeconds: TimeInterval?
+}
+
 struct HermesChatMessage: Identifiable, Equatable {
+    /// Wall-clock generation windows shorter than this are treated as buffered
+    /// SSE bursts (a relay or proxy delivered the whole answer at once). We
+    /// suppress the rate in that case rather than print physically impossible
+    /// numbers like "720 tok/s on a 31B local model".
+    static let minimumTrustworthyWallClockDurationSeconds: TimeInterval = 0.1
+
     let id: String
     let role: HermesChatRole
     var text: String
     var toolCalls: [HermesToolCall]
+    /// Files the user attached to this message. Persisted with the chat so
+    /// attachments stay visible after a session is reopened.
+    var attachments: [HermesAttachment]
+    /// What the user (or selected favourite) asked Hermes to use. Stays stable
+    /// for the lifetime of the message so we can show "Asked: …" honestly even
+    /// when the server picked a different model.
+    var requestedModelID: String?
+    /// What the server told us it actually ran, parsed from streamed
+    /// `"model"` fields. `nil` until the first SSE chunk that includes it
+    /// arrives; some servers never emit it.
+    var responseModelID: String?
+    /// Display-friendly model name (`responseModelID` when present, otherwise
+    /// `requestedModelID`-derived). Kept for backwards compatibility with
+    /// existing UI code that already reads `modelName`.
+    var modelName: String?
     let timestamp: Date
     var isStreaming: Bool
     var isError: Bool
+    var responseStartedAt: Date?
+    var firstResponseChunkAt: Date?
+    var responseCompletedAt: Date?
+    var outputTokenCount: Int?
+    var totalTokenCount: Int?
+    var tokenCountSource: HermesTokenCountSource?
+    /// Provider-reported generation duration in seconds (Ollama
+    /// `eval_duration`, OpenAI-style `generation_time`, etc.). When present
+    /// we use this for `tokensPerSecond` instead of wall-clock.
+    var providerGenerationDurationSeconds: TimeInterval?
+    /// Provider-reported total wall-clock duration in seconds, surfaced for
+    /// diagnostics and accessibility text.
+    var providerTotalDurationSeconds: TimeInterval?
 
     init(
         id: String = UUID().uuidString,
         role: HermesChatRole,
         text: String,
         toolCalls: [HermesToolCall] = [],
+        attachments: [HermesAttachment] = [],
+        requestedModelID: String? = nil,
+        responseModelID: String? = nil,
+        modelName: String? = nil,
         timestamp: Date = Date(),
         isStreaming: Bool = false,
-        isError: Bool = false
+        isError: Bool = false,
+        responseStartedAt: Date? = nil,
+        firstResponseChunkAt: Date? = nil,
+        responseCompletedAt: Date? = nil,
+        outputTokenCount: Int? = nil,
+        totalTokenCount: Int? = nil,
+        tokenCountSource: HermesTokenCountSource? = nil,
+        providerGenerationDurationSeconds: TimeInterval? = nil,
+        providerTotalDurationSeconds: TimeInterval? = nil
     ) {
         self.id = id
         self.role = role
         self.text = text
         self.toolCalls = toolCalls
+        self.attachments = attachments
+        self.requestedModelID = requestedModelID
+        self.responseModelID = responseModelID
+        self.modelName = modelName
         self.timestamp = timestamp
         self.isStreaming = isStreaming
         self.isError = isError
+        self.responseStartedAt = responseStartedAt
+        self.firstResponseChunkAt = firstResponseChunkAt
+        self.responseCompletedAt = responseCompletedAt
+        self.outputTokenCount = outputTokenCount
+        self.totalTokenCount = totalTokenCount
+        self.tokenCountSource = tokenCountSource
+        self.providerGenerationDurationSeconds = providerGenerationDurationSeconds
+        self.providerTotalDurationSeconds = providerTotalDurationSeconds
+    }
+
+    /// Wall-clock generation duration: time from the first received chunk to
+    /// completion. Only safe when the stream wasn't proxy-buffered.
+    var wallClockGenerationDurationSeconds: TimeInterval? {
+        guard role == .assistant else { return nil }
+        let start = firstResponseChunkAt ?? responseStartedAt
+        let end = responseCompletedAt ?? (isStreaming ? Date() : nil)
+        guard let start, let end else { return nil }
+        let duration = end.timeIntervalSince(start)
+        return duration > 0 ? duration : nil
+    }
+
+    /// Best available generation duration. Prefers the provider-reported
+    /// number (truthful, measured server-side); falls back to wall-clock when
+    /// no provider value is available.
+    var generationDurationSeconds: TimeInterval? {
+        if let providerGenerationDurationSeconds, providerGenerationDurationSeconds > 0 {
+            return providerGenerationDurationSeconds
+        }
+        return wallClockGenerationDurationSeconds
+    }
+
+    var totalResponseDurationSeconds: TimeInterval? {
+        if let providerTotalDurationSeconds, providerTotalDurationSeconds > 0 {
+            return providerTotalDurationSeconds
+        }
+        guard role == .assistant,
+              let start = responseStartedAt,
+              let end = responseCompletedAt ?? (isStreaming ? Date() : nil) else {
+            return nil
+        }
+        let duration = end.timeIntervalSince(start)
+        return duration > 0 ? duration : nil
+    }
+
+    /// Where the generation duration we'd publish actually came from. When
+    /// the wall-clock window is implausibly short for the reported token
+    /// count, we mark it `bufferedWallClock` and suppress the rate.
+    var generationDurationSource: HermesGenerationDurationSource? {
+        guard role == .assistant else { return nil }
+        if let providerGenerationDurationSeconds, providerGenerationDurationSeconds > 0 {
+            return .providerEvalDuration
+        }
+        guard let wall = wallClockGenerationDurationSeconds else { return nil }
+        if wall < Self.minimumTrustworthyWallClockDurationSeconds {
+            return .bufferedWallClock
+        }
+        return .wallClock
+    }
+
+    var tokensPerSecond: Double? {
+        guard role == .assistant,
+              !isError,
+              let outputTokenCount,
+              outputTokenCount > 0,
+              let source = generationDurationSource else {
+            return nil
+        }
+        switch source {
+        case .providerEvalDuration:
+            guard let providerGenerationDurationSeconds,
+                  providerGenerationDurationSeconds > 0 else { return nil }
+            return Double(outputTokenCount) / providerGenerationDurationSeconds
+        case .wallClock:
+            guard let wall = wallClockGenerationDurationSeconds, wall > 0 else { return nil }
+            return Double(outputTokenCount) / wall
+        case .bufferedWallClock:
+            // Stream was proxy-buffered. Refusing to publish a rate is the
+            // honest answer — better silent than 720 tok/s on a 31B model.
+            return nil
+        }
+    }
+
+    var isTokensPerSecondEstimated: Bool {
+        // Honest definition: a published rate counts as "estimated" unless
+        // *both* the token count and the generation duration came from the
+        // provider. The `~` prefix is the user-visible signal that
+        // something in the rate computation isn't fully trustworthy.
+        //   provider usage  + provider eval duration → exact (no `~`)
+        //   provider usage  + wall-clock             → estimated (`~`)
+        //   text estimate   + anything               → estimated (`~`)
+        if tokenCountSource == .estimatedText { return true }
+        if generationDurationSource == .wallClock { return true }
+        return false
+    }
+
+    var tokensPerSecondDisplayText: String? {
+        guard let tokensPerSecond else { return nil }
+        let value: String
+        if tokensPerSecond >= 100 {
+            value = String(format: "%.0f", tokensPerSecond)
+        } else if tokensPerSecond >= 10 {
+            value = String(format: "%.1f", tokensPerSecond)
+        } else {
+            value = String(format: "%.2f", tokensPerSecond)
+        }
+        let prefix = isTokensPerSecondEstimated ? "~" : ""
+        return "\(prefix)\(value) tok/s"
+    }
+
+    /// `true` once the server has echoed any `"model"` field. `false` for
+    /// servers that silently swallow the model param — useful for surfacing a
+    /// "server didn't confirm model" affordance in the UI.
+    var serverConfirmedModel: Bool {
+        responseModelID?.nilIfBlank != nil
+    }
+
+    /// `true` when the server explicitly told us it ran a different model than
+    /// what the client requested. Comparison ignores casing/whitespace.
+    var serverRoutedToDifferentModel: Bool {
+        guard let requested = requestedModelID?.nilIfBlank?.lowercased(),
+              let response = responseModelID?.nilIfBlank?.lowercased(),
+              requested != response else {
+            return false
+        }
+        return true
+    }
+
+    mutating func markResponseStarted(at date: Date = Date()) {
+        if responseStartedAt == nil {
+            responseStartedAt = date
+        }
+    }
+
+    mutating func markFirstResponseChunk(at date: Date = Date()) {
+        markResponseStarted(at: date)
+        if firstResponseChunkAt == nil {
+            firstResponseChunkAt = date
+        }
+    }
+
+    mutating func applyTokenUsage(_ usage: HermesTokenUsageStats) {
+        if let totalTokens = usage.totalTokens, totalTokens > 0 {
+            self.totalTokenCount = totalTokens
+        }
+        if let outputTokens = usage.outputTokens, outputTokens > 0 {
+            self.outputTokenCount = outputTokens
+            self.tokenCountSource = .providerUsage
+        }
+        if let provided = usage.generationDurationSeconds, provided > 0 {
+            self.providerGenerationDurationSeconds = provided
+        }
+        if let totalProvided = usage.totalDurationSeconds, totalProvided > 0 {
+            self.providerTotalDurationSeconds = totalProvided
+        }
+    }
+
+    /// Records the model id the server tells us it ran. Stable: only the
+    /// first non-blank value sticks per turn so a downstream chunk that
+    /// echoes a different alias can't quietly overwrite it.
+    mutating func applyResponseModelID(_ rawValue: String?) {
+        guard let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else { return }
+        if responseModelID?.nilIfBlank == nil {
+            responseModelID = trimmed
+        }
+        // Always reflect the most recent confirmed value in `modelName` so
+        // existing UI bindings update without extra code.
+        modelName = trimmed
+    }
+
+    mutating func finalizeResponseMetrics(at date: Date = Date()) {
+        guard role == .assistant else { return }
+        markResponseStarted(at: timestamp)
+        responseCompletedAt = date
+
+        guard !isError,
+              outputTokenCount == nil,
+              let estimated = Self.estimatedOutputTokens(for: text) else {
+            return
+        }
+        outputTokenCount = estimated
+        tokenCountSource = .estimatedText
+    }
+
+    static func estimatedOutputTokens(for text: String) -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let characterEstimate = Int((Double(trimmed.count) / 4.0).rounded(.up))
+        let wordCount = trimmed.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
+        let wordEstimate = Int((Double(wordCount) * 1.3).rounded(.up))
+        return max(1, max(characterEstimate, wordEstimate))
     }
 }
 
@@ -50,6 +328,7 @@ struct HermesRelayPayload: Sendable {
     var relayPublicKey: String?
     var relayKeyVersion: Int?
     var relayEncryption: String?
+    var realtimeRelayURL: String?
     var operation: HermesRelayOperation
     var method: String
     var path: String?
@@ -205,7 +484,7 @@ final class HermesService {
         functionsRepository: FunctionsRepository = .shared,
         connectionRepository: HermesConnectionListing = FirestoreHermesConnectionRepository.shared,
         secretStore: HermesConnectionSecretStoring = HermesConnectionSecretStore.shared,
-        relayTransport: HermesRelayTransporting = FirestoreHermesRelayTransport.shared,
+        relayTransport: HermesRelayTransporting = HermesCompositeRelayTransport.shared,
         defaults: UserDefaults = .standard
     ) {
         self.baseURL = baseURL
@@ -496,13 +775,19 @@ final class HermesService {
         return favoriteModelIDs.compactMap { optionsByID[$0] }
     }
 
-    func sendMessage(_ text: String, context: String? = nil) {
+    func sendMessage(_ text: String, context: String? = nil, attachments: [HermesAttachment] = []) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !isStreaming else { return }
+        // Allow attachment-only messages (no text) so users can send a photo
+        // and let the model describe / OCR it.
+        guard (!trimmed.isEmpty || !attachments.isEmpty), !isStreaming else { return }
 
         preferSuggestedRelayWhenLocalHostIsOffline()
 
-        let userMessage = HermesChatMessage(role: .user, text: trimmed)
+        let userMessage = HermesChatMessage(
+            role: .user,
+            text: trimmed,
+            attachments: attachments
+        )
         messages.append(userMessage)
         isStreaming = true
         lastError = nil
@@ -551,7 +836,14 @@ final class HermesService {
 
         isReachable = true
 
-        var assistantMessage = HermesChatMessage(role: .assistant, text: "", isStreaming: true)
+        var assistantMessage = HermesChatMessage(
+            role: .assistant,
+            text: "",
+            requestedModelID: activeRequestedModelID,
+            modelName: activeModelName,
+            isStreaming: true,
+            responseStartedAt: Date()
+        )
         messages.append(assistantMessage)
 
         var eventLines: [String] = []
@@ -573,6 +865,7 @@ final class HermesService {
             assistantMessage.text = "Hermes finished without returning text. Try again or switch models."
             assistantMessage.isError = true
         }
+        assistantMessage.finalizeResponseMetrics()
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
             messages[index] = assistantMessage
         }
@@ -581,18 +874,70 @@ final class HermesService {
 
     private func completionRequestBody(context: String?) throws -> Data {
         let model = selectedModelID ?? selectedConnection.advertisedModel ?? "hermes"
-        var requestMessages = messages.compactMap { message -> [String: String]? in
+
+        // Build encoder messages from history. We load attachment bytes for
+        // each user message that carries attachments so the encoder can emit
+        // image_url / input_audio parts inline.
+        let workspaceURL = HermesAttachmentWorkspace.attachmentsRootIfReady
+        let encoderMessages: [HermesAttachmentEncoder.Message] = messages.compactMap { message in
             let content = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !message.isError, !content.isEmpty else { return nil }
-            return ["role": message.role.rawValue, "content": message.text]
+            guard !message.isError, !(content.isEmpty && message.attachments.isEmpty) else {
+                return nil
+            }
+            let role: HermesAttachmentEncoder.Message.Role
+            switch message.role {
+            case .user: role = .user
+            case .assistant: role = .assistant
+            case .system: return nil
+            }
+            var bytesByID: [String: Data] = [:]
+            if message.role == .user, !message.attachments.isEmpty, let workspaceURL {
+                for attachment in message.attachments {
+                    if let data = HermesAttachmentWorkspace.loadBytes(
+                        for: attachment,
+                        in: workspaceURL
+                    ) {
+                        bytesByID[attachment.id] = data
+                    }
+                }
+            }
+            return HermesAttachmentEncoder.Message(
+                role: role,
+                text: message.text,
+                attachments: message.attachments,
+                attachmentBytes: bytesByID
+            )
         }
-        if let context, !context.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            requestMessages.insert(["role": HermesChatRole.system.rawValue, "content": context], at: 0)
-        }
+
+        // Compose the canonical Hermes system prompt: atom directive +
+        // dashboard context. The directive lives in OpenBurnBarCore and is
+        // shared with the macOS app so atom emission stays consistent
+        // across platforms.
+        let trimmedContext = context?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dashboardContext = (trimmedContext?.isEmpty ?? true) ? nil : trimmedContext
+        let promptBuilder = HermesSystemPromptBuilder(
+            dashboardContext: dashboardContext,
+            includesAtomDirective: true
+        )
+        let systemPrompt = promptBuilder.build()
+        let workspaceForRefs = workspaceURL
+        let requestMessages = HermesAttachmentEncoder.encodeMessages(
+            systemPrompt: systemPrompt,
+            messages: encoderMessages,
+            capabilities: backendCapabilities,
+            workspaceAbsolutePath: { att in
+                guard let workspaceForRefs else { return att.workspaceRelativePath }
+                return workspaceForRefs.appendingPathComponent(att.workspaceRelativePath).path
+            }
+        )
+
         var payload: [String: Any] = [
             "model": model,
             "messages": requestMessages,
             "stream": true
+        ]
+        payload["stream_options"] = [
+            "include_usage": true
         ]
         if let selectedSessionID {
             payload["session_id"] = selectedSessionID
@@ -600,11 +945,24 @@ final class HermesService {
         return try JSONSerialization.data(withJSONObject: payload)
     }
 
+    /// Capability hints used by the encoder. Defaults to vision-on,
+    /// audio-off; refined when we learn more from `/v1/models`.
+    private var backendCapabilities: HermesBackendCapabilities {
+        HermesBackendCapabilities.default
+    }
+
     private func streamRelayCompletion(context: String?) async throws {
         let body = try completionRequestBody(context: context)
         isReachable = true
 
-        var assistantMessage = HermesChatMessage(role: .assistant, text: "", isStreaming: true)
+        var assistantMessage = HermesChatMessage(
+            role: .assistant,
+            text: "",
+            requestedModelID: activeRequestedModelID,
+            modelName: activeModelName,
+            isStreaming: true,
+            responseStartedAt: Date()
+        )
         messages.append(assistantMessage)
 
         try await relayTransport.sendStreaming(
@@ -622,6 +980,7 @@ final class HermesService {
             assistantMessage.text = "Hermes finished without returning text. Try again or switch models."
             assistantMessage.isError = true
         }
+        assistantMessage.finalizeResponseMetrics()
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
             messages[index] = assistantMessage
         }
@@ -697,8 +1056,28 @@ final class HermesService {
         guard let jsonData = data.data(using: .utf8) else { return }
         guard let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { return }
 
-        if let usage = json["usage"] as? [String: Any] {
-            recordUsage(usage)
+        if let usage = json["usage"] as? [String: Any],
+           let stats = tokenUsageStats(from: usage) {
+            applyTokenUsage(stats, to: &message)
+        }
+
+        // Ollama emits eval_count / eval_duration / total_duration as
+        // top-level keys on the final chunk rather than under "usage". Treat
+        // them like an inline usage record so the rate stays honest for
+        // local-runtime conversations.
+        if let stats = tokenUsageStats(from: json),
+           stats.outputTokens != nil
+                || stats.totalTokens != nil
+                || stats.generationDurationSeconds != nil
+                || stats.totalDurationSeconds != nil {
+            applyTokenUsage(stats, to: &message)
+        }
+
+        if let modelName = modelNameValue(item: json) {
+            message.applyResponseModelID(modelName)
+            if let index = messages.firstIndex(where: { $0.id == message.id }) {
+                messages[index] = message
+            }
         }
 
         if let error = json["error"] as? [String: Any],
@@ -713,27 +1092,189 @@ final class HermesService {
         }
 
         guard let choices = json["choices"] as? [[String: Any]],
-              let first = choices.first,
-              let delta = first["delta"] as? [String: Any] else { return }
+              let first = choices.first else { return }
 
-        if let content = delta["content"] as? String {
-            message.text += content
-            if let index = messages.firstIndex(where: { $0.id == message.id }) {
-                messages[index] = message
-            }
+        let delta = first["delta"] as? [String: Any]
+        let finalMessage = first["message"] as? [String: Any]
+
+        if let content = visibleContent(from: delta)
+            ?? visibleContent(from: finalMessage)
+            ?? stringValue(first["text"]) {
+            appendVisibleContent(content, to: &message)
         }
-        if let toolCalls = delta["tool_calls"] as? [[String: Any]] {
+
+        if let toolCalls = toolCalls(from: delta) ?? toolCalls(from: finalMessage) {
             mergeToolCalls(toolCalls, into: &message)
         }
     }
 
-    private func recordUsage(_ usage: [String: Any]) {
-        let total = intValue(usage["total_tokens"])
+    private func tokenUsageStats(from usage: [String: Any]) -> HermesTokenUsageStats? {
+        let promptTokens = intValue(usage["prompt_tokens"])
+            ?? intValue(usage["promptTokens"])
+            ?? intValue(usage["input_tokens"])
+            ?? intValue(usage["inputTokens"])
+            ?? intValue(usage["prompt_eval_count"])
+            ?? intValue(usage["promptEvalCount"])
+
+        let outputTokens = intValue(usage["completion_tokens"])
+            ?? intValue(usage["completionTokens"])
+            ?? intValue(usage["output_tokens"])
+            ?? intValue(usage["outputTokens"])
+            ?? intValue(usage["eval_count"])
+            ?? intValue(usage["evalCount"])
+
+        let totalTokens = intValue(usage["total_tokens"])
             ?? intValue(usage["totalTokens"])
-            ?? ((intValue(usage["prompt_tokens"]) ?? intValue(usage["input_tokens"]) ?? 0)
-                + (intValue(usage["completion_tokens"]) ?? intValue(usage["output_tokens"]) ?? 0))
-        guard total > 0 else { return }
-        currentConversationTokenBurn += total
+            ?? intValue(usage["total_token_count"])
+            ?? intValue(usage["totalTokenCount"])
+            ?? {
+                let total = (promptTokens ?? 0) + (outputTokens ?? 0)
+                return total > 0 ? total : nil
+            }()
+
+        let generationDuration = Self.durationSecondsFromUsage(
+            usage,
+            keys: [
+                "eval_duration", "evalDuration",       // Ollama (nanoseconds)
+                "generation_duration", "generationDuration",
+                "completion_duration", "completionDuration",
+                "output_duration", "outputDuration",
+                "generation_time", "generationTime"
+            ]
+        )
+
+        let totalDuration = Self.durationSecondsFromUsage(
+            usage,
+            keys: [
+                "total_duration", "totalDuration",     // Ollama (nanoseconds)
+                "request_duration", "requestDuration",
+                "elapsed_time", "elapsedTime",
+                "duration"
+            ]
+        )
+
+        guard promptTokens != nil
+                || outputTokens != nil
+                || totalTokens != nil
+                || generationDuration != nil
+                || totalDuration != nil else { return nil }
+        return HermesTokenUsageStats(
+            promptTokens: promptTokens,
+            outputTokens: outputTokens,
+            totalTokens: totalTokens,
+            generationDurationSeconds: generationDuration,
+            totalDurationSeconds: totalDuration
+        )
+    }
+
+    /// Reads provider-supplied durations and normalises them to seconds.
+    ///
+    /// Ollama emits `eval_duration` / `total_duration` in nanoseconds; OpenAI
+    /// previews and most relays use seconds; some custom servers use
+    /// milliseconds. We pick a unit by magnitude and only return values when
+    /// they are strictly positive.
+    private static func durationSecondsFromUsage(
+        _ usage: [String: Any],
+        keys: [String]
+    ) -> TimeInterval? {
+        for key in keys {
+            guard let raw = usage[key] else { continue }
+            let value: Double?
+            if let number = raw as? NSNumber {
+                value = number.doubleValue
+            } else if let string = raw as? String {
+                value = Double(string)
+            } else {
+                value = nil
+            }
+            guard let value, value.isFinite, value > 0 else { continue }
+            // Heuristic unit detection. Ollama nanoseconds are the only
+            // case in the wild that goes above ~1e6 for a single LLM turn.
+            // Below 1.0 we assume seconds (sub-second responses are real).
+            if value >= 1_000_000_000 {
+                return value / 1_000_000_000.0    // ns → s
+            } else if value >= 10_000 {
+                return value / 1_000.0            // ms → s
+            } else {
+                return value                      // already seconds
+            }
+        }
+        return nil
+    }
+
+    private func applyTokenUsage(_ stats: HermesTokenUsageStats, to message: inout HermesChatMessage) {
+        recordUsage(stats, replacing: message.totalTokenCount)
+        message.applyTokenUsage(stats)
+        if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            messages[index] = message
+        }
+    }
+
+    private func appendVisibleContent(_ content: String, to message: inout HermesChatMessage) {
+        guard !content.isEmpty else { return }
+        message.markFirstResponseChunk()
+        if message.text.isEmpty || content.hasPrefix(message.text) {
+            message.text = content
+        } else if content != message.text {
+            message.text += content
+        }
+        if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            messages[index] = message
+        }
+    }
+
+    private func visibleContent(from item: [String: Any]?) -> String? {
+        guard let item else { return nil }
+        return visibleContentValue(item["content"])
+            ?? visibleContentValue(item["text"])
+            ?? visibleContentValue(item["output_text"])
+    }
+
+    private func visibleContentValue(_ raw: Any?) -> String? {
+        if let value = raw as? String {
+            return value.isEmpty ? nil : value
+        }
+        if let object = raw as? [String: Any] {
+            return visibleContentValue(object["text"])
+                ?? visibleContentValue(object["value"])
+                ?? visibleContentValue(object["content"])
+        }
+        if let array = raw as? [Any] {
+            let joined = array.compactMap { part -> String? in
+                if let text = part as? String { return text }
+                guard let object = part as? [String: Any] else { return nil }
+                return visibleContentValue(object["text"])
+                    ?? visibleContentValue(object["value"])
+                    ?? visibleContentValue(object["content"])
+            }
+            .joined()
+            return joined.isEmpty ? nil : joined
+        }
+        return nil
+    }
+
+    private func toolCalls(from item: [String: Any]?) -> [[String: Any]]? {
+        guard let item else { return nil }
+        if let calls = item["tool_calls"] as? [[String: Any]], !calls.isEmpty {
+            return calls
+        }
+        if let calls = item["toolCalls"] as? [[String: Any]], !calls.isEmpty {
+            return calls
+        }
+        if let call = item["function_call"] as? [String: Any] {
+            return [call]
+        }
+        if let call = item["functionCall"] as? [String: Any] {
+            return [call]
+        }
+        return nil
+    }
+
+    private func recordUsage(_ stats: HermesTokenUsageStats, replacing previousTotal: Int?) {
+        guard let total = stats.totalTokens, total > 0 else { return }
+        let prior = max(previousTotal ?? 0, 0)
+        let delta = max(0, total - prior)
+        currentConversationTokenBurn += delta
     }
 
     private func handleStreamError(_ error: Error) {
@@ -775,6 +1316,23 @@ final class HermesService {
             messages.append(errorMessage)
         }
         lastError = displayText
+    }
+
+    private var activeModelName: String? {
+        if let selectedModelID,
+           let option = modelOptions.first(where: { $0.modelID == selectedModelID }) {
+            return option.displayName.nilIfBlank ?? option.modelID.nilIfBlank
+        }
+        return selectedModelID?.nilIfBlank ?? selectedConnection.advertisedModel?.nilIfBlank
+    }
+
+    /// Raw model id we send in the `"model"` field of the chat completion
+    /// request. Stored on the message as `requestedModelID` so we can be
+    /// honest about what we asked for, even if the server reports something
+    /// else back.
+    private var activeRequestedModelID: String? {
+        selectedModelID?.nilIfBlank
+            ?? selectedConnection.advertisedModel?.nilIfBlank
     }
 
     func checkReachability(generation: Int? = nil) async {
@@ -834,18 +1392,14 @@ final class HermesService {
             }
             guard generation == runtimeGeneration else { return }
             let decoded = try JSONDecoder().decode(OpenAIModelsResponse.self, from: data)
-            modelOptions = decoded.data.map {
-                let providerID = $0.ownedBy ?? $0.providerID ?? "hermes"
-                let providerName = $0.providerName
-                    ?? AgentProvider.fromProviderID(ProviderID(rawValue: providerID))?.displayName
-                    ?? providerID
-                return HermesRuntimeModelOption(
-                    providerID: providerID,
-                    providerName: providerName,
-                    modelID: $0.id,
-                    displayName: $0.displayName ?? $0.name
+            var options = Self.modelOptions(from: decoded.data)
+            if selectedConnection.mode != .relayLink {
+                options = Self.mergedModelOptions(
+                    primary: options,
+                    secondary: await directGatewayModelOptions()
                 )
             }
+            modelOptions = options
             if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID }) {
                 self.selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
             } else if selectedModelID == nil {
@@ -855,6 +1409,105 @@ final class HermesService {
             guard generation == runtimeGeneration else { return }
             modelOptions = []
         }
+    }
+
+    private func directGatewayModelOptions() async -> [HermesRuntimeModelOption] {
+        guard let url = directGatewayModelsURL() else { return [] }
+        do {
+            let (data, response) = try await urlSession.data(for: URLRequest(url: url, timeoutInterval: 4))
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return [] }
+            let decoded = try JSONDecoder().decode(OpenAIModelsResponse.self, from: data)
+            return Self.modelOptions(from: decoded.data)
+        } catch {
+            return []
+        }
+    }
+
+    private func directGatewayModelsURL() -> URL? {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
+              components.host != nil else {
+            return nil
+        }
+        components.port = 8317
+        components.path = "/v1/models"
+        components.query = nil
+        components.fragment = nil
+        return components.url
+    }
+
+    private static func modelOptions(from models: [OpenAIModel]) -> [HermesRuntimeModelOption] {
+        models.map { model in
+            let provider = providerMetadata(for: model)
+            return HermesRuntimeModelOption(
+                providerID: provider.id,
+                providerName: provider.name,
+                modelID: model.id,
+                displayName: model.displayName ?? model.name ?? providerDisplayName(forModelID: model.id)
+            )
+        }
+    }
+
+    private static func providerMetadata(for model: OpenAIModel) -> (id: String, name: String) {
+        let rawProviderID = model.providerID ?? model.ownedBy ?? "hermes"
+        let searchText = [
+            model.providerID,
+            model.ownedBy,
+            model.providerName,
+            model.id,
+            model.displayName,
+            model.name
+        ]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+
+        if searchText.contains("minimax") || searchText.contains("abab") {
+            return ("minimax", "MiniMax")
+        }
+        if searchText.contains("zai") || searchText.contains("z.ai") || searchText.contains("zhipu") || searchText.contains("glm") {
+            return ("zai", "Z.AI / GLM")
+        }
+        if searchText.contains("kimi") || searchText.contains("moonshot") {
+            return ("kimi-coding", "Kimi / Kimi Coding Plan")
+        }
+        if searchText.contains("ollama-local") || searchText.contains("ollama local") {
+            return ("ollama-local", "Ollama Local")
+        }
+        if searchText.contains("lmstudio-local") || searchText.contains("lm studio") || searchText.contains("lmstudio") {
+            return ("lmstudio-local", "LM Studio Local")
+        }
+        if searchText.contains("local-openai") || searchText.contains("openai compatible local") {
+            return ("local-openai", "Local OpenAI-Compatible")
+        }
+
+        let providerName = model.providerName
+            ?? AgentProvider.fromProviderID(ProviderID(rawValue: rawProviderID))?.displayName
+            ?? rawProviderID
+        return (rawProviderID, providerName)
+    }
+
+    private static func providerDisplayName(forModelID modelID: String) -> String {
+        modelID
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .split(separator: " ")
+            .map { token in
+                if token.uppercased() == token { return String(token) }
+                return token.prefix(1).uppercased() + String(token.dropFirst())
+            }
+            .joined(separator: " ")
+    }
+
+    private static func mergedModelOptions(
+        primary: [HermesRuntimeModelOption],
+        secondary: [HermesRuntimeModelOption]
+    ) -> [HermesRuntimeModelOption] {
+        var seen = Set<String>()
+        var merged: [HermesRuntimeModelOption] = []
+        for option in primary + secondary where seen.insert(option.modelID).inserted {
+            merged.append(option)
+        }
+        return merged
     }
 
     private func loadSessions(generation: Int) async {
@@ -944,6 +1597,7 @@ final class HermesService {
             relayPublicKey: selectedConnection.relayPublicKey,
             relayKeyVersion: selectedConnection.relayKeyVersion,
             relayEncryption: selectedConnection.relayEncryption,
+            realtimeRelayURL: selectedConnection.realtimeRelayURL,
             operation: operation,
             method: method,
             path: path,
@@ -958,6 +1612,9 @@ final class HermesService {
     }
 
     private func mergeToolCalls(_ rawToolCalls: [[String: Any]], into message: inout HermesChatMessage) {
+        if !rawToolCalls.isEmpty {
+            message.markFirstResponseChunk()
+        }
         for raw in rawToolCalls {
             let id = stringValue(raw["id"]) ?? "tool-\(message.toolCalls.count + 1)"
             let function = raw["function"] as? [String: Any]
@@ -994,7 +1651,7 @@ final class HermesService {
                 title: stringValue(item["title"]),
                 preview: stringValue(item["preview"]) ?? stringValue(item["summary"]),
                 source: stringValue(item["source"]),
-                model: stringValue(item["model"]),
+                model: modelNameValue(item: item),
                 startedAt: dateValue(item["started_at"]) ?? dateValue(item["created_at"]) ?? dateValue(item["createdAt"]),
                 lastActiveAt: dateValue(item["last_active_at"]) ?? dateValue(item["updated_at"]) ?? dateValue(item["updatedAt"]),
                 endedAt: dateValue(item["ended_at"]),
@@ -1030,13 +1687,25 @@ final class HermesService {
                 ?? stringValue(item["message"])
                 ?? ""
             guard !content.isEmpty || role == .assistant else { return nil }
+            let resolvedModel = role == .assistant ? modelNameValue(item: item) : nil
             return HermesChatMessage(
                 id: stringValue(item["id"]) ?? UUID().uuidString,
                 role: role,
                 text: content,
+                requestedModelID: stringValue(item["requested_model_id"])
+                    ?? stringValue(item["requestedModelId"])
+                    ?? stringValue(item["requested_model"]),
+                responseModelID: role == .assistant ? resolvedModel : nil,
+                modelName: resolvedModel,
                 timestamp: dateValue(item["timestamp"]) ?? dateValue(item["created_at"]) ?? Date(),
                 isStreaming: false,
-                isError: false
+                isError: false,
+                responseStartedAt: dateValue(item["response_started_at"]) ?? dateValue(item["responseStartedAt"]),
+                firstResponseChunkAt: dateValue(item["first_response_chunk_at"]) ?? dateValue(item["firstResponseChunkAt"]),
+                responseCompletedAt: dateValue(item["response_completed_at"]) ?? dateValue(item["responseCompletedAt"]),
+                outputTokenCount: intValue(item["output_tokens"]) ?? intValue(item["outputTokens"]) ?? intValue(item["completion_tokens"]) ?? intValue(item["completionTokens"]),
+                totalTokenCount: intValue(item["total_tokens"]) ?? intValue(item["totalTokens"]),
+                tokenCountSource: tokenCountSourceValue(item["token_count_source"]) ?? tokenCountSourceValue(item["tokenCountSource"])
             )
         }
     }
@@ -1094,8 +1763,36 @@ final class HermesService {
     }
 
     private func stringValue(_ value: Any?) -> String? {
-        if let value = value as? String, !value.isEmpty { return value }
+        if let value = value as? String,
+           !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return value
+        }
         return nil
+    }
+
+    private func modelNameValue(item: [String: Any]) -> String? {
+        stringValue(item["model"])
+            ?? stringValue(item["model_id"])
+            ?? stringValue(item["modelId"])
+            ?? stringValue(item["model_name"])
+            ?? stringValue(item["modelName"])
+            ?? stringValue(item["selected_model"])
+            ?? stringValue(item["selectedModel"])
+    }
+
+    private func tokenCountSourceValue(_ value: Any?) -> HermesTokenCountSource? {
+        guard let rawValue = stringValue(value) else { return nil }
+        if let source = HermesTokenCountSource(rawValue: rawValue) {
+            return source
+        }
+        switch rawValue.lowercased() {
+        case "provider", "provider_usage", "exact":
+            return .providerUsage
+        case "estimated", "estimated_text", "approximate":
+            return .estimatedText
+        default:
+            return nil
+        }
     }
 
     private func intValue(_ value: Any?) -> Int? {
@@ -1179,6 +1876,328 @@ final class HermesService {
             return []
         }
         return values
+    }
+}
+
+@MainActor
+final class HermesCompositeRelayTransport: HermesRelayTransporting {
+    static let shared = HermesCompositeRelayTransport(
+        realtime: HermesRealtimeRelayTransport.shared,
+        fallback: FirestoreHermesRelayTransport.shared
+    )
+
+    private let realtime: HermesRelayTransporting
+    private let fallback: HermesRelayTransporting
+
+    init(realtime: HermesRelayTransporting, fallback: HermesRelayTransporting) {
+        self.realtime = realtime
+        self.fallback = fallback
+    }
+
+    func sendUnary(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> Data {
+        do {
+            return try await realtime.sendUnary(payload, timeout: timeout)
+        } catch {
+            return try await fallback.sendUnary(payload, timeout: timeout)
+        }
+    }
+
+    func sendStreaming(
+        _ payload: HermesRelayPayload,
+        timeout: TimeInterval,
+        onSSEEvent: @escaping @MainActor (String) -> Void
+    ) async throws {
+        do {
+            try await realtime.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
+        } catch {
+            try await fallback.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
+        }
+    }
+}
+
+@MainActor
+final class HermesRealtimeRelayTransport: HermesRelayTransporting {
+    static let shared = HermesRealtimeRelayTransport()
+
+    private let session: URLSession
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    func sendUnary(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> Data {
+        var fragments: [Int: String] = [:]
+        try await send(payload, timeout: timeout) { chunk in
+            switch chunk.kind {
+            case .data:
+                fragments[chunk.sequence] = chunk.data ?? chunk.text ?? ""
+            case .error:
+                throw HermesServiceError.relayUnavailable(chunk.error ?? "Hermes realtime relay failed.")
+            case .sse:
+                break
+            }
+        }
+        let body = fragments
+            .sorted { $0.key < $1.key }
+            .map(\.value)
+            .joined()
+        return Data(body.utf8)
+    }
+
+    func sendStreaming(
+        _ payload: HermesRelayPayload,
+        timeout: TimeInterval,
+        onSSEEvent: @escaping @MainActor (String) -> Void
+    ) async throws {
+        try await send(payload, timeout: timeout) { chunk in
+            switch chunk.kind {
+            case .sse:
+                if let data = chunk.data ?? chunk.text, !data.isEmpty {
+                    onSSEEvent(data)
+                }
+            case .error:
+                throw HermesServiceError.relayUnavailable(chunk.error ?? "Hermes realtime relay stream failed.")
+            case .data:
+                break
+            }
+        }
+    }
+
+    private func send(
+        _ payload: HermesRelayPayload,
+        timeout: TimeInterval,
+        onChunk: (HermesRelayChunkRecord) throws -> Void
+    ) async throws {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            throw FirestoreError.notAuthenticated
+        }
+        guard let relayURL = realtimeRelayURL(for: payload) else {
+            throw HermesServiceError.relayUnavailable("Realtime relay URL is not configured.")
+        }
+        guard payload.connectionID != HermesConnectionRecord.localDefault.id else {
+            throw HermesServiceError.relayUnavailable("Select a Remote Relay Hermes connection first.")
+        }
+        guard payload.relayEncryption == HermesRelayCrypto.algorithm,
+              let relayPublicKey = payload.relayPublicKey,
+              !relayPublicKey.isEmpty else {
+            throw HermesServiceError.relayUnavailable("Update OpenBurnBar on your Mac and re-enable Remote Relay so this iPhone/iPad can use encrypted relay traffic.")
+        }
+
+        let requestID = "rt_\(UUID().uuidString.lowercased())"
+        let keyData = try HermesRelayCrypto.generateSymmetricKeyData()
+        let bodyString = payload.body.flatMap { String(data: $0, encoding: .utf8) }
+        let encryptedPayload = HermesRelayEncryptedRequestPayload(
+            path: payload.path,
+            sessionId: payload.sessionID,
+            body: bodyString
+        )
+        let plaintext = try JSONEncoder().encode(encryptedPayload)
+        let requestAAD = HermesRelayCrypto.requestAAD(uid: uid, connectionID: payload.connectionID, requestID: requestID)
+        let keyAAD = HermesRelayCrypto.keyAAD(uid: uid, connectionID: payload.connectionID, requestID: requestID)
+
+        var request = URLRequest(url: relayURL, timeoutInterval: timeout)
+        request.setValue("Bearer \(try await firebaseIDToken())", forHTTPHeaderField: "Authorization")
+        request.setValue(try await appCheckToken(), forHTTPHeaderField: "X-Firebase-AppCheck")
+        request.setValue(
+            HermesRealtimeRelayProtocol.clientRoleHeaderValue,
+            forHTTPHeaderField: HermesRealtimeRelayProtocol.roleHeaderName
+        )
+        let task = session.webSocketTask(with: request)
+        task.resume()
+        defer { task.cancel(with: .normalClosure, reason: nil) }
+
+        let startFrame = HermesRealtimeRelayFrame(
+            type: .requestStart,
+            uid: uid,
+            connectionId: payload.connectionID,
+            requestId: requestID,
+            payload: HermesRealtimeRelayPayload(
+                operation: payload.operation,
+                method: payload.method,
+                payloadCiphertext: try HermesRelayCrypto.sealToBase64(
+                    plaintext: plaintext,
+                    keyData: keyData,
+                    aad: requestAAD
+                ),
+                wrappedKey: try HermesRelayCrypto.wrapSymmetricKey(
+                    keyData,
+                    recipientPublicKeyBase64: relayPublicKey,
+                    aad: keyAAD
+                ),
+                relayEncryption: HermesRelayCrypto.algorithm,
+                relayKeyVersion: payload.relayKeyVersion ?? HermesRelayCrypto.keyVersion
+            )
+        )
+        try await task.send(.data(encoder.encode(startFrame)))
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let frame = try await receiveFrame(
+                from: task,
+                timeout: max(0, deadline.timeIntervalSinceNow)
+            )
+            guard frame.uid == uid,
+                  frame.connectionId == payload.connectionID,
+                  frame.requestId == requestID else {
+                continue
+            }
+            switch frame.type {
+            case .responseChunk:
+                guard let chunk = try chunkRecord(from: frame, uid: uid, keyData: keyData) else { continue }
+                try onChunk(chunk)
+            case .responseComplete:
+                return
+            case .responseError:
+                throw HermesServiceError.relayUnavailable(frame.payload?.error ?? "Hermes realtime relay failed.")
+            case .ping:
+                try await task.send(.data(encoder.encode(HermesRealtimeRelayFrame(
+                    type: .pong,
+                    uid: uid,
+                    connectionId: payload.connectionID,
+                    requestId: requestID
+                ))))
+            case .hostRegister, .hostReady, .requestStart, .requestCancel, .pong:
+                break
+            }
+        }
+
+        try? await task.send(.data(encoder.encode(HermesRealtimeRelayFrame(
+            type: .requestCancel,
+            uid: uid,
+            connectionId: payload.connectionID,
+            requestId: requestID
+        ))))
+        throw HermesServiceError.relayTimeout
+    }
+
+    private func chunkRecord(from frame: HermesRealtimeRelayFrame, uid: String, keyData: Data) throws -> HermesRelayChunkRecord? {
+        guard let payload = frame.payload,
+              let sequence = payload.sequence,
+              let kind = payload.kind,
+              let requestID = frame.requestId else {
+            return nil
+        }
+        if kind == .error {
+            return HermesRelayChunkRecord(
+                id: String(format: "%08d", sequence),
+                requestId: requestID,
+                sequence: sequence,
+                kind: kind,
+                error: payload.error ?? "Hermes realtime relay failed.",
+                schemaVersion: 2
+            )
+        }
+        guard let ciphertext = payload.ciphertext else {
+            throw HermesServiceError.relayUnavailable("Realtime relay returned a chunk without ciphertext.")
+        }
+        let plaintext = try HermesRelayCrypto.openBase64(
+            ciphertext: ciphertext,
+            keyData: keyData,
+            aad: HermesRelayCrypto.chunkAAD(
+                uid: uid,
+                connectionID: frame.connectionId,
+                requestID: requestID,
+                sequence: sequence,
+                kind: kind.rawValue
+            )
+        )
+        return HermesRelayChunkRecord(
+            id: String(format: "%08d", sequence),
+            requestId: requestID,
+            sequence: sequence,
+            kind: kind,
+            data: String(data: plaintext, encoding: .utf8) ?? "",
+            schemaVersion: 2
+        )
+    }
+
+    private func receiveFrame(from task: URLSessionWebSocketTask) async throws -> HermesRealtimeRelayFrame {
+        try Self.decodeFrame(try await task.receive())
+    }
+
+    private func receiveFrame(
+        from task: URLSessionWebSocketTask,
+        timeout: TimeInterval
+    ) async throws -> HermesRealtimeRelayFrame {
+        guard timeout > 0 else {
+            throw HermesServiceError.relayTimeout
+        }
+        return try await withThrowingTaskGroup(of: HermesRealtimeRelayFrame.self) { group in
+            group.addTask {
+                try Self.decodeFrame(try await task.receive())
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: Self.timeoutNanoseconds(timeout))
+                throw HermesServiceError.relayTimeout
+            }
+            guard let frame = try await group.next() else {
+                throw HermesServiceError.relayTimeout
+            }
+            group.cancelAll()
+            return frame
+        }
+    }
+
+    private nonisolated static func decodeFrame(
+        _ message: URLSessionWebSocketTask.Message
+    ) throws -> HermesRealtimeRelayFrame {
+        switch message {
+        case .data(let data):
+            return try JSONDecoder().decode(HermesRealtimeRelayFrame.self, from: data)
+        case .string(let string):
+            return try JSONDecoder().decode(HermesRealtimeRelayFrame.self, from: Data(string.utf8))
+        @unknown default:
+            throw HermesServiceError.invalidResponse
+        }
+    }
+
+    private nonisolated static func timeoutNanoseconds(_ timeout: TimeInterval) -> UInt64 {
+        let capped = min(max(timeout, 0.001), 3_600)
+        return UInt64(capped * 1_000_000_000)
+    }
+
+    private func realtimeRelayURL(for payload: HermesRelayPayload) -> URL? {
+        let raw = payload.realtimeRelayURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? Bundle.main.object(forInfoDictionaryKey: "HermesRealtimeRelayURL") as? String
+            ?? ""
+        guard !raw.isEmpty else { return nil }
+        if let url = URL(string: raw), url.scheme == "wss" || url.scheme == "ws" {
+            return url
+        }
+        return nil
+    }
+
+    private func firebaseIDToken() async throws -> String {
+        guard let user = Auth.auth().currentUser else {
+            throw FirestoreError.notAuthenticated
+        }
+        return try await withCheckedThrowingContinuation { continuation in
+            user.getIDToken { token, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let token, !token.isEmpty {
+                    continuation.resume(returning: token)
+                } else {
+                    continuation.resume(throwing: FirestoreError.notAuthenticated)
+                }
+            }
+        }
+    }
+
+    private func appCheckToken() async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+            AppCheck.appCheck().token(forcingRefresh: false) { token, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let token, !token.token.isEmpty {
+                    continuation.resume(returning: token.token)
+                } else {
+                    continuation.resume(throwing: HermesServiceError.relayUnavailable("App Check token is unavailable."))
+                }
+            }
+        }
     }
 }
 
@@ -1570,5 +2589,12 @@ private struct OpenAIModel: Decodable {
         case providerName = "provider_name"
         case displayName = "display_name"
         case name
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

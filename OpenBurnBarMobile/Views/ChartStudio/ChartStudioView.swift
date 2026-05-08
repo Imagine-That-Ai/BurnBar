@@ -11,6 +11,7 @@ struct ChartStudioView: View {
     let digest: TrendDataDigest
     let hermesService: HermesService
     let onClose: () -> Void
+    var onMinimize: (() -> Void)? = nil
 
     @State private var store = ChartStudioStore()
     @State private var prompt: String = ""
@@ -25,14 +26,35 @@ struct ChartStudioView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
 
-    init(digest: TrendDataDigest, hermesService: HermesService, onClose: @escaping () -> Void) {
+    init(
+        digest: TrendDataDigest,
+        hermesService: HermesService,
+        onClose: @escaping () -> Void,
+        onMinimize: (() -> Void)? = nil
+    ) {
         self.digest = digest
         self.hermesService = hermesService
         self.onClose = onClose
+        self.onMinimize = onMinimize
     }
 
     private var promptEngine: ChartStudioPromptEngine {
         ChartStudioPromptEngine(digest: digest)
+    }
+
+    private var quickFacts: [QuickFact] {
+        StandardGallery.quickFacts(from: digest)
+    }
+
+    private var galleryItems: [StandardGalleryItem] {
+        StandardGallery.items(from: digest)
+    }
+
+    /// True once the user has interacted with Hermes (typed something or
+    /// replayed a recent canvas). Until then, the canvas defers to the
+    /// gallery so the screen leads with insight, not a blank prompt.
+    private var hasAIRendering: Bool {
+        rendering != nil || isStreaming || error != nil
     }
 
     var body: some View {
@@ -40,17 +62,51 @@ struct ChartStudioView: View {
             AuroraBackdrop(density: .full)
             VStack(spacing: 0) {
                 header
-                ScrollView {
-                    VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
-                        promptCarousel
-                        canvas
-                        if !store.canvases.isEmpty { recentStrip }
-                        Spacer(minLength: MobileTheme.Spacing.xxxl)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: MobileTheme.Spacing.xl) {
+                            if !quickFacts.isEmpty {
+                                quickFactsStrip
+                            }
+
+                            if !galleryItems.isEmpty {
+                                galleryGrid
+                            }
+
+                            promptCarousel
+                                .padding(.top, MobileTheme.Spacing.sm)
+
+                            if !store.canvases.isEmpty { recentStrip }
+
+                            // Hermes answer lives at the BOTTOM of the thread
+                            // so new replies appear next to the composer the
+                            // user just typed in.
+                            if hasAIRendering {
+                                aiCanvasSection
+                                    .id("hermesAnswer")
+                            }
+
+                            Spacer(minLength: MobileTheme.Spacing.xxxl)
+                        }
+                        .padding(.top, MobileTheme.Spacing.md)
+                        .padding(.bottom, MobileTheme.Spacing.xl)
                     }
-                    .padding(.top, MobileTheme.Spacing.md)
-                    .padding(.bottom, MobileTheme.Spacing.xl)
+                    .scrollDismissesKeyboard(.interactively)
+                    .onChange(of: hasAIRendering) { _, hasAnswer in
+                        if hasAnswer {
+                            withAnimation(.easeInOut(duration: 0.45)) {
+                                proxy.scrollTo("hermesAnswer", anchor: .bottom)
+                            }
+                        }
+                    }
+                    .onChange(of: streamingText.isEmpty) { _, _ in
+                        if hasAIRendering {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                proxy.scrollTo("hermesAnswer", anchor: .bottom)
+                            }
+                        }
+                    }
                 }
-                .scrollDismissesKeyboard(.interactively)
 
                 inputBar
                     .padding(.horizontal, MobileTheme.Spacing.lg)
@@ -61,15 +117,89 @@ struct ChartStudioView: View {
         .onDisappear {
             streamTask?.cancel()
         }
+        .safeAreaPadding(.top, 4)
+    }
+
+    // MARK: - Quick Facts strip
+
+    private var quickFactsStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: MobileTheme.Spacing.sm) {
+                ForEach(quickFacts) { fact in
+                    QuickFactTile(fact: fact)
+                        .frame(width: 188)
+                }
+            }
+            .padding(.horizontal, MobileTheme.Spacing.lg)
+        }
+    }
+
+    // MARK: - AI canvas (shown only after a question is asked)
+
+    private var aiCanvasSection: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(MobileTheme.hermesAureate)
+                Text("HERMES ANSWER")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .tracking(1.6)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                Spacer()
+                if rendering != nil && !isStreaming {
+                    Button {
+                        rendering = nil
+                        error = nil
+                        streamingText = ""
+                        lastSubmittedPrompt = nil
+                    } label: {
+                        Text("Clear")
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, MobileTheme.Spacing.lg)
+
+            canvas
+        }
+    }
+
+    // MARK: - Gallery (always-on, locally-derived insights)
+
+    private var galleryGrid: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            HStack {
+                Text("INSIGHTS")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .tracking(1.6)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                Spacer()
+                Text("\(galleryItems.count) curated")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted.opacity(0.7))
+            }
+            .padding(.horizontal, MobileTheme.Spacing.lg)
+
+            VStack(spacing: MobileTheme.Spacing.md) {
+                ForEach(galleryItems) { item in
+                    GalleryItemCard(item: item) {
+                        replay(item: item)
+                    }
+                }
+            }
+            .padding(.horizontal, MobileTheme.Spacing.lg)
+        }
     }
 
     // MARK: - Header
 
     private var header: some View {
         HStack(spacing: MobileTheme.Spacing.sm) {
-            Text("☿")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(MobileTheme.hermesAureate)
+            HermesLiveGlyph(size: 24, isLive: isStreaming)
                 .shadow(color: MobileTheme.hermesAureate.opacity(0.4), radius: 6)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Chart Studio")
@@ -80,6 +210,18 @@ struct ChartStudioView: View {
                     .foregroundStyle(MobileTheme.Colors.textMuted)
             }
             Spacer()
+            if let onMinimize {
+                Button {
+                    onMinimize()
+                    HapticBus.toggle()
+                } label: {
+                    Image(systemName: "chevron.down.circle.fill")
+                        .font(.system(size: 26))
+                        .foregroundStyle(MobileTheme.hermesAureate.opacity(0.85))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Minimize Chart Studio")
+            }
             Button {
                 onClose()
                 dismiss()
@@ -99,9 +241,30 @@ struct ChartStudioView: View {
     }
 
     private var reachableSubtitle: String {
-        if isStreaming { return "Drawing…" }
-        if hermesService.isReachable { return "Hermes online · ask for any chart" }
+        if isStreaming { return "Drawing with \(activeModelDisplay)…" }
+        if hermesService.isReachable { return "\(activeModelDisplay) · ask for any chart" }
         return "Hermes offline — start it on your Mac"
+    }
+
+    /// Human-readable label for the model currently powering Studio. Falls
+    /// back to the connection's advertised model, then to the generic
+    /// "hermes" route.
+    private var activeModelDisplay: String {
+        if let id = hermesService.selectedModelID, !id.isEmpty {
+            return prettifyModelID(id)
+        }
+        if let advertised = hermesService.selectedConnection.advertisedModel,
+           !advertised.isEmpty {
+            return prettifyModelID(advertised)
+        }
+        return "Hermes"
+    }
+
+    private func prettifyModelID(_ id: String) -> String {
+        // Strip vendor prefix if present (e.g. "openrouter/anthropic/claude-…")
+        // and keep the last meaningful segment.
+        let trimmed = id.split(separator: "/").last.map(String.init) ?? id
+        return trimmed
     }
 
     // MARK: - Prompt Carousel
@@ -164,7 +327,7 @@ struct ChartStudioView: View {
                 }
             )
         case .ascii(let spec):
-            return AnyView(AsciiArtCardView(spec: spec))
+            return AnyView(AsciiCanvasView(spec: spec))
         case .composed(let renderings):
             return AnyView(
                 VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
@@ -462,6 +625,17 @@ struct ChartStudioView: View {
         prompt = canvas.prompt
         error = nil
     }
+
+    /// Pop a gallery item into the AI canvas slot so the user can study it
+    /// full-bleed (no Hermes round-trip needed — gallery items are already
+    /// fully-formed renderings).
+    private func replay(item: StandardGalleryItem) {
+        rendering = item.rendering
+        error = nil
+        streamingText = ""
+        lastSubmittedPrompt = nil
+        HapticBus.send()
+    }
 }
 
 // MARK: - Archive envelope
@@ -506,68 +680,6 @@ private struct EnvelopeForArchive: Codable {
         case .ascii:      return ascii.map(ChartStudioRendering.ascii)      ?? .error("Missing ASCII spec.")
         case .composed:   return .composed((composed ?? []).map { $0.toRendering() })
         case .error:      return .error(errorMessage ?? "Unknown error.")
-        }
-    }
-}
-
-private struct AsciiArtCardView: View {
-    let spec: AsciiSpec
-
-    var body: some View {
-        AuroraGlassCard(variant: .hermes, cornerRadius: AuroraDesign.Shape.heroCorner) {
-            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(MobileTheme.hermesAureate)
-                        .frame(width: 8, height: 8)
-                    Text(spec.variant.rawValue.uppercased())
-                        .font(MobileTheme.Typography.tiny)
-                        .fontWeight(.semibold)
-                        .tracking(1.4)
-                        .foregroundStyle(MobileTheme.hermesAureate)
-                    Spacer()
-                }
-
-                if let title = spec.title {
-                    Text(title)
-                        .font(MobileTheme.Typography.title)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                }
-                if let subtitle = spec.subtitle {
-                    Text(subtitle)
-                        .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(MobileTheme.Colors.textSecondary)
-                }
-
-                ForEach(Array(spec.blocks.enumerated()), id: \.offset) { _, block in
-                    VStack(alignment: .leading, spacing: 6) {
-                        if let label = block.label {
-                            Text(label)
-                                .font(MobileTheme.Typography.caption)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(MobileTheme.Colors.textSecondary)
-                        }
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            Text(block.lines.joined(separator: "\n"))
-                                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                .foregroundStyle(MobileTheme.Colors.textPrimary)
-                                .padding(MobileTheme.Spacing.md)
-                                .background(MobileTheme.Colors.surfaceElevated.opacity(0.72))
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .stroke(MobileTheme.hermesAureate.opacity(0.35), lineWidth: 0.5)
-                                )
-                        }
-                    }
-                }
-
-                if let footnote = spec.footnote {
-                    Text(footnote)
-                        .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                }
-            }
         }
     }
 }

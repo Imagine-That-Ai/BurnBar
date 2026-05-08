@@ -8,8 +8,8 @@ import Foundation
 /// with JWT Bearer token authentication.
 ///
 /// ## Auth flow
-/// Kimi uses JWT tokens available from browser cookies after logging into
-/// `kimi.com` or `kimi.com/code/console`. The token is passed as both:
+/// Kimi uses JWT tokens captured by OpenBurnBar after an explicit provider
+/// login at `kimi.com` or `kimi.com/code/console`. The token is passed as both:
 /// - `Authorization: Bearer <jwt>`
 /// - `Cookie: kimi-auth=<jwt>`
 ///
@@ -20,9 +20,8 @@ import Foundation
 ///
 /// ## Resolution chain
 /// 1. `KIMI_AUTH_TOKEN` environment variable
-/// 2. Chrome cookie extraction (`kimi-auth` cookie from kimi.com)
-/// 3. Keychain-stored `kimi_auth_token`
-/// 4. Falls to `.unavailable` with link to kimi.com/code/console
+/// 2. Keychain-stored OpenBurnBar session token (`kimi_auth_token`)
+/// 3. Falls to `.unavailable` with link to reconnect in OpenBurnBar
 ///
 /// ## Data returned
 /// - Weekly usage: tokens used / limit
@@ -77,7 +76,7 @@ struct KimiQuotaAdapter: ProviderQuotaAdapter {
             return unavailableSnapshot(
                 for: .kimi,
                 source: .unavailable,
-                message: "Sign in to kimi.com/code/console in Chrome, or set KIMI_AUTH_TOKEN."
+                message: "Reconnect Kimi in OpenBurnBar, or set KIMI_AUTH_TOKEN."
             )
         }
 
@@ -127,7 +126,7 @@ struct KimiQuotaAdapter: ProviderQuotaAdapter {
                 return unavailableSnapshot(
                     for: .kimi,
                     source: .unavailable,
-                    message: "Kimi auth token expired. Sign in again at kimi.com/code/console."
+                    message: "Kimi auth token expired. Reconnect Kimi in OpenBurnBar."
                 )
             }
             throw QuotaServiceError.invalidResponse("Kimi API returned HTTP \(httpResponse.statusCode).")
@@ -238,26 +237,7 @@ struct KimiQuotaAdapter: ProviderQuotaAdapter {
             }
         }
 
-        // 3. Chrome cookie extraction (kimi.com cookies)
-        if let cookieHeader = extractKimiCookieFromChrome() {
-            // Extract the kimi-auth cookie value
-            for pair in cookieHeader.split(separator: ";") {
-                let parts = pair.split(separator: "=", maxSplits: 1).map {
-                    $0.trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-                if parts.count == 2, parts[0] == "kimi-auth" {
-                    return parts[1]
-                }
-            }
-        }
-
         return nil
-    }
-
-    private func extractKimiCookieFromChrome() -> String? {
-        return ChromeCookieReader.readCookies(domain: "kimi.com") { name in
-            name == "kimi-auth" || name == "__Secure-next-auth.session-token"
-        }?.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
     }
 
     // MARK: - JWT Session Info

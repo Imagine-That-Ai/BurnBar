@@ -16,7 +16,6 @@ import Foundation
 /// 1. `CURSOR_COOKIE_HEADER` environment variable
 /// 2. Keychain-stored `cursor_cookie` value
 /// 3. Auto-extract JWT from `state.vscdb` via `CursorCookieExtractor.readSession()`
-/// 4. `CursorLoginHelper` — WKWebView login window (user signs in, cookies captured)
 ///
 /// If no source yields a session: returns `confidence: .unavailable` (NOT estimated).
 ///
@@ -31,7 +30,7 @@ import Foundation
 struct CursorQuotaAdapter: ProviderQuotaAdapter {
 
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        // 1. Try cookie header resolution (env → keychain → SQLite JWT → WKWebView login)
+        // 1. Try cookie header resolution (env -> keychain -> Cursor SQLite JWT)
         if let credential = await resolveCursorCookieHeader(context: context) {
             do {
                 let usageSummary = try await fetchCursorUsageSummary(
@@ -56,28 +55,9 @@ struct CursorQuotaAdapter: ProviderQuotaAdapter {
                 // If an auto-discovered cookie is invalid, try the next source.
             }
         }
-
-        // 2. Try WKWebView login flow (opens cursor.com in a window, captures cookies)
-        if !isAutoAuthDisabled(context: context),
-           let cookieHeader = await CursorLoginHelper.runLoginFlow() {
-            do {
-                let usageSummary = try await fetchCursorUsageSummary(
-                    cookieHeader: cookieHeader,
-                    session: context.session
-                )
-                return buildExactSnapshot(
-                    usageSummary: usageSummary,
-                    userEmail: nil,
-                    cookieHeader: cookieHeader
-                )
-            } catch {
-                // Fall through to unavailable
-            }
-        }
-
         // No session available — return unavailable, NOT an estimate
         return unavailableSnapshot(
-            statusMessage: "Sign in to Cursor to see usage. Open Cursor and sign in, or set CURSOR_COOKIE_HEADER in your environment."
+            statusMessage: "Sign in to Cursor, reconnect Cursor in OpenBurnBar, or set CURSOR_COOKIE_HEADER."
         )
     }
 

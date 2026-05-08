@@ -1249,6 +1249,32 @@ final class HermesRelayHostService {
         return request
     }
 
+    static func enrichedModelsBody(
+        primaryBody: Data,
+        settingsManager: SettingsManager,
+        urlSession: URLSession
+    ) async -> Data {
+        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
+        guard let url = URL(string: "http://127.0.0.1:\(port)/v1/models") else {
+            return primaryBody
+        }
+        var request = URLRequest(url: url, timeoutInterval: 5)
+        let token = settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (secondaryBody, response) = try await urlSession.data(for: request)
+            guard let statusCode = (response as? HTTPURLResponse)?.statusCode,
+                  (200..<300).contains(statusCode) else {
+                return primaryBody
+            }
+            return mergedModelsResponseBodies(primaryBody, secondaryBody) ?? primaryBody
+        } catch {
+            return primaryBody
+        }
+    }
+
     private func enrichedModelsBody(primaryBody: Data) async -> Data {
         let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
         guard let url = URL(string: "http://127.0.0.1:\(port)/v1/models") else {

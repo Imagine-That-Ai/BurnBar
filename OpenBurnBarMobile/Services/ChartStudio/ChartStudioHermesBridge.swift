@@ -250,13 +250,14 @@ extension HermesService {
             relayPublicKey: selectedConnection.relayPublicKey,
             relayKeyVersion: selectedConnection.relayKeyVersion,
             relayEncryption: selectedConnection.relayEncryption,
+            realtimeRelayURL: selectedConnection.realtimeRelayURL,
             operation: .chatCompletions,
             method: "POST",
             path: "/v1/chat/completions",
             sessionID: nil,
             body: body
         )
-        try await FirestoreHermesRelayTransport.shared.sendStreaming(
+        try await HermesCompositeRelayTransport.shared.sendStreaming(
             payload,
             timeout: 120,
             onSSEEvent: onSSEEvent

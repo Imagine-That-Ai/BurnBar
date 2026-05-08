@@ -109,7 +109,7 @@ struct AuroraBackdrop: View {
 
     private var ribbonLayer: some View {
         AuroraRibbon(phase: reduceMotion ? 0 : ribbonPhase, colorScheme: colorScheme)
-            .opacity(density == .full ? 0.85 : 0.55)
+            .opacity(density == .full ? 0.55 : 0.35)
     }
 
     // MARK: - Particles

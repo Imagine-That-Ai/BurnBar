@@ -92,7 +92,12 @@ tools/burnbar-mcp/.venv/
 .spm-cache/
 .derived-data/
 .derived-data-*/
+.derived-*/
 derived-data/
+
+# Local service installs/build outputs
+services/**/node_modules/
+services/**/lib/
 
 # Local-only Factory skills and xcodegen scratch
 .factory/skills/

@@ -164,7 +164,7 @@ struct OllamaQuotaAdapter: ProviderQuotaAdapter {
         if let html = quotaNonEmpty(context.environment["OPENBURNBAR_OLLAMA_CLOUD_HTML"]) {
             return OllamaCloudScraper.parseCloudUsage(html: html)
         }
-        return await OllamaCloudScraper.fetchCloudUsage(session: context.session)
+        return await OllamaCloudScraper.fetchCloudUsage(cookieHeader: nil, session: context.session)
     }
 
     private func cloudQuotaBuckets(_ cloud: OllamaCloudScraper.CloudUsage) -> [ProviderQuotaBucket] {

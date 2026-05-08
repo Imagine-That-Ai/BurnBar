@@ -81,6 +81,18 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(settings.refreshInterval, 300)
     }
 
+    func test_smartHubHomeAssistantRecoveryWebhookURL_roundTrips() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(settings.smartHubHomeAssistantRecoveryWebhookURL, "")
+
+        let url = "http://homeassistant.local:8123/api/webhook/openburnbar_cast_recover_test"
+        settings.smartHubHomeAssistantRecoveryWebhookURL = url
+
+        XCTAssertEqual(settings.smartHubHomeAssistantRecoveryWebhookURL, url)
+        XCTAssertEqual(defaults.string(forKey: "smartHubHomeAssistantRecoveryWebhookURL"), url)
+    }
+
     func test_refreshIntervalMinutes_conversionRoundTrips() {
         let settings = makeSettingsManager()
         settings.refreshIntervalMinutes = 5
@@ -913,6 +925,7 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(settings.smartHubQuotaDashboardURL, "http://127.0.0.1:8787/render.html")
         XCTAssertEqual(settings.smartHubQuotaRefreshURL, "http://127.0.0.1:8787/refresh")
         XCTAssertEqual(settings.smartHubQuotaVoiceRefreshURL, "http://127.0.0.1:8787/voice-refresh")
+        XCTAssertEqual(settings.smartHubQuotaTimePeriod, .rolling5h)
     }
 
     func test_smartHubQuotaDisplaySettings_resolveStoredValues() {
@@ -921,6 +934,7 @@ final class SettingsManagerTests: XCTestCase {
         defaults.set("http://192.168.68.96:8787/render.html", forKey: "smartHubQuotaDashboardURL")
         defaults.set("http://192.168.68.96:8787/refresh", forKey: "smartHubQuotaRefreshURL")
         defaults.set("http://192.168.68.96:8787/voice-refresh", forKey: "smartHubQuotaVoiceRefreshURL")
+        defaults.set("rolling7d", forKey: "smartHubQuotaTimePeriod")
 
         let settings = makeSettingsManager(defaults: defaults)
 
@@ -928,6 +942,17 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(settings.smartHubQuotaDashboardURL, "http://192.168.68.96:8787/render.html")
         XCTAssertEqual(settings.smartHubQuotaRefreshURL, "http://192.168.68.96:8787/refresh")
         XCTAssertEqual(settings.smartHubQuotaVoiceRefreshURL, "http://192.168.68.96:8787/voice-refresh")
+        XCTAssertEqual(settings.smartHubQuotaTimePeriod, .rolling7d)
+    }
+
+    func test_smartHubQuotaTimePeriod_persistsAcrossInstances() {
+        let defaults = makeIsolatedDefaults()
+        do {
+            let settings = makeSettingsManager(defaults: defaults)
+            settings.smartHubQuotaTimePeriod = .rolling30d
+        }
+        let reloaded = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(reloaded.smartHubQuotaTimePeriod, .rolling30d)
     }
 
     // MARK: - Hermes Chat Model Resolution

@@ -352,6 +352,9 @@ private func resolveAllAPIKeys(
     }
 
     resolvedKeys["cursor_cookie"] = keyStore.apiKey(for: "cursor_cookie")
+    for identifier in ["factory_cookie_header", "factory_cookie", "ollama_cookie_header", "ollama_cookie", "kimi_auth_token"] {
+        resolvedKeys[identifier] = keyStore.apiKey(for: identifier)
+    }
     return resolvedKeys
 }
 
@@ -475,6 +478,8 @@ private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {
         identifiers.append("minimax")
     case .zai:
         identifiers.append(contentsOf: ["zai", "z_ai"])
+    case .kimi:
+        identifiers.append("kimi_auth_token")
     case .openAI:
         identifiers.append(contentsOf: ["openai", "open_ai"])
     default:

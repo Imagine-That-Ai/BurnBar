@@ -204,7 +204,10 @@ final class CLIBridge: ObservableObject {
         systemPrompt: String,
         history: [ChatMessageRecord],
         bearerToken: String? = nil,
-        model: String = "hermes"
+        model: String = "hermes",
+        attachmentBytes: [String: Data] = [:],
+        capabilities: HermesBackendCapabilities = .default,
+        workspaceURL: URL? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         let stream = AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
             let streamIDTask = Task { [streamRuntime] in
@@ -224,6 +227,9 @@ final class CLIBridge: ObservableObject {
                     bearerToken: bearerToken,
                     unavailableError: .hermesUnavailable,
                     httpStreamID: streamID,
+                    attachmentBytes: attachmentBytes,
+                    capabilities: capabilities,
+                    workspaceURL: workspaceURL,
                     continuation: continuation
                 )
             }
@@ -248,7 +254,10 @@ final class CLIBridge: ObservableObject {
         systemPrompt: String,
         history: [ChatMessageRecord],
         bearerToken: String?,
-        model: String = "gpt-4o-mini"
+        model: String = "gpt-4o-mini",
+        attachmentBytes: [String: Data] = [:],
+        capabilities: HermesBackendCapabilities = .default,
+        workspaceURL: URL? = nil
     ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let streamIDTask = Task { [streamRuntime] in
@@ -271,6 +280,9 @@ final class CLIBridge: ObservableObject {
                     bearerToken: bearerToken,
                     unavailableError: .openClawUnavailable,
                     httpStreamID: streamID,
+                    attachmentBytes: attachmentBytes,
+                    capabilities: capabilities,
+                    workspaceURL: workspaceURL,
                     continuation: continuation
                 )
             }

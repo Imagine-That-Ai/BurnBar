@@ -118,6 +118,12 @@ public struct ChartSpec: Codable, Hashable, Sendable {
         public let name: String
         public let color: String?         // optional hex (#RRGGBB) — clamped to palette
         public let points: [DataPoint]
+
+        public init(name: String, color: String? = nil, points: [DataPoint]) {
+            self.name = name
+            self.color = color
+            self.points = points
+        }
     }
 
     public struct DataPoint: Codable, Hashable, Sendable {
@@ -125,11 +131,23 @@ public struct ChartSpec: Codable, Hashable, Sendable {
         public let y: Double
         public let group: String?
         public let label: String?
+
+        public init(x: AnyValue, y: Double, group: String? = nil, label: String? = nil) {
+            self.x = x
+            self.y = y
+            self.group = group
+            self.label = label
+        }
     }
 
     public struct AxisDescriptor: Codable, Hashable, Sendable {
         public let title: String?
         public let kind: String?          // "linear" | "time" | "category"
+
+        public init(title: String? = nil, kind: String? = nil) {
+            self.title = title
+            self.kind = kind
+        }
     }
 
     public struct Annotation: Codable, Hashable, Sendable {
@@ -137,6 +155,13 @@ public struct ChartSpec: Codable, Hashable, Sendable {
         public let x: AnyValue?
         public let y: Double?
         public let label: String?
+
+        public init(kind: String, x: AnyValue? = nil, y: Double? = nil, label: String? = nil) {
+            self.kind = kind
+            self.x = x
+            self.y = y
+            self.label = label
+        }
     }
 
     public let kind: Kind
@@ -147,6 +172,26 @@ public struct ChartSpec: Codable, Hashable, Sendable {
     public let series: [Series]
     public let annotations: [Annotation]?
     public let valueFormat: String?       // "currency" | "tokens" | "raw" | "percent"
+
+    public init(
+        kind: Kind,
+        title: String,
+        subtitle: String? = nil,
+        xAxis: AxisDescriptor? = nil,
+        yAxis: AxisDescriptor? = nil,
+        series: [Series],
+        annotations: [Annotation]? = nil,
+        valueFormat: String? = nil
+    ) {
+        self.kind = kind
+        self.title = title
+        self.subtitle = subtitle
+        self.xAxis = xAxis
+        self.yAxis = yAxis
+        self.series = series
+        self.annotations = annotations
+        self.valueFormat = valueFormat
+    }
 }
 
 // MARK: - Generic value bag

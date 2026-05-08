@@ -43,7 +43,7 @@ struct AuroraGlassCard<Content: View>: View {
     var body: some View {
         content()
             .padding(padding)
-            .background(specularLayer)
+            .background(specularBackground)
             .auroraGlass(variant, cornerRadius: cornerRadius)
             .scaleEffect(isPressed ? 0.985 : (isHovered ? 1.012 : 1.0))
             .brightness(isPressed ? 0.04 : 0.0)
@@ -57,6 +57,20 @@ struct AuroraGlassCard<Content: View>: View {
     }
 
     // MARK: - Specular Highlight
+    //
+    // On iOS 26, `.glassEffect()` already paints its own specular sheen so we
+    // skip the manual layer entirely — stacking both produced visible bands
+    // across cards. On iOS 17/18 the manual layer is the only sheen we get,
+    // but we keep it well below the level that bands across stacked cards.
+
+    @ViewBuilder
+    private var specularBackground: some View {
+        if #available(iOS 26.0, *) {
+            EmptyView()
+        } else {
+            specularLayer
+        }
+    }
 
     private var specularLayer: some View {
         // Drifts with parallax — anchors highlight to top-left and offsets
@@ -76,10 +90,10 @@ struct AuroraGlassCard<Content: View>: View {
 
     private var specularOpacity: Double {
         switch variant {
-        case .hero:    return colorScheme == .dark ? 0.55 : 0.35
-        case .urgent, .success: return 0.30
-        case .hermes:  return 0.40
-        default:       return colorScheme == .dark ? 0.32 : 0.22
+        case .hero:    return colorScheme == .dark ? 0.22 : 0.16
+        case .urgent, .success: return 0.14
+        case .hermes:  return 0.18
+        default:       return colorScheme == .dark ? 0.12 : 0.10
         }
     }
 

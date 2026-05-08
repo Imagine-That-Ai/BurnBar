@@ -29,7 +29,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import type { Firestore } from "firebase-admin/firestore";
+import { Timestamp, type Firestore } from "firebase-admin/firestore";
 
 import type { JWSTransactionDecodedPayload } from "@apple/app-store-server-library";
 
@@ -458,6 +458,7 @@ function buildEntitlementDoc(args: BuildArgs): HostedQuotaEntitlementDoc {
       "originalTransactionId"
     ),
     expiresAt: expiresMs !== undefined ? new Date(expiresMs).toISOString() : undefined,
+    expireAt: expiresMs !== undefined ? Timestamp.fromMillis(expiresMs) : undefined,
     revokedAt: revokedMs !== undefined ? new Date(revokedMs).toISOString() : undefined,
     revocationReason:
       typeof p.revocationReason === "number" ? p.revocationReason : undefined,

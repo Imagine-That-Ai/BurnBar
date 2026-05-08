@@ -148,7 +148,20 @@ struct ChatGatewaySettingsView: View {
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                Text("When signed in, this Mac advertises a Remote Relay connection so your iPhone/iPad can chat with this local Hermes over cell signal. The API_SERVER_KEY stays on this Mac; BurnBar relays only your chat requests through your private Firestore namespace.")
+                DisclosureGroup("Advanced relay endpoint") {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                        Text("OpenBurnBar uses the hosted relay automatically for premium accounts. Change this only for development or self-hosted staging.")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        TextField("Hosted relay URL", text: $settingsManager.hermesRealtimeRelayURL)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+                .font(DesignSystem.Typography.caption)
+
+                Text("Premium accounts can use this Mac as a private Remote Relay host so iPhone and iPad can chat with local Hermes over cell signal. The API_SERVER_KEY stays on this Mac; OpenBurnBar relays only encrypted request and response frames.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                     .fixedSize(horizontal: false, vertical: true)

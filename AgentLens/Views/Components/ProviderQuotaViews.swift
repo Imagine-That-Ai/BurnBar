@@ -43,7 +43,7 @@ struct ProviderQuotaSettingsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            Text("Quota reporting stays separate from spend history. OpenBurnBar uses official APIs where they exist and otherwise shows the best verifiable local signal it can: Codex rollout snapshots, Claude statusline JSON, and Factory / Droid monthly token estimates. Review provider-level quota here or in each provider dashboard.")
+            Text("Quota reporting stays separate from spend history. OpenBurnBar uses official APIs where they exist and otherwise shows the best verifiable local signal it can: Codex rollout snapshots, Claude statusline JSON, Factory / Droid token history, and explicit OpenBurnBar login sessions for providers that need web quota pages.")
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
@@ -637,6 +637,16 @@ private struct ProviderQuotaSettingsCard: View {
 
         case .factory:
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                Text("OpenBurnBar no longer reads Chrome Safe Storage or third-party browser cookies. Connect Factory here to store an OpenBurnBar login session for quota refresh.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                GlassButton(title: "Connect Factory", icon: "person.crop.circle.badge.checkmark", style: .prominent) {
+                    Task { await connectProviderSession(.factory) }
+                }
+                .disabled(isWorking)
+
                 Text("Plan tier")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -654,11 +664,40 @@ private struct ProviderQuotaSettingsCard: View {
                 }
             }
 
+        case .ollama:
+            providerSessionSetup(
+                provider: .ollama,
+                title: "Connect Ollama",
+                message: "Ollama Cloud quota uses an OpenBurnBar login session from ollama.com/settings. Refresh never reads browser stores or asks for your macOS system password."
+            )
+
+        case .kimi:
+            providerSessionSetup(
+                provider: .kimi,
+                title: "Connect Kimi",
+                message: "Kimi Coding quota uses an OpenBurnBar-captured auth token. Reconnect here if the provider rejects the stored session."
+            )
+
         case .cursor:
             CursorQuotaInlineSetup(quotaService: quotaService, dataStore: dataStore)
 
         default:
             EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func providerSessionSetup(provider: AgentProvider, title: String, message: String) -> some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text(message)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            GlassButton(title: title, icon: "person.crop.circle.badge.checkmark", style: .prominent) {
+                Task { await connectProviderSession(provider) }
+            }
+            .disabled(isWorking)
         }
     }
 
@@ -769,6 +808,45 @@ private struct ProviderQuotaSettingsCard: View {
             credentialSaveMessage = "Could not save \(provider.displayName) token: \(error.localizedDescription)"
         }
     }
+
+    private func connectProviderSession(_ provider: AgentProvider) async {
+        isWorking = true
+        credentialSaveMessage = nil
+        defer { isWorking = false }
+
+        do {
+            let keyStore = ProviderAPIKeyStore.shared
+            switch provider {
+            case .factory:
+                guard let cookieHeader = await FactoryLoginHelper.runLoginFlow(),
+                      !cookieHeader.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw NSError(domain: "ProviderQuota", code: 1, userInfo: [NSLocalizedDescriptionKey: "Factory login was cancelled or did not return a session."])
+                }
+                try keyStore.setAPIKey(cookieHeader, for: "factory_cookie_header")
+            case .ollama:
+                guard let cookieHeader = await FactoryLoginHelper.runOllamaLoginFlow(),
+                      !cookieHeader.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw NSError(domain: "ProviderQuota", code: 2, userInfo: [NSLocalizedDescriptionKey: "Ollama login was cancelled or did not return a session."])
+                }
+                try keyStore.setAPIKey(cookieHeader, for: "ollama_cookie_header")
+            case .kimi:
+                guard let token = await FactoryLoginHelper.runKimiLoginFlow(),
+                      !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw NSError(domain: "ProviderQuota", code: 3, userInfo: [NSLocalizedDescriptionKey: "Kimi login was cancelled or did not return an auth token."])
+                }
+                try keyStore.setAPIKey(token, for: "kimi_auth_token")
+            default:
+                return
+            }
+
+            credentialSaveIsError = false
+            credentialSaveMessage = "\(provider.displayName) login session saved."
+            await quotaService.refresh(provider: provider, dataStore: dataStore)
+        } catch {
+            credentialSaveIsError = true
+            credentialSaveMessage = "Could not connect \(provider.displayName): \(error.localizedDescription)"
+        }
+    }
 }
 
 // MARK: - Cursor Inline Setup
@@ -810,6 +888,13 @@ private struct CursorQuotaInlineSetup: View {
 
                 GlassButton(title: "Refresh", icon: "arrow.clockwise", style: .regular) {
                     Task { await quotaService.refresh(provider: .cursor, dataStore: dataStore) }
+                }
+
+                GlassButton(title: "Sign in", icon: "person.crop.circle.badge.checkmark", style: .regular) {
+                    Task {
+                        _ = await CursorLoginHelper.runLoginFlow()
+                        await quotaService.refresh(provider: .cursor, dataStore: dataStore)
+                    }
                 }
             }
             .disabled(cursorManager.isBusy)

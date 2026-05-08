@@ -1,15 +1,34 @@
 # Chart Studio (iOS)
 
-> Tap **Trend Atlas** on Pulse → Chart Studio opens. Type a request, Hermes draws.
+> Tap **Trend Atlas** on Pulse → Chart Studio opens. The screen leads with **3 quick-fact tiles + 6 evocative auto-charts** built locally from your data. The chat composer at the bottom is for "ask anything else."
 
 ## What is it
 
-**Chart Studio** is the iOS canvas where users describe a chart in plain English and the app renders it natively. Three render kinds:
+**Chart Studio** is the iOS insights canvas. The default state is a curated, locally-rendered gallery so the user gets value the second the screen opens. Hermes is invited in only when the user types — and answers stream into a dedicated "HERMES ANSWER" slot above the gallery, never replacing it.
 
-| Kind | Renderer | When to use |
-|------|----------|-------------|
+### Gallery (always-on, zero round-trip)
+
+| Slot | Card | Source |
+|------|------|--------|
+| Quick Facts strip (top) | `TODAY` · `TOP PROVIDER` · `CACHE HITS` (or `TOP MODEL`) | `StandardGallery.quickFacts(from:)` |
+| 1. Spend | **Burn trajectory** — area chart with 7-day rolling baseline | `StandardGallery.items(...)[0]` |
+| 2. Mix   | **Daily mix** — stacked area by top-4 providers | …`[1]` |
+| 3. Mix   | **Token share donut** | …`[2]` |
+| 4. Models | **Model performance** — cost-per-million × volume scatter | …`[3]` |
+| 5. Time  | **Hour-of-day heat strip** — ASCII heatmap with peak hour | …`[4]` |
+| 6. Cache | **Cache health insight** — narrative + sparkline of last 20 sessions | …`[5]` |
+
+Each gallery card has an "Open" button that pops the rendering into the AI canvas slot for full-bleed study (no Hermes call).
+
+### Hermes-driven canvas (on demand)
+
+When the user types something, Hermes streams back a typed JSON envelope that decodes to one of:
+
+| Kind | Renderer | When Hermes uses it |
+|------|----------|---------------------|
 | `swift_chart` | Swift Charts (`NativeChartView`) | Time series, bars, scatter, donuts, heatmaps, streams |
 | `mermaid`     | `WKWebView` + bundled `mermaid.min.js` | Flowcharts, sequence diagrams, state diagrams, ER diagrams |
+| `ascii`       | `AsciiCanvasView` (terminal-frame card) | Quick-glance bars/sparklines/heatmaps; "TUI" / "terminal" prompts |
 | `insight`     | `InsightCardView` (glass card) | Narrative answers, "why" / "what changed" prose |
 | `composed`    | Vertical stack of any of the above | "Insight + the chart that proves it" |
 

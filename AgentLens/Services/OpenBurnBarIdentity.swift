@@ -39,6 +39,9 @@ enum OpenBurnBarIdentity {
     static let gatewayAuthTokenAccount = "settings.gateway.http.authToken"
     static let daemonSocketAuthTokenAccount = "daemon.socket.authToken"
     static let switcherAuthKeychainService = "com.openburnbar.switcher-auth"
+    static let homeAssistantKeychainService = "com.openburnbar.home-assistant"
+    static let homeAssistantAccessTokenAccount = "smarthub.homeAssistant.accessToken"
+    static let homeAssistantWebhookSecretAccount = "smarthub.homeAssistant.webhookSecret"
 
     static let dailyDigestNotificationIdentifier = "openburnbar.daily-digest"
     static let legacyDailyDigestNotificationIdentifiers = [

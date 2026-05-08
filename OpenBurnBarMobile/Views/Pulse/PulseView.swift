@@ -13,6 +13,7 @@ struct PulseView: View {
     @State private var sessionsStore = ActivityStore()
     @State private var hermesService = HermesService()
     @State private var displayMode: UsageDisplayMode = .currency
+    @State private var timelineScope: PulseTimelineScope = .day
 
     let router: PulseRouter
 
@@ -24,15 +25,20 @@ struct PulseView: View {
             AuroraBackdrop()
             ScrollView {
                 VStack(spacing: MobileTheme.Spacing.lg) {
+                    TimelineScopePicker(selection: $timelineScope)
+                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                        .staggeredEntrance(delay: 0.0)
+
                     PulseHeroBurnCard(
-                        total: dashboard.windowTotals[.today],
-                        trailingTotal: dashboard.windowTotals[.sevenDays],
+                        total: dashboard.windowTotals[timelineScope.rollupKey],
+                        trailingTotal: dashboard.windowTotals[timelineScope.trailingKey],
                         dailyPoints: dashboard.dailyPoints,
                         topProvider: topProvider,
-                        displayMode: $displayMode
+                        displayMode: $displayMode,
+                        scope: timelineScope
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .staggeredEntrance(delay: 0.0)
+                    .staggeredEntrance(delay: 0.05)
 
                     VelocityForecastCard(
                         todayTotals: dashboard.windowTotals[.today],
@@ -40,7 +46,7 @@ struct PulseView: View {
                         displayMode: displayMode
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .staggeredEntrance(delay: 0.05)
+                    .staggeredEntrance(delay: 0.10)
 
                     QuotaPulseCard(
                         snapshots: quotaStore.snapshots,
@@ -50,7 +56,7 @@ struct PulseView: View {
                         onOpenBurn: { router.openBurn(focus: nil) }
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .staggeredEntrance(delay: 0.10)
+                    .staggeredEntrance(delay: 0.15)
 
                     TrendAtlasCard(
                         dailyPoints: dashboard.dailyPoints,
@@ -63,7 +69,7 @@ struct PulseView: View {
                         hermesService: hermesService
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .staggeredEntrance(delay: 0.15)
+                    .staggeredEntrance(delay: 0.20)
 
                     HermesQuickAskCard(
                         service: hermesService,
@@ -71,7 +77,7 @@ struct PulseView: View {
                         onOpenHermes: { router.openHermes() }
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .staggeredEntrance(delay: 0.20)
+                    .staggeredEntrance(delay: 0.25)
 
                     RecentSessionsStripCard(
                         sessions: sessionsStore.usages,
@@ -79,7 +85,7 @@ struct PulseView: View {
                         onSeeAll: { router.openStreams() }
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .staggeredEntrance(delay: 0.25)
+                    .staggeredEntrance(delay: 0.30)
                 }
                 .padding(.top, MobileTheme.Spacing.sm)
                 .padding(.bottom, MobileTheme.Spacing.xxl)
@@ -111,6 +117,10 @@ struct PulseView: View {
         .onChange(of: displayMode) { _, mode in
             HapticBus.toggle()
             dashboard.setDisplayMode(mode)
+            Task { await dashboard.refresh() }
+        }
+        .onChange(of: timelineScope) { _, scope in
+            dashboard.setWindow(scope.rollupKey)
             Task { await dashboard.refresh() }
         }
     }

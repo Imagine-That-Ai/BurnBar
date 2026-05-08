@@ -145,8 +145,11 @@ test: ## Run all test suites (Swift packages + app tests)
 	@./scripts/test-openburnbar-app.sh
 
 lint: ## Run SwiftLint
-	@command -v swiftlint >/dev/null 2>&1 || { echo "WARNING: swiftlint not found; skipping lint."; exit 0; }
-	@swiftlint lint --quiet
+	@if command -v swiftlint >/dev/null 2>&1; then \
+		swiftlint lint --quiet; \
+	else \
+		echo "WARNING: swiftlint not found; skipping lint."; \
+	fi
 
 ci: lint test ## Full CI check (lint + test)
 

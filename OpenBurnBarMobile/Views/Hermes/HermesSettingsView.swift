@@ -22,6 +22,10 @@ struct HermesSettingsView: View {
     @State private var showModelDetail: HermesRuntimeModelOption? = nil
     @State private var showModelPicker = false
 
+    @AppStorage(HermesMobileChatPreferences.showMessageTPSKey) private var showMessageTPS = false
+    @AppStorage(HermesMobileChatPreferences.usePretextRenderingKey) private var usePretextRendering = true
+    @State private var showPretextPlayground = false
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 
@@ -35,6 +39,7 @@ struct HermesSettingsView: View {
 
                     connectionsSection
                     modelsSection
+                    displaySection
                     gatewaySection
                     securitySection
                     statusSection
@@ -49,6 +54,9 @@ struct HermesSettingsView: View {
         .sheet(isPresented: $showAddDirectSheet) { addDirectSheet }
         .sheet(isPresented: $showModelPicker) {
             HermesModelPickerSheet(service: service)
+        }
+        .sheet(isPresented: $showPretextPlayground) {
+            PretextPlayground()
         }
         .alert("Delete connection?", isPresented: deleteBinding) {
             Button("Cancel", role: .cancel) { showDeleteConfirm = nil }
@@ -72,9 +80,7 @@ struct HermesSettingsView: View {
                     Circle()
                         .fill(MobileTheme.mercuryGradient.opacity(0.25))
                         .frame(width: 52, height: 52)
-                    Text("☿")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(MobileTheme.mercuryGradient)
+                    HermesLiveGlyph(size: 30, isLive: false)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -338,6 +344,58 @@ struct HermesSettingsView: View {
             .accessibilityLabel(isFavorite ? "Remove \(option.displayName) from favorites" : "Add \(option.displayName) to favorites")
         }
         .padding(.vertical, 6)
+    }
+
+    // MARK: - Display
+
+    private var displaySection: some View {
+        AuroraGlassCard(variant: .standard, cornerRadius: MobileTheme.Radius.lg) {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+                sectionTitle("Display", icon: "speedometer", color: MobileTheme.hermesAureate)
+
+                Toggle(isOn: $showMessageTPS) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Show tokens/sec")
+                            .font(MobileTheme.Typography.body)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text("Adds a small generation-speed footer below assistant messages. Provider-reported counts are exact; missing usage is marked “est.”")
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .tint(MobileTheme.hermesAureate)
+
+                Divider().background(MobileTheme.Colors.border.opacity(0.4))
+
+                Toggle(isOn: $usePretextRendering) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Rich text rendering")
+                            .font(MobileTheme.Typography.body)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text("Hermes assistant messages render `@mentions` and `code spans` as inline chips, with line breaking by Pretext. Streaming and error states stay plain.")
+                            .font(MobileTheme.Typography.tiny)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .tint(MobileTheme.hermesAureate)
+
+                Button {
+                    showPretextPlayground = true
+                } label: {
+                    HStack(spacing: MobileTheme.Spacing.sm) {
+                        Image(systemName: "textformat.size")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Open text layout playground")
+                            .font(MobileTheme.Typography.body)
+                    }
+                    .foregroundStyle(MobileTheme.mercuryGradient)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+            }
+        }
     }
 
     // MARK: - 3. Gateway

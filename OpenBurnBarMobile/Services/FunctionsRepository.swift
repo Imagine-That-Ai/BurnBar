@@ -135,6 +135,56 @@ final class FunctionsRepository {
         return snap
     }
 
+    func syncHostedQuotaEntitlement(
+        productID: String,
+        transactionID: String?,
+        originalTransactionID: String?,
+        expiresAt: Date?,
+        signedTransactionJWS: String?,
+        active: Bool
+    ) async throws {
+        let callable = functions.httpsCallable("syncHostedQuotaEntitlement")
+        var payload: [String: Any] = [
+            "productID": productID,
+            "active": active
+        ]
+        if let transactionID { payload["transactionID"] = transactionID }
+        if let originalTransactionID { payload["originalTransactionID"] = originalTransactionID }
+        if let expiresAt { payload["expiresAt"] = ISO8601DateFormatter().string(from: expiresAt) }
+        if let signedTransactionJWS { payload["signedTransactionJWS"] = signedTransactionJWS }
+        _ = try await callable.call(payload)
+    }
+
+    func connectHostedQuotaAccount(
+        providerID: ProviderID,
+        credential: String,
+        kind: CredentialKind,
+        label: String?,
+        accountID: String? = nil
+    ) async throws -> ProviderAccountDoc {
+        let callable = functions.httpsCallable("connectHostedQuotaAccount")
+        var payload: [String: Any] = [
+            "provider": providerID.rawValue,
+            "credential": credential,
+            "credentialKind": kind.rawValue
+        ]
+        if let label, label.isEmpty == false { payload["label"] = label }
+        if let accountID, accountID.isEmpty == false { payload["accountID"] = accountID }
+        let result = try await callable.call(payload)
+        guard let data = result.data as? [String: Any],
+              let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
+              let jsonData = try? JSONSerialization.data(withJSONObject: sanitized),
+              let doc = try? JSONDecoder().decode(ProviderAccountDoc.self, from: jsonData) else {
+            throw FunctionsError.decodingFailed
+        }
+        return doc
+    }
+
+    func deleteHostedQuotaCredentials() async throws {
+        let callable = functions.httpsCallable("deleteHostedQuotaCredentials")
+        _ = try await callable.call([:])
+    }
+
     func updateProviderAccount(accountID: String, label: String? = nil, isDefault: Bool? = nil, disabled: Bool? = nil) async throws -> ProviderAccountDoc {
         let callable = functions.httpsCallable("updateProviderAccount")
         var payload: [String: Any] = ["accountID": accountID]
@@ -379,6 +429,41 @@ struct HostedQuotaEntitlementResponse: Equatable, Sendable {
     let expiresAt: Date?
     let revokedAt: Date?
     let revocationReason: Int?
+}
+
+private extension ProviderQuotaSnapshot {
+    func cloudPayload() throws -> [String: Any] {
+        let formatter = ISO8601DateFormatter()
+        let buckets = buckets.map { bucket -> [String: Any] in
+            var payload: [String: Any] = [
+                "name": bucket.name,
+                "used": bucket.used,
+                "limit": bucket.limit,
+                "remaining": bucket.remaining
+            ]
+            if let window = bucket.window { payload["window"] = window }
+            if let meta = bucket.meta { payload["meta"] = meta }
+            return payload
+        }
+        var payload: [String: Any] = [
+            "provider": provider,
+            "providerID": providerID.rawValue,
+            "sourceKind": sourceKind.rawValue,
+            "sourceId": sourceId,
+            "fetchedAt": formatter.string(from: fetchedAt),
+            "source": source,
+            "confidence": confidence.rawValue,
+            "buckets": buckets,
+            "schemaVersion": schemaVersion,
+            "updatedAt": formatter.string(from: updatedAt)
+        ]
+        if let accountID { payload["accountID"] = accountID }
+        if let accountLabel { payload["accountLabel"] = accountLabel }
+        if let accountStorageScope { payload["accountStorageScope"] = accountStorageScope.rawValue }
+        if let managementURL { payload["managementURL"] = managementURL }
+        if let statusMessage { payload["statusMessage"] = statusMessage }
+        return payload
+    }
 }
 
 // MARK: - Functions Error

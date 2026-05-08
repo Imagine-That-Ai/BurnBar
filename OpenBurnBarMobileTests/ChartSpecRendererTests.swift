@@ -62,6 +62,67 @@ final class ChartSpecRendererTests: XCTestCase {
         }
     }
 
+    func testDecodesAsciiEnvelope() {
+        let json = #"""
+        {
+          "kind": "ascii",
+          "title": "Cost by provider",
+          "ascii": {
+            "title": "Cost by provider",
+            "subtitle": "USD, last 7 days",
+            "variant": "bar",
+            "blocks": [
+              {"label":"Claude Code","lines":["▉▉▉▉▉▉▉▉  $92.10"],"accent":"#E07868"},
+              {"label":"Codex","lines":["▉▉▉  $24.80"],"accent":"#9080D8"}
+            ],
+            "footnote": "7-day window"
+          }
+        }
+        """#
+        let result = ChartSpecRenderer.decode(json)
+        if case .ascii(let spec) = result {
+            XCTAssertEqual(spec.variant, .bar)
+            XCTAssertEqual(spec.blocks.count, 2)
+            XCTAssertEqual(spec.blocks[0].accent, "#E07868")
+            XCTAssertTrue(spec.blocks[0].lines[0].contains("▉"))
+        } else {
+            XCTFail("Expected ascii, got \(result)")
+        }
+    }
+
+    func testAsciiSanitizerCapsLineWidthAndBlockCount() {
+        let runaway = String(repeating: "█", count: 500)
+        let manyBlocks = (0..<30).map { i in
+            AsciiSpec.Block(label: "block-\(i)", lines: [runaway])
+        }
+        let spec = AsciiSpec(
+            title: "huge",
+            subtitle: nil,
+            variant: .bar,
+            blocks: manyBlocks,
+            footnote: nil
+        )
+        let cleaned = ChartSpecRenderer.sanitizeAscii(spec)
+        XCTAssertLessThanOrEqual(cleaned.blocks.count, 12,
+                                 "Sanitizer must cap block count to keep payload small.")
+        for block in cleaned.blocks {
+            for line in block.lines {
+                XCTAssertLessThanOrEqual(line.count, 96,
+                                         "Each line must be capped to <= 96 cells.")
+            }
+        }
+    }
+
+    func testAsciiSanitizerStripsAnsiEscapes() {
+        let raw = "\u{1B}[31m▉▉▉ red bar\u{1B}[0m"
+        let block = AsciiSpec.Block(label: nil, lines: [raw])
+        let spec = AsciiSpec(variant: .bar, blocks: [block])
+        let cleaned = ChartSpecRenderer.sanitizeAscii(spec)
+        let line = cleaned.blocks[0].lines[0]
+        XCTAssertFalse(line.contains("\u{1B}["), "ANSI escapes must be stripped.")
+        XCTAssertTrue(line.contains("▉"))
+    }
+
     func testExtractsJSONFromProseWrapped() {
         let raw = """
         Sure, here's the chart you asked for:

@@ -11,6 +11,7 @@ enum MacCopy {
     static let thisDeviceSectionTitle = "This device"
     static let otherDevicesSectionTitle = "Other devices"
     static let activeGrantsSectionTitle = "Active grants"
+    static let googleNestHubSectionTitle = "Google Nest Hub"
 
     static let cloudSyncHealthy = "Cloud sync healthy"
     static let cloudSyncDegraded = "Cloud sync degraded"
@@ -88,8 +89,19 @@ struct MercuryEnvelopeCard<Content: View>: View {
 // MARK: - Devices & Sync Settings
 
 struct DevicesAndSyncSettingsView: View {
-    @State private var deviceTrust = DeviceTrustViewModel()
-    @State private var exportViewModel = CredentialTransferExportViewModel()
+    @Bindable var settingsManager: SettingsManager
+    @State private var deviceTrust: DeviceTrustViewModel
+    @State private var exportViewModel: CredentialTransferExportViewModel
+
+    init(
+        settingsManager: SettingsManager,
+        deviceTrust: DeviceTrustViewModel = DeviceTrustViewModel(),
+        exportViewModel: CredentialTransferExportViewModel = CredentialTransferExportViewModel()
+    ) {
+        self._settingsManager = Bindable(settingsManager)
+        self._deviceTrust = State(initialValue: deviceTrust)
+        self._exportViewModel = State(initialValue: exportViewModel)
+    }
 
     var body: some View {
         ScrollView {
@@ -131,6 +143,9 @@ struct DevicesAndSyncSettingsView: View {
                 }
 
                 deviceListSection
+
+                SettingsSectionHeader(title: MacCopy.googleNestHubSectionTitle)
+                ProviderQuotaSmartHubsSection(settingsManager: settingsManager)
 
                 SettingsSectionHeader(title: MacCopy.activeGrantsSectionTitle)
                 CredentialTransferSheet(
@@ -435,7 +450,7 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
     private let db = Firestore.firestore()
     private var uid: String? { Auth.auth().currentUser?.uid }
     private var deviceId: String {
-        UserDefaults.standard.string(forKey: OpenBurnBarIdentity.deviceIDKey) ?? UUID().uuidString
+        Self.loadOrCreateDeviceId()
     }
 
     func trustedDevices() async throws -> [MacTrustedDevice] {
@@ -450,6 +465,22 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
                 isCurrentDevice: doc.documentID == self.deviceId
             )
         }
+    }
+
+    private static func loadOrCreateDeviceId(defaults: UserDefaults = .standard) -> String {
+        OpenBurnBarMigration.migrateUserDefaults()
+        if let stored = defaults.string(forKey: OpenBurnBarIdentity.deviceIDKey), !stored.isEmpty {
+            return stored
+        }
+        for legacyKey in OpenBurnBarIdentity.legacyDeviceIDKeys {
+            if let stored = defaults.string(forKey: legacyKey), !stored.isEmpty {
+                defaults.set(stored, forKey: OpenBurnBarIdentity.deviceIDKey)
+                return stored
+            }
+        }
+        let created = UUID().uuidString
+        defaults.set(created, forKey: OpenBurnBarIdentity.deviceIDKey)
+        return created
     }
 
     func approve(deviceID: String) async throws {
@@ -509,7 +540,7 @@ final class DeviceTrustViewModel {
         isLoading = true
         defer { isLoading = false }
         do {
-            trustedDevices = try await gateway.trustedDevices()
+            trustedDevices = Self.deduplicatedDevices(try await gateway.trustedDevices())
             lastErrorMessage = nil
         } catch {
             lastErrorMessage = error.localizedDescription
@@ -536,6 +567,55 @@ final class DeviceTrustViewModel {
 
     func clearLastError() {
         lastErrorMessage = nil
+    }
+
+    static func deduplicatedDevices(_ devices: [MacTrustedDevice]) -> [MacTrustedDevice] {
+        var byId: [String: MacTrustedDevice] = [:]
+        for device in devices {
+            byId[device.id] = preferredDevice(current: byId[device.id], candidate: device)
+        }
+
+        var byPhysicalDevice: [String: MacTrustedDevice] = [:]
+        for device in byId.values {
+            let key = physicalDeviceKey(for: device)
+            byPhysicalDevice[key] = preferredDevice(current: byPhysicalDevice[key], candidate: device)
+        }
+
+        return byPhysicalDevice.values.sorted { lhs, rhs in
+            if lhs.isCurrentDevice != rhs.isCurrentDevice {
+                return lhs.isCurrentDevice
+            }
+            let lhsName = lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+            if lhsName != .orderedSame {
+                return lhsName == .orderedAscending
+            }
+            let lhsPlatform = lhs.platform.localizedCaseInsensitiveCompare(rhs.platform)
+            if lhsPlatform != .orderedSame {
+                return lhsPlatform == .orderedAscending
+            }
+            return lhs.id < rhs.id
+        }
+    }
+
+    private static func physicalDeviceKey(for device: MacTrustedDevice) -> String {
+        [
+            device.displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            device.platform.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        ].joined(separator: "\u{1F}")
+    }
+
+    private static func preferredDevice(current: MacTrustedDevice?, candidate: MacTrustedDevice) -> MacTrustedDevice {
+        guard let current else { return candidate }
+        if candidate.isCurrentDevice != current.isCurrentDevice {
+            return candidate.isCurrentDevice ? candidate : current
+        }
+        if candidate.displayName == "Unknown", current.displayName != "Unknown" {
+            return current
+        }
+        if current.displayName == "Unknown", candidate.displayName != "Unknown" {
+            return candidate
+        }
+        return candidate.id < current.id ? candidate : current
     }
 }
 

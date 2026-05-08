@@ -76,9 +76,10 @@ struct ChartEntrance: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(appeared ? 1 : 0)
-            .scaleEffect(appeared ? 1 : 0.95, anchor: .bottom)
+            .scaleEffect(appeared ? 1 : 0.92, anchor: .bottom)
+            .offset(y: appeared ? 0 : 16)
             .onAppear {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1)) {
+                withAnimation(.spring(response: 0.55, dampingFraction: 0.75).delay(0.08)) {
                     appeared = true
                 }
             }

@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - Chat Message View
 
@@ -79,12 +80,28 @@ struct ChatMessageView: View {
         transcript.filter { $0.kind == .text }.map(\.value).joined()
     }
 
+    @ViewBuilder
     private var userProseBubble: some View {
-        proseBubble(
-            isUser: true,
-            text: userProse.isEmpty ? message.content : userProse,
-            appendCaret: false
-        )
+        let prose = userProse.isEmpty ? message.content : userProse
+        VStack(alignment: .trailing, spacing: 6) {
+            if !message.attachments.isEmpty {
+                ChatAttachmentTray(
+                    attachments: message.attachments,
+                    isHermes: isHermes,
+                    attachmentError: nil,
+                    onRemove: nil,
+                    onReveal: nil
+                )
+                .frame(maxWidth: 320, alignment: .trailing)
+            }
+            if !prose.isEmpty {
+                proseBubble(
+                    isUser: true,
+                    text: prose,
+                    appendCaret: false
+                )
+            }
+        }
     }
 
     private var assistantTranscriptColumn: some View {
@@ -106,27 +123,74 @@ struct ChatMessageView: View {
                 HermesThinkingView()
             }
 
-            ForEach(transcript) { piece in
-                switch piece.kind {
-                case .toolUse:
-                    if isHermes {
-                        HermesToolCard(
-                            toolName: piece.value,
-                            detail: piece.detail,
-                            isRunning: isStreaming && piece.id == transcript.last(where: { $0.kind == .toolUse })?.id
+            ForEach(groupedTranscript) { group in
+                Group {
+                    switch group {
+                    case .toolGroup(let pieces):
+                        toolGroupStrip(pieces)
+                    case .single(let piece):
+                        proseBubble(
+                            isUser: false,
+                            text: piece.value,
+                            appendCaret: isStreaming && piece.id == lastTextPieceId
                         )
-                    } else {
-                        toolUseSubBubble(piece)
                     }
-                case .text:
-                    proseBubble(
-                        isUser: false,
-                        text: piece.value,
-                        appendCaret: isStreaming && piece.id == lastTextPieceId
-                    )
                 }
             }
         }
+    }
+
+    // MARK: - Tool Group Strip
+
+    /// Horizontally scrollable strip of tool cards, most recent on the left.
+    @ViewBuilder
+    private func toolGroupStrip(_ pieces: [ChatTranscriptPiece]) -> some View {
+        let reversedPieces = Array(pieces.reversed())
+        let lastToolID = transcript.last(where: { $0.kind == .toolUse })?.id
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                if isHermes {
+                    ForEach(reversedPieces) { piece in
+                        HermesToolCard(
+                            toolName: piece.value,
+                            detail: piece.detail,
+                            isRunning: isStreaming && piece.id == lastToolID
+                        )
+                    }
+                } else {
+                    ForEach(reversedPieces) { piece in
+                        toolUseSubBubble(piece)
+                    }
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+        .background {
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.25))
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(toolGroupStripBorder, lineWidth: 0.5)
+        )
+    }
+
+    private var toolGroupStripBorder: AnyShapeStyle {
+        if isHermes {
+            return AnyShapeStyle(DesignSystem.Colors.mercuryGradient.opacity(0.3))
+        } else {
+            return AnyShapeStyle(LinearGradient(
+                colors: [DesignSystem.Colors.coral.opacity(0.2), DesignSystem.Colors.purple.opacity(0.15)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ))
+        }
+    }
+
+    // MARK: - Transcript Grouping
+
+    private var groupedTranscript: [TranscriptGroup] {
+        TranscriptGroup.group(transcript)
     }
 
     @ViewBuilder
@@ -191,14 +255,20 @@ struct ChatMessageView: View {
         let stroke = isUser ? ChatBubbleStyle.userStroke : (isHermes ? DesignSystem.Colors.hermesMercury : ChatBubbleStyle.assistantStroke)
         let alignment: HorizontalAlignment = isUser ? .trailing : .leading
         let display = text + (appendCaret ? "▍" : "")
+        // Use atom-aware Hermes rendering for completed Hermes assistant turns;
+        // fall back to plain `Text` for user messages, error states, and live
+        // streaming chunks (atom layout would thrash on every chunk).
+        let useHermesRichRendering = !isUser && isHermes && !appendCaret && !text.isEmpty
 
         if !display.isEmpty || appendCaret {
-            Text(display)
-                .font(DesignSystem.Typography.body)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                .multilineTextAlignment(alignment == .trailing ? .trailing : .leading)
-                .textSelection(.enabled)
-                .animation(.easeOut(duration: 0.12), value: text.count)
+            proseBubbleBody(
+                isUser: isUser,
+                text: text,
+                display: display,
+                useHermesRichRendering: useHermesRichRendering,
+                isStreaming: appendCaret,
+                alignment: alignment
+            )
                 .padding(.horizontal, DesignSystem.Spacing.md + 2)
                 .padding(.vertical, DesignSystem.Spacing.md)
                 .background {
@@ -237,6 +307,44 @@ struct ChatMessageView: View {
                         )
                 )
                 .shadow(color: stroke.opacity(0.12), radius: 10, y: 4)
+        }
+    }
+
+    /// Switch between native `Text` and atom-aware `HermesRichBubble`.
+    /// Streaming and error rendering keep using `Text` so we never re-layout
+    /// chips on every SSE chunk.
+    @ViewBuilder
+    private func proseBubbleBody(
+        isUser: Bool,
+        text: String,
+        display: String,
+        useHermesRichRendering: Bool,
+        isStreaming: Bool,
+        alignment: HorizontalAlignment
+    ) -> some View {
+        if useHermesRichRendering {
+            StreamingBubble(
+                text: text,
+                isStreaming: false,
+                isError: false,
+                baseSize: 14,
+                lineHeight: 20
+            ) {
+                HermesRichBubble(
+                    text: text,
+                    baseColor: DesignSystem.Colors.textPrimary,
+                    mentionColor: DesignSystem.Colors.hermesAureate,
+                    codeColor: DesignSystem.Colors.textPrimary,
+                    codeBackground: DesignSystem.Colors.surfaceElevated
+                )
+            }
+        } else {
+            Text(display)
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .multilineTextAlignment(alignment == .trailing ? .trailing : .leading)
+                .textSelection(.enabled)
+                .animation(.easeOut(duration: 0.12), value: text.count)
         }
     }
 }

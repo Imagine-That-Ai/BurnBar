@@ -83,6 +83,20 @@ final class ChatThreadSyncService: CloudSyncDomain {
                         if let cli = msg.cliUsed {
                             m["cliUsed"] = cli
                         }
+                        if !msg.attachments.isEmpty {
+                            // Attachments roundtrip metadata only — bytes stay
+                            // on the originating device's chat workspace.
+                            m["attachments"] = msg.attachments.map { att -> [String: Any] in
+                                [
+                                    "id": att.id,
+                                    "kind": att.kind.rawValue,
+                                    "displayName": att.displayName,
+                                    "mimeType": att.mimeType,
+                                    "byteSize": att.byteSize,
+                                    "workspacePath": att.workspaceRelativePath,
+                                ]
+                            }
+                        }
                         return m
                     }
                     data["title"] = thread.title

@@ -1261,6 +1261,12 @@ final class OpenBurnBarDatabase: Sendable {
             )
         }
 
+        migrator.registerMigration("v38_chat_message_attachments") { db in
+            try db.alter(table: "chat_messages") { t in
+                t.add(column: "attachmentsJSON", .text)
+            }
+        }
+
         return migrator
     }
 
@@ -1358,5 +1364,16 @@ final class OpenBurnBarDatabase: Sendable {
             return nil
         }
         return arr
+    }
+
+    static func encodeChatAttachments(_ value: [HermesAttachment]) throws -> String {
+        try encodeJSON(value)
+    }
+
+    static func decodeChatAttachments(_ string: String?) -> [HermesAttachment]? {
+        guard let string, !string.isEmpty, let data = string.data(using: .utf8) else {
+            return nil
+        }
+        return try? JSONDecoder().decode([HermesAttachment].self, from: data)
     }
 }

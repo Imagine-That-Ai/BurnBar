@@ -40,6 +40,9 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         bearerToken: String?,
         unavailableError: CLIBridgeError,
         httpStreamID: UInt64,
+        attachmentBytes: [String: Data] = [:],
+        capabilities: HermesBackendCapabilities = .default,
+        workspaceURL: URL? = nil,
         continuation: AsyncThrowingStream<CLIChatStreamEvent, Error>.Continuation
     ) async {
         defer {
@@ -53,7 +56,13 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
             return
         }
 
-        let messages = Self.buildMessages(systemPrompt: systemPrompt, history: history)
+        let messages = Self.buildMessages(
+            systemPrompt: systemPrompt,
+            history: history,
+            attachmentBytes: attachmentBytes,
+            capabilities: capabilities,
+            workspaceURL: workspaceURL
+        )
 
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 0
@@ -136,7 +145,7 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
 
     static func nonStreamingFallback(
         url: URL,
-        messages: [[String: String]],
+        messages: [[String: Any]],
         model: String,
         session: URLSession,
         bearerToken: String?
@@ -168,23 +177,49 @@ struct OpenAICompatibleChatGatewayClient: Sendable {
         return (content, OpenAICompatibleUsageParser.usage(from: obj))
     }
 
+    /// Builds the OpenAI-compatible `messages` array. When attachments are
+    /// present anywhere in the history, the user-message bodies switch to the
+    /// multimodal `content: [parts]` shape. Pure-text histories keep the
+    /// legacy `{role, content: String}` form so older relays don't choke on
+    /// unknown content types.
     static func buildMessages(
         systemPrompt: String,
-        history: [ChatMessageRecord]
-    ) -> [[String: String]] {
-        var messages: [[String: String]] = [
-            ["role": "system", "content": systemPrompt]
-        ]
-        for msg in history {
-            let role: String
+        history: [ChatMessageRecord],
+        attachmentBytes: [String: Data] = [:],
+        capabilities: HermesBackendCapabilities = .default,
+        workspaceURL: URL? = nil
+    ) -> [[String: Any]] {
+        let encoderMessages = history.compactMap { msg -> HermesAttachmentEncoder.Message? in
+            let role: HermesAttachmentEncoder.Message.Role
             switch msg.role {
-            case .user: role = "user"
-            case .assistant: role = "assistant"
-            case .system: continue
+            case .user: role = .user
+            case .assistant: role = .assistant
+            case .system: return nil
             }
-            guard !msg.content.isEmpty else { continue }
-            messages.append(["role": role, "content": msg.content])
+            // Pull this message's worth of attachment bytes from the caller-
+            // supplied map (only the latest user message normally provides
+            // bytes; persisted history attaches by metadata only).
+            var msgBytes: [String: Data] = [:]
+            for att in msg.attachments {
+                if let data = attachmentBytes[att.id] {
+                    msgBytes[att.id] = data
+                }
+            }
+            return HermesAttachmentEncoder.Message(
+                role: role,
+                text: msg.content,
+                attachments: msg.attachments,
+                attachmentBytes: msgBytes
+            )
         }
-        return messages
+        return HermesAttachmentEncoder.encodeMessages(
+            systemPrompt: systemPrompt,
+            messages: encoderMessages,
+            capabilities: capabilities,
+            workspaceAbsolutePath: { att in
+                guard let workspaceURL else { return att.workspaceRelativePath }
+                return workspaceURL.appendingPathComponent(att.workspaceRelativePath).path
+            }
+        )
     }
 }

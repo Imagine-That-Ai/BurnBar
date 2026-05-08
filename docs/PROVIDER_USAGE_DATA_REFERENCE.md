@@ -285,10 +285,10 @@ Cookie: <session cookies>        (when available)
 }
 ```
 
-**Auth required:** Browser cookies (session) or WorkOS bearer token
+**Auth required:** OpenBurnBar-owned login session cookie header or explicit WorkOS bearer token
 **Update cadence:** On API call (cached server-side with `useCache: true`)
-**Rate limits/ToS:** No public API docs; scraping browser cookies is ToS gray area
-**Portability:** Swift `URLSession` + HTTP cookies, `WKWebView` for login capture
+**Rate limits/ToS:** No public API docs; refresh uses the user's explicit OpenBurnBar session rather than third-party browser cookie scraping
+**Portability:** Swift `URLSession` + app-owned HTTP cookies, `WKWebView` for explicit login capture
 
 **Reference:** `steipete/CodexBar` `FactoryStatusProbe.swift`, `docs/factory.md`
 

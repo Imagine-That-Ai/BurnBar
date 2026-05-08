@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - SettingsManagerProtocol
 
@@ -154,6 +155,9 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Whether this Mac may relay local Hermes traffic for signed-in mobile devices.
     var hermesRemoteRelayEnabled: Bool { get set }
 
+    /// Cloud Run WebSocket relay endpoint for low-latency Hermes remote relay.
+    var hermesRealtimeRelayURL: String { get set }
+
     /// Resolves the `model` field for Hermes `POST /v1/chat/completions`.
     func resolvedHermesChatModel(gatewayAdvertisedModel: String?) -> String
 
@@ -218,6 +222,9 @@ protocol SettingsManagerProtocol: AnyObject {
 
     /// Smart hub voice-refresh endpoint URL.
     var smartHubQuotaVoiceRefreshURL: String { get set }
+
+    /// Time period (rolling 5h / 24h / 7d / 30d) the smart hub dashboard renders.
+    var smartHubQuotaTimePeriod: SmartHubTimePeriod { get set }
 
     // MARK: - Artifact Discovery
 

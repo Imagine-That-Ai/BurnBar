@@ -215,8 +215,7 @@ struct RootNavigationView: View {
                 showHermesSheet = true
             } label: {
                 HStack(spacing: 6) {
-                    Text("☿")
-                        .font(.system(size: 14, weight: .bold))
+                    HermesLiveGlyph(size: 16, isLive: false)
                     Text("Quick ask Hermes")
                         .font(MobileTheme.Typography.tiny)
                         .fontWeight(.semibold)

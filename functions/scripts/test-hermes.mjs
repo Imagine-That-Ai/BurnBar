@@ -68,10 +68,16 @@ for (const collection of ["hermes_pairings", "hermes_session_cache", "hermes_aud
   const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
   assert.match(block, /allow create: if relayConnectionWrite\(userId, connectionId\);/);
   assert.match(block, /allow update: if relayConnectionWrite\(userId, connectionId\) && resource\.data\.mode == "relayLink";/);
+  assert.match(rules, /function hasActiveHostedQuotaEntitlement\(userId\)/);
+  assert.match(rules, /entitlement\.productID == "com\.openburnbar\.hostedQuotaSync\.monthly"/);
+  assert.match(rules, /entitlement\.expireAt is timestamp/);
+  assert.match(rules, /entitlement\.expireAt > request\.time/);
   assert.match(rules, /request\.resource\.data\.mode == "relayLink"/);
   assert.match(rules, /request\.resource\.data\.id == connectionId/);
-  assert.match(rules, /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"advertisedModel"[\s\S]*"relayPublicKey"[\s\S]*"relayEncryption"[\s\S]*\]\)/);
+  assert.match(rules, /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"advertisedModel"[\s\S]*"relayPublicKey"[\s\S]*"relayEncryption"[\s\S]*"realtimeRelayURL"[\s\S]*\]\)/);
   assert.match(rules, /request\.resource\.data\.relayEncryption == "p256-hkdf-sha256-aesgcm"/);
+  assert.match(rules, /request\.resource\.data\.realtimeRelayURL\.matches\("\^wss:\/\/\.\+"\)/);
+  assert.match(rules, /request\.resource\.data\.realtimeRelayStatus in \["online", "offline", "degraded"\]/);
   assert.doesNotMatch(block, /ownerWritableNonSecret\(userId\);/, "direct Hermes URLs must not become broadly client-writable");
 }
 for (const collection of ["hermes_relay_requests"]) {
@@ -79,15 +85,40 @@ for (const collection of ["hermes_relay_requests"]) {
   assert.notEqual(start, -1, `${collection} rules block must exist`);
   const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
   assert.match(block, /allow create, update: if relayRequestWrite\(userId, requestId\);/);
+  assert.match(rules, /function relayRequestWrite\(userId, requestId\) \{[\s\S]*hasActiveHostedQuotaEntitlement\(userId\)/);
   assert.match(rules, /request\.resource\.data\.id == requestId/);
   assert.match(rules, /match \/chunks\/\{chunkId\}/);
   assert.match(rules, /allow create, update: if relayChunkWrite\(userId, requestId, chunkId\);/);
   assert.match(rules, /request\.resource\.data\.id == chunkId/);
   assert.match(rules, /request\.resource\.data\.requestId == requestId/);
 }
+{
+  const start = rules.indexOf("match /users/{userId}/smart_hub_config/");
+  assert.notEqual(start, -1, "smart_hub_config rules block must exist");
+  const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
+  assert.match(block, /allow create, update: if ownerWritableNonSecret\(userId\)/);
+  assert.match(block, /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"dashboardURL"[\s\S]*"voiceRefreshURL"[\s\S]*"schemaVersion"[\s\S]*\]\)/);
+  assert.match(block, /request\.resource\.data\.enabled is bool/);
+  assert.match(block, /request\.resource\.data\.schemaVersion is int/);
+}
 assert.match(rules, /request\.resource\.data\.schemaVersion < 2[\s\S]*!\("body" in request\.resource\.data\)[\s\S]*request\.resource\.data\.payloadCiphertext is string/);
 assert.match(rules, /request\.resource\.data\.schemaVersion < 2[\s\S]*!\("data" in request\.resource\.data\)[\s\S]*request\.resource\.data\.ciphertext is string/);
 assert.match(readFileSync(new URL("../src/index.ts", import.meta.url), "utf8"), /current\.status === "revoked"/);
+{
+  const functionsSource = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  for (const exportedName of [
+    "createHermesPairing",
+    "completeHermesPairing",
+    "listHermesConnections",
+    "revokeHermesConnection",
+    "updateHermesConnectionStatus",
+  ]) {
+    const start = functionsSource.indexOf(`export const ${exportedName}`);
+    assert.notEqual(start, -1, `${exportedName} must exist`);
+    const block = functionsSource.slice(start, functionsSource.indexOf("\n);\n", start) + 4);
+    assert.match(block, /await assertActiveHostedQuotaEntitlement\(uid\);/, `${exportedName} must be premium-gated`);
+  }
+}
 assert.match(rules, /!\("secretVersionName" in request\.resource\.data\)/);
 
 console.log("Hermes contract and Firestore rule invariants passed");

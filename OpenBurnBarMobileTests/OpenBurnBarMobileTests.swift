@@ -99,6 +99,22 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(ProviderConnectionStatus.error.rawValue, "error")
     }
 
+    func testMobileDeviceIdentityPersistsGeneratedDeviceId() throws {
+        let suiteName = "com.openburnbar.mobile.tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer {
+            defaults.removeObject(forKey: MobileDeviceIdentity.deviceIDKey)
+            UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        }
+
+        let first = MobileDeviceIdentity.loadOrCreateDeviceId(defaults: defaults)
+        let second = MobileDeviceIdentity.loadOrCreateDeviceId(defaults: defaults)
+
+        XCTAssertFalse(first.isEmpty)
+        XCTAssertEqual(first, second)
+        XCTAssertEqual(defaults.string(forKey: MobileDeviceIdentity.deviceIDKey), first)
+    }
+
     // MARK: - Self-hosted Runner Delete Cleanup
 
     func testSelfHostedRunnerStoreDeleteRemovesURLAndSecret() throws {

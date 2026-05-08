@@ -8,6 +8,8 @@
     "status": "node asc-api.js status",
     "prepare:ios": "node asc-api.js prepare-ios",
     "attach-build": "node asc-api.js attach-build",
+    "attach-internal-testflight": "node asc-api.js attach-internal-testflight",
+    "beta-groups": "node asc-api.js beta-groups",
     "set-build-compliance": "node asc-api.js set-build-compliance",
     "set-manual-release": "node asc-api.js set-manual-release",
     "review-details": "node asc-api.js review-details",

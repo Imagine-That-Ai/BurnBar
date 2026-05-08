@@ -38,6 +38,31 @@ private let tokenFormatter: NumberFormatter = {
 // MARK: - Double Formatting
 
 public extension Double {
+    /// Compact human-readable format used by chart studio / quota chips:
+    /// 1234 → "1.2K", 1_234_567 → "1.2M", 1.5e9 → "1.5B".
+    /// `maxFractions` caps decimal precision (default 1).
+    func humanReadableNumber(maxFractions: Int = 1) -> String {
+        let magnitude = abs(self)
+        let formatter: (Double, String) -> String = { value, suffix in
+            let format = "%.\(max(0, maxFractions))f"
+            let rendered = String(format: format, value)
+            // Strip trailing ".0" / "0" so 1.0K becomes 1K.
+            if rendered.contains(".") {
+                let trimmed = rendered.replacingOccurrences(of: "0+$", with: "", options: .regularExpression)
+                let cleaned = trimmed.hasSuffix(".") ? String(trimmed.dropLast()) : trimmed
+                return cleaned + suffix
+            }
+            return rendered + suffix
+        }
+        let sign = self < 0 ? "-" : ""
+        if magnitude >= 1_000_000_000 { return sign + formatter(magnitude / 1_000_000_000, "B") }
+        if magnitude >= 1_000_000 { return sign + formatter(magnitude / 1_000_000, "M") }
+        if magnitude >= 1_000 { return sign + formatter(magnitude / 1_000, "K") }
+        if magnitude >= 1 { return sign + formatter(magnitude, "") }
+        // Sub-unit: render with extra precision so 0.42 doesn't render as "".
+        return sign + String(format: "%.\(max(maxFractions, 2))f", magnitude)
+    }
+
     func formatAsCost() -> String {
         let magnitude = abs(self)
         if magnitude < 1e-9 {

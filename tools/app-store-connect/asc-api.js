@@ -326,6 +326,73 @@ async function attachBuildToVersion() {
   await printStatus();
 }
 
+async function getBetaGroups() {
+  const response = await api(
+    "GET",
+    `/betaGroups${query({
+      "filter[app]": APP.appleId,
+      limit: 200,
+    })}`
+  );
+  return response.data || [];
+}
+
+function betaGroupName(group) {
+  return group.attributes?.name || group.id;
+}
+
+async function printBetaGroups() {
+  const groups = await getBetaGroups();
+  console.log(
+    JSON.stringify(
+      groups.map((group) => ({
+        id: group.id,
+        name: group.attributes?.name,
+        isInternalGroup: group.attributes?.isInternalGroup,
+        publicLinkEnabled: group.attributes?.publicLinkEnabled,
+      })),
+      null,
+      2
+    )
+  );
+}
+
+async function attachBuildToInternalTestFlightGroups() {
+  const version = await getLatestIosVersion();
+  const build = await getLatestValidBuild(version.attributes?.versionString);
+  const groups = await getBetaGroups();
+  const internalGroups = groups.filter(
+    (group) => group.attributes?.isInternalGroup === true
+  );
+
+  if (internalGroups.length === 0) {
+    console.log(
+      `No internal TestFlight beta groups found for app ${APP.appleId}; build ${build.id} remains uploaded and attached to iOS ${version.attributes?.versionString}.`
+    );
+    return;
+  }
+
+  try {
+    await api(
+      "POST",
+      `/builds/${build.id}/relationships/betaGroups`,
+      {
+        data: internalGroups.map((group) => ({ type: "betaGroups", id: group.id })),
+      }
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("409") && !message.includes("already")) {
+      throw error;
+    }
+  }
+
+  const groupNames = internalGroups.map(betaGroupName).join(", ");
+  console.log(
+    `Build ${build.id} (${version.attributes?.versionString}/${build.attributes?.version}) is assigned to internal TestFlight group(s): ${groupNames}`
+  );
+}
+
 async function setManualRelease() {
   const version = await getLatestIosVersion();
   await api(
@@ -705,6 +772,8 @@ async function main() {
   if (command === "status") return printStatus();
   if (command === "prepare-ios") return prepareIos();
   if (command === "attach-build") return attachBuildToVersion();
+  if (command === "attach-internal-testflight") return attachBuildToInternalTestFlightGroups();
+  if (command === "beta-groups") return printBetaGroups();
   if (command === "set-build-compliance") return setLinkedBuildCompliance();
   if (command === "set-manual-release") return setManualRelease();
   if (command === "review-details") return upsertReviewDetail();
