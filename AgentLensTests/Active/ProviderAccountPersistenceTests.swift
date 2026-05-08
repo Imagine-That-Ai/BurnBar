@@ -5,6 +5,20 @@ import OpenBurnBarCore
 
 @MainActor
 final class ProviderAccountPersistenceTests: XCTestCase {
+
+    private func persistedProviderAccountID(_ rawValue: String) -> String {
+        switch rawValue {
+        case "openai_work":
+            return "acct_sha256_66c1238fe26d776148ca580f"
+        case "openai_personal":
+            return "acct_sha256_1fe6cb359213f40aa6eba39f"
+        case "openai_client":
+            return "acct_sha256_366c264992448c4b4401133b"
+        default:
+            XCTFail("Add expected provider account hash for \(rawValue)")
+            return rawValue
+        }
+    }
     func test_migration_v35_createsProviderAccountAndUsageAttributionSchema() throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -44,7 +58,7 @@ final class ProviderAccountPersistenceTests: XCTestCase {
 
         let fetched = try XCTUnwrap(store.fetchAllUsage().first)
         XCTAssertEqual(fetched.providerID, .openAI)
-        XCTAssertEqual(fetched.providerAccountID, "openai_work")
+        XCTAssertEqual(fetched.providerAccountID, persistedProviderAccountID("openai_work"))
         XCTAssertEqual(fetched.providerAccountLabel, "Work")
         XCTAssertEqual(fetched.providerAccountSource, .cloudRefreshable)
     }
@@ -70,7 +84,13 @@ final class ProviderAccountPersistenceTests: XCTestCase {
         }
 
         XCTAssertEqual(rows.count, 2)
-        XCTAssertEqual(rows.compactMap { $0["providerAccountID"] as? String }, ["openai_personal", "openai_work"])
+        XCTAssertEqual(
+            rows.compactMap { $0["providerAccountID"] as? String },
+            [
+                persistedProviderAccountID("openai_personal"),
+                persistedProviderAccountID("openai_work")
+            ].sorted()
+        )
     }
 
     func test_insertRemoteUsage_preservesAccountFields() throws {
@@ -87,7 +107,7 @@ final class ProviderAccountPersistenceTests: XCTestCase {
         try store.insertRemoteUsage(usage)
 
         let fetched = try XCTUnwrap(store.fetchAllUsage().first)
-        XCTAssertEqual(fetched.providerAccountID, "openai_client")
+        XCTAssertEqual(fetched.providerAccountID, persistedProviderAccountID("openai_client"))
         XCTAssertEqual(fetched.providerAccountLabel, "Client")
         XCTAssertEqual(fetched.providerAccountSource, .serverPrivate)
     }

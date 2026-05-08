@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import GRDB
 import OpenBurnBarCore
 
@@ -613,9 +614,9 @@ final class UsageStore: Sendable {
     private static func nonSecretProviderAccountIdentifier(_ value: String?) -> String? {
         guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty else { return nil }
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._:-@"))
-        let filtered = String(trimmed.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" })
-        return String(filtered.prefix(160))
+        let digest = SHA256.hash(data: Data(trimmed.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return "acct_sha256_\(hex.prefix(24))"
     }
 
     private static func decodeUsage(row: Row) -> TokenUsage? {
