@@ -59,8 +59,39 @@ service cloud.firestore {
         && hasNoPlaintextSecretFields();
     }
 
+    function hostedCloudEntitlementPath(userId) {
+      return /databases/$(database)/documents/users/$(userId)/entitlements/hosted_quota_sync;
+    }
+
+    function hasActiveHostedQuotaEntitlement(userId) {
+      let entitlement = get(hostedCloudEntitlementPath(userId)).data;
+      return exists(hostedCloudEntitlementPath(userId))
+        && entitlement.active == true
+        && entitlement.productID == "com.openburnbar.hostedQuotaSync.monthly"
+        && entitlement.expireAt is timestamp
+        && entitlement.expireAt > request.time;
+    }
+
+    function ownerWritableHostedCloudBackup(userId) {
+      return ownerWritableNonSecret(userId)
+        && hasActiveHostedQuotaEntitlement(userId);
+    }
+
+    function chatThreadIncludesBackedUpContent() {
+      return request.resource.data.keys().hasAny(["messages", "title", "preview"])
+        || (("contentIncluded" in request.resource.data)
+          && request.resource.data.contentIncluded == true);
+    }
+
+    function ownerWritableChatThread(userId) {
+      return ownerWritableNonSecret(userId)
+        && (!chatThreadIncludesBackedUpContent()
+          || hasActiveHostedQuotaEntitlement(userId));
+    }
+
     function relayConnectionWrite(userId, connectionId) {
       return ownerWritableNonSecret(userId)
+        && hasActiveHostedQuotaEntitlement(userId)
         && request.resource.data.keys().hasOnly([
           "id",
           "displayName",
@@ -71,6 +102,8 @@ service cloud.firestore {
           "relayPublicKey",
           "relayKeyVersion",
           "relayEncryption",
+          "realtimeRelayURL",
+          "realtimeRelayStatus",
           "capabilities",
           "lastSeenAt",
           "createdAt",
@@ -83,6 +116,8 @@ service cloud.firestore {
         && (!("relayPublicKey" in request.resource.data) || (request.resource.data.relayPublicKey is string && request.resource.data.relayPublicKey.size() <= 256))
         && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion is int)
         && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm")
+        && (!("realtimeRelayURL" in request.resource.data) || (request.resource.data.realtimeRelayURL is string && request.resource.data.realtimeRelayURL.matches("^wss://.+")))
+        && (!("realtimeRelayStatus" in request.resource.data) || request.resource.data.realtimeRelayStatus in ["online", "offline", "degraded"])
         && request.resource.data.id is string
         && request.resource.data.id == connectionId
         && request.resource.data.displayName is string
@@ -91,6 +126,7 @@ service cloud.firestore {
 
     function relayRequestWrite(userId, requestId) {
       return ownerWritableNonSecret(userId)
+        && hasActiveHostedQuotaEntitlement(userId)
         && request.resource.data.keys().hasOnly([
           "id",
           "connectionId",
@@ -146,6 +182,7 @@ service cloud.firestore {
 
     function relayChunkWrite(userId, requestId, chunkId) {
       return ownerWritableNonSecret(userId)
+        && hasActiveHostedQuotaEntitlement(userId)
         && request.resource.data.keys().hasOnly([
           "id",
           "requestId",
@@ -219,24 +256,24 @@ service cloud.firestore {
 
     match /users/{userId}/conversations/{conversationId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create, update: if ownerWritableHostedCloudBackup(userId);
       allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/chat_threads/{threadId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create, update: if ownerWritableChatThread(userId);
       allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/session_logs/{logId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId);
+      allow create, update: if ownerWritableHostedCloudBackup(userId);
       allow delete: if ownsUserNamespace(userId);
 
       match /chunks/{chunkId} {
         allow read: if ownsUserNamespace(userId);
-        allow create, update: if ownerWritableNonSecret(userId);
+        allow create, update: if ownerWritableHostedCloudBackup(userId);
         allow delete: if ownsUserNamespace(userId);
       }
     }
@@ -297,6 +334,29 @@ service cloud.firestore {
     match /users/{userId}/hermes_audit_events/{eventId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if false;
+    }
+
+    match /users/{userId}/smart_hub_config/{deviceId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "enabled",
+          "dashboardURL",
+          "refreshURL",
+          "voiceRefreshURL",
+          "sourceDeviceName",
+          "publishedAt",
+          "timePeriod",
+          "schemaVersion"
+        ])
+        && request.resource.data.enabled is bool
+        && request.resource.data.schemaVersion is int
+        && (!("dashboardURL" in request.resource.data) || (request.resource.data.dashboardURL is string && request.resource.data.dashboardURL.size() <= 2048))
+        && (!("refreshURL" in request.resource.data) || (request.resource.data.refreshURL is string && request.resource.data.refreshURL.size() <= 2048))
+        && (!("voiceRefreshURL" in request.resource.data) || (request.resource.data.voiceRefreshURL is string && request.resource.data.voiceRefreshURL.size() <= 2048))
+        && (!("sourceDeviceName" in request.resource.data) || (request.resource.data.sourceDeviceName is string && request.resource.data.sourceDeviceName.size() <= 160))
+        && (!("timePeriod" in request.resource.data) || request.resource.data.timePeriod in ["rolling5h", "rolling24h", "rolling7d", "rolling30d"]);
+      allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/usage_rollups/{rollupId} {

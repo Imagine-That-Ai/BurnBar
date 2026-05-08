@@ -178,7 +178,7 @@ The app makes outbound network requests in the following categories:
 |---|---|---|---|
 | Provider logos | `raw.githubusercontent.com/lobehub/lobe-icons/...` | On UI render (SwiftUI `AsyncImage`) | None (standard HTTP metadata only) |
 | Quota/usage APIs | Provider endpoints (MiniMax, Cursor, Factory, Z.ai) | When quota polling is enabled | Provider API keys (in auth headers) |
-| Firebase | Google Cloud | When cloud sync is enabled | Usage rows, chat-thread metadata by default; chat content and session logs only behind their explicit backup settings |
+| Firebase | Google Cloud | When cloud sync is enabled | Usage rows, chat-thread metadata by default; chat content, conversation backup, session logs, and hosted Hermes relay traffic require explicit backup settings plus the server-written hosted entitlement |
 | iCloud | Apple iCloud | When iCloud mirroring is enabled | Session log file copies |
 | Connector APIs | GitHub, Slack, Linear, PostHog, Sentry, Gmail | When individual connectors are configured and tested | Connector-specific auth tokens |
 | Telegram | `api.telegram.org` | When Telegram bot is configured | Bot token, notification payloads |

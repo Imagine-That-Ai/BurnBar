@@ -8,31 +8,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Commercial hosted-cloud gates.** Firestore rules now require the
+  Apple-verified `hosted_quota_sync` entitlement for conversation backup,
+  chat-thread content backup, full session-log manifests/chunks, Hermes relay
+  connections, and relay request/chunk writes while keeping free usage rows
+  and metadata-only chat-thread sync available. The PR harness now runs the
+  real Functions test suite and an emulator-backed Firestore rules suite
+  (`functions/scripts/test-firestore-rules.mjs`) instead of echo-skipping
+  those gates.
 - **Conversation Atoms (macOS, iOS, iPadOS).** Hermes responses on every
-  surface — dashboard chat panel, popover strip, mobile `ChatView`,
-  `HermesTabView` — are now rendered through `HermesRichBubble` instead of a
-  flat `Text(...)`. Hermes is instructed (via the new shared
-  `HermesSystemPromptBuilder`) to wrap entities in `[label](burnbar://...)`
-  markdown links, which a two-pass `HermesAtomParser` decodes into typed
-  `HermesAtom` values: cost, session, provider, model, window, tool,
-  project, tokens, quota, and Hermes runtime. Each atom renders as a tappable
-  `HermesAtomChip` (SF-Symbol + label, accent per kind, atomic — never breaks
-  across lines) that opens a quick-look detail (sheet on iOS, popover on
-  macOS) wired through `HermesAtomNavigator`. A regex fallback also turns
-  raw `$amounts` and known model identifiers into chips even when Hermes
-  forgets to emit links. Bubbles wrap inside a `StreamingBubble` that
-  measures the in-flight text via Pretext on every SSE chunk and animates
+  surface — macOS dashboard chat panel (`ChatPanel`), menu-bar popover
+  (`HermesPopoverChatView`), mobile `ChatView`, and the iOS Hermes tab
+  (`HermesTabView` / `HermesChatView`) — are now rendered through
+  `HermesRichBubble` instead of a flat `Text(...)`. Hermes is instructed (via
+  the new shared `HermesSystemPromptBuilder`) to wrap entities in
+  `[label](burnbar://...)` markdown links, which a two-pass
+  `HermesAtomParser` decodes into typed `HermesAtom` values: cost, session,
+  provider, model, window, tool, project, tokens, quota, and Hermes runtime.
+  Each atom renders as a tappable `HermesAtomChip` (SF-Symbol + label,
+  accent per kind, atomic — never breaks across lines) that opens a
+  quick-look detail (sheet on iOS, popover on macOS) wired through
+  `HermesAtomNavigator`. A regex fallback also turns raw `$amounts` and
+  known model identifiers into chips even when Hermes forgets to emit
+  links. Bubbles wrap inside a `StreamingBubble` that measures the
+  in-flight text via Pretext on every SSE chunk and animates
   `frame(height:)` between snapshots — and on completion runs
-  `shrinkWrapWidth(targetLines: 4)` to animate the bubble's width down to its
-  tightest comfortable size. Pretext infrastructure (`PretextEngine`,
-  `PretextTypes`, themed `index.html` shell, `pretext.bundle.min.js`) was
-  hoisted into `OpenBurnBarCore` so iOS and macOS share one bridge and one
-  resource bundle (`Bundle.module`). New tests in
-  `OpenBurnBarCoreTests/HermesAtomParserTests.swift` cover markdown-link
-  extraction, regex fallback, mixed runs, malformed URL fallback, and
-  ordering preservation. **Docs:**
+  `shrinkWrapWidth(targetLines: 4)` to animate the bubble's width down to
+  its tightest comfortable size. **Activation pipeline:** when the user
+  confirms a chip's primary action, `HermesAtomRouter.confirm(_:)` updates
+  `confirmedDestination`, calls the chat surface's installed `onPerform`
+  closure, and broadcasts `Notification.Name.hermesAtomActivated` with the
+  typed `HermesAtom` so any top-level surface (sidebar, settings,
+  dashboard) can route to the matching native view without coupling chat
+  surfaces to specific destinations. Pretext infrastructure
+  (`PretextEngine`, `PretextTypes`, themed `index.html` shell,
+  `pretext.bundle.min.js`) was hoisted into `OpenBurnBarCore` so iOS and
+  macOS share one bridge and one resource bundle (`Bundle.module`); chat
+  surfaces eagerly call `PretextEngine.shared.start()` so the WKWebView
+  loads before the first assistant turn. Tests in
+  `OpenBurnBarCoreTests/HermesAtomParserTests.swift` (28 cases) cover
+  markdown-link extraction, regex fallback for `$amounts` and known model
+  IDs, mixed atoms+mentions+code, malformed URL fallback, ordering
+  preservation, percent-encoded labels, Unicode (CJK + emoji) IDs, scheme
+  rejection, and the no-op navigator's main-actor contract. **Docs:**
   [`docs/CONVERSATION_ATOMS.md`](docs/CONVERSATION_ATOMS.md) covers the URL
-  scheme, the prompt directive, and the cross-platform component map.
+  scheme, the prompt directive, the activation pipeline, and the
+  cross-platform component map.
 - **Hermes chat attachments (macOS, iOS, iPadOS).** The Hermes composer now
   accepts file attachments on every surface — dashboard chat panel, popover
   strip, and mobile `ChatView`. Users can attach images, PDFs, audio,

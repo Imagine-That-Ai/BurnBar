@@ -74,11 +74,8 @@ jobs:
       - name: Build OpenBurnBar Functions
         run: npm --prefix functions run build
 
-      # BLOCKER: Functions unit tests do not exist yet.
-      # When a test suite is added under functions/, replace this echo with:
-      #   npm --prefix functions test
       - name: Run OpenBurnBar Functions tests
-        run: echo "Functions test suite not yet implemented; skipping."
+        run: npm --prefix functions test
 
       - name: Run OpenBurnBar Swift tests
         run: OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh
@@ -155,12 +152,8 @@ jobs:
       - name: Run OpenBurnBar extension-host tests
         run: ./scripts/test-openburnbar-extension-host.sh
 
-      # BLOCKER: Firestore rules emulator tests require a rules test suite
-      # (e.g., @firebase/rules-unit-testing) that does not yet exist in the repo.
-      # When rules tests are added, replace this echo with:
-      #   firebase emulators:exec --only firestore "npm --prefix firestore-rules-tests test"
       - name: Run Firestore rules emulator tests
-        run: echo "Firestore rules emulator tests not yet implemented; skipping."
+        run: npm --prefix functions run test:firestore-rules
 
       # CodeQL analysis is enforced by the separate .github/workflows/codeql.yml
       # workflow which runs security-extended scans for Swift, JavaScript/TypeScript,

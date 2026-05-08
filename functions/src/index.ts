@@ -1320,6 +1320,7 @@ export const createHermesPairing = onCall(
       throw new HttpsError("unauthenticated", "Sign in before creating a Hermes pairing.");
     }
     enforceAuthAndAppCheck(request, uid);
+    await assertActiveHostedQuotaEntitlement(uid);
     await checkHermesRateLimit(uid, "create_pairing", 5);
 
     const code = randomPairingCode();
@@ -1378,6 +1379,7 @@ export const completeHermesPairing = onCall(
       throw new HttpsError("unauthenticated", "Sign in before completing a Hermes pairing.");
     }
     enforceAuthAndAppCheck(request, uid);
+    await assertActiveHostedQuotaEntitlement(uid);
     await checkHermesRateLimit(uid, "complete_pairing", 1);
 
     const pairingId = requiredIdentifier(request.data.pairingId, "pairingId");
@@ -1502,6 +1504,7 @@ export const listHermesConnections = onCall(
       throw new HttpsError("unauthenticated", "Sign in before listing Hermes connections.");
     }
     enforceAuthAndAppCheck(request, uid);
+    await assertActiveHostedQuotaEntitlement(uid);
 
     const snap = await db.collection(`users/${uid}/hermes_connections`).get();
     const connections = snap.docs
@@ -1525,6 +1528,7 @@ export const revokeHermesConnection = onCall(
       throw new HttpsError("unauthenticated", "Sign in before revoking a Hermes connection.");
     }
     enforceAuthAndAppCheck(request, uid);
+    await assertActiveHostedQuotaEntitlement(uid);
     await checkHermesRateLimit(uid, "revoke_connection", 2);
 
     const connectionId = requiredIdentifier(request.data.connectionId, "connectionId");
@@ -1566,6 +1570,7 @@ export const updateHermesConnectionStatus = onCall(
       throw new HttpsError("unauthenticated", "Sign in before updating a Hermes connection.");
     }
     enforceAuthAndAppCheck(request, uid);
+    await assertActiveHostedQuotaEntitlement(uid);
     await checkHermesRateLimit(uid, "update_connection_status", 2);
 
     const allowedStatus = new Set<HermesConnectionDoc["status"]>([

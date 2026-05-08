@@ -653,6 +653,7 @@ export interface HostedQuotaEntitlementDoc {
   transactionID: string;
   originalTransactionID: string;
   expiresAt?: string;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
   revokedAt?: string;
   revocationReason?: number;
   environment: AppStoreEnvironment;
