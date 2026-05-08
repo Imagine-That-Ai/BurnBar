@@ -35,7 +35,7 @@ final class UsageStore: Sendable {
     private func deleteKimiRequestIDModelRows(replacedBy usage: TokenUsage, in db: Database) throws {
         guard usage.provider == .kimi,
               !Self.isKimiRequestIDModel(usage.model) else { return }
-        let providerAccountID = Self.nonSecretProviderAccountIdentifier(usage.providerAccountID)
+        let persistedAccountKey = Self.persistedNonSecretAccountKey(fromRawAccountIdentifier: usage.providerAccountID)
 
         try db.execute(
             sql: """
@@ -50,7 +50,7 @@ final class UsageStore: Sendable {
                 usage.provider.rawValue,
                 usage.sessionId,
                 usage.sourceDeviceId,
-                providerAccountID,
+                persistedAccountKey,
             ]
         )
     }
@@ -75,7 +75,7 @@ final class UsageStore: Sendable {
     /// Cloud sync data with equal or higher confidence than existing row will update it.
     func insertRemoteUsage(_ usage: TokenUsage) throws {
         try dbQueue.write { db in
-            let providerAccountID = Self.nonSecretProviderAccountIdentifier(usage.providerAccountID)
+            let persistedAccountKey = Self.persistedNonSecretAccountKey(fromRawAccountIdentifier: usage.providerAccountID)
             try db.execute(
                 sql: """
                     INSERT INTO token_usage (
@@ -173,7 +173,7 @@ final class UsageStore: Sendable {
                     usage.usageSource.rawValue,
                     usage.sourceDeviceId, usage.sourceDeviceName, usage.isRemote, Date(),
                     usage.providerID.rawValue,
-                    providerAccountID,
+                    persistedAccountKey,
                     usage.providerAccountLabel,
                     usage.providerAccountSource?.rawValue,
                     usage.provenanceMethod.rawValue,
@@ -473,7 +473,7 @@ final class UsageStore: Sendable {
     }
 
     private func upsertUsage(_ usage: TokenUsage, in db: Database) throws {
-        let providerAccountID = Self.nonSecretProviderAccountIdentifier(usage.providerAccountID)
+        let persistedAccountKey = Self.persistedNonSecretAccountKey(fromRawAccountIdentifier: usage.providerAccountID)
         let statement = try db.cachedStatement(
             sql: """
                 INSERT INTO token_usage (
@@ -601,7 +601,7 @@ final class UsageStore: Sendable {
                 usage.sourceDeviceName,
                 usage.isRemote ? 1 : 0,
                 usage.providerID.rawValue,
-                providerAccountID,
+                persistedAccountKey,
                 usage.providerAccountLabel,
                 usage.providerAccountSource?.rawValue,
                 usage.provenanceMethod.rawValue,
@@ -611,8 +611,8 @@ final class UsageStore: Sendable {
         )
     }
 
-    private static func nonSecretProviderAccountIdentifier(_ value: String?) -> String? {
-        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+    private static func persistedNonSecretAccountKey(fromRawAccountIdentifier rawValue: String?) -> String? {
+        guard let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty else { return nil }
         let digest = SHA256.hash(data: Data(trimmed.utf8))
         let hex = digest.map { String(format: "%02x", $0) }.joined()
