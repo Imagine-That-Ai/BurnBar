@@ -214,7 +214,8 @@ final class OpenBurnBarSearchIntegrationHarnessTests: XCTestCase {
         let report = try await harness.drainProjectionQueue(maxSweeps: 16, maxJobsPerSweep: 96, advanceClockBy: 1)
         let elapsedMs = elapsedMilliseconds(since: startedAt)
         let throughputJobsPerSecond = Double(report.completedJobs) / max(0.001, elapsedMs / 1_000)
-        let isCI = ProcessInfo.processInfo.environment["CI"] == "true"
+        let environment = ProcessInfo.processInfo.environment
+        let isCI = environment["CI"] == "true" || environment["GITHUB_ACTIONS"] == "true" || environment["RUNNER_OS"] != nil
         let maxElapsedMs: Double = isCI ? 25_000 : 15_000
         let minThroughputJobsPerSecond: Double = isCI ? 7 : 15
 

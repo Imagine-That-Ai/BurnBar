@@ -3,6 +3,13 @@ import SnapshotTesting
 import XCTest
 @testable import OpenBurnBar
 
+func openBurnBarIsGitHubActionsRunner() -> Bool {
+    let environment = ProcessInfo.processInfo.environment
+    return environment["CI"] == "true"
+        || environment["GITHUB_ACTIONS"] == "true"
+        || environment["RUNNER_OS"] != nil
+}
+
 // MARK: - Visual Regression Support
 
 /// Renders a SwiftUI view into an NSImage at a fixed size and color scheme,
@@ -49,7 +56,7 @@ func assertAdaptiveSnapshot<V: View>(
     testName: String = #function,
     line: UInt = #line
 ) {
-    if ProcessInfo.processInfo.environment["CI"] == "true" {
+    if openBurnBarIsGitHubActionsRunner() {
         _ = renderViewSnapshot(view, size: size, colorScheme: .light)
         return
     }
@@ -80,7 +87,7 @@ func assertViewSnapshot<V: View>(
     testName: String = #function,
     line: UInt = #line
 ) {
-    if ProcessInfo.processInfo.environment["CI"] == "true" {
+    if openBurnBarIsGitHubActionsRunner() {
         _ = renderViewSnapshot(view, size: size, colorScheme: colorScheme)
         return
     }
