@@ -168,6 +168,11 @@ private final class CursorConnectorSecretBroker: @unchecked Sendable {
     }
 }
 
+private extension CharacterSet {
+    static let tryCloudflareURLDelimiters = CharacterSet(charactersIn: "<>()[]{}\"'`,;")
+        .union(.whitespacesAndNewlines)
+}
+
 @MainActor
 @Observable
 final class CursorConnectorManager {
@@ -1258,12 +1263,20 @@ final class CursorConnectorManager {
     }
 
     private static func extractTryCloudflareURL(from text: String) -> String? {
-        let pattern = #"https://[A-Za-z0-9\-]+\.trycloudflare\.com"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let range = NSRange(location: 0, length: text.utf16.count)
-        guard let match = regex.firstMatch(in: text, range: range),
-              let swiftRange = Range(match.range, in: text) else { return nil }
-        return String(text[swiftRange])
+        for token in text.split(whereSeparator: \.isWhitespace) {
+            let candidate = token.trimmingCharacters(in: .tryCloudflareURLDelimiters)
+            guard
+                let components = URLComponents(string: String(candidate)),
+                components.scheme == "https",
+                let host = components.host?.lowercased(),
+                host.hasSuffix(".trycloudflare.com"),
+                host.split(separator: ".").count == 3
+            else {
+                continue
+            }
+            return "https://\(host)"
+        }
+        return nil
     }
 
     static let isoDateFormatter: ISO8601DateFormatter = {
