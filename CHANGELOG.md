@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Commercial launch README posture.** The README now describes the current
+  product state as a commercial launch candidate for the iOS/App Store and
+  hosted-cloud subscription path while keeping the macOS/source release
+  explicitly labeled beta until that channel is cut.
 - **Commercial hosted-cloud gates.** Firestore rules now require the
   Apple-verified `hosted_quota_sync` entitlement for conversation backup,
   chat-thread content backup, full session-log manifests/chunks, Hermes relay
