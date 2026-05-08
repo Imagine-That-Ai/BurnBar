@@ -34,6 +34,7 @@ import {
   refreshUserProviderQuota,
 } from "./quota.js";
 import { computeUserRollups, writeUserRollups } from "./rollups.js";
+import { eraseUserCloudData } from "./accountDeletion.js";
 import {
   isHermesConnectionDoc,
   pairingCodeDigest,
@@ -1113,6 +1114,41 @@ export const deleteProviderAccount = onCall(
     await batch.commit();
 
     return { success: true, accountID };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Callable: deleteUserCloudData
+// ---------------------------------------------------------------------------
+
+export const deleteUserCloudData = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 20,
+    timeoutSeconds: 540,
+    memory: "1GiB",
+  },
+  async (request: CallableRequest<Record<string, never>>) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError("unauthenticated", "Sign in before deleting cloud data.");
+    }
+    enforceAuthAndAppCheck(request, uid);
+
+    const summary = await eraseUserCloudData(db, uid, { destroyCredential });
+    if (summary.failedSecretDestroys > 0) {
+      throw new HttpsError(
+        "internal",
+        "Cloud data was deleted, but one or more hosted credential secrets could not be destroyed. Contact support.",
+        summary
+      );
+    }
+
+    return {
+      success: true,
+      ...summary,
+    };
   }
 );
 

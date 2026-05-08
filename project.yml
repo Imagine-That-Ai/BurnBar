@@ -130,6 +130,8 @@ targets:
       - package: Firebase
         product: FirebaseFirestore
       - package: Firebase
+        product: FirebaseFunctions
+      - package: Firebase
         product: FirebaseAppCheck
       - package: GoogleSignIn
         product: GoogleSignIn

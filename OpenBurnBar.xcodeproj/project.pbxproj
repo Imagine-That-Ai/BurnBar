@@ -229,6 +229,7 @@
 		41B2C17A62BE394E594BA9E2 /* ProjectionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EA49F3A2C78F6AAF2F281C3 /* ProjectionStore.swift */; };
 		425130DFD4B761C76486C484 /* FactoryDashboardScraper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87253B25CCCE1C34C596F2C9 /* FactoryDashboardScraper.swift */; };
 		4283C73067E5985454EBFFB7 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = B6999F5A1B3A8EC91D107F2F /* FirebaseFirestore */; };
+		42B7A93F6E218C3DE48B57C9 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = A64E9CF5D2784BA6C01E9332 /* FirebaseFunctions */; };
 		42E8FE2F4C30E19738E3E6B1 /* test_chatMessageView_hermesAssistant.chatMessage-hermes-dark.png in Resources */ = {isa = PBXBuildFile; fileRef = C3606D15831050FAB0E29ED0 /* test_chatMessageView_hermesAssistant.chatMessage-hermes-dark.png */; };
 		42F39F1D35BDC32B0EE9AB6E /* test_hermesToolCard_running.hermesToolCard-running-dark.png in Resources */ = {isa = PBXBuildFile; fileRef = D85BB66C15612964CA0C49DA /* test_hermesToolCard_running.hermesToolCard-running-dark.png */; };
 		43012EC08E56237423040DA5 /* RectangularLockScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033D7F4CE5A4AEF4FE3756B7 /* RectangularLockScreenView.swift */; };
@@ -1869,6 +1870,7 @@
 				51A5E287BF165A550D24AF78 /* GRDB in Frameworks */,
 				5115E33E1CEA0C3E24CEA13E /* FirebaseAuth in Frameworks */,
 				4283C73067E5985454EBFFB7 /* FirebaseFirestore in Frameworks */,
+				42B7A93F6E218C3DE48B57C9 /* FirebaseFunctions in Frameworks */,
 				7BFAEEC81F2F711659CC45E2 /* FirebaseAppCheck in Frameworks */,
 				C95C116EA1342A7C6A751FB4 /* GoogleSignIn in Frameworks */,
 				CEED9509102AC787D8E9755F /* Sentry in Frameworks */,
@@ -3589,6 +3591,7 @@
 				7795E740F7AE12FC6B8F1E10 /* GRDB */,
 				46820D7813E56C18A4209211 /* FirebaseAuth */,
 				B6999F5A1B3A8EC91D107F2F /* FirebaseFirestore */,
+				A64E9CF5D2784BA6C01E9332 /* FirebaseFunctions */,
 				E2BD14DC2936538AE1B5B3CF /* FirebaseAppCheck */,
 				E239813A07DE9AF832F4EF34 /* GoogleSignIn */,
 				537F95A9C47628B16A10BA7C /* Sentry */,
@@ -5470,6 +5473,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F7ED8DA2789DCAFECCAE84D3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAppCheck;
+		};
+		A64E9CF5D2784BA6C01E9332 /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F7ED8DA2789DCAFECCAE84D3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
 		};
 		9E0076E2A0900700C9BD9ED5 /* Sentry */ = {
 			isa = XCSwiftPackageProductDependency;

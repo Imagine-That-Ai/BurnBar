@@ -3,6 +3,7 @@ import AuthenticationServices
 import CryptoKit
 @preconcurrency import FirebaseAuth
 import FirebaseCore
+import FirebaseFunctions
 import Foundation
 @preconcurrency import GoogleSignIn
 import OSLog
@@ -334,7 +335,13 @@ final class AccountManager {
               let user = Auth.auth().currentUser else {
             throw AccountError.firebaseNotConfigured
         }
+        try await deleteCloudDataForCurrentUser()
         try await user.delete()
+    }
+
+    private func deleteCloudDataForCurrentUser() async throws {
+        let callable = Functions.functions(region: "us-central1").httpsCallable("deleteUserCloudData")
+        _ = try await callable.call([String: Any]())
     }
 
     // MARK: - Sign Out
