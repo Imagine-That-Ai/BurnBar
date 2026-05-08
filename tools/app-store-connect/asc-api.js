@@ -716,9 +716,6 @@ async function printStatus() {
   const linkedBuild = await getLinkedBuild(version.id);
   const linkedBuildReadback = linkedBuild?.id ? await getBuild(linkedBuild.id) : null;
   const reviewDetail = await getReviewDetail(version.id);
-  const hasDemoAccountPassword = Boolean(
-    reviewDetail?.attributes?.demoAccountPassword
-  );
   const hasReviewNotes = Boolean(reviewDetail?.attributes?.notes);
 
   console.log(
@@ -757,7 +754,6 @@ async function printStatus() {
               id: reviewDetail.id,
               demoAccountRequired: reviewDetail.attributes?.demoAccountRequired,
               demoAccountName: reviewDetail.attributes?.demoAccountName,
-              hasDemoAccountPassword,
               hasNotes: hasReviewNotes,
             }
           : null,
