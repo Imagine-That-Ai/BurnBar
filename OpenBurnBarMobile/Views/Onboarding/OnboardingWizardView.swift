@@ -247,7 +247,6 @@ struct OnboardingWizardView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 56, weight: .bold))
                     .foregroundStyle(MobileTheme.Colors.success)
-                    .symbolEffect(.bounce)
             }
             .frame(height: 140)
 
