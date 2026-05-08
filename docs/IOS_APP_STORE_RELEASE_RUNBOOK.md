@@ -10,7 +10,7 @@ repo commands plus a short web-only App Store Connect pass.
 - Apple app ID: `6766366964`
 - iOS bundle ID: `com.openburnbar.app`
 - iOS version: `1.0`
-- Build: `1`
+- Linked build: `6`
 - Hosted quota subscription product: `com.openburnbar.hostedQuotaSync.monthly`
 - Subscription reference name: `Hosted Quota Sync Monthly`
 - App Store Server Notifications V2 URL:
@@ -46,7 +46,9 @@ The status output must show:
 - `linkedBuild.usesNonExemptEncryption` is `false`.
 - `appReviewDetail.demoAccountRequired` is `true`.
 - `appReviewDetail.demoAccountName` is `app-review@openburnbar.app`.
-- `appReviewDetail.hasDemoAccountPassword` is `true`.
+- `appReviewDetail.hasNotes` is `true`. App Store Connect does not echo the
+  demo account password in status readback; `prepare-review-metadata` is the
+  write gate for the password.
 - Subscription state is `READY_TO_SUBMIT` before final submission.
 - Subscription `hasReviewScreenshot` is `true`.
 
