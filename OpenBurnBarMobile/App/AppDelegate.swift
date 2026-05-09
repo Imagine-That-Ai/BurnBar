@@ -37,6 +37,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             print("warning: GoogleService-Info.plist not found; Firebase remains unconfigured.")
             return
         }
+        guard Self.googleServiceInfoLooksConfigured(at: path) else {
+            print("warning: GoogleService-Info.plist is a placeholder or invalid; Firebase remains unconfigured.")
+            return
+        }
 
         #if DEBUG
         AppCheckDebugTokenEnvironment.configureIfAvailable(firebasePlistPath: path)
@@ -47,6 +51,23 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         AppCheck.setAppCheckProviderFactory(factory)
 
         FirebaseApp.configure()
+    }
+
+    private static func googleServiceInfoLooksConfigured(at path: String) -> Bool {
+        guard
+            let plist = NSDictionary(contentsOfFile: path) as? [String: Any],
+            let googleAppID = plist["GOOGLE_APP_ID"] as? String
+        else {
+            return false
+        }
+
+        // Firebase throws an Objective-C exception for placeholder or malformed
+        // app IDs, which Swift cannot catch. Validate before calling configure
+        // so clean OSS checkouts and tests degrade to auth-disabled mode.
+        return googleAppID.range(
+            of: #"^1:[0-9]+:ios:[A-Za-z0-9]+$"#,
+            options: .regularExpression
+        ) != nil
     }
 }
 

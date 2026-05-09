@@ -277,20 +277,28 @@ and writes).
 
 ### Required Config
 
-Set these before enabling hosted refresh:
+Production Functions v2 use environment params and Secret Manager bindings, not
+legacy `functions.config()`. The deployed callable environment must include:
 
-```bash
-firebase functions:config:set \
-  openburnbar.hosted_quota_runner_url="https://YOUR-RUNNER.run.app" \
-  openburnbar.hosted_quota_runner_token="A_LONG_RANDOM_SHARED_SECRET" \
-  openburnbar.hosted_quota_product_id="com.openburnbar.hostedQuotaSync.monthly"
+```text
+KMS_KEY_NAME
+HOSTED_QUOTA_RUNNER_URL
+HOSTED_QUOTA_PRODUCT_ID=com.openburnbar.hostedQuotaSync.monthly
+HOSTED_QUOTA_DAILY_REFRESH_LIMIT=30
+HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT=300
+ENFORCE_APP_CHECK=true
+APP_STORE_BUNDLE_ID=com.openburnbar.app
+APP_STORE_APPLE_APP_ID=6766366964
+APP_STORE_ENV=Production
+APP_STORE_AUTO_FALLBACK_ENV=true
+APP_STORE_ENABLE_ONLINE_CHECKS=true
 ```
 
-Existing Secret Manager encryption config still applies:
+The runner bearer token is a Firebase Secret Manager secret and must be bound
+to Functions that call the hosted runner:
 
 ```bash
-firebase functions:config:set \
-  openburnbar.kms_key_name="projects/.../locations/.../keyRings/.../cryptoKeys/..."
+firebase functions:secrets:set HOSTED_QUOTA_RUNNER_TOKEN
 ```
 
 #### App Store JWS verification config
@@ -355,7 +363,8 @@ Endpoints:
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/healthz` | `GET` | Health check |
+| `/readyz` | `GET` | Production readiness check |
+| `/healthz` | `GET` | Local and legacy health check compatibility |
 | `/v1/quota/refresh` | `POST` | Refresh Claude Code or Codex quota |
 
 Optional auth:
@@ -378,7 +387,7 @@ Binding behavior:
 gcloud run deploy openburnbar-quota-runner \
   --source quota-runner \
   --region us-central1 \
-  --set-env-vars RUNNER_SHARED_SECRET="A_LONG_RANDOM_SHARED_SECRET" \
+  --set-secrets RUNNER_SHARED_SECRET=HOSTED_QUOTA_RUNNER_TOKEN:latest \
   --allow-unauthenticated
 ```
 
@@ -401,14 +410,15 @@ RUNNER_SHARED_SECRET=dev-secret npm start
 Health check:
 
 ```bash
-curl http://localhost:8080/healthz
+curl http://localhost:8080/readyz
 ```
 
 Self-hosted refresh example:
 
 ```bash
+export RUNNER_SHARED_SECRET=dev-secret
 curl -X POST http://localhost:8080/v1/quota/refresh \
-  -H "Authorization: Bearer dev-secret" \
+  --oauth2-bearer "$RUNNER_SHARED_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"provider":"claude-code","accountID":"self_hosted"}'
 ```
@@ -581,6 +591,31 @@ The shipped implementation is intentionally hybrid:
 - Codex hosted mode is the paid hosted path.
 - Claude Code self-hosted mode is the compliant remote path.
 - Self-hosted mode is the privacy/control path for both Claude Code and Codex.
+
+## Production Proof Command
+
+After a live buyer completes the StoreKit subscription flow, use the read-only
+proof command to verify that the paid entitlement and Firestore evidence exist:
+
+```bash
+OPENBURNBAR_PROOF_UID="FIREBASE_UID" \
+npm --prefix functions run prove:hosted-quota -- \
+  --project burnbar \
+  --environment Production \
+  --require-backup \
+  --require-hosted-quota
+```
+
+Use `--original-transaction-id APPLE_ORIGINAL_TRANSACTION_ID` when the operator
+captured it from StoreKit or App Store Server API logs. Use only the evidence
+flags the proof user actually exercised: `--require-backup` for paid chat /
+conversation / session-log backup, and `--require-hosted-quota` for hosted
+Codex quota refresh.
+
+The command fails unless the production
+`users/{uid}/entitlements/hosted_quota_sync` document is active, unexpired,
+for `com.openburnbar.hostedQuotaSync.monthly`, backed by a matching
+`entitlement_events` audit row, and has any requested backup/quota evidence.
 - Mac app refresh remains useful, but it is no longer required for Claude Code
   and Codex mobile quota updates.
 - Refresh is on demand only.

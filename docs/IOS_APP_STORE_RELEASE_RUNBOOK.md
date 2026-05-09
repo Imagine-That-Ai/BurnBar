@@ -10,9 +10,11 @@ repo commands plus a short web-only App Store Connect pass.
 - Apple app ID: `6766366964`
 - iOS bundle ID: `com.openburnbar.app`
 - iOS version: `1.0`
+- iOS version state: `WAITING_FOR_REVIEW` as of 2026-05-09
 - Linked build: `6`
 - Hosted quota subscription product: `com.openburnbar.hostedQuotaSync.monthly`
 - Subscription reference name: `Hosted Quota Sync Monthly`
+- Subscription state: `WAITING_FOR_REVIEW` as of 2026-05-09
 - App Store Server Notifications V2 URL:
   `https://us-central1-burnbar.cloudfunctions.net/appStoreServerNotificationsV2`
 
@@ -37,7 +39,18 @@ Status readback:
 npm --prefix tools/app-store-connect run status
 ```
 
-The status output must show:
+Full commercial launch gate:
+
+```bash
+scripts/commercial-launch-gate.mjs
+```
+
+The gate reads live App Store Connect state, branch protection, the most recent
+merged PR gate, Cloud Run, Redis, and quota-runner readiness. It prints
+`WAITING_ON_APPLE`, `READY_FOR_MANUAL_RELEASE`, `READY_FOR_LIVE_PAID_PROOF`, or
+`NO_GO` with the evidence that led to the verdict.
+
+Before final submission, the status output must show:
 
 - `iosVersion.state` is `READY_FOR_REVIEW` before final submission.
 - `iosVersion.releaseType` is `MANUAL`.
@@ -51,6 +64,13 @@ The status output must show:
   write gate for the password.
 - Subscription state is `READY_TO_SUBMIT` before final submission.
 - Subscription `hasReviewScreenshot` is `true`.
+
+After final submission, the expected readback is:
+
+- `iosVersion.state` is `WAITING_FOR_REVIEW` or another Apple review state.
+- Subscription state is `WAITING_FOR_REVIEW` or another Apple review state.
+- `iosVersion.releaseType` remains `MANUAL` so approval does not publish to
+  customers automatically.
 
 ## Review Account
 
@@ -133,3 +153,67 @@ npm --prefix tools/app-store-connect run status
 Expected state should move from `READY_FOR_REVIEW` to a review state such as
 `WAITING_FOR_REVIEW`. Because release type is `MANUAL`, approval should not
 automatically publish the app to customers.
+
+## Manual Release After Approval
+
+Apple's App Store Connect API exposes manual release through
+`POST /v1/appStoreVersionReleaseRequests`, but only after review approval moves
+the version to `PENDING_DEVELOPER_RELEASE`. Apple documents that this request
+cannot be cancelled, so the repo helper refuses to run unless both conditions
+are true:
+
+- `iosVersion.state` is `PENDING_DEVELOPER_RELEASE`.
+- `OPENBURNBAR_RELEASE_APPROVED_IOS` exactly matches
+  `VERSION_STRING:APP_STORE_VERSION_ID`.
+
+After App Store Connect shows approval, rerun status:
+
+```bash
+npm --prefix tools/app-store-connect run status
+```
+
+If status shows `PENDING_DEVELOPER_RELEASE`, publish with:
+
+```bash
+OPENBURNBAR_RELEASE_APPROVED_IOS="1.0:5bd7a32b-29ee-476a-8efa-ec0a9614ff6d" \
+npm --prefix tools/app-store-connect run release-approved-ios
+```
+
+Immediately rerun status and then continue to the live paid proof below. Do not
+run this command before the paid-proof operator is ready; the release request is
+the real customer-facing publish action.
+
+## Post-Approval Live Paid Proof
+
+Do not call the paid path production-proven until a real StoreKit purchase has
+created a server entitlement and unlocked paid Firestore backup for the buyer.
+After Apple approves the app and the manual release is complete:
+
+1. Install the App Store build, sign in with the paid-test Firebase user, and
+   buy `Hosted Quota Sync Monthly` through StoreKit.
+2. In the app, complete at least one paid backup action:
+   - enable backed-up chat/session content, or
+   - connect hosted Codex quota sync and run one hosted refresh.
+3. Capture the Firebase UID. If available, also capture the StoreKit
+   `originalTransactionID`.
+4. Run the read-only production proof:
+
+```bash
+OPENBURNBAR_PROOF_UID="FIREBASE_UID" \
+npm --prefix functions run prove:hosted-quota -- \
+  --project burnbar \
+  --environment Production \
+  --original-transaction-id "APPLE_ORIGINAL_TRANSACTION_ID" \
+  --require-backup \
+  --require-hosted-quota
+```
+
+If the proof user only exercised paid backup content, omit
+`--require-hosted-quota`. If the proof user only exercised hosted Codex quota,
+omit `--require-backup`.
+
+The command must print JSON with `ok: true`, the
+`users/{uid}/entitlements/hosted_quota_sync` path, a matching
+`entitlement_events` audit row, and the requested backup/quota evidence paths.
+Attach that JSON to the launch evidence bundle. A green App Store status alone
+is not enough.
