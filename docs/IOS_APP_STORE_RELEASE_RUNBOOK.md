@@ -143,6 +143,35 @@ Expected state should move from `READY_FOR_REVIEW` to a review state such as
 `WAITING_FOR_REVIEW`. Because release type is `MANUAL`, approval should not
 automatically publish the app to customers.
 
+## Manual Release After Approval
+
+Apple's App Store Connect API exposes manual release through
+`POST /v1/appStoreVersionReleaseRequests`, but only after review approval moves
+the version to `PENDING_DEVELOPER_RELEASE`. Apple documents that this request
+cannot be cancelled, so the repo helper refuses to run unless both conditions
+are true:
+
+- `iosVersion.state` is `PENDING_DEVELOPER_RELEASE`.
+- `OPENBURNBAR_RELEASE_APPROVED_IOS` exactly matches
+  `VERSION_STRING:APP_STORE_VERSION_ID`.
+
+After App Store Connect shows approval, rerun status:
+
+```bash
+npm --prefix tools/app-store-connect run status
+```
+
+If status shows `PENDING_DEVELOPER_RELEASE`, publish with:
+
+```bash
+OPENBURNBAR_RELEASE_APPROVED_IOS="1.0:5bd7a32b-29ee-476a-8efa-ec0a9614ff6d" \
+npm --prefix tools/app-store-connect run release-approved-ios
+```
+
+Immediately rerun status and then continue to the live paid proof below. Do not
+run this command before the paid-proof operator is ready; the release request is
+the real customer-facing publish action.
+
 ## Post-Approval Live Paid Proof
 
 Do not call the paid path production-proven until a real StoreKit purchase has

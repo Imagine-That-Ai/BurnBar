@@ -403,6 +403,61 @@ async function setManualRelease() {
   console.log(`Set iOS version ${version.id} releaseType=MANUAL`);
 }
 
+async function releaseApprovedIos() {
+  const version = await getLatestIosVersion();
+  const versionString = version.attributes?.versionString;
+  const state = version.attributes?.appStoreState;
+  const releaseType = version.attributes?.releaseType;
+
+  if (state !== "PENDING_DEVELOPER_RELEASE") {
+    throw new Error(
+      `Refusing to release iOS ${versionString} (${version.id}); App Store state is ${state}, not PENDING_DEVELOPER_RELEASE.`
+    );
+  }
+  if (releaseType !== "MANUAL") {
+    throw new Error(
+      `Refusing to release iOS ${versionString} (${version.id}); releaseType is ${releaseType}, not MANUAL.`
+    );
+  }
+
+  const expectedConfirmation = `${versionString}:${version.id}`;
+  const confirmation = process.env.OPENBURNBAR_RELEASE_APPROVED_IOS || "";
+  if (confirmation !== expectedConfirmation) {
+    throw new Error(
+      "Refusing to release without explicit confirmation. " +
+        `Set OPENBURNBAR_RELEASE_APPROVED_IOS="${expectedConfirmation}" and rerun only when you are ready to publish.`
+    );
+  }
+
+  const response = await api(
+    "POST",
+    "/appStoreVersionReleaseRequests",
+    {
+      data: {
+        type: "appStoreVersionReleaseRequests",
+        relationships: {
+          appStoreVersion: rel("appStoreVersions", version.id),
+        },
+      },
+    }
+  );
+
+  console.log(
+    JSON.stringify(
+      {
+        released: true,
+        app: APP.appleId,
+        bundleId: APP.bundleId,
+        versionString,
+        appStoreVersionId: version.id,
+        releaseRequestId: response?.data?.id,
+      },
+      null,
+      2
+    )
+  );
+}
+
 async function getVersionLocalization(versionId) {
   const response = await api(
     "GET",
@@ -801,6 +856,7 @@ async function main() {
   if (command === "beta-groups") return printBetaGroups();
   if (command === "set-build-compliance") return setLinkedBuildCompliance();
   if (command === "set-manual-release") return setManualRelease();
+  if (command === "release-approved-ios") return releaseApprovedIos();
   if (command === "review-details") return upsertReviewDetail();
   if (command === "prepare-review-metadata") return prepareReviewMetadata();
   throw new Error(`Unknown command: ${command}`);
