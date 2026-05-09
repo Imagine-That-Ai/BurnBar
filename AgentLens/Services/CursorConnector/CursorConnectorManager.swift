@@ -1262,12 +1262,12 @@ final class CursorConnectorManager {
         return output
     }
 
-    private static func extractTryCloudflareURL(from text: String) -> String? {
+    static func extractTryCloudflareURL(from text: String) -> String? {
         for token in text.split(whereSeparator: \.isWhitespace) {
             let candidate = token.trimmingCharacters(in: .tryCloudflareURLDelimiters)
             guard
                 let components = URLComponents(string: String(candidate)),
-                components.scheme == "https",
+                components.scheme?.lowercased() == "https",
                 let host = components.host?.lowercased(),
                 host.hasSuffix(".trycloudflare.com"),
                 host.split(separator: ".").count == 3
