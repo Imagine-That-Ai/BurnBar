@@ -3,11 +3,11 @@ import FirebaseFirestore
 import Foundation
 import CryptoKit
 
-/// Sync domain for uploading full session-log Markdown bodies to Firestore.
+/// Sync domain for uploading session-log manifests/search metadata to Firestore.
 ///
 /// Firestore layout:
 ///   `users/{uid}/session_logs/{deviceId}_{escapedId}` (manifest)
-///   `users/{uid}/session_logs/{docId}/chunks/{index}` (body chunks)
+///   `users/{uid}/session_logs/{docId}/chunks/{index}` (search metadata only)
 ///
 /// Gated separately on `sessionLogCloudBackupEnabled`.
 /// Uses its own dirty flag (`logSyncedAt`) so it is independent of metadata sync.
@@ -23,7 +23,7 @@ final class SessionLogSyncService: CloudSyncDomain {
         self.context = context
     }
 
-    /// Upload full session-log Markdown bodies to Firestore.
+    /// Upload session-log manifests and search metadata to Firestore.
     func sync() async {
         guard context.accountManager.isFirebaseAvailable,
               context.accountManager.isSignedIn,
@@ -66,7 +66,7 @@ final class SessionLogSyncService: CloudSyncDomain {
                     continue
                 }
 
-                let chunks = Self.chunkUTF8String(markdown, maxBytes: 900_000)
+                let chunks = Self.chunkUTF8String(markdown, maxBytes: 64_000)
 
                 var manifest: [String: Any] = [
                     "id": record.id,
@@ -77,10 +77,12 @@ final class SessionLogSyncService: CloudSyncDomain {
                     "projectName": record.projectName,
                     "inferredTaskTitle": record.inferredTaskTitle,
                     "messageCount": record.messageCount,
-                    "chunkCount": chunks.count,
+                    "bodyStorage": "local_or_icloud",
+                    "chunkCount": 0,
+                    "searchChunkCount": chunks.count,
                     "byteCount": markdown.utf8.count,
                     "bodyHash": bodyHash,
-                    "chunkSize": 900_000,
+                    "chunkSize": 0,
                     "chunkHashes": chunks.map(Self.sha256Hex),
                     "chunkMetadataVersion": Self.chunkMetadataVersion,
                     "model": model,
@@ -100,7 +102,6 @@ final class SessionLogSyncService: CloudSyncDomain {
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     writes.append(([
                         "index": idx,
-                        "body": chunk,
                         "hash": Self.sha256Hex(chunk),
                         "uid": uid,
                         "docId": docId,
@@ -113,6 +114,7 @@ final class SessionLogSyncService: CloudSyncDomain {
                         "title": record.summaryTitle ?? record.inferredTaskTitle,
                         "snippet": String(snippet.prefix(500)),
                         "terms": Self.normalizedTerms(from: chunk + " " + record.inferredTaskTitle + " " + record.projectName + " " + model),
+                        "bodyStorage": "local_or_icloud",
                         "bodyHash": bodyHash,
                         "schemaVersion": Self.chunkMetadataVersion,
                         "updatedAt": FieldValue.serverTimestamp()
@@ -200,11 +202,11 @@ final class SessionLogSyncService: CloudSyncDomain {
 }
 
 extension CloudSyncService {
-    // MARK: - Session Log Upload (full Markdown, chunked)
+    // MARK: - Session Log Upload (manifest + search metadata)
 
-    /// Uploads full session-log Markdown bodies to Firestore.
+    /// Uploads session-log manifests and search metadata to Firestore.
     /// Layout: `users/{uid}/session_logs/{deviceId}_{escapedId}` (manifest)
-    ///         `users/{uid}/session_logs/{docId}/chunks/{index}` (body chunks)
+    ///         `users/{uid}/session_logs/{docId}/chunks/{index}` (search metadata only)
     ///
     /// Gated separately on `sessionLogCloudBackupEnabled`.
     /// Uses its own dirty flag (`logSyncedAt`) so it is independent of metadata sync.
@@ -276,7 +278,11 @@ extension CloudSyncService {
         }
     }
 
-    /// Reassembles chunk sub-documents into the full Markdown body for a session log.
+    /// Reassembles legacy chunk sub-documents into the full Markdown body for a session log.
+    ///
+    /// New paid-scale backups keep large bodies out of Firestore. Those manifests
+    /// intentionally return an empty string here; local SQLite or iCloud remains
+    /// the body source.
     /// - Parameter docId: The Firestore document ID (stored in `record.sessionId` for cloud-sourced records).
     func fetchCloudSessionLogBody(docId: String) async throws -> String {
         guard accountManager.isFirebaseAvailable,

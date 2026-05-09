@@ -98,7 +98,7 @@ final class CloudSyncCoordinator {
         await propagateChatThreadErrors { await chatThreadSync.sync() }
     }
 
-    /// Upload full session-log Markdown bodies to Firestore.
+    /// Upload session-log manifests and search metadata to Firestore.
     /// Gated on `sessionLogCloudBackupEnabled`.
     func syncSessionLogs() async {
         await propagateSessionLogErrors { await sessionLogSync.sync() }

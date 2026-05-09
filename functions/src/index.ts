@@ -759,7 +759,7 @@ export const connectHostedQuotaAccount = onCall(
       isDefault: request.data.accountID == null || accountID.endsWith("_default"),
       sortKey: accountID.endsWith("_default") ? 0 : Date.now(),
       lastValidatedAt: now,
-      lastRefreshAt: undefined,
+      lastRefreshAt: now,
       lastErrorCode: undefined,
       schemaVersion: ACCOUNT_SCHEMA_VERSION,
       createdAt,

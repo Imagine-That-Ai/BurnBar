@@ -7,7 +7,7 @@ OpenBurnBar can import existing Hermes conversations from the Mac Hermes data fo
 1. On macOS, open **Hermes Setup** or **Settings → General → Chat Backends**.
 2. Use **Bring your Hermes history** / **Import existing Hermes chats** to scan local Hermes data.
 3. Choose storage:
-   - **OpenBurnBar Cloud** uploads conversation metadata and chunked transcript bodies to the signed-in Firebase user namespace so iPhone and iPad can read them.
+   - **OpenBurnBar Cloud** uploads conversation metadata plus session-log manifests, snippets, and search terms to the signed-in Firebase user namespace. Full transcript bodies stay local or in the user's iCloud mirror.
    - **iCloud Drive archive** mirrors Hermes files and exports OpenBurnBar-normalized transcript JSON to the app iCloud Documents container for same-Apple-ID devices.
 4. On iOS/iPadOS, the Hermes tab shows live host sessions and imported library sessions. Imported sessions open read-only unless a live Mac relay is connected.
 

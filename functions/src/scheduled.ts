@@ -13,7 +13,7 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getFirestore } from "firebase-admin/firestore";
 import { getConfig } from "./config.js";
-import { computeUserRollups, writeUserRollups } from "./rollups.js";
+import { computeUserRollupsFromCounters, writeUserRollups } from "./rollups.js";
 import {
   refreshUserProviderAccountQuota,
   refreshUserProviderQuota,
@@ -59,7 +59,7 @@ export const rebuildRollups = onSchedule(
 
     for (const uid of uniqueUids) {
       try {
-        const rollups = await computeUserRollups(db, uid);
+        const rollups = await computeUserRollupsFromCounters(db, uid);
         await writeUserRollups(db, uid, rollups);
       } catch (err) {
         console.error(`Rollup failed for ${uid}:`, err);
@@ -97,10 +97,13 @@ export const refreshAllProviderQuotas = onSchedule(
     const accountQuery = db
       .collectionGroup("provider_accounts")
       .where("status", "==", "connected")
+      .where("storageScope", "in", ["cloud_refreshable", "server_private"])
+      .orderBy("lastRefreshAt", "asc")
       .limit(quotaRefreshBatchSize);
 
     const accountSnapshot = await accountQuery.get();
     const refreshedLegacyKeys = new Set<string>();
+    const refreshedAccountRefs = new Set<string>();
 
     for (const doc of accountSnapshot.docs) {
       // Path: users/{uid}/provider_accounts/{accountID}
@@ -108,9 +111,7 @@ export const refreshAllProviderQuotas = onSchedule(
       const uid = parts[1];
       const accountID = parts[3];
       const data = doc.data();
-      if (data.storageScope !== "cloud_refreshable") {
-        continue;
-      }
+      refreshedAccountRefs.add(doc.ref.path);
       refreshedLegacyKeys.add(`${uid}/${data.providerID}`);
 
       try {
@@ -126,7 +127,40 @@ export const refreshAllProviderQuotas = onSchedule(
       }
     }
 
-    const legacyRemaining = Math.max(0, quotaRefreshBatchSize - accountSnapshot.size);
+    const missingRefreshAtRemaining = Math.max(0, quotaRefreshBatchSize - refreshedAccountRefs.size);
+    if (missingRefreshAtRemaining > 0) {
+      const missingRefreshAtSnapshot = await db
+        .collectionGroup("provider_accounts")
+        .where("status", "==", "connected")
+        .where("storageScope", "in", ["cloud_refreshable", "server_private"])
+        .limit(missingRefreshAtRemaining)
+        .get();
+
+      for (const doc of missingRefreshAtSnapshot.docs) {
+        if (refreshedAccountRefs.has(doc.ref.path) || doc.get("lastRefreshAt") != null) {
+          continue;
+        }
+
+        const parts = doc.ref.path.split("/");
+        const uid = parts[1];
+        const accountID = parts[3];
+        const data = doc.data();
+        refreshedAccountRefs.add(doc.ref.path);
+        refreshedLegacyKeys.add(`${uid}/${data.providerID}`);
+
+        try {
+          await refreshUserProviderAccountQuota(db, uid, accountID);
+        } catch (err) {
+          console.error(`Quota refresh failed for ${uid}/${accountID}:`, err);
+          await doc.ref.update({
+            lastErrorCode: (err as Error).message,
+            lastRefreshAt: new Date().toISOString(),
+          });
+        }
+      }
+    }
+
+    const legacyRemaining = Math.max(0, quotaRefreshBatchSize - refreshedAccountRefs.size);
     if (legacyRemaining === 0) {
       return;
     }
@@ -134,6 +168,7 @@ export const refreshAllProviderQuotas = onSchedule(
     const connSnapshot = await db
       .collectionGroup("provider_connections")
       .where("status", "==", "connected")
+      .orderBy("lastRefreshAt", "asc")
       .limit(legacyRemaining)
       .get();
 

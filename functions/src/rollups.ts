@@ -1,12 +1,16 @@
 /**
  * @fileoverview Usage rollup computation.
  *
- * Reads raw usage events from Firestore, computes per-window aggregates, and
- * writes `usage_rollups/{windowKey}` documents. All computation is idempotent:
- * re-running with the same input produces the same output.
+ * Maintains compact daily usage counters, computes per-window aggregates, and
+ * writes `usage_rollups/{windowKey}` documents. The scheduled path reads only
+ * counter documents; raw usage scans are reserved for explicit repair/backfill.
  */
 
-import { type Firestore } from "firebase-admin/firestore";
+import { createHash } from "node:crypto";
+import {
+  FieldValue,
+  type Firestore,
+} from "firebase-admin/firestore";
 import type {
   UsageEventDoc,
   UsageRollupDoc,
@@ -18,6 +22,7 @@ import type {
 } from "./types.js";
 
 const ROLLUP_SCHEMA_VERSION = 3;
+const COUNTER_SCHEMA_VERSION = 1;
 
 /** Window keys in ascending granularity order. */
 const WINDOW_KEYS = ["today", "7d", "30d", "90d", "all_time"] as const;
@@ -38,6 +43,37 @@ type RollupEvent = {
   tokens: number;
   cost?: number;
   model?: string;
+};
+
+type UsageCounterContribution = {
+  logicalKey: string;
+  day: string;
+  provider: string;
+  providerID: string;
+  accountKey: string;
+  accountID?: string;
+  accountLabel: string;
+  storageScope?: string;
+  model?: string;
+  deviceId?: string;
+  requests: number;
+  tokens: number;
+  costUsd: number;
+};
+
+type UsageCounterCandidate = UsageCounterContribution & {
+  candidateKey: string;
+  provenanceRank: number;
+  updatedMillis: number;
+  modelRank: number;
+};
+
+type CounterWriter = {
+  set(
+    ref: FirebaseFirestore.DocumentReference,
+    data: FirebaseFirestore.DocumentData,
+    options: FirebaseFirestore.SetOptions
+  ): unknown;
 };
 
 function coerceDate(value: unknown): Date | undefined {
@@ -273,6 +309,21 @@ function stripUndefined<T>(value: T): T {
   return value;
 }
 
+function safeCounterSegment(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, "_");
+  return (normalized || "unknown").slice(0, 140);
+}
+
+function stableCounterKey(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function counterDocID(value: string): string {
+  const prefix = safeCounterSegment(value).slice(0, 80);
+  const digest = stableCounterKey(value).slice(0, 16);
+  return `${prefix}_${digest}`;
+}
+
 function eventProviderID(ev: UsageEventDoc): string {
   return ev.providerID ?? ev.provider;
 }
@@ -305,146 +356,529 @@ function windowPredicate(key: WindowKey, now: Date): (date: Date) => boolean {
   }
 }
 
+function usageContribution(
+  ev: UsageEventDoc | undefined,
+  candidateKey = ""
+): UsageCounterCandidate | undefined {
+  if (!ev) return undefined;
+  const date = eventDate(ev);
+  if (!date) return undefined;
+  const metrics = eventMetrics(ev);
+  const providerID = eventProviderID(ev);
+  const accountKey = accountSummaryKey(ev);
+  const model = eventModel(ev);
+  return {
+    logicalKey: logicalUsageKey(ev, date, metrics),
+    candidateKey,
+    day: toUtcDate(date),
+    provider: ev.provider,
+    providerID,
+    accountKey,
+    accountID: ev.providerAccountID,
+    accountLabel: ev.providerAccountLabel ?? "Usage not linked to an account yet",
+    storageScope: ev.providerAccountSource,
+    model,
+    deviceId: ev.deviceId ?? ev.sourceDeviceId,
+    requests: 1,
+    tokens: metrics.tokens,
+    costUsd: metrics.cost ?? 0,
+    provenanceRank: provenanceRank(ev),
+    updatedMillis: eventUpdatedMillis(ev),
+    modelRank: modelRank(model),
+  };
+}
+
+function addContributionToBucket(
+  writer: CounterWriter,
+  bucketRef: FirebaseFirestore.DocumentReference,
+  contribution: UsageCounterContribution,
+  direction: 1 | -1,
+  now: string,
+  bucketFields: Record<string, string>
+): void {
+  const deltaRequests = direction * contribution.requests;
+  const deltaTokens = direction * contribution.tokens;
+  const deltaCost = direction * contribution.costUsd;
+
+  writer.set(
+    bucketRef,
+    stripUndefined({
+      ...bucketFields,
+      requests: FieldValue.increment(deltaRequests),
+      tokens: FieldValue.increment(deltaTokens),
+      costUsd: FieldValue.increment(deltaCost),
+      updatedAt: now,
+      schemaVersion: COUNTER_SCHEMA_VERSION,
+    }),
+    { merge: true }
+  );
+
+  const providerRef = bucketRef.collection("providers").doc(counterDocID(contribution.provider));
+  writer.set(
+    providerRef,
+    stripUndefined({
+      provider: contribution.provider,
+      providerID: contribution.providerID,
+      requests: FieldValue.increment(deltaRequests),
+      tokens: FieldValue.increment(deltaTokens),
+      costUsd: FieldValue.increment(deltaCost),
+      updatedAt: now,
+      schemaVersion: COUNTER_SCHEMA_VERSION,
+    }),
+    { merge: true }
+  );
+
+  const accountRef = bucketRef.collection("accounts").doc(counterDocID(contribution.accountKey));
+  writer.set(
+    accountRef,
+    stripUndefined({
+      provider: contribution.provider,
+      providerID: contribution.providerID,
+      accountID: contribution.accountID,
+      accountLabel: contribution.accountLabel,
+      storageScope: contribution.storageScope,
+      requests: FieldValue.increment(deltaRequests),
+      tokens: FieldValue.increment(deltaTokens),
+      costUsd: FieldValue.increment(deltaCost),
+      updatedAt: now,
+      schemaVersion: COUNTER_SCHEMA_VERSION,
+    }),
+    { merge: true }
+  );
+
+  if (contribution.model) {
+    const modelRef = bucketRef
+      .collection("models")
+      .doc(counterDocID(`${contribution.provider}:${contribution.model}`));
+    writer.set(
+      modelRef,
+      stripUndefined({
+        provider: contribution.provider,
+        model: contribution.model,
+        requests: FieldValue.increment(deltaRequests),
+        tokens: FieldValue.increment(deltaTokens),
+        costUsd: FieldValue.increment(deltaCost),
+        updatedAt: now,
+        schemaVersion: COUNTER_SCHEMA_VERSION,
+      }),
+      { merge: true }
+    );
+  }
+
+  if (contribution.deviceId) {
+    const deviceRef = bucketRef.collection("devices").doc(counterDocID(contribution.deviceId));
+    writer.set(
+      deviceRef,
+      stripUndefined({
+        deviceId: contribution.deviceId,
+        requests: FieldValue.increment(deltaRequests),
+        tokens: FieldValue.increment(deltaTokens),
+        updatedAt: now,
+        schemaVersion: COUNTER_SCHEMA_VERSION,
+      }),
+      { merge: true }
+    );
+  }
+}
+
+function addContribution(
+  writer: CounterWriter,
+  db: Firestore,
+  uid: string,
+  contribution: UsageCounterContribution,
+  direction: 1 | -1,
+  now: string
+): void {
+  const dayRef = db.doc(`users/${uid}/usage_counter_days/${contribution.day}`);
+  addContributionToBucket(writer, dayRef, contribution, direction, now, {
+    day: contribution.day,
+  });
+
+  const allTimeRef = db.doc(`users/${uid}/usage_counter_totals/all_time`);
+  addContributionToBucket(writer, allTimeRef, contribution, direction, now, {
+    windowKey: "all_time",
+  });
+}
+
+function betterCounterCandidate(
+  candidate: UsageCounterCandidate,
+  existing: UsageCounterCandidate
+): boolean {
+  if (candidate.provenanceRank !== existing.provenanceRank) {
+    return candidate.provenanceRank > existing.provenanceRank;
+  }
+  if (candidate.updatedMillis !== existing.updatedMillis) {
+    return candidate.updatedMillis > existing.updatedMillis;
+  }
+  if (candidate.modelRank !== existing.modelRank) {
+    return candidate.modelRank > existing.modelRank;
+  }
+  if (candidate.costUsd !== existing.costUsd) {
+    return candidate.costUsd < existing.costUsd;
+  }
+  return candidate.candidateKey >= existing.candidateKey;
+}
+
+function selectCounterWinner(
+  candidates: Record<string, UsageCounterCandidate>
+): UsageCounterCandidate | undefined {
+  let winner: UsageCounterCandidate | undefined;
+  for (const candidate of Object.values(candidates)) {
+    if (!winner || betterCounterCandidate(candidate, winner)) {
+      winner = candidate;
+    }
+  }
+  return winner;
+}
+
+function sameCounterCandidate(
+  a: UsageCounterCandidate | undefined,
+  b: UsageCounterCandidate | undefined
+): boolean {
+  return a?.candidateKey === b?.candidateKey &&
+    a?.logicalKey === b?.logicalKey &&
+    a?.day === b?.day &&
+    a?.provider === b?.provider &&
+    a?.providerID === b?.providerID &&
+    a?.accountKey === b?.accountKey &&
+    a?.accountID === b?.accountID &&
+    a?.accountLabel === b?.accountLabel &&
+    a?.storageScope === b?.storageScope &&
+    a?.model === b?.model &&
+    a?.deviceId === b?.deviceId &&
+    a?.requests === b?.requests &&
+    a?.tokens === b?.tokens &&
+    a?.costUsd === b?.costUsd &&
+    a?.provenanceRank === b?.provenanceRank &&
+    a?.updatedMillis === b?.updatedMillis &&
+    a?.modelRank === b?.modelRank;
+}
+
+export async function applyUsageCounterDelta(
+  db: Firestore,
+  uid: string,
+  usageDoc: string,
+  before: UsageEventDoc | undefined,
+  after: UsageEventDoc | undefined
+): Promise<void> {
+  const candidateKey = stableCounterKey(usageDoc);
+  const oldContribution = usageContribution(before, candidateKey);
+  const newContribution = usageContribution(after, candidateKey);
+  const affectedKeys = new Set<string>();
+  if (oldContribution) affectedKeys.add(oldContribution.logicalKey);
+  if (newContribution) affectedKeys.add(newContribution.logicalKey);
+  if (affectedKeys.size === 0) return;
+
+  const now = new Date().toISOString();
+
+  await db.runTransaction(async (transaction) => {
+    for (const logicalKey of affectedKeys) {
+      const keyRef = db.doc(`users/${uid}/usage_counter_keys/${stableCounterKey(logicalKey)}`);
+      const snap = await transaction.get(keyRef);
+      const existing = snap.exists ? snap.data() ?? {} : {};
+      const candidates = {
+        ...((existing.candidates as Record<string, UsageCounterCandidate> | undefined) ?? {}),
+      };
+      const previousWinner = selectCounterWinner(candidates);
+
+      if (oldContribution?.logicalKey === logicalKey) {
+        delete candidates[candidateKey];
+      }
+      if (newContribution?.logicalKey === logicalKey) {
+        candidates[candidateKey] = newContribution;
+      }
+
+      const nextWinner = selectCounterWinner(candidates);
+      if (!sameCounterCandidate(previousWinner, nextWinner)) {
+        if (previousWinner) {
+          addContribution(transaction, db, uid, previousWinner, -1, now);
+        }
+        if (nextWinner) {
+          addContribution(transaction, db, uid, nextWinner, 1, now);
+        }
+      }
+
+      transaction.set(
+        keyRef,
+        stripUndefined({
+          logicalKey,
+          candidates,
+          winner: nextWinner,
+          updatedAt: now,
+          schemaVersion: COUNTER_SCHEMA_VERSION,
+        }),
+        { merge: false }
+      );
+    }
+  });
+}
+
+async function queryCounterDocs(
+  db: Firestore,
+  collection: string,
+  bucketPaths: string[]
+): Promise<FirebaseFirestore.DocumentData[]> {
+  const snapshots = await Promise.all(
+    bucketPaths.map((path) => db.collection(`${path}/${collection}`).get())
+  );
+  return snapshots.flatMap((snapshot) => snapshot.docs.map((doc) => doc.data()));
+}
+
+function sumNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function windowDays(key: WindowKey, now: Date): string[] | undefined {
+  if (key === "all_time") return undefined;
+  const count = key === "today" ? 1 : key === "7d" ? 7 : key === "30d" ? 30 : 90;
+  const days: string[] = [];
+  const cursor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  for (let i = 0; i < count; i += 1) {
+    days.push(toUtcDate(cursor));
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+  return days;
+}
+
 export async function computeUserRollups(
   db: Firestore,
   uid: string
 ): Promise<Record<WindowKey, UsageRollupDoc>> {
-  const usageRef = db.collection(`users/${uid}/usage`);
-  const snapshot = await usageRef.get();
-  const events = dedupeUsageEvents(snapshot.docs
-    .map((d) => d.data() as UsageEventDoc)
-    .map((event) => ({ event, date: eventDate(event) }))
-    .filter((entry): entry is { event: UsageEventDoc; date: Date } => {
-      return entry.date != null;
-    })
-    .map(({ event, date }) => {
-      const metrics = eventMetrics(event);
-      return {
-        event,
-        date,
-        tokens: metrics.tokens,
-        cost: metrics.cost,
-        model: eventModel(event),
-      };
-    }));
+  await rebuildUserRollupCounters(db, uid);
+  return computeUserRollupsFromCounters(db, uid);
+}
 
+export async function computeUserRollupsFromCounters(
+  db: Firestore,
+  uid: string
+): Promise<Record<WindowKey, UsageRollupDoc>> {
   const now = new Date();
   const results = {} as Record<WindowKey, UsageRollupDoc>;
 
   for (const key of WINDOW_KEYS) {
-    const pred = windowPredicate(key, now);
-    const filtered = events.filter((entry) => pred(entry.date));
+    const days = windowDays(key, now);
+    const allTimePath = `users/${uid}/usage_counter_totals/all_time`;
+    const bucketPaths: string[] = [];
+    const bucketDocs = key === "all_time"
+      ? await db.doc(allTimePath).get().then((snap) => {
+          if (!snap.exists) return [];
+          bucketPaths.push(allTimePath);
+          return [snap.data() ?? {}];
+        })
+      : await Promise.all(days!.map((day) => db.doc(`users/${uid}/usage_counter_days/${day}`).get()))
+          .then((snapshots) => snapshots
+          .filter((snap): snap is FirebaseFirestore.DocumentSnapshot<FirebaseFirestore.DocumentData> => "exists" in snap && snap.exists)
+          .map((snap) => {
+            const data = snap.data() ?? {};
+            const day = typeof data.day === "string" ? data.day : "";
+            if (day) bucketPaths.push(`users/${uid}/usage_counter_days/${day}`);
+            return data;
+          }));
+
+    const [providers, accounts, models, devices] = await Promise.all([
+      queryCounterDocs(db, "providers", bucketPaths),
+      queryCounterDocs(db, "accounts", bucketPaths),
+      queryCounterDocs(db, "models", bucketPaths),
+      queryCounterDocs(db, "devices", bucketPaths),
+    ]);
+
+    const totals = bucketDocs.reduce(
+      (acc, doc) => {
+        acc.requests += sumNumber(doc.requests);
+        acc.tokens += sumNumber(doc.tokens);
+        acc.costUsd += sumNumber(doc.costUsd);
+        return acc;
+      },
+      { requests: 0, tokens: 0, costUsd: 0 }
+    );
+
+    const dailyPointDocs = key === "all_time"
+      ? (await db.collection(`users/${uid}/usage_counter_days`).get()).docs.map((doc) => doc.data())
+      : bucketDocs;
+    const dailyPoints = Object.fromEntries(
+      dailyPointDocs
+        .map((doc) => [String(doc.day), sumNumber(doc.tokens)] as const)
+        .filter(([day, tokens]) => day && tokens !== 0)
+    );
 
     const providerMap = new Map<string, ProviderSummary>();
+    for (const doc of providers) {
+      const provider = typeof doc.provider === "string" ? doc.provider : "unknown";
+      const existing = providerMap.get(provider);
+      if (existing) {
+        existing.totalRequests += sumNumber(doc.requests);
+        existing.totalTokens += sumNumber(doc.tokens);
+        existing.totalCost = (existing.totalCost ?? 0) + sumNumber(doc.costUsd);
+      } else {
+        providerMap.set(provider, {
+          provider: provider as ProviderSummary["provider"],
+          providerID: typeof doc.providerID === "string" ? doc.providerID : undefined,
+          totalRequests: sumNumber(doc.requests),
+          totalTokens: sumNumber(doc.tokens),
+          totalCost: sumNumber(doc.costUsd),
+        });
+      }
+    }
+
     const accountMap = new Map<string, ProviderAccountSummary>();
-    const modelMap = new Map<string, ModelSummary>();
-    const deviceMap = new Map<string, DeviceSummary>();
-    const dailyPoints = new Map<string, number>();
-    let totalRequests = 0;
-    let totalTokens = 0;
-    let totalCost = 0;
-
-    for (const entry of filtered) {
-      const { event: ev, date } = entry;
-      totalRequests += 1;
-      const tokens = entry.tokens;
-      const evCost = entry.cost;
-      totalTokens += tokens;
-      if (evCost != null) totalCost += evCost;
-
-      const pKey = ev.provider;
-      const providerID = eventProviderID(ev);
-      const pEx = providerMap.get(pKey);
-      if (pEx) {
-        pEx.totalRequests += 1;
-        pEx.totalTokens += tokens;
-        if (evCost != null) pEx.totalCost = (pEx.totalCost ?? 0) + evCost;
+    for (const doc of accounts) {
+      const providerID = typeof doc.providerID === "string" ? doc.providerID : "unknown";
+      const id = typeof doc.accountID === "string" ? doc.accountID : `${providerID}:unattributed`;
+      const existing = accountMap.get(id);
+      if (existing) {
+        existing.totalRequests += sumNumber(doc.requests);
+        existing.totalTokens += sumNumber(doc.tokens);
+        existing.totalCost = (existing.totalCost ?? 0) + sumNumber(doc.costUsd);
       } else {
-        providerMap.set(pKey, {
-          provider: ev.provider,
-          providerID,
-          totalRequests: 1,
-          totalTokens: tokens,
-          totalCost: evCost ?? undefined,
-        });
-      }
-
-      const aKey = accountSummaryKey(ev);
-      const aEx = accountMap.get(aKey);
-      if (aEx) {
-        aEx.totalRequests += 1;
-        aEx.totalTokens += tokens;
-        if (evCost != null) aEx.totalCost = (aEx.totalCost ?? 0) + evCost;
-      } else {
-        accountMap.set(aKey, {
-          id: aKey,
-          providerID,
-          accountID: ev.providerAccountID,
+        accountMap.set(id, {
+          id,
+          providerID: providerID as ProviderAccountSummary["providerID"],
+          accountID: typeof doc.accountID === "string" ? doc.accountID : undefined,
           accountLabel:
-            ev.providerAccountLabel ?? "Usage not linked to an account yet",
-          storageScope: ev.providerAccountSource,
-          totalRequests: 1,
-          totalTokens: tokens,
-          totalCost: evCost ?? undefined,
+            typeof doc.accountLabel === "string"
+              ? doc.accountLabel
+              : "Usage not linked to an account yet",
+          storageScope: typeof doc.storageScope === "string" ? doc.storageScope as ProviderAccountSummary["storageScope"] : undefined,
+          totalRequests: sumNumber(doc.requests),
+          totalTokens: sumNumber(doc.tokens),
+          totalCost: sumNumber(doc.costUsd),
         });
       }
+    }
 
-      const model = entry.model;
-      if (model) {
-        const mKey = `${ev.provider}:${model}`;
-        const mEx = modelMap.get(mKey);
-        if (mEx) {
-          mEx.requests += 1;
-          mEx.tokens += tokens;
-          if (evCost != null) mEx.cost = (mEx.cost ?? 0) + evCost;
-        } else {
-          modelMap.set(mKey, {
-            model,
-            provider: ev.provider,
-            requests: 1,
-            tokens,
-            cost: evCost ?? undefined,
-          });
-        }
+    const modelMap = new Map<string, ModelSummary>();
+    for (const doc of models) {
+      const provider = typeof doc.provider === "string" ? doc.provider : "unknown";
+      const model = typeof doc.model === "string" ? doc.model : "";
+      if (!model) continue;
+      const id = `${provider}:${model}`;
+      const existing = modelMap.get(id);
+      if (existing) {
+        existing.requests += sumNumber(doc.requests);
+        existing.tokens += sumNumber(doc.tokens);
+        existing.cost = (existing.cost ?? 0) + sumNumber(doc.costUsd);
+      } else {
+        modelMap.set(id, {
+          provider: provider as ModelSummary["provider"],
+          model,
+          requests: sumNumber(doc.requests),
+          tokens: sumNumber(doc.tokens),
+          cost: sumNumber(doc.costUsd),
+        });
       }
+    }
 
-      const deviceId = ev.deviceId ?? ev.sourceDeviceId;
-      if (deviceId) {
-        const dEx = deviceMap.get(deviceId);
-        if (dEx) {
-          dEx.requests += 1;
-          dEx.tokens += tokens;
-        } else {
-          deviceMap.set(deviceId, { deviceId, requests: 1, tokens });
-        }
+    const deviceMap = new Map<string, DeviceSummary>();
+    for (const doc of devices) {
+      const deviceId = typeof doc.deviceId === "string" ? doc.deviceId : "";
+      if (!deviceId) continue;
+      const existing = deviceMap.get(deviceId);
+      if (existing) {
+        existing.requests += sumNumber(doc.requests);
+        existing.tokens += sumNumber(doc.tokens);
+      } else {
+        deviceMap.set(deviceId, {
+          deviceId,
+          requests: sumNumber(doc.requests),
+          tokens: sumNumber(doc.tokens),
+        });
       }
-
-      const day = toUtcDate(date);
-      dailyPoints.set(day, (dailyPoints.get(day) ?? 0) + tokens);
     }
 
     results[key] = {
-      today: key === "today" ? totalTokens : 0,
-      "7d": key === "7d" ? totalTokens : 0,
-      "30d": key === "30d" ? totalTokens : 0,
-      "90d": key === "90d" ? totalTokens : 0,
-      all_time: key === "all_time" ? totalTokens : 0,
+      today: key === "today" ? totals.tokens : 0,
+      "7d": key === "7d" ? totals.tokens : 0,
+      "30d": key === "30d" ? totals.tokens : 0,
+      "90d": key === "90d" ? totals.tokens : 0,
+      all_time: key === "all_time" ? totals.tokens : 0,
       totals: {
-        requests: totalRequests,
-        tokens: totalTokens,
-        costUsd: Math.round(totalCost * 1e6) / 1e6,
+        requests: totals.requests,
+        tokens: totals.tokens,
+        costUsd: Math.round(totals.costUsd * 1e6) / 1e6,
       },
-      providerSummaries: Array.from(providerMap.values()),
-      accountSummaries: Array.from(accountMap.values()),
-      modelSummaries: Array.from(modelMap.values()),
-      deviceSummaries: Array.from(deviceMap.values()),
-      dailyPoints: Object.fromEntries(dailyPoints),
+      providerSummaries: Array.from(providerMap.values()).filter((entry) =>
+        entry.totalRequests !== 0 || entry.totalTokens !== 0 || (entry.totalCost ?? 0) !== 0
+      ),
+      accountSummaries: Array.from(accountMap.values()).filter((entry) =>
+        entry.totalRequests !== 0 || entry.totalTokens !== 0 || (entry.totalCost ?? 0) !== 0
+      ),
+      modelSummaries: Array.from(modelMap.values()).filter((entry) =>
+        entry.requests !== 0 || entry.tokens !== 0 || (entry.cost ?? 0) !== 0
+      ),
+      deviceSummaries: Array.from(deviceMap.values()).filter((entry) =>
+        entry.requests !== 0 || entry.tokens !== 0
+      ),
+      dailyPoints,
       computedAt: now.toISOString(),
       schemaVersion: ROLLUP_SCHEMA_VERSION,
     };
   }
 
   return results;
+}
+
+export async function rebuildUserRollupCounters(
+  db: Firestore,
+  uid: string
+): Promise<void> {
+  const existingCounters = await db.collection(`users/${uid}/usage_counter_days`).get();
+  for (const doc of existingCounters.docs) {
+    await db.recursiveDelete(doc.ref);
+  }
+  const existingTotals = await db.collection(`users/${uid}/usage_counter_totals`).get();
+  for (const doc of existingTotals.docs) {
+    await db.recursiveDelete(doc.ref);
+  }
+  const existingKeys = await db.collection(`users/${uid}/usage_counter_keys`).get();
+  for (const doc of existingKeys.docs) {
+    await db.recursiveDelete(doc.ref);
+  }
+
+  const usageRef = db.collection(`users/${uid}/usage`);
+  const snapshot = await usageRef.get();
+  const candidatesByLogicalKey = new Map<string, Record<string, UsageCounterCandidate>>();
+
+  for (const doc of snapshot.docs) {
+    const event = doc.data() as UsageEventDoc;
+    const contribution = usageContribution(event, stableCounterKey(doc.id));
+    if (!contribution) continue;
+    const candidates = candidatesByLogicalKey.get(contribution.logicalKey) ?? {};
+    candidates[contribution.candidateKey] = contribution;
+    candidatesByLogicalKey.set(contribution.logicalKey, candidates);
+  }
+
+  const winners = [...candidatesByLogicalKey.entries()]
+    .map(([logicalKey, candidates]) => ({
+      logicalKey,
+      candidates,
+      winner: selectCounterWinner(candidates),
+    }))
+    .filter((entry): entry is {
+      logicalKey: string;
+      candidates: Record<string, UsageCounterCandidate>;
+      winner: UsageCounterCandidate;
+    } => entry.winner != null);
+
+  for (let i = 0; i < winners.length; i += 100) {
+    const batch = db.batch();
+    const now = new Date().toISOString();
+    for (const entry of winners.slice(i, i + 100)) {
+      addContribution(batch, db, uid, entry.winner, 1, now);
+      const keyRef = db.doc(`users/${uid}/usage_counter_keys/${stableCounterKey(entry.logicalKey)}`);
+      batch.set(
+        keyRef,
+        stripUndefined({
+          logicalKey: entry.logicalKey,
+          candidates: entry.candidates,
+          winner: entry.winner,
+          updatedAt: now,
+          schemaVersion: COUNTER_SCHEMA_VERSION,
+        }),
+        { merge: false }
+      );
+    }
+    await batch.commit();
+  }
 }
 
 export async function writeUserRollups(

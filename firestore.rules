@@ -77,6 +77,24 @@ service cloud.firestore {
         && hasActiveHostedQuotaEntitlement(userId);
     }
 
+    function ownerWritableSessionLogManifest(userId) {
+      return ownerWritableHostedCloudBackup(userId)
+        && !("body" in request.resource.data)
+        && !("payloadCiphertext" in request.resource.data)
+        && !("ciphertext" in request.resource.data)
+        && !("data" in request.resource.data)
+        && !("text" in request.resource.data);
+    }
+
+    function ownerWritableSessionLogChunk(userId) {
+      return ownerWritableHostedCloudBackup(userId)
+        && !("body" in request.resource.data)
+        && !("payloadCiphertext" in request.resource.data)
+        && !("ciphertext" in request.resource.data)
+        && !("data" in request.resource.data)
+        && !("text" in request.resource.data);
+    }
+
     function chatThreadIncludesBackedUpContent() {
       return request.resource.data.keys().hasAny(["messages", "title", "preview"])
         || (("contentIncluded" in request.resource.data)
@@ -268,12 +286,12 @@ service cloud.firestore {
 
     match /users/{userId}/session_logs/{logId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableHostedCloudBackup(userId);
+      allow create, update: if ownerWritableSessionLogManifest(userId);
       allow delete: if ownsUserNamespace(userId);
 
       match /chunks/{chunkId} {
         allow read: if ownsUserNamespace(userId);
-        allow create, update: if ownerWritableHostedCloudBackup(userId);
+        allow create, update: if ownerWritableSessionLogChunk(userId);
         allow delete: if ownsUserNamespace(userId);
       }
     }
@@ -362,6 +380,22 @@ service cloud.firestore {
     match /users/{userId}/usage_rollups/{rollupId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if false;
+    }
+
+    match /users/{userId}/usage_counter_days/{dayId} {
+      allow read, write: if false;
+
+      match /{counterCollection}/{counterId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /users/{userId}/usage_counter_totals/{totalId} {
+      allow read, write: if false;
+
+      match /{counterCollection}/{counterId} {
+        allow read, write: if false;
+      }
     }
 
     match /users/{userId}/rollup_jobs/{jobId} {

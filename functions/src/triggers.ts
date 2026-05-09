@@ -1,14 +1,15 @@
 /**
  * @fileoverview Firestore background triggers for OpenBurnBar.
  *
- * The usage-document trigger is intentionally lightweight: it only marks the
- * user's rollup job as dirty.  All heavy computation happens in scheduled
- * workers to keep trigger latency bounded and costs predictable.
+ * The usage-document trigger maintains compact per-window counter inputs and
+ * marks the user's rollup job dirty. Heavy rollup projection still happens in
+ * scheduled workers to keep trigger latency bounded and costs predictable.
  */
 
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { getFirestore } from "firebase-admin/firestore";
-import type { RollupJobDoc } from "./types.js";
+import { applyUsageCounterDelta } from "./rollups.js";
+import type { RollupJobDoc, UsageEventDoc } from "./types.js";
 
 /**
  * Firestore trigger: whenever a usage event is created, updated, or deleted,
@@ -30,6 +31,14 @@ export const onUsageWritten = onDocumentWritten(
     const uid = event.params.uid;
     const db = getFirestore();
     const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
+    const before = event.data?.before.exists
+      ? (event.data.before.data() as UsageEventDoc)
+      : undefined;
+    const after = event.data?.after.exists
+      ? (event.data.after.data() as UsageEventDoc)
+      : undefined;
+
+    await applyUsageCounterDelta(db, uid, event.params.usageDoc, before, after);
 
     // Conditional write: only flip dirty if not already dirty.
     // This reduces Firestore write volume for burst ingestion.
