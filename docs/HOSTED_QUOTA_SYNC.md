@@ -591,6 +591,31 @@ The shipped implementation is intentionally hybrid:
 - Codex hosted mode is the paid hosted path.
 - Claude Code self-hosted mode is the compliant remote path.
 - Self-hosted mode is the privacy/control path for both Claude Code and Codex.
+
+## Production Proof Command
+
+After a live buyer completes the StoreKit subscription flow, use the read-only
+proof command to verify that the paid entitlement and Firestore evidence exist:
+
+```bash
+OPENBURNBAR_PROOF_UID="FIREBASE_UID" \
+npm --prefix functions run prove:hosted-quota -- \
+  --project burnbar \
+  --environment Production \
+  --require-backup \
+  --require-hosted-quota
+```
+
+Use `--original-transaction-id APPLE_ORIGINAL_TRANSACTION_ID` when the operator
+captured it from StoreKit or App Store Server API logs. Use only the evidence
+flags the proof user actually exercised: `--require-backup` for paid chat /
+conversation / session-log backup, and `--require-hosted-quota` for hosted
+Codex quota refresh.
+
+The command fails unless the production
+`users/{uid}/entitlements/hosted_quota_sync` document is active, unexpired,
+for `com.openburnbar.hostedQuotaSync.monthly`, backed by a matching
+`entitlement_events` audit row, and has any requested backup/quota evidence.
 - Mac app refresh remains useful, but it is no longer required for Claude Code
   and Codex mobile quota updates.
 - Refresh is on demand only.

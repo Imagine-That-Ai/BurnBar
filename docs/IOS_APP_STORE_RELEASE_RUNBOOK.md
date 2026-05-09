@@ -142,3 +142,38 @@ npm --prefix tools/app-store-connect run status
 Expected state should move from `READY_FOR_REVIEW` to a review state such as
 `WAITING_FOR_REVIEW`. Because release type is `MANUAL`, approval should not
 automatically publish the app to customers.
+
+## Post-Approval Live Paid Proof
+
+Do not call the paid path production-proven until a real StoreKit purchase has
+created a server entitlement and unlocked paid Firestore backup for the buyer.
+After Apple approves the app and the manual release is complete:
+
+1. Install the App Store build, sign in with the paid-test Firebase user, and
+   buy `Hosted Quota Sync Monthly` through StoreKit.
+2. In the app, complete at least one paid backup action:
+   - enable backed-up chat/session content, or
+   - connect hosted Codex quota sync and run one hosted refresh.
+3. Capture the Firebase UID. If available, also capture the StoreKit
+   `originalTransactionID`.
+4. Run the read-only production proof:
+
+```bash
+OPENBURNBAR_PROOF_UID="FIREBASE_UID" \
+npm --prefix functions run prove:hosted-quota -- \
+  --project burnbar \
+  --environment Production \
+  --original-transaction-id "APPLE_ORIGINAL_TRANSACTION_ID" \
+  --require-backup \
+  --require-hosted-quota
+```
+
+If the proof user only exercised paid backup content, omit
+`--require-hosted-quota`. If the proof user only exercised hosted Codex quota,
+omit `--require-backup`.
+
+The command must print JSON with `ok: true`, the
+`users/{uid}/entitlements/hosted_quota_sync` path, a matching
+`entitlement_events` audit row, and the requested backup/quota evidence paths.
+Attach that JSON to the launch evidence bundle. A green App Store status alone
+is not enough.
