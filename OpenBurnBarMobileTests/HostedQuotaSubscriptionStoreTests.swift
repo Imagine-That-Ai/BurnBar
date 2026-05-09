@@ -28,7 +28,16 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         let service = FakeHostedQuotaEntitlementService(
             verifyResponse: .hostedQuota(active: true, expiresAt: expiresAt)
         )
-        let store = HostedQuotaSubscriptionStore(functions: service)
+        var didFinishTransaction = false
+        let store = HostedQuotaSubscriptionStore(
+            functions: service,
+            purchaseProduct: { _, _ in
+                .success(
+                    signedTransactionJWS: "signed-transaction-jws",
+                    finish: { didFinishTransaction = true }
+                )
+            }
+        )
         await store.load()
 
         await store.purchase()
@@ -36,12 +45,13 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertNil(store.error)
         XCTAssertTrue(store.isActive)
         XCTAssertEqual(store.expirationDate, expiresAt)
+        XCTAssertTrue(didFinishTransaction)
         XCTAssertEqual(service.bindingRequests.count, 1)
         XCTAssertEqual(service.bindingRequests.first?.productID, HostedQuotaSubscriptionStore.productID)
         XCTAssertEqual(service.bindingRequests.first?.clientPlatform, "ios")
-        XCTAssertGreaterThanOrEqual(service.verifyRequests.count, 1)
-        XCTAssertTrue(service.verifyRequests.allSatisfy { !$0.signedTransactionJWS.isEmpty })
-        XCTAssertTrue(service.verifyRequests.allSatisfy { $0.productID == HostedQuotaSubscriptionStore.productID })
+        XCTAssertEqual(service.verifyRequests.count, 1)
+        XCTAssertEqual(service.verifyRequests.first?.signedTransactionJWS, "signed-transaction-jws")
+        XCTAssertEqual(service.verifyRequests.first?.productID, HostedQuotaSubscriptionStore.productID)
     }
 
     func testRefreshFallsBackToServerEntitlementWhenNoLocalTransactionExists() async throws {
@@ -68,11 +78,16 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         let service = FakeHostedQuotaEntitlementService(
             restoreResponse: .hostedQuota(active: true, expiresAt: expiresAt)
         )
-        let store = HostedQuotaSubscriptionStore(functions: service)
+        var didSyncAppStore = false
+        let store = HostedQuotaSubscriptionStore(
+            functions: service,
+            syncAppStore: { didSyncAppStore = true }
+        )
 
         await store.restorePurchases()
 
         XCTAssertNil(store.error)
+        XCTAssertTrue(didSyncAppStore)
         XCTAssertTrue(store.isActive)
         XCTAssertEqual(store.expirationDate, expiresAt)
         XCTAssertEqual(service.restoreRequests.count, 1)

@@ -1,6 +1,7 @@
 import Foundation
 import FirebaseAppCheck
 import FirebaseAuth
+import FirebaseCore
 import FirebaseFirestore
 import OpenBurnBarCore
 
@@ -368,6 +369,9 @@ final class FirestoreHermesConnectionRepository: HermesConnectionListing {
     }
 
     func listHermesConnections() async throws -> [HermesConnectionRecord] {
+        guard FirebaseApp.app() != nil else {
+            throw FirestoreError.firebaseUnavailable
+        }
         guard let uid = Auth.auth().currentUser?.uid else {
             throw FirestoreError.notAuthenticated
         }
@@ -1286,6 +1290,8 @@ final class HermesService {
             displayText = hermesError.localizedDescription
         } else if let firestoreError = error as? FirestoreError {
             switch firestoreError {
+            case .firebaseUnavailable:
+                displayText = "Firebase is not configured for this build, so Remote Relay is unavailable."
             case .notAuthenticated:
                 displayText = "Sign in with the same OpenBurnBar account on this iPhone/iPad to use Remote Relay."
             case .decodingFailed(let message):
@@ -1970,6 +1976,9 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
         timeout: TimeInterval,
         onChunk: (HermesRelayChunkRecord) throws -> Void
     ) async throws {
+        guard FirebaseApp.app() != nil else {
+            throw FirestoreError.firebaseUnavailable
+        }
         guard let uid = Auth.auth().currentUser?.uid else {
             throw FirestoreError.notAuthenticated
         }
@@ -2170,6 +2179,9 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
     }
 
     private func firebaseIDToken() async throws -> String {
+        guard FirebaseApp.app() != nil else {
+            throw FirestoreError.firebaseUnavailable
+        }
         guard let user = Auth.auth().currentUser else {
             throw FirestoreError.notAuthenticated
         }
@@ -2205,7 +2217,8 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
 final class FirestoreHermesRelayTransport: HermesRelayTransporting {
     static let shared = FirestoreHermesRelayTransport()
 
-    private let db: Firestore
+    private let injectedDB: Firestore?
+    private var db: Firestore { injectedDB ?? Firestore.firestore() }
     private let pollIntervalNanoseconds: UInt64
 
     private struct RelayRequestHandle {
@@ -2214,8 +2227,8 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
         let keyData: Data
     }
 
-    init(db: Firestore = Firestore.firestore(), pollIntervalNanoseconds: UInt64 = 250_000_000) {
-        self.db = db
+    init(db: Firestore? = nil, pollIntervalNanoseconds: UInt64 = 250_000_000) {
+        self.injectedDB = db
         self.pollIntervalNanoseconds = pollIntervalNanoseconds
     }
 
@@ -2278,6 +2291,9 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
     }
 
     private func createRelayRequest(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> RelayRequestHandle {
+        guard FirebaseApp.app() != nil else {
+            throw FirestoreError.firebaseUnavailable
+        }
         guard let uid = Auth.auth().currentUser?.uid else {
             throw FirestoreError.notAuthenticated
         }
@@ -2352,6 +2368,9 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
         timeout: TimeInterval,
         onChunk: (HermesRelayChunkRecord) throws -> Void
     ) async throws {
+        guard FirebaseApp.app() != nil else {
+            throw FirestoreError.firebaseUnavailable
+        }
         guard let uid = Auth.auth().currentUser?.uid else {
             throw FirestoreError.notAuthenticated
         }
@@ -2445,6 +2464,7 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
     }
 
     private func cancelRelayRequest(_ requestID: String) async throws {
+        guard FirebaseApp.app() != nil else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
         try await requestRef(uid: uid, requestID: requestID).setData([
             "status": HermesRelayRequestStatus.cancelled.rawValue,

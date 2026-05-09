@@ -25,6 +25,19 @@ protocol HostedQuotaEntitlementServicing: AnyObject {
 
 extension FunctionsRepository: HostedQuotaEntitlementServicing {}
 
+enum HostedQuotaPurchaseOutcome {
+    case success(signedTransactionJWS: String, finish: @MainActor () async -> Void)
+    case pending
+    case userCancelled
+}
+
+typealias HostedQuotaProductPurchaseExecutor = @MainActor (
+    Product,
+    Set<Product.PurchaseOption>
+) async throws -> HostedQuotaPurchaseOutcome
+
+typealias HostedQuotaAppStoreSync = @MainActor () async throws -> Void
+
 /// StoreKit 2 surface for the Apple-verified hosted-quota entitlement.
 ///
 /// Trust model:
@@ -48,6 +61,8 @@ final class HostedQuotaSubscriptionStore {
     static let productID = "com.openburnbar.hostedQuotaSync.monthly"
 
     private let functions: any HostedQuotaEntitlementServicing
+    private let purchaseProduct: HostedQuotaProductPurchaseExecutor
+    private let syncAppStore: HostedQuotaAppStoreSync
 
     private(set) var product: Product?
     private(set) var isActive = false
@@ -74,8 +89,14 @@ final class HostedQuotaSubscriptionStore {
     /// JWS representation so the second call awaits the first.
     private var inFlightVerifyByJWS: [String: Task<Void, Error>] = [:]
 
-    init(functions: any HostedQuotaEntitlementServicing = FunctionsRepository.shared) {
+    init(
+        functions: any HostedQuotaEntitlementServicing = FunctionsRepository.shared,
+        purchaseProduct: @escaping HostedQuotaProductPurchaseExecutor = HostedQuotaSubscriptionStore.purchaseProduct,
+        syncAppStore: @escaping HostedQuotaAppStoreSync = HostedQuotaSubscriptionStore.syncAppStore
+    ) {
         self.functions = functions
+        self.purchaseProduct = purchaseProduct
+        self.syncAppStore = syncAppStore
     }
 
     deinit {
@@ -114,15 +135,12 @@ final class HostedQuotaSubscriptionStore {
             let purchaseOptions: Set<Product.PurchaseOption> = [
                 .appAccountToken(token),
             ]
-            let result = try await product.purchase(options: purchaseOptions)
+            let result = try await purchaseProduct(product, purchaseOptions)
             switch result {
-            case .success(let verification):
-                let transaction = try checked(verification)
-                try await verifyOnServer(jws: verification.jwsRepresentation)
-                await transaction.finish()
+            case .success(let signedTransactionJWS, let finish):
+                try await verifyOnServer(jws: signedTransactionJWS)
+                await finish()
             case .pending, .userCancelled:
-                break
-            @unknown default:
                 break
             }
         } catch {
@@ -147,7 +165,7 @@ final class HostedQuotaSubscriptionStore {
             //    user for their Apple ID password — that's the expected
             //    Apple behaviour and the only way `currentEntitlements`
             //    reflects fresh server state on a brand-new install.
-            try await AppStore.sync()
+            try await syncAppStore()
 
             // 2) Walk local entitlements. The first matching active JWS
             //    wins; we forward only the raw JWS so the server is the
@@ -210,7 +228,7 @@ final class HostedQuotaSubscriptionStore {
     private func findCurrentEntitlementJWS() async -> String? {
         for await result in Transaction.currentEntitlements {
             do {
-                let transaction = try checked(result)
+                let transaction = try Self.checked(result)
                 guard transaction.productID == Self.productID else { continue }
                 guard transaction.revocationDate == nil else { continue }
                 if let expires = transaction.expirationDate, expires <= Date() {
@@ -243,7 +261,7 @@ final class HostedQuotaSubscriptionStore {
 
     private func handleTransactionUpdate(_ update: VerificationResult<Transaction>) async {
         do {
-            let transaction = try checked(update)
+            let transaction = try Self.checked(update)
             guard transaction.productID == Self.productID else { return }
             try await verifyOnServer(jws: update.jwsRepresentation)
             await transaction.finish()
@@ -291,7 +309,32 @@ final class HostedQuotaSubscriptionStore {
         expirationDate = response.expiresAt
     }
 
-    private func checked<T>(_ result: VerificationResult<T>) throws -> T {
+    private static func purchaseProduct(
+        _ product: Product,
+        options: Set<Product.PurchaseOption>
+    ) async throws -> HostedQuotaPurchaseOutcome {
+        let result = try await product.purchase(options: options)
+        switch result {
+        case .success(let verification):
+            let transaction = try checked(verification)
+            return .success(
+                signedTransactionJWS: verification.jwsRepresentation,
+                finish: { await transaction.finish() }
+            )
+        case .pending:
+            return .pending
+        case .userCancelled:
+            return .userCancelled
+        @unknown default:
+            return .pending
+        }
+    }
+
+    private static func syncAppStore() async throws {
+        try await AppStore.sync()
+    }
+
+    private static func checked<T>(_ result: VerificationResult<T>) throws -> T {
         switch result {
         case .verified(let value): return value
         case .unverified(_, let error): throw error

@@ -30,6 +30,7 @@ env:
 jobs:
   build-and-release:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    environment: release
     # Keep release builds on the same current GA macOS/Xcode image as PR app
     # tests; Xcode 16.4 on macOS 15 crashes in SwiftEmitModule for this target.
     runs-on: macos-26
@@ -82,6 +83,12 @@ jobs:
           git fetch --force --tags origin "refs/tags/${TAG_NAME}:refs/tags/${TAG_NAME}"
           git checkout --detach "$TAG_NAME"
           echo "Building release tag $TAG_NAME at $(git rev-parse HEAD)"
+
+      - name: Install release security scanners
+        run: brew install gitleaks trufflehog
+
+      - name: Scan publishable tree for secrets
+        run: ./scripts/security/scan-publishable-tree.sh
 
       - name: Release preflight summary
         env:
@@ -223,6 +230,7 @@ jobs:
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
           echo "keychain_path=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
           echo "keychain_password=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
 
@@ -448,15 +456,26 @@ jobs:
         run: |
           METADATA_FILE="$RUNNER_TEMP/release-metadata.json"
 
-          cat > "$METADATA_FILE" <<EOF
-          {
-            "version": "${VERSION}",
-            "tag": "${TAG_NAME}",
-            "commit": "$(git rev-parse HEAD)",
-            "build_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "runner_os": "macos-15"
+          python3 - <<'PY' > "$METADATA_FILE"
+          import datetime
+          import json
+          import os
+          import subprocess
+
+          metadata = {
+              "version": os.environ["VERSION"],
+              "tag": os.environ["TAG_NAME"],
+              "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "build_timestamp": datetime.datetime.now(datetime.timezone.utc)
+                  .replace(microsecond=0)
+                  .isoformat()
+                  .replace("+00:00", "Z"),
+              "runner_os": os.environ.get("RUNNER_OS", "unknown"),
+              "runner_arch": os.environ.get("RUNNER_ARCH", "unknown"),
+              "runner_name": os.environ.get("RUNNER_NAME", "unknown"),
           }
-          EOF
+          print(json.dumps(metadata, indent=2, sort_keys=True))
+          PY
 
           echo "metadata_path=$METADATA_FILE" >> "$GITHUB_OUTPUT"
           cat "$METADATA_FILE"
@@ -507,6 +526,17 @@ jobs:
       - name: Clean up Firebase config
         if: always()
         run: bash ./scripts/ci/cleanup-firebase-config.sh
+
+      - name: Clean up signing and notary artifacts
+        if: always()
+        run: |
+          if [[ -n "${keychain_path:-}" ]]; then
+            security delete-keychain "$keychain_path" || true
+          fi
+          if [[ -n "${notary_key_path:-}" ]]; then
+            rm -f "$notary_key_path"
+          fi
+          rm -f "$RUNNER_TEMP/certificate.p12"
 
   smoke-test:
     needs: build-and-release
@@ -661,14 +691,3 @@ jobs:
       - name: Clean up Firebase config
         if: always()
         run: bash ./scripts/ci/cleanup-firebase-config.sh
-
-      - name: Clean up signing and notary artifacts
-        if: always()
-        run: |
-          if [[ -n "${keychain_path:-}" && -n "${keychain_password:-}" ]]; then
-            security delete-keychain "$keychain_path" || true
-          fi
-          if [[ -n "${notary_key_path:-}" ]]; then
-            rm -f "$notary_key_path"
-          fi
-          rm -f "$RUNNER_TEMP/certificate.p12"

@@ -1,5 +1,6 @@
 import Foundation
 import FirebaseAuth
+import FirebaseCore
 
 // MARK: - Auth Repository
 
@@ -7,25 +8,34 @@ import FirebaseAuth
 final class AuthRepository {
     static let shared = AuthRepository()
 
-    private let auth = Auth.auth()
+    private var auth: Auth? {
+        guard FirebaseApp.app() != nil else { return nil }
+        return Auth.auth()
+    }
 
-    var currentUser: User? { auth.currentUser }
+    var isFirebaseAvailable: Bool { FirebaseApp.app() != nil }
 
-    var isSignedIn: Bool { auth.currentUser != nil }
+    var currentUser: User? { auth?.currentUser }
+
+    var isSignedIn: Bool { auth?.currentUser != nil }
 
     func signInAnonymously() async throws -> User {
+        guard let auth else { throw CloudGatewayError.classified(.firebaseUnavailable) }
         let result = try await auth.signInAnonymously()
         return result.user
     }
 
     func signOut() throws {
+        guard let auth else { return }
         try auth.signOut()
     }
 
+    @discardableResult
     func addStateDidChangeListener(
         _ callback: @escaping @Sendable (User?) -> Void
-    ) -> AuthStateDidChangeListenerHandle {
-        auth.addStateDidChangeListener { _, user in
+    ) -> AuthStateDidChangeListenerHandle? {
+        guard let auth else { return nil }
+        return auth.addStateDidChangeListener { _, user in
             callback(user)
         }
     }
@@ -36,7 +46,7 @@ final class AuthRepository {
     @discardableResult
     func observeAuthChanges(
         _ callback: @escaping @Sendable (User?) -> Void
-    ) -> AuthStateDidChangeListenerHandle {
+    ) -> AuthStateDidChangeListenerHandle? {
         addStateDidChangeListener(callback)
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import FirebaseAuth
+import FirebaseCore
 import FirebaseFirestore
 import OpenBurnBarCore
 import OSLog
@@ -24,10 +25,11 @@ struct StreamSessionLogManifest: Identifiable, Hashable, Sendable {
 final class FirestoreRepository {
     static let shared = FirestoreRepository()
 
-    private let db = Firestore.firestore()
+    private var db: Firestore { Firestore.firestore() }
 
     nonisolated func currentUserDisplayID() -> String? {
-        Self.redactedUserID(Auth.auth().currentUser?.uid)
+        guard FirebaseApp.app() != nil else { return nil }
+        return Self.redactedUserID(Auth.auth().currentUser?.uid)
     }
 
     nonisolated static func redactedUserID(_ uid: String?) -> String? {
@@ -36,6 +38,9 @@ final class FirestoreRepository {
     }
 
     private func uid() throws -> String {
+        guard FirebaseApp.app() != nil else {
+            throw FirestoreError.firebaseUnavailable
+        }
         guard let uid = Auth.auth().currentUser?.uid else {
             throw FirestoreError.notAuthenticated
         }
@@ -47,7 +52,7 @@ final class FirestoreRepository {
     /// Returns `true` when a string matches ISO-8601 instant format.
     /// Used by `sanitizeForJSON` so Cloud Function date strings convert
     /// to the Double epoch that `JSONDecoder.deferredToDate` expects.
-    private static let isoDateRegex = try! NSRegularExpression(
+    nonisolated private static let isoDateRegex = try! NSRegularExpression(
         pattern: #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$"#
     )
     private nonisolated static func isISODateString(_ s: String) -> Bool {
@@ -305,6 +310,10 @@ final class FirestoreRepository {
     func listenToRollups(
         onUpdate: @escaping @Sendable (Result<[UsageRollupDoc], Error>) -> Void
     ) -> ListenerRegistration? {
+        guard FirebaseApp.app() != nil else {
+            onUpdate(.failure(FirestoreError.firebaseUnavailable))
+            return nil
+        }
         guard let uid = Auth.auth().currentUser?.uid else {
             onUpdate(.failure(FirestoreError.notAuthenticated))
             return nil
@@ -347,6 +356,10 @@ final class FirestoreRepository {
     func listenToQuotaSnapshots(
         onUpdate: @escaping @Sendable (Result<[ProviderQuotaSnapshot], Error>) -> Void
     ) -> ListenerRegistration? {
+        guard FirebaseApp.app() != nil else {
+            onUpdate(.failure(FirestoreError.firebaseUnavailable))
+            return nil
+        }
         guard let uid = Auth.auth().currentUser?.uid else {
             onUpdate(.failure(FirestoreError.notAuthenticated))
             return nil
@@ -567,11 +580,13 @@ final class FirestoreRepository {
 // MARK: - Firestore Error
 
 enum FirestoreError: Error, LocalizedError {
+    case firebaseUnavailable
     case notAuthenticated
     case decodingFailed(String)
 
     var errorDescription: String? {
         switch self {
+        case .firebaseUnavailable: return "Firebase is not configured."
         case .notAuthenticated: return "Not signed in."
         case .decodingFailed(let message): return message
         }

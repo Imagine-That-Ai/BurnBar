@@ -1,4 +1,5 @@
 import FirebaseAuth
+import FirebaseCore
 import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
@@ -37,12 +38,15 @@ enum MobileDeviceIdentity {
 /// Reads Firestore, manages device trust state, handles encrypted credential import.
 @MainActor
 final class LiveCloudReader: CloudReader {
-    private let db = Firestore.firestore()
+    private var db: Firestore { Firestore.firestore() }
     private let firestore: FirestoreRepository
 
     init(firestore: FirestoreRepository = FirestoreRepository()) { self.firestore = firestore }
 
-    private var uid: String? { Auth.auth().currentUser?.uid }
+    private var uid: String? {
+        guard FirebaseApp.app() != nil else { return nil }
+        return Auth.auth().currentUser?.uid
+    }
     private var deviceId: String {
         MobileDeviceIdentity.loadOrCreateDeviceId()
     }
@@ -252,8 +256,11 @@ final class LiveCloudReader: CloudReader {
 
 @MainActor
 final class LiveDeviceTrustGateway: DeviceTrustGateway {
-    private let db = Firestore.firestore()
-    private var uid: String? { Auth.auth().currentUser?.uid }
+    private var db: Firestore { Firestore.firestore() }
+    private var uid: String? {
+        guard FirebaseApp.app() != nil else { return nil }
+        return Auth.auth().currentUser?.uid
+    }
     private var deviceId: String {
         MobileDeviceIdentity.loadOrCreateDeviceId()
     }
@@ -338,7 +345,7 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
 
 @MainActor
 final class LiveEscrowGateway: EscrowGateway {
-    private let db = Firestore.firestore()
+    private var db: Firestore { Firestore.firestore() }
     private let keypair: iOSDeviceKeypair?
     private let keypairInitializationError: Error?
     private var listener: ListenerRegistration?
@@ -359,7 +366,10 @@ final class LiveEscrowGateway: EscrowGateway {
         }
     }
 
-    private var uid: String? { Auth.auth().currentUser?.uid }
+    private var uid: String? {
+        guard FirebaseApp.app() != nil else { return nil }
+        return Auth.auth().currentUser?.uid
+    }
     private var deviceId: String {
         MobileDeviceIdentity.loadOrCreateDeviceId()
     }
