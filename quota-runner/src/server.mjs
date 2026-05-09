@@ -47,7 +47,7 @@ function requireAuth(req) {
 }
 
 async function route(req, res) {
-  if (req.method === "GET" && req.url === "/healthz") {
+  if (req.method === "GET" && (req.url === "/healthz" || req.url === "/readyz")) {
     writeJSON(res, 200, { ok: true });
     return;
   }

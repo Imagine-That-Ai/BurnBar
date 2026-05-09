@@ -18,9 +18,15 @@ Mac → Firestore (usage, quota snapshots)
    npm install
    ```
 
-2. **Configure KMS key**
+2. **Configure runtime params and secrets**
    ```bash
-   firebase functions:config:set openburnbar.kms_key_name=projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY
+   firebase functions:secrets:set HOSTED_QUOTA_RUNNER_TOKEN
+
+   cat > .env.PROJECT_ID <<'EOF'
+   KMS_KEY_NAME=projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY
+   HOSTED_QUOTA_RUNNER_URL=https://openburnbar-quota-runner-PROJECT.REGION.run.app
+   HOSTED_QUOTA_PRODUCT_ID=com.openburnbar.hostedQuotaSync.monthly
+   EOF
    ```
 
 3. **Build**
