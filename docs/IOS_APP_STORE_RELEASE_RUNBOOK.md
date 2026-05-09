@@ -39,6 +39,17 @@ Status readback:
 npm --prefix tools/app-store-connect run status
 ```
 
+Full commercial launch gate:
+
+```bash
+scripts/commercial-launch-gate.mjs
+```
+
+The gate reads live App Store Connect state, branch protection, the most recent
+merged PR gate, Cloud Run, Redis, and quota-runner readiness. It prints
+`WAITING_ON_APPLE`, `READY_FOR_MANUAL_RELEASE`, `READY_FOR_LIVE_PAID_PROOF`, or
+`NO_GO` with the evidence that led to the verdict.
+
 Before final submission, the status output must show:
 
 - `iosVersion.state` is `READY_FOR_REVIEW` before final submission.
