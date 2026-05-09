@@ -68,6 +68,10 @@ xcuserdata/
 *.env
 *.pem
 *.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+*.developerprofile
 .encryption-key-recovery
 
 # Sentry — DSN is non-secret but keep local overrides out of source

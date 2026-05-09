@@ -17,8 +17,10 @@ final class LiveAuthGateway: NSObject, AuthGateway {
     init(authRepo: AuthRepository = AuthRepository()) {
         self.authRepo = authRepo
         super.init()
-        authRepo.observeAuthChanges { [weak self] (user: User?) in
-            Task { @MainActor in self?.observer?(Self.identity(from: user)) }
+        if authRepo.isFirebaseAvailable {
+            authRepo.observeAuthChanges { [weak self] (user: User?) in
+                Task { @MainActor in self?.observer?(Self.identity(from: user)) }
+            }
         }
     }
 
@@ -28,7 +30,7 @@ final class LiveAuthGateway: NSObject, AuthGateway {
         return p
     }
 
-    var isFirebaseAvailable: Bool { FirebaseApp.app() != nil }
+    var isFirebaseAvailable: Bool { authRepo.isFirebaseAvailable }
     var currentIdentity: MobileAuthIdentity? { Self.identity(from: authRepo.currentUser) }
 
     func observe(onChange: @escaping @MainActor (MobileAuthIdentity?) -> Void) {

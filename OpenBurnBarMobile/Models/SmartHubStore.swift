@@ -1,6 +1,7 @@
 import Foundation
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseCore
 import OpenBurnBarCore
 
 // MARK: - Smart Hub Store
@@ -23,10 +24,11 @@ final class SmartHubStore {
     private(set) var castState: CastState = .idle
     private(set) var isLoading = false
 
-    private let db: Firestore
+    private let injectedDB: Firestore?
+    private var db: Firestore { injectedDB ?? Firestore.firestore() }
 
-    init(db: Firestore = Firestore.firestore()) {
-        self.db = db
+    init(db: Firestore? = nil) {
+        self.injectedDB = db
     }
 
     /// `true` when a Mac in the user's account has published an enabled
@@ -44,6 +46,7 @@ final class SmartHubStore {
     /// user has signed into. We pick the most-recently-`publishedAt` doc
     /// so that only one Cast button shows even if two Macs are paired.
     func load() async {
+        guard FirebaseApp.app() != nil else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
         isLoading = true
         defer { isLoading = false }
@@ -122,6 +125,7 @@ final class SmartHubStore {
     /// `smart_hub_config` doc. The Mac picks it up via `applySettings`
     /// → bridge controller → device segmented control.
     func updateTimePeriod(_ period: SmartHubTimePeriod) async {
+        guard FirebaseApp.app() != nil else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
         do {
             let snapshot = try await db.collection("users").document(uid)
@@ -163,6 +167,9 @@ final class SmartHubStore {
     /// Publish a `test` action and wait for the Mac to populate
     /// `cast_discovery_results/latest`. Returns the device list.
     func runDiscovery() async throws -> [WizardCastDevice] {
+        guard FirebaseApp.app() != nil else {
+            throw NSError(domain: "SmartHubStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Firebase is not configured."])
+        }
         guard let uid = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "SmartHubStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Not signed in."])
         }
@@ -204,6 +211,9 @@ final class SmartHubStore {
     }
 
     private func publishAction(_ payload: [String: Any]) async throws -> WizardActionStatus {
+        guard FirebaseApp.app() != nil else {
+            throw NSError(domain: "SmartHubStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Firebase is not configured."])
+        }
         guard let uid = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "SmartHubStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Not signed in."])
         }

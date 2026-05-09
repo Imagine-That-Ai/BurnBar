@@ -10,9 +10,11 @@ repo commands plus a short web-only App Store Connect pass.
 - Apple app ID: `6766366964`
 - iOS bundle ID: `com.openburnbar.app`
 - iOS version: `1.0`
+- iOS version state: `WAITING_FOR_REVIEW` as of 2026-05-09
 - Linked build: `6`
 - Hosted quota subscription product: `com.openburnbar.hostedQuotaSync.monthly`
 - Subscription reference name: `Hosted Quota Sync Monthly`
+- Subscription state: `WAITING_FOR_REVIEW` as of 2026-05-09
 - App Store Server Notifications V2 URL:
   `https://us-central1-burnbar.cloudfunctions.net/appStoreServerNotificationsV2`
 
@@ -37,7 +39,7 @@ Status readback:
 npm --prefix tools/app-store-connect run status
 ```
 
-The status output must show:
+Before final submission, the status output must show:
 
 - `iosVersion.state` is `READY_FOR_REVIEW` before final submission.
 - `iosVersion.releaseType` is `MANUAL`.
@@ -51,6 +53,13 @@ The status output must show:
   write gate for the password.
 - Subscription state is `READY_TO_SUBMIT` before final submission.
 - Subscription `hasReviewScreenshot` is `true`.
+
+After final submission, the expected readback is:
+
+- `iosVersion.state` is `WAITING_FOR_REVIEW` or another Apple review state.
+- Subscription state is `WAITING_FOR_REVIEW` or another Apple review state.
+- `iosVersion.releaseType` remains `MANUAL` so approval does not publish to
+  customers automatically.
 
 ## Review Account
 

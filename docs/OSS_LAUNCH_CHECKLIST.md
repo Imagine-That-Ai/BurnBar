@@ -72,6 +72,23 @@ Re-check every item immediately before changing repository visibility.
 - GitHub Dependabot API reports 0 open alerts on the default branch after PR #45 landed the `fast-xml-builder@1.2.0` transitive override for Functions.
 - Current commercial-launch privacy review found `docs/PRIVACY.md` needed to disclose paid Firestore chat/session backup, iCloud mirroring, hosted quota credentials, Secret Manager, and App Store entitlement behavior.
 
+## Re-check snapshot on 2026-05-09
+
+- App Store Connect API reports iOS `1.0` state `WAITING_FOR_REVIEW`, manual
+  release enabled, linked build `6` valid and App Store eligible, non-exempt
+  encryption set to `false`, review account metadata present, and Hosted Quota
+  Sync Monthly state `WAITING_FOR_REVIEW` with a review screenshot.
+- Production Firebase Functions list includes the hosted entitlement callables,
+  App Store Server Notifications V2 webhook, daily entitlement reconciler, and
+  hosted quota account/refresh/delete callables in `us-central1` on Node 22.
+- Cloud Run reports `openburnbar-quota-runner` and `hermes-realtime-relay`
+  `RoutesReady=True`; Memorystore Redis `hermes-realtime-relay-redis-prod`
+  is `READY`.
+- Runtime env/secret readback confirms Apple ASC secrets are bound to the
+  Apple-aware functions, `HOSTED_QUOTA_RUNNER_TOKEN` is bound to the hosted
+  refresh callable and quota runner, and the hosted runner rejects an
+  authenticated probe with `unsupported provider` instead of `unauthorized`.
+
 ## Still needs manual confirmation before public launch
 
 - [ ] After the repository is public, enable private vulnerability reporting in repository settings (GitHub documents this as a public-repository feature)
