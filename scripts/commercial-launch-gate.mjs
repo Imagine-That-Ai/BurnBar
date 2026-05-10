@@ -191,6 +191,51 @@ function checkAppStoreServerNotifications(appStore) {
   };
 }
 
+function checkFirebaseAppCheckEnforcement() {
+  const projectNumber = run("gcloud", [
+    "projects",
+    "describe",
+    PROJECT,
+    "--format=value(projectNumber)",
+  ]);
+  if (!projectNumber.ok) {
+    return {
+      ok: false,
+      error: projectNumber.stderr || projectNumber.stdout || projectNumber.error,
+    };
+  }
+
+  const token = run("gcloud", ["auth", "print-access-token"]);
+  if (!token.ok) {
+    return { ok: false, error: token.stderr || token.stdout || token.error };
+  }
+
+  const serviceName = `projects/${projectNumber.stdout.trim()}/services/firestore.googleapis.com`;
+  const result = run("curl", [
+    "-fsS",
+    "-H",
+    `Authorization: Bearer ${token.stdout.trim()}`,
+    "-H",
+    `x-goog-user-project: ${PROJECT}`,
+    `https://firebaseappcheck.googleapis.com/v1beta/${serviceName}`,
+  ]);
+  if (!result.ok) {
+    return {
+      ok: false,
+      serviceName,
+      error: result.stderr || result.stdout || result.error,
+    };
+  }
+
+  const config = JSON.parse(result.stdout);
+  return {
+    ok: config.enforcementMode === "ENFORCED",
+    serviceName,
+    enforcementMode: config.enforcementMode || null,
+    updateTime: config.updateTime || null,
+  };
+}
+
 function checkProtection() {
   const result = run("gh", [
     "api",
@@ -486,6 +531,7 @@ async function main() {
     repo: checkRepo(),
     appStore,
     appStoreServerNotifications: checkAppStoreServerNotifications(appStore),
+    firebaseAppCheck: checkFirebaseAppCheckEnforcement(),
     branchProtection: checkProtection(),
     githubSecurity: checkGitHubSecuritySettings(),
     mainRequiredGate: checkMainRequiredGate(),
