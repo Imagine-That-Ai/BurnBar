@@ -15,6 +15,11 @@ const REGION = process.env.OPENBURNBAR_GCP_REGION || "us-central1";
 const REQUIRED_IOS_STATE = "PENDING_DEVELOPER_RELEASE";
 const LIVE_IOS_STATE = "READY_FOR_SALE";
 const PRODUCT_ID = "com.openburnbar.hostedQuotaSync.monthly";
+const REQUIRED_CODEQL_CHECKS = [
+  "Analyze (swift)",
+  "Analyze (javascript-typescript)",
+  "Analyze (python)",
+];
 const REQUIRED_FIREBASE_FUNCTIONS = [
   "appStoreServerNotificationsV2",
   "beginEntitlementBinding",
@@ -151,7 +156,7 @@ function checkProtection() {
       protection.allow_force_pushes?.enabled === false &&
       protection.allow_deletions?.enabled === false &&
       protection.required_pull_request_reviews?.required_approving_review_count === 1 &&
-      checks.includes("openburnbar-pr"),
+      ["openburnbar-pr", ...REQUIRED_CODEQL_CHECKS].every((check) => checks.includes(check)),
     requiredChecks: checks,
     reviewCount:
       protection.required_pull_request_reviews?.required_approving_review_count ?? 0,
@@ -210,6 +215,36 @@ function checkMainRequiredGate() {
     ok: required?.status === "completed" && required?.conclusion === "success",
     sha,
     openburnbarPr: required ? pickCheck(required) : null,
+  };
+}
+
+function checkMainCodeQL() {
+  const originMain = run("git", ["rev-parse", "origin/main"]);
+  if (!originMain.ok) {
+    return { ok: false, error: originMain.stderr || originMain.stdout || originMain.error };
+  }
+  const sha = originMain.stdout.trim();
+  const runs = run("gh", [
+    "api",
+    "-H",
+    "Accept: application/vnd.github+json",
+    `/repos/${REPO}/commits/${sha}/check-runs?per_page=100`,
+  ]);
+  if (!runs.ok) return { ok: false, sha, error: runs.stderr || runs.stdout };
+
+  const checkRuns = JSON.parse(runs.stdout).check_runs || [];
+  const byName = new Map(checkRuns.map((check) => [check.name, check]));
+  const checks = REQUIRED_CODEQL_CHECKS.map((name) => {
+    const check = byName.get(name);
+    return {
+      name,
+      ...(check ? pickCheck(check) : { status: "missing", conclusion: null, completedAt: null }),
+    };
+  });
+  return {
+    ok: checks.every((check) => check.status === "completed" && check.conclusion === "success"),
+    sha,
+    checks,
   };
 }
 
@@ -348,6 +383,7 @@ async function main() {
     appStore: checkAppStore(),
     branchProtection: checkProtection(),
     mainRequiredGate: checkMainRequiredGate(),
+    mainCodeQL: checkMainCodeQL(),
     latestMergedPrGate: checkLatestMergedPrGate(),
     cloudRun: checkCloudRun(),
     runnerReadyz: checkRunnerReadyz(),
