@@ -63,5 +63,4 @@ The checked-in policies watch, in priority order:
 1. Firestore document reads.
 2. Firestore data and index storage bytes.
 3. Cloud Run request rate as the hosted relay spend proxy.
-
-If Redis is enabled for the relay, add a Memorystore memory/connection policy in the Google Cloud console or extend `functions/scripts/create-billing-alert-policies.mjs` with the concrete Redis instance metric names for the deployed tier.
+4. Redis memory pressure and connected-client count.
