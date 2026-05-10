@@ -48,6 +48,26 @@ const FORBIDDEN_FIREBASE_FUNCTIONS = [
   // Apple-server-verified callables above.
   "syncHostedQuotaEntitlement",
 ];
+const REQUIRED_HOSTED_QUOTA_FUNCTIONS = [
+  {
+    id: "refreshProviderAccountQuota",
+    requiresRunnerToken: true,
+  },
+  {
+    id: "refreshAllProviderQuotas",
+    requiresRunnerToken: true,
+  },
+  {
+    id: "connectHostedQuotaAccount",
+    requiresRunnerToken: false,
+  },
+];
+const REQUIRED_HOSTED_QUOTA_ENV = {
+  ENFORCE_APP_CHECK: "true",
+  HOSTED_QUOTA_DAILY_REFRESH_LIMIT: "30",
+  HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT: "300",
+  HOSTED_QUOTA_PRODUCT_ID: PRODUCT_ID,
+};
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -478,6 +498,104 @@ function checkRedis() {
   };
 }
 
+function checkFunctionHostedQuotaRuntime(fn) {
+  const result = run("gcloud", [
+    "functions",
+    "describe",
+    fn.id,
+    "--gen2",
+    "--region",
+    REGION,
+    "--project",
+    PROJECT,
+    "--format=json",
+  ]);
+  if (!result.ok) {
+    return {
+      id: fn.id,
+      ok: false,
+      error: result.stderr || result.stdout || result.error,
+    };
+  }
+
+  const details = JSON.parse(result.stdout);
+  const env = details.serviceConfig?.environmentVariables || {};
+  const secretEnvVarNames = (details.serviceConfig?.secretEnvironmentVariables || [])
+    .map((entry) => entry.key)
+    .sort();
+  let runnerURL;
+  try {
+    runnerURL = new URL(env.HOSTED_QUOTA_RUNNER_URL || "");
+  } catch {
+    runnerURL = undefined;
+  }
+
+  const envChecks = Object.entries(REQUIRED_HOSTED_QUOTA_ENV).map(([name, expected]) => ({
+    name,
+    ok: env[name] === expected,
+    actual: env[name] ?? null,
+    expected,
+  }));
+  const runnerURLCheck = {
+    ok: runnerURL?.protocol === "https:",
+    host: runnerURL?.host || null,
+  };
+  const runnerTokenCheck = {
+    ok: !fn.requiresRunnerToken || secretEnvVarNames.includes("HOSTED_QUOTA_RUNNER_TOKEN"),
+    required: fn.requiresRunnerToken,
+    present: secretEnvVarNames.includes("HOSTED_QUOTA_RUNNER_TOKEN"),
+  };
+
+  return {
+    id: fn.id,
+    ok:
+      envChecks.every((check) => check.ok) &&
+      runnerURLCheck.ok &&
+      runnerTokenCheck.ok,
+    envChecks,
+    runnerURL: runnerURLCheck,
+    runnerTokenSecret: runnerTokenCheck,
+    secretEnvVarNames,
+  };
+}
+
+function checkHostedQuotaRuntime() {
+  const functions = REQUIRED_HOSTED_QUOTA_FUNCTIONS.map(checkFunctionHostedQuotaRuntime);
+  const runner = run("gcloud", [
+    "run",
+    "services",
+    "describe",
+    "openburnbar-quota-runner",
+    "--region",
+    REGION,
+    "--project",
+    PROJECT,
+    "--format=json",
+  ]);
+  let runnerConfig = {
+    ok: false,
+    error: runner.stderr || runner.stdout || runner.error,
+  };
+  if (runner.ok) {
+    const service = JSON.parse(runner.stdout);
+    const secretEnvVarNames = (service.spec?.template?.spec?.containers || [])
+      .flatMap((container) => container.env || [])
+      .filter((entry) => entry.valueFrom?.secretKeyRef?.name)
+      .map((entry) => entry.name)
+      .sort();
+    runnerConfig = {
+      ok: secretEnvVarNames.includes("RUNNER_SHARED_SECRET"),
+      secretEnvVarNames,
+    };
+  }
+
+  return {
+    ok: functions.every((fn) => fn.ok) && runnerConfig.ok,
+    functions,
+    runner: runnerConfig,
+  };
+}
+
 function metricTypesForPolicy(policy) {
   const filters = (policy.conditions || [])
     .map((condition) => condition.conditionThreshold?.filter || "")
@@ -601,6 +719,7 @@ async function main() {
     cloudRun: checkCloudRun(),
     runnerReadyz: checkRunnerReadyz(),
     redis: checkRedis(),
+    hostedQuotaRuntime: checkHostedQuotaRuntime(),
     billingAlerts: checkBillingAlerts(),
     firebaseFunctionsInventory: checkFirebaseFunctionsInventory(),
   };
