@@ -371,14 +371,14 @@ OpenBurnBar is a happy offline hermit by default. Cloud sync is for people who u
 **Pieces:**
 
 - **Primary store:** GRDB + SQLite — fast, local, yours. **Optional at-rest encryption** uses SQLCipher (SPM `GRDB-SQLCipher`, pinned with the daemon); the encryption key lives in the Keychain. When encryption is on, the build must link SQLCipher — see [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) and [docs/RUNBOOK.md](docs/RUNBOOK.md). SQLCipher licensing: [Zetetic](https://www.zetetic.net/sqlcipher/license/).
-- **Sync store:** Firestore under `users/{uid}/` — `usage`, `chat_threads` (OpenBurnBar in-app chat thread metadata by default; message bodies only when **Back Up Chat Message Content** is enabled), `conversations` (optional metadata backup), `session_logs` (+ `chunks` for full log backup when enabled). Hosted cloud backup writes for conversation metadata, chat content, session-log manifests/chunks, and Hermes relay traffic require the server-written `hosted_quota_sync` entitlement; metadata-only usage/chat-thread sync remains available without that paid entitlement.
+- **Sync store:** Firestore under `users/{uid}/` — `usage`, `chat_threads` (OpenBurnBar in-app chat thread metadata by default; message bodies only when **Back Up Chat Message Content** is enabled), `conversations` (optional metadata backup), `session_logs` (+ search metadata chunks when enabled). Hosted cloud backup writes for conversation metadata, chat content, session-log manifests/search metadata, and Hermes relay traffic require the server-written `hosted_quota_sync` entitlement; metadata-only usage/chat-thread sync remains available without that paid entitlement.
 - **Shared artifact sync:** Firestore under `workspaces/workspace-{uid}/teams/team-default/artifacts/{artifactID}` plus `versions/{revisionID}` for the current source-release collaboration head/history path
 - **Auth:** Firebase Auth — **Google** and/or **Sign in with Apple**
 - **App Check:** The app initializes App Check before Firebase; **production** Firebase projects must **enforce** App Check for **Cloud Firestore** in the console (Auth + rules are not enough). See [docs/FIREBASE_APP_CHECK_ENFORCEMENT.md](docs/FIREBASE_APP_CHECK_ENFORCEMENT.md).
 - **Device identity:** random UUID stored in local app defaults and migrated from legacy OpenBurnBar/AgentLens defaults keys
 - **iCloud mirror (optional):** copies parsed session log files into your **personal** iCloud Drive folder for the app (`Documents/OpenBurnBar/SessionMirror/...`). Independent of Firebase; see below.
 
-**Current cloud behavior:** when cloud sync is enabled, OpenBurnBar uploads usage rows and OpenBurnBar chat-thread metadata for cross-device resume. Chat titles, previews, and message bodies are uploaded only after enabling **Settings → Privacy & Indexing → Back Up Chat Message Content** and only when Firestore rules see an active Apple-verified `hosted_quota_sync` entitlement. The current source release also syncs shared-artifact heads/revisions through an owner-scoped Firestore path for local-first collaboration metadata. Conversation metadata and full session-log backup remain separately gated by their own settings and the same hosted-cloud entitlement.
+**Current cloud behavior:** when cloud sync is enabled, OpenBurnBar uploads usage rows and OpenBurnBar chat-thread metadata for cross-device resume. Chat titles, previews, and message bodies are uploaded only after enabling **Settings → Privacy & Indexing → Back Up Chat Message Content** and only when Firestore rules see an active Apple-verified `hosted_quota_sync` entitlement. The current source release also syncs shared-artifact heads/revisions through an owner-scoped Firestore path for local-first collaboration metadata. Conversation metadata and session-log manifests/search metadata remain separately gated by their own settings and the same hosted-cloud entitlement; large session-log bodies stay local or in the user's iCloud mirror.
 
 **Setup:**
 
@@ -398,7 +398,7 @@ OpenBurnBar is a happy offline hermit by default. Cloud sync is for people who u
 6. Configure the **Google Sign-In** URL scheme / OAuth client as Firebase/Google Cloud demand (the app ships `OpenBurnBar-Info.plist` entries for the bundled client; yours will differ in a fork).
 7. `xcodegen generate` and rebuild.
 
-**Privacy:** synced payloads can include **project directory names** and **model names**. **OpenBurnBar in-app chat message content** is excluded unless you explicitly enable **Back Up Chat Message Content**. If you also enable conversation/session-log backup, synced data can additionally include conversation metadata and full Markdown session-log bodies that may contain prompts or code snippets. You can disable sync in **Settings → Account** without sacrificing local history.
+**Privacy:** synced payloads can include **project directory names** and **model names**. **OpenBurnBar in-app chat message content** is excluded unless you explicitly enable **Back Up Chat Message Content**. If you also enable conversation/session-log backup, synced data can additionally include conversation metadata plus session-log manifests, snippets, and search terms. Full Markdown session-log bodies stay local or in the user's iCloud mirror. You can disable sync in **Settings → Account** without sacrificing local history.
 
 ### iCloud session file mirror (optional)
 
@@ -437,6 +437,7 @@ If mobile shows "No Mac data has been published yet" but the Mac is signed in, s
 - **Heuristics happen** wherever logs are shy about splits. Z.ai / MiniMax in analytics often arrive via Factory session fingerprints — clever, not clairvoyant.
 - **Menu bar first** — no always-on main window by default. That's a feature for people who already have seventeen windows.
 - **Cloud window:** uploaded totals emphasize roughly the **last 90 days**; ancient history stays local, like your old Xcode archives.
+- **Paid-scale Firebase bar:** before onboarding paid users, deploy the incremental rollup counters, large-field index exemptions, stale-first quota refresh, and billing alert policies documented in [Paid-Scale Firebase Runbook](docs/PAID_SCALE_FIREBASE_RUNBOOK.md).
 
 ---
 

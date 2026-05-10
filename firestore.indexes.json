@@ -80,6 +80,115 @@
         {"fieldPath": "id", "order": "ASCENDING"},
         {"fieldPath": "originalTransactionID", "order": "ASCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "provider_accounts",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "storageScope", "order": "ASCENDING"},
+        {"fieldPath": "lastRefreshAt", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "provider_connections",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "lastRefreshAt", "order": "ASCENDING"}
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "hermes_relay_requests",
+      "fieldPath": "body",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "hermes_relay_requests",
+      "fieldPath": "payloadCiphertext",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "chunks",
+      "fieldPath": "ciphertext",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "chunks",
+      "fieldPath": "data",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "chunks",
+      "fieldPath": "text",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "chunks",
+      "fieldPath": "terms",
+      "indexes": [
+        {
+          "arrayConfig": "CONTAINS",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "session_logs",
+      "fieldPath": "body",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "session_logs",
+      "fieldPath": "payloadCiphertext",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "session_logs",
+      "fieldPath": "chunkHashes",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "usage",
+      "fieldPath": "data",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "usage",
+      "fieldPath": "payloadCiphertext",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "usage_counter_days",
+      "fieldPath": "dailyPoints",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "usage_rollups",
+      "fieldPath": "accountSummaries",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "usage_rollups",
+      "fieldPath": "dailyPoints",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "usage_rollups",
+      "fieldPath": "deviceSummaries",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "usage_rollups",
+      "fieldPath": "modelSummaries",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "usage_rollups",
+      "fieldPath": "providerSummaries",
+      "indexes": []
     }
   ]
 }

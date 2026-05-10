@@ -78,6 +78,31 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertEqual(config.exposedModels, ["glm-5", "glm-5-turbo"])
     }
 
+    func test_extractTryCloudflareURL_acceptsCanonicalTunnelURL() {
+        let output = "2026-05-08T12:00:00Z INF | https://quick-burnbar.trycloudflare.com | tunnel ready"
+
+        XCTAssertEqual(
+            CursorConnectorManager.extractTryCloudflareURL(from: output),
+            "https://quick-burnbar.trycloudflare.com"
+        )
+    }
+
+    func test_extractTryCloudflareURL_trimsLogPunctuationAndNormalizesHost() {
+        let output = "<HTTPS://Mixed-Case.trycloudflare.com>, status=ok"
+
+        XCTAssertEqual(
+            CursorConnectorManager.extractTryCloudflareURL(from: output),
+            "https://mixed-case.trycloudflare.com"
+        )
+    }
+
+    func test_extractTryCloudflareURL_rejectsNonCanonicalOrUnsafeHosts() {
+        XCTAssertNil(CursorConnectorManager.extractTryCloudflareURL(from: "http://quick-burnbar.trycloudflare.com"))
+        XCTAssertNil(CursorConnectorManager.extractTryCloudflareURL(from: "https://nested.quick-burnbar.trycloudflare.com"))
+        XCTAssertNil(CursorConnectorManager.extractTryCloudflareURL(from: "https://quick-burnbar.trycloudflare.com.evil.example"))
+        XCTAssertNil(CursorConnectorManager.extractTryCloudflareURL(from: "https://trycloudflare.com"))
+    }
+
     func test_normalizeUsageEvent_includesCacheCreationTokensInTotals() {
         let normalized = CursorConnectorManager.normalizeUsageEvent([
             "prompt_tokens": 120,

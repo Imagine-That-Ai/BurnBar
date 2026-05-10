@@ -215,6 +215,18 @@ test("conversation and session-log backup require hosted cloud entitlement", asy
   await assertSucceeds(
     setDoc(doc(db, "users/carol/session_logs/device_log/chunks/0"), {
       index: 0,
+      hash: "hash",
+      snippet: "private markdown preview",
+      terms: ["private", "markdown"],
+      bodyStorage: "local_or_icloud",
+      schemaVersion: 3,
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/carol/session_logs/device_log/chunks/1"), {
+      index: 1,
       body: "full private markdown",
       hash: "hash",
       schemaVersion: 3,

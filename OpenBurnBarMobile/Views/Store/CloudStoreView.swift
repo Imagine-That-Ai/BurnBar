@@ -523,7 +523,7 @@ private struct CloudStoreComparisonCard: View {
     private let rows: [Row] = [
         Row(label: "Quota refresh",       free: "Local-only",       cloud: "On-demand, anywhere"),
         Row(label: "Chat backup",         free: "Metadata only",    cloud: "Full content"),
-        Row(label: "Session logs",        free: "Manifest only",    cloud: "Full chunks"),
+        Row(label: "Session logs",        free: "Manifest only",    cloud: "Search metadata"),
         Row(label: "Hermes Remote Relay", free: "Local network",    cloud: "Anywhere")
     ]
 

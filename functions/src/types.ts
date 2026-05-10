@@ -422,6 +422,35 @@ export interface UsageRollupDoc {
 }
 
 // ---------------------------------------------------------------------------
+// Firestore: users/{uid}/usage_counter_days/{yyyy-mm-dd}
+// Firestore: users/{uid}/usage_counter_totals/all_time
+// ---------------------------------------------------------------------------
+
+export interface UsageCounterDimensionDoc {
+  requests: number;
+  tokens: number;
+  costUsd: number;
+  provider?: Provider;
+  providerID?: ProviderID;
+  accountID?: string;
+  accountLabel?: string;
+  storageScope?: ProviderAccountStorageScope;
+  model?: string;
+  deviceId?: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+export interface UsageCounterDayDoc {
+  day: string;
+  requests: number;
+  tokens: number;
+  costUsd: number;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+// ---------------------------------------------------------------------------
 // Firestore: rollup_jobs/current
 // ---------------------------------------------------------------------------
 
