@@ -20,6 +20,10 @@ Without enforcement, a caller who obtains a **valid Firebase Auth ID token** (e.
 6. When ready, **Enforce** App Check for **Cloud Firestore** and confirm.
 7. Smoke-test: sign in, enable cloud sync, and confirm no `PERMISSION_DENIED` from Firestore in logs.
 
+`scripts/commercial-launch-gate.mjs` reads the live Firebase App Check service
+configuration through the Firebase App Check API and fails launch unless
+`firestore.googleapis.com` reports `ENFORCED`.
+
 ## Security rules and App Check
 
 The checked-in **Firestore rules** do not duplicate App Check: **enforcement is expected at the Firestore product** in App Check, as [documented by Firebase](https://firebase.google.com/docs/app-check/enable-enforcement). The rules file header in [firestore.rules](../firestore.rules) notes this, so a rules-only review is not misread as the full story.
