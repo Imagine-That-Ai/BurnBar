@@ -13,6 +13,7 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getFirestore } from "firebase-admin/firestore";
 import { getConfig } from "./config.js";
+import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 import { computeUserRollupsFromCounters, writeUserRollups } from "./rollups.js";
 import {
   refreshUserProviderAccountQuota,
@@ -89,6 +90,7 @@ export const refreshAllProviderQuotas = onSchedule(
   {
     schedule: "every 15 minutes",
     region: "us-central1",
+    secrets: HOSTED_RUNNER_SECRETS,
   },
   async (_event) => {
     const db = getFirestore();
