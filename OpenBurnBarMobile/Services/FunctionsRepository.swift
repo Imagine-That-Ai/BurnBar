@@ -160,9 +160,9 @@ final class FunctionsRepository {
         return doc
     }
 
-    func deleteHostedQuotaCredentials() async throws {
+    func deleteHostedQuotaCredentials(accountID: String = "codex_default") async throws {
         let callable = functions.httpsCallable("deleteHostedQuotaCredentials")
-        _ = try await callable.call([:])
+        _ = try await callable.call(["accountID": accountID])
     }
 
     func updateProviderAccount(accountID: String, label: String? = nil, isDefault: Bool? = nil, disabled: Bool? = nil) async throws -> ProviderAccountDoc {

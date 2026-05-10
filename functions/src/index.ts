@@ -909,7 +909,7 @@ export const deleteHostedQuotaCredentials = onCall(
       throw new HttpsError("unauthenticated", "Sign in before deleting hosted credentials.");
     }
     enforceAuthAndAppCheck(request, uid);
-    const accountID = accountIDFor("account", request.data.accountID);
+    const accountID = accountIDFor("codex", request.data.accountID);
     const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
     const accountSnap = await accountRef.get();
     if (!accountSnap.exists) {
