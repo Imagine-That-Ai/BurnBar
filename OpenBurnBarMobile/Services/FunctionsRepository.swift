@@ -135,26 +135,6 @@ final class FunctionsRepository {
         return snap
     }
 
-    func syncHostedQuotaEntitlement(
-        productID: String,
-        transactionID: String?,
-        originalTransactionID: String?,
-        expiresAt: Date?,
-        signedTransactionJWS: String?,
-        active: Bool
-    ) async throws {
-        let callable = functions.httpsCallable("syncHostedQuotaEntitlement")
-        var payload: [String: Any] = [
-            "productID": productID,
-            "active": active
-        ]
-        if let transactionID { payload["transactionID"] = transactionID }
-        if let originalTransactionID { payload["originalTransactionID"] = originalTransactionID }
-        if let expiresAt { payload["expiresAt"] = ISO8601DateFormatter().string(from: expiresAt) }
-        if let signedTransactionJWS { payload["signedTransactionJWS"] = signedTransactionJWS }
-        _ = try await callable.call(payload)
-    }
-
     func connectHostedQuotaAccount(
         providerID: ProviderID,
         credential: String,
