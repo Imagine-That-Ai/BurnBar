@@ -89,6 +89,57 @@ export const BILLING_ALERT_POLICIES = [
       },
     ],
   },
+  {
+    displayName: "OpenBurnBar Redis pressure",
+    documentation: {
+      content:
+        "Redis pressure is the hosted relay's stateful cost and reliability signal. Inspect Hermes socket fan-out, relay socket limits, and key TTL behavior before raising thresholds.",
+      mimeType: "text/markdown",
+    },
+    combiner: "OR",
+    requiredMetricTypes: [
+      "redis.googleapis.com/stats/memory/usage_ratio",
+      "redis.googleapis.com/clients/connected",
+    ],
+    conditions: [
+      {
+        displayName: "Redis memory usage exceeds 80%",
+        conditionThreshold: {
+          filter:
+            'resource.type="redis_instance" AND metric.type="redis.googleapis.com/stats/memory/usage_ratio"',
+          aggregations: [
+            {
+              alignmentPeriod: "300s",
+              perSeriesAligner: "ALIGN_MEAN",
+              crossSeriesReducer: "REDUCE_MAX",
+            },
+          ],
+          comparison: "COMPARISON_GT",
+          thresholdValue: 0.8,
+          duration: "600s",
+          trigger: { count: 1 },
+        },
+      },
+      {
+        displayName: "Redis connected clients exceed 1k",
+        conditionThreshold: {
+          filter:
+            'resource.type="redis_instance" AND metric.type="redis.googleapis.com/clients/connected"',
+          aggregations: [
+            {
+              alignmentPeriod: "60s",
+              perSeriesAligner: "ALIGN_MEAN",
+              crossSeriesReducer: "REDUCE_SUM",
+            },
+          ],
+          comparison: "COMPARISON_GT",
+          thresholdValue: 1000,
+          duration: "300s",
+          trigger: { count: 1 },
+        },
+      },
+    ],
+  },
 ];
 
 export function materializeBillingAlertPolicy(policy, notificationChannels) {
