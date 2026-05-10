@@ -148,6 +148,49 @@ function checkAppStore() {
   };
 }
 
+function appStoreNotificationProof(environment) {
+  const result = run(
+    "node",
+    ["tools/app-store-connect/asc-api.js", "test-server-notifications", environment],
+    {
+      env: secretEnv(),
+      timeout: 90_000,
+    }
+  );
+  const payload = result.stdout ? firstJSON(result.stdout) : null;
+  const proof = payload?.results?.find(
+    (item) => item.environment?.toLowerCase() === environment.toLowerCase()
+  );
+  return {
+    ok: result.ok && proof?.delivered === true,
+    requestStatus: proof?.requestStatus ?? null,
+    requestOk: proof?.requestOk ?? false,
+    hasToken: proof?.hasToken ?? false,
+    delivered: proof?.delivered ?? false,
+    firstSendAttemptResult: proof?.firstSendAttemptResult ?? null,
+    sendAttempts: proof?.sendAttempts ?? [],
+    error: proof?.error || (result.ok ? undefined : result.stderr || result.stdout || result.error),
+  };
+}
+
+function checkAppStoreServerNotifications(appStore) {
+  const sandbox = appStoreNotificationProof("sandbox");
+  const productionRequired = appStore?.state === LIVE_IOS_STATE;
+  const production = productionRequired
+    ? appStoreNotificationProof("production")
+    : {
+        ok: true,
+        skipped: true,
+        reason: "Production notification proof is required after App Store release.",
+      };
+  return {
+    ok: sandbox.ok && production.ok,
+    sandbox,
+    productionRequired,
+    production,
+  };
+}
+
 function checkProtection() {
   const result = run("gh", [
     "api",
@@ -438,9 +481,11 @@ function verdict(checks) {
 }
 
 async function main() {
+  const appStore = checkAppStore();
   const checks = {
     repo: checkRepo(),
-    appStore: checkAppStore(),
+    appStore,
+    appStoreServerNotifications: checkAppStoreServerNotifications(appStore),
     branchProtection: checkProtection(),
     githubSecurity: checkGitHubSecuritySettings(),
     mainRequiredGate: checkMainRequiredGate(),

@@ -568,7 +568,9 @@ warnings are not test failures.
   reports `delivered: true`. After App Store release,
   `npm --prefix tools/app-store-connect run test-server-notifications -- production`
   must also report `delivered: true`; Apple's production StoreKit API can
-  return `401` while the app is still unreleased.
+  return `401` while the app is still unreleased. `scripts/commercial-launch-gate.mjs`
+  enforces sandbox notification delivery now and production notification
+  delivery once App Store Connect reports the app as live.
 - `reconcileHostedEntitlementsDaily` scheduled job is deployed.
 - App Store Connect API secrets (`APP_STORE_ASC_KEY_ID`,
   `APP_STORE_ASC_ISSUER_ID`, `APP_STORE_ASC_KEY_P8`) are populated in
