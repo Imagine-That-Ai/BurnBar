@@ -172,6 +172,28 @@ function checkLatestMergedPrGate() {
   };
 }
 
+function checkMainRequiredGate() {
+  const originMain = run("git", ["rev-parse", "origin/main"]);
+  if (!originMain.ok) {
+    return { ok: false, error: originMain.stderr || originMain.stdout || originMain.error };
+  }
+  const sha = originMain.stdout.trim();
+  const runs = run("gh", [
+    "api",
+    "-H",
+    "Accept: application/vnd.github+json",
+    `/repos/${REPO}/commits/${sha}/check-runs?per_page=100`,
+  ]);
+  if (!runs.ok) return { ok: false, sha, error: runs.stderr || runs.stdout };
+  const checkRuns = JSON.parse(runs.stdout).check_runs || [];
+  const required = checkRuns.find((check) => check.name === "openburnbar-pr");
+  return {
+    ok: required?.status === "completed" && required?.conclusion === "success",
+    sha,
+    openburnbarPr: required ? pickCheck(required) : null,
+  };
+}
+
 function pickCheck(check) {
   return {
     status: check.status,
@@ -285,6 +307,7 @@ async function main() {
     repo: checkRepo(),
     appStore: checkAppStore(),
     branchProtection: checkProtection(),
+    mainRequiredGate: checkMainRequiredGate(),
     latestMergedPrGate: checkLatestMergedPrGate(),
     cloudRun: checkCloudRun(),
     runnerReadyz: checkRunnerReadyz(),
