@@ -20,6 +20,14 @@ const REQUIRED_CODEQL_CHECKS = [
   "Analyze (javascript-typescript)",
   "Analyze (python)",
 ];
+const REQUIRED_GITHUB_SECURITY_SETTINGS = [
+  "dependabot_security_updates",
+  "secret_scanning",
+  "secret_scanning_ai_detection",
+  "secret_scanning_non_provider_patterns",
+  "secret_scanning_push_protection",
+  "secret_scanning_validity_checks",
+];
 const REQUIRED_FIREBASE_FUNCTIONS = [
   "appStoreServerNotificationsV2",
   "beginEntitlementBinding",
@@ -163,6 +171,58 @@ function checkProtection() {
     adminsEnforced: protection.enforce_admins?.enabled === true,
     forcePushesAllowed: protection.allow_force_pushes?.enabled === true,
     deletionsAllowed: protection.allow_deletions?.enabled === true,
+  };
+}
+
+function ghJSON(path, options = {}) {
+  const result = run("gh", [
+    "api",
+    "-H",
+    "Accept: application/vnd.github+json",
+    path,
+  ], options);
+  if (!result.ok) {
+    return { ok: false, error: result.stderr || result.stdout || result.error };
+  }
+  return { ok: true, value: JSON.parse(result.stdout) };
+}
+
+function checkGitHubSecuritySettings() {
+  const repo = ghJSON(`/repos/${REPO}`);
+  if (!repo.ok) return repo;
+
+  const settings = repo.value.security_and_analysis || {};
+  const requiredSettings = Object.fromEntries(
+    REQUIRED_GITHUB_SECURITY_SETTINGS.map((name) => [
+      name,
+      settings[name]?.status === "enabled",
+    ])
+  );
+
+  const codeScanningAlerts = ghJSON(`/repos/${REPO}/code-scanning/alerts?state=open&per_page=100`);
+  const secretScanningAlerts = ghJSON(`/repos/${REPO}/secret-scanning/alerts?state=open&per_page=100`);
+  const dependabotAlerts = ghJSON(`/repos/${REPO}/dependabot/alerts?state=open&per_page=100`);
+
+  return {
+    ok:
+      Object.values(requiredSettings).every(Boolean) &&
+      codeScanningAlerts.ok &&
+      secretScanningAlerts.ok &&
+      dependabotAlerts.ok &&
+      codeScanningAlerts.value.length === 0 &&
+      secretScanningAlerts.value.length === 0 &&
+      dependabotAlerts.value.length === 0,
+    requiredSettings,
+    openAlerts: {
+      codeScanning: codeScanningAlerts.ok ? codeScanningAlerts.value.length : null,
+      secretScanning: secretScanningAlerts.ok ? secretScanningAlerts.value.length : null,
+      dependabot: dependabotAlerts.ok ? dependabotAlerts.value.length : null,
+    },
+    errors: {
+      codeScanning: codeScanningAlerts.ok ? undefined : codeScanningAlerts.error,
+      secretScanning: secretScanningAlerts.ok ? undefined : secretScanningAlerts.error,
+      dependabot: dependabotAlerts.ok ? undefined : dependabotAlerts.error,
+    },
   };
 }
 
@@ -382,6 +442,7 @@ async function main() {
     repo: checkRepo(),
     appStore: checkAppStore(),
     branchProtection: checkProtection(),
+    githubSecurity: checkGitHubSecuritySettings(),
     mainRequiredGate: checkMainRequiredGate(),
     mainCodeQL: checkMainCodeQL(),
     latestMergedPrGate: checkLatestMergedPrGate(),
