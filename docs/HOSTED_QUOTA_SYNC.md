@@ -564,6 +564,11 @@ warnings are not test failures.
   `appStoreServerNotificationsV2` HTTPS endpoint URL is configured in
   App Store Connect → App → App Information → App Store Server
   Notifications → Production / Sandbox URL.
+- `npm --prefix tools/app-store-connect run test-server-notifications -- sandbox`
+  reports `delivered: true`. After App Store release,
+  `npm --prefix tools/app-store-connect run test-server-notifications -- production`
+  must also report `delivered: true`; Apple's production StoreKit API can
+  return `401` while the app is still unreleased.
 - `reconcileHostedEntitlementsDaily` scheduled job is deployed.
 - App Store Connect API secrets (`APP_STORE_ASC_KEY_ID`,
   `APP_STORE_ASC_ISSUER_ID`, `APP_STORE_ASC_KEY_P8`) are populated in

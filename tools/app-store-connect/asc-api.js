@@ -16,6 +16,10 @@ const fs = require("fs");
 const path = require("path");
 
 const API_BASE = "https://api.appstoreconnect.apple.com/v1";
+const STOREKIT_BASES = {
+  Production: "https://api.storekit.apple.com",
+  Sandbox: "https://api.storekit-sandbox.apple.com",
+};
 
 const APP = {
   appleId: process.env.APP_STORE_APPLE_APP_ID || "6766366964",
@@ -146,6 +150,33 @@ function makeToken() {
   return `${signingInput}.${base64url(signature)}`;
 }
 
+function makeStoreKitToken() {
+  const keyId = requiredEnv("APP_STORE_ASC_KEY_ID", ["ASC_KEY_ID"]);
+  const issuerId = requiredEnv("APP_STORE_ASC_ISSUER_ID", ["ASC_ISSUER_ID"]);
+  const privateKey = requiredEnv("APP_STORE_ASC_KEY_P8", [
+    "ASC_PRIVATE_KEY",
+    "ASC_KEY_P8",
+  ]).replace(/\\n/g, "\n");
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "ES256", kid: keyId, typ: "JWT" };
+  const payload = {
+    iss: issuerId,
+    iat: now - 10,
+    exp: now + 15 * 60,
+    aud: "appstoreconnect-v1",
+    bid: APP.bundleId,
+  };
+  const signingInput = `${base64url(JSON.stringify(header))}.${base64url(
+    JSON.stringify(payload)
+  )}`;
+  const signature = crypto.sign("sha256", Buffer.from(signingInput), {
+    key: privateKey,
+    dsaEncoding: "ieee-p1363",
+  });
+  return `${signingInput}.${base64url(signature)}`;
+}
+
 function query(params) {
   const entries = Object.entries(params).filter(
     ([, value]) => value !== undefined && value !== null && value !== ""
@@ -179,6 +210,33 @@ async function api(method, resourcePath, body = undefined) {
   }
   if (!text) return null;
   return JSON.parse(text);
+}
+
+async function storeKitApi(environment, method, resourcePath) {
+  const base = STOREKIT_BASES[environment];
+  if (!base) throw new Error(`Unknown StoreKit environment: ${environment}`);
+
+  const response = await fetch(`${base}${resourcePath}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${makeStoreKitToken()}`,
+      Accept: "application/json",
+    },
+  });
+  const text = await response.text();
+  let payload = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = text;
+    }
+  }
+  return {
+    ok: response.ok,
+    status: response.status,
+    payload,
+  };
 }
 
 function data(type, attributes = {}, relationships = undefined, id = undefined) {
@@ -828,6 +886,112 @@ async function printStatus() {
   );
 }
 
+function notificationEnvironmentFromArg(arg) {
+  const value = (arg || "sandbox").toLowerCase();
+  if (value === "production" || value === "prod") return ["Production"];
+  if (value === "sandbox") return ["Sandbox"];
+  if (value === "both" || value === "all") return ["Sandbox", "Production"];
+  throw new Error(
+    `Unknown notification test environment "${arg}". Use sandbox, production, or both.`
+  );
+}
+
+function summarizeNotificationStatus(payload) {
+  const attempts = Array.isArray(payload?.sendAttempts)
+    ? payload.sendAttempts
+    : [];
+  const sanitizedAttempts = attempts.map((attempt) => ({
+    attemptDate: attempt.attemptDate,
+    sendAttemptResult: attempt.sendAttemptResult,
+  }));
+  return {
+    firstSendAttemptResult: payload?.firstSendAttemptResult || null,
+    sendAttempts: sanitizedAttempts,
+    delivered: sanitizedAttempts.some(
+      (attempt) => attempt.sendAttemptResult === "SUCCESS"
+    ),
+  };
+}
+
+async function requestServerNotificationTest(environment) {
+  const request = await storeKitApi(
+    environment,
+    "POST",
+    "/inApps/v1/notifications/test"
+  );
+  const result = {
+    environment,
+    requestStatus: request.status,
+    requestOk: request.ok,
+    hasToken: false,
+    delivered: false,
+  };
+  if (!request.ok) {
+    return {
+      ...result,
+      error: request.payload || "empty response body",
+    };
+  }
+
+  const testNotificationToken = request.payload?.testNotificationToken;
+  result.hasToken =
+    typeof testNotificationToken === "string" &&
+    testNotificationToken.length > 0;
+  if (!result.hasToken) {
+    return {
+      ...result,
+      error: "Apple accepted the request but did not return testNotificationToken",
+    };
+  }
+
+  for (let attempt = 1; attempt <= 10; attempt += 1) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, attempt === 1 ? 1500 : 3000)
+    );
+    const status = await storeKitApi(
+      environment,
+      "GET",
+      `/inApps/v1/notifications/test/${encodeURIComponent(testNotificationToken)}`
+    );
+    result.statusStatus = status.status;
+    result.statusOk = status.ok;
+    if (!status.ok) {
+      result.error = status.payload || "empty response body";
+      continue;
+    }
+    const summary = summarizeNotificationStatus(status.payload);
+    result.firstSendAttemptResult = summary.firstSendAttemptResult;
+    result.sendAttempts = summary.sendAttempts;
+    result.delivered = summary.delivered;
+    if (result.delivered) break;
+  }
+
+  return result;
+}
+
+async function testServerNotifications() {
+  const environments = notificationEnvironmentFromArg(process.argv[3]);
+  const results = [];
+  for (const environment of environments) {
+    results.push(await requestServerNotificationTest(environment));
+  }
+  const ok = results.every((result) => result.delivered);
+  console.log(
+    JSON.stringify(
+      {
+        generatedAt: new Date().toISOString(),
+        app: APP.appleId,
+        bundleId: APP.bundleId,
+        ok,
+        results,
+      },
+      null,
+      2
+    )
+  );
+  if (!ok) process.exitCode = 1;
+}
+
 async function prepareIos() {
   const version = await getLatestIosVersion();
   const localization = await getVersionLocalization(version.id);
@@ -857,6 +1021,7 @@ async function main() {
   if (command === "set-build-compliance") return setLinkedBuildCompliance();
   if (command === "set-manual-release") return setManualRelease();
   if (command === "release-approved-ios") return releaseApprovedIos();
+  if (command === "test-server-notifications") return testServerNotifications();
   if (command === "review-details") return upsertReviewDetail();
   if (command === "prepare-review-metadata") return prepareReviewMetadata();
   throw new Error(`Unknown command: ${command}`);

@@ -39,6 +39,17 @@ Status readback:
 npm --prefix tools/app-store-connect run status
 ```
 
+App Store Server Notifications test readback:
+
+```bash
+npm --prefix tools/app-store-connect run test-server-notifications -- sandbox
+```
+
+Run the sandbox test before launch to prove the webhook accepts Apple's V2
+`TEST` notification. After the app is released to the App Store, rerun with
+`production`; Apple can return `401` for production App Store Server API calls
+while an app is still unreleased.
+
 Full commercial launch gate:
 
 ```bash
@@ -186,6 +197,17 @@ npm --prefix tools/app-store-connect run release-approved-ios
 Immediately rerun status and then continue to the live paid proof below. Do not
 run this command before the paid-proof operator is ready; the release request is
 the real customer-facing publish action.
+
+Then prove the production App Store Server Notifications URL:
+
+```bash
+npm --prefix tools/app-store-connect run test-server-notifications -- production
+```
+
+The command must report `delivered: true` for `Production` before the paid path
+is called production-proven. If production still returns `401`, stop and verify
+the bundle ID, App Store Server API key, and Apple release propagation before
+testing paid users.
 
 ## Post-Approval Live Paid Proof
 
