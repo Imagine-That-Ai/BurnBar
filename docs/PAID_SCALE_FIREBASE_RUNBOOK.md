@@ -49,15 +49,19 @@ Keep the `chunks.terms` array index because `searchStreams` relies on `array-con
 Create alert policies before onboarding paid users:
 
 ```bash
-export GCLOUD_PROJECT=openburnbar-prod
-export BILLING_ALERT_CHANNELS=projects/openburnbar-prod/notificationChannels/CHANNEL_ID
+export GCLOUD_PROJECT=burnbar
+export BILLING_ALERT_CHANNELS=projects/burnbar/notificationChannels/CHANNEL_ID
 npm --prefix functions run alerts:billing
 ```
+
+`scripts/commercial-launch-gate.mjs` fails launch if any required policy is
+missing, disabled, duplicated, missing notification channels, or no longer
+watches its intended cost metric.
 
 The checked-in policies watch, in priority order:
 
 1. Firestore document reads.
-2. Firestore storage bytes.
+2. Firestore data and index storage bytes.
 3. Cloud Run request rate as the hosted relay spend proxy.
 
 If Redis is enabled for the relay, add a Memorystore memory/connection policy in the Google Cloud console or extend `functions/scripts/create-billing-alert-policies.mjs` with the concrete Redis instance metric names for the deployed tier.
