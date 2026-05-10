@@ -7,29 +7,34 @@ final class SelfHostedQuotaRunnerStore {
 
     private let defaults: UserDefaults
     private let functions: FunctionsRepository
-    private let keychainService = "com.openburnbar.mobile.self-hosted-quota-runner"
+    private let secrets: any SelfHostedQuotaRunnerSecretStoring
 
-    init(defaults: UserDefaults = .standard, functions: FunctionsRepository = .shared) {
+    init(
+        defaults: UserDefaults = .standard,
+        functions: FunctionsRepository = .shared,
+        secrets: any SelfHostedQuotaRunnerSecretStoring = KeychainSelfHostedQuotaRunnerSecrets()
+    ) {
         self.defaults = defaults
         self.functions = functions
+        self.secrets = secrets
     }
 
     func save(accountID: String, runnerURL: String, accessSecret: String?) throws {
         guard let url = Self.validatedRunnerURL(runnerURL) else {
             throw SelfHostedQuotaRunnerError.invalidURL
         }
-        defaults.set(url.absoluteString, forKey: urlKey(accountID))
         let secret = accessSecret?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if secret.isEmpty {
-            try deleteSecret(accountID: accountID)
+            try secrets.delete(accountID: accountID)
         } else {
-            try saveSecret(secret, accountID: accountID)
+            try secrets.save(secret, accountID: accountID)
         }
+        defaults.set(url.absoluteString, forKey: urlKey(accountID))
     }
 
     func delete(accountID: String) {
         defaults.removeObject(forKey: urlKey(accountID))
-        try? deleteSecret(accountID: accountID)
+        try? secrets.delete(accountID: accountID)
     }
 
     func refresh(account: ProviderAccountDoc) async throws -> ProviderQuotaSnapshot {
@@ -41,7 +46,7 @@ final class SelfHostedQuotaRunnerStore {
         var request = URLRequest(url: url, timeoutInterval: 45)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
-        if let secret = try loadSecret(accountID: account.id), secret.isEmpty == false {
+        if let secret = try secrets.load(accountID: account.id), secret.isEmpty == false {
             request.setValue("Bearer \(secret)", forHTTPHeaderField: "authorization")
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: [
@@ -98,8 +103,20 @@ final class SelfHostedQuotaRunnerStore {
         }
         return nil
     }
+}
 
-    private func saveSecret(_ value: String, accountID: String) throws {
+@MainActor
+protocol SelfHostedQuotaRunnerSecretStoring: AnyObject {
+    func save(_ value: String, accountID: String) throws
+    func load(accountID: String) throws -> String?
+    func delete(accountID: String) throws
+}
+
+@MainActor
+private final class KeychainSelfHostedQuotaRunnerSecrets: SelfHostedQuotaRunnerSecretStoring {
+    private let keychainService = "com.openburnbar.mobile.self-hosted-quota-runner"
+
+    func save(_ value: String, accountID: String) throws {
         let data = Data(value.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -119,7 +136,7 @@ final class SelfHostedQuotaRunnerStore {
         }
     }
 
-    private func loadSecret(accountID: String) throws -> String? {
+    func load(accountID: String) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
@@ -136,7 +153,7 @@ final class SelfHostedQuotaRunnerStore {
         return String(data: data, encoding: .utf8)
     }
 
-    private func deleteSecret(accountID: String) throws {
+    func delete(accountID: String) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
