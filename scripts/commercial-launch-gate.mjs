@@ -34,6 +34,8 @@ const REQUIRED_FIREBASE_FUNCTIONS = [
   "beginEntitlementBinding",
   "connectHostedQuotaAccount",
   "deleteUserCloudData",
+  "deleteHostedQuotaCredentials",
+  "deleteProviderAccount",
   "onUsageWritten",
   "rebuildRollups",
   "reconcileHostedEntitlementsDaily",
@@ -59,6 +61,14 @@ const REQUIRED_HOSTED_QUOTA_FUNCTIONS = [
   },
   {
     id: "connectHostedQuotaAccount",
+    requiresRunnerToken: false,
+  },
+  {
+    id: "deleteHostedQuotaCredentials",
+    requiresRunnerToken: false,
+  },
+  {
+    id: "deleteProviderAccount",
     requiresRunnerToken: false,
   },
 ];
