@@ -963,6 +963,7 @@ async function requestServerNotificationTest(environment) {
     result.firstSendAttemptResult = summary.firstSendAttemptResult;
     result.sendAttempts = summary.sendAttempts;
     result.delivered = summary.delivered;
+    delete result.error;
     if (result.delivered) break;
   }
 
