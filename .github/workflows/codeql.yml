@@ -82,6 +82,27 @@ jobs:
         if: matrix.language == 'swift'
         run: cp AgentLens/Resources/GoogleService-Info.plist.example AgentLens/Resources/GoogleService-Info.plist
 
+      # Binary SwiftPM targets, especially Sentry's XCFramework artifacts, can
+      # timeout on a cold macOS runner. Resolve packages with a bounded retry
+      # before the traced build so transient CDN failures do not mask real
+      # CodeQL/security signal.
+      - name: Resolve Swift packages (CodeQL)
+        if: matrix.language == 'swift'
+        run: |
+          for attempt in 1 2 3; do
+            if xcodebuild -project OpenBurnBar.xcodeproj \
+              -scheme OpenBurnBar \
+              -configuration Debug \
+              -derivedDataPath .codeql-derived-data \
+              -resolvePackageDependencies; then
+              exit 0
+            fi
+            if [ "$attempt" = "3" ]; then
+              exit 1
+            fi
+            sleep $((attempt * 20))
+          done
+
       # Swift build — resolves packages and compiles all targets so CodeQL
       # can trace the compiler. Runs after init (so CodeQL hooks the build)
       # and only on the swift matrix entry. Disable code signing because
