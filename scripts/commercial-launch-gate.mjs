@@ -15,6 +15,25 @@ const REGION = process.env.OPENBURNBAR_GCP_REGION || "us-central1";
 const REQUIRED_IOS_STATE = "PENDING_DEVELOPER_RELEASE";
 const LIVE_IOS_STATE = "READY_FOR_SALE";
 const PRODUCT_ID = "com.openburnbar.hostedQuotaSync.monthly";
+const REQUIRED_FIREBASE_FUNCTIONS = [
+  "appStoreServerNotificationsV2",
+  "beginEntitlementBinding",
+  "connectHostedQuotaAccount",
+  "deleteUserCloudData",
+  "onUsageWritten",
+  "rebuildRollups",
+  "reconcileHostedEntitlementsDaily",
+  "refreshAllProviderQuotas",
+  "refreshProviderAccountQuota",
+  "restoreHostedQuotaEntitlement",
+  "searchStreams",
+  "verifyHostedQuotaEntitlement",
+];
+const FORBIDDEN_FIREBASE_FUNCTIONS = [
+  // Legacy local-JWS-shape entitlement sync. The launch path must use the
+  // Apple-server-verified callables above.
+  "syncHostedQuotaEntitlement",
+];
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -275,6 +294,27 @@ function checkRedis() {
   };
 }
 
+function checkFirebaseFunctionsInventory() {
+  const result = run("firebase", [
+    "functions:list",
+    "--project",
+    PROJECT,
+    "--json",
+  ]);
+  if (!result.ok) return { ok: false, error: result.stderr || result.stdout };
+  const payload = JSON.parse(result.stdout);
+  const ids = (payload.result || []).map((fn) => fn.id).sort();
+  const idSet = new Set(ids);
+  const missing = REQUIRED_FIREBASE_FUNCTIONS.filter((id) => !idSet.has(id));
+  const forbiddenPresent = FORBIDDEN_FIREBASE_FUNCTIONS.filter((id) => idSet.has(id));
+  return {
+    ok: missing.length === 0 && forbiddenPresent.length === 0,
+    count: ids.length,
+    missing,
+    forbiddenPresent,
+  };
+}
+
 function verdict(checks) {
   const failures = Object.entries(checks)
     .filter(([, value]) => value?.ok === false)
@@ -312,6 +352,7 @@ async function main() {
     cloudRun: checkCloudRun(),
     runnerReadyz: checkRunnerReadyz(),
     redis: checkRedis(),
+    firebaseFunctionsInventory: checkFirebaseFunctionsInventory(),
   };
   const result = {
     generatedAt: new Date().toISOString(),

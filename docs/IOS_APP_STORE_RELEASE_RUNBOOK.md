@@ -46,8 +46,9 @@ scripts/commercial-launch-gate.mjs
 ```
 
 The gate reads live App Store Connect state, branch protection, the required
-`openburnbar-pr` check on `origin/main`, the most recent merged PR gate, Cloud
-Run, Redis, and quota-runner readiness. It prints
+`openburnbar-pr` check on `origin/main`, the most recent merged PR gate,
+production Firebase Functions inventory, Cloud Run, Redis, and quota-runner
+readiness. It prints
 `WAITING_ON_APPLE`, `READY_FOR_MANUAL_RELEASE`, `READY_FOR_LIVE_PAID_PROOF`, or
 `NO_GO` with the evidence that led to the verdict.
 
