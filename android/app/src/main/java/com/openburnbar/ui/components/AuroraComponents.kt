@@ -159,10 +159,13 @@ fun ProviderAvatar(
 }
 
 // ── Staggered Entrance ──
+// Spring-driven entrance matching iOS AnimatedEntranceModifier:
+// `.spring(response: 0.4, dampingFraction: 0.85)` + 12pt Y offset. Respects
+// the reduce-motion composition local.
 @Composable
 fun StaggeredEntrance(
     delay: Int = 0,
-    reduceMotion: Boolean = false,
+    reduceMotion: Boolean = LocalAuroraReduceMotion.current,
     content: @Composable () -> Unit
 ) {
     var visible by remember { mutableStateOf(false) }
@@ -177,22 +180,97 @@ fun StaggeredEntrance(
 
     val alpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(400, delayMillis = 0)
+        animationSpec = AuroraMotion.gentleSpec(),
+        label = "stagger-alpha"
     )
-
     val offsetY by animateDpAsState(
-        targetValue = if (visible) 0.dp else 20.dp,
-        animationSpec = tween(400, delayMillis = 0)
+        targetValue = if (visible) 0.dp else 12.dp,
+        animationSpec = AuroraMotion.gentleSpec(),
+        label = "stagger-offset"
     )
 
     Box(
         modifier = Modifier
             .graphicsLayer {
                 this.alpha = alpha
-                translationY = offsetY.value * 1f
+                translationY = offsetY.value
             }
     ) {
         content()
+    }
+}
+
+// ── Chart Entrance ──
+// Mirrors iOS `.chartEntrance()` modifier: scale 0.92 → 1.0, alpha 0 → 1,
+// 16dp Y offset, all via a single spring with response ≈ 0.55.
+@Composable
+fun Modifier.chartEntrance(
+    delay: Int = 0,
+    reduceMotion: Boolean = LocalAuroraReduceMotion.current
+): Modifier {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (reduceMotion) visible = true
+        else {
+            kotlinx.coroutines.delay(delay.toLong())
+            visible = true
+        }
+    }
+    val spec = androidx.compose.animation.core.spring<Float>(
+        stiffness = 320f, dampingRatio = 0.75f
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (visible) 1f else 0.92f,
+        animationSpec = spec,
+        label = "chart-entrance-scale"
+    )
+    val a by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = spec,
+        label = "chart-entrance-alpha"
+    )
+    val ty by animateDpAsState(
+        targetValue = if (visible) 0.dp else 16.dp,
+        animationSpec = androidx.compose.animation.core.spring(stiffness = 320f, dampingRatio = 0.75f),
+        label = "chart-entrance-y"
+    )
+    return this.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+        alpha = a
+        translationY = ty.value
+    }
+}
+
+// ── Breathing Pulse Modifier ──
+// Scale 1.0 ↔ 1.4, alpha 1.0 ↔ 0.55, 1.4s easeInOut, reversing forever.
+// Matches iOS BreathingPulseModifier.
+@Composable
+fun Modifier.breathingPulse(
+    reduceMotion: Boolean = LocalAuroraReduceMotion.current
+): Modifier {
+    if (reduceMotion) return this
+    val transition = rememberInfiniteTransition(label = "breathing-pulse")
+    val scale by transition.animateFloat(
+        initialValue = 1f, targetValue = 1.4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "breathing-scale"
+    )
+    val a by transition.animateFloat(
+        initialValue = 1f, targetValue = 0.55f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "breathing-alpha"
+    )
+    return this.graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+        alpha = a
     }
 }
 
