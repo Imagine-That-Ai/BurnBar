@@ -1,0 +1,63 @@
+#!/bin/bash
+# Verify Android development environment.
+# Usage:  scripts/setup-android
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+ANDROID_DIR="android"
+
+echo "🔎 Checking Android dev environment…"
+
+# Java 21
+JAVA_VER=$(java -version 2>&1 | grep "version" | sed 's/.*version "\([0-9]*\)\.[0-9.]*".*/\1/' || echo "0")
+if [ "$JAVA_VER" -lt 17 ]; then
+    echo "❌ Java 21+ required (found Java $JAVA_VER). Install: brew install openjdk@21"
+    if [ -d "/opt/homebrew/opt/openjdk@21" ]; then
+        echo "   → Found Homebrew openjdk@21. Run: export JAVA_HOME=/opt/homebrew/opt/openjdk@21"
+    fi
+    exit 1
+fi
+echo "   ✓ Java $JAVA_VER"
+
+# Android SDK
+if [ -z "${ANDROID_HOME:-}" ] && [ -z "${ANDROID_SDK_ROOT:-}" ]; then
+    echo "❌ ANDROID_HOME not set."
+    echo "   Create ~/.zshrc entry: export ANDROID_HOME=\$HOME/Library/Android"
+    exit 1
+fi
+echo "   ✓ ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+
+# Gradle wrapper
+if [ ! -f "$ANDROID_DIR/gradlew" ]; then
+    echo "❌ android/gradlew not found."
+    exit 1
+fi
+echo "   ✓ gradlew exists"
+
+# google-services.json
+if [ ! -f "$ANDROID_DIR/app/google-services.json" ]; then
+    echo "   ⚠ google-services.json missing."
+    if [ -f "$ANDROID_DIR/app/google-services.json.template" ]; then
+        echo "   → A template exists. Download the real config from Firebase Console and copy it:"
+        echo "     cp ~/Downloads/google-services.json $ANDROID_DIR/app/google-services.json"
+    else
+        echo "   → Register the app in Firebase Console (Project: burnbar, Package: com.openburnbar)"
+        echo "     then download google-services.json to $ANDROID_DIR/app/"
+    fi
+else
+    echo "   ✓ google-services.json exists"
+fi
+
+# Emulator check
+if command -v emulator &>/dev/null; then
+    EMUS=$($ANDROID_HOME/emulator/emulator -list-avds 2>/dev/null || echo "")
+    if [ -z "$EMUS" ]; then
+        echo "   ⚠ No Android emulator AVDs found. Create one via Android Studio → Device Manager."
+    else
+        echo "   ✓ Emulator available: $(echo "$EMUS" | head -1)"
+    fi
+else
+    echo "   ⚠ emulator CLI not found. Install via Android Studio → SDK Manager → Emulator."
+fi
+
+echo "✅ Android environment ready."

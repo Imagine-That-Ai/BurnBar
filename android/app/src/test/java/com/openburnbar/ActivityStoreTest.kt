@@ -1,0 +1,76 @@
+package com.openburnbar
+
+import com.google.firebase.firestore.DocumentSnapshot
+import com.openburnbar.data.firebase.FirestoreRepository
+import com.openburnbar.data.firebase.ConversationRecord
+import com.openburnbar.data.models.TokenUsage
+import com.openburnbar.data.models.ProjectSummary
+import com.openburnbar.data.stores.ActivityStore
+import com.openburnbar.data.stores.StreamsSegment
+import io.mockk.*
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.*
+import org.junit.Assert.*
+import org.junit.Test
+
+class ActivityStoreTest {
+
+    @Test
+    fun `loadInitial fetches first page`() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        val usages = listOf(
+            TokenUsage(id = "1", provider = "openai", model = "gpt-4", cost = 0.50, timestamp = 1700000000000L)
+        )
+        coEvery { mockRepo.fetchUsagePage(pageSize = 25, after = null, provider = null, model = null, device = null, startDate = null, endDate = null) } returns (usages to null)
+        every { mockRepo.listenToUsage() } returns flowOf(usages)
+
+        val store = ActivityStore(mockRepo)
+        store.loadInitial()
+        advanceUntilIdle()
+
+        assertEquals(1, store.usages.value.size)
+        assertEquals("gpt-4", store.usages.value.first().model)
+        assertTrue(store.hasMore.value)
+    }
+
+    @Test
+    fun `setSegment to projects loads projects`() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        val projects = listOf(ProjectSummary(id = "p1", name = "MyApp", totalCost = 12.50))
+        coEvery { mockRepo.fetchUsagePage(any(), any(), any(), any(), any(), any(), any()) } returns (emptyList() to null)
+        coEvery { mockRepo.fetchProjects() } returns projects
+        every { mockRepo.listenToUsage() } returns flowOf(emptyList())
+
+        val store = ActivityStore(mockRepo)
+        store.loadInitial()
+        advanceUntilIdle()
+
+        store.setSegment(StreamsSegment.PROJECTS)
+        advanceUntilIdle()
+
+        assertEquals(StreamsSegment.PROJECTS, store.selectedSegment.value)
+        assertEquals(1, store.projects.value.size)
+        assertEquals("MyApp", store.projects.value.first().name)
+    }
+
+    @Test
+    fun `loadNext appends page`() = runTest {
+        val mockRepo = mockk<FirestoreRepository>()
+        val page1 = listOf(TokenUsage(id = "1", provider = "openai"))
+        val page2 = listOf(TokenUsage(id = "2", provider = "claude-code"))
+        coEvery { mockRepo.fetchUsagePage(pageSize = 25, after = null, any(), any(), any(), any(), any()) } returns (page1 to mockk<DocumentSnapshot>())
+        coEvery { mockRepo.fetchUsagePage(pageSize = 25, after = any<DocumentSnapshot>(), any(), any(), any(), any(), any()) } returns (page2 to null)
+        every { mockRepo.listenToUsage() } returns flowOf(page1 + page2)
+
+        val store = ActivityStore(mockRepo)
+        store.loadInitial()
+        advanceUntilIdle()
+        assertEquals(1, store.usages.value.size)
+        assertTrue(store.hasMore.value)
+
+        store.loadNext()
+        advanceUntilIdle()
+        assertEquals(2, store.usages.value.size)
+        assertFalse(store.hasMore.value)
+    }
+}

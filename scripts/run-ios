@@ -1,0 +1,35 @@
+#!/bin/bash
+# Build + launch OpenBurnBarMobile on iOS Simulator.
+# Usage:  scripts/run-ios [device]
+#   device: optional simulator name (default: iPhone 17 Pro Max)
+set -euo pipefail
+
+DEVICE="${1:-iPhone 17 Pro Max}"
+SCHEME="OpenBurnBarMobile"
+DERIVED="build/DerivedData"
+BUNDLE_ID="com.openburnbar.app"
+
+cd "$(dirname "$0")/.."
+
+echo "▶ Building $SCHEME for $DEVICE simulator…"
+xcodebuild \
+  -project OpenBurnBar.xcodeproj \
+  -scheme "$SCHEME" \
+  -destination "platform=iOS Simulator,name=$DEVICE" \
+  -derivedDataPath "$DERIVED" \
+  -quiet \
+  build
+
+APP_PATH="$DERIVED/Build/Products/Debug-iphonesimulator/OpenBurnBarMobile.app"
+
+echo "▶ Booting simulator…"
+xcrun simctl boot "$DEVICE" 2>/dev/null || true
+open -a Simulator
+
+echo "▶ Installing $APP_PATH"
+xcrun simctl install booted "$APP_PATH"
+
+echo "▶ Launching $BUNDLE_ID"
+xcrun simctl launch booted "$BUNDLE_ID"
+
+echo "✅ Done."

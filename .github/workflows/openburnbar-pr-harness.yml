@@ -19,6 +19,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 45
     env:
+      HAS_ANDROID_SECRETS: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 != '' }}
       INTERNAL_RUN: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
       HAS_FIREBASE_SECRETS: ${{ secrets.FIREBASE_PLIST_BASE64 != '' && secrets.FIREBASE_APP_CHECK_DEBUG_TOKEN != '' }}
 
@@ -170,6 +171,57 @@ jobs:
             echo "Status: CodeQL workflow file MISSING"
             exit 1
           fi
+
+
+      # ── Android ──────────────────────────────────────────────────────
+      - name: Set up Java 21 (Android)
+        uses: actions/setup-java@5ffc13f4c018ca2c0ca46a2f6cd5aae18e2d9a1c # v5
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: "platforms;android-35 build-tools;35.0.0"
+
+      - name: Inject Android Firebase config (internal PRs)
+        if: env.INTERNAL_RUN == 'true' && env.HAS_ANDROID_SECRETS == 'true'
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: bash ./scripts/ci/inject-firebase-config-android.sh
+
+      - name: Skip Android Firebase config (fork PRs)
+        if: env.INTERNAL_RUN != 'true'
+        run: |
+          echo "Skipping Android Firebase config for fork PR."
+          echo "A dummy google-services.json is generated so gradle can resolve the plugin."
+          python3 -c "
+          import json, pathlib
+          pathlib.Path('android/app').mkdir(parents=True, exist_ok=True)
+          pathlib.Path('android/app/google-services.json').write_text(json.dumps({
+              'project_info': {'project_id': 'burnbar-ci-dummy', 'project_number': '000000000000'},
+              'client': [{'client_info': {'mobilesdk_app_id': '1:000000000000:android:0000000000000000',
+              'android_client_info': {'package_name': 'com.openburnbar'}},
+              'api_key': [{'current_key': 'AIza000000000000000000000000000000000'}],
+              'services': {}}],
+              'configuration_version': '1'
+          }))
+          "
+
+      - name: Skip Android Firebase config when secrets unavailable
+        if: env.INTERNAL_RUN == 'true' && env.HAS_ANDROID_SECRETS != 'true'
+        run: echo "Android Firebase secret is unavailable; building without injected config."
+
+      - name: Build Android APK
+        run: cd android && ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
 
       - name: Summarize test counts
         if: always()

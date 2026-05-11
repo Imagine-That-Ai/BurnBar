@@ -1,0 +1,47 @@
+#!/bin/bash
+# Build + install + launch BurnBar on Android emulator.
+# Usage:  scripts/run-android
+#
+# Requires JAVA_HOME set (Java 21+) and ANDROID_HOME set.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+ANDROID_DIR="android"
+APK_PATH="$ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk"
+
+echo "▶ Building Android APK…"
+export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@21}"
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android}"
+export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+
+( cd "$ANDROID_DIR" && ./gradlew assembleDebug --no-daemon --quiet )
+
+if [ ! -f "$APK_PATH" ]; then
+    echo "❌ APK not found at $APK_PATH. Check the build output."
+    exit 1
+fi
+echo "   ✓ APK built: $APK_PATH"
+
+# Check for running emulator
+ADB_DEVICES=$($ANDROID_HOME/platform-tools/adb devices 2>/dev/null | tail -n +2 | grep -v '^$' || true)
+if [ -z "$ADB_DEVICES" ]; then
+    echo "▶ No emulator running. Starting first available AVD…"
+    EMULATOR=$($ANDROID_HOME/emulator/emulator -list-avds 2>/dev/null | head -1 || echo "")
+    if [ -z "$EMULATOR" ]; then
+        echo "❌ No Android emulator AVDs found. Create one via Android Studio → Device Manager."
+        exit 1
+    fi
+    echo "   Starting $EMULATOR (background)…"
+    $ANDROID_HOME/emulator/emulator -avd "$EMULATOR" -no-snapshot-load &
+    echo "   Waiting for emulator (may take 30-60s)…"
+    $ANDROID_HOME/platform-tools/adb wait-for-device
+    sleep 5
+fi
+
+echo "▶ Installing APK…"
+$ANDROID_HOME/platform-tools/adb install -r "$APK_PATH"
+
+echo "▶ Launching BurnBar…"
+$ANDROID_HOME/platform-tools/adb shell am start -n com.openburnbar/.MainActivity
+
+echo "✅ Done."
