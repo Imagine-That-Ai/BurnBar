@@ -3,10 +3,11 @@ package com.openburnbar.ui.components
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
@@ -21,6 +22,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.ui.theme.*
@@ -28,24 +30,49 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.graphics.graphicsLayer
 
 // ── Glass Card ──
+// 3-layer glass per the parity plan: tier-appropriate blur, brand sheen,
+// 0.75dp edge gradient stroke, soft shadow. Optional `interactive` press
+// scaling matches the iOS UnifiedGlassCard interaction.
 @Composable
 fun AuroraGlassCard(
     modifier: Modifier = Modifier,
     cornerRadius: Int = AuroraRadius.lg,
+    contentPadding: Dp = AuroraSpacing.lg.dp,
+    interactive: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    shadow: AuroraShadowSpec = AuroraShadows.medium,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Surface(
+    var pressed by remember { mutableStateOf(false) }
+    val targetScale = if (pressed && interactive) 0.98f else 1f
+    val scale by animateFloatAsState(
+        targetValue = targetScale,
+        animationSpec = AuroraMotion.cardPressSpec(),
+        label = "aurora-glass-card-scale"
+    )
+
+    val clickModifier = if (onClick != null) {
+        Modifier.pointerInput(onClick) {
+            detectTapGestures(
+                onPress = {
+                    pressed = true
+                    val released = tryAwaitRelease()
+                    pressed = false
+                    if (released) onClick()
+                },
+                onTap = { /* handled in onPress */ }
+            )
+        }
+    } else Modifier
+
+    Box(
         modifier = modifier
-            .clip(RoundedCornerShape(cornerRadius.dp))
-            .shadow(4.dp, RoundedCornerShape(cornerRadius.dp)),
-        shape = RoundedCornerShape(cornerRadius.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-        tonalElevation = 2.dp
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .then(clickModifier)
+            .auroraGlass(cornerRadius = cornerRadius.dp, shadow = shadow)
+            .padding(contentPadding)
     ) {
-        Column(
-            modifier = Modifier.padding(AuroraSpacing.lg.dp),
-            content = content
-        )
+        Column(content = content)
     }
 }
 

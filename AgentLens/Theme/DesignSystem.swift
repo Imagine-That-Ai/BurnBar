@@ -279,4 +279,26 @@ enum DesignSystem {
         static let mercuryShimmer = SwiftUI.Animation.linear(duration: 3.0).repeatForever(autoreverses: false)
         static let mercuryPulse = SwiftUI.Animation.easeInOut(duration: 1.5).repeatForever(autoreverses: true)
     }
+
+    // MARK: - Shadows
+
+    // Centralized elevation specs. Mirrors `AuroraShadows` on Android so ad-hoc
+    // .shadow() calls migrate to a shared vocabulary and stay synced between
+    // platforms.
+    struct ShadowSpec {
+        let color: Color
+        let radius: CGFloat
+        let x: CGFloat
+        let y: CGFloat
+    }
+
+    enum Shadows {
+        static let none      = ShadowSpec(color: .clear,                 radius: 0,  x: 0, y: 0)
+        static let subtle    = ShadowSpec(color: Color.black.opacity(0.05), radius: 2,  x: 0, y: 1)
+        static let small     = ShadowSpec(color: Color.black.opacity(0.10), radius: 4,  x: 0, y: 2)
+        static let medium    = ShadowSpec(color: Color.black.opacity(0.12), radius: 8,  x: 0, y: 3)
+        static let cardHover = ShadowSpec(color: Colors.ember.opacity(0.40), radius: 12, x: 0, y: 4)
+        static let large     = ShadowSpec(color: Color.black.opacity(0.20), radius: 16, x: 0, y: 6)
+        static let fab       = ShadowSpec(color: Colors.amber.opacity(0.70), radius: 4,  x: 0, y: 2)
+    }
 }
