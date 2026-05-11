@@ -717,6 +717,7 @@ public extension PixelClockPalette {
         case .mercury:     return "Mercury"
         case .traffic:     return "Traffic"
         case .monochrome:  return "Monochrome"
+        case .rainbow:     return "Pride rainbow"
         }
     }
 }

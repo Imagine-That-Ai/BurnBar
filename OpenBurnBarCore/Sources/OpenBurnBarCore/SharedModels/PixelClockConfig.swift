@@ -177,6 +177,23 @@ public enum PixelClockPalette: String, Codable, Sendable, CaseIterable {
     case mercury
     case traffic
     case monochrome
+    case rainbow
+
+    /// 6-stripe Pride flag colors (red, orange, yellow, green, blue, violet).
+    public static let rainbowFlag: [String] = [
+        "#E40303", "#FF8C00", "#FFED00",
+        "#008026", "#004CFF", "#732982"
+    ]
+
+    public var isRainbow: Bool { self == .rainbow }
+
+    /// Returns the rainbow color at the given page index, cycling through the flag.
+    public func rainbowColor(at index: Int) -> String {
+        let flag = PixelClockPalette.rainbowFlag
+        let count = flag.count
+        let safe = ((index % count) + count) % count
+        return flag[safe]
+    }
 
     public var primaryHex: String {
         switch self {
@@ -184,6 +201,7 @@ public enum PixelClockPalette: String, Codable, Sendable, CaseIterable {
         case .mercury: return "#C8BFB5"
         case .traffic: return "#38D898"
         case .monochrome: return "#FFFFFF"
+        case .rainbow: return "#E40303"
         }
     }
 
@@ -193,6 +211,7 @@ public enum PixelClockPalette: String, Codable, Sendable, CaseIterable {
         case .mercury: return "#9A9088"
         case .traffic: return "#F0C040"
         case .monochrome: return "#B0B0B0"
+        case .rainbow: return "#732982"
         }
     }
 
@@ -206,6 +225,11 @@ public enum PixelClockPalette: String, Codable, Sendable, CaseIterable {
             }
         case .monochrome:
             return "#FFFFFF"
+        case .rainbow:
+            // Single-color callers (legacy carousel) get a pride color
+            // chosen by percent so the palette still feels alive.
+            let bucket = max(0, min(percentUsed, 100)) / 17
+            return rainbowColor(at: bucket)
         default:
             switch percentUsed {
             case 0..<60: return secondaryHex

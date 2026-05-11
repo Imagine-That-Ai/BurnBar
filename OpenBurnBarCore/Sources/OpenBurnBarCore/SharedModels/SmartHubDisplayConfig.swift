@@ -101,6 +101,15 @@ public enum SmartHubDisplayPalette: String, Codable, Sendable, CaseIterable {
     case mercury
     case forestSage
     case monochrome
+    case rainbow
+
+    /// 6-stripe Pride flag colors (red, orange, yellow, green, blue, violet).
+    public static let rainbowFlag: [String] = [
+        "#E40303", "#FF8C00", "#FFED00",
+        "#008026", "#004CFF", "#732982"
+    ]
+
+    public var isRainbow: Bool { self == .rainbow }
 
     public var displayName: String {
         switch self {
@@ -108,6 +117,7 @@ public enum SmartHubDisplayPalette: String, Codable, Sendable, CaseIterable {
         case .mercury:     return "Mercury"
         case .forestSage:  return "Forest sage"
         case .monochrome:  return "Monochrome"
+        case .rainbow:     return "Pride rainbow"
         }
     }
 
@@ -117,6 +127,7 @@ public enum SmartHubDisplayPalette: String, Codable, Sendable, CaseIterable {
         case .mercury:     return "#C8BFB5"
         case .forestSage:  return "#3A7835"
         case .monochrome:  return "#FFFFFF"
+        case .rainbow:     return "#E40303"
         }
     }
 
@@ -126,6 +137,7 @@ public enum SmartHubDisplayPalette: String, Codable, Sendable, CaseIterable {
         case .mercury:     return "#9A9088"
         case .forestSage:  return "#7A8572"
         case .monochrome:  return "#B0B0B0"
+        case .rainbow:     return "#732982"
         }
     }
 }
