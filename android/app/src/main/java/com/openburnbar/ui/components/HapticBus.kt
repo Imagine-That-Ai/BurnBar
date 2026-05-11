@@ -26,26 +26,35 @@ object HapticBus {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val effect = when (type) {
-                HapticType.LIGHT -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
-                HapticType.MEDIUM -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK)
-                HapticType.HEAVY -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK)
-                HapticType.SUCCESS -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
-                HapticType.ERROR -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK)
-                HapticType.SELECTION -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK)
-                HapticType.TAB_CHANGE -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
+            when (type) {
+                HapticType.LIGHT -> vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                HapticType.MEDIUM -> vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK))
+                HapticType.HEAVY -> vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK))
+                // SUCCESS upgraded to HEAVY_CLICK for parity with iOS UINotificationFeedbackGenerator(.success)
+                HapticType.SUCCESS -> vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK))
+                HapticType.ERROR -> vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK))
+                HapticType.SELECTION -> vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+                HapticType.TAB_CHANGE -> vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                // Custom 4-tap warning waveform — matches the iOS warning notification's pulsed feel.
+                HapticType.WARNING -> vibrator.vibrate(
+                    VibrationEffect.createWaveform(
+                        longArrayOf(0L, 50L, 100L, 50L),
+                        intArrayOf(0, 200, 0, 100),
+                        -1
+                    )
+                )
             }
-            vibrator.vibrate(effect)
         } else {
             @Suppress("DEPRECATION")
             val millis = when (type) {
                 HapticType.LIGHT -> 10L
                 HapticType.MEDIUM -> 20L
                 HapticType.HEAVY -> 30L
-                HapticType.SUCCESS -> 15L
+                HapticType.SUCCESS -> 20L
                 HapticType.ERROR -> 40L
                 HapticType.SELECTION -> 5L
                 HapticType.TAB_CHANGE -> 15L
+                HapticType.WARNING -> 35L
             }
             vibrator.vibrate(millis)
         }
@@ -56,6 +65,7 @@ object HapticBus {
     fun medium(context: Context) = perform(context, HapticType.MEDIUM)
     fun heavy(context: Context) = perform(context, HapticType.HEAVY)
     fun success(context: Context) = perform(context, HapticType.SUCCESS)
+    fun warning(context: Context) = perform(context, HapticType.WARNING)
     fun error(context: Context) = perform(context, HapticType.ERROR)
     fun selection(context: Context) = perform(context, HapticType.SELECTION)
     fun tabChange(context: Context) = perform(context, HapticType.TAB_CHANGE)
@@ -66,6 +76,7 @@ enum class HapticType {
     MEDIUM,
     HEAVY,
     SUCCESS,
+    WARNING,
     ERROR,
     SELECTION,
     TAB_CHANGE
@@ -82,6 +93,7 @@ class HapticBusHandle(private val context: Context) {
     fun medium() = HapticBus.medium(context)
     fun heavy() = HapticBus.heavy(context)
     fun success() = HapticBus.success(context)
+    fun warning() = HapticBus.warning(context)
     fun error() = HapticBus.error(context)
     fun selection() = HapticBus.selection(context)
     fun tabChange() = HapticBus.tabChange(context)

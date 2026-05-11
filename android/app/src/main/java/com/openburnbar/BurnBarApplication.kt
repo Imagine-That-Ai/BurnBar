@@ -6,6 +6,8 @@ import com.google.firebase.appcheck.AppCheckProviderFactory
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.openburnbar.menubar.MenuBarService
+import com.openburnbar.menubar.SuppressionStore
 
 class BurnBarApplication : Application() {
     override fun onCreate() {
@@ -13,6 +15,9 @@ class BurnBarApplication : Application() {
         FirebaseApp.initializeApp(this)
         installAppCheckProvider()
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(true)
+        // Notification channel must exist before the service tries to post.
+        MenuBarService.ensureChannel(this)
+        if (SuppressionStore.allowed(this)) MenuBarService.start(this)
     }
 
     private fun installAppCheckProvider() {
