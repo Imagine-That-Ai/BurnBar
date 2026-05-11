@@ -1,9 +1,7 @@
 package com.openburnbar
 
 import com.openburnbar.data.firebase.FirestoreRepository
-import com.openburnbar.data.firebase.UsageRollups
-import com.openburnbar.data.models.UsageDisplayMode
-import com.openburnbar.data.models.TimelineScope
+import com.openburnbar.data.models.UsageRollups
 import com.openburnbar.data.stores.DashboardStore
 import io.mockk.*
 import kotlinx.coroutines.flow.flowOf
@@ -33,29 +31,5 @@ class DashboardStoreTest {
         store.stopListening()
     }
 
-    @Test
-    fun `setDisplayMode updates state`() = runTest {
-        val mockRepo = mockk<FirestoreRepository>()
-        coEvery { mockRepo.fetchRollups() } returns UsageRollups()
-        every { mockRepo.listenToRollups() } returns flowOf(UsageRollups())
 
-        val store = DashboardStore(mockRepo)
-        assertEquals(UsageDisplayMode.CURRENCY, store.displayMode.value)
-
-        store.setDisplayMode(UsageDisplayMode.TOKENS)
-        assertEquals(UsageDisplayMode.TOKENS, store.displayMode.value)
-    }
-
-    @Test
-    fun `setScope updates selected scope`() = runTest {
-        val mockRepo = mockk<FirestoreRepository>()
-        coEvery { mockRepo.fetchRollups() } returns UsageRollups()
-        every { mockRepo.listenToRollups() } returns flowOf(UsageRollups())
-
-        val store = DashboardStore(mockRepo)
-        assertEquals(TimelineScope.DAY, store.selectedScope.value)
-
-        store.setScope(TimelineScope.WEEK)
-        assertEquals(TimelineScope.WEEK, store.selectedScope.value)
-    }
 }

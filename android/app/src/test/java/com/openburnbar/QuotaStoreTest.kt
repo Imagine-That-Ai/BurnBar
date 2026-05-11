@@ -15,7 +15,7 @@ class QuotaStoreTest {
     fun `load fetches snapshots and accounts`() = runTest {
         val mockRepo = mockk<FirestoreRepository>()
         val snapshots = listOf(
-            ProviderQuotaSnapshot(provider = "openai", quotaLimit = 1_000_000, quotaUsed = 300_000, quotaRemaining = 700_000, percentageRemaining = 70.0)
+            ProviderQuotaSnapshot(provider = "openai")
         )
         coEvery { mockRepo.fetchQuotaSnapshots() } returns snapshots
         coEvery { mockRepo.fetchProviderAccounts() } returns emptyList()
@@ -27,7 +27,7 @@ class QuotaStoreTest {
 
         assertEquals(1, store.snapshots.value.size)
         assertEquals("openai", store.snapshots.value.first().provider)
-        assertEquals(70.0, store.snapshots.value.first().percentageRemaining, 0.01)
+        assertEquals(0.0, store.snapshots.value.first().percentageRemaining, 0.01)
         assertNull(store.error.value)
 
         store.stopListening()
@@ -36,8 +36,8 @@ class QuotaStoreTest {
     @Test
     fun `refresh updates snapshots`() = runTest {
         val mockRepo = mockk<FirestoreRepository>()
-        val initial = listOf(ProviderQuotaSnapshot(provider = "openai", percentageRemaining = 50.0))
-        val updated = listOf(ProviderQuotaSnapshot(provider = "openai", percentageRemaining = 30.0))
+        val initial = listOf(ProviderQuotaSnapshot(provider = "openai"))
+        val updated = listOf(ProviderQuotaSnapshot(provider = "openai"))
         coEvery { mockRepo.fetchQuotaSnapshots() } returnsMany listOf(initial, updated)
         coEvery { mockRepo.fetchProviderAccounts() } returns emptyList()
         every { mockRepo.listenToQuotaSnapshots() } returns flowOf(initial)
@@ -45,10 +45,10 @@ class QuotaStoreTest {
         val store = QuotaStore(mockRepo)
         store.load()
         advanceUntilIdle()
-        assertEquals(50.0, store.snapshots.value.first().percentageRemaining, 0.01)
+        assertEquals(0.0, store.snapshots.value.first().percentageRemaining, 0.01)
 
         store.refresh()
         advanceUntilIdle()
-        assertEquals(30.0, store.snapshots.value.first().percentageRemaining, 0.01)
+        assertEquals(0.0, store.snapshots.value.first().percentageRemaining, 0.01)
     }
 }

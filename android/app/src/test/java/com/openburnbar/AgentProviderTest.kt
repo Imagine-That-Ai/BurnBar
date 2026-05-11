@@ -22,9 +22,9 @@ class AgentProviderTest {
     @Test
     fun `all providers have display names and colors`() {
         AgentProvider.entries.forEach { provider ->
-            assertTrue(provider.displayName.isNotBlank(), "Missing display name for ${provider.key}")
-            assertTrue(provider.brandColor != 0L, "Missing brand color for ${provider.key}")
-            assertTrue(provider.accentColor != 0L, "Missing accent color for ${provider.key}")
+            assertTrue("Missing display name for ${provider.key}", provider.displayName.isNotBlank())
+            assertTrue("Missing brand color for ${provider.key}", provider.brandColor != 0L)
+            assertTrue("Missing accent color for ${provider.key}", provider.accentColor != 0L)
         }
     }
 
