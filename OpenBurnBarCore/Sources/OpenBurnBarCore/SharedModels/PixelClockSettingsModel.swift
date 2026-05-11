@@ -20,6 +20,8 @@ public protocol PixelClockOperations: AnyObject {
     /// flash URL needed for full OpenBurnBar direct control.
     func preparePixelClock(config: PixelClockConfig) async throws -> PixelClockSetupResult
 
+    func flashPixelClockFirmware(config: PixelClockConfig, wifiCredentials: PixelClockWiFiCredentials?) async throws -> PixelClockSetupResult
+
     /// Send a single notify frame so the user can confirm the right
     /// device responded.
     func testPixelClock(config: PixelClockConfig) async throws
@@ -44,8 +46,12 @@ public protocol PixelClockOperations: AnyObject {
 public final class InMemoryPixelClockOperations: PixelClockOperations {
     public var lastConfig: PixelClockConfig?
     public var probeResult: PixelClockProbeStatus
+    public var prepareResult: PixelClockSetupResult?
+    public var prepareResults: [PixelClockSetupResult] = []
+    public var flashResult: PixelClockSetupResult?
     public var failureToThrow: Error?
     public private(set) var prepareCallCount = 0
+    public private(set) var flashCallCount = 0
     public private(set) var pushCallCount = 0
 
     public init(probeResult: PixelClockProbeStatus = .unknown) {
@@ -61,12 +67,24 @@ public final class InMemoryPixelClockOperations: PixelClockOperations {
         lastConfig = config
         prepareCallCount += 1
         if let failureToThrow { throw failureToThrow }
+        if !prepareResults.isEmpty {
+            return prepareResults.removeFirst()
+        }
+        if let prepareResult { return prepareResult }
         return PixelClockSetupResult(
             mode: probeResult == .awtrixReady ? .awtrixLightReady : .needsAwtrixLightFlash,
             probeStatus: probeResult,
             message: probeResult == .awtrixReady ? "AWTRIX Light is ready." : "Pixel Clock needs setup.",
             clockHost: config.host
         )
+    }
+
+    public func flashPixelClockFirmware(config: PixelClockConfig, wifiCredentials: PixelClockWiFiCredentials?) async throws -> PixelClockSetupResult {
+        lastConfig = config
+        flashCallCount += 1
+        if let failureToThrow { throw failureToThrow }
+        if let flashResult { return flashResult }
+        return try await preparePixelClock(config: config)
     }
 
     public func testPixelClock(config: PixelClockConfig) async throws {
@@ -124,7 +142,13 @@ public final class PixelClockSettingsModel {
     /// show a spinner without blocking other state updates.
     public private(set) var inflightOperation: PixelClockOperationKind?
 
+    /// True while one-click setup is waiting for a clock to appear on LAN
+    /// or as a real USB serial setup target.
+    public private(set) var isWaitingForConnection = false
+
     private let operations: any PixelClockOperations
+    private let setupRetryAttempts: Int
+    private let setupRetryIntervalNanoseconds: UInt64
     private var debounceTask: Task<Void, Never>?
 
     public convenience init(
@@ -141,7 +165,9 @@ public final class PixelClockSettingsModel {
     public init(
         initialConfig: PixelClockConfig = .disabled,
         operations: any PixelClockOperations,
-        availableProviders: [AgentProvider] = AgentProvider.quotaSignalProviders
+        availableProviders: [AgentProvider] = AgentProvider.quotaSignalProviders,
+        setupRetryAttempts: Int = 0,
+        setupRetryIntervalNanoseconds: UInt64 = 2_000_000_000
     ) {
         self.config = initialConfig
         self.firmware = initialConfig.lastProbeStatus
@@ -149,6 +175,8 @@ public final class PixelClockSettingsModel {
         self.setupResult = nil
         self.operations = operations
         self.availableProviders = availableProviders
+        self.setupRetryAttempts = max(0, setupRetryAttempts)
+        self.setupRetryIntervalNanoseconds = setupRetryIntervalNanoseconds
     }
 
     /// Apply a config provided by the persistence layer — keeps the UI
@@ -277,8 +305,29 @@ public final class PixelClockSettingsModel {
             toggleEnabled(true)
         }
         await prepare()
+        if setupResult?.mode == .unreachable {
+            await waitForSetupTransport()
+        }
+        if setupResult?.mode == .needsAwtrixLightFlash || setupResult?.mode == .needsWiFiProvisioning {
+            await flashAndFinishSetup()
+        }
         if firmware == .awtrixReady || setupResult?.mode == .stockSimulatorConfigured {
             await push()
+        }
+    }
+
+    public func flashAndFinishSetup(wifiCredentials: PixelClockWiFiCredentials? = nil) async {
+        if !config.enabled {
+            toggleEnabled(true)
+        }
+        await runOperation(.flash) {
+            let result = try await self.operations.flashPixelClockFirmware(config: self.config, wifiCredentials: wifiCredentials)
+            self.setupResult = result
+            self.firmware = result.probeStatus
+            self.mutate(persist: false) {
+                $0.host = result.clockHost
+                $0.lastProbeStatus = result.probeStatus
+            }
         }
     }
 
@@ -303,29 +352,43 @@ public final class PixelClockSettingsModel {
     // MARK: - Derived UI State
 
     public var isBusy: Bool {
-        inflightOperation != nil
+        inflightOperation != nil || isWaitingForConnection
     }
 
     public var setupPrimaryTitle: String {
+        if isWaitingForConnection {
+            return "Waiting for Clock..."
+        }
+        if inflightOperation == .flash {
+            return "Flashing..."
+        }
         if inflightOperation == .probe {
-            return "Setting up..."
+            return "Detecting..."
         }
         if inflightOperation == .push {
             return "Pushing..."
         }
+        if setupResult?.mode == .needsWiFiProvisioning {
+            return "Send Wi-Fi and Finish"
+        }
+        if setupResult?.mode == .needsAwtrixLightFlash {
+            return "Flash and Finish Setup"
+        }
+        if setupResult?.mode == .unreachable {
+            return "Detect Pixel Clock"
+        }
         switch firmware {
         case .awtrixReady:
             return "Push to Pixel Clock"
-        case .stockUlanziFirmware:
-            return setupResult?.mode == .stockSimulatorConfigured ? "Push to Pixel Clock" : "Finish setup"
-        case .unreachable, .unsupported, .error:
-            return "Fix automatically"
-        case .unknown:
+        case .stockUlanziFirmware, .unreachable, .unsupported, .error, .unknown:
             return "Set up automatically"
         }
     }
 
     public var setupStatusTitle: String {
+        if isWaitingForConnection {
+            return "Waiting for Pixel Clock on Wi-Fi or data USB. OpenBurnBar will keep checking for several minutes."
+        }
         if let failure = operationState.failureMessage {
             return failure
         }
@@ -338,7 +401,7 @@ public final class PixelClockSettingsModel {
         case .stockUlanziFirmware:
             return "Stock Ulanzi found. OpenBurnBar can configure simulator settings and serve quota frames from your Mac."
         case .unreachable:
-            return "OpenBurnBar will search the local network and use the saved address if discovery misses."
+            return "No Pixel Clock found on Wi-Fi or data USB. A lit TC001 can still be battery-powered or charge-only; use stable wall power plus Wi-Fi, or a direct data USB cable for setup."
         case .unsupported:
             return "OpenBurnBar found a device, but it needs AWTRIX Light for direct quota frames."
         case .error:
@@ -349,6 +412,9 @@ public final class PixelClockSettingsModel {
     }
 
     public var setupStatusSymbolName: String {
+        if isWaitingForConnection {
+            return "dot.radiowaves.left.and.right"
+        }
         if operationState.failureMessage != nil {
             return "exclamationmark.triangle.fill"
         }
@@ -359,6 +425,8 @@ public final class PixelClockSettingsModel {
             return "arrow.triangle.2.circlepath.circle.fill"
         case .needsAwtrixLightFlash:
             return "bolt.badge.automatic.fill"
+        case .needsWiFiProvisioning:
+            return "wifi.router.fill"
         case .unreachable:
             return "wifi.exclamationmark"
         case nil:
@@ -382,7 +450,7 @@ public final class PixelClockSettingsModel {
             return false
         case .stockSimulatorConfigured:
             return false
-        case .needsAwtrixLightFlash, .unreachable:
+        case .needsAwtrixLightFlash, .needsWiFiProvisioning, .unreachable:
             return true
         case nil:
             return firmware != .awtrixReady && firmware != .unknown
@@ -447,11 +515,27 @@ public final class PixelClockSettingsModel {
             operationState = .failed(kind, message: error.localizedDescription)
         }
     }
+
+    private func waitForSetupTransport() async {
+        guard setupRetryAttempts > 0 else { return }
+        guard setupResult?.mode == .unreachable else { return }
+
+        isWaitingForConnection = true
+        defer { isWaitingForConnection = false }
+
+        for _ in 0..<setupRetryAttempts {
+            guard setupResult?.mode == .unreachable else { return }
+            try? await Task.sleep(nanoseconds: setupRetryIntervalNanoseconds)
+            guard !Task.isCancelled else { return }
+            await prepare()
+        }
+    }
 }
 
 // MARK: - Operation Types
 
 public enum PixelClockOperationKind: String, Sendable {
+    case flash
     case probe
     case test
     case push
@@ -459,6 +543,7 @@ public enum PixelClockOperationKind: String, Sendable {
 
     public var displayName: String {
         switch self {
+        case .flash:  return "Flash and Finish Setup"
         case .probe:  return "Detect"
         case .test:   return "Test"
         case .push:   return "Push Now"
@@ -468,6 +553,7 @@ public enum PixelClockOperationKind: String, Sendable {
 
     public var inFlightLabel: String {
         switch self {
+        case .flash:  return "Flashing…"
         case .probe:  return "Detecting…"
         case .test:   return "Testing…"
         case .push:   return "Pushing…"
@@ -477,6 +563,7 @@ public enum PixelClockOperationKind: String, Sendable {
 
     public var symbolName: String {
         switch self {
+        case .flash:  return "bolt.badge.automatic.fill"
         case .probe:  return "dot.radiowaves.left.and.right"
         case .test:   return "bolt.horizontal.circle"
         case .push:   return "paperplane.fill"

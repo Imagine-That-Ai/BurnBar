@@ -37,8 +37,40 @@ struct AWTRIXClient: @unchecked Sendable {
         self.session = session
     }
 
+    /// Default probe used by the heartbeat. We give the device a generous
+    /// 6-second budget split across two attempts because real-world TC001 wifi
+    /// shows 100–250 ms latency with occasional 500 ms spikes after the clock
+    /// auto-dims its CPU. A single 3 s probe was too tight and the heartbeat
+    /// was bailing into the unreachable branch on healthy clocks.
     func probe(config: PixelClockConfig) async -> ProbeResult {
-        await probe(config: config, timeout: 3)
+        let first = await probe(config: config, timeout: 3)
+        if first.status == .awtrixReady || first.status == .stockUlanziFirmware {
+            return first
+        }
+        // Quick retry — the same socket warmup that helps `curl` recover from
+        // a wifi-sleep cycle helps us too. Don't retry on `.error` /
+        // `.unsupported` (those mean the host answered with a bad shape, not
+        // that it was slow).
+        guard first.status == .unreachable else { return first }
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        return await probe(config: config, timeout: 3)
+    }
+
+    func currentAppName(config: PixelClockConfig, timeout: TimeInterval = 2) async -> String? {
+        guard let statsURL = endpoint(config: config, path: "/api/stats") else {
+            return nil
+        }
+        do {
+            let (data, response) = try await session.data(for: request(url: statsURL, method: "GET", timeout: timeout))
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return nil
+            }
+            return json["app"] as? String
+        } catch {
+            return nil
+        }
     }
 
     func discover(
@@ -46,11 +78,35 @@ struct AWTRIXClient: @unchecked Sendable {
         candidateHosts: [String]? = nil,
         candidatePorts: [Int]? = nil
     ) async -> DiscoveryResult {
-        let firstProbe = await probe(config: config, timeout: 3)
+        // 1) The configured host is almost always correct — retry-probe it
+        //    first so a single dropped packet doesn't kick us into the slow
+        //    discovery sweep.
+        let firstProbe = await probe(config: config)
         if firstProbe.status == .awtrixReady || firstProbe.status == .stockUlanziFirmware {
             return DiscoveryResult(config: config, probe: firstProbe)
         }
 
+        // 2) AWTRIX Light publishes a Bonjour record (`awtrix_<id>._http._tcp.`).
+        //    When DHCP shuffles the clock to a new IP, the configured host goes
+        //    stale but mDNS still points us at the right device almost
+        //    instantly — no full /24 sweep required.
+        if candidateHosts == nil {
+            let bonjourHosts = await LocalNetworkDiscovery.bonjourDiscoverAwtrixHosts(timeout: 3)
+            for host in bonjourHosts where host != config.host.trimmingCharacters(in: .whitespacesAndNewlines) {
+                var candidate = config
+                candidate.host = host
+                candidate.port = 80
+                let probeResult = await probe(config: candidate, timeout: 2.5)
+                if probeResult.status == .awtrixReady || probeResult.status == .stockUlanziFirmware {
+                    return DiscoveryResult(config: candidate, probe: probeResult)
+                }
+            }
+        }
+
+        // 3) Fall back to the active LAN netmask — covers the case where
+        //    Bonjour was suppressed by the router or the clock hasn't
+        //    re-announced yet. Some home mesh networks use /22 or wider
+        //    segments, so a /24-only sweep would miss valid DHCP moves.
         let hosts = candidateHosts ?? LocalNetworkDiscovery.pixelClockCandidateHosts(configuredHost: config.host)
         let ports = unique(candidatePorts ?? [config.clampedPort, 80])
             .filter { (1...65_535).contains($0) }
@@ -67,20 +123,47 @@ struct AWTRIXClient: @unchecked Sendable {
             candidate.host != configuredHost || candidate.clampedPort != config.clampedPort
         }
 
-        var bestFallback = DiscoveryResult(config: config, probe: firstProbe)
         let scanTimeout: TimeInterval = candidates.count > 32 ? 0.8 : 1.2
+        return await scanCandidates(
+            candidates,
+            fallback: DiscoveryResult(config: config, probe: firstProbe),
+            timeout: scanTimeout
+        )
+    }
+
+    private func scanCandidates(
+        _ candidates: [PixelClockConfig],
+        fallback: DiscoveryResult,
+        timeout: TimeInterval
+    ) async -> DiscoveryResult {
+        var bestFallback = fallback
+        var iterator = candidates.makeIterator()
+        let maxConcurrent = min(32, max(1, candidates.count))
+        var inFlight = 0
+        var shouldStop = false
 
         await withTaskGroup(of: DiscoveryResult.self) { group in
-            for candidate in candidates {
+            func enqueue(_ candidate: PixelClockConfig) {
+                inFlight += 1
                 group.addTask {
-                    let result = await probe(config: candidate, timeout: scanTimeout)
+                    let result = await probe(
+                        config: candidate,
+                        timeout: timeout,
+                        stockFallbackOnTransportFailure: false
+                    )
                     return DiscoveryResult(config: candidate, probe: result)
                 }
             }
 
-            while let result = await group.next() {
+            while inFlight < maxConcurrent, let candidate = iterator.next() {
+                enqueue(candidate)
+            }
+
+            while inFlight > 0, let result = await group.next() {
+                inFlight -= 1
                 if result.probe.status == .awtrixReady {
                     bestFallback = result
+                    shouldStop = true
                     group.cancelAll()
                     break
                 }
@@ -88,13 +171,20 @@ struct AWTRIXClient: @unchecked Sendable {
                    bestFallback.probe.status != .stockUlanziFirmware {
                     bestFallback = result
                 }
+                if !shouldStop, let candidate = iterator.next() {
+                    enqueue(candidate)
+                }
             }
         }
 
         return bestFallback
     }
 
-    private func probe(config: PixelClockConfig, timeout: TimeInterval) async -> ProbeResult {
+    private func probe(
+        config: PixelClockConfig,
+        timeout: TimeInterval,
+        stockFallbackOnTransportFailure: Bool = true
+    ) async -> ProbeResult {
         guard let statsURL = endpoint(config: config, path: "/api/stats") else {
             return ProbeResult(status: .error, message: ClientError.invalidBaseURL.localizedDescription)
         }
@@ -105,8 +195,15 @@ struct AWTRIXClient: @unchecked Sendable {
                 return ProbeResult(status: .error, message: ClientError.invalidResponse.localizedDescription)
             }
             if (200..<300).contains(http.statusCode),
-               (try? JSONSerialization.jsonObject(with: data)) != nil {
-                return ProbeResult(status: .awtrixReady, message: "AWTRIX HTTP API is ready at \(config.host).")
+               let json = try? JSONSerialization.jsonObject(with: data) {
+                if Self.looksLikeAwtrixStats(json) {
+                    return ProbeResult(status: .awtrixReady, message: "AWTRIX HTTP API is ready at \(config.host).")
+                }
+                if await looksLikeStockUlanzi(config: config, timeout: timeout) {
+                    let message = await stockUlanziMessage(config: config, timeout: timeout)
+                    return ProbeResult(status: .stockUlanziFirmware, message: message)
+                }
+                return ProbeResult(status: .unsupported, message: "Stats endpoint answered, but it did not look like AWTRIX.")
             }
             if await looksLikeStockUlanzi(config: config, timeout: timeout) {
                 let message = await stockUlanziMessage(config: config, timeout: timeout)
@@ -114,7 +211,8 @@ struct AWTRIXClient: @unchecked Sendable {
             }
             return ProbeResult(status: .unsupported, message: "AWTRIX stats endpoint returned HTTP \(http.statusCode).")
         } catch {
-            if await looksLikeStockUlanzi(config: config, timeout: timeout) {
+            if stockFallbackOnTransportFailure,
+               await looksLikeStockUlanzi(config: config, timeout: timeout) {
                 let message = await stockUlanziMessage(config: config, timeout: timeout)
                 return ProbeResult(status: .stockUlanziFirmware, message: message)
             }
@@ -123,10 +221,15 @@ struct AWTRIXClient: @unchecked Sendable {
     }
 
     func pushCustomApp(pages: [[String: Any]], config: PixelClockConfig) async throws {
-        guard let url = endpoint(config: config, path: "/api/custom", query: "name=\(PixelClockQuotaRenderer.appName)") else {
+        guard let activePage = pages.first else { return }
+        let body = try JSONSerialization.data(withJSONObject: activePage, options: [])
+        try await pushCustomApp(body: body, config: config)
+    }
+
+    func pushCustomApp(body: Data, config: PixelClockConfig) async throws {
+        guard let url = endpoint(config: config, path: "/api/custom", query: "name=\(PixelClockQuotaRenderer.appName)0") else {
             throw ClientError.invalidBaseURL
         }
-        let body = try JSONSerialization.data(withJSONObject: pages, options: [])
         try await sendJSON(url: url, method: "POST", body: body)
     }
 
@@ -152,11 +255,14 @@ struct AWTRIXClient: @unchecked Sendable {
     }
 
     func removeCustomApp(config: PixelClockConfig) async throws {
-        guard let url = endpoint(config: config, path: "/api/custom", query: "name=\(PixelClockQuotaRenderer.appName)") else {
-            throw ClientError.invalidBaseURL
-        }
         let body = "{}".data(using: .utf8) ?? Data()
-        try await sendJSON(url: url, method: "POST", body: body)
+        let names = [PixelClockQuotaRenderer.appName] + (0..<16).map { "\(PixelClockQuotaRenderer.appName)\($0)" }
+        for name in names {
+            guard let url = endpoint(config: config, path: "/api/custom", query: "name=\(name)") else {
+                throw ClientError.invalidBaseURL
+            }
+            try await sendJSON(url: url, method: "POST", body: body)
+        }
     }
 
     func applyBrightnessIfNeeded(config: PixelClockConfig) async throws {
@@ -344,5 +450,34 @@ struct AWTRIXClient: @unchecked Sendable {
     private func unique<T: Hashable>(_ values: [T]) -> [T] {
         var seen = Set<T>()
         return values.filter { seen.insert($0).inserted }
+    }
+
+    private static func looksLikeAwtrixStats(_ json: Any) -> Bool {
+        guard let object = json as? [String: Any] else { return false }
+        let keys = Set(object.keys.map { $0.lowercased() })
+        let awtrixKeys: Set<String> = [
+            "app",
+            "bat",
+            "battery",
+            "bri",
+            "free_heap",
+            "heap",
+            "hum",
+            "humidity",
+            "ip_address",
+            "ldr",
+            "lux",
+            "matrix",
+            "ram",
+            "temp",
+            "temperature",
+            "uid",
+            "uptime",
+            "version",
+            "wifi_signal"
+        ]
+        let matches = keys.intersection(awtrixKeys)
+        if matches.count >= 3 { return true }
+        return keys.contains("version") && matches.subtracting(["version"]).count >= 1
     }
 }

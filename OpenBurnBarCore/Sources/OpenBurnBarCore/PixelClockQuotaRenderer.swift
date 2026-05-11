@@ -40,6 +40,7 @@ struct PixelClockProviderLogo: Equatable {
 
 public enum PixelClockQuotaRenderer {
     public static let appName = "openburnbar"
+    private static let maxAWTRIXDrawInstructionCount = 20
 
     public static func renderPages(
         items: [PixelClockQuotaItem],
@@ -97,26 +98,165 @@ public enum PixelClockQuotaRenderer {
         pages: [PixelClockRenderedPage],
         config: PixelClockConfig
     ) -> [[String: Any]] {
-        pages.map { page in
+        let lifetimeSeconds = awtrixCustomAppLifetimeSeconds(pages: pages, config: config)
+        return pages.map { page in
+            let safeDraw = bitmapDraw(from: page.draw).map { [$0] } ?? safeAWTRIXDraw(page.draw)
             var payload: [String: Any] = [
-                "text": page.draw.isEmpty ? page.text : "",
+                "text": safeDraw.isEmpty ? page.text : "",
                 "color": page.color,
                 "duration": page.durationSeconds,
                 "scrollSpeed": page.scrollSpeed,
-                "lifetime": max(config.clampedUpdateInterval * 2, 60),
+                "lifetime": lifetimeSeconds,
                 "save": false
             ]
-            if !page.draw.isEmpty {
-                payload["draw"] = page.draw.map(\.awtrixObject)
+            if !safeDraw.isEmpty {
+                payload["draw"] = safeDraw.map(\.awtrixObject)
                 payload["noScroll"] = true
             }
-            if let progress = page.progress {
+            if safeDraw.isEmpty, let progress = page.progress {
                 payload["progress"] = progress
                 payload["progressC"] = page.color
                 payload["progressBC"] = "#181818"
             }
             return payload
         }
+    }
+
+    private static func bitmapDraw(from draw: [PixelClockDrawInstruction]) -> PixelClockDrawInstruction? {
+        guard !draw.isEmpty else { return nil }
+        var pixels = Array(repeating: 0, count: 32 * 8)
+
+        func paint(x: Int, y: Int, color: String) {
+            guard (0..<32).contains(x), (0..<8).contains(y) else { return }
+            pixels[y * 32 + x] = rgbInt(fromHex: sanitizedHex(color, fallback: "#FFFFFF"))
+        }
+
+        for instruction in draw {
+            switch instruction.command {
+            case .drawPixel:
+                guard instruction.values.count == 3,
+                      case .int(let x) = instruction.values[0],
+                      case .int(let y) = instruction.values[1],
+                      case .string(let color) = instruction.values[2] else {
+                    return nil
+                }
+                paint(x: x, y: y, color: color)
+            case .fillRect:
+                guard instruction.values.count == 5,
+                      case .int(let x) = instruction.values[0],
+                      case .int(let y) = instruction.values[1],
+                      case .int(let width) = instruction.values[2],
+                      case .int(let height) = instruction.values[3],
+                      case .string(let color) = instruction.values[4] else {
+                    return nil
+                }
+                for yy in y..<y + max(0, height) {
+                    for xx in x..<x + max(0, width) {
+                        paint(x: xx, y: yy, color: color)
+                    }
+                }
+            case .drawText, .drawBitmap:
+                return nil
+            }
+        }
+
+        return .bitmap(x: 0, y: 0, width: 32, height: 8, pixels: pixels)
+    }
+
+    private static func rgbInt(fromHex hex: String) -> Int {
+        let trimmed = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard trimmed.count == 6, let value = Int(trimmed, radix: 16) else {
+            return 0xFFFFFF
+        }
+        return value
+    }
+
+    private static func awtrixCustomAppLifetimeSeconds(
+        pages: [PixelClockRenderedPage],
+        config: PixelClockConfig
+    ) -> Int {
+        let cycleDuration = pages.reduce(0) { total, page in
+            total + max(page.durationSeconds, 1)
+        }
+        // AWTRIX removes volatile custom apps after `lifetime`. The
+        // controller may intentionally wait for a full page cycle before
+        // repushing identical payloads; keep app lifetime comfortably above
+        // that cycle so a clock reboot or long provider carousel does not
+        // decay into a black screen between heartbeats.
+        return max(900, cycleDuration * 3, config.clampedUpdateInterval * 4, 60)
+    }
+
+    private static func safeAWTRIXDraw(_ draw: [PixelClockDrawInstruction]) -> [PixelClockDrawInstruction] {
+        guard !draw.isEmpty else { return [] }
+        let compacted = compactPixelDrawIntoRuns(draw)
+        let candidate = compacted ?? draw
+        guard candidate.count <= maxAWTRIXDrawInstructionCount else {
+            // AWTRIX Light firmware can freeze or return HTTP 500 when custom
+            // apps contain very large draw lists. A text/progress fallback is
+            // less pretty, but it is always better than blanking the clock.
+            return []
+        }
+        return candidate
+    }
+
+    private static func compactPixelDrawIntoRuns(_ draw: [PixelClockDrawInstruction]) -> [PixelClockDrawInstruction]? {
+        var pixels = Array(repeating: String?.none, count: 32 * 8)
+
+        func paint(x: Int, y: Int, color: String) {
+            guard (0..<32).contains(x), (0..<8).contains(y) else { return }
+            pixels[y * 32 + x] = sanitizedHex(color, fallback: "#FFFFFF")
+        }
+
+        for instruction in draw {
+            switch instruction.command {
+            case .drawPixel:
+                guard instruction.values.count == 3,
+                      case .int(let x) = instruction.values[0],
+                      case .int(let y) = instruction.values[1],
+                      case .string(let color) = instruction.values[2] else {
+                    return draw
+                }
+                paint(x: x, y: y, color: color)
+            case .fillRect:
+                guard instruction.values.count == 5,
+                      case .int(let x) = instruction.values[0],
+                      case .int(let y) = instruction.values[1],
+                      case .int(let width) = instruction.values[2],
+                      case .int(let height) = instruction.values[3],
+                      case .string(let color) = instruction.values[4] else {
+                    return draw
+                }
+                for yy in y..<y + max(0, height) {
+                    for xx in x..<x + max(0, width) {
+                        paint(x: xx, y: yy, color: color)
+                    }
+                }
+            case .drawText, .drawBitmap:
+                return nil
+            }
+        }
+
+        var compacted: [PixelClockDrawInstruction] = []
+        for y in 0..<8 {
+            var x = 0
+            while x < 32 {
+                guard let color = pixels[y * 32 + x] else {
+                    x += 1
+                    continue
+                }
+                var width = 1
+                while x + width < 32, pixels[y * 32 + x + width] == color {
+                    width += 1
+                }
+                if width == 1 {
+                    compacted.append(.pixel(x: x, y: y, color: color))
+                } else {
+                    compacted.append(.fillRect(x: x, y: y, width: width, height: 1, color: color))
+                }
+                x += width
+            }
+        }
+        return compacted
     }
 
     private static func renderProviderDashboard(
@@ -134,17 +274,18 @@ public enum PixelClockQuotaRenderer {
                 usageText: "waiting",
                 windowLabel: ""
             )
-            return [dashboardPage(for: waiting, config: config, isWorking: isWorking)]
+            return [dashboardPage(for: waiting, config: config, now: now, isWorking: isWorking)]
         }
 
         return selectedItems.map { item in
-            dashboardPage(for: item, config: config, isWorking: isWorking)
+            dashboardPage(for: item, config: config, now: now, isWorking: isWorking)
         }
     }
 
     private static func dashboardPage(
         for item: PixelClockQuotaItem,
         config: PixelClockConfig,
+        now: Date,
         isWorking: Bool
     ) -> PixelClockRenderedPage {
         let color = providerAccentHex(for: item, fallback: config.palette.hexColor(for: item.percentUsed))
@@ -159,13 +300,14 @@ public enum PixelClockQuotaRenderer {
             durationSeconds: config.clampedPageDuration,
             progress: remainingPercent(for: item),
             scrollSpeed: config.clampedScrollSpeed,
-            draw: dashboardDraw(for: item, config: config, isWorking: isWorking)
+            draw: dashboardDraw(for: item, config: config, now: now, isWorking: isWorking)
         )
     }
 
     private static func dashboardDraw(
         for item: PixelClockQuotaItem,
         config: PixelClockConfig,
+        now: Date,
         isWorking: Bool
     ) -> [PixelClockDrawInstruction] {
         var draw: [PixelClockDrawInstruction] = []
@@ -177,16 +319,21 @@ public enum PixelClockQuotaRenderer {
 
         let window = normalizedWindowLabel(item.windowLabel)
         if !window.isEmpty {
-            draw.append(contentsOf: miniTextDraw(window, x: 10, y: 1, color: primary))
+            draw.append(contentsOf: windowTextDraw(window, x: 10, y: 1, color: primary))
         }
 
-        let metricText = status == .ready ? "\(remaining)%" : shortStatusText(status)
-        let metricX = max(17, 32 - metricText.count * 4)
-        draw.append(contentsOf: miniTextDraw(metricText, x: metricX, y: 1, color: primary))
+        if status == .running {
+            let tick = Int(now.timeIntervalSince1970.rounded(.down))
+            draw.append(contentsOf: spinnerDraw(config.workingSpinnerStyle, x: 24, y: 1, config: config, tick: tick))
+        } else {
+            let metricText = dashboardMetricText(status: status, remaining: remaining)
+            let metricX = dashboardMetricOriginX(for: metricText)
+            draw.append(contentsOf: miniTextDraw(metricText, x: metricX, y: 1, color: primary))
+        }
 
-        let filled = min(max(Int(round(Double(remaining) / 100.0 * 21.0)), 0), 21)
+        let filled = min(max(Int(round(Double(remaining) / 100.0 * 20.0)), 0), 20)
         if filled > 0 {
-            draw.append(.fillRect(x: 10, y: 7, width: filled, height: 1, color: primary))
+            draw.append(.fillRect(x: 12, y: 7, width: filled, height: 1, color: primary))
         }
         return draw
     }
@@ -203,15 +350,37 @@ public enum PixelClockQuotaRenderer {
         let points: [(Int, Int, String)]
         switch style {
         case .orbit:
-            points = [(1,0,secondary), (3,1,primary), (2,3,secondary), (0,2,primary)]
+            let ring = [(2,0), (3,0), (4,1), (5,2), (4,3), (3,4), (2,4), (1,3), (0,2), (1,1)]
+            let active = positiveModulo(tick, ring.count)
+            points = ring.enumerated().map { index, point in
+                (point.0, point.1, index == active ? primary : secondary)
+            }
         case .chase:
-            points = [(0,1,primary), (1,1,secondary), (2,1,primary), (3,1,secondary)]
+            let active = positiveModulo(tick, 6)
+            points = (0..<6).map { index in (index, 2, index == active ? primary : secondary) }
         case .pulse:
-            points = [(1,1,primary), (2,1,secondary), (1,2,secondary), (2,2,primary)]
+            let flip = positiveModulo(tick, 2) == 0
+            points = [
+                (2, 1, flip ? primary : secondary),
+                (3, 1, flip ? secondary : primary),
+                (1, 2, flip ? secondary : primary),
+                (4, 2, flip ? primary : secondary),
+                (2, 3, flip ? primary : secondary),
+                (3, 3, flip ? secondary : primary)
+            ]
         case .scan:
-            points = [(0,0,primary), (1,1,secondary), (2,2,primary), (3,3,secondary)]
+            let offset = positiveModulo(tick, 6)
+            points = (0..<5).map { index in
+                let column = (index + offset) % 6
+                return (column, index, index == 0 ? primary : secondary)
+            }
         }
         return points.map { point in .pixel(x: x + point.0, y: y + point.1, color: point.2) }
+    }
+
+    private static func positiveModulo(_ value: Int, _ divisor: Int) -> Int {
+        let remainder = value % divisor
+        return remainder >= 0 ? remainder : remainder + divisor
     }
 
     private static func providerLogoDraw(for item: PixelClockQuotaItem) -> [PixelClockDrawInstruction] {
@@ -306,6 +475,26 @@ public enum PixelClockQuotaRenderer {
         return draw
     }
 
+    private static func windowTextDraw(
+        _ text: String,
+        x: Int,
+        y: Int,
+        color: String
+    ) -> [PixelClockDrawInstruction] {
+        var draw: [PixelClockDrawInstruction] = []
+        var cursorX = x
+        for char in text {
+            let glyph = windowGlyph(char)
+            for (row, bits) in glyph.enumerated() {
+                for (column, bit) in bits.enumerated() where bit == 1 {
+                    draw.append(.pixel(x: cursorX + column, y: y + row, color: color))
+                }
+            }
+            cursorX += (glyph.first?.count ?? 0) + 1
+        }
+        return draw
+    }
+
     private static func filteredItems(
         _ items: [PixelClockQuotaItem],
         providerIDs: [String]
@@ -345,8 +534,23 @@ public enum PixelClockQuotaRenderer {
 
     private static func normalizedWindowLabel(_ label: String) -> String {
         let cleaned = label.uppercased().filter { $0.isLetter || $0.isNumber }
-        if cleaned == "5H" || cleaned == "7D" { return cleaned }
-        return String(cleaned.prefix(2))
+        switch cleaned {
+        case "5H": return "5h"
+        case "7D": return "7d"
+        case "24H": return "24h"
+        case "30D": return "30d"
+        default: return String(cleaned.prefix(2))
+        }
+    }
+
+    private static func dashboardMetricText(status: PixelClockAgentStatus, remaining: Int) -> String {
+        guard status == .ready else { return shortStatusText(status) }
+        return remaining >= 100 ? "100" : "\(remaining)%"
+    }
+
+    private static func dashboardMetricOriginX(for text: String) -> Int {
+        let clampedCount = min(max(text.count, 1), 3)
+        return 33 - clampedCount * 4
     }
 
     private static func remainingPercent(for item: PixelClockQuotaItem) -> Int {
@@ -425,6 +629,24 @@ public enum PixelClockQuotaRenderer {
         case "Z": return [[1,1,1],[0,0,1],[0,1,0],[1,0,0],[1,1,1]]
         default:
             return [[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]
+        }
+    }
+
+    private static func windowGlyph(_ character: Character) -> [[Int]] {
+        switch character {
+        case "0": return glyph3x5("0")
+        case "1": return glyph3x5("1")
+        case "2": return glyph3x5("2")
+        case "3": return glyph3x5("3")
+        case "4": return glyph3x5("4")
+        case "5": return glyph3x5("5")
+        case "6": return glyph3x5("6")
+        case "7": return glyph3x5("7")
+        case "8": return glyph3x5("8")
+        case "9": return glyph3x5("9")
+        case "d": return [[0,0,1],[0,0,1],[0,1,1],[1,0,1],[0,1,1]]
+        case "h": return [[1,0,0],[1,0,0],[1,1,0],[1,0,1],[1,0,1]]
+        default: return [[0,0],[0,0],[0,0],[0,0],[0,0]]
         }
     }
 }

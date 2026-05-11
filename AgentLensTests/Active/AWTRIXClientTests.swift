@@ -20,12 +20,12 @@ final class AWTRIXClientTests: XCTestCase {
         try await super.tearDown()
     }
 
-    func testProbeReturnsAWTRIXReadyWhenStatsEndpointReturnsJSON() async {
+    func testProbeReturnsAWTRIXReadyWhenStatsEndpointReturnsAWTRIXJSON() async {
         AWTRIXStubURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.absoluteString, "http://192.168.68.92/api/stats")
             return (
                 HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
-                #"{"version":"0.96"}"#.data(using: .utf8)!
+                #"{"version":"0.96","app":"Time","ram":123456,"bat":88}"#.data(using: .utf8)!
             )
         }
 
@@ -35,18 +35,52 @@ final class AWTRIXClientTests: XCTestCase {
         XCTAssertEqual(result.message, "AWTRIX HTTP API is ready at 192.168.68.92.")
     }
 
+    func testProbeDoesNotTreatGenericStatsJSONAsAWTRIX() async {
+        AWTRIXStubURLProtocol.handler = { request in
+            if request.url?.path == "/api/stats" {
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    #"{"status":"ok","version":"1.0"}"#.data(using: .utf8)!
+                )
+            }
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!,
+                Data()
+            )
+        }
+
+        let result = await AWTRIXClient(session: session).probe(config: .enabledTestClock)
+
+        XCTAssertEqual(result.status, .unsupported)
+        XCTAssertEqual(result.message, "Stats endpoint answered, but it did not look like AWTRIX.")
+    }
+
+    func testCurrentAppNameReturnsStatsApp() async {
+        AWTRIXStubURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.absoluteString, "http://192.168.68.92/api/stats")
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                #"{"app":"openburnbar3","version":"0.98"}"#.data(using: .utf8)!
+            )
+        }
+
+        let appName = await AWTRIXClient(session: session).currentAppName(config: .enabledTestClock)
+
+        XCTAssertEqual(appName, "openburnbar3")
+    }
+
     func testDiscoverScansCandidatesAndReturnsReachableAWTRIXHost() async {
         AWTRIXStubURLProtocol.handler = { request in
             if request.url?.host == "192.168.68.92", request.url?.path == "/api/stats" {
                 return (
                     HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
-                    #"{"version":"0.96"}"#.data(using: .utf8)!
+                    #"{"version":"0.96","app":"Time","ram":123456,"bat":88}"#.data(using: .utf8)!
                 )
             }
             throw URLError(.cannotConnectToHost)
         }
 
-        var config = PixelClockConfig(enabled: true, host: "192.168.68.40", port: 80)
+        let config = PixelClockConfig(enabled: true, host: "192.168.68.40", port: 80)
         let result = await AWTRIXClient(session: session).discover(
             config: config,
             candidateHosts: ["192.168.68.41", "192.168.68.92"],
@@ -90,16 +124,14 @@ final class AWTRIXClientTests: XCTestCase {
     }
 
     func testPushCustomAppPostsRenderedPagesToNamedAWTRIXApp() async throws {
+        var seenRequests: [(url: String, body: Data)] = []
         AWTRIXStubURLProtocol.handler = { request in
             XCTAssertEqual(request.httpMethod, "POST")
-            XCTAssertEqual(request.url?.absoluteString, "http://192.168.68.92/api/custom?name=openburnbar")
             XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
-
-            let body = request.httpBody ?? request.bodyStreamData() ?? Data()
-            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [[String: Any]])
-            XCTAssertEqual(json.first?["text"] as? String, "Claude 5H 80% 80/100")
-            XCTAssertEqual(json.first?["progress"] as? Int, 80)
-            XCTAssertEqual(json.first?["save"] as? Bool, false)
+            seenRequests.append((
+                request.url?.absoluteString ?? "",
+                request.httpBody ?? request.bodyStreamData() ?? Data()
+            ))
             return (
                 HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
                 Data()
@@ -118,6 +150,128 @@ final class AWTRIXClientTests: XCTestCase {
             ],
             config: .enabledTestClock
         )
+
+        XCTAssertEqual(seenRequests.count, 1)
+        XCTAssertEqual(seenRequests.last?.url, "http://192.168.68.92/api/custom?name=openburnbar0")
+
+        let body = try XCTUnwrap(seenRequests.last?.body)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["text"] as? String, "Claude 5H 80% 80/100")
+        XCTAssertEqual(json["progress"] as? Int, 80)
+        XCTAssertEqual(json["save"] as? Bool, false)
+    }
+
+    func testPushCustomAppUsesSingleSafeAWTRIXSlotWhenGivenMultipleFrames() async throws {
+        var seenURLs: [String] = []
+        AWTRIXStubURLProtocol.handler = { request in
+            seenURLs.append(request.url?.absoluteString ?? "")
+            let body = request.httpBody ?? request.bodyStreamData() ?? Data()
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(json["save"] as? Bool, false)
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                Data()
+            )
+        }
+
+        try await AWTRIXClient(session: session).pushCustomApp(
+            pages: [
+                ["text": "Codex 5h", "color": "#FFFFFF", "duration": 7, "save": false],
+                ["text": "Codex 7d", "color": "#FFFFFF", "duration": 7, "save": false],
+                ["text": "Claude 5h", "color": "#FFFFFF", "duration": 7, "save": false]
+            ],
+            config: .enabledTestClock
+        )
+
+        XCTAssertEqual(seenURLs, [
+            "http://192.168.68.92/api/custom?name=openburnbar0"
+        ])
+    }
+
+    func testTestNotifyIncludesCompletionSoundWhenProvided() async throws {
+        AWTRIXStubURLProtocol.handler = { request in
+            XCTAssertEqual(request.url?.absoluteString, "http://192.168.68.92/api/notify")
+
+            let body = request.httpBody ?? request.bodyStreamData() ?? Data()
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(json["sound"] as? String, "zai")
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                Data()
+            )
+        }
+
+        try await AWTRIXClient(session: session).testNotify(
+            page: PixelClockRenderedPage(text: "GLM-5 DONE", color: "#FFFFFF", durationSeconds: 4, scrollSpeed: 100),
+            config: .enabledTestClock,
+            sound: "zai"
+        )
+    }
+
+    func testTestNotifyOmitsCompletionSoundWhenNotProvided() async throws {
+        AWTRIXStubURLProtocol.handler = { request in
+            let body = request.httpBody ?? request.bodyStreamData() ?? Data()
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertNil(json["sound"])
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                Data()
+            )
+        }
+
+        try await AWTRIXClient(session: session).testNotify(
+            page: PixelClockRenderedPage(text: "DONE", color: "#FFFFFF", durationSeconds: 4, scrollSpeed: 100),
+            config: .enabledTestClock
+        )
+    }
+
+    func testCompletionSoundResolverPrefersModelFamilyOverProvider() {
+        XCTAssertEqual(
+            PixelClockCompletionSoundResolver.soundName(
+                providerID: AgentProvider.factory.persistedToken,
+                providerName: "Factory / Droid",
+                modelName: "glm-5"
+            ),
+            "zai"
+        )
+        XCTAssertEqual(
+            PixelClockCompletionSoundResolver.soundName(
+                providerID: AgentProvider.factory.persistedToken,
+                providerName: "Factory / Droid",
+                modelName: "MiniMax-M2.7-Highspeed"
+            ),
+            "minimax"
+        )
+        XCTAssertEqual(
+            PixelClockCompletionSoundResolver.soundName(
+                providerID: AgentProvider.codex.persistedToken,
+                providerName: "Codex",
+                modelName: nil
+            ),
+            "codex"
+        )
+    }
+
+    func testAgentCompletionParserExtractsDaemonModelAndRoutesProvider() {
+        let completion = AgentCompletionNotificationParser.parse(
+            title: "Apollo completed its mission packet.",
+            body: "Run run-123 completed on glm-5."
+        )
+
+        XCTAssertEqual(completion?.providerID, AgentProvider.zai.persistedToken)
+        XCTAssertEqual(completion?.providerName, "Z.ai")
+        XCTAssertEqual(completion?.modelName, "glm-5")
+    }
+
+    func testAgentCompletionParserRoutesMiniMaxModelCompletion() {
+        let completion = AgentCompletionNotificationParser.parse(
+            title: "Review finished",
+            body: "Run run-456 finished on MiniMax-M2.7-Highspeed."
+        )
+
+        XCTAssertEqual(completion?.providerID, AgentProvider.minimax.persistedToken)
+        XCTAssertEqual(completion?.providerName, "MiniMax")
+        XCTAssertEqual(completion?.modelName, "MiniMax-M2.7-Highspeed")
     }
 
     func testApplyBrightnessClampsAndPostsSettingsPayload() async throws {
@@ -127,7 +281,7 @@ final class AWTRIXClientTests: XCTestCase {
 
             let body = request.httpBody ?? request.bodyStreamData() ?? Data()
             let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
-            XCTAssertEqual(json["BRI"] as? Int, 255)
+            XCTAssertEqual(json["BRI"] as? Int, PixelClockConfig.safeMaximumBrightness)
             return (
                 HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
                 Data()
@@ -187,6 +341,121 @@ final class AWTRIXClientTests: XCTestCase {
         try await AWTRIXClient(session: session).disableAwtrixNativeApps(config: .enabledTestClock)
     }
 
+    func testFirmwareFlasherRejectsSamsungAndroidUsbModemPort() {
+        let usbRegistry = """
+        +-o SAMSUNG_Android@00100000  <class IOUSBHostDevice>
+          {
+            "USB Product Name" = "SAMSUNG_Android"
+            "kUSBSerialNumberString" = "R3CXB0CNS0J"
+            "USB Vendor Name" = "SAMSUNG"
+            "UsbExclusiveOwner" = "pid 19693, adb"
+          }
+        """
+
+        XCTAssertFalse(
+            PixelClockFirmwareFlasher.shouldTrySerialDevice(
+                "/dev/cu.usbmodemR3CXB0CNS0J2",
+                usbRegistry: usbRegistry
+            )
+        )
+    }
+
+    func testFirmwareFlasherAllowsEspressifUsbModemPort() {
+        let usbRegistry = """
+        +-o USB JTAG_serial debug unit@00100000  <class IOUSBHostDevice>
+          {
+            "USB Product Name" = "USB JTAG/serial debug unit"
+            "kUSBSerialNumberString" = "3C84AB123456"
+            "USB Vendor Name" = "Espressif"
+            "idVendor" = 12346
+          }
+        """
+
+        XCTAssertTrue(
+            PixelClockFirmwareFlasher.shouldTrySerialDevice(
+                "/dev/cu.usbmodem3C84AB1234561",
+                usbRegistry: usbRegistry
+            )
+        )
+    }
+
+    func testFirmwareFlasherDiagnosticsSeparatesClockAndIgnoredSerialPorts() {
+        let usbRegistry = """
+        +-o SAMSUNG_Android@00100000  <class IOUSBHostDevice>
+          {
+            "USB Product Name" = "SAMSUNG_Android"
+            "kUSBSerialNumberString" = "R3CXB0CNS0J"
+            "USB Vendor Name" = "SAMSUNG"
+          }
+        +-o USB JTAG_serial debug unit@00200000  <class IOUSBHostDevice>
+          {
+            "USB Product Name" = "USB JTAG/serial debug unit"
+            "kUSBSerialNumberString" = "3C84AB123456"
+            "USB Vendor Name" = "Espressif"
+          }
+        """
+
+        let diagnostics = PixelClockFirmwareFlasher.serialDiagnostics(
+            serialDevices: [
+                "/dev/cu.Bluetooth-Incoming-Port",
+                "/dev/cu.usbmodemR3CXB0CNS0J2",
+                "/dev/cu.usbmodem3C84AB1234561"
+            ],
+            usbRegistry: usbRegistry
+        )
+
+        XCTAssertEqual(diagnostics.clockCandidateDevices, ["/dev/cu.usbmodem3C84AB1234561"])
+        XCTAssertEqual(diagnostics.ignoredSerialDevices, ["/dev/cu.usbmodemR3CXB0CNS0J2"])
+    }
+
+    func testFirmwareFlasherDiagnosticsExplainsNonClockUsbSerialOnly() {
+        let diagnostics = PixelClockFirmwareFlasher.serialDiagnostics(
+            serialDevices: ["/dev/cu.usbmodemR3CXB0CNS0J2"],
+            usbRegistry: """
+            +-o SAMSUNG_Android@00100000  <class IOUSBHostDevice>
+              {
+                "USB Product Name" = "SAMSUNG_Android"
+                "kUSBSerialNumberString" = "R3CXB0CNS0J"
+                "USB Vendor Name" = "SAMSUNG"
+              }
+            """
+        )
+
+        XCTAssertFalse(diagnostics.hasClockCandidate)
+        XCTAssertTrue(diagnostics.setupGuidance.contains("only non-clock serial devices"), diagnostics.setupGuidance)
+        XCTAssertTrue(diagnostics.setupGuidance.contains("cu.usbmodemR3CXB0CNS0J2"), diagnostics.setupGuidance)
+    }
+
+    func testFirmwareFlasherDiagnosticsExplainsBatteryCanHideMissingUsbData() {
+        let diagnostics = PixelClockFirmwareFlasher.serialDiagnostics(
+            serialDevices: [
+                "/dev/cu.Bluetooth-Incoming-Port",
+                "/dev/cu.debug-console"
+            ],
+            usbRegistry: ""
+        )
+
+        XCTAssertFalse(diagnostics.hasClockCandidate)
+        XCTAssertTrue(diagnostics.setupGuidance.contains("battery"), diagnostics.setupGuidance)
+        XCTAssertTrue(diagnostics.setupGuidance.contains("power, not data"), diagnostics.setupGuidance)
+        XCTAssertTrue(diagnostics.setupGuidance.contains("data-capable USB cable"), diagnostics.setupGuidance)
+    }
+
+    func testNetworkProvisionerFindsAwtrixSetupNetworks() {
+        let names = [
+            "Home Wi-Fi",
+            "ULANZI-SETUP",
+            "awtrix_f0e1d2",
+            "awtrix-fallback",
+            "Coffee Shop"
+        ]
+
+        XCTAssertEqual(
+            PixelClockNetworkProvisioner.setupSSIDs(fromNetworkNames: names),
+            ["awtrix_f0e1d2", "awtrix-fallback", "ULANZI-SETUP"]
+        )
+    }
+
     func testStockMQTTParsesSubscribePacketIdentifier() {
         var packet = Data([0x82, 0x13, 0x00, 0x02, 0x00, 0x0E])
         packet.append(Data("awtrixmatrix/#".utf8))
@@ -229,7 +498,7 @@ final class AWTRIXClientTests: XCTestCase {
         )
 
         XCTAssertEqual(commands.map { $0.first }, [UInt8(0x0D), UInt8(0x09), UInt8(0x01), UInt8(0x08)])
-        XCTAssertEqual(commands[0], Data([0x0D, 0x80]))
+        XCTAssertEqual(commands[0], Data([0x0D, UInt8(PixelClockConfig.safeMaximumBrightness)]))
         XCTAssertEqual(commands[2].count, 7 + 32 * 8 * 2)
         XCTAssertEqual(commands[2].prefix(7), Data([0x01, 0x00, 0x00, 0x00, 0x00, 0x20, 0x08]))
         XCTAssertEqual(commands[2][7], 0xF8)
@@ -267,6 +536,25 @@ final class PixelClockSnapshotAdapterTests: XCTestCase {
         )
 
         XCTAssertEqual(items.map(\.providerID), AgentProvider.quotaSignalProviders.map(\.persistedToken))
+        XCTAssertTrue(items.allSatisfy { $0.agentStatus == .ready })
+        XCTAssertTrue(items.allSatisfy { $0.usageText == "ready" })
+    }
+
+    func testQuotaCycleItemsIncludeEveryProviderAndCorePeriodsWhenQuotaIsUnavailable() {
+        let items = PixelClockSnapshotAdapter.quotaCycleItems(
+            quotaService: nil,
+            statuses: [:]
+        )
+
+        let expectedProviderIDs = AgentProvider.quotaSignalProviders.flatMap { provider in
+            [provider.persistedToken, provider.persistedToken]
+        }
+        let expectedWindows = AgentProvider.quotaSignalProviders.flatMap { _ in
+            ["5h", "7d"]
+        }
+
+        XCTAssertEqual(items.map(\.providerID), expectedProviderIDs)
+        XCTAssertEqual(items.map(\.windowLabel), expectedWindows)
         XCTAssertTrue(items.allSatisfy { $0.agentStatus == .ready })
         XCTAssertTrue(items.allSatisfy { $0.usageText == "ready" })
     }

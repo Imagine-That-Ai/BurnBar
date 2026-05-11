@@ -12,15 +12,7 @@ enum PixelClockSnapshotAdapter {
             let status = statuses[provider.persistedToken] ?? .ready
             guard let snapshot = quotaService?.snapshot(for: provider),
                   let bucket = bestBucket(in: snapshot, for: period) else {
-                guard status != .ready else { return nil }
-                return PixelClockQuotaItem(
-                    providerID: provider.persistedToken,
-                    providerName: provider == .factory ? "Factory / Droid" : provider.displayName,
-                    percentUsed: 0,
-                    usageText: status == .ready ? "ready" : status.displayText.lowercased(),
-                    windowLabel: fallbackWindowLabel(for: period),
-                    agentStatus: status
-                )
+                return fallbackItem(provider: provider, period: period, status: status)
             }
             let percent = Int((bucket.progressFraction * 100).rounded())
             return PixelClockQuotaItem(
@@ -41,35 +33,77 @@ enum PixelClockSnapshotAdapter {
     ) -> [PixelClockQuotaItem] {
         AgentProvider.quotaSignalProviders.flatMap { provider -> [PixelClockQuotaItem] in
             let status = statuses[provider.persistedToken] ?? .ready
-            guard let snapshot = quotaService?.snapshot(for: provider) else {
-                return status == .ready
-                    ? []
-                    : [
-                        fallbackItem(
-                            provider: provider,
-                            period: .rolling5h,
-                            status: status
-                        )
-                    ]
+            let snapshots = quotaSnapshots(for: provider, quotaService: quotaService)
+            let periods: [SmartHubTimePeriod] = [.rolling5h, .rolling7d]
+            guard !snapshots.isEmpty else {
+                return periods.map { period in
+                    fallbackItem(provider: provider, period: period, status: status)
+                }
             }
 
-            let periods: [SmartHubTimePeriod] = [.rolling5h, .rolling7d]
-            let items = periods.compactMap { period -> PixelClockQuotaItem? in
-                guard let bucket = bestBucket(in: snapshot, for: period) else { return nil }
+            let items = periods.map { period -> PixelClockQuotaItem in
+                guard let bucket = bestBucket(in: snapshots, for: period) else {
+                    return fallbackItem(provider: provider, period: period, status: status)
+                }
                 return item(provider: provider, bucket: bucket, status: status)
             }
 
-            if items.isEmpty, status != .ready {
-                return [fallbackItem(provider: provider, period: .rolling5h, status: status)]
-            }
             return items
         }
+    }
+
+    @MainActor
+    private static func quotaSnapshots(
+        for provider: AgentProvider,
+        quotaService: ProviderQuotaService?
+    ) -> [ProviderQuotaSnapshot] {
+        guard let quotaService else { return [] }
+        var snapshotsByKey: [String: ProviderQuotaSnapshot] = [:]
+        if let providerSnapshot = quotaService.snapshot(for: provider) {
+            snapshotsByKey[ProviderQuotaSnapshotStore.accountSnapshotKey(providerSnapshot)] = providerSnapshot
+        }
+        for snapshot in quotaService.snapshots(for: provider) {
+            snapshotsByKey[ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)] = snapshot
+        }
+        return snapshotsByKey.values
+            .filter(\.hasDisplayableQuotaSignal)
+            .sorted { lhs, rhs in
+                if lhs.fetchedAt != rhs.fetchedAt {
+                    return lhs.fetchedAt > rhs.fetchedAt
+                }
+                return (lhs.accountLabel ?? lhs.accountID ?? lhs.sourceId)
+                    .localizedCaseInsensitiveCompare(rhs.accountLabel ?? rhs.accountID ?? rhs.sourceId) == .orderedAscending
+            }
+    }
+
+    private static func bestBucket(
+        in snapshots: [ProviderQuotaSnapshot],
+        for period: SmartHubTimePeriod
+    ) -> ProviderQuotaBucket? {
+        snapshots
+            .compactMap { snapshot -> (bucket: ProviderQuotaBucket, score: Double, fetchedAt: Date)? in
+                guard let candidate = bestScoredBucket(in: snapshot, for: period) else { return nil }
+                return (candidate.bucket, candidate.score, snapshot.fetchedAt)
+            }
+            .sorted { lhs, rhs in
+                if lhs.score != rhs.score { return lhs.score < rhs.score }
+                return lhs.fetchedAt > rhs.fetchedAt
+            }
+            .first?
+            .bucket
     }
 
     static func bestBucket(
         in snapshot: ProviderQuotaSnapshot,
         for period: SmartHubTimePeriod
     ) -> ProviderQuotaBucket? {
+        bestScoredBucket(in: snapshot, for: period)?.bucket
+    }
+
+    private static func bestScoredBucket(
+        in snapshot: ProviderQuotaSnapshot,
+        for period: SmartHubTimePeriod
+    ) -> (bucket: ProviderQuotaBucket, score: Double)? {
         let buckets = snapshot.displayableQuotaBuckets
         if buckets.isEmpty { return nil }
 
@@ -85,15 +119,15 @@ enum PixelClockSnapshotAdapter {
                 bestBucket = bucket
             }
         }
-        if let bestBucket { return bestBucket }
+        if let bestBucket { return (bestBucket, bestScore) }
 
         let preferredPriorities = ["primary", "month", "monthly", "weekly", "daily"]
-        for hint in preferredPriorities {
+        for (index, hint) in preferredPriorities.enumerated() {
             if let match = buckets.first(where: { $0.key.lowercased().contains(hint) || $0.label.lowercased().contains(hint) }) {
-                return match
+                return (match, 100 + Double(index))
             }
         }
-        return buckets.first
+        return buckets.first.map { ($0, 200) }
     }
 
     static func approximateBucketHours(_ bucket: ProviderQuotaBucket) -> Double? {

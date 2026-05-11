@@ -24,4 +24,18 @@ final class LocalNetworkDiscoveryTests: XCTestCase {
         XCTAssertFalse(hosts.contains("169.254.10.20"))
         XCTAssertTrue(hosts.contains("10.0.1.92"))
     }
+
+    func testSubnetCandidatesCoverFullLocalNetmask() {
+        let hosts = LocalNetworkDiscovery.subnetCandidates(
+            localIPv4Interfaces: [(address: "192.168.68.93", netmask: "255.255.252.0")],
+            pinnedHosts: ["192.168.68.92"]
+        )
+
+        XCTAssertEqual(hosts.first, "192.168.68.92")
+        XCTAssertTrue(hosts.contains("192.168.68.1"))
+        XCTAssertTrue(hosts.contains("192.168.69.1"))
+        XCTAssertTrue(hosts.contains("192.168.70.254"))
+        XCTAssertTrue(hosts.contains("192.168.71.254"))
+        XCTAssertFalse(hosts.contains("192.168.72.1"))
+    }
 }

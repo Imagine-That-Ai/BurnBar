@@ -741,6 +741,7 @@
 		CA42B607C50575C094A54C90 /* DashboardQuickSwitchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC21D0FB2A8E8A6888FF3F8 /* DashboardQuickSwitchView.swift */; };
 		CA8B747853627597D27A898E /* AiderQuotaAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33410A2B10922756962E2FF9 /* AiderQuotaAdapter.swift */; };
 		CB02056C7122596B8E73D6B2 /* CloudSyncRetryPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B55A82A43304C8F289966E41 /* CloudSyncRetryPolicyTests.swift */; };
+		CB08D4C8885DF1E8AE542A80 /* PixelClockFirmwareFlasher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45587EEE278A6A22412A333C /* PixelClockFirmwareFlasher.swift */; };
 		CBE9E0C3B213FD83EBCCCF85 /* SmartDisplayActionsListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49397DEB4775241A78DAC695 /* SmartDisplayActionsListener.swift */; };
 		CBEB12A261E50A5386A0E8BF /* ForgeQuotaAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72F6A894651D6399495D57C1 /* ForgeQuotaAdapter.swift */; };
 		CBEFD726C80AF6847BF59149 /* MobileProviderWizardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42DF4EFC7F684247D3FD1663 /* MobileProviderWizardModel.swift */; };
@@ -1235,6 +1236,7 @@
 		440B5DB6483C144E3633C154 /* ProviderQuotaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaService.swift; sourceTree = "<group>"; };
 		44C0AD0CE2F28F0025752B15 /* OpenBurnBarPlannerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarPlannerService.swift; sourceTree = "<group>"; };
 		44F0AAEFD23B07DFCE9313F9 /* MercuryThinkingIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryThinkingIndicator.swift; sourceTree = "<group>"; };
+		45587EEE278A6A22412A333C /* PixelClockFirmwareFlasher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelClockFirmwareFlasher.swift; sourceTree = "<group>"; };
 		45801A099E26CADD7A4AC551 /* MissionControlTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionControlTransport.swift; sourceTree = "<group>"; };
 		467B706E9C782FE647104D3F /* HermesQuickAskCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesQuickAskCard.swift; sourceTree = "<group>"; };
 		46FE234B47C923ED2D5C07F2 /* CopilotQuotaAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopilotQuotaAdapter.swift; sourceTree = "<group>"; };
@@ -3421,6 +3423,7 @@
 				178DF51B7E4B1CA8A525A046 /* AWTRIXClient.swift */,
 				2E977E87D5FFB8BAD30E4965 /* LocalNetworkDiscovery.swift */,
 				C8655350F1076B4C084C914F /* PixelClockController.swift */,
+				45587EEE278A6A22412A333C /* PixelClockFirmwareFlasher.swift */,
 				7F980C8F44D577393CACFED7 /* PixelClockSettingsAdapter.swift */,
 				43047B3F5D10F58B852D1AA0 /* PixelClockSnapshotAdapter.swift */,
 				49397DEB4775241A78DAC695 /* SmartDisplayActionsListener.swift */,
@@ -4888,6 +4891,7 @@
 				B270AB226B5C4B5904D77942 /* ParserHealth.swift in Sources */,
 				76C06B4771F3C980CE7374C6 /* ParserRegistry.swift in Sources */,
 				21EA1E6EAC63FD3A95035816 /* PixelClockController.swift in Sources */,
+				CB08D4C8885DF1E8AE542A80 /* PixelClockFirmwareFlasher.swift in Sources */,
 				85DB5357C6C14BB93EB2DA46 /* PixelClockSettingsAdapter.swift in Sources */,
 				C132C3155571BBA4CB1B2B3E /* PixelClockSettingsCard.swift in Sources */,
 				E0C2FC880459D4C30A3222B9 /* PixelClockSnapshotAdapter.swift in Sources */,

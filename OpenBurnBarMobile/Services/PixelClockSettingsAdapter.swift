@@ -46,7 +46,16 @@ final class MobilePixelClockOperationsAdapter: PixelClockOperations {
             clockHost: latest.host,
             suggestedServerHost: actionData["suggestedServerHost"] as? String,
             suggestedServerPort: Self.intValue(from: actionData["suggestedServerPort"]),
-            flasherURL: actionData["flasherURL"] as? String
+            flasherURL: actionData["flasherURL"] as? String,
+            setupSSID: actionData["setupSSID"] as? String
+        )
+    }
+
+    func flashPixelClockFirmware(config: PixelClockConfig, wifiCredentials: PixelClockWiFiCredentials?) async throws -> PixelClockSetupResult {
+        throw NSError(
+            domain: "PixelClock",
+            code: 2,
+            userInfo: [NSLocalizedDescriptionKey: "Finish Pixel Clock Wi-Fi setup from the Mac. The Mac has to briefly join the AWTRIX setup network."]
         )
     }
 

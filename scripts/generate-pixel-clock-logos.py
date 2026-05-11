@@ -88,23 +88,20 @@ LOGOS = [
     ),
     LogoSource("copilot", "CopilotLogo", "CopilotLogo"),
     LogoSource(
-        # MiniMax — three interleaved ribbon strands. Outer strands are
-        # magenta (#EC1970), the middle strand is coral (#FF5B3F).
-        # Two visible weave bands cross the legs: the magenta strand
-        # passes over the coral one, and the coral strand passes over
-        # the magenta, producing a clear over/under braid even at 8×8.
+        # MiniMax — two stacked M marks, matching the user's request for
+        # a clear "2 Ms" treatment using the existing brand colors.
         "miniMax",
         "MiniMaxLogo",
         "MiniMaxLogo",
         pixel_rows=(
-            "PP.OO.PP",
-            "PP.OO.PP",
-            "PPOOOPPP",
-            "PP.OO.PP",
-            "PP.OO.PP",
-            "PPOOOPPP",
-            "PP.OO.PP",
-            "PP.OO.PP",
+            "P..PP..P",
+            "PP.PP.PP",
+            "PPPPPPPP",
+            "P..PP..P",
+            "O..OO..O",
+            "OO.OO.OO",
+            "OOOOOOOO",
+            "O..OO..O",
         ),
         pixel_colors={
             "P": "#EC1970",
@@ -136,52 +133,72 @@ LOGOS = [
         },
     ),
     LogoSource(
-        # Factory — the brand's sunburst mark: eight rounded petals
-        # radiating from a central hub. Petals are white; the inner
-        # 2×2 hub is a soft grey (#B8B8B8) so the centre reads as a
-        # distinct knob even at 8×8, matching the negative-space
-        # treatment of the real black-on-white brand mark.
+        # Factory — thin eight-petal line-art rosette, close to the
+        # dark tile reference while staying legible on an 8x8 matrix.
         "factory",
         "FactoryLogo",
         "FactoryLogo",
         pixel_rows=(
-            "F..FF..F",
-            ".F.FF.F.",
-            "..FFFF..",
-            "FFFGGFFF",
-            "FFFGGFFF",
-            "..FFFF..",
-            ".F.FF.F.",
-            "F..FF..F",
+            "...F....",
+            ".F.F.F..",
+            "F.F.F.F.",
+            ".FFGFF..",
+            "F.F.F.F.",
+            ".F.F.F..",
+            "...F....",
+            "........",
         ),
         pixel_colors={
             "F": "#FFFFFF",
             "G": "#B8B8B8",
         },
     ),
-    LogoSource("cursor", "CursorLogo", "CursorLogo", light_backdrop=True),
+    LogoSource(
+        # Cursor — faceted cube/arrow mark pointing north-east. The
+        # outline is deliberately thin and angular so it reads like the
+        # Cursor tile, not a filled triangular pointer.
+        "cursor",
+        "CursorLogo",
+        "CursorLogo",
+        pixel_rows=(
+            "........",
+            "...WW...",
+            "..WSSW..",
+            ".WSDGW..",
+            "..DDG...",
+            "...D....",
+            "........",
+            "........",
+        ),
+        pixel_colors={
+            "W": "#FFFFFF",
+            "S": "#AEB7C2",
+            "G": "#7F8790",
+            "D": "#30343A",
+        },
+    ),
     LogoSource("warp", "WarpLogo", "WarpLogo", light_backdrop=True),
     LogoSource(
-        # Ollama — keep the simple white llama silhouette from the brand
-        # mark, but replace only the eyes with saturated blue pixels so it
-        # reads on the physical TC001 without turning into a generic block.
+        # Ollama — side-profile llama head. Avoid a symmetric face:
+        # two eyes plus a mouth reads like a skull at 8x8. One blue eye
+        # and a tiny dark nose keep the brand hint without the skull.
         "ollama",
         "OllamaLogo",
         "OllamaLogo",
         pixel_rows=(
-            ".O....O.",
-            ".OO..OO.",
-            "OOOOOOOO",
-            "OOB..BOO",
-            "OOOOOOOO",
-            "OGGOOGGO",
-            ".OOOOOO.",
+            "..O.....",
+            ".OOO....",
             "..OOOO..",
+            "..OBOO..",
+            "..OOOM..",
+            "...OOO..",
+            "...OO...",
+            "...OO...",
         ),
         pixel_colors={
             "O": "#F6F8FF",
             "B": "#1EA7FF",
-            "G": "#AEB7C2",
+            "M": "#0B0B0B",
         },
     ),
     LogoSource("kimi", "KimiLogo", "KimiLogo"),

@@ -36,7 +36,9 @@ struct PixelClockSettingsCard: View {
             )
             resolvedModel = PixelClockSettingsModel(
                 initialConfig: settingsManager.pixelClockConfig,
-                operations: adapter
+                operations: adapter,
+                setupRetryAttempts: 150,
+                setupRetryIntervalNanoseconds: 2_000_000_000
             )
         }
         _model = State(initialValue: resolvedModel)
@@ -136,10 +138,16 @@ struct PixelClockSettingsCard: View {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 GlassButton(
                     title: model.setupPrimaryTitle,
-                    icon: model.isBusy ? "ellipsis" : "wand.and.stars",
+                    icon: model.isBusy ? "ellipsis" : (model.firmware == .awtrixReady ? "paperplane.fill" : "bolt.badge.automatic.fill"),
                     style: .prominent
                 ) {
-                    Task { await model.setupAutomatically() }
+                    Task {
+                        if model.firmware == .awtrixReady {
+                            await model.push()
+                        } else {
+                            await model.setupAutomatically()
+                        }
+                    }
                 }
                 .disabled(model.isBusy)
 
@@ -546,10 +554,10 @@ struct PixelClockSettingsCard: View {
                 }
                 Slider(
                     value: Binding(
-                        get: { Double(model.config.brightness ?? 160) },
+                        get: { Double(model.config.clampedBrightness ?? PixelClockConfig.safeDefaultBrightness) },
                         set: { model.updateBrightness(Int($0)) }
                     ),
-                    in: 0...255,
+                    in: Double(PixelClockConfig.minimumVisibleBrightness)...Double(PixelClockConfig.safeMaximumBrightness),
                     step: 5
                 ) {
                     Text("Brightness")
@@ -595,8 +603,7 @@ struct PixelClockSettingsCard: View {
     }
 
     private var brightnessDisplayText: String {
-        guard let brightness = model.config.brightness else { return "Auto" }
-        return "\(brightness)"
+        "\(model.config.clampedBrightness ?? PixelClockConfig.safeDefaultBrightness)"
     }
 
     // MARK: - Provider filter chips
@@ -637,6 +644,7 @@ struct PixelClockSettingsCard: View {
 
     private func runOperation(_ kind: PixelClockOperationKind) async {
         switch kind {
+        case .flash:  await model.flashAndFinishSetup()
         case .probe:  await model.probe()
         case .test:   await model.test()
         case .push:   await model.push()
@@ -657,7 +665,11 @@ struct PixelClockSettingsCard: View {
     private func autoPrepareIfNeeded() async {
         guard model.config.enabled, !didAutoPrepare, model.firmware != .awtrixReady else { return }
         didAutoPrepare = true
-        await model.setupAutomatically()
+        // Opening Settings should never strand the user in the several-minute
+        // USB/Wi-Fi setup watcher. Do one honest detection pass on appear; the
+        // long one-click setup flow starts only from the explicit primary
+        // setup action or when the user turns the Pixel Clock on.
+        await model.prepare()
     }
 
     // MARK: - Preview Tick

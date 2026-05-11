@@ -29,7 +29,9 @@ struct PixelClockSettingsCard: View {
             let initial = smartHubStore.config?.pixelClock ?? .disabled
             _model = State(initialValue: PixelClockSettingsModel(
                 initialConfig: initial,
-                operations: adapter
+                operations: adapter,
+                setupRetryAttempts: 150,
+                setupRetryIntervalNanoseconds: 2_000_000_000
             ))
         }
     }
@@ -593,10 +595,10 @@ struct PixelClockSettingsCard: View {
                 }
                 Slider(
                     value: Binding(
-                        get: { Double(model.config.brightness ?? 160) },
+                        get: { Double(model.config.clampedBrightness ?? PixelClockConfig.safeDefaultBrightness) },
                         set: { model.updateBrightness(Int($0)) }
                     ),
-                    in: 0...255,
+                    in: Double(PixelClockConfig.minimumVisibleBrightness)...Double(PixelClockConfig.safeMaximumBrightness),
                     step: 5
                 ) {
                     Text("Brightness")
@@ -644,8 +646,7 @@ struct PixelClockSettingsCard: View {
     }
 
     private var brightnessDisplayText: String {
-        guard let brightness = model.config.brightness else { return "Auto" }
-        return "\(brightness)"
+        "\(model.config.clampedBrightness ?? PixelClockConfig.safeDefaultBrightness)"
     }
 
     // MARK: - Provider chips
@@ -715,6 +716,7 @@ struct PixelClockSettingsCard: View {
 
     private func dispatch(_ kind: PixelClockOperationKind) async {
         switch kind {
+        case .flash:  await model.flashAndFinishSetup()
         case .probe:  await model.probe()
         case .test:   await model.test()
         case .push:   await model.push()
@@ -735,7 +737,10 @@ struct PixelClockSettingsCard: View {
     private func autoPrepareIfNeeded() async {
         guard model.config.enabled, !didAutoPrepare, model.firmware != .awtrixReady else { return }
         didAutoPrepare = true
-        await model.setupAutomatically()
+        // Opening this screen should refresh status without locking the user
+        // into the several-minute setup watcher. The long one-click flow runs
+        // only from the explicit setup action or when the display is enabled.
+        await model.prepare()
     }
 
     // MARK: - Preview tick

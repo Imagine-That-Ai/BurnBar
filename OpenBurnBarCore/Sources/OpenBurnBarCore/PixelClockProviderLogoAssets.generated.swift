@@ -49,14 +49,14 @@ enum PixelClockProviderLogoAssets {
     static let miniMax = PixelClockProviderLogo(
         sourceName: "MiniMaxLogo",
         pixels: [
-            ["#EC1970", "#EC1970", nil, "#FF5B3F", "#FF5B3F", nil, "#EC1970", "#EC1970"],
-            ["#EC1970", "#EC1970", nil, "#FF5B3F", "#FF5B3F", nil, "#EC1970", "#EC1970"],
-            ["#EC1970", "#EC1970", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#EC1970", "#EC1970", "#EC1970"],
-            ["#EC1970", "#EC1970", nil, "#FF5B3F", "#FF5B3F", nil, "#EC1970", "#EC1970"],
-            ["#EC1970", "#EC1970", nil, "#FF5B3F", "#FF5B3F", nil, "#EC1970", "#EC1970"],
-            ["#EC1970", "#EC1970", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#EC1970", "#EC1970", "#EC1970"],
-            ["#EC1970", "#EC1970", nil, "#FF5B3F", "#FF5B3F", nil, "#EC1970", "#EC1970"],
-            ["#EC1970", "#EC1970", nil, "#FF5B3F", "#FF5B3F", nil, "#EC1970", "#EC1970"]
+            ["#EC1970", nil, nil, "#EC1970", "#EC1970", nil, nil, "#EC1970"],
+            ["#EC1970", "#EC1970", nil, "#EC1970", "#EC1970", nil, "#EC1970", "#EC1970"],
+            ["#EC1970", "#EC1970", "#EC1970", "#EC1970", "#EC1970", "#EC1970", "#EC1970", "#EC1970"],
+            ["#EC1970", nil, nil, "#EC1970", "#EC1970", nil, nil, "#EC1970"],
+            ["#FF5B3F", nil, nil, "#FF5B3F", "#FF5B3F", nil, nil, "#FF5B3F"],
+            ["#FF5B3F", "#FF5B3F", nil, "#FF5B3F", "#FF5B3F", nil, "#FF5B3F", "#FF5B3F"],
+            ["#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F"],
+            ["#FF5B3F", nil, nil, "#FF5B3F", "#FF5B3F", nil, nil, "#FF5B3F"]
         ]
     )
 
@@ -77,28 +77,28 @@ enum PixelClockProviderLogoAssets {
     static let factory = PixelClockProviderLogo(
         sourceName: "FactoryLogo",
         pixels: [
-            ["#FFFFFF", nil, nil, "#FFFFFF", "#FFFFFF", nil, nil, "#FFFFFF"],
-            [nil, "#FFFFFF", nil, "#FFFFFF", "#FFFFFF", nil, "#FFFFFF", nil],
-            [nil, nil, "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", nil, nil],
-            ["#FFFFFF", "#FFFFFF", "#FFFFFF", "#B8B8B8", "#B8B8B8", "#FFFFFF", "#FFFFFF", "#FFFFFF"],
-            ["#FFFFFF", "#FFFFFF", "#FFFFFF", "#B8B8B8", "#B8B8B8", "#FFFFFF", "#FFFFFF", "#FFFFFF"],
-            [nil, nil, "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", nil, nil],
-            [nil, "#FFFFFF", nil, "#FFFFFF", "#FFFFFF", nil, "#FFFFFF", nil],
-            ["#FFFFFF", nil, nil, "#FFFFFF", "#FFFFFF", nil, nil, "#FFFFFF"]
+            [nil, nil, nil, "#FFFFFF", nil, nil, nil, nil],
+            [nil, "#FFFFFF", nil, "#FFFFFF", nil, "#FFFFFF", nil, nil],
+            ["#FFFFFF", nil, "#FFFFFF", nil, "#FFFFFF", nil, "#FFFFFF", nil],
+            [nil, "#FFFFFF", "#FFFFFF", "#B8B8B8", "#FFFFFF", "#FFFFFF", nil, nil],
+            ["#FFFFFF", nil, "#FFFFFF", nil, "#FFFFFF", nil, "#FFFFFF", nil],
+            [nil, "#FFFFFF", nil, "#FFFFFF", nil, "#FFFFFF", nil, nil],
+            [nil, nil, nil, "#FFFFFF", nil, nil, nil, nil],
+            [nil, nil, nil, nil, nil, nil, nil, nil]
         ]
     )
 
     static let cursor = PixelClockProviderLogo(
         sourceName: "CursorLogo",
         pixels: [
-            ["#FFFFFF", "#F9F9F9", "#B3B3B3", "#333333", "#333333", "#B3B3B3", "#F9F9F9", "#FFFFFF"],
-            ["#DDDDDD", "#7D7D7D", "#252525", "#0F0F0F", "#0F0F0F", "#232323", "#7C7C7C", "#DEDEDE"],
-            ["#797979", "#565656", "#B9B9B9", "#D2D2D2", "#CFCFCF", "#D0D0D0", "#ABABAB", "#8D8D8D"],
-            ["#6B6B6B", "#030303", "#3C3C3C", "#B0B0B0", "#FCFCFC", "#FFFFFF", "#787878", "#6B6B6B"],
-            ["#6C6C6C", "#000000", "#000000", "#242424", "#E6E6E6", "#CBCBCB", "#171717", "#6A6A6A"],
-            ["#727272", "#000000", "#000000", "#1F1F1F", "#D8D8D8", "#5B5B5B", "#000000", "#727272"],
-            ["#DADADA", "#6C6C6C", "#101010", "#212121", "#8D8D8D", "#1E1E1E", "#6B6B6B", "#D9D9D9"],
-            ["#FFFFFF", "#FAFAFA", "#B3B3B3", "#464646", "#5A5A5A", "#B2B2B2", "#FAFAFA", "#FFFFFF"]
+            [nil, nil, nil, nil, nil, nil, nil, nil],
+            [nil, nil, nil, "#FFFFFF", "#FFFFFF", nil, nil, nil],
+            [nil, nil, "#FFFFFF", "#AEB7C2", "#AEB7C2", "#FFFFFF", nil, nil],
+            [nil, "#FFFFFF", "#AEB7C2", "#30343A", "#7F8790", "#FFFFFF", nil, nil],
+            [nil, nil, "#30343A", "#30343A", "#7F8790", nil, nil, nil],
+            [nil, nil, nil, "#30343A", nil, nil, nil, nil],
+            [nil, nil, nil, nil, nil, nil, nil, nil],
+            [nil, nil, nil, nil, nil, nil, nil, nil]
         ]
     )
 
@@ -119,14 +119,14 @@ enum PixelClockProviderLogoAssets {
     static let ollama = PixelClockProviderLogo(
         sourceName: "OllamaLogo",
         pixels: [
-            [nil, "#F6F8FF", nil, nil, nil, nil, "#F6F8FF", nil],
-            [nil, "#F6F8FF", "#F6F8FF", nil, nil, "#F6F8FF", "#F6F8FF", nil],
-            ["#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF"],
-            ["#F6F8FF", "#F6F8FF", "#1EA7FF", nil, nil, "#1EA7FF", "#F6F8FF", "#F6F8FF"],
-            ["#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF"],
-            ["#F6F8FF", "#AEB7C2", "#AEB7C2", "#F6F8FF", "#F6F8FF", "#AEB7C2", "#AEB7C2", "#F6F8FF"],
-            [nil, "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", nil],
-            [nil, nil, "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", nil, nil]
+            [nil, nil, "#F6F8FF", nil, nil, nil, nil, nil],
+            [nil, "#F6F8FF", "#F6F8FF", "#F6F8FF", nil, nil, nil, nil],
+            [nil, nil, "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", nil, nil],
+            [nil, nil, "#F6F8FF", "#1EA7FF", "#F6F8FF", "#F6F8FF", nil, nil],
+            [nil, nil, "#F6F8FF", "#F6F8FF", "#F6F8FF", "#0B0B0B", nil, nil],
+            [nil, nil, nil, "#F6F8FF", "#F6F8FF", "#F6F8FF", nil, nil],
+            [nil, nil, nil, "#F6F8FF", "#F6F8FF", nil, nil, nil],
+            [nil, nil, nil, "#F6F8FF", "#F6F8FF", nil, nil, nil]
         ]
     )
 

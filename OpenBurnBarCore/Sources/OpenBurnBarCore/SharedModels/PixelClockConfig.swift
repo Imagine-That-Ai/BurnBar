@@ -3,6 +3,10 @@ import Foundation
 // MARK: - Pixel Clock Configuration
 
 public struct PixelClockConfig: Codable, Sendable, Equatable {
+    public static let minimumVisibleBrightness = 16
+    public static let safeDefaultBrightness = 32
+    public static let safeMaximumBrightness = 96
+
     public var enabled: Bool
     public var host: String
     public var port: Int
@@ -38,7 +42,7 @@ public struct PixelClockConfig: Codable, Sendable, Equatable {
         pageDurationSeconds: Int = 7,
         updateIntervalSeconds: Int = 60,
         scrollSpeedPercent: Int = 100,
-        brightness: Int? = nil,
+        brightness: Int? = Self.safeDefaultBrightness,
         providerIDs: [String] = [],
         updatedAt: Date = Date(),
         updatedByDeviceId: String? = nil,
@@ -106,7 +110,7 @@ public struct PixelClockConfig: Codable, Sendable, Equatable {
             pageDurationSeconds: try c.decodeIfPresent(Int.self, forKey: .pageDurationSeconds) ?? 7,
             updateIntervalSeconds: try c.decodeIfPresent(Int.self, forKey: .updateIntervalSeconds) ?? 60,
             scrollSpeedPercent: try c.decodeIfPresent(Int.self, forKey: .scrollSpeedPercent) ?? 100,
-            brightness: try c.decodeIfPresent(Int.self, forKey: .brightness),
+            brightness: try c.decodeIfPresent(Int.self, forKey: .brightness) ?? Self.safeDefaultBrightness,
             providerIDs: try c.decodeIfPresent([String].self, forKey: .providerIDs) ?? [],
             updatedAt: try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date(),
             updatedByDeviceId: try c.decodeIfPresent(String.self, forKey: .updatedByDeviceId),
@@ -154,7 +158,12 @@ public struct PixelClockConfig: Codable, Sendable, Equatable {
     }
 
     public var clampedBrightness: Int? {
-        brightness.map { min(max($0, 0), 255) }
+        brightness.map {
+            min(
+                max($0, Self.minimumVisibleBrightness),
+                Self.safeMaximumBrightness
+            )
+        }
     }
 }
 
@@ -258,10 +267,13 @@ public enum PixelClockSetupMode: String, Codable, Sendable, Equatable {
     case awtrixLightReady
     case stockSimulatorConfigured
     case needsAwtrixLightFlash
+    case needsWiFiProvisioning
     case unreachable
 }
 
 public struct PixelClockSetupResult: Codable, Sendable, Equatable {
+    public static let awtrixLightFlasherURL = "https://blueforcer.github.io/awtrix3/#/flasher"
+
     public var mode: PixelClockSetupMode
     public var probeStatus: PixelClockProbeStatus
     public var message: String
@@ -269,6 +281,7 @@ public struct PixelClockSetupResult: Codable, Sendable, Equatable {
     public var suggestedServerHost: String?
     public var suggestedServerPort: Int?
     public var flasherURL: String?
+    public var setupSSID: String?
 
     public init(
         mode: PixelClockSetupMode,
@@ -277,7 +290,8 @@ public struct PixelClockSetupResult: Codable, Sendable, Equatable {
         clockHost: String,
         suggestedServerHost: String? = nil,
         suggestedServerPort: Int? = nil,
-        flasherURL: String? = nil
+        flasherURL: String? = nil,
+        setupSSID: String? = nil
     ) {
         self.mode = mode
         self.probeStatus = probeStatus
@@ -286,6 +300,17 @@ public struct PixelClockSetupResult: Codable, Sendable, Equatable {
         self.suggestedServerHost = suggestedServerHost
         self.suggestedServerPort = suggestedServerPort
         self.flasherURL = flasherURL
+        self.setupSSID = setupSSID
+    }
+}
+
+public struct PixelClockWiFiCredentials: Codable, Sendable, Equatable {
+    public var ssid: String
+    public var password: String
+
+    public init(ssid: String, password: String) {
+        self.ssid = ssid
+        self.password = password
     }
 }
 
@@ -296,6 +321,7 @@ public struct PixelClockDrawInstruction: Codable, Sendable, Equatable {
         case drawPixel = "dp"
         case fillRect = "df"
         case drawText = "dt"
+        case drawBitmap = "db"
     }
 
     public var command: Command
@@ -318,6 +344,10 @@ public struct PixelClockDrawInstruction: Codable, Sendable, Equatable {
         PixelClockDrawInstruction(command: .drawText, values: [.int(x), .int(y), .string(text), .string(color)])
     }
 
+    public static func bitmap(x: Int, y: Int, width: Int, height: Int, pixels: [Int]) -> PixelClockDrawInstruction {
+        PixelClockDrawInstruction(command: .drawBitmap, values: [.int(x), .int(y), .int(width), .int(height), .ints(pixels)])
+    }
+
     public var awtrixObject: [String: Any] {
         [command.rawValue: values.map(\.jsonValue)]
     }
@@ -325,12 +355,17 @@ public struct PixelClockDrawInstruction: Codable, Sendable, Equatable {
 
 public enum PixelClockDrawValue: Codable, Sendable, Equatable {
     case int(Int)
+    case ints([Int])
     case string(String)
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let intValue = try? container.decode(Int.self) {
             self = .int(intValue)
+            return
+        }
+        if let intValues = try? container.decode([Int].self) {
+            self = .ints(intValues)
             return
         }
         self = .string(try container.decode(String.self))
@@ -341,6 +376,8 @@ public enum PixelClockDrawValue: Codable, Sendable, Equatable {
         switch self {
         case .int(let value):
             try container.encode(value)
+        case .ints(let values):
+            try container.encode(values)
         case .string(let value):
             try container.encode(value)
         }
@@ -349,6 +386,7 @@ public enum PixelClockDrawValue: Codable, Sendable, Equatable {
     public var jsonValue: Any {
         switch self {
         case .int(let value): return value
+        case .ints(let values): return values
         case .string(let value): return value
         }
     }

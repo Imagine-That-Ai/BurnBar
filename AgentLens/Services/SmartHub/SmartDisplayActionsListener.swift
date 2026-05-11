@@ -119,6 +119,9 @@ final class SmartDisplayActionsListener {
                 if let flasherURL = result.flasherURL {
                     extra["flasherURL"] = flasherURL
                 }
+                if let setupSSID = result.setupSSID {
+                    extra["setupSSID"] = setupSSID
+                }
                 await complete(document: document, extra: extra)
             case "pixel_clock_test":
                 try await pixelClockController.testPixelClock()
