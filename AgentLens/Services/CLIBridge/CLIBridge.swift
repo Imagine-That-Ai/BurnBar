@@ -12,8 +12,11 @@ final class CLIBridge: ObservableObject {
     private(set) var detectedBackend: Backend?
     private(set) var hermesAvailable: Bool = false
     private(set) var openClawAvailable: Bool = false
+    private(set) var piAgentAvailable: Bool = false
     /// The model name currently loaded in Hermes (fetched from /v1/models).
     private(set) var hermesModelName: String?
+    /// The model name currently advertised by the Pi gateway.
+    private(set) var piAgentModelName: String?
 
     nonisolated private let resolver = CLIExecutableResolver()
     nonisolated private let streamRuntime = CLIBridgeStreamRuntimeCoordinator()
@@ -53,6 +56,13 @@ final class CLIBridge: ObservableObject {
     /// Probe OpenClaw gateway (OpenAI-compatible `/v1/models`).
     func probeOpenClawAvailability(baseURL: URL, bearerToken: String? = nil) async {
         openClawAvailable = await OpenAICompatibleModelProbe.probe(baseURL: baseURL, bearerToken: bearerToken)
+    }
+
+    /// Probe Pi agent gateway (OpenAI-compatible `/v1/models`).
+    func probePiAgentAvailability(baseURL: URL, bearerToken: String? = nil) async {
+        let result = await OpenAICompatibleModelProbe.probeWithModel(baseURL: baseURL, bearerToken: bearerToken)
+        piAgentAvailable = result.available
+        piAgentModelName = result.modelName
     }
 
     func cancel() {
@@ -279,6 +289,60 @@ final class CLIBridge: ObservableObject {
                     history: history,
                     bearerToken: bearerToken,
                     unavailableError: .openClawUnavailable,
+                    httpStreamID: streamID,
+                    attachmentBytes: attachmentBytes,
+                    capabilities: capabilities,
+                    workspaceURL: workspaceURL,
+                    continuation: continuation
+                )
+            }
+            continuation.onTermination = { [streamRuntime] _ in
+                task.cancel()
+                Task {
+                    let streamID = await streamIDTask.value
+                    await streamRuntime.cancelHTTPStreamTask(streamID: streamID)
+                }
+            }
+            Task.detached { [streamRuntime] in
+                let streamID = await streamIDTask.value
+                await streamRuntime.installHTTPStreamTask(task, streamID: streamID)
+            }
+        }
+    }
+
+    /// Pi agent gateway — OpenAI-compatible SSE (`/v1/chat/completions`).
+    /// Reuses `OpenAICompatibleChatGatewayClient` exactly like Hermes/OpenClaw
+    /// so streaming, attachments, and usage parsing all stay in lockstep.
+    func chatPiAgent(
+        baseURL: URL,
+        systemPrompt: String,
+        history: [ChatMessageRecord],
+        bearerToken: String?,
+        model: String = "pi",
+        attachmentBytes: [String: Data] = [:],
+        capabilities: HermesBackendCapabilities = .default,
+        workspaceURL: URL? = nil
+    ) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let streamIDTask = Task { [streamRuntime] in
+                await streamRuntime.nextHTTPStreamID()
+            }
+            let task = Task.detached { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                let streamID = await streamIDTask.value
+                await OpenAICompatibleChatGatewayClient(runtime: self.streamRuntime).runStream(
+                    baseURL: baseURL,
+                    model: {
+                        let t = model.trimmingCharacters(in: .whitespacesAndNewlines)
+                        return t.isEmpty ? "pi" : t
+                    }(),
+                    systemPrompt: systemPrompt,
+                    history: history,
+                    bearerToken: bearerToken,
+                    unavailableError: .piAgentUnavailable,
                     httpStreamID: streamID,
                     attachmentBytes: attachmentBytes,
                     capabilities: capabilities,

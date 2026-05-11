@@ -29,6 +29,7 @@ enum CLIBridgeError: LocalizedError {
     case quotaExhausted(String)
     case hermesUnavailable
     case openClawUnavailable
+    case piAgentUnavailable
     case hermesSSEError(String)
     case emptyResponse
 
@@ -49,6 +50,8 @@ enum CLIBridgeError: LocalizedError {
             return "Hermes is not running. Open Settings → Chat Gateway and choose Open Hermes + Gateway, or enable the startup toggle there."
         case .openClawUnavailable:
             return "OpenClaw gateway is unavailable. Start the OpenClaw gateway (default 127.0.0.1:18789) or check Settings → Chat."
+        case .piAgentUnavailable:
+            return "Pi agent is not running. Open Settings → Chat Gateway and choose Open Pi + Gateway, or enable the startup toggle there."
         case .hermesSSEError(let detail):
             return "Chat server error: \(detail)"
         case .emptyResponse:

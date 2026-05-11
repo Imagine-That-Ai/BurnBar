@@ -77,7 +77,7 @@ final class OpenBurnBarDaemonLocalNotificationRelay: NSObject {
     }
 }
 
-private enum AgentCompletionNotificationParser {
+enum AgentCompletionNotificationParser {
     struct Completion {
         var providerID: String
         var providerName: String
@@ -86,27 +86,66 @@ private enum AgentCompletionNotificationParser {
 
     static func parse(title: String, body: String) -> Completion? {
         let text = "\(title) \(body)".lowercased()
-        guard text.contains("complete") || text.contains("completed") || text.contains("finished") || text.contains("done") else {
+        let hasCompletionSignal = ["complete", "completed", "finished", "done"].contains { text.contains($0) }
+        guard hasCompletionSignal else {
             return nil
         }
-        if text.contains("droid") || text.contains("factory") {
-            return Completion(providerID: AgentProvider.factory.persistedToken, providerName: "Factory / Droid", modelName: nil)
+        let modelName = extractModelName(title: title, body: body)
+        if let provider = PixelClockCompletionSoundResolver.provider(forModelName: modelName)
+            ?? provider(fromText: text) {
+            return Completion(
+                providerID: provider.persistedToken,
+                providerName: providerName(for: provider),
+                modelName: modelName
+            )
         }
-        if text.contains("codex") || text.contains("openai") {
-            return Completion(providerID: AgentProvider.codex.persistedToken, providerName: "Codex", modelName: nil)
+        return Completion(providerID: "openburnbar", providerName: "OpenBurnBar", modelName: modelName)
+    }
+
+    private static func extractModelName(title: String, body: String) -> String? {
+        let combined = "\(title)\n\(body)"
+        let patterns = [
+            #"(?i)\bcompleted\s+on\s+([A-Za-z0-9][A-Za-z0-9._:/+-]*)"#,
+            #"(?i)\bfinished\s+on\s+([A-Za-z0-9][A-Za-z0-9._:/+-]*)"#,
+            #"(?i)\bdone\s+on\s+([A-Za-z0-9][A-Za-z0-9._:/+-]*)"#,
+            #"(?i)\bmodel(?:_id| id|:)?\s+([A-Za-z0-9][A-Za-z0-9._:/+-]*)"#,
+            #"(?i)\busing\s+([A-Za-z0-9][A-Za-z0-9._:/+-]*)"#
+        ]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(combined.startIndex..<combined.endIndex, in: combined)
+            guard let match = regex.firstMatch(in: combined, range: range),
+                  let captureRange = Range(match.range(at: 1), in: combined) else {
+                continue
+            }
+            let candidate = String(combined[captureRange]).trimmingCharacters(in: CharacterSet(charactersIn: " .,\n\t"))
+            if !candidate.isEmpty {
+                return candidate
+            }
         }
-        if text.contains("claude") {
-            return Completion(providerID: AgentProvider.claudeCode.persistedToken, providerName: "Claude Code", modelName: nil)
+        return nil
+    }
+
+    private static func provider(fromText text: String) -> AgentProvider? {
+        if text.contains("droid") || text.contains("factory") { return .factory }
+        if text.contains("codex") || text.contains("openai") { return .codex }
+        if text.contains("claude") { return .claudeCode }
+        if text.contains("cursor") { return .cursor }
+        if text.contains("minimax") { return .minimax }
+        if text.contains("z.ai") || text.contains("zai") || text.contains("z-ai") { return .zai }
+        if text.contains("kimi") || text.contains("moonshot") { return .kimi }
+        if text.contains("ollama") { return .ollama }
+        return nil
+    }
+
+    private static func providerName(for provider: AgentProvider) -> String {
+        switch provider {
+        case .factory:
+            return "Factory / Droid"
+        case .zai:
+            return "Z.ai"
+        default:
+            return provider.displayName
         }
-        if text.contains("cursor") {
-            return Completion(providerID: AgentProvider.cursor.persistedToken, providerName: "Cursor", modelName: nil)
-        }
-        if text.contains("minimax") {
-            return Completion(providerID: AgentProvider.minimax.persistedToken, providerName: "MiniMax", modelName: nil)
-        }
-        if text.contains("z.ai") || text.contains("zai") {
-            return Completion(providerID: AgentProvider.zai.persistedToken, providerName: "Z.ai", modelName: nil)
-        }
-        return Completion(providerID: "openburnbar", providerName: "OpenBurnBar", modelName: nil)
     }
 }

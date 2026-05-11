@@ -613,6 +613,120 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertTrue(defaults.bool(forKey: "launchHermesWithOpenBurnBar"))
     }
 
+    // MARK: - Pi Agent Connection Profile
+
+    func test_piAgentGatewayBaseURL_defaultValue_isLocalhost8765() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(settings.piAgentGatewayBaseURL, "http://127.0.0.1:8765")
+    }
+
+    func test_piAgentBearerToken_defaultValue_isEmpty() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(settings.piAgentBearerToken, "")
+    }
+
+    func test_piAgentBearerToken_persistsToKeychain() {
+        let defaults = makeIsolatedDefaults()
+        let backend = makeTestKeychainBackend()
+        let gatewayKeychain = KeychainStore(
+            service: "tests.gateway.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: backend
+        )
+        let settings = makeSettingsManager(defaults: defaults, gatewaySecrets: gatewayKeychain)
+
+        settings.piAgentBearerToken = "pi-token-123"
+
+        XCTAssertEqual(settings.piAgentBearerToken, "pi-token-123")
+        XCTAssertEqual(try? gatewayKeychain.string(for: OpenBurnBarIdentity.piAgentBearerTokenAccount), "pi-token-123")
+        XCTAssertNil(defaults.string(forKey: "piAgentBearerToken"))
+    }
+
+    func test_piAgentRedisURL_defaultValue_isEmpty() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(settings.piAgentRedisURL, "")
+    }
+
+    func test_piAgentRedisURL_persists() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.piAgentRedisURL = "redis://127.0.0.1:6380/2"
+
+        XCTAssertEqual(settings.piAgentRedisURL, "redis://127.0.0.1:6380/2")
+        XCTAssertEqual(defaults.string(forKey: "piAgentRedisURL"), "redis://127.0.0.1:6380/2")
+    }
+
+    func test_piAgentSelectedInstanceID_defaultValue_isEmpty() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(settings.piAgentSelectedInstanceID, "")
+    }
+
+    func test_piAgentSelectedInstanceID_persists() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.piAgentSelectedInstanceID = "alpha"
+
+        XCTAssertEqual(settings.piAgentSelectedInstanceID, "alpha")
+        XCTAssertEqual(defaults.string(forKey: "piAgentSelectedInstanceID"), "alpha")
+    }
+
+    func test_launchPiAgentsWithOpenBurnBar_defaultValue_isFalse() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertFalse(settings.launchPiAgentsWithOpenBurnBar)
+    }
+
+    func test_launchPiAgentsWithOpenBurnBar_persists() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.launchPiAgentsWithOpenBurnBar = true
+
+        XCTAssertTrue(settings.launchPiAgentsWithOpenBurnBar)
+        XCTAssertTrue(defaults.bool(forKey: "launchPiAgentsWithOpenBurnBar"))
+    }
+
+    func test_resolvedPiChatModel_usesOverrideWhenSet() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        settings.piAgentChatModelOverride = "custom-pi-7b"
+        XCTAssertEqual(settings.resolvedPiChatModel(gatewayAdvertisedModel: "ignored"), "custom-pi-7b")
+    }
+
+    func test_resolvedPiChatModel_fallsBackToGatewayAdvertisedModel() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(settings.resolvedPiChatModel(gatewayAdvertisedModel: "pi-prod-9b"), "pi-prod-9b")
+    }
+
+    func test_resolvedPiChatModel_defaultsToPi_whenNothingAdvertised() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(settings.resolvedPiChatModel(gatewayAdvertisedModel: nil), "pi")
+    }
+
+    func test_chatBackendID_piAgent_encodesAndDecodes() {
+        XCTAssertEqual(ChatBackendID(rawValue: "piAgent"), .piAgent)
+        XCTAssertEqual(ChatBackendID.piAgent.rawValue, "piAgent")
+        XCTAssertEqual(ChatBackendID.piAgent.displayName, "Pi Agent")
+        XCTAssertEqual(ChatBackendID.piAgent.shortLabel, "Pi")
+    }
+
+    func test_enabledChatBackends_canIncludePiAgent() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.setEnabledChatBackends([.codex, .piAgent])
+
+        XCTAssertEqual(settings.enabledChatBackends, [.codex, .piAgent])
+    }
+
     // MARK: - Chat Backend Settings
 
     func test_chatBackendOnboardingCompleted_defaultValue_isFalse() {
@@ -1343,10 +1457,11 @@ final class SettingsManagerTests: XCTestCase {
     // MARK: - ChatBackendID Tests
 
     func test_chatBackendID_allCases() {
-        XCTAssertEqual(ChatBackendID.allCases.count, 4)
+        XCTAssertEqual(ChatBackendID.allCases.count, 5)
         XCTAssertTrue(ChatBackendID.allCases.contains(.codex))
         XCTAssertTrue(ChatBackendID.allCases.contains(.claude))
         XCTAssertTrue(ChatBackendID.allCases.contains(.hermes))
+        XCTAssertTrue(ChatBackendID.allCases.contains(.piAgent))
         XCTAssertTrue(ChatBackendID.allCases.contains(.openclaw))
     }
 
@@ -1354,6 +1469,7 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(ChatBackendID.codex.displayName, "Codex")
         XCTAssertEqual(ChatBackendID.claude.displayName, "Claude Code")
         XCTAssertEqual(ChatBackendID.hermes.displayName, "Hermes")
+        XCTAssertEqual(ChatBackendID.piAgent.displayName, "Pi Agent")
         XCTAssertEqual(ChatBackendID.openclaw.displayName, "OpenClaw")
     }
 

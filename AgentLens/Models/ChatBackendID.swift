@@ -6,6 +6,7 @@ enum ChatBackendID: String, Identifiable, Codable {
     case claude
     case hermes
     case openclaw
+    case piAgent
 
     var id: String { rawValue }
 
@@ -14,6 +15,7 @@ enum ChatBackendID: String, Identifiable, Codable {
         backends.append(.codex)
         backends.append(.claude)
         backends.append(.hermes)
+        backends.append(.piAgent)
         backends.append(.openclaw)
         return backends
     }
@@ -24,6 +26,7 @@ enum ChatBackendID: String, Identifiable, Codable {
         case .claude: return "Claude Code"
         case .hermes: return "Hermes"
         case .openclaw: return "OpenClaw"
+        case .piAgent: return "Pi Agent"
         }
     }
 
@@ -34,6 +37,7 @@ enum ChatBackendID: String, Identifiable, Codable {
         case .claude: return "Claude"
         case .hermes: return "Hermes"
         case .openclaw: return "Claw"
+        case .piAgent: return "Pi"
         }
     }
 
@@ -44,6 +48,7 @@ enum ChatBackendID: String, Identifiable, Codable {
         case .claude: return .claudeCode
         case .hermes: return .hermes
         case .openclaw: return .openClaw
+        case .piAgent: return .piAgent
         }
     }
 
@@ -51,7 +56,7 @@ enum ChatBackendID: String, Identifiable, Codable {
     var requiresCLIAssistantConsent: Bool {
         switch self {
         case .codex, .claude: return true
-        case .hermes, .openclaw: return false
+        case .hermes, .openclaw, .piAgent: return false
         }
     }
 

@@ -46,11 +46,8 @@ fun PulseView(
     val currentUser by userStore.user.collectAsState()
     val isDark = isSystemInDarkTheme()
 
-    LaunchedEffect(Unit) {
-        dashboardStore.load()
-        quotaStore.load()
-        activityStore.loadInitial()
-    }
+    LaunchedEffect(currentUser.isSignedIn) { if (currentUser.isSignedIn) {
+        dashboardStore.load(); quotaStore.load(); activityStore.loadInitial() } }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AuroraBackdrop(isDark = isDark)

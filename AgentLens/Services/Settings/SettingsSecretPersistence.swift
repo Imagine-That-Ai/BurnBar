@@ -6,6 +6,7 @@ enum SettingsSecretDefaultsKey {
     static let controllerTelegramBotToken = "controllerTelegramBotToken"
     static let openClawBearerToken = "openClawBearerToken"
     static let hermesBearerToken = "hermesBearerToken"
+    static let piAgentBearerToken = "piAgentBearerToken"
     static let gatewayAuthToken = "gatewayAuthToken"
 }
 

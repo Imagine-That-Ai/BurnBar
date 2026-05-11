@@ -490,6 +490,26 @@ extension ProviderSetupGuide {
                 supportsHosted: false,
                 supportsSelfHosted: false
             )
+
+        case .piAgent:
+            return ProviderSetupGuide(
+                provider: provider,
+                kinds: [.token, .bearer],
+                defaultKind: .token,
+                labelSuggestion: "Pi Agent",
+                dashboardURL: nil,
+                dashboardCTA: "Run Pi locally",
+                oneLineHint: "Pi Agent gateway token from your local install.",
+                instructions: [
+                    GuideStep(1, "Open Pi gateway", detail: "Launch Pi locally so its OpenAI-compatible gateway is running."),
+                    GuideStep(2, "Copy the gateway token", detail: "Pi prints it on first launch; check your terminal logs or config."),
+                    GuideStep(3, "Paste it below", detail: "OpenBurnBar uses the token to route chat through Pi.")
+                ],
+                credentialPlaceholder: "pi_...",
+                credentialFooterMarkdown: "Pi runs locally; tokens never leave your machine.",
+                supportsHosted: false,
+                supportsSelfHosted: true
+            )
         }
     }
 

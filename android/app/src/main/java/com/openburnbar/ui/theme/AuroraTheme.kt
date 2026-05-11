@@ -116,6 +116,12 @@ object AuroraGradients {
         AuroraColors.hermesMercury.copy(alpha = 0.85f)
     )
 
+    val mercuryGradient = listOf(
+        AuroraColors.hermesMercury.copy(alpha = 0.85f),
+        AuroraColors.hermesAureate.copy(alpha = 0.7f),
+        AuroraColors.hermesMercury.copy(alpha = 0.85f)
+    )
+
     val primaryGradient = listOf(AuroraColors.ember, AuroraColors.amber)
 
     val accentGradient = listOf(AuroraColors.whimsy, AuroraColors.ember)

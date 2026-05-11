@@ -8,6 +8,102 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Claude Code quota robustness: zero-CLI-launch capture across four
+  cascading sources.** Claude quota used to require the user to run
+  `claude` with the OpenBurnBar status line bridge installed before the
+  popover would show anything beyond "Connect Claude". Fresh installs
+  sat on "Bridge not installed" until the user happened to fire up a
+  prompt — and even bridge repair didn't help because the bridge only
+  fires on the next CLI turn. The new adapter falls back gracefully
+  across four data sources, so a freshly-installed Claude Code with an
+  active subscription always lights up:
+  - **`ClaudeCredentialsReader`** reads Anthropic's
+    `Claude Code-credentials` Keychain item (with `~/.claude/.credentials.json`
+    fallback for Linux/CI and a `CLAUDE_CODE_OAUTH_TOKEN` env override
+    for headless tests). The reader exposes `subscriptionType`,
+    `rateLimitTier`, `organizationUuid`, and a `planDisplayName` helper
+    so we can surface "Plan: Max" or "Plan: Pro" without ever calling
+    Anthropic.
+  - **`ClaudeOAuthUsageFetcher`** calls Anthropic's
+    `https://api.anthropic.com/api/oauth/usage` endpoint directly with
+    the Keychain-derived bearer token, using the required
+    `anthropic-beta: oauth-2025-04-20` header and a Claude-Code-shaped
+    User-Agent. The endpoint is aggressively rate-limited
+    (anthropics/claude-code#31637 — 429 returns no `Retry-After` and
+    bricks the token for the rest of the session if you retry), so the
+    fetcher persists every successful response on disk
+    (`<appPaths>/Claude/oauth-usage-cache.json`), keyed by the
+    `resets_at` window. Subsequent refreshes reuse the cached payload
+    until the soonest reset moment arrives. A sibling
+    `oauth-usage-last-attempt.json` marker enforces a 5-minute live-poll
+    floor across process restarts so the popover refresh cadence can
+    never trigger 429. Stale cache is returned on any live-call failure
+    so transient network blips don't flip the popover to "unavailable".
+  - **Plan-cap-annotated JSONL bucket.** When OAuth is rate-limited but
+    JSONL token counts exist in `~/.claude/projects/**/*.jsonl`, the
+    adapter now annotates the 5-hour and 7-day buckets with the
+    Anthropic-published plan cap inferred from `rateLimitTier`
+    (Pro = 220K / 880K, Max-5x = 880K / 7.7M, Max-20x = 3.52M / 30.8M
+    as of the May 2026 doubling). Users see real percent-of-plan
+    figures even when the network is down and the bridge hasn't fired.
+  - **Plan-only badge fallback.** When even JSONL is empty but Keychain
+    confirms an active Pro/Max subscription, the popover now renders a
+    "Plan: Max" badge bucket with the management URL instead of
+    "unavailable" — Claude is clearly installed and signed in, so the
+    popover reflects that.
+  - **Silent bridge auto-install.** When `~/.claude/settings.json` or
+    `~/.claude/projects/` exists but no bridge command is configured,
+    the adapter quietly installs the OpenBurnBar status line bridge on
+    the next refresh. No prompts, no UI churn — the user just sees
+    exact percentages start flowing as soon as they run their next
+    Claude turn. Existing manual install/remove from Settings still
+    works the same way.
+  - **Transparent OAuth token refresh.** Claude Code OAuth access
+    tokens expire after 8 hours (Anthropic's published TTL). Without
+    refresh, OpenBurnBar would silently go dark every workday morning
+    until the user happened to run `claude` again. The fetcher now
+    detects expired tokens (and tokens within a 60-second leeway),
+    exchanges the persisted refresh token at Anthropic's CLI token
+    endpoint (`https://platform.claude.com/v1/oauth/token`), swaps the
+    bearer mid-call, AND writes the refreshed pair back to
+    `~/.claude/.credentials.json` (with 0600 permissions) so the
+    `claude` CLI picks them up too. The macOS Keychain entry is left
+    untouched to avoid a user-facing keychain prompt; in-memory state
+    is updated via `RateLimitsResult.refreshedCredentials`.
+  - **Auto-install retry guard.** A sibling marker file
+    (`claude-bridge-auto-install-attempted.json`) prevents the silent
+    auto-install from re-firing on every refresh tick when the first
+    install fails (e.g. read-only `~/.claude/`, Time-Machine snapshots,
+    permission glitches). One attempt per app lifetime, then the user
+    can install manually via Settings.
+  - **Strongly-typed rate-limits model (`ClaudeRateLimits`).** Replaces
+    the previous `[String: Any]?` cross-actor shuttle that violated
+    Swift 6 strict-concurrency. The model preserves the raw JSON for
+    cache round-tripping while exposing typed `Window` values to
+    callers. Eliminates three Sendable warnings and unblocks Swift 6
+    migration in this module.
+  - **`canCallUsageEndpoint()` gate.** Replaces the old
+    `!isExpired()` check with a more honest predicate: credentials are
+    usable when either still-fresh OR refresh-token-eligible.
+  - **`CLAUDE_CREDENTIALS_SKIP_KEYCHAIN` test seam.** Lets unit tests
+    on developer machines exercise the file-fallback path without
+    being shadowed by the dev's real Keychain entry. Never set in
+    production.
+  - **Nine new tests** covering OAuth cache-hit (zero network), live
+    OAuth fetch with cache persistence, expired-token refresh +
+    credentials file rewrite + 0600 perms, JSONL + Max-20x plan-cap
+    annotation, plan-only badge fallback, Keychain payload decoding,
+    `canCallUsageEndpoint` semantics, `ClaudeRateLimits` parsing of
+    both wrapped and bare payloads, and auto-install marker loop
+    prevention across two refreshes. All 63
+    `ProviderQuotaServiceTests` pass in under three seconds.
+
+### Fixed
+- **`PixelClockQuotaRenderer.awtrixPayload` missing `return`.** A drive-by
+  fix while running the Claude robustness suite — the function was
+  trailing-closure-returning but missing the explicit `return` keyword,
+  which Swift 6's stricter inference now rejects. Added `return` so the
+  `OpenBurnBarCore` module compiles cleanly for the test runner.
 - **Maximized chat workspace + pop-out window (macOS).** The dashboard now
   has a dedicated **Chat** route — modeled after Claude.ai and ChatGPT —
   with a left thread rail, a centered conversation column (760pt reading
@@ -120,7 +216,133 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `MermaidSanitizationTests`, and `ChartStudioPromptEngineTests`. Full
     mobile suite: 180 passed, 2 skipped, 0 failed.
 
+- **Factory Plus plan tier + rolling rate-limit vocabulary (May 2026
+  pricing).** Factory's plans moved from a single monthly token bucket to
+  rolling rate limits across three independent 5-hour / 7-day / 30-day
+  windows, with Standard Usage consumed first and fallback to Droid Core
+  (a separate free pool of open-weight models) or Extra Usage (prepaid
+  USD credits, $10 minimum, no expiry). `FactoryQuotaPlanTier` now
+  enumerates the published commercial tiers — **Pro** ($20/mo, 20M
+  tokens/month), **Plus** ($100/mo, ~100M, ~5x Pro), and **Max** ($200/mo,
+  ~200M, ~10x Pro) — plus the existing `.unknown` inferred-Pro default.
+  Each tier exposes both a long `displayName` for menu pickers and a
+  short `shortName` so the segmented popover picker doesn't overflow the
+  340pt popover. `FactoryQuotaAdapter` now labels buckets "5-hour
+  rolling" / "7-day rolling" / "Monthly · <tier>", uses a rolling 30-day
+  reset (not a calendar-month boundary), and includes the Droid Core /
+  Extra Usage fallback in every status message so users can find the
+  escape hatch without leaving OpenBurnBar. Two new
+  `ProviderQuotaServiceTests` cases cover the Plus 100M cap across all
+  three rolling windows and the Droid Core / Extra Usage status copy
+  guard. Plans are still per-org (not per-user) — Teams and Enterprise
+  remain unaffected by rate-limit changes per Factory's docs.
+- **Factory quota collection: lane-aware session classification + four
+  new data fields from the billing API.** Reworked the local-session
+  reader and `/api/organization/subscription/usage` parsing so every
+  field Factory actually exposes lands in the popover, and so the headline
+  burn number reflects what's truly billed against the plan:
+  - **Lane-aware filtering (CRITICAL correctness fix).** Sessions with
+    `providerLock != "factory"` are user-configured proxies (VibeProxy,
+    OpenCode-Go, localhost Ollama, BYOK keys, …) routed through
+    `config.json.custom_models[]`. They never touch Factory's billing,
+    but the old reader summed every session into the Pro monthly cap.
+    On a power-user machine that meant 1488 / 1514 sessions
+    over-reported the burn by ~58x — the popover routinely showed
+    "100% of plan" within a week of fresh installs. The new
+    `FactorySessionClassifier` excludes custom-proxy sessions from
+    every Standard Usage bucket and surfaces their total in a separate
+    diagnostic `factory-custom-proxy-30d` bucket so the segregation is
+    transparent. Status message now discloses the excluded count.
+  - **Standard vs Droid Core split.** Factory-billed sessions are
+    sub-classified by model family. Frontier closed-weight models
+    (claude-*, gpt-*, gemini-*, o-series) count as Standard;
+    open-weight families published as "Core" (kimi-k, glm-, deepseek-,
+    minimax-, qwen, llama-, mistral-, gemma-) count as Droid Core.
+    Two new diagnostic buckets — `factory-standard-30d` and
+    `factory-droid-core-30d` — let users see at a glance which lane
+    is burning their plan vs which lane is free. The `custom:` prefix
+    and `:cloud-N` shard suffix the CLI adds for proxy routing are
+    normalized before matching.
+  - **Plan auto-detection from `/api/app/auth/me`.** `FactoryQuotaAdapter
+    .inferPlanTier(tier:planName:)` now maps `factoryTier=plus` /
+    `plan.name="Plus"` (and Pro / Max / ultra-as-Max) to the right
+    `FactoryQuotaPlanTier` regardless of casing — so users on the
+    Factory API path don't need to pick a tier in Settings →
+    Providers. Enterprise / Teams stay `.unknown` (those plans aren't
+    rate-limited per Factory's docs).
+  - **Droid Core lane bucket from billing API.** When
+    `/api/organization/subscription/usage` exposes a `droidCore` /
+    `core` / `coreUsage` lane block, it renders as a new
+    `factory-droid-core` bucket alongside Standard / Premium.
+  - **Extra Usage prepaid wallet bucket.** New `factory-extra-usage`
+    bucket carries the USD credit balance returned by the billing
+    payload (handles `extraUsage` / `extra_usage` / `additionalUsage`
+    / `prepaidBalance` field aliases plus cents-vs-dollars
+    normalization). Label suffixes `(disabled)` when the
+    `enabled: false` toggle is set so users see why a positive
+    balance isn't being drawn down.
+  - **Subscription status badge.** The popover status line now
+    surfaces `trial` / `past_due` / `canceled` states from the Orb
+    subscription block when not `active`.
+  - **Tests:** Seven new `ProviderQuotaServiceTests` cover the proxy
+    filter (multi-session fixture with VibeProxy + anthropic + factory
+    rows), the Droid Core classification, the plan auto-detection
+    matrix (Pro / Plus / Max / ultra-alias / Enterprise →
+    `.unknown` / casing), the classifier's `custom:` and `:cloud-N`
+    normalization, the Droid Core lane + Extra Usage wallet from the
+    API, the disabled-wallet labeling, and the subscription status
+    badge. Total `ProviderQuotaServiceTests` suite: 54 passing.
+
 ### Fixed
+- **"Connect Kimi" → "Sign in with Google" no longer hangs on a
+  spinning loader.** Kimi's web sign-in invokes `window.open()` to
+  launch Google's OAuth consent screen in a popup, which a default
+  `WKWebView` refuses (no `WKUIDelegate` ⇒ the popup never opens, and
+  the in-modal Google button spins forever). `FactoryLoginHelper`'s
+  `LoginRunner` now implements
+  `WKUIDelegate.createWebViewWith(_:for:windowFeatures:)` to route
+  popup-opening navigations into the main webview — the macOS-standard
+  approach for in-app OAuth — and sets a Safari user-agent so Google's
+  embedded-browser sniffer doesn't reject the consent screen with
+  "This browser or app may not be secure". The same popup support is
+  enabled for the Factory and Ollama login windows so users can sign
+  in via Google / Apple / GitHub there too. The Kimi cookie matcher
+  also broadens to capture every `kimi-*auth*` jar variant plus the
+  NextAuth fallback (`next-auth.session-token`, `authjs.session-token`),
+  with `kimi-auth` always preferred in the captured value so the
+  `KimiQuotaAdapter` JWT requirement is satisfied immediately.
+- **Factory quota popover stops insisting "Readable quota not available
+  yet" when the local droid sessions are right there on disk.** The
+  Factory adapter's local-session path
+  (`~/.factory/sessions/**/*.settings.json`) was emitting buckets with
+  `limitValue: nil`, but the displayability filter for `.tokens` requires
+  a non-nil positive limit — so every 5h / 7d / 30d window the adapter
+  computed got dropped before reaching the UI. Adapter now anchors each
+  window to `FactoryQuotaPlanTier.monthlyTokenCap` (Pro = 20M, Plus =
+  100M, Max = 200M) so the buckets carry real `usedPercent` /
+  `remainingValue`. When the user has not picked a plan tier yet it falls
+  back to Pro as an inferred cap, marks the snapshot `.estimated`, and
+  surfaces a "Set your plan tier in Settings → Providers" prompt instead
+  of a blank card. Two new `ProviderQuotaServiceTests` cases cover the
+  confirmed-Pro path and the inferred-Pro fallback.
+- **Ollama Cloud quota now actually reads after "Connect Ollama".** The
+  WKWebView login flow has stored the captured `ollama.com` session cookie
+  in Keychain under `ollama_cookie_header` for a while, and
+  `QuotaRefreshActor`/`ProviderQuotaService` already forward it through
+  `context.resolvedAPIKeys`. `OllamaQuotaAdapter.fetchCloudUsage` was passing
+  `cookieHeader: nil` to `OllamaCloudScraper`, so the scraper short-circuited
+  and the popover stuck on "Readable quota not available yet" even after a
+  successful sign-in. The adapter now resolves the stored cookie (or the
+  `OLLAMA_COOKIE_HEADER` env override) and replays it against
+  `ollama.com/settings`, so session / weekly usage windows surface as
+  `.exact` snapshots. Tightened the connect-time cookie matcher to capture
+  whichever auth jar Ollama is currently issuing (Better Auth, NextAuth, or
+  custom session names) and refreshed the status copy so the no-cookie case
+  prompts users to connect instead of showing the generic "no quota" line.
+  Covered by two new `ProviderQuotaServiceTests` cases — one asserts the
+  stored cookie is replayed to `ollama.com/settings`, the other proves the
+  adapter never touches `ollama.com` without a session and surfaces a
+  "Connect Ollama" call to action.
 - **iOS provider connect now actually works for MiniMax, Z.ai, and Factory.**
   The cloud function adapters were calling endpoints that no longer exist
   (MiniMax `api.minimax.chat/v1/user/info` → 404, Factory `api.tryforge.io` →

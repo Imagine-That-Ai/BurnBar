@@ -768,6 +768,7 @@ struct ChatPanel: View {
         case .claude: return "Ask Claude Code\u{2026}"
         case .hermes: return "Ask Hermes\u{2026}"
         case .openclaw: return "Ask OpenClaw\u{2026}"
+        case .piAgent: return "Ask Pi\u{2026}"
         }
     }
 

@@ -19,6 +19,7 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  getDoc,
   serverTimestamp,
   setDoc,
   Timestamp,
@@ -246,6 +247,31 @@ test("owners can delete old paid-backup data after entitlement lapses", async ()
 
   await assertSucceeds(deleteDoc(doc(db, `${logPath}/chunks/0`)));
   await assertSucceeds(deleteDoc(doc(db, logPath)));
+});
+
+test("owners can read derived project summaries but clients cannot write them", async () => {
+  const ownerDb = authedDb("erin");
+  const otherDb = authedDb("mallory");
+  const projectPath = "users/erin/projects/project-1";
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), projectPath), {
+      id: "project-1",
+      name: "Project One",
+      total_cost: 42,
+      updatedAt: serverTimestamp(),
+    });
+  });
+
+  await assertSucceeds(getDoc(doc(ownerDb, projectPath)));
+  await assertFails(getDoc(doc(otherDb, projectPath)));
+  await assertFails(
+    setDoc(doc(ownerDb, "users/erin/projects/project-2"), {
+      id: "project-2",
+      name: "Client-written project",
+      total_cost: 1,
+    })
+  );
 });
 
 test("owners can publish smart display config and complete setup actions", async () => {

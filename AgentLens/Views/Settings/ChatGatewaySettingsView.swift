@@ -10,6 +10,7 @@ struct ChatGatewaySettingsView: View {
     private let iCloudSessionMirrorService: ICloudSessionMirrorService?
     @State private var inventoryImportService: HermesInventoryImportService
     @State private var hermesRuntimeLauncher: HermesRuntimeLauncher
+    @State private var piAgentRuntimeAdapter: PiAgentRuntimeAdapter
 
     init(
         settingsManager: SettingsManager,
@@ -22,6 +23,18 @@ struct ChatGatewaySettingsView: View {
         self.cloudSyncService = cloudSyncService
         self.iCloudSessionMirrorService = iCloudSessionMirrorService
         self._hermesRuntimeLauncher = State(initialValue: HermesRuntimeLauncher())
+        let preferredInstance: String? = {
+            let trimmed = settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }()
+        let redisURL: URL? = {
+            let trimmed = settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : URL(string: trimmed)
+        }()
+        self._piAgentRuntimeAdapter = State(initialValue: PiAgentRuntimeAdapter(
+            preferredInstanceID: preferredInstance,
+            redisURL: redisURL
+        ))
         self._inventoryImportService = State(initialValue: HermesInventoryImportService(
             dataStore: dataStore,
             settingsManager: settingsManager,
@@ -36,6 +49,7 @@ struct ChatGatewaySettingsView: View {
                 headerSection
                 chatEnginesSection
                 hermesGatewaySection
+                piAgentSection
                 openclawSection
                 importSection
                 onboardingSection
@@ -230,6 +244,163 @@ struct ChatGatewaySettingsView: View {
         }
         .task {
             await refreshHermesRuntimeStatus()
+        }
+    }
+
+    // MARK: - Pi Agent Instances
+
+    private var piAgentSection: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                sectionTitle("Pi Agent Instances", icon: "circle.hexagongrid.fill", color: DesignSystem.Colors.purple)
+
+                Text("OpenBurnBar can start the Pi agent and its local API gateway. Redis is optional and only used for richer multi-instance discovery and control.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                piAgentStatusRow
+
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Button {
+                        Task { await openPiAgentRuntime() }
+                    } label: {
+                        Label("Open Pi + Gateway", systemImage: "play.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignSystem.Colors.purple)
+                    .disabled(piAgentRuntimeAdapter.isBusy)
+
+                    Button {
+                        Task { await refreshPiAgentRuntimeStatus() }
+                    } label: {
+                        Label("Check Health", systemImage: "waveform.path.ecg")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(piAgentRuntimeAdapter.isBusy)
+                }
+                .controlSize(.small)
+                .font(DesignSystem.Typography.caption)
+
+                Toggle("Launch Pi agent and gateway when OpenBurnBar opens", isOn: $settingsManager.launchPiAgentsWithOpenBurnBar)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    fieldLabel("Base URL")
+                    TextField("http://127.0.0.1:8765", text: $settingsManager.piAgentGatewayBaseURL)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    fieldLabel("Bearer Token")
+                    SecureField("Optional bearer token", text: $settingsManager.piAgentBearerToken)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    fieldLabel("Redis URL (optional)")
+                    TextField("redis://127.0.0.1:6379/0", text: $settingsManager.piAgentRedisURL)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    fieldLabel("Model Override")
+                    TextField("Leave empty for gateway default", text: $settingsManager.piAgentChatModelOverride)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                piAgentInstancePickerSection
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+        .task {
+            await refreshPiAgentRuntimeStatus()
+        }
+    }
+
+    @ViewBuilder
+    private var piAgentStatusRow: some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+            ZStack {
+                Circle()
+                    .fill(piAgentRuntimeAdapter.managedStatus.gatewayRunning
+                        ? DesignSystem.Colors.success.opacity(0.16)
+                        : DesignSystem.Colors.surface)
+                    .frame(width: 34, height: 34)
+                if piAgentRuntimeAdapter.isBusy {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: piAgentRuntimeAdapter.managedStatus.gatewayRunning ? "checkmark" : "power")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(piAgentRuntimeAdapter.managedStatus.gatewayRunning
+                            ? DesignSystem.Colors.success
+                            : DesignSystem.Colors.purple)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(piAgentRuntimeAdapter.managedStatus.message)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(piAgentRuntimeAdapter.lastError == nil ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.error)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let redis = piAgentRuntimeAdapter.managedStatus.redisStatus, !redis.isEmpty {
+                    Text(redis)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                if let path = piAgentRuntimeAdapter.managedStatus.executablePath {
+                    Text(path)
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private var piAgentInstancePickerSection: some View {
+        let instances = piAgentRuntimeAdapter.managedStatus.instances
+        if !instances.isEmpty {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                fieldLabel("Active Instance")
+                Picker("Active instance", selection: Binding(
+                    get: {
+                        let stored = settingsManager.piAgentSelectedInstanceID
+                        if instances.contains(where: { $0.id == stored }) {
+                            return stored
+                        }
+                        return instances.first?.id ?? ""
+                    },
+                    set: { newValue in
+                        settingsManager.piAgentSelectedInstanceID = newValue
+                        piAgentRuntimeAdapter.preferredInstanceID = newValue.isEmpty ? nil : newValue
+                    }
+                )) {
+                    ForEach(instances) { inst in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(inst.isOnline ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
+                                .frame(width: 6, height: 6)
+                            Text(inst.displayName)
+                            if let session = inst.activeSessionID {
+                                Text("(\(session))")
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                            }
+                        }
+                        .tag(inst.id)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+            }
         }
     }
 
@@ -452,6 +623,41 @@ struct ChatGatewaySettingsView: View {
 
     private var resolvedHermesBearerToken: String? {
         let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
+    }
+
+    // MARK: - Pi Agent helpers
+
+    private func refreshPiAgentRuntimeStatus() async {
+        syncPiAgentAdapterPreferences()
+        _ = await piAgentRuntimeAdapter.refreshManagedStatus(
+            baseURL: resolvedPiAgentGatewayBaseURL,
+            bearerToken: resolvedPiAgentBearerToken
+        )
+    }
+
+    private func openPiAgentRuntime() async {
+        syncPiAgentAdapterPreferences()
+        _ = await piAgentRuntimeAdapter.openManagedRuntime(
+            baseURL: resolvedPiAgentGatewayBaseURL,
+            bearerToken: resolvedPiAgentBearerToken
+        )
+    }
+
+    private func syncPiAgentAdapterPreferences() {
+        let preferredInstance = settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        piAgentRuntimeAdapter.preferredInstanceID = preferredInstance.isEmpty ? nil : preferredInstance
+        let redisRaw = settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        piAgentRuntimeAdapter.redisURL = redisRaw.isEmpty ? nil : URL(string: redisRaw)
+    }
+
+    private var resolvedPiAgentGatewayBaseURL: URL {
+        URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? URL(string: "http://127.0.0.1:8765")!
+    }
+
+    private var resolvedPiAgentBearerToken: String? {
+        let token = settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         return token.isEmpty ? nil : token
     }
 

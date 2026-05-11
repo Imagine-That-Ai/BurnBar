@@ -76,6 +76,7 @@ extension AgentProvider {
         case .forgeDev: return "~/.forge/sessions"
         case .augment: return "~/Library/Application Support/Code/User/globalStorage/augment.vscode-augment"
         case .hermes: return "~/.hermes/sessions"
+        case .piAgent: return "~/.pi/sessions"
         case .geminiCLI: return "~/.gemini/tmp"
         case .goose: return "~/.local/share/goose/sessions"
         case .openClaw: return "~/.openclaw/sessions"
@@ -104,6 +105,7 @@ extension AgentProvider {
         case .kimi: return "*.jsonl"
         case .cline, .kiloCode, .rooCode: return "*.json"
         case .forgeDev, .hermes: return "*.jsonl"
+        case .piAgent: return "*.jsonl"
         case .augment: return "*.jsonl"
         case .geminiCLI: return "*.json"
         case .goose: return "sessions.db"
@@ -123,7 +125,7 @@ extension AgentProvider {
         // parsing, but exact aggregate counts.
         case .openAI:
             return .supported
-        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp, .ollama:
+        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp, .ollama, .piAgent:
             return .partial
         case .augment:
             return .unsupported
@@ -134,7 +136,7 @@ extension AgentProvider {
     /// provider's local artifacts.
     var dataConfidence: DataConfidence {
         switch self {
-        case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose, .openClaw:
+        case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose, .openClaw, .piAgent:
             return .exact
         // OpenAI exposes exact tokens-used per org via the usage API.
         case .openAI:

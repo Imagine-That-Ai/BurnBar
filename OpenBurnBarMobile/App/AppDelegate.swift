@@ -43,10 +43,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         #if DEBUG
-        let debugToken = AppCheckDebugTokenEnvironment.configureIfAvailable(firebasePlistPath: path)
-        let factory: AppCheckProviderFactory = debugToken == nil
-            ? PhysicalDebugAppCheckProviderFactory()
-            : AppCheckDebugProviderFactory()
+        _ = AppCheckDebugTokenEnvironment.configureIfAvailable(firebasePlistPath: path)
+        let factory: AppCheckProviderFactory = AppCheckDebugProviderFactory()
         #else
         let factory = OpenBurnBarAppCheckProviderFactory()
         #endif
@@ -81,15 +79,5 @@ final class OpenBurnBarAppCheckProviderFactory: NSObject, AppCheckProviderFactor
             return AppAttestProvider(app: app)
         }
         return DeviceCheckProvider(app: app)
-    }
-}
-
-/// Physical Debug installs often run with a development provisioning profile
-/// that does not include the App Attest entitlement. When no registered debug
-/// token is configured, use DeviceCheck so Firestore App Check enforcement can
-/// still accept local iPhone/iPad testing.
-final class PhysicalDebugAppCheckProviderFactory: NSObject, AppCheckProviderFactory {
-    func createProvider(with app: FirebaseApp) -> AppCheckProvider? {
-        DeviceCheckProvider(app: app)
     }
 }

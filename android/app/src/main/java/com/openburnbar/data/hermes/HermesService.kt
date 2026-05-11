@@ -52,6 +52,37 @@ class HermesService {
     private val _runtimeInfo = MutableStateFlow<Map<String, String>>(emptyMap())
     val runtimeInfo: StateFlow<Map<String, String>> = _runtimeInfo
 
+    // ── Settings / runtime state ──
+    private val _connections = MutableStateFlow<List<HermesConnectionRecord>>(listOf(HermesConnectionRecord.localDefault))
+    val connections: StateFlow<List<HermesConnectionRecord>> = _connections
+
+    private val _selectedConnection = MutableStateFlow<HermesConnectionRecord>(HermesConnectionRecord.localDefault)
+    val selectedConnection: StateFlow<HermesConnectionRecord> = _selectedConnection
+
+    private val _modelOptions = MutableStateFlow<List<HermesRuntimeModelOption>>(emptyList())
+    val modelOptions: StateFlow<List<HermesRuntimeModelOption>> = _modelOptions
+
+    private val _selectedModelID = MutableStateFlow<String?>(null)
+    val selectedModelID: StateFlow<String?> = _selectedModelID
+
+    private val _favoriteModelIDs = MutableStateFlow<Set<String>>(emptySet())
+    val favoriteModelIDs: StateFlow<Set<String>> = _favoriteModelIDs
+
+    private val _isReachable = MutableStateFlow(false)
+    val isReachable: StateFlow<Boolean> = _isReachable
+
+    private val _runtimeErrorText = MutableStateFlow<String?>(null)
+    val runtimeErrorText: StateFlow<String?> = _runtimeErrorText
+
+    private val _isLoadingRuntime = MutableStateFlow(false)
+    val isLoadingRuntime: StateFlow<Boolean> = _isLoadingRuntime
+
+    private val _profiles = MutableStateFlow<List<HermesRuntimeProfile>>(emptyList())
+    val profiles: StateFlow<List<HermesRuntimeProfile>> = _profiles
+
+    private val _jobs = MutableStateFlow<List<HermesRuntimeJob>>(emptyList())
+    val jobs: StateFlow<List<HermesRuntimeJob>> = _jobs
+
     private var webSocket: WebSocket? = null
     private var connection = HermesConnection()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -186,7 +217,7 @@ class HermesService {
                         id = json.optString("call_id"),
                         name = json.optString("tool_name", ""),
                         arguments = json.optString("arguments", ""),
-                        result = json.optString("result", null)
+                        result = json.optString("result").takeIf { it.isNotEmpty() }
                     )
                     _messages.value = _messages.value.map { msg ->
                         if (msg.isStreaming) msg.copy(toolCalls = msg.toolCalls + toolCall) else msg
@@ -194,6 +225,24 @@ class HermesService {
                 }
             }
         } catch (_: Exception) { }
+    }
+
+    fun selectConnection(connection: HermesConnectionRecord) {
+        _selectedConnection.value = connection
+    }
+
+    fun selectModel(option: HermesRuntimeModelOption) {
+        _selectedModelID.value = option.modelID
+    }
+
+    fun toggleFavoriteModel(option: HermesRuntimeModelOption) {
+        val current = _favoriteModelIDs.value.toMutableSet()
+        if (current.contains(option.modelID)) {
+            current.remove(option.modelID)
+        } else {
+            current.add(option.modelID)
+        }
+        _favoriteModelIDs.value = current
     }
 
     fun destroy() {

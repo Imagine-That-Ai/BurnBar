@@ -30,6 +30,8 @@ struct ChatEngineModelMenu: View {
             return rows
         case .openclaw:
             return ChatEngineModelCatalog.openClaw.map { id in (id, id.isEmpty ? "Default (gpt-4o-mini)" : id) }
+        case .piAgent:
+            return [("", "Automatic")]
         }
     }
 

@@ -555,6 +555,11 @@ final class ProviderQuotaService {
                     lastPayloadAt: nil
                 )
             },
+            claudeCredentialsReader: ClaudeCredentialsReader(
+                homeDirectoryURL: homeDirectoryURL,
+                environment: environment,
+                fileManager: fileManager
+            ),
             resolvedAPIKeys: resolvedKeys
         )
     }

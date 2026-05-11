@@ -979,13 +979,28 @@ struct OpenBurnBarApp: App {
                                 runtimeContext: context
                             )
                         }
-                        // Probe Hermes availability in the background
+                        // Probe managed runtime availability in the background.
                         Task {
                             if context.settingsManager.launchHermesWithOpenBurnBar {
                                 let baseURL = URL(string: context.settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
                                     ?? URL(string: "http://127.0.0.1:8642")!
                                 let bearerToken = context.settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
                                 await HermesRuntimeLauncher().openHermesAndGateway(
+                                    baseURL: baseURL,
+                                    bearerToken: bearerToken.isEmpty ? nil : bearerToken
+                                )
+                            }
+                            if context.settingsManager.launchPiAgentsWithOpenBurnBar {
+                                let baseURL = URL(string: context.settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+                                    ?? URL(string: "http://127.0.0.1:8765")!
+                                let bearerToken = context.settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                                let preferred = context.settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
+                                let redisRaw = context.settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                                let piAdapter = PiAgentRuntimeAdapter(
+                                    preferredInstanceID: preferred.isEmpty ? nil : preferred,
+                                    redisURL: redisRaw.isEmpty ? nil : URL(string: redisRaw)
+                                )
+                                _ = await piAdapter.openManagedRuntime(
                                     baseURL: baseURL,
                                     bearerToken: bearerToken.isEmpty ? nil : bearerToken
                                 )
@@ -1001,13 +1016,23 @@ struct OpenBurnBarApp: App {
                             } else {
                                 context.chatController.openClawAvailable = false
                             }
+                            if enabledBackends.contains(.piAgent) || context.chatController.chatBackend == .piAgent {
+                                await context.chatController.probePiAgentAvailability()
+                            } else {
+                                context.chatController.piAgentAvailable = false
+                            }
                             await context.daemonManager.refreshHealth()
                             await context.operatingLayer.refreshControllerRuntime()
                         }
-                        // Delay the first scan briefly so app activation, menu-bar paint, and
-                        // dashboard construction are not competing with parser and DB I/O.
+                        // Delay the first scan so app activation, menu-bar paint, SmartHub
+                        // bridge startup, and Pixel Clock setup are not competing with parser
+                        // and DB I/O. When a physical clock is enabled, the hardware control
+                        // path needs to become responsive before historical log backfill starts.
                         Task(priority: .utility) {
-                            try? await Task.sleep(for: .seconds(2))
+                            let startupScanDelay: Duration = context.settingsManager.pixelClockConfig.enabled
+                                ? .seconds(600)
+                                : .seconds(15)
+                            try? await Task.sleep(for: startupScanDelay)
                             guard !Task.isCancelled else { return }
                             await aggregator.refreshAll()
                             await sync.uploadPendingConversations()
@@ -1023,7 +1048,10 @@ struct OpenBurnBarApp: App {
                         periodicRefreshTask?.cancel()
                         periodicRefreshTask = Task(priority: .utility) {
                             while !Task.isCancelled {
-                                let seconds = max(context.settingsManager.refreshInterval, 60)
+                                let minimumRefreshInterval: TimeInterval = context.settingsManager.pixelClockConfig.enabled
+                                    ? 10 * 60
+                                    : 60
+                                let seconds = max(context.settingsManager.refreshInterval, minimumRefreshInterval)
                                 let nanos = UInt64(seconds * 1_000_000_000)
                                 try? await Task.sleep(nanoseconds: nanos)
                                 if Task.isCancelled { break }

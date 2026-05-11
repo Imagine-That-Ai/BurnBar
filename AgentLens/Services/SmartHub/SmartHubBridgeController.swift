@@ -1,4 +1,5 @@
 import Foundation
+import os
 import OpenBurnBarCore
 
 // MARK: - Smart Hub Bridge Controller
@@ -13,6 +14,8 @@ import OpenBurnBarCore
 
 @MainActor
 final class SmartHubBridgeController {
+
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "SmartHubBridge")
 
     private let settingsManager: SettingsManager
     private let quotaService: ProviderQuotaService?
@@ -46,6 +49,14 @@ final class SmartHubBridgeController {
     /// is already up and we just want to nudge the page). Hard kicks
     /// (STOP→LAUNCH for a wrong-app / Backdrop state) bypass this.
     private let castReassertCooldownSeconds: TimeInterval = 45
+
+    /// How recently the embedded dashboard page must have polled
+    /// `/state.json` for us to consider DashCast healthy. The page polls
+    /// every ~2 s, so 20 s is a comfortable buffer that survives a single
+    /// Wi-Fi blip without false-positives. Bigger than this means the
+    /// page is no longer running JS (DashCast splash, blank tab, etc.)
+    /// and we should re-cast.
+    private let castClientHealthyPollWindowSeconds: TimeInterval = 20
 
     private var lastAutoRefreshAt: Date = .distantPast
 
@@ -228,11 +239,18 @@ final class SmartHubBridgeController {
     /// failure, sandbox revocation), restart it. Without this, a single
     /// listener crash leaves the Nest Hub stuck on a blank page forever
     /// because nothing else in the pipeline ever notices.
+    ///
+    /// `start()` is itself idempotent (no-op when an existing listener is
+    /// in the middle of coming up), so we don't pre-call `stop()` here.
+    /// That `stop()` was the bug: applySettings()'s synchronous
+    /// `stop()+start()` enqueues a `.ready` task; before that task can
+    /// run, the heartbeat's first tick fires this self-heal seeing
+    /// `isRunning=false`, cancels the in-flight listener, and races a
+    /// second listener that fails with EADDRINUSE.
     private func healServerIfNeeded() {
         guard settingsManager.smartHubQuotaDisplayEnabled else { return }
         guard !SmartHubBridgeServer.shared.isRunning else { return }
         let port = portFromConfiguredURL()
-        SmartHubBridgeServer.shared.stop()
         SmartHubBridgeServer.shared.start(port: port)
     }
 
@@ -351,34 +369,71 @@ final class SmartHubBridgeController {
 
     private func runCastWatchdogTick() async {
         guard settingsManager.smartHubQuotaDisplayEnabled else { return }
-        guard SmartHubBridgeServer.shared.isRunning else { return }
-        guard let device = cachedCastDevice() else { return }
-        guard let url = preferredCastURL() else { return }
+        guard SmartHubBridgeServer.shared.isRunning else {
+            Self.log.info("watchdog skipped: bridge not running")
+            return
+        }
+        guard let device = cachedCastDevice() else {
+            Self.log.info("watchdog skipped: no cached cast device")
+            return
+        }
+        guard let url = preferredCastURL() else {
+            Self.log.info("watchdog skipped: no castable URL")
+            return
+        }
+
+        Self.log.info("watchdog tick host=\(device.host, privacy: .public) url=\(url.absoluteString, privacy: .public)")
 
         // Cheap liveness probe — if we can't even open the Cast channel,
         // the Hub is unreachable and re-casting won't help. Skip and
         // try again next tick.
         let probeClient = CastChannelClient(device: device)
         guard let state = await probeClient.queryReceiverState() else {
+            Self.log.error("watchdog: probe could not reach \(device.host, privacy: .public)")
             await probeClient.stop()
             return
         }
+        Self.log.info("watchdog state appId=\(state.appId, privacy: .public) isDashCast=\(state.isDashCast)")
 
-        // Healthy case: DashCast is the active receiver app. Soft-touch
-        // the URL so the page re-renders without a full LAUNCH (cheap,
-        // also nudges the device out of a stuck splash when DashCast is
-        // technically running but never finished loading the URL).
+        // DashCast being the active receiver app is not enough to call
+        // the display healthy. The common stuck state is exactly this:
+        // the Hub sits on DashCast's splash after a dropped LOAD. Treat
+        // the existing DashCast session as stale and do a STOP -> LAUNCH
+        // -> LOAD recovery on the watchdog cadence.
         if state.isDashCast {
             await probeClient.stop()
 
-            // Apply the soft-LOAD cooldown so we don't spam the Hub.
+            // Proof-of-life: if the Nest Hub's embedded page has polled
+            // `/state.json` recently, DashCast is not stuck — it's
+            // actively rendering OpenBurnBar. Hard-refreshing every 45 s
+            // on a healthy display is exactly the "stuck cycling on burn
+            // bar status" failure mode (every refresh flashes DashCast's
+            // splash). Skip the hard refresh while the client is alive.
+            let timeSincePoll = Date().timeIntervalSince(SmartHubBridgeServer.shared.lastClientPollAt)
+            let healthyPollWindow = castClientHealthyPollWindowSeconds
+            if timeSincePoll <= healthyPollWindow {
+                Self.log.info(
+                    "watchdog: DashCast active + recent client poll \(Int(timeSincePoll), privacy: .public)s ago; skipping hard refresh"
+                )
+                return
+            }
+
             let elapsed = Date().timeIntervalSince(lastCastReassertedAt)
-            guard elapsed >= castReassertCooldownSeconds else { return }
+            guard elapsed >= castReassertCooldownSeconds else {
+                Self.log.info("watchdog: DashCast hard-refresh cooldown active, skipping")
+                return
+            }
             lastCastReassertedAt = Date()
 
-            let softClient = CastChannelClient(device: device)
-            _ = await softClient.cast(url: url)
-            await softClient.stop()
+            Self.log.info(
+                "watchdog: DashCast active but no client poll in \(Int(timeSincePoll), privacy: .public)s — page looks stuck; hard refresh"
+            )
+            let refreshClient = CastChannelClient(device: device)
+            let outcome = await refreshClient.forceRecast(url: url)
+            if case .failure(let reason) = outcome {
+                Self.log.error("watchdog: DashCast hard refresh failed: \(reason, privacy: .public)")
+            }
+            await refreshClient.stop()
             return
         }
 
@@ -389,14 +444,17 @@ final class SmartHubBridgeController {
         await probeClient.stop()
         lastCastReassertedAt = Date()
 
+        Self.log.info("watchdog: hard kick (forceRecast) — current app is not DashCast")
         let kickClient = CastChannelClient(device: device)
         let outcome = await kickClient.forceRecast(url: url)
-        if case .failure = outcome {
+        if case .failure(let reason) = outcome {
+            Self.log.error("watchdog: forceRecast failed: \(reason, privacy: .public). Falling back to reconnect strategy.")
             // If STOP→LAUNCH itself failed, fall through to the full
             // recovery strategy (4-attempt backoff + Home Assistant).
             await kickClient.stop()
             _ = await CastReconnectStrategy(device: device).castWithRecovery(url: url)
         } else {
+            Self.log.info("watchdog: forceRecast ok")
             await kickClient.stop()
         }
     }
@@ -431,11 +489,41 @@ final class SmartHubBridgeController {
     /// bridge URL (which already incorporates port fallback) and rewrite
     /// loopback to LAN so the Hub can actually reach it. Falls back to
     /// the persisted dashboard URL.
+    ///
+    /// Whenever we resolve to a different URL than what's persisted —
+    /// usually because the Mac's DHCP lease shifted and the stored host
+    /// is stale — we update settings so the iPhone / Settings UI / next
+    /// app launch all see the correct value. This is the recovery path
+    /// for the "stuck on DashCast splash" failure mode where the Hub is
+    /// loading a URL that no longer resolves to this Mac.
     private func preferredCastURL() -> URL? {
-        if let live = resolvedDashboardURL(),
-           let casted = CastActionsListener.castableDashboardURL(from: live.absoluteString) {
-            return casted
+        let resolved: URL?
+        if let live = resolvedDashboardURL() {
+            resolved = CastActionsListener.castableDashboardURL(from: live.absoluteString)
+        } else {
+            resolved = CastActionsListener.castableDashboardURL(from: settingsManager.smartHubQuotaDashboardURL)
         }
-        return CastActionsListener.castableDashboardURL(from: settingsManager.smartHubQuotaDashboardURL)
+        guard let resolved else { return nil }
+        let persisted = settingsManager.smartHubQuotaDashboardURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if persisted != resolved.absoluteString {
+            Self.log.info(
+                "preferredCastURL: rewriting persisted dashboard URL \(persisted, privacy: .public) -> \(resolved.absoluteString, privacy: .public)"
+            )
+            settingsManager.smartHubQuotaDashboardURL = resolved.absoluteString
+            // Keep companion endpoints (refresh hook, voice-refresh) in
+            // sync with the new host so the iPhone "Speak Now" /
+            // "Refresh Now" buttons hit this Mac instead of a stale IP.
+            if var base = URLComponents(url: resolved, resolvingAgainstBaseURL: false) {
+                base.path = "/refresh"
+                if let refreshURL = base.url {
+                    settingsManager.smartHubQuotaRefreshURL = refreshURL.absoluteString
+                }
+                base.path = "/voice-refresh"
+                if let voiceURL = base.url {
+                    settingsManager.smartHubQuotaVoiceRefreshURL = voiceURL.absoluteString
+                }
+            }
+        }
+        return resolved
     }
 }

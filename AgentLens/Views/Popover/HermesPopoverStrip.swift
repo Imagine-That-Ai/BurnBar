@@ -21,6 +21,7 @@ struct HermesPopoverStrip: View {
         case .claude: return "Ask Claude…"
         case .hermes: return "Ask Hermes…"
         case .openclaw: return "Ask OpenClaw…"
+        case .piAgent: return "Ask Pi…"
         }
     }
 

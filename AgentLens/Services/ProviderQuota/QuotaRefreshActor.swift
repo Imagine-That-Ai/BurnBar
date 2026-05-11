@@ -165,6 +165,11 @@ actor QuotaRefreshActor {
                 }
             },
             refreshClaudeBridgeStatus: { claudeBridgeStatus },
+            claudeCredentialsReader: ClaudeCredentialsReader(
+                homeDirectoryURL: homeDirectoryURL,
+                environment: environment,
+                fileManager: fileManager
+            ),
             resolvedAPIKeys: resolvedKeys
         )
         return context

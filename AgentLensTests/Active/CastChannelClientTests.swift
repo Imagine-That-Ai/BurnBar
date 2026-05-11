@@ -37,4 +37,20 @@ final class CastChannelClientTests: XCTestCase {
         XCTAssertEqual(payload["reload"] as? Bool, false)
         XCTAssertEqual(payload["reload_time"] as? Int, 0)
     }
+
+    func testDashCastLoadPayload_disablesReloadWhenForceLoading() throws {
+        let url = try XCTUnwrap(URL(string: "http://192.168.68.87:8787/render.html"))
+        let payload = CastChannelClient.dashCastLoadPayload(
+            url: url,
+            sessionId: "session-1",
+            reloadSeconds: 60,
+            force: true
+        )
+
+        XCTAssertEqual(payload["url"] as? String, url.absoluteString)
+        XCTAssertEqual(payload["force"] as? Bool, true)
+        XCTAssertEqual(payload["reload"] as? Bool, false)
+        XCTAssertEqual(payload["reload_time"] as? Int, 0)
+        XCTAssertEqual(payload["sessionId"] as? String, "session-1")
+    }
 }

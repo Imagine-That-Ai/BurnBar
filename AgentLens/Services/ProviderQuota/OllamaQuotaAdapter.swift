@@ -10,12 +10,18 @@ import Foundation
 ///
 /// ## Ollama Cloud
 /// Two-tier approach for cloud quota:
-/// 1. **Browser cookie scraping** — `OllamaCloudScraper` extracts Chrome cookies,
-///    fetches `ollama.com/settings`, and parses real usage percentages from the HTML.
+/// 1. **OpenBurnBar login session** — the user clicks "Connect Ollama" in
+///    Settings, which opens an OpenBurnBar-owned WKWebView and stores the
+///    captured cookie header under `ollama_cookie_header` in Keychain. This
+///    adapter pulls that cookie out of `context.resolvedAPIKeys` (populated
+///    by `QuotaRefreshActor`/`ProviderQuotaService`) and forwards it to
+///    `OllamaCloudScraper.fetchCloudUsage`, which fetches
+///    `ollama.com/settings` and parses real usage percentages from the HTML.
 ///    Session usage %, Weekly usage %, plan name, reset times — all exact.
-/// 2. **WKWebView login** — opens ollama.com in a window, captures cookies, then scrapes.
-/// 3. **Fallback** — detects `:cloud` models via local daemon, marks quota `.unavailable`
-///    with a link to ollama.com/settings/billing.
+/// 2. **Environment override** — `OPENBURNBAR_OLLAMA_CLOUD_HTML` (raw HTML)
+///    or `OLLAMA_COOKIE_HEADER` (cookie jar) for tests and CI.
+/// 3. **Fallback** — detects `:cloud` models via local daemon, marks quota
+///    `.unavailable` with a link to ollama.com/settings/billing.
 ///
 /// Reference: CodexBar `OllamaUsageFetcher.swift` + `OllamaUsageParser.swift`
 
@@ -25,8 +31,9 @@ struct OllamaQuotaAdapter: ProviderQuotaAdapter {
         let apiKey = resolveAPIKey(context: context)
         let endpoint = resolveEndpoint(context: context)
         let hasCloudKey = apiKey != nil
+        let hasCloudCookie = resolveOllamaSessionCookie(context: context) != nil
 
-        // --- Cloud quota scraping (uses Chrome cookies, same as Factory/Cursor) ---
+        // --- Cloud quota scraping (uses an OpenBurnBar-owned session cookie) ---
         async let cloudUsage = fetchCloudUsage(context: context)
 
         // --- Local model detection ---
@@ -105,12 +112,16 @@ struct OllamaQuotaAdapter: ProviderQuotaAdapter {
             } else {
                 statusParts.append("\(planLabel) quota page reached")
             }
+        } else if hasCloudCookie {
+            statusParts.append("Cloud session stored — Ollama returned no usage data. Reconnect if this persists.")
         } else if !cloudModels.isEmpty {
             if hasCloudKey {
-                statusParts.append("\(cloudModels.count) cloud model(s) — sign in to ollama.com for quota windows")
+                statusParts.append("\(cloudModels.count) cloud model(s) — connect Ollama for quota windows")
             } else {
-                statusParts.append("\(cloudModels.count) cloud model(s) — add OLLAMA_API_KEY + sign in for quota windows")
+                statusParts.append("\(cloudModels.count) cloud model(s) — add OLLAMA_API_KEY + connect Ollama for quota windows")
             }
+        } else {
+            statusParts.append("Connect Ollama to read cloud quota windows from ollama.com")
         }
         if !loadedModels.isEmpty {
             statusParts.append("\(loadedLabel)")
@@ -164,7 +175,20 @@ struct OllamaQuotaAdapter: ProviderQuotaAdapter {
         if let html = quotaNonEmpty(context.environment["OPENBURNBAR_OLLAMA_CLOUD_HTML"]) {
             return OllamaCloudScraper.parseCloudUsage(html: html)
         }
-        return await OllamaCloudScraper.fetchCloudUsage(cookieHeader: nil, session: context.session)
+        guard let cookieHeader = resolveOllamaSessionCookie(context: context) else { return nil }
+        return await OllamaCloudScraper.fetchCloudUsage(cookieHeader: cookieHeader, session: context.session)
+    }
+
+    private func resolveOllamaSessionCookie(context: ProviderQuotaAdapterContext) -> String? {
+        if let envCookie = quotaNonEmpty(context.environment["OLLAMA_COOKIE_HEADER"]) {
+            return envCookie
+        }
+        for identifier in ["ollama_cookie_header", "ollama_cookie"] {
+            if let stored = quotaNonEmpty(context.resolvedAPIKeys[identifier] ?? nil) {
+                return stored
+            }
+        }
+        return nil
     }
 
     private func cloudQuotaBuckets(_ cloud: OllamaCloudScraper.CloudUsage) -> [ProviderQuotaBucket] {

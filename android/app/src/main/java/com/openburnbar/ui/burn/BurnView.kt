@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.openburnbar.data.models.*
 import com.openburnbar.data.stores.QuotaStore
+import com.openburnbar.data.stores.UserStore
 import com.openburnbar.ui.components.*
 import com.openburnbar.ui.theme.*
 import com.openburnbar.ui.theme.AuroraColors
@@ -54,7 +55,14 @@ fun BurnView(
     var selectedPeriod by remember { mutableIntStateOf(0) }
     val periods = listOf("Today", "Week", "Month")
 
-    LaunchedEffect(Unit) { quotaStore.load() }
+    val userStore: UserStore = viewModel()
+    val currentUser by userStore.user.collectAsState()
+
+    LaunchedEffect(currentUser.isSignedIn) {
+        if (currentUser.isSignedIn) {
+            quotaStore.load()
+        }
+    }
 
     detailSnapshot?.let { snapshot ->
         ProviderDetailDialog(

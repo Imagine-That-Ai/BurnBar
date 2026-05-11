@@ -10,17 +10,30 @@ android {
     namespace = "com.openburnbar"
     compileSdk = 35
 
+    signingConfigs {
+        create("releaseUpload") {
+            val keystorePath = providers.environmentVariable("OPENBURNBAR_ANDROID_KEYSTORE_PATH").orNull
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+                storePassword = providers.environmentVariable("OPENBURNBAR_ANDROID_KEYSTORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("OPENBURNBAR_ANDROID_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("OPENBURNBAR_ANDROID_KEY_PASSWORD").orNull
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.openburnbar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        versionCode = 2
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("releaseUpload")
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -40,6 +53,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -71,10 +85,15 @@ dependencies {
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-appcheck-playintegrity")
+    debugImplementation("com.google.firebase:firebase-appcheck-debug")
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-functions-ktx")
     implementation("com.google.firebase:firebase-crashlytics-ktx")
     implementation("com.google.firebase:firebase-analytics-ktx")
+    // Auth
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
+
 
     // OkHttp + WebSocket for Hermes
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
@@ -91,6 +110,9 @@ dependencies {
 
     // DataStore for preferences
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // Coil for image loading
+    implementation("io.coil-kt:coil-compose:2.7.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

@@ -17,14 +17,10 @@ protocol LogParser: Sendable {
 // MARK: - FileHandle Extensions
 
 extension FileHandle {
-    /// Buffered UTF-8 line reader for log files. This is substantially faster than byte-at-a-time reads.
-    func readAllUTF8Lines() -> [String] {
-        let data = readDataToEndOfFile()
-        guard !data.isEmpty,
-              let content = String(data: data, encoding: .utf8) else {
-            return []
-        }
-        return content.split(whereSeparator: \.isNewline).map(String.init)
+    /// Buffered UTF-8 line reader for log files. Returns a lazy sequence so
+    /// parsers do not load and split multi-megabyte logs into memory at startup.
+    func readAllUTF8Lines() -> BufferedLineSequence {
+        BufferedLineSequence(fileHandle: self)
     }
 
     func readLine() -> String? {

@@ -31,6 +31,15 @@ final class SmartHubBridgeServer {
     private(set) var boundPort: UInt16?
     private(set) var lastRefreshedAt: Date = Date()
     private(set) var refreshVersion: UInt64 = 0
+
+    /// Wall-clock timestamp of the last `/state.json` GET. Used by the
+    /// cast watchdog to distinguish "Nest Hub is actively rendering our
+    /// dashboard" (recent poll) from "Hub is stuck on DashCast's splash
+    /// because the page never finished loading" (no polls). Without this
+    /// signal the watchdog would force-recast every 45 s even when the
+    /// display is healthy — which is exactly the "stuck cycling on burn
+    /// bar status" failure mode the user sees.
+    private(set) var lastClientPollAt: Date = .distantPast
     private(set) var snapshot: SmartHubBridgeSnapshot = .empty
 
     /// `true` while a fresh quota fetch is in flight, so the on-device HTML
@@ -102,7 +111,19 @@ final class SmartHubBridgeServer {
     private static let portFallbackAttempts: UInt16 = 8
 
     func start(port: UInt16 = 8787) {
-        guard !isRunning else { return }
+        // `isRunning` only flips to true once `NWListener` reaches `.ready`,
+        // which is delivered asynchronously on the listener's dispatch
+        // queue. During app startup `applySettings()` can fire twice in
+        // rapid succession (controller startup + heartbeat self-heal), and
+        // the second call sees `isRunning == false` even though we've
+        // already created a listener that's mid-startup. The second
+        // `tryBind` would then race the first for port 8787, fail with
+        // EADDRINUSE, and — worse — its `.failed` stateUpdateHandler clears
+        // `self.listener`, dropping the only strong reference to the
+        // original (successful) listener and tearing the bridge down
+        // silently. Guard against re-entrant start by checking
+        // `listener != nil` too.
+        guard !isRunning, listener == nil else { return }
         tryBind(startingAt: port, attemptsRemaining: Self.portFallbackAttempts)
     }
 
@@ -131,9 +152,22 @@ final class SmartHubBridgeServer {
                     self.handle(connection: connection)
                 }
             }
+            // Strong-capture `nwListener` so the closure keeps it alive
+            // long enough to deliver the `.ready` callback to MainActor.
+            // Previously the closure used `[weak nwListener]`, which made
+            // the listener eligible for deallocation as soon as the
+            // stateUpdateHandler's caller-frame returned — and Network.framework
+            // freed it before the queued MainActor Task could run, so the
+            // `.ready` branch never executed and `isRunning` stayed false.
             nwListener.stateUpdateHandler = { [weak self] state in
                 guard let self else { return }
-                Task { @MainActor in
+                Task { @MainActor [nwListener] in
+                    // Only mutate shared state when the callback is for the
+                    // currently-tracked listener. Without this, a second
+                    // listener created during a startup race could deliver
+                    // a `.failed`/`.cancelled` after the first listener went
+                    // `.ready`, nuking the bridge we just stood up.
+                    guard self.listener === nwListener else { return }
                     switch state {
                     case .ready:
                         self.isRunning = true
@@ -158,8 +192,8 @@ final class SmartHubBridgeServer {
                     }
                 }
             }
-            nwListener.start(queue: queue)
             self.listener = nwListener
+            nwListener.start(queue: queue)
         } catch {
             // Synchronous bind failure (port collision, sandbox denial)
             // — try the next port immediately.
@@ -242,6 +276,10 @@ final class SmartHubBridgeServer {
         case ("GET", "/render.html"):
             sendHTML(SmartHubBridgePage.html, on: connection)
         case ("GET", "/state.json"):
+            // Record the poll BEFORE serving so the watchdog sees the
+            // device's heartbeat the moment it arrives, not after the
+            // socket flushes.
+            lastClientPollAt = Date()
             sendJSON(stateJSON(), on: connection)
         case ("POST", "/refresh"):
             handleRefreshRequest(on: connection)

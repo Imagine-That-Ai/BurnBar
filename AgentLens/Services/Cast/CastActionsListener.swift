@@ -321,16 +321,30 @@ final class CastActionsListener {
     /// renders an error / cached surface instead of OpenBurnBar. We swap
     /// loopback (and empty hosts) for the Mac's preferred LAN IPv4 so the
     /// Hub fetches from this machine over Wi-Fi.
+    ///
+    /// We also rewrite the host when it is a *stale* LAN IPv4 — i.e. it
+    /// doesn't match any of the Mac's current local IPs. This is the
+    /// "DashCast stuck on splash" failure mode in the wild: the user
+    /// configured `http://192.168.68.87:8787/...` when the Mac was on
+    /// `.87`, the router handed out a new lease, the Mac is now `.93`,
+    /// and the Nest Hub spends forever trying to fetch a host that no
+    /// longer exists. The page never loads → DashCast splash.
     static func castableDashboardURL(from raw: String) -> URL? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let url = URL(string: trimmed) else { return nil }
         let host = url.host?.lowercased() ?? ""
-        let needsRewrite = host.isEmpty
+        let loopback = host.isEmpty
             || host == "localhost"
             || host == "127.0.0.1"
             || host == "0.0.0.0"
             || host == "::1"
-        guard needsRewrite else { return url }
+
+        let localIPs = Set(LocalNetworkDiscovery.localIPv4Addresses())
+        let looksLikeIPv4 = host.split(separator: ".").count == 4
+            && host.allSatisfy { $0.isNumber || $0 == "." }
+        let isStaleLANIP = looksLikeIPv4 && !localIPs.isEmpty && !localIPs.contains(host)
+
+        guard loopback || isStaleLANIP else { return url }
         guard let lan = LocalNetworkDiscovery.preferredLANIPv4Address() else { return nil }
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         components?.host = lan

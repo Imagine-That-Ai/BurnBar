@@ -50,6 +50,55 @@ struct HermesRuntimeLauncherDependencies: Sendable {
     )
 }
 
+extension HermesRuntimeLauncher: ManagedAgentRuntimeAdapter {
+    var kind: ManagedAgentRuntimeKind { .hermes }
+
+    /// Generic snapshot derived from the Hermes-specific `status` so the
+    /// Settings UI and `HermesRuntimeGate` can render Hermes through the same
+    /// `ManagedAgentRuntimeAdapter` surface used by Pi.
+    var managedStatus: ManagedAgentRuntimeStatus {
+        var snapshot = ManagedAgentRuntimeStatus(
+            executablePath: status.hermesCLIPath,
+            gatewayRunning: status.gatewayRunning,
+            appRunning: status.dashboardRunning,
+            modelName: status.modelName,
+            redisStatus: nil,
+            selectedInstanceID: status.gatewayRunning ? "default" : nil,
+            message: status.message
+        )
+        if status.gatewayRunning {
+            snapshot.instances = [
+                ManagedAgentInstance(
+                    id: "default",
+                    displayName: "Default",
+                    isOnline: status.gatewayRunning,
+                    activeSessionID: nil,
+                    gatewayBaseURL: nil
+                )
+            ]
+        }
+        return snapshot
+    }
+
+    @discardableResult
+    func refreshManagedStatus(
+        baseURL: URL,
+        bearerToken: String?
+    ) async -> ManagedAgentRuntimeStatus {
+        _ = await refreshStatus(baseURL: baseURL, bearerToken: bearerToken)
+        return managedStatus
+    }
+
+    @discardableResult
+    func openManagedRuntime(
+        baseURL: URL,
+        bearerToken: String?
+    ) async -> ManagedAgentRuntimeStatus {
+        _ = await openHermesAndGateway(baseURL: baseURL, bearerToken: bearerToken)
+        return managedStatus
+    }
+}
+
 @Observable
 @MainActor
 final class HermesRuntimeLauncher {

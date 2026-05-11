@@ -35,8 +35,12 @@ final class ChatSessionController {
     var chatModelOpenClaw: String = "" {
         didSet { UserDefaults.standard.set(chatModelOpenClaw, forKey: Self.udChatModelOpenClaw) }
     }
+    var chatModelPiAgent: String = "" {
+        didSet { UserDefaults.standard.set(chatModelPiAgent, forKey: Self.udChatModelPiAgent) }
+    }
     var hermesAvailable: Bool = false
     var openClawAvailable: Bool = false
+    var piAgentAvailable: Bool = false
     var searchQuery = "" {
         didSet {
             handleSearchQueryChange(previousValue: oldValue)
@@ -82,6 +86,7 @@ final class ChatSessionController {
     private static let udChatModelClaude = "chatPanel.model.claude"
     private static let udChatModelHermes = "chatPanel.model.hermes"
     private static let udChatModelOpenClaw = "chatPanel.model.openclaw"
+    private static let udChatModelPiAgent = "chatPanel.model.piagent"
     /// Legacy keys (migrated once into per-backend keys).
     private static let udThreadIDLocalIndex = "chatPanelThreadIDLocalIndex"
     private static let udThreadIDHermes = "chatPanelThreadIDHermes"
@@ -142,6 +147,7 @@ final class ChatSessionController {
         chatModelClaude = UserDefaults.standard.string(forKey: Self.udChatModelClaude) ?? ""
         chatModelHermes = UserDefaults.standard.string(forKey: Self.udChatModelHermes) ?? ""
         chatModelOpenClaw = UserDefaults.standard.string(forKey: Self.udChatModelOpenClaw) ?? ""
+        chatModelPiAgent = UserDefaults.standard.string(forKey: Self.udChatModelPiAgent) ?? ""
 
         let w = UserDefaults.standard.double(forKey: Self.udPanelW)
         if w >= 260 && w <= 800 { panelWidth = CGFloat(w) }
@@ -166,6 +172,7 @@ final class ChatSessionController {
         case .claude: return chatModelClaude
         case .hermes: return chatModelHermes
         case .openclaw: return chatModelOpenClaw
+        case .piAgent: return chatModelPiAgent
         }
     }
 
@@ -175,6 +182,7 @@ final class ChatSessionController {
         case .claude: chatModelClaude = value
         case .hermes: chatModelHermes = value
         case .openclaw: chatModelOpenClaw = value
+        case .piAgent: chatModelPiAgent = value
         }
     }
 
@@ -195,6 +203,12 @@ final class ChatSessionController {
         case .openclaw:
             let s = chatModelOpenClaw.trimmingCharacters(in: .whitespacesAndNewlines)
             return s.isEmpty ? "gpt-4o-mini" : s
+        case .piAgent:
+            let s = chatModelPiAgent.trimmingCharacters(in: .whitespacesAndNewlines)
+            if s.isEmpty {
+                return settingsManager.resolvedPiChatModel(gatewayAdvertisedModel: cliBridge.piAgentModelName)
+            }
+            return s
         }
     }
 
@@ -237,6 +251,27 @@ final class ChatSessionController {
             bearerToken: openClawBearerToken
         )
         openClawAvailable = cliBridge.openClawAvailable
+    }
+
+    func probePiAgentAvailability() async {
+        await cliBridge.probePiAgentAvailability(
+            baseURL: piAgentGatewayBaseURL,
+            bearerToken: piAgentBearerToken
+        )
+        piAgentAvailable = cliBridge.piAgentAvailable
+    }
+
+    /// Pi agent model name currently advertised by the configured Pi gateway.
+    var piAgentModelName: String? { cliBridge.piAgentModelName }
+
+    private var piAgentBearerToken: String? {
+        let t = settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
+    private var piAgentGatewayBaseURL: URL {
+        URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? URL(string: "http://127.0.0.1:8765")!
     }
 
     private var hermesBearerToken: String? {
@@ -431,18 +466,31 @@ final class ChatSessionController {
             }
             return DataStore.legacyChatThreadID
 
-        case .hermes, .openclaw:
+        case .hermes, .openclaw, .piAgent:
             if createIfMissing {
                 do {
                     let created = try dataStore.createChatThread()
                     UserDefaults.standard.set(created, forKey: key)
                     return created
                 } catch {
-                    AppLogger.chat.silentFailure("createChatThread (hermes/openclaw)", error: error)
+                    AppLogger.chat.silentFailure("createChatThread (hermes/openclaw/pi)", error: error)
                 }
             }
             return DataStore.legacyChatThreadID
         }
+    }
+
+    /// Appends a `Pi agent context` block to the system prompt so responses
+    /// can be attributed to the active Pi instance.
+    static func piSystemPrompt(base: String, instanceID: String) -> String {
+        let trimmedInstance = instanceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedInstance.isEmpty else { return base }
+        return base + """
+
+
+        ## Pi agent context
+        You are responding through the Pi agent instance `\(trimmedInstance)`. When the user asks which instance is answering, name this instance explicitly and remind them that OpenBurnBar can switch instances from Settings → Chat Gateway → Pi Agent Instances.
+        """
     }
 
     func loadPersistedMessages() {
@@ -706,6 +754,25 @@ final class ChatSessionController {
                 refreshHistory()
                 return
             }
+        case .piAgent:
+            if !piAgentAvailable {
+                await probePiAgentAvailability()
+            }
+            if !piAgentAvailable {
+                let err = ChatMessageRecord(
+                    role: .assistant,
+                    content: "Pi agent gateway is unavailable. Open Settings → Chat Gateway and choose Open Pi + Gateway, or check the gateway URL/token under Pi Agent Instances.",
+                    cliUsed: nil
+                )
+                messages.append(err)
+                do {
+                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                } catch {
+                    AppLogger.chat.silentFailure("saveChatMessage (Pi unavailable)", error: error)
+                }
+                refreshHistory()
+                return
+            }
         case .codex, .claude:
             guard settingsManager.cliAssistantAllowed else {
                 let err = ChatMessageRecord(
@@ -903,7 +970,7 @@ final class ChatSessionController {
         messages.append(placeholder)
         let streamStartedAt = Date()
 
-        let multiTurnHistory = (chatBackend == .hermes || chatBackend == .openclaw)
+        let multiTurnHistory = (chatBackend == .hermes || chatBackend == .openclaw || chatBackend == .piAgent)
             ? messages.filter { $0.id != assistantId }
             : []
 
@@ -951,6 +1018,25 @@ final class ChatSessionController {
                             systemPrompt: augmentedSystem,
                             history: multiTurnHistory,
                             bearerToken: self.openClawBearerToken,
+                            model: requestModel,
+                            attachmentBytes: attachmentByteMap,
+                            capabilities: backendCapabilities,
+                            workspaceURL: self.chatWorkspaceURL
+                        )
+                    case .piAgent:
+                        // Inject the selected Pi instance ID into the system
+                        // prompt so the responder can be attributed to the
+                        // active Pi agent without leaking it into the user's
+                        // visible message body.
+                        let piPrompt = Self.piSystemPrompt(
+                            base: augmentedSystem,
+                            instanceID: self.settingsManager.piAgentSelectedInstanceID
+                        )
+                        return self.cliBridge.chatPiAgent(
+                            baseURL: self.piAgentGatewayBaseURL,
+                            systemPrompt: piPrompt,
+                            history: multiTurnHistory,
+                            bearerToken: self.piAgentBearerToken,
                             model: requestModel,
                             attachmentBytes: attachmentByteMap,
                             capabilities: backendCapabilities,
@@ -1093,6 +1179,11 @@ final class ChatSessionController {
             case .openclaw:
                 let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "gpt-4o-mini"
                 return (.openClaw, "OpenBurnBar OpenClaw Chat", m)
+            case .piAgent:
+                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                    ?? piAgentModelName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                    ?? "pi"
+                return (.piAgent, "OpenBurnBar Pi Agent Chat", m)
             case .codex:
                 let m = chatModelCodex.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "codex"
                 return (.codex, "OpenBurnBar Codex Chat", m)

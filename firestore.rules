@@ -2,6 +2,7 @@ rules_version = '2';
 // OpenBurnBar currently syncs explicit owner-scoped collections:
 // - users/{uid}/usage, conversations, chat_threads, session_logs (+ chunks), devices
 // - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups
+// - users/{uid}/projects (derived read model)
 // - users/{uid}/hermes_connections, hermes_pairings, hermes_relay_requests, hermes_session_cache, hermes_audit_events
 // - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
 // - users/{uid}/escrow_devices, escrow_public_keys, escrow_grants, escrow_envelopes, escrow_audit_events
@@ -583,6 +584,11 @@ service cloud.firestore {
     }
 
     match /users/{userId}/usage_rollups/{rollupId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/projects/{projectId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if false;
     }

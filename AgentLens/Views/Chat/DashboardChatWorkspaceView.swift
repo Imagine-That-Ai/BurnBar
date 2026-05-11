@@ -283,6 +283,7 @@ struct DashboardChatWorkspaceView: View {
         case .openclaw: return "Talk to OpenClaw with your indexed history as grounding."
         case .codex: return "Talk to Codex with your indexed history as grounding."
         case .claude: return "Talk to Claude Code with your indexed history as grounding."
+        case .piAgent: return "Talk to Pi with your indexed history as grounding."
         }
     }
 

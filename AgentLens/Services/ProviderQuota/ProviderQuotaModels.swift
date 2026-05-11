@@ -155,6 +155,13 @@ struct FactoryAuthResponseEnvelope: Sendable {
     let planName: String?
     let tier: String?
     let organizationName: String?
+    /// Stripe / Orb status — "active" / "trialing" / "past_due" / "canceled".
+    /// Surfaced in the popover status line when not `active`.
+    let subscriptionStatus: String?
+    /// Inferred Pro / Plus / Max from the API response. `.unknown` when
+    /// `/api/app/auth/me` cannot be reached or returns a tier name
+    /// OpenBurnBar doesn't recognize.
+    let inferredPlanTier: FactoryQuotaPlanTier
 }
 
 struct FactoryUsageEnvelope: Sendable {
@@ -164,7 +171,21 @@ struct FactoryUsageEnvelope: Sendable {
         let usedPercent: Double?
     }
 
+    /// Prepaid Extra Usage credits returned by Factory's billing API.
+    /// Reflects the `~/.factory` user's current prepaid wallet (USD,
+    /// drawn down as sessions burn through models). `enabled=false` means
+    /// the toggle is off — even with a positive balance, Standard Usage
+    /// is consumed first and Extra Usage stays untouched.
+    struct ExtraUsage: Sendable {
+        let balanceUSD: Double
+        let enabled: Bool
+    }
+
     let periodEnd: Date?
     let standard: Lane
     let premium: Lane
+    /// Droid Core lane (open-weight models, separate free pool). Populated
+    /// when the billing API exposes a `droidCore` / `core` lane block.
+    let droidCore: Lane?
+    let extraUsage: ExtraUsage?
 }

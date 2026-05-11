@@ -53,6 +53,38 @@ final class ChatBackendSettings {
         didSet { persistence.set(launchHermesWithOpenBurnBar, forKey: "launchHermesWithOpenBurnBar") }
     }
 
+    // MARK: - Pi Agent Connection Profile
+
+    var piAgentGatewayBaseURL: String = "http://127.0.0.1:8765" {
+        didSet { persistence.set(piAgentGatewayBaseURL, forKey: "piAgentGatewayBaseURL") }
+    }
+
+    var piAgentBearerToken: String = "" {
+        didSet {
+            secretPersistence.persist(
+                piAgentBearerToken,
+                account: OpenBurnBarIdentity.piAgentBearerTokenAccount,
+                legacyDefaultsKey: SettingsSecretDefaultsKey.piAgentBearerToken
+            )
+        }
+    }
+
+    var piAgentRedisURL: String = "" {
+        didSet { persistence.set(piAgentRedisURL, forKey: "piAgentRedisURL") }
+    }
+
+    var piAgentSelectedInstanceID: String = "" {
+        didSet { persistence.set(piAgentSelectedInstanceID, forKey: "piAgentSelectedInstanceID") }
+    }
+
+    var piAgentChatModelOverride: String = "" {
+        didSet { persistence.set(piAgentChatModelOverride, forKey: "piAgentChatModelOverride") }
+    }
+
+    var launchPiAgentsWithOpenBurnBar: Bool = false {
+        didSet { persistence.set(launchPiAgentsWithOpenBurnBar, forKey: "launchPiAgentsWithOpenBurnBar") }
+    }
+
     var chatBackendOnboardingCompleted: Bool = false {
         didSet { persistence.set(chatBackendOnboardingCompleted, forKey: "chatBackendOnboardingCompleted") }
     }
@@ -117,6 +149,15 @@ final class ChatBackendSettings {
             defaultValue: HermesRealtimeRelayProtocol.defaultHostedRelayURLString
         )
         self.launchHermesWithOpenBurnBar = persistence.bool(forKey: "launchHermesWithOpenBurnBar")
+        self.piAgentGatewayBaseURL = persistence.string(forKey: "piAgentGatewayBaseURL", defaultValue: "http://127.0.0.1:8765")
+        self.piAgentBearerToken = secretPersistence.load(
+            account: OpenBurnBarIdentity.piAgentBearerTokenAccount,
+            legacyDefaultsKey: SettingsSecretDefaultsKey.piAgentBearerToken
+        )
+        self.piAgentRedisURL = persistence.string(forKey: "piAgentRedisURL")
+        self.piAgentSelectedInstanceID = persistence.string(forKey: "piAgentSelectedInstanceID")
+        self.piAgentChatModelOverride = persistence.string(forKey: "piAgentChatModelOverride")
+        self.launchPiAgentsWithOpenBurnBar = persistence.bool(forKey: "launchPiAgentsWithOpenBurnBar")
         self.chatBackendOnboardingCompleted = persistence.bool(forKey: "chatBackendOnboardingCompleted")
         self.hermesSetupWizardCompleted = persistence.bool(forKey: "hermesSetupWizardCompleted")
         self.switcherOnboardingCompleted = persistence.bool(forKey: "switcherOnboardingCompleted")
@@ -160,5 +201,18 @@ final class ChatBackendSettings {
 
     func resolvedHermesChatModel(gatewayAdvertisedModel: String?) -> String {
         Self.resolvedHermesChatModel(override: hermesChatModelOverride, gatewayAdvertisedModel: gatewayAdvertisedModel)
+    }
+
+    static func resolvedPiChatModel(override: String, gatewayAdvertisedModel: String?) -> String {
+        let trimmed = override.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        guard let advertised = gatewayAdvertisedModel?.trimmingCharacters(in: .whitespacesAndNewlines), !advertised.isEmpty else {
+            return "pi"
+        }
+        return advertised
+    }
+
+    func resolvedPiChatModel(gatewayAdvertisedModel: String?) -> String {
+        Self.resolvedPiChatModel(override: piAgentChatModelOverride, gatewayAdvertisedModel: gatewayAdvertisedModel)
     }
 }
