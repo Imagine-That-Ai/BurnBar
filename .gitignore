@@ -127,3 +127,8 @@ services/**/lib/
 
 # QA harness output (qa skill writes timestamped reports + screenshots)
 qa-results/
+
+# Local commercial-launch proof bundle. These files can contain Firebase UIDs,
+# App Store transaction IDs, notification readbacks, and live infrastructure
+# evidence, so keep them local and attach/redact deliberately.
+launch-evidence/
