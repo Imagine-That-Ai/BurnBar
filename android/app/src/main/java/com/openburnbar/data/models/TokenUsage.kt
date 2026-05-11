@@ -321,11 +321,8 @@ data class RollupSummary(
  */
 data class UsageRollups(
     val today: Double = 0.0,
-    val yesterday: Double = 0.0,
     val sevenDays: Double = 0.0,
-    val lastSevenDays: Double = 0.0,
     val thirtyDays: Double = 0.0,
-    val lastThirtyDays: Double = 0.0,
     val ninetyDays: Double = 0.0,
     val allTime: Double = 0.0,
     val totals: Map<String, Double> = emptyMap(),
@@ -347,7 +344,7 @@ enum class UsageDisplayMode(val key: String, val label: String) {
 }
 
 enum class TimelineScope(val rollupKey: String, val trailingKey: String, val label: String) {
-    DAY("today", "yesterday", "Day"),
-    WEEK("7d", "last_7d", "Week"),
+    DAY("today", "today", "Day"),
+    WEEK("7d", "7d", "Week"),
     MONTH("30d", "last_30d", "Month");
 }

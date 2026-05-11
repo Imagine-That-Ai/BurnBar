@@ -87,11 +87,11 @@ class FirestoreRepository {
         // Window values come from their respective docs
         return UsageRollups(
             today = allDocs["today"]?.today ?: allTime.today,
-            yesterday = allDocs["today"]?.today ?: allTime.today, // best-effort fallback
+            
             sevenDays = allDocs["7d"]?.sevenDays ?: allTime.sevenDays,
-            lastSevenDays = allDocs["7d"]?.sevenDays ?: allTime.sevenDays,
+            
             thirtyDays = allDocs["30d"]?.thirtyDays ?: allTime.thirtyDays,
-            lastThirtyDays = allDocs["30d"]?.thirtyDays ?: allTime.thirtyDays,
+            
             ninetyDays = allDocs["90d"]?.ninetyDays ?: allTime.ninetyDays,
             allTime = allTime.allTime,
             totals = allTime.totals,
@@ -187,11 +187,8 @@ private fun DocumentSnapshot.toRollups(): UsageRollups? {
     val data = data ?: return null
     return UsageRollups(
         today = (data["today"] as? Number)?.toDouble() ?: 0.0,
-        yesterday = (data["yesterday"] as? Number)?.toDouble() ?: 0.0,
         sevenDays = (data["7d"] as? Number)?.toDouble() ?: 0.0,
-        lastSevenDays = (data["last_7d"] as? Number)?.toDouble() ?: 0.0,
         thirtyDays = (data["30d"] as? Number)?.toDouble() ?: 0.0,
-        lastThirtyDays = (data["last_30d"] as? Number)?.toDouble() ?: 0.0,
         ninetyDays = (data["90d"] as? Number)?.toDouble() ?: 0.0,
         allTime = (data["all_time"] as? Number)?.toDouble() ?: 0.0,
         totals = (data["totals"] as? Map<String, Any>)?.mapValues { (it.value as? Number)?.toDouble() ?: 0.0 } ?: emptyMap(),

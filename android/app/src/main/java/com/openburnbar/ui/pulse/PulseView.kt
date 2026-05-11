@@ -343,7 +343,7 @@ private fun TimelineScope.valueFor(rollups: UsageRollups): Double = when (this) 
 }
 
 private fun TimelineScope.trailingValueFor(rollups: UsageRollups): Double = when (this) {
-    TimelineScope.DAY -> rollups.yesterday
-    TimelineScope.WEEK -> rollups.lastSevenDays
-    TimelineScope.MONTH -> rollups.lastThirtyDays
+    TimelineScope.DAY -> rollups.today
+    TimelineScope.WEEK -> rollups.sevenDays
+    TimelineScope.MONTH -> rollups.thirtyDays
 }
