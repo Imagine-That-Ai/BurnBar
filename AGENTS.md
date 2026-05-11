@@ -94,10 +94,10 @@ All scripts follow `set -euo pipefail`, use absolute paths with `cd "$(dirname "
 
 | Script | Purpose |
 |---|---|
-| `scripts/setup-ios` | Verify Xcode, iOS simulator runtime, and `GoogleService-Info.plist` |
-| `scripts/run-ios [device]` | Build + launch OpenBurnBarMobile on iOS Simulator (default: iPhone 17 Pro Max) |
-| `scripts/setup-android` | Verify Java 21, Android SDK, `gradlew`, `google-services.json`, and emulator AVDs |
-| `scripts/run-android` | Build APK + install on running emulator + launch BurnBar (auto-starts emulator if needed) |
+| `scripts/cross-platform/setup-ios` | Verify Xcode, iOS simulator runtime, and `GoogleService-Info.plist` |
+| `scripts/cross-platform/run-ios [device]` | Build + launch OpenBurnBarMobile on iOS Simulator (default: iPhone 17 Pro Max) |
+| `scripts/cross-platform/setup-android` | Verify Java 21, Android SDK, `gradlew`, `google-services.json`, and emulator AVDs |
+| `scripts/cross-platform/run-android` | Build APK + install on running emulator + launch BurnBar (auto-starts emulator if needed) |
 | `scripts/ci/inject-firebase-config.sh` | iOS CI: injects `GoogleService-Info.plist` from `FIREBASE_PLIST_BASE64` |
 | `scripts/ci/inject-firebase-config-android.sh` | Android CI: injects `google-services.json` from `GOOGLE_SERVICES_JSON_BASE64` |
 
