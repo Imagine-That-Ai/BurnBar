@@ -314,7 +314,7 @@ private struct ProgressBar: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(tint.opacity(0.16))
+                    .fill(Color.black.opacity(0.42))
                 Capsule()
                     .fill(
                         LinearGradient(
@@ -323,7 +323,7 @@ private struct ProgressBar: View {
                             endPoint: .trailing
                         )
                     )
-                    .frame(width: max(4, geo.size.width * CGFloat(max(0, min(1, value)))))
+                    .frame(width: geo.size.width * CGFloat(max(0, min(1, value))))
                     .animation(.spring(response: 0.5, dampingFraction: 0.85), value: value)
             }
         }

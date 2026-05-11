@@ -43,8 +43,10 @@ The script prints the Cloud Run HTTPS URL. Convert it to WebSocket form by repla
 In OpenBurnBar for macOS:
 
 1. Open Settings -> Chat Gateway.
-2. Keep Hermes Base URL pointed at the local Hermes gateway, usually `http://127.0.0.1:8642`.
-3. Turn on Remote Relay.
+2. Choose **Open Hermes + Gateway** to start the Hermes Dashboard and local Hermes gateway together.
+3. Keep Hermes Base URL pointed at the local Hermes gateway, usually `http://127.0.0.1:8642`.
+4. Optionally turn on **Launch Hermes Dashboard and gateway when OpenBurnBar opens**.
+5. Turn on Remote Relay.
 
 OpenBurnBar ships with the hosted relay endpoint built in; normal users do not paste infrastructure URLs. The endpoint field is kept behind Advanced relay endpoint for development and self-hosted staging only.
 

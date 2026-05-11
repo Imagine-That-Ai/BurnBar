@@ -42,6 +42,11 @@ final class SmartHubBridgeServer {
     /// so the on-device segmented control reflects the same source of truth.
     private(set) var timePeriod: SmartHubTimePeriod = .rolling5h
 
+    /// Per-display customization (palette/theme/brightness/background/cadence).
+    /// The bridge HTML reads this on every poll and re-applies CSS / behavior
+    /// without forcing a full reload.
+    private(set) var displayConfig: SmartHubDisplayConfig = .default
+
     /// Async refresh hook injected by `SmartHubBridgeController`. POST /refresh
     /// awaits this so the device sees fresh data after the request completes —
     /// not stale data plus a bumped version. Returns true on success.
@@ -79,31 +84,72 @@ final class SmartHubBridgeServer {
         lastRefreshedAt = Date()
     }
 
+    /// Bridge controller forwards the latest display config (palette,
+    /// theme, brightness, …). We bump the version so the Hub's next
+    /// `/state.json` poll picks the change up immediately.
+    func updateDisplayConfig(_ config: SmartHubDisplayConfig) {
+        guard config != displayConfig else { return }
+        displayConfig = config
+        refreshVersion &+= 1
+        lastRefreshedAt = Date()
+    }
+
     // MARK: - Lifecycle
+
+    /// Maximum number of ports we try before giving up. The Nest Hub /
+    /// DashCast falls back to whatever ends up bound; the controller
+    /// reads `boundPort` to assemble the URL it actually casts.
+    private static let portFallbackAttempts: UInt16 = 8
 
     func start(port: UInt16 = 8787) {
         guard !isRunning else { return }
+        tryBind(startingAt: port, attemptsRemaining: Self.portFallbackAttempts)
+    }
+
+    /// Recursive bind with port fallback. If 8787 is already taken by a
+    /// stale daemon or another tool, we walk forward (8788, 8789, …)
+    /// until something sticks. Without this, the Nest Hub gets a stuck
+    /// page because `boundPort` stays nil and the URL the device was
+    /// told to load never has a server behind it.
+    private func tryBind(startingAt port: UInt16, attemptsRemaining: UInt16) {
+        guard attemptsRemaining > 0, let nwPort = NWEndpoint.Port(rawValue: port) else {
+            isRunning = false
+            listener = nil
+            boundPort = nil
+            return
+        }
         do {
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
-            // Bind to all interfaces so the iPhone on the same Wi-Fi can
-            // hit `http://Mac.local:8787` if the user wants. We default
+            // Bind to all interfaces so the iPhone / Nest Hub on the
+            // same Wi-Fi can hit `http://<mac-lan-ip>:8787`. We default
             // documentation to localhost for security.
-            let listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
-            listener.newConnectionHandler = { [weak self] connection in
+            let nwListener = try NWListener(using: params, on: nwPort)
+            nwListener.newConnectionHandler = { [weak self] connection in
                 guard let self else { return }
                 Task { @MainActor in
                     self.handle(connection: connection)
                 }
             }
-            listener.stateUpdateHandler = { [weak self] state in
+            nwListener.stateUpdateHandler = { [weak self] state in
                 guard let self else { return }
                 Task { @MainActor in
                     switch state {
                     case .ready:
                         self.isRunning = true
                         self.boundPort = port
-                    case .failed, .cancelled:
+                    case .failed:
+                        self.isRunning = false
+                        self.listener = nil
+                        self.boundPort = nil
+                        // Self-heal: try the next port up. Network.framework
+                        // can hand back .failed for transient bind races
+                        // (lingering TIME_WAIT, sudden interface flap).
+                        self.tryBind(
+                            startingAt: port &+ 1,
+                            attemptsRemaining: attemptsRemaining &- 1
+                        )
+                    case .cancelled:
                         self.isRunning = false
                         self.listener = nil
                         self.boundPort = nil
@@ -112,12 +158,15 @@ final class SmartHubBridgeServer {
                     }
                 }
             }
-            listener.start(queue: queue)
-            self.listener = listener
+            nwListener.start(queue: queue)
+            self.listener = nwListener
         } catch {
+            // Synchronous bind failure (port collision, sandbox denial)
+            // — try the next port immediately.
             isRunning = false
             listener = nil
             boundPort = nil
+            tryBind(startingAt: port &+ 1, attemptsRemaining: attemptsRemaining &- 1)
         }
     }
 
@@ -307,9 +356,27 @@ final class SmartHubBridgeServer {
         return nil
     }
 
+    /// Exposed for tests so the JSON contract can be asserted directly.
+    /// Production callers go through the `/state.json` HTTP endpoint.
+    func renderStateJSONForTesting() -> String {
+        stateJSON()
+    }
+
     private func stateJSON() -> String {
         let formatter = ISO8601DateFormatter()
-        let providersJSON = snapshot.providers.map { p in
+
+        // Provider filter: honor displayConfig.providerIDs (case-insensitive,
+        // empty == "all"). Names align with `AgentProvider.persistedToken`,
+        // but `SmartHubBridgeSnapshot.Provider.name` is the display name —
+        // so we match on either to stay backward compatible.
+        let allowedSet = Set(displayConfig.providerIDs.map { $0.lowercased() })
+        let providers = snapshot.providers.filter { provider in
+            if allowedSet.isEmpty { return true }
+            return allowedSet.contains(provider.name.lowercased())
+                || allowedSet.contains(persistedTokenForName(provider.name))
+        }
+
+        let providersJSON = providers.map { p in
             """
             {"name":"\(escape(p.name))","percent":\(p.percent),"label":"\(escape(p.label))","tone":"\(p.tone.rawValue)","window":"\(escape(p.windowLabel))"}
             """
@@ -318,6 +385,26 @@ final class SmartHubBridgeServer {
         let timePeriodOptions = SmartHubTimePeriod.allCases.map { period in
             "{\"value\":\"\(period.rawValue)\",\"short\":\"\(period.shortLabel)\",\"name\":\"\(escape(period.displayName))\"}"
         }.joined(separator: ",")
+
+        let providerIDsJSON = displayConfig.providerIDs.map { "\"\(escape($0))\"" }
+            .joined(separator: ",")
+        let theme = displayConfig.theme.backgroundPair
+        let displayJSON = """
+        {
+          "layout": "\(displayConfig.layout.rawValue)",
+          "palette": "\(displayConfig.palette.rawValue)",
+          "paletteHex": {"primary":"\(displayConfig.palette.primaryHex)","secondary":"\(displayConfig.palette.secondaryHex)"},
+          "theme": "\(displayConfig.theme.rawValue)",
+          "themeHex": {"top":"\(theme.top)","bottom":"\(theme.bottom)","text":"\(displayConfig.theme.textHex)"},
+          "background": "\(displayConfig.background.rawValue)",
+          "brightness": \(displayConfig.clampedBrightness),
+          "scrollSpeedSeconds": \(displayConfig.clampedScrollSpeed),
+          "refreshCadenceSeconds": \(displayConfig.clampedRefreshCadence),
+          "providerIDs": [\(providerIDsJSON)],
+          "audibleCue": \(displayConfig.audibleCue ? "true" : "false"),
+          "identifyOnRefresh": \(displayConfig.identifyOnRefresh ? "true" : "false")
+        }
+        """
 
         return """
         {
@@ -330,9 +417,21 @@ final class SmartHubBridgeServer {
           "totalSpend": "\(escape(snapshot.totalSpend))",
           "headline": "\(escape(snapshot.headline))",
           "subheadline": "\(escape(snapshot.subheadline))",
-          "providers": [\(providersJSON)]
+          "providers": [\(providersJSON)],
+          "display": \(displayJSON)
         }
         """
+    }
+
+    /// Best-effort mapping from a provider display name back to its
+    /// persisted token so the filter accepts both forms. The actual
+    /// provider names emitted by `SmartHubBridgeController.quotaProviders`
+    /// come from `AgentProvider.displayName`, so we lowercase + strip
+    /// non-alphanumerics for the lookup.
+    private func persistedTokenForName(_ name: String) -> String {
+        let lowered = name.lowercased()
+        let alnum = lowered.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
+        return String(String.UnicodeScalarView(alnum))
     }
 
     private func escape(_ s: String) -> String {

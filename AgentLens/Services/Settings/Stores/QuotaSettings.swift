@@ -44,6 +44,33 @@ final class QuotaSettings {
         didSet { persistence.set(smartHubHomeAssistantRecoveryWebhookURL, forKey: "smartHubHomeAssistantRecoveryWebhookURL") }
     }
 
+    var pixelClockConfig: PixelClockConfig = .disabled {
+        didSet {
+            if let data = try? JSONEncoder().encode(pixelClockConfig),
+               let raw = String(data: data, encoding: .utf8) {
+                persistence.set(raw, forKey: "pixelClockConfig")
+            }
+        }
+    }
+
+    var smartHubDisplayConfig: SmartHubDisplayConfig = .default {
+        didSet {
+            if let data = try? JSONEncoder().encode(smartHubDisplayConfig),
+               let raw = String(data: data, encoding: .utf8) {
+                persistence.set(raw, forKey: "smartHubDisplayConfig")
+            }
+        }
+    }
+
+    var smartDisplayOrder: SmartDisplayOrder = .default {
+        didSet {
+            if let data = try? JSONEncoder().encode(smartDisplayOrder),
+               let raw = String(data: data, encoding: .utf8) {
+                persistence.set(raw, forKey: "smartDisplayOrder")
+            }
+        }
+    }
+
     // MARK: Cast Wizard Selection
     //
     // Persisted choice from the Setup Cast Wizard. The service name is
@@ -61,6 +88,22 @@ final class QuotaSettings {
 
     var castSelectedDeviceModel: String = "" {
         didSet { persistence.set(castSelectedDeviceModel, forKey: "castSelectedDeviceModel") }
+    }
+
+    var castSelectedDeviceHost: String = "" {
+        didSet { persistence.set(castSelectedDeviceHost, forKey: "castSelectedDeviceHost") }
+    }
+
+    var castSelectedDevicePort: Int = 8009 {
+        didSet { persistence.set(castSelectedDevicePort, forKey: "castSelectedDevicePort") }
+    }
+
+    var castSelectedDeviceIdentifier: String = "" {
+        didSet { persistence.set(castSelectedDeviceIdentifier, forKey: "castSelectedDeviceIdentifier") }
+    }
+
+    var castSelectedDeviceSupportsDisplay: Bool = true {
+        didSet { persistence.set(castSelectedDeviceSupportsDisplay, forKey: "castSelectedDeviceSupportsDisplay") }
     }
 
     init(persistence: SettingsPersistenceCoordinator) {
@@ -105,6 +148,27 @@ final class QuotaSettings {
             forKey: "smartHubHomeAssistantRecoveryWebhookURL",
             defaultValue: ""
         )
+        if let raw = persistence.optionalString(forKey: "pixelClockConfig"),
+           let data = raw.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode(PixelClockConfig.self, from: data) {
+            self.pixelClockConfig = decoded
+        } else {
+            self.pixelClockConfig = .disabled
+        }
+        if let raw = persistence.optionalString(forKey: "smartHubDisplayConfig"),
+           let data = raw.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode(SmartHubDisplayConfig.self, from: data) {
+            self.smartHubDisplayConfig = decoded
+        } else {
+            self.smartHubDisplayConfig = .default
+        }
+        if let raw = persistence.optionalString(forKey: "smartDisplayOrder"),
+           let data = raw.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode(SmartDisplayOrder.self, from: data) {
+            self.smartDisplayOrder = decoded
+        } else {
+            self.smartDisplayOrder = .default
+        }
         self.castSelectedDeviceServiceName = persistence.string(
             forKey: "castSelectedDeviceServiceName",
             defaultValue: ""
@@ -117,5 +181,20 @@ final class QuotaSettings {
             forKey: "castSelectedDeviceModel",
             defaultValue: ""
         )
+        self.castSelectedDeviceHost = persistence.string(
+            forKey: "castSelectedDeviceHost",
+            defaultValue: ""
+        )
+        let storedPort = persistence.integer(forKey: "castSelectedDevicePort")
+        self.castSelectedDevicePort = storedPort > 0 ? storedPort : 8009
+        self.castSelectedDeviceIdentifier = persistence.string(
+            forKey: "castSelectedDeviceIdentifier",
+            defaultValue: ""
+        )
+        if persistence.objectExists(forKey: "castSelectedDeviceSupportsDisplay") {
+            self.castSelectedDeviceSupportsDisplay = persistence.bool(forKey: "castSelectedDeviceSupportsDisplay")
+        } else {
+            self.castSelectedDeviceSupportsDisplay = true
+        }
     }
 }

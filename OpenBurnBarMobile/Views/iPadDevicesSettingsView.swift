@@ -363,105 +363,103 @@ struct iPadDevicesSettingsView: View {
     @ViewBuilder
     private var smartHubSection: some View {
         Section {
-            if smartHub.canCast {
-                HStack(alignment: .center, spacing: MobileTheme.Spacing.md) {
-                    ZStack {
-                        Circle().fill(MobileTheme.whimsy.opacity(0.18))
-                        Image(systemName: "tv.badge.wifi")
-                            .foregroundStyle(MobileTheme.whimsy)
-                    }
-                    .frame(width: 36, height: 36)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Google Nest Hub")
-                            .font(MobileTheme.Typography.body)
-                        if let host = smartHub.config?.sourceDeviceName {
-                            Text("Bridge running on \(host)")
-                                .font(MobileTheme.Typography.caption)
-                                .foregroundStyle(MobileTheme.Colors.textMuted)
-                        }
-                    }
-                    Spacer()
-                    SmartHubCastButton(store: smartHub, compact: false)
-                }
-
-                if case .failure(let message) = smartHub.castState {
-                    Text(message)
-                        .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(MobileTheme.Colors.error)
-                }
-
-                smartHubTimePeriodRow
-            } else {
-                VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
-                    HStack(spacing: MobileTheme.Spacing.md) {
-                        Image(systemName: "tv.slash")
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("No Smart Display set up")
-                                .font(MobileTheme.Typography.body)
-                            Text("We'll walk you through it in under a minute.")
-                                .font(MobileTheme.Typography.caption)
-                                .foregroundStyle(MobileTheme.Colors.textMuted)
-                        }
-                    }
-                    Button {
-                        showSmartHubWizard = true
-                    } label: {
-                        Label("Set up Smart Display", systemImage: "wand.and.stars")
-                            .font(MobileTheme.Typography.body.bold())
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(MobileTheme.whimsy, in: Capsule())
-                            .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
+            SmartDisplayReorderableSection(smartHubStore: smartHub) { kind, _ in
+                switch kind {
+                case .nestHub:
+                    nestHubBlock
+                case .pixelClock:
+                    pixelClockBlock
                 }
             }
-
-            // Always-available "Re-run setup" entry — small footer link.
-            Button {
-                showSmartHubWizard = true
-            } label: {
-                Text(smartHub.canCast ? "Re-run setup wizard" : "")
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.whimsy)
-            }
-            .buttonStyle(.plain)
-            .opacity(smartHub.canCast ? 1 : 0)
+            setupShortcutBlock
         } header: {
-            Text("Smart Display")
+            Text("Smart Displays")
         }
         .sheet(isPresented: $showSmartHubWizard) {
             SmartHubSetupWizardView(store: smartHub)
         }
     }
 
-    /// Period picker that mirrors the Mac's `SettingsManager.smartHubQuotaTimePeriod`
-    /// through Firestore. Pushing a change here flips the same field on
-    /// the Mac, which the bridge controller picks up on its next 2s
-    /// settings poll and forwards to the device.
     @ViewBuilder
-    private var smartHubTimePeriodRow: some View {
+    private var pixelClockBlock: some View {
+        PixelClockSettingsCard(smartHubStore: smartHub)
+            .listRowInsets(EdgeInsets(
+                top: MobileTheme.Spacing.xs,
+                leading: 0,
+                bottom: MobileTheme.Spacing.xs,
+                trailing: 0
+            ))
+            .listRowBackground(Color.clear)
+    }
+
+    @ViewBuilder
+    private var nestHubBlock: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
-            Text("Time period")
-                .font(MobileTheme.Typography.caption)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-            Picker(
-                "Time period",
-                selection: Binding<SmartHubTimePeriod>(
-                    get: { smartHub.config?.timePeriod ?? .rolling5h },
-                    set: { newValue in
-                        Task { await smartHub.updateTimePeriod(newValue) }
+            NestHubSettingsCard(smartHubStore: smartHub)
+
+            // Cast Now action — kept above-the-fold even with the new
+            // settings card so users can hit it without scrolling.
+            HStack(spacing: MobileTheme.Spacing.md) {
+                SmartHubCastButton(store: smartHub, compact: false)
+                Spacer(minLength: 0)
+            }
+
+            if case .failure(let message) = smartHub.castState {
+                Text(message)
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.error)
+            }
+        }
+        .listRowInsets(EdgeInsets(
+            top: MobileTheme.Spacing.xs,
+            leading: 0,
+            bottom: MobileTheme.Spacing.xs,
+            trailing: 0
+        ))
+        .listRowBackground(Color.clear)
+    }
+
+    @ViewBuilder
+    private var setupShortcutBlock: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+            if smartHub.canCast {
+                wizardFooter
+            } else {
+                HStack(spacing: MobileTheme.Spacing.md) {
+                    Image(systemName: "wand.and.stars")
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Need a Nest Hub?")
+                            .font(MobileTheme.Typography.body)
+                        Text("Run guided setup, or use the Pixel Clock controls above.")
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
                     }
-                )
-            ) {
-                ForEach(SmartHubTimePeriod.allCases, id: \.self) { period in
-                    Text(period.shortLabel).tag(period)
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            Button {
+                showSmartHubWizard = true
+            } label: {
+                Label("Set up Smart Display", systemImage: "wand.and.stars")
+                    .font(MobileTheme.Typography.body.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(MobileTheme.whimsy, in: Capsule())
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
         }
+    }
+
+    @ViewBuilder
+    private var wizardFooter: some View {
+        Button {
+            showSmartHubWizard = true
+        } label: {
+            Text("Re-run setup wizard")
+                .font(MobileTheme.Typography.caption)
+                .foregroundStyle(MobileTheme.whimsy)
+        }
+        .buttonStyle(.plain)
     }
 }

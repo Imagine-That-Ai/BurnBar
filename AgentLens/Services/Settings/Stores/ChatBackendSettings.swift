@@ -49,6 +49,10 @@ final class ChatBackendSettings {
         didSet { persistence.set(hermesRealtimeRelayURL, forKey: "hermesRealtimeRelayURL") }
     }
 
+    var launchHermesWithOpenBurnBar: Bool = false {
+        didSet { persistence.set(launchHermesWithOpenBurnBar, forKey: "launchHermesWithOpenBurnBar") }
+    }
+
     var chatBackendOnboardingCompleted: Bool = false {
         didSet { persistence.set(chatBackendOnboardingCompleted, forKey: "chatBackendOnboardingCompleted") }
     }
@@ -112,6 +116,7 @@ final class ChatBackendSettings {
             forKey: "hermesRealtimeRelayURL",
             defaultValue: HermesRealtimeRelayProtocol.defaultHostedRelayURLString
         )
+        self.launchHermesWithOpenBurnBar = persistence.bool(forKey: "launchHermesWithOpenBurnBar")
         self.chatBackendOnboardingCompleted = persistence.bool(forKey: "chatBackendOnboardingCompleted")
         self.hermesSetupWizardCompleted = persistence.bool(forKey: "hermesSetupWizardCompleted")
         self.switcherOnboardingCompleted = persistence.bool(forKey: "switcherOnboardingCompleted")

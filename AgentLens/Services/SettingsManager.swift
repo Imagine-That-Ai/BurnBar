@@ -388,6 +388,11 @@ final class SettingsManager {
         set { chatBackend.hermesRealtimeRelayURL = newValue }
     }
 
+    var launchHermesWithOpenBurnBar: Bool {
+        get { chatBackend.launchHermesWithOpenBurnBar }
+        set { chatBackend.launchHermesWithOpenBurnBar = newValue }
+    }
+
     var chatBackendOnboardingCompleted: Bool {
         get { chatBackend.chatBackendOnboardingCompleted }
         set { chatBackend.chatBackendOnboardingCompleted = newValue }
@@ -626,6 +631,21 @@ final class SettingsManager {
         set { quotas.smartHubHomeAssistantRecoveryWebhookURL = newValue }
     }
 
+    var pixelClockConfig: PixelClockConfig {
+        get { quotas.pixelClockConfig }
+        set { quotas.pixelClockConfig = newValue }
+    }
+
+    var smartHubDisplayConfig: SmartHubDisplayConfig {
+        get { quotas.smartHubDisplayConfig }
+        set { quotas.smartHubDisplayConfig = newValue }
+    }
+
+    var smartDisplayOrder: SmartDisplayOrder {
+        get { quotas.smartDisplayOrder }
+        set { quotas.smartDisplayOrder = newValue }
+    }
+
     var castSelectedDeviceServiceName: String {
         get { quotas.castSelectedDeviceServiceName }
         set { quotas.castSelectedDeviceServiceName = newValue }
@@ -639,6 +659,26 @@ final class SettingsManager {
     var castSelectedDeviceModel: String {
         get { quotas.castSelectedDeviceModel }
         set { quotas.castSelectedDeviceModel = newValue }
+    }
+
+    var castSelectedDeviceHost: String {
+        get { quotas.castSelectedDeviceHost }
+        set { quotas.castSelectedDeviceHost = newValue }
+    }
+
+    var castSelectedDevicePort: Int {
+        get { quotas.castSelectedDevicePort }
+        set { quotas.castSelectedDevicePort = newValue }
+    }
+
+    var castSelectedDeviceIdentifier: String {
+        get { quotas.castSelectedDeviceIdentifier }
+        set { quotas.castSelectedDeviceIdentifier = newValue }
+    }
+
+    var castSelectedDeviceSupportsDisplay: Bool {
+        get { quotas.castSelectedDeviceSupportsDisplay }
+        set { quotas.castSelectedDeviceSupportsDisplay = newValue }
     }
 
     // MARK: Provider Paths

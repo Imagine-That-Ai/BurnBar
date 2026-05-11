@@ -59,6 +59,105 @@ service cloud.firestore {
         && hasNoPlaintextSecretFields();
     }
 
+    function validPixelClockConfig(pixelClock) {
+      return pixelClock is map
+        && pixelClock.keys().hasOnly([
+          "enabled",
+          "host",
+          "port",
+          "layout",
+          "palette",
+          "timePeriod",
+          "workingSpinnerStyle",
+          "workingSpinnerPrimaryHex",
+          "workingSpinnerSecondaryHex",
+          "completionClockSoundEnabled",
+          "completionLocalNotificationsEnabled",
+          "pageDurationSeconds",
+          "updateIntervalSeconds",
+          "scrollSpeedPercent",
+          "brightness",
+          "providerIDs",
+          "updatedAt",
+          "updatedByDeviceId",
+          "lastProbeStatus"
+        ])
+        && pixelClock.enabled is bool
+        && pixelClock.host is string
+        && pixelClock.host.size() <= 255
+        && pixelClock.port is int
+        && pixelClock.port >= 1
+        && pixelClock.port <= 65535
+        && pixelClock.layout in ["providerDashboard", "quotaCarousel", "burnStatus", "alertsOnly"]
+        && pixelClock.palette in ["emberWhimsy", "mercury", "traffic", "monochrome"]
+        && pixelClock.timePeriod in ["rolling5h", "rolling24h", "rolling7d", "rolling30d"]
+        && (!("workingSpinnerStyle" in pixelClock) || pixelClock.workingSpinnerStyle in ["orbit", "chase", "pulse", "scan"])
+        && (!("workingSpinnerPrimaryHex" in pixelClock) || (pixelClock.workingSpinnerPrimaryHex is string && pixelClock.workingSpinnerPrimaryHex.matches("^#[0-9A-Fa-f]{6}$")))
+        && (!("workingSpinnerSecondaryHex" in pixelClock) || (pixelClock.workingSpinnerSecondaryHex is string && pixelClock.workingSpinnerSecondaryHex.matches("^#[0-9A-Fa-f]{6}$")))
+        && (!("completionClockSoundEnabled" in pixelClock) || pixelClock.completionClockSoundEnabled is bool)
+        && (!("completionLocalNotificationsEnabled" in pixelClock) || pixelClock.completionLocalNotificationsEnabled is bool)
+        && pixelClock.pageDurationSeconds is int
+        && pixelClock.pageDurationSeconds >= 3
+        && pixelClock.pageDurationSeconds <= 30
+        && pixelClock.updateIntervalSeconds is int
+        && pixelClock.updateIntervalSeconds >= 15
+        && pixelClock.updateIntervalSeconds <= 3600
+        && pixelClock.scrollSpeedPercent is int
+        && pixelClock.scrollSpeedPercent >= 10
+        && pixelClock.scrollSpeedPercent <= 300
+        && (!("brightness" in pixelClock) || (
+          pixelClock.brightness is int
+          && pixelClock.brightness >= 0
+          && pixelClock.brightness <= 255
+        ))
+        && pixelClock.providerIDs is list
+        && pixelClock.providerIDs.size() <= 24
+        && pixelClock.lastProbeStatus in ["unknown", "awtrixReady", "stockUlanziFirmware", "unreachable", "unsupported", "error"]
+        && (!("updatedByDeviceId" in pixelClock) || (pixelClock.updatedByDeviceId is string && pixelClock.updatedByDeviceId.size() <= 160));
+    }
+
+    function validSmartHubDisplayConfig(displayConfig) {
+      return displayConfig is map
+        && displayConfig.keys().hasOnly([
+          "layout",
+          "palette",
+          "theme",
+          "background",
+          "brightness",
+          "scrollSpeedSeconds",
+          "refreshCadenceSeconds",
+          "providerIDs",
+          "audibleCue",
+          "identifyOnRefresh",
+          "updatedAt"
+        ])
+        && displayConfig.layout in ["quotaCarousel", "bigTotal", "providerGrid", "singleProvider"]
+        && displayConfig.palette in ["emberWhimsy", "mercury", "forestSage", "monochrome"]
+        && displayConfig.theme in ["warmCharcoal", "botanicalCream", "oledBlack", "matchSystem"]
+        && displayConfig.background in ["dashboard", "ambient", "photoBlend"]
+        && displayConfig.brightness is number
+        && displayConfig.brightness >= 0.2
+        && displayConfig.brightness <= 1.0
+        && displayConfig.scrollSpeedSeconds is int
+        && displayConfig.scrollSpeedSeconds >= 3
+        && displayConfig.scrollSpeedSeconds <= 30
+        && displayConfig.refreshCadenceSeconds is int
+        && displayConfig.refreshCadenceSeconds >= 3
+        && displayConfig.refreshCadenceSeconds <= 60
+        && displayConfig.providerIDs is list
+        && displayConfig.providerIDs.size() <= 24
+        && displayConfig.audibleCue is bool
+        && displayConfig.identifyOnRefresh is bool
+        && displayConfig.updatedAt is string
+        && displayConfig.updatedAt.size() <= 64;
+    }
+
+    function validSmartDisplayOrder(displayOrder) {
+      return displayOrder is list
+        && displayOrder.size() <= 4
+        && displayOrder.hasOnly(["nestHub", "pixelClock"]);
+    }
+
     function hostedCloudEntitlementPath(userId) {
       return /databases/$(database)/documents/users/$(userId)/entitlements/hosted_quota_sync;
     }
@@ -365,6 +464,9 @@ service cloud.firestore {
           "sourceDeviceName",
           "publishedAt",
           "timePeriod",
+          "pixelClock",
+          "displayConfig",
+          "displayOrder",
           "schemaVersion"
         ])
         && request.resource.data.enabled is bool
@@ -373,7 +475,110 @@ service cloud.firestore {
         && (!("refreshURL" in request.resource.data) || (request.resource.data.refreshURL is string && request.resource.data.refreshURL.size() <= 2048))
         && (!("voiceRefreshURL" in request.resource.data) || (request.resource.data.voiceRefreshURL is string && request.resource.data.voiceRefreshURL.size() <= 2048))
         && (!("sourceDeviceName" in request.resource.data) || (request.resource.data.sourceDeviceName is string && request.resource.data.sourceDeviceName.size() <= 160))
-        && (!("timePeriod" in request.resource.data) || request.resource.data.timePeriod in ["rolling5h", "rolling24h", "rolling7d", "rolling30d"]);
+        && (!("timePeriod" in request.resource.data) || request.resource.data.timePeriod in ["rolling5h", "rolling24h", "rolling7d", "rolling30d"])
+        && (!("pixelClock" in request.resource.data) || validPixelClockConfig(request.resource.data.pixelClock))
+        && (!("displayConfig" in request.resource.data) || validSmartHubDisplayConfig(request.resource.data.displayConfig))
+        && (!("displayOrder" in request.resource.data) || validSmartDisplayOrder(request.resource.data.displayOrder));
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/smart_display_actions/{actionId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "type",
+          "status",
+          "requestedAt",
+          "completedAt",
+          "errorMessage",
+          "probeStatus",
+          "setupMode",
+          "message",
+          "suggestedServerHost",
+          "suggestedServerPort",
+          "flasherURL",
+          "refreshing",
+          "pixelClock",
+          "displayConfig",
+          "displayOrder"
+        ])
+        && request.resource.data.type in [
+          "pixel_clock_probe",
+          "pixel_clock_prepare",
+          "pixel_clock_test",
+          "pixel_clock_push",
+          "pixel_clock_remove",
+          "pixel_clock_update_config",
+          "nest_hub_update_display_config",
+          "nest_hub_update_order",
+          "nest_hub_refresh",
+          "nest_hub_identify",
+          "nest_hub_stop"
+        ]
+        && request.resource.data.status in ["pending", "completed", "failed"]
+        && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 2048))
+        && (!("probeStatus" in request.resource.data) || request.resource.data.probeStatus in ["unknown", "awtrixReady", "stockUlanziFirmware", "unreachable", "unsupported", "error"])
+        && (!("setupMode" in request.resource.data) || request.resource.data.setupMode in ["awtrixLightReady", "stockSimulatorConfigured", "needsAwtrixLightFlash", "unreachable"])
+        && (!("message" in request.resource.data) || (request.resource.data.message is string && request.resource.data.message.size() <= 2048))
+        && (!("suggestedServerHost" in request.resource.data) || (request.resource.data.suggestedServerHost is string && request.resource.data.suggestedServerHost.size() <= 255))
+        && (!("suggestedServerPort" in request.resource.data) || (request.resource.data.suggestedServerPort is int && request.resource.data.suggestedServerPort >= 1 && request.resource.data.suggestedServerPort <= 65535))
+        && (!("flasherURL" in request.resource.data) || (request.resource.data.flasherURL is string && request.resource.data.flasherURL.size() <= 2048))
+        && (!("refreshing" in request.resource.data) || request.resource.data.refreshing is bool)
+        && (!("pixelClock" in request.resource.data) || validPixelClockConfig(request.resource.data.pixelClock))
+        && (!("displayConfig" in request.resource.data) || validSmartHubDisplayConfig(request.resource.data.displayConfig))
+        && (!("displayOrder" in request.resource.data) || validSmartDisplayOrder(request.resource.data.displayOrder));
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/cast_actions/{actionId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "type",
+          "status",
+          "requestedAt",
+          "completedAt",
+          "errorMessage",
+          "deviceId",
+          "friendlyName",
+          "model",
+          "host",
+          "port",
+          "identifier",
+          "supportsDisplay",
+          "sessionId",
+          "recovery",
+          "message",
+          "attempts"
+        ])
+        && request.resource.data.type in ["test", "save_selection", "cast", "stop"]
+        && request.resource.data.status in ["pending", "completed", "failed"]
+        && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 2048))
+        && (!("deviceId" in request.resource.data) || (request.resource.data.deviceId is string && request.resource.data.deviceId.size() <= 512))
+        && (!("friendlyName" in request.resource.data) || (request.resource.data.friendlyName is string && request.resource.data.friendlyName.size() <= 160))
+        && (!("model" in request.resource.data) || (request.resource.data.model is string && request.resource.data.model.size() <= 160))
+        && (!("host" in request.resource.data) || (request.resource.data.host is string && request.resource.data.host.size() <= 255))
+        && (!("port" in request.resource.data) || (request.resource.data.port is int && request.resource.data.port >= 1 && request.resource.data.port <= 65535))
+        && (!("identifier" in request.resource.data) || (request.resource.data.identifier is string && request.resource.data.identifier.size() <= 512))
+        && (!("supportsDisplay" in request.resource.data) || request.resource.data.supportsDisplay is bool)
+        && (!("sessionId" in request.resource.data) || (request.resource.data.sessionId is string && request.resource.data.sessionId.size() <= 512))
+        && (!("recovery" in request.resource.data) || request.resource.data.recovery in ["home_assistant"])
+        && (!("message" in request.resource.data) || (request.resource.data.message is string && request.resource.data.message.size() <= 2048))
+        && (!("attempts" in request.resource.data) || (request.resource.data.attempts is int && request.resource.data.attempts >= 0 && request.resource.data.attempts <= 20));
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/cast_discovery_results/{resultId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "devices",
+          "publishedAt"
+        ])
+        && request.resource.data.devices is list
+        && request.resource.data.devices.size() <= 64
+        && request.resource.data.publishedAt is string
+        && request.resource.data.publishedAt.size() <= 64;
       allow delete: if ownsUserNamespace(userId);
     }
 

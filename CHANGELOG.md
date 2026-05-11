@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Maximized chat workspace + pop-out window (macOS).** The dashboard now
+  has a dedicated **Chat** route — modeled after Claude.ai and ChatGPT —
+  with a left thread rail, a centered conversation column (760pt reading
+  width), a welcome state with insight-driven suggestion chips, and a
+  centered composer. The floating `ChatPanel` keeps the same data and
+  history but gains a **Maximize** button that swaps it for the full-canvas
+  workspace, plus a **Pop out** button that hosts the same workspace inside
+  a standalone resizable `NSWindow` (frame remembered between launches via
+  `dashboardChatPopOutFrameJSON`). When the dashboard is on the chat route,
+  the floating overlay and FAB are hidden so only one chat surface is
+  visible at a time. The choice is sticky via the
+  `dashboardChatPreferMaximized` `@AppStorage` flag, so future Hermes deep
+  links open in the user's preferred surface. Backed by reusable
+  `ChatHistoryRow`, `ChatMessagesStream`, and `HermesRuntimeGate` so the
+  three surfaces stay coherent.
+- **One-click Hermes launch on macOS.** Settings → Chat Gateway and the
+  Hermes setup wizard can now open the Hermes Dashboard and local gateway
+  together, with health readback and an opt-in startup toggle so both launch
+  when OpenBurnBar opens.
 - **Commercial launch README posture.** The README now describes the current
   product state as a commercial launch candidate for the iOS/App Store and
   hosted-cloud subscription path while keeping the macOS/source release

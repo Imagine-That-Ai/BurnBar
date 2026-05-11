@@ -7,6 +7,8 @@ struct ChatPanelHeader: View {
     var onMinimize: () -> Void
     var onClose: () -> Void
     var onShowClearChatPrompt: () -> Void
+    var onMaximize: (() -> Void)? = nil
+    var onPopOut: (() -> Void)? = nil
     @State private var showChatMenu = false
     @State private var headerDragStart: CGSize?
     var containerSize: CGSize
@@ -70,6 +72,26 @@ struct ChatPanelHeader: View {
             .help("Chat options")
             .popover(isPresented: $showChatMenu, arrowEdge: .top) {
                 ChatMenuPopover(controller: controller, onShowClearChatPrompt: onShowClearChatPrompt)
+            }
+
+            if let onPopOut {
+                Button(action: onPopOut) {
+                    Image(systemName: "rectangle.on.rectangle")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(controller.chatBackend == .hermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.whimsy)
+                }
+                .buttonStyle(.plain)
+                .help("Pop out chat into its own window")
+            }
+
+            if let onMaximize {
+                Button(action: onMaximize) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right.square")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(controller.chatBackend == .hermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.whimsy)
+                }
+                .buttonStyle(.plain)
+                .help("Maximize chat into the dashboard workspace")
             }
 
             Button {

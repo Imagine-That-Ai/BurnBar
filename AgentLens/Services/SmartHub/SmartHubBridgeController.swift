@@ -20,9 +20,12 @@ final class SmartHubBridgeController {
 
     private var heartbeat: Task<Void, Never>?
     private var settingsObserver: Task<Void, Never>?
+    private var castWatchdog: Task<Void, Never>?
     private var lastEnabledState: Bool = false
     private var lastConfiguredPort: UInt16 = 8787
     private var lastTimePeriod: SmartHubTimePeriod = .rolling5h
+    private var lastDisplayConfig: SmartHubDisplayConfig?
+    private var lastCastReassertedAt: Date = .distantPast
 
     /// Auto-refresh cadence for provider quota while the bridge is running.
     /// 60s keeps Claude (and other providers) fresh on the Nest Hub
@@ -31,6 +34,18 @@ final class SmartHubBridgeController {
 
     /// Re-pump cadence for the on-device snapshot (no network fetch). Cheap.
     private let snapshotPumpIntervalSeconds: TimeInterval = 5
+
+    /// How often the cast watchdog verifies the Nest Hub is still
+    /// rendering OpenBurnBar. The Hub can silently drop the DashCast
+    /// session (Wi-Fi blip, ambient mode timer, "Hey Google" interrupt)
+    /// and we have no signal otherwise — without this loop, the user
+    /// has to manually re-cast.
+    private let castWatchdogIntervalSeconds: TimeInterval = 30
+
+    /// Minimum spacing between two soft re-LOAD attempts (when DashCast
+    /// is already up and we just want to nudge the page). Hard kicks
+    /// (STOP→LAUNCH for a wrong-app / Backdrop state) bypass this.
+    private let castReassertCooldownSeconds: TimeInterval = 45
 
     private var lastAutoRefreshAt: Date = .distantPast
 
@@ -53,6 +68,7 @@ final class SmartHubBridgeController {
         applySettings()
         observeSettings()
         startHeartbeat()
+        startCastWatchdog()
     }
 
     func stop() {
@@ -60,6 +76,8 @@ final class SmartHubBridgeController {
         heartbeat = nil
         settingsObserver?.cancel()
         settingsObserver = nil
+        castWatchdog?.cancel()
+        castWatchdog = nil
         SmartHubBridgeServer.shared.stop()
         lastEnabledState = false
     }
@@ -124,6 +142,7 @@ final class SmartHubBridgeController {
         let enabled = settingsManager.smartHubQuotaDisplayEnabled
         let port = portFromConfiguredURL()
         let currentPeriod = settingsManager.smartHubQuotaTimePeriod
+        let currentDisplay = settingsManager.smartHubDisplayConfig
 
         if enabled {
             // Restart on port change.
@@ -147,7 +166,33 @@ final class SmartHubBridgeController {
             }
         }
 
+        if currentDisplay != lastDisplayConfig {
+            SmartHubBridgeServer.shared.updateDisplayConfig(currentDisplay)
+            lastDisplayConfig = currentDisplay
+        }
+
         lastEnabledState = enabled
+    }
+
+    /// Returns the URL the dashboard is actually listening on. Falls
+    /// back to the user-configured URL when the bridge hasn't started.
+    /// macOS uses this for the "Open in browser" action so port
+    /// fallback (8787 → 8788, …) opens the right page.
+    func resolvedDashboardURL() -> URL? {
+        if SmartHubBridgeServer.shared.isRunning,
+           let boundPort = SmartHubBridgeServer.shared.boundPort {
+            return URL(string: "http://127.0.0.1:\(boundPort)/render.html")
+        }
+        return URL(string: settingsManager.smartHubQuotaDashboardURL)
+    }
+
+    /// Returns the bridge probe status — bound / waiting / unreachable.
+    /// `nil` is treated as `.unknown` by the model.
+    func bridgeProbeStatus() -> SmartHubBridgeProbeStatus {
+        guard SmartHubBridgeServer.shared.isRunning else { return .unreachable }
+        return SmartHubBridgeServer.shared.snapshot.providers.isEmpty
+            ? .waitingForData
+            : .bound
     }
 
     /// Attempts to extract a port from `smartHubQuotaDashboardURL`. Falls
@@ -169,12 +214,26 @@ final class SmartHubBridgeController {
         heartbeat?.cancel()
         heartbeat = Task { @MainActor in
             while !Task.isCancelled {
+                healServerIfNeeded()
                 await refreshIfStale()
                 await pumpSnapshot()
                 let nanos = UInt64(snapshotPumpIntervalSeconds * 1_000_000_000)
                 try? await Task.sleep(nanoseconds: nanos)
             }
         }
+    }
+
+    /// Self-heal: when the user has the bridge enabled but the underlying
+    /// listener is no longer running (port collision, transient bind
+    /// failure, sandbox revocation), restart it. Without this, a single
+    /// listener crash leaves the Nest Hub stuck on a blank page forever
+    /// because nothing else in the pipeline ever notices.
+    private func healServerIfNeeded() {
+        guard settingsManager.smartHubQuotaDisplayEnabled else { return }
+        guard !SmartHubBridgeServer.shared.isRunning else { return }
+        let port = portFromConfiguredURL()
+        SmartHubBridgeServer.shared.stop()
+        SmartHubBridgeServer.shared.start(port: port)
     }
 
     /// Fires `quotaService.refreshAll` when the cached snapshot is older
@@ -243,32 +302,7 @@ final class SmartHubBridgeController {
         in snapshot: ProviderQuotaSnapshot,
         for period: SmartHubTimePeriod
     ) -> ProviderQuotaBucket? {
-        let buckets = snapshot.buckets
-        if buckets.isEmpty { return nil }
-
-        let target = period.spanHours
-        var bestBucket: ProviderQuotaBucket?
-        var bestScore = Double.infinity
-
-        for bucket in buckets {
-            guard let hours = approximateBucketHours(bucket) else { continue }
-            let score = abs(log(max(hours, 0.5)) - log(max(target, 0.5)))
-            if score < bestScore {
-                bestScore = score
-                bestBucket = bucket
-            }
-        }
-        if let bestBucket {
-            return bestBucket
-        }
-
-        let preferredPriorities = ["primary", "month", "monthly", "weekly", "daily"]
-        for hint in preferredPriorities {
-            if let match = buckets.first(where: { $0.key.lowercased().contains(hint) || $0.label.lowercased().contains(hint) }) {
-                return match
-            }
-        }
-        return buckets.first
+        PixelClockSnapshotAdapter.bestBucket(in: snapshot, for: period)
     }
 
     /// Best-effort estimate of a bucket's window length in hours. Reads
@@ -276,41 +310,7 @@ final class SmartHubBridgeController {
     /// `label` (e.g. "5-hour window", "7-day window") so we cover Claude
     /// statusline + heuristic-built MiniMax/Cursor buckets.
     private static func approximateBucketHours(_ bucket: ProviderQuotaBucket) -> Double? {
-        let key = bucket.key.lowercased()
-        let label = bucket.label.lowercased()
-
-        if key.contains("five_hour") || label.contains("5-hour") || label.contains("5 hour") || key.contains("five-hour") {
-            return 5
-        }
-        if key.contains("seven_day") || label.contains("7-day") || label.contains("7 day") || key.contains("seven-day") {
-            return 24 * 7
-        }
-        if label.contains("daily") || key.contains("daily") || label.contains("24h") || label.contains("24 hour") {
-            return 24
-        }
-        if label.contains("monthly") || key.contains("month") {
-            return 24 * 30
-        }
-        if label.contains("weekly") || key.contains("weekly") {
-            return 24 * 7
-        }
-
-        switch bucket.windowKind {
-        case .rollingHours:
-            return 5
-        case .rollingDays:
-            return 24 * 7
-        case .daily:
-            return 24
-        case .weekly:
-            return 24 * 7
-        case .monthly:
-            return 24 * 30
-        case .lifetime:
-            return nil
-        case .custom:
-            return nil
-        }
+        PixelClockSnapshotAdapter.approximateBucketHours(bucket)
     }
 
     /// Compact label rendered next to each provider on the Nest Hub
@@ -318,10 +318,7 @@ final class SmartHubBridgeController {
     /// reflects when the user selects "Last 24 hours" but a provider
     /// only exposes a 5-hour bucket.
     private static func windowLabel(for bucket: ProviderQuotaBucket) -> String {
-        guard let hours = approximateBucketHours(bucket) else { return "" }
-        if hours <= 24 { return "\(Int(hours))h" }
-        let days = Int((hours / 24).rounded())
-        return "\(days)d"
+        PixelClockSnapshotAdapter.windowLabel(for: bucket)
     }
 
     private func tone(for percent: Int) -> SmartHubBridgeSnapshot.Provider.Tone {
@@ -331,5 +328,114 @@ final class SmartHubBridgeController {
         case 85..<100:  return .warning
         default:        return .ember
         }
+    }
+
+    // MARK: - Cast watchdog
+    //
+    // The Nest Hub is not reliable on its own — DashCast sessions get
+    // evicted by ambient mode, "Hey Google", Wi-Fi roams, or device
+    // reboots, with no signal back to the Mac. The watchdog probes the
+    // device on a slow cadence and silently re-casts the dashboard when
+    // it looks gone, so the Hub recovers without user action.
+
+    private func startCastWatchdog() {
+        castWatchdog?.cancel()
+        castWatchdog = Task { @MainActor in
+            while !Task.isCancelled {
+                await runCastWatchdogTick()
+                let nanos = UInt64(castWatchdogIntervalSeconds * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: nanos)
+            }
+        }
+    }
+
+    private func runCastWatchdogTick() async {
+        guard settingsManager.smartHubQuotaDisplayEnabled else { return }
+        guard SmartHubBridgeServer.shared.isRunning else { return }
+        guard let device = cachedCastDevice() else { return }
+        guard let url = preferredCastURL() else { return }
+
+        // Cheap liveness probe — if we can't even open the Cast channel,
+        // the Hub is unreachable and re-casting won't help. Skip and
+        // try again next tick.
+        let probeClient = CastChannelClient(device: device)
+        guard let state = await probeClient.queryReceiverState() else {
+            await probeClient.stop()
+            return
+        }
+
+        // Healthy case: DashCast is the active receiver app. Soft-touch
+        // the URL so the page re-renders without a full LAUNCH (cheap,
+        // also nudges the device out of a stuck splash when DashCast is
+        // technically running but never finished loading the URL).
+        if state.isDashCast {
+            await probeClient.stop()
+
+            // Apply the soft-LOAD cooldown so we don't spam the Hub.
+            let elapsed = Date().timeIntervalSince(lastCastReassertedAt)
+            guard elapsed >= castReassertCooldownSeconds else { return }
+            lastCastReassertedAt = Date()
+
+            let softClient = CastChannelClient(device: device)
+            _ = await softClient.cast(url: url)
+            await softClient.stop()
+            return
+        }
+
+        // Unhealthy case: another app is up (Backdrop, YouTube voice
+        // shortcut, etc.) or nothing is running. Either way the Hub
+        // isn't showing us — do a hard kick: STOP whatever's there and
+        // launch DashCast fresh with force:true.
+        await probeClient.stop()
+        lastCastReassertedAt = Date()
+
+        let kickClient = CastChannelClient(device: device)
+        let outcome = await kickClient.forceRecast(url: url)
+        if case .failure = outcome {
+            // If STOP→LAUNCH itself failed, fall through to the full
+            // recovery strategy (4-attempt backoff + Home Assistant).
+            await kickClient.stop()
+            _ = await CastReconnectStrategy(device: device).castWithRecovery(url: url)
+        } else {
+            await kickClient.stop()
+        }
+    }
+
+    private func cachedCastDevice() -> CastDevice? {
+        let serviceName = settingsManager.castSelectedDeviceServiceName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let host = settingsManager.castSelectedDeviceHost
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !serviceName.isEmpty, !host.isEmpty else { return nil }
+        guard settingsManager.castSelectedDeviceSupportsDisplay else { return nil }
+        return CastDevice(
+            serviceName: serviceName,
+            friendlyName: settingsManager.castSelectedDeviceFriendlyName.isEmpty
+                ? serviceName
+                : settingsManager.castSelectedDeviceFriendlyName,
+            host: host,
+            port: settingsManager.castSelectedDevicePort > 0
+                ? settingsManager.castSelectedDevicePort
+                : 8009,
+            model: settingsManager.castSelectedDeviceModel.isEmpty
+                ? "Cast Device"
+                : settingsManager.castSelectedDeviceModel,
+            identifier: settingsManager.castSelectedDeviceIdentifier.isEmpty
+                ? serviceName
+                : settingsManager.castSelectedDeviceIdentifier,
+            supportsDisplay: true
+        )
+    }
+
+    /// The URL the watchdog asks the Hub to load. Prefer the live
+    /// bridge URL (which already incorporates port fallback) and rewrite
+    /// loopback to LAN so the Hub can actually reach it. Falls back to
+    /// the persisted dashboard URL.
+    private func preferredCastURL() -> URL? {
+        if let live = resolvedDashboardURL(),
+           let casted = CastActionsListener.castableDashboardURL(from: live.absoluteString) {
+            return casted
+        }
+        return CastActionsListener.castableDashboardURL(from: settingsManager.smartHubQuotaDashboardURL)
     }
 }

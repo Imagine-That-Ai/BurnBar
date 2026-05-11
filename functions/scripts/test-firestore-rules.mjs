@@ -248,6 +248,139 @@ test("owners can delete old paid-backup data after entitlement lapses", async ()
   await assertSucceeds(deleteDoc(doc(db, logPath)));
 });
 
+test("owners can publish smart display config and complete setup actions", async () => {
+  const db = authedDb("erin");
+  const configPath = "users/erin/smart_hub_config/mac-device";
+  const actionPath = "users/erin/smart_display_actions/action-1";
+
+  const displayConfig = {
+    layout: "quotaCarousel",
+    palette: "emberWhimsy",
+    theme: "warmCharcoal",
+    background: "dashboard",
+    brightness: 0.85,
+    scrollSpeedSeconds: 8,
+    refreshCadenceSeconds: 5,
+    providerIDs: [],
+    audibleCue: false,
+    identifyOnRefresh: false,
+    updatedAt: "2026-05-10T00:00:00.000Z",
+  };
+
+  const pixelClock = {
+    enabled: true,
+    host: "192.168.68.92",
+    port: 80,
+    layout: "providerDashboard",
+    palette: "emberWhimsy",
+    timePeriod: "rolling5h",
+    workingSpinnerStyle: "scan",
+    workingSpinnerPrimaryHex: "#52D6FF",
+    workingSpinnerSecondaryHex: "#FFFFFF",
+    completionClockSoundEnabled: true,
+    completionLocalNotificationsEnabled: true,
+    pageDurationSeconds: 7,
+    updateIntervalSeconds: 60,
+    scrollSpeedPercent: 100,
+    brightness: 160,
+    providerIDs: [],
+    updatedAt: "2026-05-10T00:00:00.000Z",
+    lastProbeStatus: "unknown",
+  };
+
+  await assertSucceeds(
+    setDoc(doc(db, configPath), {
+      enabled: true,
+      dashboardURL: "http://192.168.68.93:7000/",
+      refreshURL: "http://192.168.68.93:7000/refresh",
+      voiceRefreshURL: "http://192.168.68.93:7000/voice-refresh",
+      sourceDeviceName: "OpenBurnBar Mac",
+      publishedAt: "2026-05-10T00:00:00.000Z",
+      timePeriod: "rolling5h",
+      pixelClock,
+      displayConfig,
+      displayOrder: ["nestHub", "pixelClock"],
+      schemaVersion: 3,
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, actionPath), {
+      type: "pixel_clock_prepare",
+      status: "pending",
+      requestedAt: "2026-05-10T00:00:01.000Z",
+      pixelClock,
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(
+      doc(db, actionPath),
+      {
+        status: "completed",
+        completedAt: "2026-05-10T00:00:02.000Z",
+        probeStatus: "stockUlanziFirmware",
+        setupMode: "stockSimulatorConfigured",
+        message: "Stock Ulanzi firmware was configured.",
+        suggestedServerHost: "192.168.68.93",
+        suggestedServerPort: 7001,
+        flasherURL: "https://blueforcer.github.io/awtrix3/#/flasher",
+      },
+      { merge: true }
+    )
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/erin/smart_display_actions/action-2"), {
+      type: "nest_hub_update_order",
+      status: "pending",
+      requestedAt: "2026-05-10T00:00:03.000Z",
+      displayOrder: ["pixelClock", "nestHub"],
+    })
+  );
+});
+
+test("owners can run Cast wizard actions and read discovery results", async () => {
+  const db = authedDb("fran");
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/fran/cast_actions/action-1"), {
+      type: "test",
+      status: "pending",
+      requestedAt: "2026-05-10T00:00:00.000Z",
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(
+      doc(db, "users/fran/cast_actions/action-1"),
+      {
+        status: "completed",
+        completedAt: "2026-05-10T00:00:01.000Z",
+      },
+      { merge: true }
+    )
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/fran/cast_discovery_results/latest"), {
+      devices: [
+        {
+          serviceName: "Google-Nest-Hub._googlecast._tcp.local.",
+          friendlyName: "Kitchen Display",
+          model: "Google Nest Hub",
+          host: "192.168.68.50",
+          port: 8009,
+          identifier: "nest-hub",
+          iconKind: "nestHub",
+          supportsDisplay: true,
+        },
+      ],
+      publishedAt: "2026-05-10T00:00:02.000Z",
+    })
+  );
+});
+
 test("rules test environment is isolated", () => {
   assert.ok(testEnv.projectId.startsWith("openburnbar-rules-"));
 });

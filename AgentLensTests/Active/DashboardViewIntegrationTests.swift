@@ -54,4 +54,24 @@ final class DashboardViewIntegrationTests: XCTestCase {
         let view = makeDashboardView()
         XCTAssertFalse(view.showingSettings)
     }
+
+    func test_navigateToChatRoute() {
+        let view = makeDashboardView()
+        view.testTriggerNavigate(to: .chat)
+        XCTAssertEqual(view.navigationModel.mainRoute, .chat)
+    }
+
+    func test_sidebarRouteOrderIncludesChat() {
+        let view = makeDashboardView()
+        let order = view.navigationModel.sidebarRouteOrder(
+            providerSummaries: [],
+            modelSummaries: []
+        )
+        XCTAssertTrue(order.contains(.chat))
+    }
+
+    func test_routeTitleForChat() {
+        let view = makeDashboardView()
+        XCTAssertEqual(view.navigationModel.routeTitle(.chat), "Chat")
+    }
 }

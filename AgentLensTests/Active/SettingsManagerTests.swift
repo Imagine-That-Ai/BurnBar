@@ -93,6 +93,33 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "smartHubHomeAssistantRecoveryWebhookURL"), url)
     }
 
+    func test_pixelClockConfig_persistsAcrossSettingsManagerInstances() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        let updated = PixelClockConfig(
+            enabled: true,
+            host: "192.168.68.92",
+            port: 80,
+            layout: .quotaCarousel,
+            palette: .traffic,
+            timePeriod: .rolling24h,
+            pageDurationSeconds: 9,
+            updateIntervalSeconds: 120,
+            scrollSpeedPercent: 140,
+            brightness: 96,
+            providerIDs: ["claude", "gemini"],
+            updatedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            updatedByDeviceId: "ipad-settings",
+            lastProbeStatus: .awtrixReady
+        )
+
+        settings.pixelClockConfig = updated
+        let reloaded = makeSettingsManager(defaults: defaults)
+
+        XCTAssertNotNil(defaults.string(forKey: "pixelClockConfig"))
+        XCTAssertEqual(reloaded.pixelClockConfig, updated)
+    }
+
     func test_refreshIntervalMinutes_conversionRoundTrips() {
         let settings = makeSettingsManager()
         settings.refreshIntervalMinutes = 5
@@ -543,6 +570,12 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertFalse(settings.hermesRemoteRelayEnabled)
     }
 
+    func test_launchHermesWithOpenBurnBar_defaultValue_isFalse() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertFalse(settings.launchHermesWithOpenBurnBar)
+    }
+
     func test_hermesGatewayBaseURL_settingPersists() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
@@ -568,6 +601,16 @@ final class SettingsManagerTests: XCTestCase {
         settings.hermesRemoteRelayEnabled = true
         XCTAssertTrue(settings.hermesRemoteRelayEnabled)
         XCTAssertTrue(defaults.bool(forKey: "hermesRemoteRelayEnabled"))
+    }
+
+    func test_launchHermesWithOpenBurnBar_settingPersists() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+
+        settings.launchHermesWithOpenBurnBar = true
+
+        XCTAssertTrue(settings.launchHermesWithOpenBurnBar)
+        XCTAssertTrue(defaults.bool(forKey: "launchHermesWithOpenBurnBar"))
     }
 
     // MARK: - Chat Backend Settings
@@ -943,6 +986,29 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(settings.smartHubQuotaRefreshURL, "http://192.168.68.96:8787/refresh")
         XCTAssertEqual(settings.smartHubQuotaVoiceRefreshURL, "http://192.168.68.96:8787/voice-refresh")
         XCTAssertEqual(settings.smartHubQuotaTimePeriod, .rolling7d)
+    }
+
+    func test_castSelectedDeviceEndpoint_persistsAcrossInstances() {
+        let defaults = makeIsolatedDefaults()
+        do {
+            let settings = makeSettingsManager(defaults: defaults)
+            settings.castSelectedDeviceServiceName = "Google-Nest-Hub-abc"
+            settings.castSelectedDeviceFriendlyName = "Kitchen Hub"
+            settings.castSelectedDeviceModel = "Google Nest Hub"
+            settings.castSelectedDeviceHost = "192.168.68.51"
+            settings.castSelectedDevicePort = 8009
+            settings.castSelectedDeviceIdentifier = "cast-id-123"
+            settings.castSelectedDeviceSupportsDisplay = true
+        }
+
+        let reloaded = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(reloaded.castSelectedDeviceServiceName, "Google-Nest-Hub-abc")
+        XCTAssertEqual(reloaded.castSelectedDeviceFriendlyName, "Kitchen Hub")
+        XCTAssertEqual(reloaded.castSelectedDeviceModel, "Google Nest Hub")
+        XCTAssertEqual(reloaded.castSelectedDeviceHost, "192.168.68.51")
+        XCTAssertEqual(reloaded.castSelectedDevicePort, 8009)
+        XCTAssertEqual(reloaded.castSelectedDeviceIdentifier, "cast-id-123")
+        XCTAssertTrue(reloaded.castSelectedDeviceSupportsDisplay)
     }
 
     func test_smartHubQuotaTimePeriod_persistsAcrossInstances() {

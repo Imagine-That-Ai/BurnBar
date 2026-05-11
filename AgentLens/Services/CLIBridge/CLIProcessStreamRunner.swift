@@ -71,6 +71,7 @@ struct CLIProcessStreamRunner: Sendable {
             process: process,
             quotaRecorder: quotaRecorder
         )
+        let provider = Self.agentProvider(for: invocation.cliType)
 
         let processToken = await runtime.registerRunningProcess(process)
         continuation.onTermination = { [runtime] _ in
@@ -82,6 +83,11 @@ struct CLIProcessStreamRunner: Sendable {
         do {
             try Task.checkCancellation()
             try process.run()
+            if let provider {
+                await MainActor.run {
+                    PixelClockAgentStatusStore.shared.markRunning(provider: provider)
+                }
+            }
         } catch {
             await runtime.clearRunningProcess(token: processToken)
             continuation.finish(throwing: error)
@@ -121,6 +127,14 @@ struct CLIProcessStreamRunner: Sendable {
         process.waitUntilExit()
         await stderrTask.value
         await runtime.clearRunningProcess(token: processToken)
+        let failed = quotaRecorder.snapshot() != nil
+            || parserError != nil
+            || (process.terminationStatus != 0 && process.terminationStatus != 15)
+        if let provider {
+            await MainActor.run {
+                PixelClockAgentStatusStore.shared.markFinished(provider: provider, failed: failed)
+            }
+        }
 
         if let detail = quotaRecorder.snapshot() {
             continuation.finish(throwing: CLIBridgeError.quotaExhausted(detail))
@@ -148,6 +162,17 @@ struct CLIProcessStreamRunner: Sendable {
             if process.isRunning {
                 process.terminate()
             }
+        }
+    }
+
+    private static func agentProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider? {
+        switch cliType {
+        case .codex:
+            return .codex
+        case .claude:
+            return .claudeCode
+        case .opencode:
+            return .openClaw
         }
     }
 

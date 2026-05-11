@@ -26,6 +26,8 @@ enum SmartHubBridgePage {
           color-scheme: dark;
           --bg-1: #0E0D0B;
           --bg-2: #171510;
+          --bg-top: #2a221a;
+          --bg-bottom: var(--bg-1);
           --ember: #E07868;
           --whimsy: #A294F0;
           --amber: #E5A848;
@@ -37,21 +39,44 @@ enum SmartHubBridgePage {
           --text-3: #7A7268;
           --border: #302C22;
           --border-strong: #3F3A2E;
+          --primary: var(--ember);
+          --secondary: var(--whimsy);
+          --dashboard-brightness: 1.0;
         }
         * { box-sizing: border-box; }
         html, body {
           margin: 0; padding: 0; height: 100%;
-          background: radial-gradient(1200px 800px at 80% 110%, #2a221a 0%, var(--bg-1) 60%);
+          background: radial-gradient(1200px 800px at 80% 110%, var(--bg-top) 0%, var(--bg-bottom) 60%);
           font-family: -apple-system, "SF Pro Rounded", "SF Pro", system-ui, sans-serif;
           color: var(--text-1);
           overflow: hidden;
+          filter: brightness(var(--dashboard-brightness));
+          transition: filter 0.35s ease, background 0.35s ease;
         }
+        body.layout-bigTotal .providers { display: none; }
+        body.layout-providerGrid .providers { grid-template-columns: repeat(2, 1fr); }
+        body.layout-singleProvider .providers > .row:nth-of-type(n+2) { display: none; }
+        body.layout-singleProvider .providers { grid-template-columns: 1fr; }
+        body.bg-ambient .providers { display: none; }
+        body.bg-ambient .spend { font-size: 152px; }
+        body.bg-photoBlend::before {
+          content: '';
+          position: absolute; inset: 0;
+          background: linear-gradient(135deg,
+            color-mix(in oklab, var(--primary) 55%, transparent) 0%,
+            color-mix(in oklab, var(--secondary) 25%, transparent) 60%,
+            transparent 100%);
+          pointer-events: none;
+          z-index: 0;
+        }
+        body.bg-photoBlend .stage { z-index: 1; position: relative; }
         .stage {
           display: grid;
           grid-template-rows: auto auto 1fr auto;
           gap: 18px;
           height: 100vh;
           padding: 28px 36px 28px;
+          position: relative;
         }
         header {
           display: flex; align-items: center; justify-content: space-between;
@@ -91,7 +116,7 @@ enum SmartHubBridgePage {
           transition: background 0.18s ease, color 0.18s ease;
         }
         .segmented button.active {
-          background: linear-gradient(135deg, var(--ember) 0%, #c45a4a 100%);
+          background: linear-gradient(135deg, var(--primary) 0%, color-mix(in oklab, var(--primary) 60%, black) 100%);
           color: var(--text-1);
           box-shadow: 0 1px 2px rgba(0,0,0,0.3);
         }
@@ -190,8 +215,8 @@ enum SmartHubBridgePage {
           background: var(--ember);
           transition: width 0.6s ease;
         }
-        .fill.tone-ember   { background: var(--ember); }
-        .fill.tone-whimsy  { background: var(--whimsy); }
+        .fill.tone-ember   { background: var(--primary); }
+        .fill.tone-whimsy  { background: var(--secondary); }
         .fill.tone-success { background: var(--success); }
         .fill.tone-warning { background: var(--warning); }
         .fill.tone-mercury { background: var(--mercury); }
@@ -219,6 +244,29 @@ enum SmartHubBridgePage {
           text-align: center;
           color: var(--text-3);
           font-size: 18px;
+        }
+
+        /* Visible diagnostic when /state.json polling fails. Without
+           this, a stuck Nest Hub looks indistinguishable from a healthy
+           one with no recent activity. */
+        .stage.bridge-offline #sub {
+          color: var(--warning);
+          font-weight: 600;
+        }
+        .stage.bridge-offline::after {
+          content: 'Reconnecting to Mac…';
+          position: absolute;
+          top: 12px; left: 50%;
+          transform: translateX(-50%);
+          background: rgba(240, 192, 64, 0.16);
+          color: var(--warning);
+          border: 1px solid rgba(240, 192, 64, 0.35);
+          padding: 4px 12px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 600;
+          letter-spacing: 0.3px;
+          pointer-events: none;
         }
 
         @media (max-width: 760px) {
@@ -270,12 +318,31 @@ enum SmartHubBridgePage {
         let activePeriod = null;
         let renderedPeriodOptions = '';
         let inFlightRefresh = false;
+        let pollHandle = null;
+        let lastPollSeconds = 5;
+        let lastDisplayFingerprint = '';
+        let identifyOnRefresh = false;
+        let audioContext = null;
+        // Reliability: count consecutive /state.json failures so we can
+        // (1) surface a visible diagnostic before the user thinks the
+        // Hub is frozen, and (2) hard-reload the page after enough
+        // failures to recover from a stuck DashCast renderer.
+        let pollFailures = 0;
+        let lastSuccessfulPollAt = Date.now();
+        const MAX_POLL_FAILURES_BEFORE_RELOAD = 12; // ~60s at 5s cadence
+        const STALE_RELOAD_MS = 10 * 60 * 1000;     // 10 min without a good poll → reload
 
         function tickClock() {
           const d = new Date();
           const hh = d.getHours().toString().padStart(2, '0');
           const mm = d.getMinutes().toString().padStart(2, '0');
           clockEl.textContent = `${hh}:${mm}`;
+          // If the page has been alive for too long with no successful
+          // poll, force a reload. DashCast tends to leak DOM nodes /
+          // keep stale JS state when left running for hours.
+          if (Date.now() - lastSuccessfulPollAt > STALE_RELOAD_MS) {
+            location.reload();
+          }
         }
         tickClock();
         setInterval(tickClock, 30 * 1000);
@@ -287,18 +354,41 @@ enum SmartHubBridgePage {
             const state = await r.json();
             render(state);
             lastVersion = state.version;
+            pollFailures = 0;
+            lastSuccessfulPollAt = Date.now();
+            stageEl.classList.remove('bridge-offline');
           } catch (e) {
-            subEl.textContent = 'Bridge offline — retrying';
+            pollFailures += 1;
+            stageEl.classList.add('bridge-offline');
+            subEl.textContent = `Bridge offline — retrying (${pollFailures})`;
+            if (pollFailures >= MAX_POLL_FAILURES_BEFORE_RELOAD) {
+              // Last-resort: full page reload. Recovers from cases where
+              // the page's fetch state machine is wedged but the bridge
+              // would be reachable on a fresh load.
+              location.reload();
+            }
           }
         }
 
         function render(state) {
+          applyDisplayConfig(state.display);
+
           spendEl.textContent = state.totalSpend || '$0';
           headlineEl.textContent = state.headline || 'OpenBurnBar';
           subEl.textContent = state.subheadline || `Updated ${new Date().toLocaleTimeString()}`;
 
           renderPeriodPicker(state);
           renderRefreshState(state);
+
+          // Audible cue / identify on version bump.
+          if (lastVersion >= 0 && state.version !== lastVersion) {
+            if (state.display && state.display.audibleCue) {
+              playChime();
+            }
+            if (identifyOnRefresh) {
+              fetch('/voice-refresh', { method: 'POST' }).catch(() => {});
+            }
+          }
 
           if (!state.providers || state.providers.length === 0) {
             providersEl.innerHTML = '<div class="empty">No provider quota data yet</div>';
@@ -319,6 +409,76 @@ enum SmartHubBridgePage {
               <div class="label">${escape(p.label)}</div>
             `;
             providersEl.appendChild(row);
+          }
+        }
+
+        function applyDisplayConfig(display) {
+          if (!display) return;
+          const fp = JSON.stringify(display);
+          if (fp === lastDisplayFingerprint) return;
+          lastDisplayFingerprint = fp;
+
+          const root = document.documentElement;
+          const body = document.body;
+          if (display.paletteHex) {
+            root.style.setProperty('--primary', display.paletteHex.primary || 'var(--ember)');
+            root.style.setProperty('--secondary', display.paletteHex.secondary || 'var(--whimsy)');
+          }
+          if (display.themeHex) {
+            root.style.setProperty('--bg-top', display.themeHex.top || '#2a221a');
+            root.style.setProperty('--bg-bottom', display.themeHex.bottom || '#0E0D0B');
+            root.style.setProperty('--text-1', display.themeHex.text || '#F0EBE2');
+          }
+          if (typeof display.brightness === 'number') {
+            root.style.setProperty('--dashboard-brightness', String(display.brightness));
+          }
+          body.classList.remove(
+            'layout-quotaCarousel', 'layout-bigTotal',
+            'layout-providerGrid', 'layout-singleProvider'
+          );
+          if (display.layout) {
+            body.classList.add('layout-' + display.layout);
+          }
+          body.classList.remove('bg-dashboard', 'bg-ambient', 'bg-photoBlend');
+          body.classList.add('bg-' + (display.background || 'dashboard'));
+          if (typeof display.refreshCadenceSeconds === 'number') {
+            const seconds = Math.max(3, Math.min(60, display.refreshCadenceSeconds));
+            if (seconds !== lastPollSeconds) {
+              lastPollSeconds = seconds;
+              schedulePolling();
+            }
+          }
+          identifyOnRefresh = !!display.identifyOnRefresh;
+        }
+
+        function schedulePolling() {
+          if (pollHandle) {
+            clearInterval(pollHandle);
+            pollHandle = null;
+          }
+          pollHandle = setInterval(poll, lastPollSeconds * 1000);
+        }
+
+        function playChime() {
+          try {
+            if (!audioContext) {
+              audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            const ctx = audioContext;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = 660;
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            const t = ctx.currentTime;
+            gain.gain.setValueAtTime(0, t);
+            gain.gain.linearRampToValueAtTime(0.06, t + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+            osc.start(t);
+            osc.stop(t + 0.45);
+          } catch (e) {
+            // No audio permission yet (Nest Hub gates user gestures).
           }
         }
 
@@ -397,7 +557,7 @@ enum SmartHubBridgePage {
         }
 
         poll();
-        setInterval(poll, 5000);
+        schedulePolling();
       </script>
     </body>
     </html>

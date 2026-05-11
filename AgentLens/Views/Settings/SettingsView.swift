@@ -11,6 +11,7 @@ struct SettingsView: View {
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     var dataStore: DataStore
+    var runtimeContext: OpenBurnBarRuntimeContext?
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: SettingsTab? = .general
     @State private var presentationWindow: NSWindow?
@@ -20,13 +21,15 @@ struct SettingsView: View {
         accountManager: AccountManager = .shared,
         cloudSyncService: CloudSyncService? = nil,
         iCloudSessionMirrorService: ICloudSessionMirrorService? = nil,
-        dataStore: DataStore
+        dataStore: DataStore,
+        runtimeContext: OpenBurnBarRuntimeContext? = nil
     ) {
         self._settingsManager = Bindable(settingsManager)
         self.accountManager = accountManager
         self.cloudSyncService = cloudSyncService
         self.iCloudSessionMirrorService = iCloudSessionMirrorService
         self.dataStore = dataStore
+        self.runtimeContext = runtimeContext
     }
 
     var body: some View {
@@ -126,7 +129,10 @@ struct SettingsView: View {
             NotificationsSettingsView(settingsManager: settingsManager)
                 .navigationTitle("Notifications")
         case .devicesAndSync:
-            DevicesAndSyncSettingsView(settingsManager: settingsManager)
+            DevicesAndSyncSettingsView(
+                settingsManager: settingsManager,
+                runtimeContext: runtimeContext
+            )
                 .navigationTitle(MacCopy.devicesAndSyncTitle)
         case .switcher:
             AccountSwitcherSettingsView(

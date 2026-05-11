@@ -12,6 +12,8 @@ enum MacCopy {
     static let otherDevicesSectionTitle = "Other devices"
     static let activeGrantsSectionTitle = "Active grants"
     static let googleNestHubSectionTitle = "Google Nest Hub"
+    static let pixelClockSectionTitle = "ULANZI TC001 Pixel Clock"
+    static let smartDisplaysSectionTitle = "Smart Displays"
 
     static let cloudSyncHealthy = "Cloud sync healthy"
     static let cloudSyncDegraded = "Cloud sync degraded"
@@ -90,15 +92,18 @@ struct MercuryEnvelopeCard<Content: View>: View {
 
 struct DevicesAndSyncSettingsView: View {
     @Bindable var settingsManager: SettingsManager
+    private let runtimeContext: OpenBurnBarRuntimeContext?
     @State private var deviceTrust: DeviceTrustViewModel
     @State private var exportViewModel: CredentialTransferExportViewModel
 
     init(
         settingsManager: SettingsManager,
+        runtimeContext: OpenBurnBarRuntimeContext? = nil,
         deviceTrust: DeviceTrustViewModel = DeviceTrustViewModel(),
         exportViewModel: CredentialTransferExportViewModel = CredentialTransferExportViewModel()
     ) {
         self._settingsManager = Bindable(settingsManager)
+        self.runtimeContext = runtimeContext
         self._deviceTrust = State(initialValue: deviceTrust)
         self._exportViewModel = State(initialValue: exportViewModel)
     }
@@ -144,8 +149,11 @@ struct DevicesAndSyncSettingsView: View {
 
                 deviceListSection
 
-                SettingsSectionHeader(title: MacCopy.googleNestHubSectionTitle)
-                ProviderQuotaSmartHubsSection(settingsManager: settingsManager)
+                SettingsSectionHeader(title: MacCopy.smartDisplaysSectionTitle)
+                SmartDisplaysSection(
+                    settingsManager: settingsManager,
+                    runtimeContext: runtimeContext
+                )
 
                 SettingsSectionHeader(title: MacCopy.activeGrantsSectionTitle)
                 CredentialTransferSheet(

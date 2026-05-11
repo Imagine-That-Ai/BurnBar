@@ -3,6 +3,7 @@ import SwiftUI
 struct ChatEngineBackendStrip: View {
     @Bindable var controller: ChatSessionController
     var settingsManager: SettingsManager
+    @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
 
     private var enabledChatBackendsForHeader: [ChatBackendID] {
         settingsManager.enabledChatBackends
@@ -33,23 +34,42 @@ struct ChatEngineBackendStrip: View {
                                 )
                                 return
                             }
-                            controller.setChatBackend(backend)
-                        } label: {
-                            Text(backend.shortLabel)
-                                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background {
-                                    if controller.chatBackend == backend {
-                                        Capsule(style: .continuous)
-                                            .fill(backend == .hermes ? AnyShapeStyle(DesignSystem.Colors.mercuryGradient) : AnyShapeStyle(DesignSystem.Colors.accentGradient))
+                            if backend == .hermes && controller.hermesAvailable == false {
+                                Task {
+                                    await hermesRuntimeLauncher.openHermesAndGateway(
+                                        baseURL: resolvedHermesGatewayBaseURL,
+                                        bearerToken: resolvedHermesBearerToken
+                                    )
+                                    await controller.probeHermesAvailability()
+                                    if controller.hermesAvailable {
+                                        controller.setChatBackend(.hermes)
                                     }
                                 }
-                                .foregroundStyle(
-                                    controller.chatBackend == backend
-                                        ? (backend == .hermes ? Color(hex: "151210") : .white)
-                                        : DesignSystem.Colors.textMuted
-                                )
+                                return
+                            }
+                            controller.setChatBackend(backend)
+                        } label: {
+                            HStack(spacing: 3) {
+                                if backend == .hermes && controller.hermesAvailable == false && settingsManager.hermesSetupWizardCompleted {
+                                    Image(systemName: "play.fill")
+                                        .font(.system(size: 7, weight: .bold))
+                                }
+                                Text(backend.shortLabel)
+                            }
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background {
+                                if controller.chatBackend == backend {
+                                    Capsule(style: .continuous)
+                                        .fill(backend == .hermes ? AnyShapeStyle(DesignSystem.Colors.mercuryGradient) : AnyShapeStyle(DesignSystem.Colors.accentGradient))
+                                }
+                            }
+                            .foregroundStyle(
+                                controller.chatBackend == backend
+                                    ? (backend == .hermes ? Color(hex: "151210") : .white)
+                                    : DesignSystem.Colors.textMuted
+                            )
                         }
                         .buttonStyle(.plain)
                         .disabled(isBackendUnavailable(backend))
@@ -68,11 +88,21 @@ struct ChatEngineBackendStrip: View {
     private func isBackendUnavailable(_ backend: ChatBackendID) -> Bool {
         switch backend {
         case .hermes:
-            controller.hermesAvailable == false && settingsManager.hermesSetupWizardCompleted
+            false
         case .openclaw:
             controller.openClawAvailable == false
         case .codex, .claude:
             false
         }
+    }
+
+    private var resolvedHermesGatewayBaseURL: URL {
+        URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? URL(string: "http://127.0.0.1:8642")!
+    }
+
+    private var resolvedHermesBearerToken: String? {
+        let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
     }
 }

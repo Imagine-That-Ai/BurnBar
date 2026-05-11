@@ -39,6 +39,36 @@ public struct SmartHubConfig: Codable, Sendable, Equatable {
     /// usage across the rolling 5h / 24h / 7d / 30d window.
     public var timePeriod: SmartHubTimePeriod
 
+    /// Optional ULANZI TC001 / AWTRIX pixel clock target. This is non-secret
+    /// owner-scoped LAN configuration used by the Mac bridge and mobile apps.
+    public var pixelClock: PixelClockConfig?
+
+    /// Per-Nest-Hub display customization. Added in schema v3 alongside
+    /// `displayOrder`. Decodes as `nil` for older documents so the Mac
+    /// applies sane defaults.
+    public var displayConfig: SmartHubDisplayConfig?
+
+    /// User-chosen order of the Smart Display cards. `nil` decodes as
+    /// the canonical default `[.nestHub, .pixelClock]`.
+    public var displayOrder: SmartDisplayOrder?
+
+    /// Firestore payload schema. Older documents omit this and decode as v1.
+    public var schemaVersion: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled
+        case dashboardURL
+        case refreshURL
+        case voiceRefreshURL
+        case sourceDeviceName
+        case publishedAt
+        case timePeriod
+        case pixelClock
+        case displayConfig
+        case displayOrder
+        case schemaVersion
+    }
+
     public init(
         enabled: Bool,
         dashboardURL: String? = nil,
@@ -46,7 +76,11 @@ public struct SmartHubConfig: Codable, Sendable, Equatable {
         voiceRefreshURL: String? = nil,
         sourceDeviceName: String? = nil,
         publishedAt: Date = Date(),
-        timePeriod: SmartHubTimePeriod = .rolling5h
+        timePeriod: SmartHubTimePeriod = .rolling5h,
+        pixelClock: PixelClockConfig? = nil,
+        displayConfig: SmartHubDisplayConfig? = nil,
+        displayOrder: SmartDisplayOrder? = nil,
+        schemaVersion: Int = 2
     ) {
         self.enabled = enabled
         self.dashboardURL = dashboardURL
@@ -55,6 +89,40 @@ public struct SmartHubConfig: Codable, Sendable, Equatable {
         self.sourceDeviceName = sourceDeviceName
         self.publishedAt = publishedAt
         self.timePeriod = timePeriod
+        self.pixelClock = pixelClock
+        self.displayConfig = displayConfig
+        self.displayOrder = displayOrder
+        self.schemaVersion = schemaVersion
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        dashboardURL = try c.decodeIfPresent(String.self, forKey: .dashboardURL)
+        refreshURL = try c.decodeIfPresent(String.self, forKey: .refreshURL)
+        voiceRefreshURL = try c.decodeIfPresent(String.self, forKey: .voiceRefreshURL)
+        sourceDeviceName = try c.decodeIfPresent(String.self, forKey: .sourceDeviceName)
+        publishedAt = try c.decodeIfPresent(Date.self, forKey: .publishedAt) ?? Date.distantPast
+        timePeriod = try c.decodeIfPresent(SmartHubTimePeriod.self, forKey: .timePeriod) ?? .rolling5h
+        pixelClock = try c.decodeIfPresent(PixelClockConfig.self, forKey: .pixelClock)
+        displayConfig = try c.decodeIfPresent(SmartHubDisplayConfig.self, forKey: .displayConfig)
+        displayOrder = try c.decodeIfPresent(SmartDisplayOrder.self, forKey: .displayOrder)
+        schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(enabled, forKey: .enabled)
+        try c.encodeIfPresent(dashboardURL, forKey: .dashboardURL)
+        try c.encodeIfPresent(refreshURL, forKey: .refreshURL)
+        try c.encodeIfPresent(voiceRefreshURL, forKey: .voiceRefreshURL)
+        try c.encodeIfPresent(sourceDeviceName, forKey: .sourceDeviceName)
+        try c.encode(publishedAt, forKey: .publishedAt)
+        try c.encode(timePeriod, forKey: .timePeriod)
+        try c.encodeIfPresent(pixelClock, forKey: .pixelClock)
+        try c.encodeIfPresent(displayConfig, forKey: .displayConfig)
+        try c.encodeIfPresent(displayOrder, forKey: .displayOrder)
+        try c.encode(schemaVersion, forKey: .schemaVersion)
     }
 
     /// Convenience: an empty/disabled config that iOS treats as "no smart

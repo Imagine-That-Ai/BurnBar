@@ -46,7 +46,7 @@ enum CLIBridgeError: LocalizedError {
         case .quotaExhausted(let detail):
             return detail
         case .hermesUnavailable:
-            return "Hermes isn’t running. Enable API_SERVER_ENABLED in ~/.hermes/.env, run hermes gateway run. Token in Settings only if you use API_SERVER_KEY there."
+            return "Hermes is not running. Open Settings → Chat Gateway and choose Open Hermes + Gateway, or enable the startup toggle there."
         case .openClawUnavailable:
             return "OpenClaw gateway is unavailable. Start the OpenClaw gateway (default 127.0.0.1:18789) or check Settings → Chat."
         case .hermesSSEError(let detail):

@@ -23,9 +23,13 @@ final class SmartHubStore {
     private(set) var config: SmartHubConfig?
     private(set) var castState: CastState = .idle
     private(set) var isLoading = false
+    private(set) var lastPublishedActionData: [String: Any] = [:]
 
     private let injectedDB: Firestore?
     private var db: Firestore { injectedDB ?? Firestore.firestore() }
+    private var mobileConfigDocumentID: String {
+        "mobile-\(MobileDeviceIdentity.loadOrCreateDeviceId())"
+    }
 
     init(db: Firestore? = nil) {
         self.injectedDB = db
@@ -40,6 +44,10 @@ final class SmartHubStore {
 
     var dashboardURL: URL? {
         config?.dashboardURL.flatMap(URL.init(string:))
+    }
+
+    var pixelClockConfig: PixelClockConfig {
+        config?.pixelClock ?? .disabled
     }
 
     /// Loads the freshest published smart-hub config across all Macs the
@@ -117,7 +125,50 @@ final class SmartHubStore {
             voiceRefreshURL: data["voiceRefreshURL"] as? String,
             sourceDeviceName: data["sourceDeviceName"] as? String,
             publishedAt: publishedAt,
-            timePeriod: timePeriod
+            timePeriod: timePeriod,
+            pixelClock: decodePixelClock(data["pixelClock"] as? [String: Any]),
+            displayConfig: SmartDisplayConfigCodec.decode(data["displayConfig"] as? [String: Any]),
+            displayOrder: SmartDisplayConfigCodec.decodeOrder(data["displayOrder"] as? [String]),
+            schemaVersion: data["schemaVersion"] as? Int ?? 1
+        )
+    }
+
+    private static func decodePixelClock(_ data: [String: Any]?) -> PixelClockConfig? {
+        guard let data else { return nil }
+        let updatedAt: Date = {
+            if let raw = data["updatedAt"] as? String,
+               let parsed = ISO8601DateFormatter().date(from: raw) {
+                return parsed
+            }
+            return Date.distantPast
+        }()
+        let timePeriod: SmartHubTimePeriod = {
+            if let raw = data["timePeriod"] as? String,
+               let parsed = SmartHubTimePeriod(rawValue: raw) {
+                return parsed
+            }
+            return .rolling5h
+        }()
+        return PixelClockConfig(
+            enabled: data["enabled"] as? Bool ?? false,
+            host: data["host"] as? String ?? "192.168.68.92",
+            port: data["port"] as? Int ?? 80,
+            layout: (data["layout"] as? String).flatMap(PixelClockLayout.init(rawValue:)) ?? .providerDashboard,
+            palette: (data["palette"] as? String).flatMap(PixelClockPalette.init(rawValue:)) ?? .emberWhimsy,
+            timePeriod: timePeriod,
+            workingSpinnerStyle: (data["workingSpinnerStyle"] as? String).flatMap(PixelClockSpinnerStyle.init(rawValue:)) ?? .orbit,
+            workingSpinnerPrimaryHex: data["workingSpinnerPrimaryHex"] as? String ?? "#52D6FF",
+            workingSpinnerSecondaryHex: data["workingSpinnerSecondaryHex"] as? String ?? "#FFFFFF",
+            completionClockSoundEnabled: data["completionClockSoundEnabled"] as? Bool ?? true,
+            completionLocalNotificationsEnabled: data["completionLocalNotificationsEnabled"] as? Bool ?? true,
+            pageDurationSeconds: data["pageDurationSeconds"] as? Int ?? 7,
+            updateIntervalSeconds: data["updateIntervalSeconds"] as? Int ?? 60,
+            scrollSpeedPercent: data["scrollSpeedPercent"] as? Int ?? 100,
+            brightness: data["brightness"] as? Int,
+            providerIDs: data["providerIDs"] as? [String] ?? [],
+            updatedAt: updatedAt,
+            updatedByDeviceId: data["updatedByDeviceId"] as? String,
+            lastProbeStatus: (data["lastProbeStatus"] as? String).flatMap(PixelClockProbeStatus.init(rawValue:)) ?? .unknown
         )
     }
 
@@ -128,19 +179,8 @@ final class SmartHubStore {
         guard FirebaseApp.app() != nil else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
         do {
-            let snapshot = try await db.collection("users").document(uid)
-                .collection("smart_hub_config").getDocuments()
-            guard let target = snapshot.documents
-                .max(by: { ($0.data()["publishedAt"] as? String ?? "") < ($1.data()["publishedAt"] as? String ?? "") })
-            else { return }
-
-            try await target.reference.setData(
-                [
-                    "timePeriod": period.rawValue,
-                    "publishedAt": ISO8601DateFormatter().string(from: Date())
-                ],
-                merge: true
-            )
+            let target = try await targetConfigReference(uid: uid)
+            try await target.setData(smartHubPayload(timePeriod: period), merge: true)
             // Optimistic local update so the picker doesn't snap back
             // before the next load() returns.
             if var current = self.config {
@@ -150,6 +190,198 @@ final class SmartHubStore {
         } catch {
             // Offline / not signed in — local picker already updated.
         }
+    }
+
+    func updatePixelClockConfig(_ pixelClock: PixelClockConfig) async {
+        guard FirebaseApp.app() != nil else { return }
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        do {
+            let target = try await targetConfigReference(uid: uid)
+            try await target.setData(smartHubPayload(pixelClock: pixelClock), merge: true)
+            if var current = self.config {
+                current.pixelClock = pixelClock
+                current.schemaVersion = 3
+                self.config = current
+            }
+            _ = try? await publishPixelClockAction(type: "pixel_clock_update_config", pixelClock: pixelClock)
+        } catch {
+            // Offline / not signed in — leave optimistic state to caller-owned UI.
+        }
+    }
+
+    // MARK: - Nest Hub Display Config
+
+    /// Computed view of the Nest Hub display config — defaults when no
+    /// Mac has published one yet.
+    var displayConfig: SmartHubDisplayConfig {
+        config?.displayConfig ?? .default
+    }
+
+    /// Computed view of the Smart Display order — defaults when no Mac
+    /// has published one yet.
+    var displayOrder: SmartDisplayOrder {
+        config?.displayOrder ?? .default
+    }
+
+    /// Persist a new Nest Hub display config. Mirrors `updatePixelClockConfig`
+    /// — same Firestore doc, same publish-then-listen pattern. Mac listener
+    /// applies the change to its bridge HTML.
+    func updateDisplayConfig(_ display: SmartHubDisplayConfig) async {
+        guard FirebaseApp.app() != nil else { return }
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        do {
+            let target = try await targetConfigReference(uid: uid)
+            try await target.setData(smartHubPayload(displayConfig: display), merge: true)
+            if var current = self.config {
+                current.displayConfig = display
+                current.schemaVersion = 3
+                self.config = current
+            }
+            _ = try? await publishNestHubAction(type: "nest_hub_update_display_config", display: display)
+        } catch {
+            // Offline — the optimistic in-memory update keeps the UI fresh.
+        }
+    }
+
+    /// Persist a new Smart Display order so both Mac and iOS render the
+    /// same arrangement.
+    func updateDisplayOrder(_ order: SmartDisplayOrder) async {
+        guard FirebaseApp.app() != nil else { return }
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        do {
+            let target = try await targetConfigReference(uid: uid)
+            try await target.setData(smartHubPayload(displayOrder: order), merge: true)
+            if var current = self.config {
+                current.displayOrder = order
+                current.schemaVersion = 3
+                self.config = current
+            }
+            _ = try? await publishNestHubAction(type: "nest_hub_update_order", display: nil, extra: ["displayOrder": order.kinds.map(\.rawValue)])
+        } catch {
+            // Offline — local order stays put until the next load() reconciles.
+        }
+    }
+
+    func refreshNestHub() async throws -> WizardActionStatus {
+        try await publishNestHubAction(type: "nest_hub_refresh", display: nil)
+    }
+
+    func identifyNestHub() async throws -> WizardActionStatus {
+        try await publishNestHubAction(type: "nest_hub_identify", display: nil)
+    }
+
+    func stopNestHub() async throws -> WizardActionStatus {
+        try await publishNestHubAction(type: "nest_hub_stop", display: nil)
+    }
+
+    private func publishNestHubAction(
+        type: String,
+        display: SmartHubDisplayConfig?,
+        extra: [String: Any] = [:]
+    ) async throws -> WizardActionStatus {
+        var payload: [String: Any] = ["type": type]
+        if let display {
+            payload["displayConfig"] = SmartDisplayConfigCodec.encode(display)
+        }
+        for (key, value) in extra {
+            payload[key] = value
+        }
+        return try await publishAction(payload, collection: "smart_display_actions")
+    }
+
+    func probePixelClock() async throws -> WizardActionStatus {
+        try await publishPixelClockAction(type: "pixel_clock_probe", pixelClock: config?.pixelClock)
+    }
+
+    func preparePixelClock() async throws -> WizardActionStatus {
+        try await publishPixelClockAction(type: "pixel_clock_prepare", pixelClock: config?.pixelClock)
+    }
+
+    func testPixelClock() async throws -> WizardActionStatus {
+        try await publishPixelClockAction(type: "pixel_clock_test", pixelClock: config?.pixelClock)
+    }
+
+    func pushPixelClockNow() async throws -> WizardActionStatus {
+        try await publishPixelClockAction(type: "pixel_clock_push", pixelClock: config?.pixelClock)
+    }
+
+    func removePixelClockApp() async throws -> WizardActionStatus {
+        try await publishPixelClockAction(type: "pixel_clock_remove", pixelClock: config?.pixelClock)
+    }
+
+    private func publishPixelClockAction(type: String, pixelClock: PixelClockConfig?) async throws -> WizardActionStatus {
+        var payload: [String: Any] = ["type": type]
+        if let pixelClock {
+            payload["pixelClock"] = Self.encodePixelClock(pixelClock)
+        }
+        return try await publishAction(payload, collection: "smart_display_actions")
+    }
+
+    private func targetConfigReference(uid: String) async throws -> DocumentReference {
+        let collection = db.collection("users").document(uid).collection("smart_hub_config")
+        let snapshot = try await collection.getDocuments()
+        if let target = snapshot.documents
+            .max(by: { ($0.data()["publishedAt"] as? String ?? "") < ($1.data()["publishedAt"] as? String ?? "") }) {
+            return target.reference
+        }
+        return collection.document(mobileConfigDocumentID)
+    }
+
+    private func smartHubPayload(
+        timePeriod: SmartHubTimePeriod? = nil,
+        pixelClock: PixelClockConfig? = nil,
+        displayConfig: SmartHubDisplayConfig? = nil,
+        displayOrder: SmartDisplayOrder? = nil
+    ) -> [String: Any] {
+        let resolvedPixelClock = pixelClock ?? config?.pixelClock ?? .disabled
+        let resolvedDisplay = displayConfig ?? config?.displayConfig ?? .default
+        let resolvedOrder = displayOrder ?? config?.displayOrder ?? .default
+        let resolvedPeriod = timePeriod ?? config?.timePeriod ?? .rolling5h
+        let enabled = (config?.enabled ?? false) || resolvedPixelClock.enabled
+
+        var payload: [String: Any] = [
+            "enabled": enabled,
+            "sourceDeviceName": config?.sourceDeviceName ?? "OpenBurnBar Mobile",
+            "publishedAt": ISO8601DateFormatter().string(from: Date()),
+            "timePeriod": resolvedPeriod.rawValue,
+            "pixelClock": Self.encodePixelClock(resolvedPixelClock),
+            "displayConfig": SmartDisplayConfigCodec.encode(resolvedDisplay),
+            "displayOrder": SmartDisplayConfigCodec.encodeOrder(resolvedOrder),
+            "schemaVersion": 3
+        ]
+        if let dashboardURL = config?.dashboardURL { payload["dashboardURL"] = dashboardURL }
+        if let refreshURL = config?.refreshURL { payload["refreshURL"] = refreshURL }
+        if let voiceRefreshURL = config?.voiceRefreshURL { payload["voiceRefreshURL"] = voiceRefreshURL }
+        return payload
+    }
+
+    private static func encodePixelClock(_ config: PixelClockConfig) -> [String: Any] {
+        var payload: [String: Any] = [
+            "enabled": config.enabled,
+            "host": config.host,
+            "port": config.clampedPort,
+            "layout": config.layout.rawValue,
+            "palette": config.palette.rawValue,
+            "timePeriod": config.timePeriod.rawValue,
+            "workingSpinnerStyle": config.workingSpinnerStyle.rawValue,
+            "workingSpinnerPrimaryHex": config.workingSpinnerPrimaryHex,
+            "workingSpinnerSecondaryHex": config.workingSpinnerSecondaryHex,
+            "completionClockSoundEnabled": config.completionClockSoundEnabled,
+            "completionLocalNotificationsEnabled": config.completionLocalNotificationsEnabled,
+            "pageDurationSeconds": config.clampedPageDuration,
+            "updateIntervalSeconds": config.clampedUpdateInterval,
+            "scrollSpeedPercent": config.clampedScrollSpeed,
+            "providerIDs": config.providerIDs,
+            "updatedAt": ISO8601DateFormatter().string(from: config.updatedAt),
+            "lastProbeStatus": config.lastProbeStatus.rawValue
+        ]
+        if let brightness = config.clampedBrightness {
+            payload["brightness"] = brightness
+        }
+        if let updatedByDeviceId = config.updatedByDeviceId {
+            payload["updatedByDeviceId"] = updatedByDeviceId
+        }
+        return payload
     }
 
     // MARK: - Cast Wizard (Firestore-proxied)
@@ -210,7 +442,7 @@ final class SmartHubStore {
         ])
     }
 
-    private func publishAction(_ payload: [String: Any]) async throws -> WizardActionStatus {
+    private func publishAction(_ payload: [String: Any], collection: String = "cast_actions") async throws -> WizardActionStatus {
         guard FirebaseApp.app() != nil else {
             throw NSError(domain: "SmartHubStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Firebase is not configured."])
         }
@@ -218,21 +450,24 @@ final class SmartHubStore {
             throw NSError(domain: "SmartHubStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Not signed in."])
         }
         let actionId = UUID().uuidString
-        let actionsRef = db.collection("users").document(uid).collection("cast_actions").document(actionId)
+        let actionsRef = db.collection("users").document(uid).collection(collection).document(actionId)
         var data = payload
         data["status"] = "pending"
         data["requestedAt"] = ISO8601DateFormatter().string(from: Date())
+        lastPublishedActionData = data
         try await actionsRef.setData(data)
 
         let deadline = Date().addingTimeInterval(45)
         while Date() < deadline {
             try await Task.sleep(nanoseconds: 700_000_000)
             let snap = try await actionsRef.getDocument()
-            if let status = snap.data()?["status"] as? String {
+            let actionData = snap.data() ?? [:]
+            lastPublishedActionData = actionData
+            if let status = actionData["status"] as? String {
                 switch status {
                 case "completed": return .completed
                 case "failed":
-                    let message = (snap.data()?["errorMessage"] as? String) ?? "Failed."
+                    let message = (actionData["errorMessage"] as? String) ?? "Failed."
                     return .failed(message)
                 default: continue
                 }

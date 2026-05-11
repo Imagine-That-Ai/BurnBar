@@ -339,6 +339,8 @@ struct QuotaSignalView: View {
     let provider: AgentProvider
     var compact = false
 
+    @Environment(\.colorScheme) private var colorScheme
+
     private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
     private var remainingFraction: Double {
         if let remainingPercent = bucket.remainingPercent {
@@ -393,6 +395,9 @@ struct QuotaSignalView: View {
     private var terminalWidth: CGFloat { compact ? 4 : 5 }
     private var terminalHeight: CGFloat { batteryHeight * 0.38 }
     private var cornerRadius: CGFloat { compact ? 14 : 16 }
+    private var negativeSpaceColor: Color {
+        colorScheme == .dark ? Color.black.opacity(0.74) : Color.black.opacity(0.18)
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -435,7 +440,7 @@ struct QuotaSignalView: View {
                     ZStack(alignment: .leading) {
                         // Track (empty shell)
                         RoundedRectangle(cornerRadius: batteryRadius, style: .continuous)
-                            .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+                            .fill(negativeSpaceColor)
                             .overlay(
                                 RoundedRectangle(cornerRadius: batteryRadius, style: .continuous)
                                     .stroke(fillColor.opacity(0.22), lineWidth: 1.5)
@@ -443,11 +448,10 @@ struct QuotaSignalView: View {
 
                         // Fill bar
                         GeometryReader { geo in
-                            let fillWidth = max(geo.size.width * remainingFraction, batteryRadius * 2)
-
+                            let fillWidth = max(geo.size.width - 4, 0) * remainingFraction
                             RoundedRectangle(cornerRadius: batteryRadius - 1.5, style: .continuous)
                                 .fill(fillGradient)
-                                .frame(width: remainingFraction > 0.02 ? fillWidth : 0)
+                                .frame(width: remainingFraction > 0 ? fillWidth : 0)
                                 .padding(2)
                                 .shadow(color: fillColor.opacity(0.35), radius: 6, y: 0)
                         }

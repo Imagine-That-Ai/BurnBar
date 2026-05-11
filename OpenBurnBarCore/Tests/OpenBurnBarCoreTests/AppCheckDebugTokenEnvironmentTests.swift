@@ -43,4 +43,20 @@ final class AppCheckDebugTokenEnvironmentTests: XCTestCase {
         XCTAssertEqual(exported[AppCheckDebugTokenEnvironment.firaDebugTokenKey], "existing-token")
         XCTAssertNil(exported[AppCheckDebugTokenEnvironment.firebaseDebugTokenKey])
     }
+
+    func testReturnsNilWhenNoDebugTokenIsConfigured() {
+        var exported: [String: String] = [:]
+        let token = AppCheckDebugTokenEnvironment.configureIfAvailable(
+            firebasePlistPath: nil,
+            infoDictionary: [:],
+            environment: [:],
+            setEnvironment: { key, value, _ in
+                exported[key] = value
+                return 0
+            }
+        )
+
+        XCTAssertNil(token)
+        XCTAssertTrue(exported.isEmpty)
+    }
 }

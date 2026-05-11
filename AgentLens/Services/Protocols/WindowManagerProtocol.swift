@@ -40,7 +40,8 @@ protocol WindowManagerProtocol: AnyObject {
         chatController: ChatSessionController,
         operatingLayer: OpenBurnBarOperatingLayer,
         navigationCoordinator: NavigationCoordinator,
-        settingsManager: SettingsManager
+        settingsManager: SettingsManager,
+        runtimeContext: OpenBurnBarRuntimeContext?
     )
 
     // MARK: - Settings Window
@@ -57,7 +58,8 @@ protocol WindowManagerProtocol: AnyObject {
         accountManager: AccountManager,
         cloudSyncService: CloudSyncService?,
         iCloudSessionMirrorService: ICloudSessionMirrorService?,
-        dataStore: DataStore
+        dataStore: DataStore,
+        runtimeContext: OpenBurnBarRuntimeContext?
     )
 
     // MARK: - Onboarding Wizard

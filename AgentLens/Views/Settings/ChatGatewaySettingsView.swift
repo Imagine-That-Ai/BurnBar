@@ -9,6 +9,7 @@ struct ChatGatewaySettingsView: View {
     private let cloudSyncService: CloudSyncService?
     private let iCloudSessionMirrorService: ICloudSessionMirrorService?
     @State private var inventoryImportService: HermesInventoryImportService
+    @State private var hermesRuntimeLauncher: HermesRuntimeLauncher
 
     init(
         settingsManager: SettingsManager,
@@ -20,6 +21,7 @@ struct ChatGatewaySettingsView: View {
         self.dataStore = dataStore
         self.cloudSyncService = cloudSyncService
         self.iCloudSessionMirrorService = iCloudSessionMirrorService
+        self._hermesRuntimeLauncher = State(initialValue: HermesRuntimeLauncher())
         self._inventoryImportService = State(initialValue: HermesInventoryImportService(
             dataStore: dataStore,
             settingsManager: settingsManager,
@@ -121,10 +123,68 @@ struct ChatGatewaySettingsView: View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 sectionTitle("Hermes Gateway", icon: "network", color: DesignSystem.Colors.hermesAureate)
 
-                Text("Local gateway on port 8642. In ~/.hermes/.env set API_SERVER_ENABLED=true, then run hermes gateway run in Terminal.")
+                Text("OpenBurnBar can start the Hermes Dashboard and local API gateway for you. The gateway defaults to port 8642.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                    ZStack {
+                        Circle()
+                            .fill(hermesRuntimeLauncher.status.gatewayRunning ? DesignSystem.Colors.success.opacity(0.16) : DesignSystem.Colors.surface)
+                            .frame(width: 34, height: 34)
+                        if hermesRuntimeLauncher.isBusy {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: hermesRuntimeLauncher.status.gatewayRunning ? "checkmark" : "power")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(hermesRuntimeLauncher.status.gatewayRunning ? DesignSystem.Colors.success : DesignSystem.Colors.hermesAureate)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(hermesRuntimeLauncher.status.message)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(hermesRuntimeLauncher.lastError == nil ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.error)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if let path = hermesRuntimeLauncher.status.hermesCLIPath {
+                            Text(path)
+                                .font(DesignSystem.Typography.monoTiny)
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+
+                    Spacer()
+                }
+
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Button {
+                        Task { await openHermesRuntime() }
+                    } label: {
+                        Label("Open Hermes + Gateway", systemImage: "play.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignSystem.Colors.hermesAureate)
+                    .disabled(hermesRuntimeLauncher.isBusy)
+
+                    Button {
+                        Task { await refreshHermesRuntimeStatus() }
+                    } label: {
+                        Label("Check Health", systemImage: "waveform.path.ecg")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(hermesRuntimeLauncher.isBusy)
+                }
+                .controlSize(.small)
+                .font(DesignSystem.Typography.caption)
+
+                Toggle("Launch Hermes Dashboard and gateway when OpenBurnBar opens", isOn: $settingsManager.launchHermesWithOpenBurnBar)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
 
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     fieldLabel("Base URL")
@@ -167,6 +227,9 @@ struct ChatGatewaySettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(DesignSystem.Spacing.lg)
+        }
+        .task {
+            await refreshHermesRuntimeStatus()
         }
     }
 
@@ -366,6 +429,30 @@ struct ChatGatewaySettingsView: View {
         default:
             return DesignSystem.Colors.textSecondary
         }
+    }
+
+    private func refreshHermesRuntimeStatus() async {
+        _ = await hermesRuntimeLauncher.refreshStatus(
+            baseURL: resolvedHermesGatewayBaseURL,
+            bearerToken: resolvedHermesBearerToken
+        )
+    }
+
+    private func openHermesRuntime() async {
+        _ = await hermesRuntimeLauncher.openHermesAndGateway(
+            baseURL: resolvedHermesGatewayBaseURL,
+            bearerToken: resolvedHermesBearerToken
+        )
+    }
+
+    private var resolvedHermesGatewayBaseURL: URL {
+        URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? URL(string: "http://127.0.0.1:8642")!
+    }
+
+    private var resolvedHermesBearerToken: String? {
+        let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
     }
 
     private func metric(_ label: String, _ value: String) -> some View {

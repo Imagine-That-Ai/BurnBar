@@ -6,6 +6,7 @@ import SwiftUI
 enum NavigationDestination: Hashable, Sendable {
     case conversationSearch
     case chatPanel
+    case chatPopOut
     case settings
     case dashboard
     case onboarding
@@ -34,6 +35,7 @@ final class NavigationCoordinator: Sendable {
         case database
         case projects
         case sessionLogs
+        case chat
     }
     
     // MARK: - Navigation Methods
@@ -45,9 +47,13 @@ final class NavigationCoordinator: Sendable {
             chatPanelOpen = true
         case .chatPanel:
             chatPanelOpen = true
-        case .settings, .dashboard, .onboarding:
+        case .chatPopOut, .settings, .dashboard, .onboarding:
             break
         }
+    }
+
+    func openChatPopOut() {
+        pendingNavigation = .chatPopOut
     }
     
     func openConversationSearch() {
