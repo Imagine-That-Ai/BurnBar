@@ -35,6 +35,12 @@ final class MacPixelClockOperationsAdapter: PixelClockOperations {
         return try await controller.preparePixelClock()
     }
 
+    func flashPixelClockFirmware(config: PixelClockConfig) async throws -> PixelClockSetupResult {
+        persist(config)
+        let controller = resolvedController()
+        return try await controller.flashPixelClockFirmware()
+    }
+
     func testPixelClock(config: PixelClockConfig) async throws {
         persist(config)
         let controller = resolvedController()

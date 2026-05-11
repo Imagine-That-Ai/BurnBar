@@ -202,9 +202,18 @@ public enum PixelClockFramePresenter {
             )
             : items[abs(tick) % items.count]
         let remaining = remainingPercent(for: item)
-        let quotaColor = Color(hex: config.palette.hexColor(for: item.percentUsed))
+        let pageIndex = items.isEmpty ? 0 : abs(tick) % items.count
+        let isRainbow = config.palette.isRainbow
+        let quotaColor: Color = isRainbow
+            ? Color(hex: config.palette.rainbowColor(at: pageIndex))
+            : Color(hex: config.palette.hexColor(for: item.percentUsed))
 
-        paintProviderLogo(for: item, into: &pixels)
+        paintProviderLogo(
+            for: item,
+            into: &pixels,
+            tint: nil,
+            rainbowPageIndex: isRainbow ? pageIndex : nil
+        )
 
         if tick.isMultiple(of: 2) {
             paintSpinner(config.workingSpinnerStyle, into: &pixels, originColumn: 10, originRow: 1, config: config, tick: tick)
@@ -223,12 +232,33 @@ public enum PixelClockFramePresenter {
             }
         }
 
-        let filled = max(min(Int(round(Double(remaining) / 100.0 * 19.0)), 19), 0)
-        for column in 0..<filled {
-            pixels[7][column + 12] = PixelClockPreviewFrame.Pixel(
-                isLit: true,
-                color: quotaColor
-            )
+        if isRainbow {
+            let stripeWidths = [4, 4, 3, 4, 3, 3]
+            var cursor = 12
+            for (index, stripe) in stripeWidths.enumerated() {
+                let endColumn = min(cursor + stripe, 31)
+                let stripeColor = Color(hex: PixelClockPalette.rainbowFlag[index])
+                for column in cursor..<endColumn {
+                    pixels[7][column] = PixelClockPreviewFrame.Pixel(isLit: true, color: stripeColor)
+                }
+                cursor = endColumn
+                if cursor >= 31 { break }
+            }
+            let filled = max(min(Int(round(Double(remaining) / 100.0 * 19.0)), 19), 0)
+            for column in (filled + 12)..<31 {
+                pixels[7][column] = PixelClockPreviewFrame.Pixel(
+                    isLit: true,
+                    color: Color.black.opacity(0.85)
+                )
+            }
+        } else {
+            let filled = max(min(Int(round(Double(remaining) / 100.0 * 19.0)), 19), 0)
+            for column in 0..<filled {
+                pixels[7][column + 12] = PixelClockPreviewFrame.Pixel(
+                    isLit: true,
+                    color: quotaColor
+                )
+            }
         }
 
         return PixelClockPreviewFrame(
@@ -454,15 +484,46 @@ public enum PixelClockFramePresenter {
 
     private static func paintProviderLogo(
         for item: PixelClockQuotaItem,
-        into pixels: inout [[PixelClockPreviewFrame.Pixel]]
+        into pixels: inout [[PixelClockPreviewFrame.Pixel]],
+        tint: Color? = nil,
+        rainbowPageIndex: Int? = nil
     ) {
         let logo = PixelClockQuotaRenderer.providerLogo(for: item)
+        // Build a per-zone rainbow remap for the preview that mirrors the
+        // renderer (so the device matches what the user sees in Settings).
+        let rainbowRemap: [String: String]?
+        let rainbowFallback: Color?
+        if let pageIndex = rainbowPageIndex {
+            rainbowRemap = PixelClockQuotaRenderer.rainbowZoneRemap(
+                for: item,
+                pageIndex: pageIndex
+            )
+            rainbowFallback = Color(hex: PixelClockQuotaRenderer.rainbowPageAccent(at: pageIndex))
+        } else {
+            rainbowRemap = nil
+            rainbowFallback = nil
+        }
+
         for row in logo.pixels.indices {
             for column in logo.pixels[row].indices {
                 guard let colorHex = logo.colorHex(row: row, column: column) else { continue }
+                let resolved: Color
+                if let remap = rainbowRemap {
+                    if let mapped = remap[colorHex.uppercased()] {
+                        resolved = Color(hex: mapped)
+                    } else if let fallback = rainbowFallback {
+                        resolved = fallback
+                    } else {
+                        resolved = Color(hex: colorHex)
+                    }
+                } else if let tint {
+                    resolved = tint
+                } else {
+                    resolved = Color(hex: colorHex)
+                }
                 pixels[row][column] = PixelClockPreviewFrame.Pixel(
                     isLit: true,
-                    color: Color(hex: colorHex)
+                    color: resolved
                 )
             }
         }

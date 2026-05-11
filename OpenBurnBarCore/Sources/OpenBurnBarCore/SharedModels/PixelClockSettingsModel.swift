@@ -20,6 +20,10 @@ public protocol PixelClockOperations: AnyObject {
     /// flash URL needed for full OpenBurnBar direct control.
     func preparePixelClock(config: PixelClockConfig) async throws -> PixelClockSetupResult
 
+    /// Flash AWTRIX Light onto a USB-connected Pixel Clock, then verify
+    /// HTTP control and push the OpenBurnBar custom app.
+    func flashPixelClockFirmware(config: PixelClockConfig) async throws -> PixelClockSetupResult
+
     /// Send a single notify frame so the user can confirm the right
     /// device responded.
     func testPixelClock(config: PixelClockConfig) async throws
@@ -67,6 +71,10 @@ public final class InMemoryPixelClockOperations: PixelClockOperations {
             message: probeResult == .awtrixReady ? "AWTRIX Light is ready." : "Pixel Clock needs setup.",
             clockHost: config.host
         )
+    }
+
+    public func flashPixelClockFirmware(config: PixelClockConfig) async throws -> PixelClockSetupResult {
+        try await preparePixelClock(config: config)
     }
 
     public func testPixelClock(config: PixelClockConfig) async throws {
@@ -282,6 +290,21 @@ public final class PixelClockSettingsModel {
         }
     }
 
+    public func flashAndFinishSetup() async {
+        if !config.enabled {
+            toggleEnabled(true)
+        }
+        await runOperation(.flash) {
+            let result = try await self.operations.flashPixelClockFirmware(config: self.config)
+            self.setupResult = result
+            self.firmware = result.probeStatus
+            self.mutate(persist: false) {
+                $0.host = result.clockHost
+                $0.lastProbeStatus = result.probeStatus
+            }
+        }
+    }
+
     public func test() async {
         await runOperation(.test) {
             try await self.operations.testPixelClock(config: self.config)
@@ -307,8 +330,11 @@ public final class PixelClockSettingsModel {
     }
 
     public var setupPrimaryTitle: String {
+        if inflightOperation == .flash {
+            return "Flashing..."
+        }
         if inflightOperation == .probe {
-            return "Setting up..."
+            return "Detecting..."
         }
         if inflightOperation == .push {
             return "Pushing..."
@@ -316,12 +342,8 @@ public final class PixelClockSettingsModel {
         switch firmware {
         case .awtrixReady:
             return "Push to Pixel Clock"
-        case .stockUlanziFirmware:
-            return setupResult?.mode == .stockSimulatorConfigured ? "Push to Pixel Clock" : "Finish setup"
-        case .unreachable, .unsupported, .error:
-            return "Fix automatically"
-        case .unknown:
-            return "Set up automatically"
+        case .stockUlanziFirmware, .unreachable, .unsupported, .error, .unknown:
+            return "Flash AWTRIX Light"
         }
     }
 
@@ -336,15 +358,15 @@ public final class PixelClockSettingsModel {
         case .awtrixReady:
             return "Pixel Clock is ready for OpenBurnBar."
         case .stockUlanziFirmware:
-            return "Stock Ulanzi found. OpenBurnBar can configure simulator settings and serve quota frames from your Mac."
+            return "Best path: plug the Pixel Clock into this Mac over USB and flash AWTRIX Light."
         case .unreachable:
-            return "OpenBurnBar will search the local network and use the saved address if discovery misses."
+            return "The saved Wi-Fi address is not answering. Flash AWTRIX Light over USB, then Detect."
         case .unsupported:
-            return "OpenBurnBar found a device, but it needs AWTRIX Light for direct quota frames."
+            return "This device needs AWTRIX Light before OpenBurnBar can control it directly."
         case .error:
-            return "Setup hit an error. Run automatic setup again."
+            return "Setup hit an error. Flash AWTRIX Light over USB, then Detect."
         case .unknown:
-            return "OpenBurnBar will find the clock, configure what it can, and push the display when it is ready."
+            return "Plug in the Pixel Clock over USB, flash AWTRIX Light, then Detect."
         }
     }
 
@@ -452,6 +474,7 @@ public final class PixelClockSettingsModel {
 // MARK: - Operation Types
 
 public enum PixelClockOperationKind: String, Sendable {
+    case flash
     case probe
     case test
     case push
@@ -459,6 +482,7 @@ public enum PixelClockOperationKind: String, Sendable {
 
     public var displayName: String {
         switch self {
+        case .flash:  return "Flash and Finish Setup"
         case .probe:  return "Detect"
         case .test:   return "Test"
         case .push:   return "Push Now"
@@ -468,6 +492,7 @@ public enum PixelClockOperationKind: String, Sendable {
 
     public var inFlightLabel: String {
         switch self {
+        case .flash:  return "Flashing…"
         case .probe:  return "Detecting…"
         case .test:   return "Testing…"
         case .push:   return "Pushing…"
@@ -477,6 +502,7 @@ public enum PixelClockOperationKind: String, Sendable {
 
     public var symbolName: String {
         switch self {
+        case .flash:  return "bolt.badge.automatic.fill"
         case .probe:  return "dot.radiowaves.left.and.right"
         case .test:   return "bolt.horizontal.circle"
         case .push:   return "paperplane.fill"

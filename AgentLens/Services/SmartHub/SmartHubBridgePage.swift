@@ -41,6 +41,9 @@ enum SmartHubBridgePage {
           --border-strong: #3F3A2E;
           --primary: var(--ember);
           --secondary: var(--whimsy);
+          --rainbow-gradient: linear-gradient(90deg,
+            #E40303 0%, #FF8C00 17%, #FFED00 33%,
+            #008026 50%, #004CFF 67%, #732982 100%);
           --dashboard-brightness: 1.0;
         }
         * { box-sizing: border-box; }
@@ -220,6 +223,29 @@ enum SmartHubBridgePage {
         .fill.tone-success { background: var(--success); }
         .fill.tone-warning { background: var(--warning); }
         .fill.tone-mercury { background: var(--mercury); }
+
+        body.palette-rainbow .fill {
+          background: var(--rainbow-gradient) !important;
+        }
+        body.palette-rainbow .segmented button.active {
+          background: var(--rainbow-gradient);
+          color: #1A1208;
+        }
+        body.palette-rainbow.bg-photoBlend::before {
+          background: linear-gradient(135deg,
+            color-mix(in oklab, #E40303 45%, transparent) 0%,
+            color-mix(in oklab, #FF8C00 38%, transparent) 22%,
+            color-mix(in oklab, #FFED00 28%, transparent) 44%,
+            color-mix(in oklab, #008026 35%, transparent) 60%,
+            color-mix(in oklab, #004CFF 35%, transparent) 78%,
+            color-mix(in oklab, #732982 40%, transparent) 100%);
+        }
+        body.palette-rainbow h1 {
+          background: var(--rainbow-gradient);
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+        }
 
         .stage.refreshing .providers::before {
           content: '';
@@ -424,6 +450,7 @@ enum SmartHubBridgePage {
             root.style.setProperty('--primary', display.paletteHex.primary || 'var(--ember)');
             root.style.setProperty('--secondary', display.paletteHex.secondary || 'var(--whimsy)');
           }
+          body.classList.toggle('palette-rainbow', !!(display.paletteHex && display.paletteHex.rainbow));
           if (display.themeHex) {
             root.style.setProperty('--bg-top', display.themeHex.top || '#2a221a');
             root.style.setProperty('--bg-bottom', display.themeHex.bottom || '#0E0D0B');

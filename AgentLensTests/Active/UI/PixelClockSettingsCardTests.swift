@@ -42,7 +42,7 @@ final class PixelClockSettingsCardTests: XCTestCase {
         XCTAssertNoThrow(try sut.find(text: "ULANZI TC001 Pixel Clock"))
     }
 
-    func test_pixelClockCardMainPathIsAutomaticSetupWhenEnabled() throws {
+    func test_pixelClockCardMainPathIsFlashingWhenEnabledBeforeAWTRIXReady() throws {
         let settingsManager = SettingsManager()
         var config = settingsManager.pixelClockConfig
         config.enabled = true
@@ -56,7 +56,8 @@ final class PixelClockSettingsCardTests: XCTestCase {
         let card = PixelClockSettingsCard(settingsManager: settingsManager, model: model)
         let sut = try card.inspect()
 
-        XCTAssertNoThrow(try sut.find(text: "Set up automatically"))
+        XCTAssertNoThrow(try sut.find(text: "Flash and Finish Setup"))
+        XCTAssertNoThrow(try sut.find(text: "Detect after flash"))
         XCTAssertNoThrow(try sut.find(text: "Customize display"))
         XCTAssertNoThrow(try sut.find(text: "Advanced"))
     }
@@ -69,6 +70,20 @@ final class PixelClockSettingsCardTests: XCTestCase {
             model.firmwareWarningMessage,
             "Stock Ulanzi needs Awtrix Simulator pointed at this Mac's IP."
         )
+    }
+
+    func test_pixelClockPaletteSupportsPrideRainbowDisplayName() {
+        // Picker iterates `PixelClockPalette.allCases`. Rainbow's display
+        // name is the user-visible string the picker option will render.
+        let names = PixelClockPalette.allCases.map(\.displayName)
+        XCTAssertTrue(names.contains("Pride rainbow"))
+        XCTAssertTrue(PixelClockPalette.rainbow.isRainbow)
+    }
+
+    func test_smartHubPaletteSupportsPrideRainbowDisplayName() {
+        let names = SmartHubDisplayPalette.allCases.map(\.displayName)
+        XCTAssertTrue(names.contains("Pride rainbow"))
+        XCTAssertTrue(SmartHubDisplayPalette.rainbow.isRainbow)
     }
 
     func test_macAdapterSurfacesProbeStatusFromController() async {

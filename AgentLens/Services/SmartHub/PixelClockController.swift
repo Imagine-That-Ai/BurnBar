@@ -65,28 +65,111 @@ final class PixelClockAgentStatusStore {
     }
 }
 
+enum PixelClockAgentProcessDetector {
+    static func runningStatuses() async -> [String: PixelClockAgentStatus] {
+        await Task.detached(priority: .utility) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/ps")
+            process.arguments = ["-axo", "comm,args"]
+
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = Pipe()
+
+            do {
+                try process.run()
+            } catch {
+                return [:]
+            }
+
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return [:] }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8) else { return [:] }
+            return statuses(fromPSOutput: output)
+        }.value
+    }
+
+    static func statuses(fromPSOutput output: String) -> [String: PixelClockAgentStatus] {
+        var statuses: [String: PixelClockAgentStatus] = [:]
+        for line in output.split(separator: "\n").dropFirst() {
+            guard let provider = provider(forProcessLine: String(line)) else { continue }
+            statuses[provider.persistedToken] = .running
+        }
+        return statuses
+    }
+
+    private static func provider(forProcessLine line: String) -> AgentProvider? {
+        let lower = line.lowercased()
+        if lower.contains("openburnbar") || lower.contains("/bin/ps") {
+            return nil
+        }
+
+        let tokens = lower
+            .split { !$0.isLetter && !$0.isNumber && $0 != "." && $0 != "-" }
+            .map(String.init)
+
+        let serviceTokens: Set<String> = [
+            "daemon",
+            "proxy",
+            "bridge",
+            "mcp",
+            "server",
+            "language-server",
+            "tsserver",
+            "typingsinstaller",
+            "native-host",
+            "helper",
+            "helpers"
+        ]
+        if tokens.contains(where: { serviceTokens.contains($0) }) {
+            return nil
+        }
+        if lower.contains(".app/contents/") {
+            return nil
+        }
+
+        func has(_ candidates: Set<String>) -> Bool {
+            tokens.contains { candidates.contains($0) }
+        }
+
+        if has(["codex"]) { return .codex }
+        if has(["claude", "claude-code", "claudecode"]) { return .claudeCode }
+        if has(["droid", "factory", "factory-cli"]) { return .factory }
+        if has(["minimax", "mini-max"]) { return .minimax }
+        if has(["zai", "z.ai", "z-ai"]) { return .zai }
+        if has(["kimi", "moonshot"]) { return .kimi }
+
+        return nil
+    }
+}
+
 @MainActor
 final class PixelClockController {
-    static let awtrixLightFlasherURL = "https://blueforcer.github.io/awtrix3/#/flasher"
+    static let awtrixLightFlasherURL = PixelClockSetupResult.awtrixLightFlasherURL
 
     private let settingsManager: SettingsManager
     private let quotaService: ProviderQuotaService?
     private let client: AWTRIXClient
+    private let flasher: PixelClockFirmwareFlasher
     private let stockSimulator: PixelClockStockSimulatorServer
 
     private var heartbeat: Task<Void, Never>?
     private var lastPushedConfig: PixelClockConfig?
+    private var lastPushedStatuses: [String: PixelClockAgentStatus] = [:]
     private var lastPushAt: Date = .distantPast
 
     init(
         settingsManager: SettingsManager,
         quotaService: ProviderQuotaService?,
         client: AWTRIXClient = AWTRIXClient(),
+        flasher: PixelClockFirmwareFlasher = PixelClockFirmwareFlasher(),
         stockSimulator: PixelClockStockSimulatorServer = .shared
     ) {
         self.settingsManager = settingsManager
         self.quotaService = quotaService
         self.client = client
+        self.flasher = flasher
         self.stockSimulator = stockSimulator
     }
 
@@ -179,7 +262,7 @@ final class PixelClockController {
             config.updatedAt = Date()
             settingsManager.pixelClockConfig = config
             stockSimulator.start(port: 7001)
-            updateStockSimulatorPages(config: config)
+            await updateStockSimulatorPages(config: config)
             return PixelClockSetupResult(
                 mode: .stockSimulatorConfigured,
                 probeStatus: .stockUlanziFirmware,
@@ -200,6 +283,28 @@ final class PixelClockController {
         }
     }
 
+    func flashPixelClockFirmware() async throws -> PixelClockSetupResult {
+        let flashResult = try await flasher.flash()
+        try await Task.sleep(nanoseconds: 8_000_000_000)
+        let setup = try await preparePixelClock()
+        if setup.probeStatus == .awtrixReady {
+            try await pushPixelClockNow()
+            return PixelClockSetupResult(
+                mode: .awtrixLightReady,
+                probeStatus: .awtrixReady,
+                message: "Flashed AWTRIX \(flashResult.firmwareVersion) over \(flashResult.serialDevice), connected, and pushed OpenBurnBar.",
+                clockHost: setup.clockHost
+            )
+        }
+        return PixelClockSetupResult(
+            mode: .needsAwtrixLightFlash,
+            probeStatus: setup.probeStatus,
+            message: "Flashed AWTRIX \(flashResult.firmwareVersion), but the clock has not rejoined Wi-Fi yet. Finish Wi-Fi on the clock, then Detect.",
+            clockHost: setup.clockHost,
+            flasherURL: Self.awtrixLightFlasherURL
+        )
+    }
+
     func pushPixelClockNow() async throws {
         let current = settingsManager.pixelClockConfig
         guard current.enabled else { return }
@@ -213,7 +318,7 @@ final class PixelClockController {
             config.lastProbeStatus = .stockUlanziFirmware
             config.updatedAt = Date()
             settingsManager.pixelClockConfig = config
-            updateStockSimulatorPages(config: config)
+            await updateStockSimulatorPages(config: config)
             lastPushAt = Date()
             lastPushedConfig = config
             return
@@ -227,9 +332,10 @@ final class PixelClockController {
             ])
         }
 
+        let statuses = await currentAgentStatuses()
         let items = PixelClockSnapshotAdapter.quotaCycleItems(
             quotaService: quotaService,
-            statuses: PixelClockAgentStatusStore.shared.snapshot()
+            statuses: statuses
         )
         let pages = PixelClockQuotaRenderer.renderPages(items: items, config: config)
         let payload = PixelClockQuotaRenderer.awtrixPayload(pages: pages, config: config)
@@ -240,6 +346,7 @@ final class PixelClockController {
         try await client.pushCustomApp(pages: payload, config: config)
         lastPushAt = Date()
         lastPushedConfig = config
+        lastPushedStatuses = statuses
         updateProbeStatus(.awtrixReady)
     }
 
@@ -308,17 +415,30 @@ final class PixelClockController {
         guard config.enabled else { return }
         let interval = TimeInterval(config.clampedUpdateInterval)
         let configChanged = config != lastPushedConfig
-        guard configChanged || Date().timeIntervalSince(lastPushAt) >= interval else { return }
+        let statuses = await currentAgentStatuses()
+        let statusesChanged = statuses != lastPushedStatuses
+        guard configChanged || statusesChanged || Date().timeIntervalSince(lastPushAt) >= interval else { return }
         try? await pushPixelClockNow()
     }
 
-    private func updateStockSimulatorPages(config: PixelClockConfig) {
+    private func updateStockSimulatorPages(config: PixelClockConfig) async {
+        let statuses = await currentAgentStatuses()
         let items = PixelClockSnapshotAdapter.quotaCycleItems(
             quotaService: quotaService,
-            statuses: PixelClockAgentStatusStore.shared.snapshot()
+            statuses: statuses
         )
         let pages = PixelClockQuotaRenderer.renderPages(items: items, config: config)
         stockSimulator.update(pages: pages, config: config)
+        lastPushedStatuses = statuses
+    }
+
+    private func currentAgentStatuses() async -> [String: PixelClockAgentStatus] {
+        var statuses = PixelClockAgentStatusStore.shared.snapshot()
+        let processStatuses = await PixelClockAgentProcessDetector.runningStatuses()
+        statuses.merge(processStatuses) { current, detected in
+            current == .running ? current : detected
+        }
+        return statuses
     }
 
     private func resolveReachablePixelClockConfig() async -> AWTRIXClient.DiscoveryResult {
