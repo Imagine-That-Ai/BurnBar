@@ -6,6 +6,8 @@ import com.google.firebase.appcheck.AppCheckProviderFactory
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
+import com.openburnbar.data.widget.BurnBarWidgetSyncWorker
 import com.openburnbar.menubar.MenuBarService
 
 class BurnBarApplication : Application() {
@@ -16,6 +18,9 @@ class BurnBarApplication : Application() {
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(true)
         // Notification channel must exist before the service tries to post.
         MenuBarService.ensureChannel(this)
+        // Widget snapshot: hydrate from disk + schedule the 15-min refresh.
+        BurnBarWidgetSnapshotStore.bind(this)
+        BurnBarWidgetSyncWorker.enqueuePeriodic(this)
     }
 
     private fun installAppCheckProvider() {

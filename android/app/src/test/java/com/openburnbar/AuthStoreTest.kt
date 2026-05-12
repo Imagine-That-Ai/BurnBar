@@ -10,9 +10,8 @@ class AuthStoreTest {
     @Test
     fun `initial state reflects Firebase auth`() = runTest {
         val store = AuthStore()
-        // Without a logged-in Firebase user, isSignedIn should be false
-        assertNotNull(store.isSignedIn.value)
-        assertNotNull(store.userDisplayName.value)
-        assertNotNull(store.userEmail.value)
+        assertFalse(store.isSignedIn.value)
+        assertNull(store.userDisplayName.value)
+        assertNull(store.userEmail.value)
     }
 }

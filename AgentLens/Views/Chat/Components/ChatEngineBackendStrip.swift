@@ -35,7 +35,7 @@ struct ChatEngineBackendStrip: View {
                                     Image(systemName: "play.fill")
                                         .font(.system(size: 7, weight: .bold))
                                 }
-                                Text(backend.shortLabel)
+                                Text("\(backend.glyph) \(backend.shortLabel)")
                             }
                             .font(.system(size: 9, weight: .semibold, design: .rounded))
                             .padding(.horizontal, 6)
@@ -43,12 +43,12 @@ struct ChatEngineBackendStrip: View {
                             .background {
                                 if controller.chatBackend == backend {
                                     Capsule(style: .continuous)
-                                        .fill(backendCapsuleFill(for: backend))
+                                        .fill(AnyShapeStyle(backend.gradient))
                                 }
                             }
                             .foregroundStyle(
                                 controller.chatBackend == backend
-                                    ? backendForegroundColor(for: backend)
+                                    ? backend.activeForeground
                                     : DesignSystem.Colors.textMuted
                             )
                         }
@@ -74,30 +74,6 @@ struct ChatEngineBackendStrip: View {
             return controller.piAgentAvailable == false
         case .codex, .claude, .openclaw:
             return false
-        }
-    }
-
-    private func backendCapsuleFill(for backend: ChatBackendID) -> AnyShapeStyle {
-        switch backend {
-        case .hermes:
-            return AnyShapeStyle(DesignSystem.Colors.mercuryGradient)
-        case .piAgent:
-            return AnyShapeStyle(LinearGradient(
-                colors: [DesignSystem.Colors.purple, DesignSystem.Colors.purple.opacity(0.7)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ))
-        case .codex, .claude, .openclaw:
-            return AnyShapeStyle(DesignSystem.Colors.accentGradient)
-        }
-    }
-
-    private func backendForegroundColor(for backend: ChatBackendID) -> Color {
-        switch backend {
-        case .hermes:
-            return Color(hex: "151210")
-        case .codex, .claude, .openclaw, .piAgent:
-            return .white
         }
     }
 

@@ -81,7 +81,7 @@ struct MenuBarPopoverView: View {
                     }
                 )
             } else if hermesChatActive, let chatController {
-                HermesPopoverChatView(
+                AssistantsPopoverChatView(
                     controller: chatController,
                     operatingLayer: operatingLayer,
                     settingsManager: settingsManager,
@@ -132,7 +132,7 @@ struct MenuBarPopoverView: View {
                             providerListView
                             if let chatController {
                                 Divider().background(DesignSystem.Colors.border)
-                                HermesPopoverStrip(
+                                AssistantsPopoverStrip(
                                     controller: chatController,
                                     onOpenDashboardWithChat: {
                                         onOpenDashboardWithChat?()

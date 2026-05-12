@@ -26,6 +26,8 @@ SERVICE_ACCOUNT=hermes-realtime-relay@burnbar.iam.gserviceaccount.com \
 ./scripts/deploy-hermes-realtime-relay.sh
 ```
 
+The deploy script refuses to deploy production profiles unless `REDIS_URL` points at the `hermes-realtime-relay-redis-prod` instance in the selected project/region and that instance is `READY` and `STANDARD_HA`. Override `REDIS_INSTANCE_NAME` only for an intentional staging deployment; use `SKIP_REDIS_PROJECT_GUARD=true` only for local/self-hosted testing where `gcloud redis describe` is not available.
+
 Connector-based projects can set `VPC_CONNECTOR=openburnbar-serverless` instead of `DIRECT_VPC_NETWORK` / `DIRECT_VPC_SUBNET`. `VPC_EGRESS` defaults to `private-ranges-only`.
 
 The deploy script uses named profiles:
@@ -89,6 +91,16 @@ Default production limits:
 - `ENTITLEMENT_CACHE_TTL_SECONDS=60`
 - `ENTITLEMENT_NEGATIVE_CACHE_TTL_SECONDS=15`
 
+Redis quota state is deliberately split into one global socket-pressure guard plus runtime-specific buckets:
+
+- Global socket pressure: `relay:quota:{uid}:sockets:{role}`
+- Runtime socket leases: `{runtime}:quota:{uid}:sockets:{role}`
+- Runtime request starts: `{runtime}:quota:{uid}:request-start:{minute}`
+- Runtime byte windows: `{runtime}:quota:{uid}:bytes:{minute}`
+- Runtime in-flight requests: `{runtime}:quota:{uid}:inflight`
+
+This lets one Memorystore instance back Hermes and Pi without letting one runtime consume the other's request/byte/in-flight quota. Runtime values are the relay discriminator tokens, currently `hermes` and `pi`.
+
 The service uses one shared Redis publisher and one shared Redis subscriber per Cloud Run instance. Per-socket Redis publisher/subscriber clients are intentionally avoided so thousands of WebSocket connections do not multiply Redis connection pressure.
 
 Keep Redis in the same region as Cloud Run and use Direct VPC egress when available. The default `prod-safe` profile keeps one warm instance and caps production at ten relay instances until load-test evidence justifies a higher ceiling. For a cheaper but colder staging relay, deploy with `DEPLOY_PROFILE=staging-cheap`.
@@ -135,6 +147,8 @@ Redis channels:
 - Request response channel: `hermes:resp:{uid}:{requestId}`
 - Host presence key: `hermes:host:{uid}:{connectionId}`
 - Host replacement control channel: `hermes:ctrl:{uid}:{connectionId}`
+
+Pi realtime relay uses the same shapes with the `pi:` prefix. A socket binds to the first valid runtime frame it sends; later explicit runtime frames on that socket must keep the same runtime so a host/client cannot cross-mount relay traffic after registration. Frames that omit `runtime` after binding inherit the socket runtime, preserving Hermes back-compat while keeping Pi response/cancel frames on the Pi Redis channels.
 
 ## Verification
 

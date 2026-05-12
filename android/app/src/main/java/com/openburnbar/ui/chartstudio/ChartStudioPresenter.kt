@@ -118,5 +118,7 @@ fun rememberChartStudioSnapshot(): State<ChartStudioPresenter.Snapshot?> =
 @Composable
 fun rememberChartStudioFabBinding() {
     val context = LocalContext.current
-    remember(context) { ChartStudioPresenter.bindToPrefs(context); Unit }
+    androidx.compose.runtime.LaunchedEffect(context) {
+        ChartStudioPresenter.bindToPrefs(context)
+    }
 }

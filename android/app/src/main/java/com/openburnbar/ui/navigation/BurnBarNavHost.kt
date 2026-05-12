@@ -191,7 +191,7 @@ fun BurnBarNavHost(
             // Chart Studio overlay — fullscreen when presented, FAB when
             // minimized. Hidden mode is a no-op. Sits above everything else
             // including the floating chat pill.
-            val hermesService: com.openburnbar.data.hermes.HermesService = viewModel()
+            val hermesService = remember { com.openburnbar.data.hermes.HermesService() }
             com.openburnbar.ui.chartstudio.ChartStudioOverlay(hermes = hermesService)
         } else {
             val isSigningIn by userStore.isSigningIn.collectAsState()

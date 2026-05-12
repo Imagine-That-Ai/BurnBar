@@ -120,11 +120,14 @@ class MenuBarService : Service() {
         }
 
         fun buildNotification(context: Context, snap: MenuBarSnapshot): Notification {
-            val openDashboard = PendingIntent.getActivity(
+            // Different tap-targets depending on state — a streaming notif
+            // jumps straight to Hermes; an idle glance lands on the dashboard.
+            val tapUri = if (snap.streaming) "burnbar://hermes" else "burnbar://dashboard"
+            val tapIntent = PendingIntent.getActivity(
                 context, 0,
                 Intent(context, MainActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    data = android.net.Uri.parse("burnbar://dashboard")
+                    data = android.net.Uri.parse(tapUri)
                 },
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
@@ -133,17 +136,37 @@ class MenuBarService : Service() {
             val sub = if (snap.streaming) "Hermes is thinking…"
                 else "Δ ${MenuBarController.formatCost(snap.costToday - snap.costYesterday)} vs. yesterday"
 
-            return NotificationCompat.Builder(context, CHANNEL_ID)
+            val builder = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(title)
                 .setContentText(sub)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setCategory(NotificationCompat.CATEGORY_STATUS)
-                .setContentIntent(openDashboard)
+                .setContentIntent(tapIntent)
                 .setShowWhen(false)
-                .build()
+
+            if (snap.streaming) {
+                // Streaming → upgrade to a Live-Update analog of iOS's Live
+                // Activity: indeterminate progress bar + richer detail text
+                // and elevated priority so Android 14+ surfaces it as a
+                // pinned chip in the status bar.
+                builder
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setStyle(
+                        NotificationCompat.BigTextStyle()
+                            .bigText(
+                                "Drawing your chart — ${MenuBarController.formatCost(snap.costToday)} today, " +
+                                "${snap.totalTokensToday} tokens. Tap to open Hermes."
+                            )
+                    )
+                    .setProgress(0, 0, true)
+                    .setUsesChronometer(true)
+            } else {
+                builder.setPriority(NotificationCompat.PRIORITY_LOW)
+            }
+
+            return builder.build()
         }
     }
 }

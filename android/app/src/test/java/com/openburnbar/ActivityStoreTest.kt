@@ -6,12 +6,14 @@ import com.openburnbar.data.models.ProjectSummary
 import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.data.stores.StreamsSegment
 import io.mockk.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ActivityStoreTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
@@ -20,7 +22,7 @@ class ActivityStoreTest {
     fun `loadInitial fetches first page`() = runTest {
         val mockRepo = mockk<FirestoreRepository>()
         val usages = listOf(TokenUsage(id = "1", provider = "openai", model = "gpt-4", cost = 0.50, timestamp = 1700000000000L))
-        coEvery { mockRepo.fetchUsagePage(any(), any(), any(), any(), any(), any(), any()) } returns (usages to null)
+        coEvery { mockRepo.fetchUsagePage(any(), any(), any(), any(), any(), any(), any()) } returns (usages to mockk(relaxed = true))
         every { mockRepo.listenToUsagePage() } returns flowOf(usages)
 
         val store = ActivityStore(mockRepo)

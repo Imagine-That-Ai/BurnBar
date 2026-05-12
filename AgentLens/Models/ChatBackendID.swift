@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// User-selected chat engine (replaces the old Index vs Hermes mode split).
 enum ChatBackendID: String, Identifiable, Codable {
@@ -38,6 +39,39 @@ enum ChatBackendID: String, Identifiable, Codable {
         case .hermes: return "Hermes"
         case .openclaw: return "Claw"
         case .piAgent: return "Pi"
+        }
+    }
+
+    // MARK: - Visual identity (Plan 2 parity)
+
+    /// Caduceus ☿ for Hermes, π for Pi, sparkle for CLI/Claw.
+    var glyph: String {
+        switch self {
+        case .hermes:    return "\u{263F}"
+        case .piAgent:   return "\u{03C0}"
+        case .codex:     return "\u{21BB}"
+        case .claude:    return "\u{2726}"
+        case .openclaw:  return "\u{26A1}"
+        }
+    }
+
+    /// Gradient fill for the active backend pill / hero emblem.
+    var gradient: any ShapeStyle {
+        switch self {
+        case .hermes:
+            return DesignSystem.Colors.mercuryGradient
+        case .piAgent:
+            return DesignSystem.Colors.piGradient
+        case .codex, .claude, .openclaw:
+            return DesignSystem.Colors.accentGradient
+        }
+    }
+
+    /// Foreground color rendered over the gradient fill.
+    var activeForeground: Color {
+        switch self {
+        case .hermes: return Color(hex: "151210")
+        default:      return .white
         }
     }
 

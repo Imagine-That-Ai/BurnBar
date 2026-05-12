@@ -2,12 +2,15 @@ import SwiftUI
 import AppKit
 import OpenBurnBarCore
 
-// MARK: - Hermes Popover Chat View
+// MARK: - Assistants Popover Chat View
 
 /// Full chat experience inside the menu bar popover.
-/// Replaces the default popover content when Hermes chat is active.
+/// Renders whichever backend the user has selected (Hermes, Pi, Codex, etc.).
 /// Layout: provider hero → chat thread → input → dashboard link.
-struct HermesPopoverChatView: View {
+///
+/// Plan 2 parity: hero card emblem, glyph, border gradient, and status tint
+/// all switch with the active `ChatBackendID`.
+struct AssistantsPopoverChatView: View {
     @Bindable var controller: ChatSessionController
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
     var settingsManager: SettingsManager
@@ -22,7 +25,7 @@ struct HermesPopoverChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            hermesHeroCard
+            runtimeHeroCard
             HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
                 ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
                 Spacer(minLength: 0)
@@ -32,9 +35,9 @@ struct HermesPopoverChatView: View {
             .padding(.vertical, DesignSystem.Spacing.xs)
             .background(DesignSystem.Colors.surface.opacity(0.35))
             OpenBurnBarHermesOperatingStrip(layer: operatingLayer)
-            Divider().background(DesignSystem.Colors.hermesMercury.opacity(0.3))
+            Divider().background(runtimeDividerTint.opacity(0.3))
             chatThread
-            Divider().background(DesignSystem.Colors.hermesMercury.opacity(0.3))
+            Divider().background(runtimeDividerTint.opacity(0.3))
             inputRow
             bottomBar
         }
@@ -70,26 +73,17 @@ struct HermesPopoverChatView: View {
 
     // MARK: - Hero Card
 
-    private var hermesHeroCard: some View {
+    private var runtimeHeroCard: some View {
         HStack(spacing: DesignSystem.Spacing.md) {
             // Provider emblem
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                DesignSystem.Colors.hermesMercury.opacity(0.15),
-                                DesignSystem.Colors.hermesAureate.opacity(0.10)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(AnyShapeStyle(heroCardEmblemFill))
                     .frame(width: 36, height: 36)
 
-                Text("\u{263F}")
+                Text(controller.chatBackend.glyph)
                     .font(.system(size: 18, weight: .medium, design: .rounded))
-                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    .foregroundStyle(heroCardGlyphColor)
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -97,27 +91,7 @@ struct HermesPopoverChatView: View {
                     .font(DesignSystem.Typography.headline)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                if controller.chatBackend == .hermes, let modelName = controller.hermesModelName {
-                    HStack(spacing: 4) {
-                        modelBrandDot(for: modelName)
-                        Text(Self.abbreviateModelName(modelName))
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .lineLimit(1)
-                    }
-                } else if controller.chatBackend == .hermes, controller.hermesAvailable {
-                    Text("Connected")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.success)
-                } else if controller.chatBackend == .openclaw, controller.openClawAvailable {
-                    Text("Connected")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.success)
-                } else {
-                    Text("Offline")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
+                heroCardStatusText
             }
 
             Spacer()
@@ -127,7 +101,7 @@ struct HermesPopoverChatView: View {
             } label: {
                 Image(systemName: "folder")
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    .foregroundStyle(heroCardIconTint)
             }
             .buttonStyle(.plain)
             .popoverTooltip("Show this chat’s workspace in Finder — each new chat uses its own folder under OpenBurnBar’s Application Support.")
@@ -154,6 +128,118 @@ struct HermesPopoverChatView: View {
             DesignSystem.Colors.surfaceElevated
         }
         .mercuryShimmer(active: controller.isStreaming)
+    }
+
+    @ViewBuilder
+    private var heroCardStatusText: some View {
+        switch controller.chatBackend {
+        case .hermes:
+            if let modelName = controller.hermesModelName {
+                HStack(spacing: 4) {
+                    modelBrandDot(for: modelName)
+                    Text(Self.abbreviateModelName(modelName))
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+            } else if controller.hermesAvailable {
+                Text("Connected")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.success)
+            } else {
+                Text("Offline")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+        case .piAgent:
+            if let modelName = controller.piAgentModelName {
+                HStack(spacing: 4) {
+                    modelBrandDot(for: modelName)
+                    Text(Self.abbreviateModelName(modelName))
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+            } else if controller.piAgentAvailable {
+                Text("Connected")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.success)
+            } else {
+                Text("Offline")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+        case .openclaw:
+            if controller.openClawAvailable {
+                Text("Connected")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.success)
+            } else {
+                Text("Offline")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+        default:
+            Text("Connected")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.success)
+        }
+    }
+
+    private var heroCardEmblemFill: any ShapeStyle {
+        switch controller.chatBackend {
+        case .hermes:
+            return LinearGradient(
+                colors: [
+                    DesignSystem.Colors.hermesMercury.opacity(0.15),
+                    DesignSystem.Colors.hermesAureate.opacity(0.10)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .piAgent:
+            return LinearGradient(
+                colors: [
+                    DesignSystem.Colors.whimsy.opacity(0.15),
+                    DesignSystem.Colors.whimsy.opacity(0.07)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        default:
+            return LinearGradient(
+                colors: [
+                    DesignSystem.Colors.whimsy.opacity(0.10),
+                    DesignSystem.Colors.ember.opacity(0.05)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    private var heroCardGlyphColor: Color {
+        switch controller.chatBackend {
+        case .hermes:   return DesignSystem.Colors.hermesAureate
+        case .piAgent:  return DesignSystem.Colors.whimsy
+        default:        return DesignSystem.Colors.textSecondary
+        }
+    }
+
+    private var heroCardIconTint: Color {
+        switch controller.chatBackend {
+        case .hermes:   return DesignSystem.Colors.hermesAureate
+        case .piAgent:  return DesignSystem.Colors.whimsy
+        default:        return DesignSystem.Colors.textSecondary
+        }
+    }
+
+    private var runtimeDividerTint: Color {
+        switch controller.chatBackend {
+        case .hermes:   return DesignSystem.Colors.hermesMercury
+        case .piAgent:  return DesignSystem.Colors.whimsy
+        default:        return DesignSystem.Colors.border
+        }
     }
 
     @ViewBuilder
@@ -217,9 +303,9 @@ struct HermesPopoverChatView: View {
 
     private var emptyState: some View {
         VStack(spacing: DesignSystem.Spacing.md) {
-            Text("\u{263F}")
+            Text(controller.chatBackend.glyph)
                 .font(.system(size: 32))
-                .foregroundStyle(DesignSystem.Colors.hermesMercury.opacity(0.4))
+                .foregroundStyle(heroCardGlyphColor.opacity(0.4))
 
             Text("Ask \(controller.chatBackend.displayName)")
                 .font(DesignSystem.Typography.body)
@@ -270,7 +356,7 @@ struct HermesPopoverChatView: View {
                     } label: {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.system(size: 20))
-                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                            .foregroundStyle(heroCardIconTint)
                     }
                     .buttonStyle(.plain)
                 }
@@ -302,7 +388,7 @@ struct HermesPopoverChatView: View {
         } label: {
             Image(systemName: "paperclip")
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                .foregroundStyle(heroCardIconTint)
                 .frame(width: 26, height: 26)
         }
         .menuStyle(.borderlessButton)
@@ -371,7 +457,7 @@ struct HermesPopoverChatView: View {
                     Image(systemName: "arrow.up.right")
                         .font(.system(size: 9, weight: .bold))
                 }
-                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                .foregroundStyle(heroCardIconTint)
             }
             .buttonStyle(.plain)
         }
@@ -396,6 +482,11 @@ struct HermesPopoverChatView: View {
         await controller.send()
     }
 }
+
+// MARK: - Backward compatibility
+
+@available(*, deprecated, renamed: "AssistantsPopoverChatView")
+typealias HermesPopoverChatView = AssistantsPopoverChatView
 
 // MARK: - Hermes Popover Bubble
 

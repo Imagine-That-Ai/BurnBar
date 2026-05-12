@@ -37,7 +37,7 @@ android {
         applicationId = "com.openburnbar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
+        versionCode = 3
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -120,6 +120,9 @@ dependencies {
 
     // Glance for Widget
     implementation("androidx.glance:glance-appwidget:1.1.1")
+
+    // WorkManager — schedules the periodic widget snapshot refresh.
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     // DataStore for preferences
     implementation("androidx.datastore:datastore-preferences:1.1.1")

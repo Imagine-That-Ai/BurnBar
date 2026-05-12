@@ -193,11 +193,23 @@ struct ChatPanel: View {
 
     @State private var pillDragStart: CGSize?
 
+    // MARK: - Panel helpers
+
+    private var panelIconTint: Color {
+        switch controller.chatBackend {
+        case .hermes:   return DesignSystem.Colors.hermesAureate
+        case .piAgent:  return DesignSystem.Colors.whimsy
+        default:        return DesignSystem.Colors.whimsy
+        }
+    }
+
     private var minimizedPill: some View {
-        let modeColor: Color = controller.chatBackend == .hermes
+        let backend = controller.chatBackend
+        let modeColor: Color = backend == .hermes
             ? DesignSystem.Colors.hermesAureate
-            : DesignSystem.Colors.whimsy
-        let modeIcon = controller.chatBackend == .hermes ? "\u{263F}" : "bubble.left.and.bubble.right.fill"
+            : (backend == .piAgent ? DesignSystem.Colors.whimsy : DesignSystem.Colors.whimsy)
+        let modeGlyph = backend.glyph
+        let usesGlyph = backend == .hermes || backend == .piAgent
 
         return Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -205,12 +217,12 @@ struct ChatPanel: View {
             }
         } label: {
             HStack(spacing: DesignSystem.Spacing.sm) {
-                if controller.chatBackend == .hermes {
-                    Text(modeIcon)
+                if usesGlyph {
+                    Text(modeGlyph)
                         .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundStyle(modeColor)
                 } else {
-                    Image(systemName: modeIcon)
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(modeColor)
                 }
@@ -428,11 +440,7 @@ struct ChatPanel: View {
             } label: {
                 Image(systemName: "folder")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(
-                        controller.chatBackend == .hermes
-                            ? DesignSystem.Colors.hermesAureate
-                            : DesignSystem.Colors.whimsy
-                    )
+                    .foregroundStyle(panelIconTint)
             }
             .buttonStyle(.plain)
             .help("Show this chat’s workspace in Finder — each new chat uses its own folder under OpenBurnBar’s Application Support.")
@@ -445,11 +453,7 @@ struct ChatPanel: View {
             } label: {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(
-                        controller.chatBackend == .hermes
-                            ? DesignSystem.Colors.hermesAureate
-                            : DesignSystem.Colors.whimsy
-                    )
+                    .foregroundStyle(panelIconTint)
             }
             .buttonStyle(.plain)
             .help("New chat")
@@ -473,11 +477,7 @@ struct ChatPanel: View {
                 Button(action: onPopOut) {
                     Image(systemName: "rectangle.on.rectangle")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(
-                            controller.chatBackend == .hermes
-                                ? DesignSystem.Colors.hermesAureate
-                                : DesignSystem.Colors.whimsy
-                        )
+                        .foregroundStyle(panelIconTint)
                 }
                 .buttonStyle(.plain)
                 .help("Pop out chat into its own window")
@@ -488,11 +488,7 @@ struct ChatPanel: View {
                 Button(action: onMaximize) {
                     Image(systemName: "arrow.up.left.and.arrow.down.right.square")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(
-                            controller.chatBackend == .hermes
-                                ? DesignSystem.Colors.hermesAureate
-                                : DesignSystem.Colors.whimsy
-                        )
+                        .foregroundStyle(panelIconTint)
                 }
                 .buttonStyle(.plain)
                 .help("Maximize chat into the dashboard workspace")
@@ -773,15 +769,23 @@ struct ChatPanel: View {
     }
 
     private var inputStrokeGradient: LinearGradient {
-        controller.chatBackend == .hermes
-            ? LinearGradient(
+        switch controller.chatBackend {
+        case .hermes:
+            return LinearGradient(
                 colors: [DesignSystem.Colors.hermesMercury.opacity(0.4), DesignSystem.Colors.hermesAureate.opacity(0.3)],
                 startPoint: .topLeading, endPoint: .bottomTrailing
-              )
-            : LinearGradient(
+            )
+        case .piAgent:
+            return LinearGradient(
+                colors: [DesignSystem.Colors.whimsy.opacity(0.4), DesignSystem.Colors.whimsy.opacity(0.2)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+        default:
+            return LinearGradient(
                 colors: [DesignSystem.Colors.whimsy.opacity(0.3), DesignSystem.Colors.border.opacity(0.3)],
                 startPoint: .topLeading, endPoint: .bottomTrailing
-              )
+            )
+        }
     }
 
     private var inputRow: some View {

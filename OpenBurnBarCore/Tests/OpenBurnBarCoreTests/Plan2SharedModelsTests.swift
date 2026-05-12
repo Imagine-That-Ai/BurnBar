@@ -37,6 +37,30 @@ final class Plan2SharedModelsTests: XCTestCase {
         XCTAssertEqual(decoded, [.pi, .hermes])
     }
 
+    func test_realtimeRelayFrameCarriesOptionalRuntimeDiscriminator() throws {
+        let original = HermesRealtimeRelayFrame(
+            type: .requestStart,
+            uid: "user-1",
+            connectionId: "pi-relay-mac",
+            requestId: "req-1",
+            runtime: AssistantRuntimeID.pi.rawValue,
+            payload: HermesRealtimeRelayPayload(
+                operation: .models,
+                method: "GET",
+                payloadCiphertext: "cipher",
+                wrappedKey: "wrapped",
+                relayEncryption: HermesRelayCrypto.algorithm,
+                relayKeyVersion: HermesRelayCrypto.keyVersion
+            )
+        )
+
+        let blob = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(HermesRealtimeRelayFrame.self, from: blob)
+
+        XCTAssertEqual(decoded.runtime, "pi")
+        XCTAssertEqual(decoded.requestId, "req-1")
+    }
+
     // MARK: PiConnectionMode/Status
 
     func test_piConnectionMode_rawValuesStable() {

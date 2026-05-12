@@ -64,3 +64,19 @@ The checked-in policies watch, in priority order:
 2. Firestore data and index storage bytes.
 3. Cloud Run request rate as the hosted relay spend proxy.
 4. Redis memory pressure and connected-client count.
+
+## Realtime Redis
+
+Production relay Redis lives in the `burnbar` project as
+`us-central1/hermes-realtime-relay-redis-prod`. The launch gate requires:
+
+- Memorystore state `READY`
+- tier `STANDARD_HA`
+- at least 1 GiB provisioned memory
+- Cloud Run `hermes-realtime-relay` `REDIS_URL` host matching the Memorystore host
+- maintenance window set to Sunday 09:00 UTC
+
+Do not create one Redis instance per runtime. Hermes and Pi share this one
+production instance through runtime-scoped keys/channels; split only after
+Cloud Monitoring shows sustained Redis CPU/memory/network pressure or a real
+isolation/SLO requirement.
