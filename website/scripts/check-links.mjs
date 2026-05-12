@@ -72,12 +72,17 @@ for (const f of files) {
   const fileRel = relative(DIST, f);
   for (const h of hrefs(html)) {
     totalLinks++;
+    // Strip any leading whitespace / quotes before scheme check so URLs like
+    // " javascript:..." or "JaVaScRiPt:..." cannot bypass the prefix match
+    // (CodeQL: js/incomplete-url-scheme-check).
+    const trimmed = h.trim().toLowerCase();
     if (
-      h.startsWith("#") ||
-      h.startsWith("mailto:") ||
-      h.startsWith("tel:") ||
-      h.startsWith("data:") ||
-      h.startsWith("javascript:")
+      trimmed.startsWith("#") ||
+      trimmed.startsWith("mailto:") ||
+      trimmed.startsWith("tel:") ||
+      trimmed.startsWith("data:") ||
+      trimmed.startsWith("javascript:") ||
+      trimmed.startsWith("vbscript:")
     ) continue;
 
     if (h.startsWith("http://") || h.startsWith("https://")) {
