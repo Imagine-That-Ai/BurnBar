@@ -7,6 +7,33 @@ interface Props {
   variant?: "full" | "compact";
 }
 const { rows, caption, variant = "full" } = Astro.props;
+
+// Map provider id → real logo asset. Logos copied from the Android resource
+// bundle (android/app/src/main/res/drawable-nodpi/logo_*.png) at build time.
+const LOGOS: Record<string, string> = {
+  "claude-code": "/brand/providers/claude-code.png",
+  codex: "/brand/providers/codex.png",
+  openai: "/brand/providers/openai.png",
+  copilot: "/brand/providers/copilot.png",
+  cursor: "/brand/providers/cursor.png",
+  factory: "/brand/providers/factory.png",
+  minimax: "/brand/providers/minimax.png",
+  zai: "/brand/providers/zai.png",
+  warp: "/brand/providers/warp.png",
+  ollama: "/brand/providers/ollama.png",
+  kimi: "/brand/providers/kimi.png",
+  anthropic: "/brand/providers/anthropic.png",
+  aider: "/brand/providers/aider.png",
+  forge: "/brand/providers/forge.png",
+  "gemini-cli": "/brand/providers/gemini-cli.png",
+  cline: "/brand/providers/cline.png",
+  "roo-code": "/brand/providers/roo-code.png",
+  "kilo-code": "/brand/providers/kilo-code.png",
+  augment: "/brand/providers/augment.png",
+  windsurf: "/brand/providers/windsurf.png",
+  goose: "/brand/providers/goose.png",
+  openclaw: "/brand/providers/openclaw.png"
+};
 ---
 
 <div class={`provider-table ${variant === "compact" ? "provider-table--compact" : ""}`}>
@@ -23,26 +50,46 @@ const { rows, caption, variant = "full" } = Astro.props;
         </tr>
       </thead>
       <tbody>
-        {rows.map((row) => (
-          <tr>
-            <td>
-              <div class="pcell">
-                <strong>{row.name}</strong>
-                <span class="pcell__blurb">{row.blurb}</span>
-              </div>
-            </td>
-            <td><span class="mono small">{row.source}</span></td>
-            <td>
-              <span class={`tag tag--plain mono tag--${row.cost}`}>{row.cost}</span>
-            </td>
-            <td>
-              <span class={`tag tag--plain mono tag--${row.quota === "yes" ? "exact" : row.quota === "partial" ? "estimated" : "unavailable"}`}>
-                {row.quota === "yes" ? "yes" : row.quota === "partial" ? "partial" : "no"}
-              </span>
-            </td>
-            {variant === "full" && <td><span class="mono small">{row.cred}</span></td>}
-          </tr>
-        ))}
+        {rows.map((row) => {
+          const logo = LOGOS[row.id];
+          return (
+            <tr>
+              <td>
+                <div class="pcell">
+                  {logo ? (
+                    <img
+                      class="pcell__logo"
+                      src={logo}
+                      alt=""
+                      width="40"
+                      height="40"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <span class="pcell__logo pcell__logo--placeholder" aria-hidden="true">
+                      {row.name.charAt(0)}
+                    </span>
+                  )}
+                  <div class="pcell__text">
+                    <strong>{row.name}</strong>
+                    <span class="pcell__blurb">{row.blurb}</span>
+                  </div>
+                </div>
+              </td>
+              <td><span class="mono small">{row.source}</span></td>
+              <td>
+                <span class={`tag tag--plain mono tag--${row.cost}`}>{row.cost}</span>
+              </td>
+              <td>
+                <span class={`tag tag--plain mono tag--${row.quota === "yes" ? "exact" : row.quota === "partial" ? "estimated" : "unavailable"}`}>
+                  {row.quota === "yes" ? "yes" : row.quota === "partial" ? "partial" : "no"}
+                </span>
+              </td>
+              {variant === "full" && <td><span class="mono small">{row.cred}</span></td>}
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   </div>
@@ -98,7 +145,33 @@ const { rows, caption, variant = "full" } = Astro.props;
   }
   .pcell {
     display: grid;
-    gap: 4px;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 0.85rem;
+    align-items: center;
+  }
+  .pcell__logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 9px;
+    object-fit: cover;
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line);
+    flex-shrink: 0;
+    display: block;
+  }
+  .pcell__logo--placeholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 36, "wght" 540;
+    color: var(--text-mute);
+    font-size: 1.05rem;
+  }
+  .pcell__text {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
   }
   .pcell strong {
     color: var(--text-bright);

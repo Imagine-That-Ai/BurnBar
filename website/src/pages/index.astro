@@ -2,6 +2,7 @@
 import BaseLayout from "@layouts/BaseLayout.astro";
 import BarMockup from "@components/BarMockup.astro";
 import DashboardMockup from "@components/DashboardMockup.astro";
+import DeviceShowcase from "@components/DeviceShowcase.astro";
 import SurfaceCard from "@components/SurfaceCard.astro";
 import ProviderTable from "@components/ProviderTable.astro";
 import { SITE } from "@data/site";
@@ -176,6 +177,11 @@ const surfaceShowcase = SURFACES.filter((s) =>
       </div>
     </div>
   </section>
+
+  <!-- ────────────────────────────────────────────────
+       DEVICES (iPhone · iPad · Android)
+       ──────────────────────────────────────────────── -->
+  <DeviceShowcase />
 
   <!-- ────────────────────────────────────────────────
        PROVIDER PREVIEW

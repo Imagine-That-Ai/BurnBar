@@ -4,48 +4,40 @@
       <stop offset="0%" stop-color="#07060a"/>
       <stop offset="100%" stop-color="#100a14"/>
     </linearGradient>
-    <radialGradient id="glow" cx="220" cy="520" r="540" gradientUnits="userSpaceOnUse">
+    <radialGradient id="glow" cx="180" cy="560" r="620" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#ff6a1a" stop-opacity="0.35"/>
       <stop offset="60%" stop-color="#c63d0f" stop-opacity="0.10"/>
       <stop offset="100%" stop-color="#000" stop-opacity="0"/>
     </radialGradient>
-    <linearGradient id="ember" x1="0" y1="630" x2="1200" y2="0">
-      <stop offset="0%" stop-color="#c63d0f"/>
-      <stop offset="55%" stop-color="#ff6a1a"/>
-      <stop offset="100%" stop-color="#ffb547"/>
-    </linearGradient>
   </defs>
   <rect width="1200" height="630" fill="url(#bg)"/>
   <rect width="1200" height="630" fill="url(#glow)"/>
 
-  <!-- brandmark -->
-  <g transform="translate(80, 90)">
-    <rect x="0" y="20" width="68" height="34" rx="6" stroke="url(#ember)" stroke-width="3" fill="none"/>
-    <path d="M34 26 c-5 3.4 -6.7 7 -6.7 10.5 c0 3.85 3 7 6.7 7 c3.7 0 6.7 -3 6.7 -7 c0 -3.5 -1.7 -7 -6.7 -10.5 z" fill="url(#ember)"/>
-    <text x="86" y="50" font-family="Georgia, serif" font-size="32" fill="#f6f1e7" font-weight="500">
-      <tspan fill="#8b8275">Open</tspan>BurnBar
-    </text>
-  </g>
+  <!-- real brand logo -->
+  <image x="80" y="84" width="96" height="96" href="/brand/logo-512.png" />
+  <text x="200" y="148" font-family="Georgia, serif" font-size="38" fill="#f6f1e7" font-weight="500" letter-spacing="-1">
+    <tspan fill="#8b8275">Open</tspan>BurnBar
+  </text>
 
   <!-- headline -->
-  <text x="80" y="280" font-family="Georgia, 'Times New Roman', serif" font-size="92" font-weight="500" fill="#f6f1e7" letter-spacing="-3">
+  <text x="80" y="298" font-family="Georgia, 'Times New Roman', serif" font-size="98" font-weight="500" fill="#f6f1e7" letter-spacing="-3.5">
     Watch your AI agents.
   </text>
-  <text x="80" y="370" font-family="Georgia, 'Times New Roman', serif" font-size="92" font-weight="500" fill="#ff8a3d" letter-spacing="-3">
+  <text x="80" y="392" font-family="Georgia, 'Times New Roman', serif" font-size="98" font-style="italic" font-weight="400" fill="#ff8a3d" letter-spacing="-3.5">
     Before the bill.
   </text>
 
   <!-- subtitle -->
-  <text x="80" y="450" font-family="-apple-system, BlinkMacSystemFont, system-ui, sans-serif" font-size="26" fill="#d8d0c0" letter-spacing="-0.5">
+  <text x="80" y="472" font-family="-apple-system, BlinkMacSystemFont, system-ui, sans-serif" font-size="26" fill="#d8d0c0" letter-spacing="-0.5">
     Local-first cost, token, and quota tracking across Claude Code,
   </text>
-  <text x="80" y="486" font-family="-apple-system, BlinkMacSystemFont, system-ui, sans-serif" font-size="26" fill="#d8d0c0" letter-spacing="-0.5">
+  <text x="80" y="508" font-family="-apple-system, BlinkMacSystemFont, system-ui, sans-serif" font-size="26" fill="#d8d0c0" letter-spacing="-0.5">
     Codex, Cursor, Copilot, Factory, MiniMax and more.
   </text>
 
   <!-- mono badges -->
-  <g transform="translate(80, 538)" font-family="ui-monospace, 'JetBrains Mono', Menlo, monospace" font-size="14" letter-spacing="2" fill="#8b8275">
-    <text>MACOS · IOS · DAEMON · CLI · EDITOR · WIDGETS · SMART DISPLAYS</text>
+  <g transform="translate(80, 560)" font-family="ui-monospace, 'JetBrains Mono', Menlo, monospace" font-size="14" letter-spacing="2" fill="#8b8275">
+    <text>MACOS · IPHONE · IPAD · DAEMON · CLI · EDITOR · WIDGETS · SMART DISPLAYS</text>
   </g>
 
   <!-- url -->

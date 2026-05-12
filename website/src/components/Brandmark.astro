@@ -2,44 +2,22 @@
 interface Props {
   size?: number;
   withWordmark?: boolean;
-  variant?: "ember" | "mono";
 }
 
-const { size = 28, withWordmark = true, variant = "ember" } = Astro.props;
-const stroke = variant === "mono" ? "currentColor" : "url(#emberGrad)";
+const { size = 28, withWordmark = true } = Astro.props;
 ---
 
 <a href="/" class="brand" aria-label="OpenBurnBar — home">
-  <svg
+  <img
+    src="/brand/logo-256.png"
+    srcset="/brand/logo-256.png 1x, /brand/logo-512.png 2x"
+    alt=""
     width={size}
     height={size}
-    viewBox="0 0 32 32"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    aria-hidden="true"
-    role="img"
-  >
-    <defs>
-      <linearGradient id="emberGrad" x1="0" y1="32" x2="32" y2="0">
-        <stop offset="0%" stop-color="#c63d0f" />
-        <stop offset="55%" stop-color="#ff6a1a" />
-        <stop offset="100%" stop-color="#ffb547" />
-      </linearGradient>
-    </defs>
-    <!-- the bar (menu-bar reference) -->
-    <rect x="2" y="9" width="28" height="14" rx="3" stroke={stroke} stroke-width="1.5" />
-    <!-- the flame inside -->
-    <path
-      d="M16 12.5 c-2.2 1.4 -3 3 -3 4.5 c0 1.7 1.35 3 3 3 c1.65 0 3 -1.3 3 -3 c0 -1.5 -0.8 -3 -3 -4.5 z"
-      fill={stroke}
-    />
-    <!-- ticks (data ticks) -->
-    <path d="M4 26 V28 M9 26 V28 M14 26 V28 M19 26 V28 M24 26 V28 M29 26 V28"
-      stroke={stroke} stroke-width="1.2" stroke-linecap="round" opacity="0.7" />
-    <!-- top ascent (a small flame tip rising above the bar) -->
-    <path d="M16 4 C 17 6 17.5 7.2 17 9 M16 4 C 15 6 14.5 7.2 15 9"
-      stroke={stroke} stroke-width="1.2" stroke-linecap="round" fill="none" />
-  </svg>
+    class="brand__logo"
+    decoding="async"
+    fetchpriority="high"
+  />
   {
     withWordmark && (
       <span class="wordmark">
@@ -53,19 +31,24 @@ const stroke = variant === "mono" ? "currentColor" : "url(#emberGrad)";
   .brand {
     display: inline-flex;
     align-items: center;
-    gap: 0.625rem;
+    gap: 0.55rem;
     font-family: var(--font-display);
     letter-spacing: -0.018em;
     color: var(--text-bright);
-    font-size: 1.06rem;
+    font-size: 1.08rem;
     font-variation-settings: "opsz" 24, "wght" 540;
   }
   .brand:hover {
     color: var(--text-bright);
   }
-  .brand:hover svg path[fill],
-  .brand:hover svg rect[stroke] {
-    filter: drop-shadow(0 0 6px rgba(255, 106, 26, 0.6));
+  .brand__logo {
+    border-radius: 22%;
+    display: block;
+    transition: filter var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+  }
+  .brand:hover .brand__logo {
+    filter: drop-shadow(0 0 12px rgba(255, 106, 26, 0.55));
+    transform: rotate(-2deg);
   }
   .wordmark {
     display: inline-flex;

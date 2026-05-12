@@ -55,9 +55,11 @@ const fullTitle =
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={new URL(ogImage, SITE.url).toString()} />
 
-    <!-- Icons -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Icons (the real OpenBurnBar app icon at multiple sizes) -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/brand/logo-32.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/brand/favicon-64.png" />
+    <link rel="icon" type="image/png" sizes="256x256" href="/brand/logo-256.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 
     <!-- Preconnect: none. We self-host fonts. -->
 

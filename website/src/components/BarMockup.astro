@@ -1,128 +1,56 @@
 ---
-// Menu-bar popover mockup — the headline visual.
+// Real macOS menu-bar popover screenshot — captured 2026-05-12 from the
+// installed OpenBurnBar.app (showing 11,377 sessions of live data).
 ---
 
-<div class="bar-mockup" role="img" aria-label="OpenBurnBar menu-bar popover showing today's burn at $14.27 across 4 providers">
-  <div class="bar-mockup__menubar">
-    <span class="dot" aria-hidden="true"></span>
-    <span class="dot" aria-hidden="true"></span>
-    <span class="dot" aria-hidden="true"></span>
-    <span class="bar-mockup__menubar-spacer"></span>
-    <div class="bar-mockup__brand">
-      <svg viewBox="0 0 32 32" width="14" height="14" aria-hidden="true">
-        <defs>
-          <linearGradient id="bme" x1="0" y1="32" x2="32" y2="0">
-            <stop offset="0%" stop-color="#c63d0f"/><stop offset="100%" stop-color="#ffb547"/>
-          </linearGradient>
-        </defs>
-        <rect x="3" y="10" width="26" height="12" rx="2.5" stroke="url(#bme)" stroke-width="1.6" fill="none"/>
-        <path d="M16 12 c-2 1.3 -2.7 2.8 -2.7 4.2 c0 1.55 1.2 2.8 2.7 2.8 c1.5 0 2.7 -1.2 2.7 -2.8 c0 -1.4 -0.7 -2.9 -2.7 -4.2 z" fill="url(#bme)"/>
-      </svg>
-      <span>$14.27</span>
-      <span class="bar-mockup__menubar-cap mono">28K tok</span>
+<figure class="bar-mockup" aria-label="The real OpenBurnBar menu-bar popover showing live quota windows for Anthropic and Codex, plus an active mission with $2,662.51 burned across 15.12 billion tokens">
+  <div class="bar-mockup__chrome" aria-hidden="true">
+    <div class="bar-mockup__menubar">
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span class="bar-mockup__menubar-spacer"></span>
+      <img
+        src="/brand/logo-64.png"
+        srcset="/brand/logo-64.png 1x, /brand/logo-256.png 2x"
+        alt=""
+        width="14"
+        height="14"
+        class="bar-mockup__menubar-logo"
+      />
+      <span class="bar-mockup__menubar-label">OpenBurnBar</span>
+      <span class="bar-mockup__menubar-cap mono">Today · 0 tok</span>
     </div>
+    <div class="bar-mockup__menubar-arrow" aria-hidden="true"></div>
   </div>
 
-  <div class="bar-mockup__popover">
-    <div class="bar-mockup__head">
-      <div>
-        <div class="bar-mockup__eyebrow mono">TODAY · TUE 12 MAY</div>
-        <div class="bar-mockup__total"><span class="sign">$</span>14.27</div>
-        <div class="bar-mockup__delta mono">
-          <span class="trend trend--up">↑ 12%</span>
-          <span class="muted">vs yesterday · 28,140 tokens</span>
-        </div>
-      </div>
-      <div class="bar-mockup__sparkline" aria-hidden="true">
-        <svg viewBox="0 0 120 48" width="120" height="48">
-          <defs>
-            <linearGradient id="spark" x1="0" y1="0" x2="0" y2="48">
-              <stop offset="0%" stop-color="#ff6a1a" stop-opacity="0.5"/>
-              <stop offset="100%" stop-color="#ff6a1a" stop-opacity="0"/>
-            </linearGradient>
-          </defs>
-          <path d="M0 36 L10 30 L20 32 L30 24 L40 26 L50 18 L60 22 L70 14 L80 16 L90 10 L100 14 L110 8 L120 12 L120 48 L0 48 Z" fill="url(#spark)"/>
-          <path d="M0 36 L10 30 L20 32 L30 24 L40 26 L50 18 L60 22 L70 14 L80 16 L90 10 L100 14 L110 8 L120 12" stroke="#ff8a3d" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-    </div>
+  <img
+    src="/screens/macos-popover.png"
+    alt=""
+    width="540"
+    height="600"
+    class="bar-mockup__shot"
+    decoding="async"
+    fetchpriority="high"
+  />
 
-    <hr class="bar-mockup__rule" />
-
-    <div class="bar-mockup__sectionhead mono">TOP PROVIDERS</div>
-    <ul class="bar-mockup__list">
-      <li>
-        <span class="dot dot--anthropic" aria-hidden="true"></span>
-        <span class="lbl">Claude Code</span>
-        <span class="amt mono">$8.94</span>
-        <span class="tag tag--exact tag--plain mono">exact</span>
-      </li>
-      <li>
-        <span class="dot dot--codex" aria-hidden="true"></span>
-        <span class="lbl">Codex</span>
-        <span class="amt mono">$3.18</span>
-        <span class="tag tag--exact tag--plain mono">exact</span>
-      </li>
-      <li>
-        <span class="dot dot--cursor" aria-hidden="true"></span>
-        <span class="lbl">Cursor</span>
-        <span class="amt mono">$1.42</span>
-        <span class="tag tag--exact tag--plain mono">exact</span>
-      </li>
-      <li>
-        <span class="dot dot--copilot" aria-hidden="true"></span>
-        <span class="lbl">Copilot</span>
-        <span class="amt mono">$0.73</span>
-        <span class="tag tag--estimated tag--plain mono">est</span>
-      </li>
-    </ul>
-
-    <hr class="bar-mockup__rule" />
-
-    <div class="bar-mockup__sectionhead mono">QUOTA — NEXT TO BURN</div>
-    <ul class="bar-mockup__quota">
-      <li>
-        <div class="qrow">
-          <span class="qname">Claude Code · 5h</span>
-          <span class="qpct mono">68%</span>
-        </div>
-        <div class="qbar"><div class="qfill" style="width:68%"></div></div>
-        <span class="qreset mono muted">resets in 1h 42m</span>
-      </li>
-      <li>
-        <div class="qrow">
-          <span class="qname">Codex · primary</span>
-          <span class="qpct mono">41%</span>
-        </div>
-        <div class="qbar"><div class="qfill qfill--lower" style="width:41%"></div></div>
-        <span class="qreset mono muted">resets in 3h 12m</span>
-      </li>
-    </ul>
-
-    <hr class="bar-mockup__rule" />
-
-    <div class="bar-mockup__insight">
-      <span class="insight-bullet" aria-hidden="true">●</span>
-      <span class="insight-txt">
-        <strong>Spend up 12%</strong> vs yesterday — driven by a 4× jump in
-        <span class="mono">opus-4-7</span> calls.
-      </span>
-    </div>
-  </div>
-</div>
+  <figcaption class="bar-mockup__cap mono">
+    Real menu-bar popover · 11,377 sessions, live quota windows
+  </figcaption>
+</figure>
 
 <style>
   .bar-mockup {
-    --mw: 360px;
+    --w: 340px;
     display: grid;
-    gap: 10px;
+    gap: 12px;
     width: 100%;
-    max-width: var(--mw);
-    font-family: var(--font-body);
-    font-size: 13px;
-    line-height: 1.35;
-    color: var(--text-base);
+    max-width: var(--w);
+    margin: 0;
     container-type: inline-size;
+  }
+  .bar-mockup__chrome {
+    position: relative;
   }
   .bar-mockup__menubar {
     background: linear-gradient(180deg, #1a1822 0%, #14111c 100%);
@@ -142,174 +70,43 @@
     background: #2a2434;
   }
   .bar-mockup__menubar-spacer { flex: 1; }
-  .bar-mockup__brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+  .bar-mockup__menubar-logo { border-radius: 22%; }
+  .bar-mockup__menubar-label {
     color: var(--text-bright);
-    font-variation-settings: "wght" 540;
     font-size: 12.5px;
+    font-variation-settings: "wght" 540;
   }
   .bar-mockup__menubar-cap {
     font-size: 11px;
     color: var(--text-mute);
     letter-spacing: 0.04em;
   }
-  .bar-mockup__popover {
-    background:
-      radial-gradient(120% 80% at 0% 0%, rgba(255, 106, 26, 0.06), transparent 50%),
-      linear-gradient(180deg, #181321 0%, #11101a 100%);
-    border: 1px solid var(--ink-line);
-    border-radius: 14px;
-    padding: 18px;
-    box-shadow:
-      var(--shadow-card),
-      0 0 0 1px rgba(255, 106, 26, 0.06);
-    position: relative;
-  }
-  .bar-mockup__popover::before {
-    content: "";
+  .bar-mockup__menubar-arrow {
     position: absolute;
-    top: -7px;
-    left: 22px;
-    width: 14px;
-    height: 14px;
-    background: #181321;
-    border-top: 1px solid var(--ink-line);
-    border-left: 1px solid var(--ink-line);
+    bottom: -7px;
+    right: 28px;
+    width: 12px;
+    height: 12px;
+    background: linear-gradient(180deg, #1a1822 0%, #14111c 100%);
+    border: 1px solid var(--ink-line);
+    border-top: 0;
+    border-left: 0;
     transform: rotate(45deg);
   }
-  .bar-mockup__head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
+  .bar-mockup__shot {
+    width: 100%;
+    height: auto;
+    border-radius: 14px;
+    box-shadow:
+      0 28px 80px -36px rgba(0, 0, 0, 0.95),
+      0 0 0 1px rgba(255, 106, 26, 0.10),
+      0 0 60px -8px rgba(255, 106, 26, 0.20);
+    background: var(--ink-base);
   }
-  .bar-mockup__eyebrow {
-    font-size: 10.5px;
-    color: var(--text-mute);
-    letter-spacing: 0.18em;
-    margin-bottom: 4px;
-  }
-  .bar-mockup__total {
-    font-family: var(--font-display);
-    font-variation-settings: "opsz" 144, "wght" 480;
-    font-size: 40px;
-    line-height: 1;
-    color: var(--text-bright);
-    letter-spacing: -0.03em;
-  }
-  .bar-mockup__total .sign {
-    color: var(--ember-bright);
-    font-variation-settings: "wght" 360;
-    margin-right: 2px;
-  }
-  .bar-mockup__delta {
-    margin-top: 6px;
-    font-size: 11.5px;
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-  .trend--up { color: var(--ember-bright); }
-  .bar-mockup__rule {
-    border: 0;
-    border-top: 1px dashed var(--ink-line);
-    margin: 14px 0 10px;
-  }
-  .bar-mockup__sectionhead {
-    font-size: 10.5px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--text-mute);
-    margin-bottom: 8px;
-  }
-  .bar-mockup__list {
-    display: grid;
-    gap: 6px;
-  }
-  .bar-mockup__list li {
-    display: grid;
-    grid-template-columns: 14px 1fr auto auto;
-    gap: 9px;
-    align-items: center;
-    font-size: 13px;
-  }
-  .bar-mockup__list .dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-  }
-  .dot--anthropic { background: #d97757; }
-  .dot--codex { background: #6fd189; }
-  .dot--cursor { background: #ffb547; }
-  .dot--copilot { background: #8b95a8; }
-  .bar-mockup__list .lbl { color: var(--text-bright); }
-  .bar-mockup__list .amt { color: var(--text-bright); font-variation-settings: "wght" 500; }
-  .tag--plain {
-    padding: 1px 6px;
-    font-size: 9.5px;
-    text-transform: uppercase;
-  }
-
-  .bar-mockup__quota {
-    display: grid;
-    gap: 10px;
-  }
-  .qrow {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12.5px;
-  }
-  .qname { color: var(--text-bright); }
-  .qpct { color: var(--ember-bright); font-variation-settings: "wght" 500; }
-  .qbar {
-    margin-top: 4px;
-    height: 4px;
-    border-radius: 999px;
-    background: var(--ink-line);
-    overflow: hidden;
-    position: relative;
-  }
-  .qfill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--ember-deep), var(--ember-core), var(--ember-bright));
-    border-radius: inherit;
-    box-shadow: 0 0 8px rgba(255, 138, 61, 0.4);
-  }
-  .qfill--lower {
-    background: linear-gradient(90deg, var(--mercury-deep), var(--mercury-bright));
-    box-shadow: 0 0 8px rgba(214, 211, 223, 0.2);
-  }
-  .qreset {
-    display: inline-block;
-    margin-top: 4px;
-    font-size: 10.5px;
-    letter-spacing: 0.05em;
-  }
-  .bar-mockup__insight {
-    margin-top: 12px;
-    padding: 10px 12px;
-    border: 1px solid color-mix(in oklab, var(--ember-core) 30%, var(--ink-line));
-    border-radius: 10px;
-    background:
-      linear-gradient(135deg, rgba(255, 106, 26, 0.08), transparent 60%);
-    display: flex;
-    gap: 10px;
-    font-size: 12px;
-    color: var(--text-base);
-  }
-  .insight-bullet {
-    color: var(--ember-bright);
-    line-height: 1;
-    margin-top: 2px;
-    animation: pulseEmber 2.6s ease-in-out infinite;
-  }
-  .bar-mockup__insight strong {
-    color: var(--text-bright);
-  }
-  @keyframes pulseEmber {
-    0%, 100% { opacity: 1; text-shadow: 0 0 6px rgba(255, 138, 61, 0.6); }
-    50% { opacity: 0.6; text-shadow: 0 0 12px rgba(255, 138, 61, 0.9); }
+  .bar-mockup__cap {
+    font-size: var(--t-caption);
+    color: var(--text-dim);
+    text-align: center;
+    letter-spacing: 0.04em;
   }
 </style>
