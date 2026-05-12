@@ -13,7 +13,6 @@ public enum AppCheckDebugTokenEnvironment {
             setenv(key, value, overwrite)
         }
     ) -> String? {
-        #if DEBUG
         guard let token = existingToken(in: environment)
             ?? token(in: infoDictionary)
             ?? token(inPlistAt: firebasePlistPath)
@@ -28,9 +27,6 @@ public enum AppCheckDebugTokenEnvironment {
             _ = setEnvironment(firebaseDebugTokenKey, token, 0)
         }
         return token
-        #else
-        return nil
-        #endif
     }
 
     public static func token(in infoDictionary: [String: Any]?) -> String? {

@@ -101,6 +101,11 @@ final class FormattingTests: XCTestCase {
         XCTAssertEqual(999_000_000.formatAsTokens(), "999.0M")
     }
 
+    func test_formatAsTokens_billion() {
+        XCTAssertEqual(1_000_000_000.formatAsTokens(), "1.00B")
+        XCTAssertEqual(2_500_000_000.formatAsTokens(), "2.50B")
+    }
+
     // MARK: - Int.formatAsTokenVolume()
 
     func test_formatAsTokenVolume_smallValues() {

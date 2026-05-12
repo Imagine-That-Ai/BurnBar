@@ -388,6 +388,53 @@ final class SettingsManager {
         set { chatBackend.hermesRealtimeRelayURL = newValue }
     }
 
+    var launchHermesWithOpenBurnBar: Bool {
+        get { chatBackend.launchHermesWithOpenBurnBar }
+        set { chatBackend.launchHermesWithOpenBurnBar = newValue }
+    }
+
+    // MARK: Pi Agent Connection Profile
+
+    var piAgentGatewayBaseURL: String {
+        get { chatBackend.piAgentGatewayBaseURL }
+        set { chatBackend.piAgentGatewayBaseURL = newValue }
+    }
+
+    var piAgentBearerToken: String {
+        get { chatBackend.piAgentBearerToken }
+        set { chatBackend.piAgentBearerToken = newValue }
+    }
+
+    var piAgentRedisURL: String {
+        get { chatBackend.piAgentRedisURL }
+        set { chatBackend.piAgentRedisURL = newValue }
+    }
+
+    var piAgentSelectedInstanceID: String {
+        get { chatBackend.piAgentSelectedInstanceID }
+        set { chatBackend.piAgentSelectedInstanceID = newValue }
+    }
+
+    var piAgentChatModelOverride: String {
+        get { chatBackend.piAgentChatModelOverride }
+        set { chatBackend.piAgentChatModelOverride = newValue }
+    }
+
+    var launchPiAgentsWithOpenBurnBar: Bool {
+        get { chatBackend.launchPiAgentsWithOpenBurnBar }
+        set { chatBackend.launchPiAgentsWithOpenBurnBar = newValue }
+    }
+
+    var piRemoteRelayEnabled: Bool {
+        get { chatBackend.piRemoteRelayEnabled }
+        set { chatBackend.piRemoteRelayEnabled = newValue }
+    }
+
+    var piRealtimeRelayURL: String {
+        get { chatBackend.piRealtimeRelayURL }
+        set { chatBackend.piRealtimeRelayURL = newValue }
+    }
+
     var chatBackendOnboardingCompleted: Bool {
         get { chatBackend.chatBackendOnboardingCompleted }
         set { chatBackend.chatBackendOnboardingCompleted = newValue }
@@ -626,6 +673,21 @@ final class SettingsManager {
         set { quotas.smartHubHomeAssistantRecoveryWebhookURL = newValue }
     }
 
+    var pixelClockConfig: PixelClockConfig {
+        get { quotas.pixelClockConfig }
+        set { quotas.pixelClockConfig = newValue }
+    }
+
+    var smartHubDisplayConfig: SmartHubDisplayConfig {
+        get { quotas.smartHubDisplayConfig }
+        set { quotas.smartHubDisplayConfig = newValue }
+    }
+
+    var smartDisplayOrder: SmartDisplayOrder {
+        get { quotas.smartDisplayOrder }
+        set { quotas.smartDisplayOrder = newValue }
+    }
+
     var castSelectedDeviceServiceName: String {
         get { quotas.castSelectedDeviceServiceName }
         set { quotas.castSelectedDeviceServiceName = newValue }
@@ -639,6 +701,26 @@ final class SettingsManager {
     var castSelectedDeviceModel: String {
         get { quotas.castSelectedDeviceModel }
         set { quotas.castSelectedDeviceModel = newValue }
+    }
+
+    var castSelectedDeviceHost: String {
+        get { quotas.castSelectedDeviceHost }
+        set { quotas.castSelectedDeviceHost = newValue }
+    }
+
+    var castSelectedDevicePort: Int {
+        get { quotas.castSelectedDevicePort }
+        set { quotas.castSelectedDevicePort = newValue }
+    }
+
+    var castSelectedDeviceIdentifier: String {
+        get { quotas.castSelectedDeviceIdentifier }
+        set { quotas.castSelectedDeviceIdentifier = newValue }
+    }
+
+    var castSelectedDeviceSupportsDisplay: Bool {
+        get { quotas.castSelectedDeviceSupportsDisplay }
+        set { quotas.castSelectedDeviceSupportsDisplay = newValue }
     }
 
     // MARK: Provider Paths
@@ -695,6 +777,15 @@ final class SettingsManager {
 
     func resolvedHermesChatModel(gatewayAdvertisedModel: String?) -> String {
         Self.resolvedHermesChatModel(override: hermesChatModelOverride, gatewayAdvertisedModel: gatewayAdvertisedModel)
+    }
+
+    // MARK: Pi Agent Model Resolution
+    static func resolvedPiChatModel(override: String, gatewayAdvertisedModel: String?) -> String {
+        ChatBackendSettings.resolvedPiChatModel(override: override, gatewayAdvertisedModel: gatewayAdvertisedModel)
+    }
+
+    func resolvedPiChatModel(gatewayAdvertisedModel: String?) -> String {
+        chatBackend.resolvedPiChatModel(gatewayAdvertisedModel: gatewayAdvertisedModel)
     }
 
     // MARK: JSON Helpers

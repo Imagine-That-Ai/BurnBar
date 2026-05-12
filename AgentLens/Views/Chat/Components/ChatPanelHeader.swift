@@ -7,6 +7,8 @@ struct ChatPanelHeader: View {
     var onMinimize: () -> Void
     var onClose: () -> Void
     var onShowClearChatPrompt: () -> Void
+    var onMaximize: (() -> Void)? = nil
+    var onPopOut: (() -> Void)? = nil
     @State private var showChatMenu = false
     @State private var headerDragStart: CGSize?
     var containerSize: CGSize
@@ -42,7 +44,7 @@ struct ChatPanelHeader: View {
             } label: {
                 Image(systemName: "folder")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(controller.chatBackend == .hermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.whimsy)
+                    .foregroundStyle(headerIconTint)
             }
             .buttonStyle(.plain)
             .help("Show this chat's workspace in Finder")
@@ -54,7 +56,7 @@ struct ChatPanelHeader: View {
             } label: {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(controller.chatBackend == .hermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.whimsy)
+                    .foregroundStyle(headerIconTint)
             }
             .buttonStyle(.plain)
             .help("New chat")
@@ -70,6 +72,26 @@ struct ChatPanelHeader: View {
             .help("Chat options")
             .popover(isPresented: $showChatMenu, arrowEdge: .top) {
                 ChatMenuPopover(controller: controller, onShowClearChatPrompt: onShowClearChatPrompt)
+            }
+
+            if let onPopOut {
+                Button(action: onPopOut) {
+                    Image(systemName: "rectangle.on.rectangle")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(headerIconTint)
+                }
+                .buttonStyle(.plain)
+                .help("Pop out chat into its own window")
+            }
+
+            if let onMaximize {
+                Button(action: onMaximize) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right.square")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(headerIconTint)
+                }
+                .buttonStyle(.plain)
+                .help("Maximize chat into the dashboard workspace")
             }
 
             Button {
@@ -94,5 +116,15 @@ struct ChatPanelHeader: View {
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, DesignSystem.Spacing.sm)
         .background(Color.white.opacity(0.02))
+    }
+
+    // MARK: - Helpers
+
+    private var headerIconTint: Color {
+        switch controller.chatBackend {
+        case .hermes:   return DesignSystem.Colors.hermesAureate
+        case .piAgent:  return DesignSystem.Colors.whimsy
+        default:        return DesignSystem.Colors.whimsy
+        }
     }
 }

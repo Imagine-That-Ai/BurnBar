@@ -151,6 +151,7 @@ struct HermesSetupWizardView: View {
 
     @State private var currentStep: HermesSetupStep = .prepare
     @State private var navigationDirection: Edge = .trailing
+    @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
 
     // Install step state
     @State private var hermesCLIInstalled: Bool?
@@ -392,10 +393,26 @@ struct HermesSetupWizardView: View {
 
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                    commandCopyRow(
-                        label: "Run in Terminal",
-                        command: "hermes gateway run"
-                    )
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Button {
+                            openHermesRuntime()
+                        } label: {
+                            Label("Open Hermes + Gateway", systemImage: "play.circle.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DesignSystem.Colors.hermesAureate)
+                        .disabled(hermesRuntimeLauncher.isBusy)
+
+                        Button {
+                            probeGateway()
+                        } label: {
+                            Label("Check Health", systemImage: "waveform.path.ecg")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(hermesRuntimeLauncher.isBusy)
+                    }
+                    .controlSize(.small)
+                    .font(DesignSystem.Typography.caption)
 
                     HStack(spacing: DesignSystem.Spacing.md) {
                         ZStack {
@@ -416,6 +433,13 @@ struct HermesSetupWizardView: View {
                                 .fontWeight(.medium)
                                 .foregroundStyle(statusDotColor)
 
+                            if !hermesRuntimeLauncher.status.message.isEmpty {
+                                Text(hermesRuntimeLauncher.status.message)
+                                    .font(DesignSystem.Typography.tiny)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
                             if isGatewayRunning, let model = gatewayModelName {
                                 Text("Model: \(model)")
                                     .font(DesignSystem.Typography.monoTiny)
@@ -432,6 +456,13 @@ struct HermesSetupWizardView: View {
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.hermesAureate)
                     }
+
+                    Toggle("Launch Hermes Dashboard and gateway when OpenBurnBar opens", isOn: Binding(
+                        get: { settingsManager.launchHermesWithOpenBurnBar },
+                        set: { settingsManager.launchHermesWithOpenBurnBar = $0 }
+                    ))
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
 
                     Toggle(isOn: Binding(
                         get: { settingsManager.hermesRemoteRelayEnabled },
@@ -673,7 +704,7 @@ struct HermesSetupWizardView: View {
 
     private var statusText: String {
         if isGatewayRunning { return "Gateway is running" }
-        if isProbingGateway { return "Probing \(settingsManager.hermesGatewayBaseURL)…" }
+        if isProbingGateway || hermesRuntimeLauncher.isBusy { return "Checking Hermes…" }
         if probeAttempts > 0 { return "Not reachable yet" }
         return "Waiting for gateway"
     }
@@ -813,14 +844,29 @@ struct HermesSetupWizardView: View {
         isProbingGateway = true
         probeAttempts += 1
         Task {
-            let bridge = CLIBridge()
             let token = bearerTokenInput.isEmpty ? settingsManager.hermesBearerToken : bearerTokenInput
             let baseURL = URL(string: settingsManager.hermesGatewayBaseURL)
                 ?? URL(string: "http://127.0.0.1:8642")!
-            await bridge.probeHermesAvailability(baseURL: baseURL, bearerToken: token.isEmpty ? nil : token)
+            let status = await hermesRuntimeLauncher.refreshStatus(baseURL: baseURL, bearerToken: token.isEmpty ? nil : token)
             await MainActor.run {
-                isGatewayRunning = bridge.hermesAvailable
-                gatewayModelName = bridge.hermesModelName
+                isGatewayRunning = status.gatewayRunning
+                gatewayModelName = status.modelName
+                isProbingGateway = false
+            }
+        }
+    }
+
+    private func openHermesRuntime() {
+        isProbingGateway = true
+        probeAttempts += 1
+        Task {
+            let token = bearerTokenInput.isEmpty ? settingsManager.hermesBearerToken : bearerTokenInput
+            let baseURL = URL(string: settingsManager.hermesGatewayBaseURL)
+                ?? URL(string: "http://127.0.0.1:8642")!
+            let status = await hermesRuntimeLauncher.openHermesAndGateway(baseURL: baseURL, bearerToken: token.isEmpty ? nil : token)
+            await MainActor.run {
+                isGatewayRunning = status.gatewayRunning
+                gatewayModelName = status.modelName
                 isProbingGateway = false
             }
         }

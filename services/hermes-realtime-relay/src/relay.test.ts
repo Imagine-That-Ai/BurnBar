@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 import { HermesRealtimeRelaySession, type RelaySocket } from "./relay.js";
-import { PROTOCOL_VERSION, serializeFrame } from "./protocol.js";
+import { PROTOCOL_VERSION, serializeFrame, type HermesRelayRuntime } from "./protocol.js";
 import type { RelayQuotaStore } from "./quota.js";
 import type { RelayMessageBus } from "./redisHub.js";
 
@@ -43,13 +43,24 @@ class FakeBus implements RelayMessageBus {
 class FakeQuota implements RelayQuotaStore {
   frameLimitAfter = Number.POSITIVE_INFINITY;
   requestStarts = 0;
-  inFlight = new Set<string>();
+  inFlight = new Map<string, HermesRelayRuntime>();
   releasedSockets: string[] = [];
+  releasedRuntimeSockets: string[] = [];
 
   async reserveSocket(): Promise<void> {}
   async refreshSocket(): Promise<void> {}
   async releaseSocket(_uid: string, role: "host" | "client", sessionID: string): Promise<void> {
     this.releasedSockets.push(`${role}:${sessionID}`);
+  }
+  async reserveRuntimeSocket(): Promise<void> {}
+  async refreshRuntimeSocket(): Promise<void> {}
+  async releaseRuntimeSocket(
+    _uid: string,
+    role: "host" | "client",
+    sessionID: string,
+    runtime: HermesRelayRuntime
+  ): Promise<void> {
+    this.releasedRuntimeSockets.push(`${runtime}:${role}:${sessionID}`);
   }
   async checkFrameBytes(): Promise<void> {
     this.frameLimitAfter -= 1;
@@ -60,8 +71,8 @@ class FakeQuota implements RelayQuotaStore {
   async checkRequestStart(): Promise<void> {
     this.requestStarts += 1;
   }
-  async reserveInFlight(_uid: string, requestID: string): Promise<void> {
-    this.inFlight.add(requestID);
+  async reserveInFlight(_uid: string, requestID: string, runtime: HermesRelayRuntime): Promise<void> {
+    this.inFlight.set(requestID, runtime);
   }
   async releaseInFlight(_uid: string, requestID: string): Promise<void> {
     this.inFlight.delete(requestID);
@@ -141,7 +152,7 @@ test("routes request frames to registered host and response frames back to reque
   assert.ok(frameTypes(host).includes("host.ready"));
   assert.ok(frameTypes(host).includes("request.start"));
   assert.equal(quota.requestStarts, 1);
-  assert.equal(quota.inFlight.has("req-1"), true);
+  assert.equal(quota.inFlight.get("req-1"), "hermes");
 
   host.emit("message", Buffer.from(serializeFrame({
     type: "response.chunk",
@@ -172,6 +183,10 @@ test("routes request frames to registered host and response frames back to reque
   client.close();
   await flushRelay();
   assert.deepEqual(quota.releasedSockets.sort(), ["client:client-session", "host:host-session"]);
+  assert.deepEqual(
+    quota.releasedRuntimeSockets.sort(),
+    ["hermes:client:client-session", "hermes:host:host-session"]
+  );
 });
 
 test("rejects cross-user frames and closes the violating socket", async () => {
@@ -266,4 +281,92 @@ test("new host registration closes an older host session for the same connection
 
   assert.equal(oldHost.closes[0].code, 4000);
   assert.ok(frameTypes(newHost).includes("host.ready"));
+});
+
+test("keeps Pi relay traffic on Pi runtime channels and quotas", async () => {
+  const bus = new FakeBus();
+  const quota = new FakeQuota();
+  const host = new FakeSocket();
+  const client = new FakeSocket();
+  makeSession(host, bus, quota, "host", "pi-host-session").start();
+  makeSession(client, bus, quota, "client", "pi-client-session").start();
+
+  host.emit("message", Buffer.from(serializeFrame({
+    type: "host.register",
+    uid: "user-1",
+    connectionId: "pi-relay-mac",
+    protocolVersion: PROTOCOL_VERSION,
+    runtime: "pi",
+    payload: { capabilities: ["realtime_relay"] },
+  })));
+  await flushRelay();
+
+  client.emit("message", Buffer.from(serializeFrame({
+    type: "request.start",
+    uid: "user-1",
+    connectionId: "pi-relay-mac",
+    requestId: "pi-req-1",
+    protocolVersion: PROTOCOL_VERSION,
+    runtime: "pi",
+    payload: {
+      operation: "models",
+      method: "GET",
+      payloadCiphertext: "cipher",
+      wrappedKey: "wrapped",
+      relayEncryption: "p256-hkdf-sha256-aesgcm",
+      relayKeyVersion: 1,
+    },
+  })));
+  await flushRelay();
+
+  assert.equal(quota.inFlight.get("pi-req-1"), "pi");
+  assert.ok(frameTypes(host).includes("request.start"));
+
+  host.emit("message", Buffer.from(serializeFrame({
+    type: "response.complete",
+    uid: "user-1",
+    connectionId: "pi-relay-mac",
+    requestId: "pi-req-1",
+    protocolVersion: PROTOCOL_VERSION,
+    payload: { chunkCount: 0 },
+  })));
+  await flushRelay();
+
+  assert.equal(quota.inFlight.has("pi-req-1"), false);
+
+  host.close();
+  client.close();
+  await flushRelay();
+  assert.deepEqual(
+    quota.releasedRuntimeSockets.sort(),
+    ["pi:client:pi-client-session", "pi:host:pi-host-session"]
+  );
+});
+
+test("rejects sockets that try to switch relay runtimes", async () => {
+  const socket = new FakeSocket();
+  makeSession(socket, new FakeBus(), new FakeQuota(), "client", "client-session").start();
+
+  for (const runtime of ["hermes", "pi"] as const) {
+    socket.emit("message", Buffer.from(serializeFrame({
+      type: "request.start",
+      uid: "user-1",
+      connectionId: "relay-mac",
+      requestId: `req-${runtime}`,
+      protocolVersion: PROTOCOL_VERSION,
+      runtime,
+      payload: {
+        operation: "models",
+        method: "GET",
+        payloadCiphertext: "cipher",
+        wrappedKey: "wrapped",
+        relayEncryption: "p256-hkdf-sha256-aesgcm",
+        relayKeyVersion: 1,
+      },
+    })));
+    await flushRelay();
+  }
+
+  assert.equal(JSON.parse(socket.sent.at(-1)!).payload.error, "Relay socket runtime cannot change after registration.");
+  assert.equal(socket.closes.at(-1)?.code, 1008);
 });

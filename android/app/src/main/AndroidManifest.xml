@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:name=".BurnBarApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="BurnBar"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.BurnBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.BurnBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="burnbar" />
+            </intent-filter>
+        </activity>
+
+        <!-- BurnBar widgets — five Glance surfaces (3 home + 2 lock-screen) -->
+        <!-- Small (2×2). Class name is BurnBarWidgetReceiver so already-pinned
+             widgets from the legacy stub keep binding without a re-pin. -->
+        <receiver
+            android:name=".ui.widget.BurnBarWidgetReceiver"
+            android:label="@string/app_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/burnbar_widget_info" />
+        </receiver>
+
+        <!-- Medium (4×2). -->
+        <receiver
+            android:name=".ui.widget.BurnBarMediumWidgetReceiver"
+            android:label="@string/app_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/burnbar_widget_medium_info" />
+        </receiver>
+
+        <!-- Large (4×4). -->
+        <receiver
+            android:name=".ui.widget.BurnBarLargeWidgetReceiver"
+            android:label="@string/app_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/burnbar_widget_large_info" />
+        </receiver>
+
+        <!-- Lock-screen circular (1×1, keyguard|home_screen). -->
+        <receiver
+            android:name=".ui.widget.BurnBarLockCircularWidgetReceiver"
+            android:label="@string/app_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/burnbar_widget_lock_circular_info" />
+        </receiver>
+
+        <!-- Lock-screen rectangular (3×1, keyguard|home_screen). -->
+        <receiver
+            android:name=".ui.widget.BurnBarLockRectangularWidgetReceiver"
+            android:label="@string/app_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/burnbar_widget_lock_rectangular_info" />
+        </receiver>
+
+        <!-- BurnBar menu-bar simulation: foreground service + Quick Settings tile + transient activity -->
+        <service
+            android:name=".menubar.MenuBarService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".menubar.MenuBarTileService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="BurnBar"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <activity
+            android:name=".menubar.QuickGlanceActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="burnbar" android:host="quickglance" />
+            </intent-filter>
+        </activity>
+
+    </application>
+</manifest>

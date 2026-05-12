@@ -1,0 +1,36 @@
+{
+  "name": "@openburnbar/website",
+  "version": "1.0.0",
+  "description": "OpenBurnBar launch website — burnbar.ai",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build && node scripts/build-sitemap.mjs",
+    "preview": "astro preview --host 127.0.0.1 --port 4322",
+    "check": "astro check",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{astro,ts,tsx,css,md}\"",
+    "format:check": "prettier --check \"src/**/*.{astro,ts,tsx,css,md}\"",
+    "links:check": "node scripts/check-links.mjs",
+    "verify": "npm run check && npm run build && npm run links:check"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.4",
+    "@astrojs/mdx": "^3.1.9",
+    "@fontsource-variable/fraunces": "^5.2.9",
+    "@fontsource-variable/geist": "^5.2.8",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "astro": "^4.16.18",
+    "typescript": "^5.6.3"
+  },
+  "devDependencies": {
+    "lightningcss": "^1.32.0",
+    "prettier": "^3.4.2",
+    "prettier-plugin-astro": "^0.14.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

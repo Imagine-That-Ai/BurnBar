@@ -1,0 +1,412 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { SITE } from "@data/site";
+---
+
+<BaseLayout
+  title="Download"
+  description="Download OpenBurnBar. macOS public beta available now, iOS in App Store review, Cursor and VS Code extensions source-only."
+>
+  <section class="pagehead">
+    <div class="container">
+      <span class="eyebrow eyebrow--ember">Download</span>
+      <h1 class="pagehead__h">Get OpenBurnBar.</h1>
+      <p class="lead">
+        macOS is shipping as a public beta. iOS is in Apple review. The editor
+        extension is source-only for now — build locally and load unpacked.
+      </p>
+    </div>
+  </section>
+
+  <!-- MACOS -->
+  <section id="macos" class="dlsec">
+    <div class="container container--wide">
+      <div class="dlsec__head">
+        <div>
+          <span class="tag tag--beta tag--plain mono">Public beta · {SITE.macReleaseLatest}</span>
+          <h2>macOS app</h2>
+          <p class="lead">
+            Native Swift app. Runs as a menu-bar utility. macOS {SITE.macMin} or later.
+            Apple Silicon and Intel both supported.
+          </p>
+        </div>
+        <a class="btn btn--ember dlsec__primary" href={`${SITE.github}/releases/download/v${SITE.macReleaseLatest}/${SITE.macReleaseFile}`}>
+          Download DMG · {SITE.macReleaseLatest}
+          <span class="btn-arrow" aria-hidden="true">↓</span>
+        </a>
+      </div>
+
+      <ol class="steps">
+        <li>
+          <div class="step__num mono">01</div>
+          <div class="step__body">
+            <h3>Download &amp; open the DMG</h3>
+            <p>
+              Latest beta lives on
+              <a href={SITE.releasesUrl} target="_blank" rel="noopener noreferrer">GitHub Releases</a>.
+              Each release ships signed, notarized, with SHA-256 and SHA-512 checksums next to it.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div class="step__num mono">02</div>
+          <div class="step__body">
+            <h3>Drag OpenBurnBar.app to <code>/Applications</code></h3>
+            <p>
+              That's the install. No installer, no admin password.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div class="step__num mono">03</div>
+          <div class="step__body">
+            <h3>Launch &amp; find the menu bar</h3>
+            <p>
+              OpenBurnBar lives in the menu bar — no Dock icon. Click the
+              flame to open the popover. If Gatekeeper hesitates the first
+              time, right-click → Open.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div class="step__num mono">04</div>
+          <div class="step__body">
+            <h3>Watch the burn</h3>
+            <p>
+              The app reads logs in <code>~/.claude/</code>, <code>~/.codex/</code>,
+              <code>~/.factory/</code> and friends. No account, no API keys for
+              local tracking. Quota providers (Cursor, Copilot, Warp, MiniMax,
+              etc.) prompt you per provider when you choose to enable them.
+            </p>
+          </div>
+        </li>
+      </ol>
+
+      <details class="alt">
+        <summary>Build from source instead</summary>
+        <div class="alt__body">
+          <pre><code class="mono">git clone {SITE.github}.git
+cd BurnBar
+make install</code></pre>
+          <p class="muted small">
+            Requires Xcode 16+, Swift 5.10+, XcodeGen optional.
+          </p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- iOS -->
+  <section id="ios" class="dlsec dlsec--quiet">
+    <div class="container container--wide">
+      <div class="dlsec__head">
+        <div>
+          <span class="tag tag--review tag--plain mono">In App Store review</span>
+          <h2>iPhone &amp; iPad companion</h2>
+          <p class="lead">
+            iOS &amp; iPadOS {SITE.iosMin} or later. Companion to the Mac app — the
+            phone or tablet renders what the Mac records. Native widgets, Live
+            Activity, Siri shortcut.
+          </p>
+        </div>
+        <a class="btn btn--ghost dlsec__primary" href="#ios-newsletter" aria-disabled="true">
+          App Store link · pending review
+        </a>
+      </div>
+
+      <div class="callout">
+        <p>
+          <strong>What "in review" means:</strong>
+          OpenBurnBar 1.0 is submitted to App Store Connect with manual release
+          enabled — Apple's approval doesn't auto-publish. We'll flip the switch
+          and update this page the moment it's live.
+        </p>
+        <p>
+          Subscriptions (Hosted Quota Sync) are gated on the same review.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Editor -->
+  <section id="editor" class="dlsec">
+    <div class="container container--wide">
+      <div class="dlsec__head">
+        <div>
+          <span class="tag tag--estimated tag--plain mono">{SITE.cursorExtStatus}</span>
+          <h2>Cursor &amp; VS Code extension</h2>
+          <p class="lead">
+            Activity-bar panel that talks to the same local daemon as the menu
+            bar. No public marketplace listing yet — build from source and load
+            unpacked.
+          </p>
+        </div>
+      </div>
+
+      <ol class="steps">
+        <li>
+          <div class="step__num mono">01</div>
+          <div class="step__body">
+            <h3>Install &amp; launch OpenBurnBar on macOS</h3>
+            <p>The daemon must be running — it's how the extension reads data.</p>
+          </div>
+        </li>
+        <li>
+          <div class="step__num mono">02</div>
+          <div class="step__body">
+            <h3>Build the extension</h3>
+<pre><code class="mono">cd extensions/openburnbar
+npm ci
+npm run build</code></pre>
+          </div>
+        </li>
+        <li>
+          <div class="step__num mono">03</div>
+          <div class="step__body">
+            <h3>Load unpacked into your editor</h3>
+            <p>
+              In Cursor or VS Code: <em>Extensions → "Install from VSIX…"</em> or
+              <em>Run Extension</em> from the Run-and-Debug panel pointing at
+              <code>extensions/openburnbar</code>.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div class="step__num mono">04</div>
+          <div class="step__body">
+            <h3>Open the OpenBurnBar activity bar</h3>
+            <p>
+              The panel surfaces burn for the active workspace and the
+              routed-provider gateway when you have it on.
+            </p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Android -->
+  <section id="android" class="dlsec dlsec--quiet">
+    <div class="container container--wide">
+      <div class="dlsec__head">
+        <div>
+          <span class="tag tag--planned tag--plain mono">In development</span>
+          <h2>Android companion</h2>
+          <p class="lead">
+            Source under <code>android/</code>. Read-only Firestore consumer
+            today — renders burn data other clients push to Firebase. No Play
+            Store distribution path yet.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- System reqs -->
+  <section class="reqs">
+    <div class="container">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Requirements &amp; provenance</span>
+        <h2>What you need, what we ship.</h2>
+      </header>
+      <div class="reqs__grid">
+        <article>
+          <h4>macOS</h4>
+          <ul>
+            <li>{SITE.macMin} or later</li>
+            <li>Apple Silicon or Intel</li>
+            <li>~120 MB on disk</li>
+            <li>Signed with Developer ID + notarized + stapled</li>
+            <li>SHA-256 / SHA-512 checksums published per release</li>
+            <li>SPDX SBOM per release</li>
+          </ul>
+        </article>
+        <article>
+          <h4>iOS / iPadOS</h4>
+          <ul>
+            <li>{SITE.iosMin} or later</li>
+            <li>App Store-installed; subscriptions in-app</li>
+            <li>Hosted Quota Sync requires Firebase sign-in</li>
+            <li>Live Activity needs iOS 16.1+</li>
+          </ul>
+        </article>
+        <article>
+          <h4>Editor extension</h4>
+          <ul>
+            <li>Cursor or VS Code ^1.95.0</li>
+            <li>Node + npm to build</li>
+            <li>Loads unpacked — marketplace listing is roadmap</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="endcta endcta--inline">
+    <div class="container container--narrow">
+      <h2>Two extra resources before you install.</h2>
+      <div class="endcta__ctas">
+        <a class="btn btn--ghost" href="/privacy">Privacy model</a>
+        <a class="btn btn--ghost" href="/providers">Provider matrix</a>
+        <a class="btn btn--ghost" href={SITE.github} target="_blank" rel="noopener noreferrer">GitHub repo</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .pagehead { padding-block: var(--s-9) var(--s-6); }
+  .pagehead__h { margin-top: var(--s-3); }
+  .pagehead .lead { margin-top: var(--s-4); max-width: 60ch; }
+  .dlsec { padding-block: var(--s-8); border-top: 1px solid var(--ink-line); }
+  .dlsec--quiet { background: var(--ink-base); }
+  .dlsec__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--s-5);
+    margin-bottom: var(--s-6);
+    flex-wrap: wrap;
+  }
+  .dlsec__head h2 {
+    margin-top: var(--s-3);
+  }
+  .dlsec__head .lead { margin-top: var(--s-3); max-width: 56ch; }
+  .dlsec__primary { white-space: nowrap; }
+  @media (max-width: 720px) {
+    .dlsec__primary {
+      white-space: normal;
+      text-align: center;
+      align-self: stretch;
+      width: 100%;
+    }
+    .dlsec__head { flex-direction: column; align-items: stretch; }
+    .steps li {
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--s-2);
+    }
+    .step__num { font-size: 0.85rem; }
+    pre { font-size: 0.78rem; }
+  }
+  .steps {
+    display: grid;
+    gap: var(--s-4);
+    counter-reset: step;
+  }
+  .steps li {
+    display: grid;
+    grid-template-columns: 60px minmax(0, 1fr);
+    gap: var(--s-4);
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    background: var(--ink-base);
+    align-items: start;
+  }
+  .step__body {
+    min-width: 0;
+    display: grid;
+    gap: var(--s-2);
+  }
+  .step__body :global(pre) { margin: var(--s-2) 0 0; }
+  .step__num {
+    color: var(--ember-bright);
+    font-size: 0.95rem;
+    letter-spacing: 0.12em;
+  }
+  .steps h3 {
+    font-family: var(--font-display);
+    color: var(--text-bright);
+    font-size: 1.1rem;
+    font-variation-settings: "opsz" 36, "wght" 540;
+    margin-bottom: var(--s-2);
+  }
+  .steps p { color: var(--text-base); }
+  pre {
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    padding: var(--s-3) var(--s-4);
+    overflow-x: auto;
+    margin: var(--s-3) 0;
+  }
+  pre code { background: transparent; border: 0; padding: 0; }
+  .alt {
+    margin-top: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    background: var(--ink-base);
+  }
+  .alt summary {
+    cursor: pointer;
+    padding: var(--s-3) var(--s-5);
+    color: var(--text-bright);
+    font-family: var(--font-display);
+    font-size: 1rem;
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .alt summary::after {
+    content: "+";
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+  }
+  .alt[open] summary::after { content: "−"; }
+  .alt__body { padding: 0 var(--s-5) var(--s-5); }
+  .callout {
+    padding: var(--s-5);
+    border-left: 2px solid var(--ember-bright);
+    background: var(--ink-base);
+    border-radius: 0 var(--r-3) var(--r-3) 0;
+    display: grid;
+    gap: var(--s-3);
+  }
+  .callout strong { color: var(--text-bright); }
+
+  .reqs { padding-block: var(--s-9); border-top: 1px solid var(--ink-line); }
+  .sec-head { display: grid; gap: var(--s-3); margin-bottom: var(--s-6); max-width: 64ch; }
+  .reqs__grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--s-4);
+  }
+  .reqs__grid article {
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    background: var(--ink-base);
+  }
+  .reqs__grid h4 {
+    font-family: var(--font-display);
+    color: var(--text-bright);
+    font-size: 1.05rem;
+    margin-bottom: var(--s-3);
+    font-variation-settings: "opsz" 36, "wght" 540;
+  }
+  .reqs__grid ul { display: grid; gap: var(--s-2); font-size: 0.92rem; color: var(--text-base); }
+  .reqs__grid li {
+    padding-left: 1em;
+    position: relative;
+  }
+  .reqs__grid li::before {
+    content: "→";
+    color: var(--ember-bright);
+    position: absolute;
+    left: 0;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+  }
+  @media (max-width: 880px) { .reqs__grid { grid-template-columns: 1fr; } }
+
+  .small { font-size: var(--t-caption); }
+  .endcta--inline {
+    padding-block: var(--s-9);
+    text-align: center;
+    background:
+      radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.05), transparent 70%);
+    border-top: 1px solid var(--ink-line);
+  }
+  .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+</style>

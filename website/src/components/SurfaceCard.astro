@@ -1,0 +1,121 @@
+---
+import type { Surface } from "@data/surfaces";
+
+interface Props {
+  surface: Surface;
+  index?: number;
+}
+const { surface, index = 0 } = Astro.props;
+
+const statusClass =
+  surface.status === "shipping"
+    ? "tag--exact"
+    : surface.status === "review"
+      ? "tag--review"
+      : surface.status === "beta"
+        ? "tag--beta"
+        : surface.status === "source-only"
+          ? "tag--estimated"
+          : "tag--planned";
+---
+
+<article class="surface-card" style={`--idx:${index}`}>
+  <header class="surface-card__head">
+    <span class={`tag ${statusClass} tag--plain mono`}>{surface.statusLabel}</span>
+    <span class="surface-card__platform mono">{surface.platform}</span>
+  </header>
+  <h3 class="surface-card__title">{surface.name}</h3>
+  <p class="surface-card__blurb">{surface.description}</p>
+  <ul class="surface-card__bullets">
+    {surface.bullets.map((b) => <li>{b}</li>)}
+  </ul>
+  {
+    surface.cta && (
+      <a href={surface.cta.href} class="surface-card__cta">
+        {surface.cta.label} <span aria-hidden="true">→</span>
+      </a>
+    )
+  }
+</article>
+
+<style>
+  .surface-card {
+    display: grid;
+    gap: var(--s-3);
+    align-content: start;
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background:
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    position: relative;
+    transition: border-color var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+  }
+  .surface-card:hover {
+    border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    transform: translateY(-2px);
+  }
+  .surface-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+      linear-gradient(180deg, rgba(255, 106, 26, 0.04), transparent 40%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease-out);
+  }
+  .surface-card:hover::after {
+    opacity: 1;
+  }
+  .surface-card__head {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--s-3);
+    align-items: center;
+  }
+  .surface-card__platform {
+    font-size: var(--t-caption);
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
+  .surface-card__title {
+    font-size: var(--t-h4);
+    font-family: var(--font-display);
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.018em;
+  }
+  .surface-card__blurb {
+    color: var(--text-base);
+    font-size: 0.92rem;
+  }
+  .surface-card__bullets {
+    display: grid;
+    gap: var(--s-2);
+    font-size: 0.86rem;
+    color: var(--text-mute);
+  }
+  .surface-card__bullets li {
+    position: relative;
+    padding-left: 1.1em;
+    line-height: 1.45;
+  }
+  .surface-card__bullets li::before {
+    content: "→";
+    position: absolute;
+    left: 0;
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+  }
+  .surface-card__cta {
+    margin-top: var(--s-2);
+    font-size: 0.88rem;
+    color: var(--ember-bright);
+    font-variation-settings: "wght" 500;
+  }
+  .surface-card__cta:hover {
+    color: var(--ember-glow);
+  }
+</style>

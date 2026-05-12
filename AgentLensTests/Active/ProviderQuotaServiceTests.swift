@@ -20,9 +20,13 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_supportedProviders_onlyIncludesRealQuotaSignalProviders() {
         XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.warp))
         XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.ollama))
+        // OpenAI is exposed as a quota-signal provider so the daemon can
+        // persist credential slots and surface them in the routing cockpit
+        // even though the admin-usage path is usage-only (no per-window
+        // quota refresh). See `AgentProvider.quotaSignalProviders`.
+        XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.openAI))
         XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.hermes))
         XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.aider))
-        XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.openAI))
         XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.forgeDev))
         XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.kiloCode))
     }
@@ -70,6 +74,38 @@ final class ProviderQuotaServiceTests: XCTestCase {
         await service.refresh(provider: .codex, dataStore: dataStore)
 
         XCTAssertEqual(service.visiblePopoverProviders(dataStore: dataStore), [.codex])
+    }
+
+    func test_refreshProviderPublishesDisplayableSnapshotsForCloudSync() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let dataStore = try makeDataStore()
+        let eventDate = recentUTCDate(daysAgo: 1, hour: 10)
+        let rolloutDirectory = codexRolloutDirectory(home: home, date: eventDate)
+        try FileManager.default.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+
+        let rolloutURL = codexRolloutFileURL(directory: rolloutDirectory, date: eventDate)
+        let payload = """
+        {"timestamp":"\(iso8601String(eventDate))","type":"event_msg","payload":{"type":"token_count","rate_limits":{"plan_type":"pro","primary":{"used_percent":22.0,"window_minutes":300,"resets_at":1774359600},"secondary":{"used_percent":20.0,"window_minutes":10080,"resets_at":1774801258}}}}
+        """
+        try Data(payload.utf8).write(to: rolloutURL)
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            refreshProviders: [.codex]
+        )
+        var publishedProviders: [AgentProvider] = []
+        var publishedBucketCounts: [Int] = []
+        service.onSnapshotsPersistedForCloudSync = { snapshots in
+            publishedProviders = snapshots.map(\.provider)
+            publishedBucketCounts = snapshots.map { $0.displayableQuotaBuckets.count }
+        }
+
+        await service.refresh(provider: .codex, dataStore: dataStore)
+
+        XCTAssertEqual(publishedProviders, [.codex])
+        XCTAssertEqual(publishedBucketCounts, [2])
     }
 
     func test_snapshotsForCloudSync_excludesUsageOnlyAndActivitySnapshots() throws {
@@ -473,6 +509,443 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "7-day Opus window" && $0.remainingPercent?.rounded() == 60 }))
     }
 
+    func test_claudeRefresh_oauthCacheHit_usesPersistedRateLimitsWithoutNetwork() async throws {
+        // OAuth credentials present (env override) AND a fresh cache file
+        // exists with reset windows in the future. Adapter must read the
+        // cache and never call the live endpoint — verified by the stub
+        // session XCTFailing on any request.
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let cacheURL = OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeOAuthUsageCacheURL
+        try FileManager.default.createDirectory(
+            at: cacheURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let formatter = ISO8601DateFormatter()
+        let now = Date()
+        let envelope: [String: Any] = [
+            "fetchedAt": formatter.string(from: now.addingTimeInterval(-60)),
+            "fiveHourResetsAt": formatter.string(from: now.addingTimeInterval(3 * 60 * 60)),
+            "sevenDayResetsAt": formatter.string(from: now.addingTimeInterval(5 * 24 * 60 * 60)),
+            "payload": [
+                "five_hour": ["used_percentage": 25, "resets_at": formatter.string(from: now.addingTimeInterval(3 * 60 * 60))],
+                "seven_day": ["used_percentage": 5, "resets_at": formatter.string(from: now.addingTimeInterval(5 * 24 * 60 * 60))]
+            ]
+        ]
+        let cacheData = try JSONSerialization.data(withJSONObject: envelope)
+        try cacheData.write(to: cacheURL)
+
+        let session = makeStubSession { request in
+            XCTFail("Cache hit must not network. Got: \(request.url?.absoluteString ?? "?")")
+            throw URLError(.cannotConnectToHost)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            environment: [
+                "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-fake",
+                "CLAUDE_CODE_SUBSCRIPTION": "max",
+                "CLAUDE_CODE_RATE_LIMIT_TIER": "default_claude_max_20x"
+            ]
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertTrue(snapshot.statusMessage.contains("Max"))
+        XCTAssertTrue(snapshot.statusMessage.contains("(cached)"))
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label.contains("5-hour") && $0.remainingPercent?.rounded() == 75 }))
+    }
+
+    func test_claudeRefresh_oauthLiveCall_writesCacheAndReportsExactRateLimits() async throws {
+        // No cache, no statusline bridge — env credentials drive the live
+        // OAuth call. The stub session returns a canned `rate_limits`
+        // payload; the adapter must surface it as exact and persist it.
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let formatter = ISO8601DateFormatter()
+        let now = Date()
+        let fiveHourReset = formatter.string(from: now.addingTimeInterval(4 * 60 * 60))
+        let sevenDayReset = formatter.string(from: now.addingTimeInterval(6 * 24 * 60 * 60))
+
+        let session = makeStubSession { request in
+            let url = try XCTUnwrap(request.url)
+            XCTAssertEqual(url.absoluteString, "https://api.anthropic.com/api/oauth/usage")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer sk-ant-oat-live")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "anthropic-beta"), "oauth-2025-04-20")
+            return try self.httpResponse(
+                url: url,
+                statusCode: 200,
+                body: """
+                {
+                  "rate_limits": {
+                    "five_hour": { "used_percentage": 80, "resets_at": "\(fiveHourReset)" },
+                    "seven_day": { "used_percentage": 30, "resets_at": "\(sevenDayReset)" }
+                  }
+                }
+                """
+            )
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            environment: [
+                "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-live",
+                "CLAUDE_CODE_SUBSCRIPTION": "pro"
+            ]
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertTrue(snapshot.statusMessage.contains("Pro"))
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label.contains("5-hour") && $0.remainingPercent?.rounded() == 20 }))
+
+        // Cache file persisted for next refresh.
+        let cacheURL = OpenBurnBarAppPaths(applicationSupportRoot: appSupport).claudeOAuthUsageCacheURL
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cacheURL.path))
+    }
+
+    func test_claudeRefresh_jsonlPlanCap_inferredMax20xCapPercent() async throws {
+        // No bridge, no OAuth network response, but local JSONL has token
+        // counts AND env credentials report Max-20x → adapter must
+        // annotate JSONL buckets with the published 880K / 7.7M caps and
+        // produce a usedPercent.
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let projectsDir = home
+            .appendingPathComponent(".claude", isDirectory: true)
+            .appendingPathComponent("projects", isDirectory: true)
+            .appendingPathComponent("test-project", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+        let jsonlURL = projectsDir.appendingPathComponent("session.jsonl")
+        let now = Date()
+        let recentISO = ISO8601DateFormatter().string(from: now.addingTimeInterval(-60 * 30))
+        // 200K input + 20K output = 220K total — half of Max-20x five-hour cap.
+        let line = """
+        {"timestamp":"\(recentISO)","type":"assistant","message":{"usage":{"input_tokens":200000,"output_tokens":20000}}}
+        """
+        try Data(line.utf8).write(to: jsonlURL)
+
+        // Stub session fails any network so OAuth path falls through.
+        let session = makeStubSession { _ in throw URLError(.notConnectedToInternet) }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            environment: [
+                "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-fake",
+                "CLAUDE_CODE_SUBSCRIPTION": "max",
+                "CLAUDE_CODE_RATE_LIMIT_TIER": "default_claude_max_20x"
+            ]
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.source, .localSession)
+        // Max-20x five-hour cap = 3.52M tokens. 220K / 3.52M ≈ 6.25%.
+        let fiveHour = try XCTUnwrap(snapshot.buckets.first(where: { $0.key == "claude-five-hour-jsonl" }))
+        XCTAssertEqual(fiveHour.limitValue, 3_520_000)
+        XCTAssertEqual(fiveHour.usedPercent?.rounded(), 6)
+        XCTAssertTrue(snapshot.statusMessage.contains("Max"))
+    }
+
+    func test_claudeRefresh_planOnlyBadge_renderedWhenNoUsageDataAvailable() async throws {
+        // No bridge, no JSONL, OAuth network down — but Keychain (env
+        // override) reports a Pro plan. Adapter must render a plan-badge
+        // snapshot rather than "unavailable" so the user sees their plan
+        // tier in the popover.
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let session = makeStubSession { _ in throw URLError(.notConnectedToInternet) }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            environment: [
+                "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-fake",
+                "CLAUDE_CODE_SUBSCRIPTION": "pro"
+            ]
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.confidence, .estimated)
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "Plan: Pro" }))
+        XCTAssertTrue(snapshot.statusMessage.contains("Pro"))
+    }
+
+    func test_claudeCredentialsReader_decodesKeychainPayloadShape() throws {
+        // Fixture matches the real `Claude Code-credentials` JSON
+        // Anthropic ships (claudeAiOauth wrapper, ms-precision expiresAt,
+        // organizationUuid sibling).
+        let fixture = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "sk-ant-oat-real",
+            "refreshToken": "sk-ant-ort-real",
+            "expiresAt": 1778310120051,
+            "scopes": ["user:inference", "user:profile"],
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          },
+          "organizationUuid": "abc-123"
+        }
+        """
+        let data = Data(fixture.utf8)
+        let creds = try XCTUnwrap(ClaudeCredentialsReader.decode(data))
+        XCTAssertEqual(creds.accessToken, "sk-ant-oat-real")
+        XCTAssertEqual(creds.refreshToken, "sk-ant-ort-real")
+        XCTAssertEqual(creds.subscriptionType, "max")
+        XCTAssertEqual(creds.rateLimitTier, "default_claude_max_20x")
+        XCTAssertEqual(creds.organizationUuid, "abc-123")
+        XCTAssertEqual(creds.planDisplayName, "Max")
+        // 1778310120051 ms ≈ 2026-04-26 — well in the future from
+        // today's session date but exercise the parser regardless.
+        XCTAssertNotNil(creds.expiresAt)
+    }
+
+    func test_claudeCredentials_canCallUsageEndpoint_acceptsExpiredAccessWithRefreshToken() {
+        // Expired access token + refresh token → allowed (the fetcher
+        // will refresh transparently). Expired access + no refresh →
+        // not allowed (would 401 immediately).
+        let now = Date()
+        let withRefresh = ClaudeOAuthCredentials(
+            accessToken: "sk-ant-oat-expired",
+            refreshToken: "sk-ant-ort-fresh",
+            expiresAt: now.addingTimeInterval(-3600),
+            subscriptionType: "max",
+            rateLimitTier: "default_claude_max_20x",
+            organizationUuid: nil
+        )
+        XCTAssertTrue(withRefresh.isExpired(now: now))
+        XCTAssertTrue(withRefresh.canCallUsageEndpoint(now: now))
+
+        let withoutRefresh = ClaudeOAuthCredentials(
+            accessToken: "sk-ant-oat-expired",
+            refreshToken: nil,
+            expiresAt: now.addingTimeInterval(-3600),
+            subscriptionType: "max",
+            rateLimitTier: "default_claude_max_20x",
+            organizationUuid: nil
+        )
+        XCTAssertTrue(withoutRefresh.isExpired(now: now))
+        XCTAssertFalse(withoutRefresh.canCallUsageEndpoint(now: now))
+    }
+
+    func test_claudeRateLimits_parsesAnthropicResponseShapeAndExposesTypedWindows() {
+        // Real-shape `/api/oauth/usage` body — verify the strongly
+        // typed model captures used %, remaining %, and resets_at as
+        // a parsed Date. Falls back from `rate_limits` wrapper or bare
+        // payload — both shapes are accepted for future-proofing.
+        let now = Date()
+        let resetISO = ISO8601DateFormatter().string(from: now.addingTimeInterval(3 * 60 * 60))
+        let body = """
+        {
+          "rate_limits": {
+            "five_hour": {
+              "used_percentage": 42,
+              "resets_at": "\(resetISO)"
+            },
+            "seven_day": {
+              "used_percentage": 60,
+              "resets_at": "\(resetISO)"
+            }
+          }
+        }
+        """
+        let parsed = ClaudeRateLimits(from: Data(body.utf8))
+        XCTAssertEqual(parsed.windows.count, 2)
+        let five = try? XCTUnwrap(parsed.window(named: "five_hour"))
+        XCTAssertEqual(five?.usedPercentage, 42)
+        XCTAssertEqual(five?.remainingPercentage, 58) // derived from used
+        XCTAssertNotNil(five?.resetsAt)
+
+        // Bare payload (no rate_limits wrapper) also accepted.
+        let bareBody = """
+        {"five_hour": {"used_percentage": 10}}
+        """
+        let bare = ClaudeRateLimits(from: Data(bareBody.utf8))
+        XCTAssertEqual(bare.windows.count, 1)
+        XCTAssertEqual(bare.window(named: "five_hour")?.usedPercentage, 10)
+    }
+
+    func test_claudeRefresh_oauthExpiredAccessToken_refreshesAndPersistsBeforeUsageCall() async throws {
+        // Expired access token + refresh token → fetcher must hit the
+        // token endpoint first, then the usage endpoint with the new
+        // token, then persist the refreshed credentials JSON to disk.
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let formatter = ISO8601DateFormatter()
+        let now = Date()
+        let futureReset = formatter.string(from: now.addingTimeInterval(4 * 60 * 60))
+
+        // Seed `~/.claude/.credentials.json` with an expired access
+        // token so the reader returns refresh-eligible credentials.
+        let claudeDir = home.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: claudeDir, withIntermediateDirectories: true)
+        let credentialsURL = claudeDir.appendingPathComponent(".credentials.json")
+        let expiredCredentialsJSON = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "sk-ant-oat-old",
+            "refreshToken": "sk-ant-ort-good",
+            "expiresAt": \(Int(now.addingTimeInterval(-3600).timeIntervalSince1970 * 1000)),
+            "subscriptionType": "pro",
+            "rateLimitTier": "default_claude_pro_5x"
+          }
+        }
+        """
+        try Data(expiredCredentialsJSON.utf8).write(to: credentialsURL)
+
+        // `@Sendable` stub session closures cannot mutate captured
+        // vars, so the proof that the refresh+usage chain ran lives
+        // on disk (credentials file rewritten with NEW tokens) and
+        // in the snapshot (bucket reflects the canned usage payload).
+        let session = makeStubSession { request in
+            let url = try XCTUnwrap(request.url)
+            if url.absoluteString == "https://platform.claude.com/v1/oauth/token" {
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/x-www-form-urlencoded")
+                // URLProtocol strips httpBody on some flow paths; the
+                // body lives in `httpBodyStream` then. Read whichever
+                // is populated so the assertion is robust.
+                let rawBody: Data = request.httpBody ?? {
+                    guard let stream = request.httpBodyStream else { return Data() }
+                    stream.open()
+                    defer { stream.close() }
+                    var collected = Data()
+                    let bufferSize = 4096
+                    let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+                    defer { buffer.deallocate() }
+                    while stream.hasBytesAvailable {
+                        let read = stream.read(buffer, maxLength: bufferSize)
+                        if read <= 0 { break }
+                        collected.append(buffer, count: read)
+                    }
+                    return collected
+                }()
+                let body = String(data: rawBody, encoding: .utf8) ?? ""
+                XCTAssertTrue(body.contains("grant_type=refresh_token"), "body=\(body)")
+                XCTAssertTrue(body.contains("refresh_token=sk-ant-ort-good"), "body=\(body)")
+                return try self.httpResponse(
+                    url: url,
+                    statusCode: 200,
+                    body: """
+                    {
+                      "access_token": "sk-ant-oat-NEW",
+                      "refresh_token": "sk-ant-ort-NEW",
+                      "expires_in": 28800
+                    }
+                    """
+                )
+            }
+            if url.absoluteString == "https://api.anthropic.com/api/oauth/usage" {
+                // Critical: the usage call MUST carry the refreshed
+                // token. If we still see the expired one, refresh
+                // didn't run and the assertion fails inline.
+                XCTAssertEqual(
+                    request.value(forHTTPHeaderField: "Authorization"),
+                    "Bearer sk-ant-oat-NEW",
+                    "Usage endpoint must use the refreshed access token."
+                )
+                return try self.httpResponse(
+                    url: url,
+                    statusCode: 200,
+                    body: """
+                    {
+                      "rate_limits": {
+                        "five_hour": { "used_percentage": 12, "resets_at": "\(futureReset)" }
+                      }
+                    }
+                    """
+                )
+            }
+            XCTFail("Unexpected URL: \(url.absoluteString)")
+            throw URLError(.cannotConnectToHost)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            environment: ["CLAUDE_CREDENTIALS_SKIP_KEYCHAIN": "1"]
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertTrue(snapshot.buckets.contains { $0.usedPercent?.rounded() == 12 })
+
+        // The refreshed credentials must be written back to the file
+        // (with 0600 perms) so Claude Code's CLI also picks them up.
+        let written = try Data(contentsOf: credentialsURL)
+        let writtenCreds = try XCTUnwrap(ClaudeCredentialsReader.decode(written))
+        XCTAssertEqual(writtenCreds.accessToken, "sk-ant-oat-NEW")
+        XCTAssertEqual(writtenCreds.refreshToken, "sk-ant-ort-NEW")
+        XCTAssertEqual(writtenCreds.subscriptionType, "pro")
+        // File permissions must be 0600 (owner-only read/write) so the
+        // refresh token isn't world-readable.
+        let attrs = try FileManager.default.attributesOfItem(atPath: credentialsURL.path)
+        let perms = (attrs[.posixPermissions] as? NSNumber)?.uint16Value ?? 0
+        XCTAssertEqual(perms & 0o777, 0o600)
+    }
+
+    func test_claudeRefresh_autoInstall_marksAttemptedAndSkipsOnSecondRefresh() async throws {
+        // Bridge isn't installed but ~/.claude/projects exists → the
+        // adapter should auto-install. On the SECOND refresh, even if
+        // the first install left the bridge in a non-ready state, we
+        // must not try to install again (the marker file prevents
+        // retry loops on read-only home dirs).
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let claudeDir = home.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: claudeDir.appendingPathComponent("projects"),
+            withIntermediateDirectories: true
+        )
+
+        // Stub session never expected to be hit — no credentials.
+        let session = makeStubSession { _ in throw URLError(.notConnectedToInternet) }
+        let service = makeService(home: home, appSupportRoot: appSupport, session: session)
+
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let markerURL = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+            .claudeStatuslineSnapshotURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("claude-bridge-auto-install-attempted.json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: markerURL.path),
+            "First refresh must record an auto-install attempt marker.")
+
+        // Capture marker mtime, then refresh again. mtime must not
+        // change because the second pass should skip auto-install.
+        let firstAttrs = try FileManager.default.attributesOfItem(atPath: markerURL.path)
+        let firstMTime = (firstAttrs[.modificationDate] as? Date) ?? .distantPast
+
+        // Sleep briefly so any retry would produce a measurably later
+        // mtime — keeps the test deterministic at sub-second resolution.
+        try await Task.sleep(nanoseconds: 200_000_000)
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let secondAttrs = try FileManager.default.attributesOfItem(atPath: markerURL.path)
+        let secondMTime = (secondAttrs[.modificationDate] as? Date) ?? .distantPast
+        XCTAssertEqual(firstMTime, secondMTime,
+            "Second refresh must not rewrite the auto-install marker (loop prevention).")
+    }
+
     func test_factoryRefresh_prefersExactFactoryAPIUsingExplicitEnvironmentCredentials() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
@@ -560,6 +1033,759 @@ final class ProviderQuotaServiceTests: XCTestCase {
                 && $0.remainingValue?.rounded() == 90
                 && $0.usedPercent?.rounded() == 10
         }))
+    }
+
+    /// Regression: without a Factory session cookie or env override the
+    /// adapter falls through to `~/.factory/sessions/**/*.settings.json`. Those
+    /// session files carry real tokenUsage counts but no plan limits, which
+    /// used to drop every bucket through the displayable-quota filter
+    /// (`isDisplayableQuotaSignal` requires a non-nil `limitValue` for `.tokens`).
+    /// The adapter must now anchor each window to the configured plan tier so
+    /// the popover renders 5h / 7d / monthly buckets with `.exact` confidence.
+    func test_factoryRefresh_localSessions_renderDisplayableBucketsAgainstPlanCap() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let sessionsDir = home
+            .appendingPathComponent(".factory", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+            .appendingPathComponent("test-project", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        // 1M tokens within the last 5 hours
+        let recent = isoFormatter.string(from: Date().addingTimeInterval(-60 * 60))
+        let recentSession = """
+        {
+          "model": "claude-3-5-sonnet",
+          "providerLock": "factory",
+          "providerLockTimestamp": "\(recent)",
+          "tokenUsage": {
+            "inputTokens": 900000,
+            "outputTokens": 100000,
+            "cacheCreationTokens": 0,
+            "cacheReadTokens": 0,
+            "thinkingTokens": 0
+          }
+        }
+        """
+        try recentSession.write(
+            to: sessionsDir.appendingPathComponent("recent.settings.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        // 2M tokens earlier this week (~3 days ago)
+        let lastWeek = isoFormatter.string(from: Date().addingTimeInterval(-3 * 24 * 60 * 60))
+        let weekSession = """
+        {
+          "model": "claude-3-5-sonnet",
+          "providerLock": "factory",
+          "providerLockTimestamp": "\(lastWeek)",
+          "tokenUsage": {
+            "inputTokens": 1500000,
+            "outputTokens": 500000,
+            "cacheCreationTokens": 0,
+            "cacheReadTokens": 0,
+            "thinkingTokens": 0
+          }
+        }
+        """
+        try weekSession.write(
+            to: sessionsDir.appendingPathComponent("week.settings.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            // No FACTORY_* env, no cookie → adapter must fall through to the
+            // local-session reader.
+            environment: [:],
+            factoryPlanProvider: { .pro }
+        )
+
+        await service.refresh(provider: .factory, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
+
+        XCTAssertEqual(snapshot.source, .localSession)
+        XCTAssertEqual(snapshot.confidence, .exact, "Pro plan tier ⇒ exact, not estimated")
+        XCTAssertTrue(snapshot.hasDisplayableQuotaSignal,
+                      "Local-session buckets must survive the displayable filter")
+
+        // 5-hour bucket: 1M / 20M = 5%
+        let fiveHour = try XCTUnwrap(snapshot.hourlyBucket)
+        XCTAssertEqual(fiveHour.usedValue?.rounded(), 1_000_000)
+        XCTAssertEqual(fiveHour.limitValue, 20_000_000)
+        XCTAssertEqual(fiveHour.usedPercent?.rounded(), 5)
+        XCTAssertEqual(fiveHour.isEstimated, false)
+
+        // 7-day bucket: (1M + 2M) / 20M = 15%
+        let weekly = try XCTUnwrap(snapshot.weeklyBucket)
+        XCTAssertEqual(weekly.usedValue?.rounded(), 3_000_000)
+        XCTAssertEqual(weekly.limitValue, 20_000_000)
+        XCTAssertEqual(weekly.usedPercent?.rounded(), 15)
+
+        // Monthly bucket carries the same data window but the displayable
+        // 30-day label.
+        let monthly = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-30d" })
+        XCTAssertEqual(monthly.usedValue?.rounded(), 3_000_000)
+        XCTAssertEqual(monthly.limitValue, 20_000_000)
+        XCTAssertTrue(monthly.label.contains("Pro"))
+    }
+
+    /// When the user has not picked a plan tier the adapter must still render
+    /// buckets (using the inferred Pro cap) so the popover doesn't sit on
+    /// "Readable quota not available yet" out of the box. The snapshot is
+    /// marked `.estimated` and each bucket carries `isEstimated: true` so the
+    /// UI can signal the inferred-vs-confirmed distinction.
+    func test_factoryRefresh_localSessions_withUnknownPlanTier_marksEstimatedButStillDisplays() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let sessionsDir = home
+            .appendingPathComponent(".factory", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let stamp = isoFormatter.string(from: Date().addingTimeInterval(-3 * 60 * 60))
+
+        let payload = """
+        {
+          "model": "claude-3-5-sonnet",
+          "providerLock": "factory",
+          "providerLockTimestamp": "\(stamp)",
+          "tokenUsage": {
+            "inputTokens": 500000,
+            "outputTokens": 100000,
+            "cacheCreationTokens": 0,
+            "cacheReadTokens": 0,
+            "thinkingTokens": 0
+          }
+        }
+        """
+        try payload.write(
+            to: sessionsDir.appendingPathComponent("session.settings.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            environment: [:],
+            factoryPlanProvider: { .unknown }
+        )
+
+        await service.refresh(provider: .factory, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
+
+        XCTAssertEqual(snapshot.confidence, .estimated,
+                       "Unknown plan tier ⇒ snapshot is flagged estimated")
+        XCTAssertTrue(snapshot.hasDisplayableQuotaSignal)
+        XCTAssertTrue(snapshot.statusMessage.contains("Set your plan tier"),
+                      "Status should nudge users to confirm their plan tier — got: \(snapshot.statusMessage)")
+
+        let monthly = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-30d" })
+        XCTAssertEqual(monthly.isEstimated, true)
+        XCTAssertEqual(monthly.limitValue, 20_000_000, "Inferred Pro cap")
+        XCTAssertTrue(monthly.label.contains("inferred"))
+    }
+
+    /// Confirms the new Plus tier (May 2026 pricing) reports a 100M monthly
+    /// cap (~5x Pro) across all three rolling windows and is treated as a
+    /// confirmed plan tier — no `inferred` marker, `.exact` confidence, no
+    /// "Set your plan tier" status nudge.
+    func test_factoryRefresh_localSessions_plusPlanTier_uses100MmonthlyCap() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let sessionsDir = home
+            .appendingPathComponent(".factory", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        // 10M tokens recently → 10% of Plus monthly cap (100M)
+        let stamp = isoFormatter.string(from: Date().addingTimeInterval(-2 * 60 * 60))
+        let payload = """
+        {
+          "model": "claude-3-5-sonnet",
+          "providerLock": "factory",
+          "providerLockTimestamp": "\(stamp)",
+          "tokenUsage": {
+            "inputTokens": 8000000,
+            "outputTokens": 2000000,
+            "cacheCreationTokens": 0,
+            "cacheReadTokens": 0,
+            "thinkingTokens": 0
+          }
+        }
+        """
+        try payload.write(
+            to: sessionsDir.appendingPathComponent("plus.settings.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            environment: [:],
+            factoryPlanProvider: { .plus }
+        )
+
+        await service.refresh(provider: .factory, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
+
+        XCTAssertEqual(snapshot.confidence, .exact,
+                       "Plus is a confirmed tier, not estimated")
+        XCTAssertFalse(snapshot.statusMessage.contains("Set your plan tier"),
+                       "Confirmed Plus tier should not prompt the user to pick a tier")
+
+        // 5h / 7d / 30d all anchored to the 100M Plus cap.
+        for key in ["factory-5h", "factory-7d", "factory-30d"] {
+            let bucket = try XCTUnwrap(snapshot.buckets.first { $0.key == key }, "Missing bucket: \(key)")
+            XCTAssertEqual(bucket.limitValue, 100_000_000, "\(key) should anchor to Plus 100M cap")
+            XCTAssertEqual(bucket.usedValue?.rounded(), 10_000_000)
+            XCTAssertEqual(bucket.usedPercent?.rounded(), 10)
+            XCTAssertEqual(bucket.isEstimated, false, "\(key) is not estimated for confirmed Plus tier")
+        }
+
+        let monthly = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-30d" })
+        XCTAssertTrue(monthly.label.contains("Plus"),
+                      "Monthly bucket label should advertise Plus tier — got: \(monthly.label)")
+    }
+
+    /// Pricing copy guard — every confirmed tier surfaces the Droid Core /
+    /// Extra Usage fallback in the status message so users can find the
+    /// escape hatch without leaving OpenBurnBar.
+    func test_factoryRefresh_localSessions_statusMessageMentionsDroidCoreAndExtraUsageFallback() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let sessionsDir = home
+            .appendingPathComponent(".factory", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let stamp = isoFormatter.string(from: Date().addingTimeInterval(-30 * 60))
+
+        let payload = """
+        {
+          "model": "claude-3-5-sonnet",
+          "providerLock": "factory",
+          "providerLockTimestamp": "\(stamp)",
+          "tokenUsage": {
+            "inputTokens": 100000,
+            "outputTokens": 50000,
+            "cacheCreationTokens": 0,
+            "cacheReadTokens": 0,
+            "thinkingTokens": 0
+          }
+        }
+        """
+        try payload.write(
+            to: sessionsDir.appendingPathComponent("session.settings.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            environment: [:],
+            factoryPlanProvider: { .max }
+        )
+
+        await service.refresh(provider: .factory, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
+
+        XCTAssertTrue(
+            snapshot.statusMessage.contains("Droid Core"),
+            "Status message must mention Droid Core fallback — got: \(snapshot.statusMessage)"
+        )
+        XCTAssertTrue(
+            snapshot.statusMessage.contains("Extra Usage"),
+            "Status message must mention Extra Usage fallback — got: \(snapshot.statusMessage)"
+        )
+    }
+
+    // MARK: - Factory Collection Upgrades (May 2026)
+
+    /// CRITICAL collection bug: sessions where `providerLock != "factory"`
+    /// are user-configured custom proxies (VibeProxy, OpenCode-Go,
+    /// localhost Ollama, BYOK). They route through `config.json
+    /// .custom_models[]` and are NOT billed by Factory. The adapter must
+    /// exclude them from every Standard Usage bucket and instead surface
+    /// the count in the diagnostic `factory-custom-proxy-30d` bucket.
+    /// Before this filter, a power-user with 1488 custom-proxy sessions
+    /// and 26 factory-billed sessions saw the 1488 sessions overwhelm
+    /// the Pro 20M cap and the popover showed 100% within a week.
+    func test_factoryRefresh_localSessions_excludesCustomProxySessionsFromStandardUsageBuckets() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let sessionsDir = home
+            .appendingPathComponent(".factory", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let stamp = iso.string(from: Date().addingTimeInterval(-60 * 60))
+
+        // 1M tokens — VibeProxy passthrough (user-configured proxy, NOT billed)
+        let vibeProxy = """
+        {
+          "model": "custom:VibeProxy:-GPT-5.5-(High)-18",
+          "providerLock": "generic-chat-completion-api",
+          "providerLockTimestamp": "\(stamp)",
+          "tokenUsage": {
+            "inputTokens": 900000,
+            "outputTokens": 100000,
+            "cacheCreationTokens": 0, "cacheReadTokens": 0, "thinkingTokens": 0
+          }
+        }
+        """
+        try vibeProxy.write(to: sessionsDir.appendingPathComponent("vibe.settings.json"), atomically: true, encoding: .utf8)
+
+        // 1M tokens — anthropic via custom_models (user-configured, NOT billed)
+        let anthropicProxy = """
+        {
+          "model": "custom:Claude-Opus-4.7-Max-[VibeProxy]-15",
+          "providerLock": "anthropic",
+          "providerLockTimestamp": "\(stamp)",
+          "tokenUsage": {
+            "inputTokens": 900000,
+            "outputTokens": 100000,
+            "cacheCreationTokens": 0, "cacheReadTokens": 0, "thinkingTokens": 0
+          }
+        }
+        """
+        try anthropicProxy.write(to: sessionsDir.appendingPathComponent("anth.settings.json"), atomically: true, encoding: .utf8)
+
+        // 500K tokens — REAL Factory session (claude on Factory's lane)
+        let factory = """
+        {
+          "model": "claude-opus-4-7",
+          "providerLock": "factory",
+          "providerLockTimestamp": "\(stamp)",
+          "tokenUsage": {
+            "inputTokens": 400000,
+            "outputTokens": 100000,
+            "cacheCreationTokens": 0, "cacheReadTokens": 0, "thinkingTokens": 0
+          }
+        }
+        """
+        try factory.write(to: sessionsDir.appendingPathComponent("factory.settings.json"), atomically: true, encoding: .utf8)
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            environment: [:],
+            factoryPlanProvider: { .pro }
+        )
+
+        await service.refresh(provider: .factory, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
+
+        // The 30-day Factory bucket MUST contain only the 500K from the
+        // factory-billed session — NOT the 2M from custom proxies.
+        let monthly = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-30d" })
+        XCTAssertEqual(monthly.usedValue?.rounded(), 500_000,
+                       "Custom proxy sessions must not count against Factory Standard Usage")
+
+        // 5h bucket: same — only 500K.
+        let fiveHour = try XCTUnwrap(snapshot.hourlyBucket)
+        XCTAssertEqual(fiveHour.usedValue?.rounded(), 500_000)
+
+        // Diagnostic custom-proxy bucket reports the 2M total of excluded usage.
+        let proxyBucket = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-custom-proxy-30d" })
+        XCTAssertEqual(proxyBucket.usedValue?.rounded(), 2_000_000)
+        XCTAssertFalse(proxyBucket.isDisplayableQuotaSignal,
+                       "Custom-proxy bucket is diagnostic; must not be on the headline gauge")
+
+        XCTAssertTrue(snapshot.statusMessage.contains("Excluded 2 custom-proxy session(s)"),
+                      "Status message must disclose the proxy session count — got: \(snapshot.statusMessage)")
+    }
+
+    /// Droid Core open-weight models (kimi, glm, deepseek, minimax,
+    /// qwen) running on Factory's lane get a separate informational
+    /// bucket so users can see the split between Premium frontier burn
+    /// (which can exhaust Standard Usage) and Core burn (which falls
+    /// back to a free pool when Standard is depleted).
+    func test_factoryRefresh_localSessions_classifiesDroidCoreModelsAsSeparateBucket() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let sessionsDir = home
+            .appendingPathComponent(".factory", isDirectory: true)
+            .appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let stamp = iso.string(from: Date().addingTimeInterval(-30 * 60))
+
+        // 600K tokens — Premium frontier model (Claude) on Factory's lane.
+        let premium = """
+        {
+          "model": "claude-opus-4-7",
+          "providerLock": "factory",
+          "providerLockTimestamp": "\(stamp)",
+          "tokenUsage": {
+            "inputTokens": 500000,
+            "outputTokens": 100000,
+            "cacheCreationTokens": 0, "cacheReadTokens": 0, "thinkingTokens": 0
+          }
+        }
+        """
+        try premium.write(to: sessionsDir.appendingPathComponent("premium.settings.json"), atomically: true, encoding: .utf8)
+
+        // 400K tokens — Droid Core open-weight model on Factory's lane.
+        let core = """
+        {
+          "model": "kimi-k2.6",
+          "providerLock": "factory",
+          "providerLockTimestamp": "\(stamp)",
+          "tokenUsage": {
+            "inputTokens": 350000,
+            "outputTokens": 50000,
+            "cacheCreationTokens": 0, "cacheReadTokens": 0, "thinkingTokens": 0
+          }
+        }
+        """
+        try core.write(to: sessionsDir.appendingPathComponent("core.settings.json"), atomically: true, encoding: .utf8)
+
+        // 300K tokens — glm-5 (also Droid Core).
+        let glm = """
+        {
+          "model": "glm-5",
+          "providerLock": "factory",
+          "providerLockTimestamp": "\(stamp)",
+          "tokenUsage": {
+            "inputTokens": 250000,
+            "outputTokens": 50000,
+            "cacheCreationTokens": 0, "cacheReadTokens": 0, "thinkingTokens": 0
+          }
+        }
+        """
+        try glm.write(to: sessionsDir.appendingPathComponent("glm.settings.json"), atomically: true, encoding: .utf8)
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            environment: [:],
+            factoryPlanProvider: { .pro }
+        )
+
+        await service.refresh(provider: .factory, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
+
+        // Combined 30d burn = 1.3M (Premium 600K + Core 700K).
+        let monthly = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-30d" })
+        XCTAssertEqual(monthly.usedValue?.rounded(), 1_300_000)
+
+        // Standard lane shows just the 600K Premium burn.
+        let standard = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-standard-30d" })
+        XCTAssertEqual(standard.usedValue?.rounded(), 600_000)
+        XCTAssertTrue(standard.label.contains("Standard"))
+
+        // Droid Core lane shows 700K (kimi 400K + glm 300K).
+        let core30 = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-droid-core-30d" })
+        XCTAssertEqual(core30.usedValue?.rounded(), 700_000)
+        XCTAssertNil(core30.limitValue,
+                     "Droid Core lane has no published cap — it's a separate free pool")
+    }
+
+    /// Plan auto-detection from `/api/app/auth/me` — `factoryTier=plus`
+    /// or `plan.name = "Plus"` must map to `FactoryQuotaPlanTier.plus`
+    /// regardless of casing. This lets the popover show the right cap
+    /// without users picking a tier in Settings.
+    func test_factoryAdapter_inferPlanTier_recognizesAllTiersFromAuthResponse() {
+        XCTAssertEqual(FactoryQuotaAdapter.inferPlanTier(tier: "pro", planName: nil), .pro)
+        XCTAssertEqual(FactoryQuotaAdapter.inferPlanTier(tier: nil, planName: "Pro Plan"), .pro)
+        XCTAssertEqual(FactoryQuotaAdapter.inferPlanTier(tier: "plus", planName: nil), .plus)
+        XCTAssertEqual(FactoryQuotaAdapter.inferPlanTier(tier: nil, planName: "Plus"), .plus)
+        XCTAssertEqual(FactoryQuotaAdapter.inferPlanTier(tier: "max", planName: nil), .max)
+        XCTAssertEqual(FactoryQuotaAdapter.inferPlanTier(tier: nil, planName: "Max — Enterprise Trial"), .max)
+        XCTAssertEqual(FactoryQuotaAdapter.inferPlanTier(tier: "ultra", planName: nil), .max,
+                       "'ultra' aliases Max — Factory's feature flag uses this name")
+        // Order: "max" must win even when "pro" is also present.
+        XCTAssertEqual(FactoryQuotaAdapter.inferPlanTier(tier: "max", planName: "Pro upgraded to Max"), .max)
+        // Enterprise / Teams / unknown → .unknown (no cap pretense).
+        XCTAssertEqual(FactoryQuotaAdapter.inferPlanTier(tier: "team", planName: "Team"), .unknown)
+        XCTAssertEqual(FactoryQuotaAdapter.inferPlanTier(tier: "enterprise", planName: "Enterprise"), .unknown)
+        XCTAssertEqual(FactoryQuotaAdapter.inferPlanTier(tier: nil, planName: nil), .unknown)
+    }
+
+    /// Classifier coverage — every lane the adapter cares about.
+    func test_factorySessionClassifier_assignsLanesByProviderLockAndModelFamily() {
+        let cases: [(json: [String: Any], expected: FactorySessionLane, label: String)] = [
+            (["providerLock": "factory", "model": "kimi-k2.6"], .droidCore, "kimi → Core"),
+            (["providerLock": "factory", "model": "glm-5.1"], .droidCore, "glm → Core"),
+            (["providerLock": "factory", "model": "deepseek-v4-pro"], .droidCore, "deepseek → Core"),
+            (["providerLock": "factory", "model": "minimax-m2.7"], .droidCore, "minimax → Core"),
+            (["providerLock": "factory", "model": "qwen3.6-plus"], .droidCore, "qwen → Core"),
+            (["providerLock": "factory", "model": "claude-opus-4-7"], .standard, "claude → Standard"),
+            (["providerLock": "factory", "model": "gpt-5.5"], .standard, "gpt → Standard"),
+            (["providerLock": "factory", "model": "gemini-2.5"], .standard, "gemini → Standard"),
+            (["providerLock": "factory", "model": "o4-something"], .standard, "o-series → Standard"),
+            (["providerLock": "factory", "model": "mystery-new-llm"], .factoryUnknown, "unknown model still on Factory lane"),
+            (["providerLock": "openai", "model": "gpt-5.5(high)"], .customProxy, "openai providerLock → custom proxy"),
+            (["providerLock": "anthropic", "model": "claude-opus-4-6"], .customProxy, "anthropic providerLock → custom proxy"),
+            (["providerLock": "generic-chat-completion-api", "model": "kimi-k2.6:cloud"], .customProxy, "generic-chat-completion → custom proxy"),
+            (["providerLock": "google", "model": "gemini-2.5"], .customProxy, "google providerLock → custom proxy"),
+            (["providerLock": "", "model": "anything"], .customProxy, "empty providerLock → custom proxy"),
+            (["model": "claude-opus-4-7"], .customProxy, "missing providerLock → custom proxy")
+        ]
+        for testCase in cases {
+            XCTAssertEqual(
+                FactorySessionClassifier.lane(for: testCase.json),
+                testCase.expected,
+                "Failed: \(testCase.label)"
+            )
+        }
+    }
+
+    /// Classifier strips the `custom:` prefix and `:cloud-N` suffix that
+    /// the CLI adds when routing a Factory-native model through a user
+    /// proxy. Without this normalization, "custom:Kimi-K2.6-Highspeed-3"
+    /// would not match the kimi prefix.
+    func test_factorySessionClassifier_normalizesCustomPrefixAndCloudSuffix() {
+        let cases: [String: FactorySessionLane] = [
+            "custom:kimi-k2.6-highspeed-3": .droidCore,
+            "custom:glm-5.1:cloud-0":       .droidCore,
+            "custom:Kimi-K2.6":             .droidCore,    // mixed case
+            "kimi-k2.6:cloud-7":            .droidCore,
+            "Kimi K2.6":                    .droidCore,    // display-name with spaces
+            "custom:claude-opus-4-7":       .standard,
+            "custom:gpt-5.5(xhigh)":        .standard
+        ]
+        for (model, expected) in cases {
+            XCTAssertEqual(
+                FactorySessionClassifier.lane(for: ["providerLock": "factory", "model": model]),
+                expected,
+                "Model '\(model)' should classify as \(expected)"
+            )
+        }
+    }
+
+    /// `/api/organization/subscription/usage` now exposes Droid Core
+    /// lane stats and an Extra Usage prepaid wallet. The adapter must
+    /// surface both as distinct buckets so the popover can render
+    /// "Standard / Premium / Core / $X Extra".
+    func test_factoryRefresh_exactAPI_surfacesDroidCoreLaneAndExtraUsageWallet() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let session = makeStubSession { request in
+            let url = try XCTUnwrap(request.url)
+            if url.path.hasSuffix("/api/app/auth/me") {
+                return try self.httpResponse(
+                    url: url, statusCode: 200,
+                    body: #"""
+                    {
+                      "organization": {
+                        "name": "Acme",
+                        "subscription": {
+                          "factoryTier": "plus",
+                          "orbSubscription": {
+                            "status": "active",
+                            "plan": { "name": "Plus" }
+                          }
+                        }
+                      }
+                    }
+                    """#
+                )
+            }
+            if url.path.hasSuffix("/api/organization/subscription/usage") {
+                return try self.httpResponse(
+                    url: url, statusCode: 200,
+                    body: #"""
+                    {
+                      "usage": {
+                        "endDate": 1774359600000,
+                        "standard": {
+                          "userTokens": 60000000,
+                          "totalAllowance": 100000000,
+                          "usedRatio": 0.60
+                        },
+                        "premium": {
+                          "userTokens": 12000000,
+                          "totalAllowance": 20000000,
+                          "usedRatio": 0.60
+                        },
+                        "droidCore": {
+                          "userTokens": 5000000,
+                          "totalAllowance": 50000000,
+                          "usedRatio": 0.10
+                        },
+                        "extraUsage": {
+                          "balanceUSD": 12.34,
+                          "enabled": true
+                        }
+                      }
+                    }
+                    """#
+                )
+            }
+            XCTFail("Unexpected URL \(url.absoluteString)")
+            return try self.httpResponse(url: url, statusCode: 404, body: #"{"error":"not found"}"#)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            environment: [
+                "FACTORY_BEARER_TOKEN": "factory-bearer",
+                "FACTORY_COOKIE_HEADER": "session=factory-session"
+            ],
+            factoryPlanProvider: { .unknown }  // API auto-detect should override
+        )
+
+        await service.refresh(provider: .factory, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
+
+        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.confidence, .exact)
+
+        let standard = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-standard" })
+        XCTAssertEqual(standard.usedPercent?.rounded(), 60)
+
+        let core = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-droid-core" },
+                                 "Droid Core lane bucket must be present when API exposes it")
+        XCTAssertEqual(core.label, "Droid Core (open-weight)")
+        XCTAssertEqual(core.usedValue?.rounded(), 5_000_000)
+        XCTAssertEqual(core.limitValue?.rounded(), 50_000_000)
+        XCTAssertEqual(core.usedPercent?.rounded(), 10)
+
+        let extra = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-extra-usage" },
+                                  "Extra Usage wallet bucket must be present when API exposes a positive balance")
+        XCTAssertEqual(extra.unit, .currency)
+        XCTAssertEqual(try XCTUnwrap(extra.remainingValue), 12.34, accuracy: 0.001)
+        XCTAssertFalse(extra.label.contains("disabled"),
+                       "Enabled wallet should not carry the disabled suffix")
+    }
+
+    /// `enabled: false` on Extra Usage means the toggle is off — even
+    /// with a positive balance, sessions won't draw from it. Surface
+    /// the disabled state in the label so users know they can flip it.
+    func test_factoryRefresh_exactAPI_extraUsageDisabledStateIsLabeled() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let session = makeStubSession { request in
+            let url = try XCTUnwrap(request.url)
+            if url.path.hasSuffix("/api/app/auth/me") {
+                return try self.httpResponse(
+                    url: url, statusCode: 200,
+                    body: #"{"organization":{"subscription":{"factoryTier":"pro"}}}"#
+                )
+            }
+            if url.path.hasSuffix("/api/organization/subscription/usage") {
+                return try self.httpResponse(
+                    url: url, statusCode: 200,
+                    body: #"""
+                    {
+                      "usage": {
+                        "standard": { "userTokens": 1000, "totalAllowance": 20000000, "usedRatio": 0.0001 },
+                        "premium": { "userTokens": 0, "totalAllowance": 4000000, "usedRatio": 0 },
+                        "extraUsage": { "balanceUSD": 25.0, "enabled": false }
+                      }
+                    }
+                    """#
+                )
+            }
+            return try self.httpResponse(url: url, statusCode: 404, body: "{}")
+        }
+
+        let service = makeService(
+            home: home, appSupportRoot: appSupport, session: session,
+            environment: [
+                "FACTORY_BEARER_TOKEN": "factory-bearer",
+                "FACTORY_COOKIE_HEADER": "session=factory-session"
+            ],
+            factoryPlanProvider: { .pro }
+        )
+        await service.refresh(provider: .factory, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
+
+        let extra = try XCTUnwrap(snapshot.buckets.first { $0.key == "factory-extra-usage" })
+        XCTAssertEqual(try XCTUnwrap(extra.remainingValue), 25.0, accuracy: 0.001)
+        XCTAssertTrue(extra.label.contains("disabled"),
+                      "Disabled wallet must carry '(disabled)' so users know to flip the toggle")
+    }
+
+    /// Subscription status badges — when Orb reports `trialing`,
+    /// `past_due`, or `canceled`, the popover status line surfaces it
+    /// so users see the billing state without clicking through to
+    /// app.factory.ai/settings/billing.
+    func test_factoryRefresh_exactAPI_surfacesSubscriptionStatusBadge() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let session = makeStubSession { request in
+            let url = try XCTUnwrap(request.url)
+            if url.path.hasSuffix("/api/app/auth/me") {
+                return try self.httpResponse(
+                    url: url, statusCode: 200,
+                    body: #"""
+                    {
+                      "organization": {
+                        "subscription": {
+                          "factoryTier": "max",
+                          "orbSubscription": {
+                            "status": "trialing",
+                            "plan": { "name": "Max" }
+                          }
+                        }
+                      }
+                    }
+                    """#
+                )
+            }
+            if url.path.hasSuffix("/api/organization/subscription/usage") {
+                return try self.httpResponse(
+                    url: url, statusCode: 200,
+                    body: #"""
+                    {
+                      "usage": {
+                        "standard": { "userTokens": 100, "totalAllowance": 200000000, "usedRatio": 0.0 },
+                        "premium": { "userTokens": 0, "totalAllowance": 40000000, "usedRatio": 0 }
+                      }
+                    }
+                    """#
+                )
+            }
+            return try self.httpResponse(url: url, statusCode: 404, body: "{}")
+        }
+
+        let service = makeService(
+            home: home, appSupportRoot: appSupport, session: session,
+            environment: [
+                "FACTORY_BEARER_TOKEN": "factory-bearer",
+                "FACTORY_COOKIE_HEADER": "session=factory-session"
+            ],
+            factoryPlanProvider: { .pro }
+        )
+        await service.refresh(provider: .factory, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .factory))
+
+        XCTAssertTrue(snapshot.statusMessage.contains("trial"),
+                      "Subscription status badge must surface 'trial' — got: \(snapshot.statusMessage)")
     }
 
     func test_refreshAll_persistsSnapshotsAndReloadsFromDisk() async throws {
@@ -832,7 +2058,16 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: .openAI)
 
-        XCTAssertTrue(service.snapshots(for: AgentProvider.openAI).isEmpty)
+        // OpenAI is usage-only: refreshAll may surface placeholder snapshot
+        // entries for the daemon credential slot, but none of them should
+        // carry real quota window data (the stub session would have
+        // XCTFail'd above if quota HTTP had been attempted).
+        for snapshot in service.snapshots(for: AgentProvider.openAI) {
+            XCTAssertTrue(
+                snapshot.buckets.isEmpty,
+                "OpenAI snapshots should not carry quota buckets — got \(snapshot.buckets)"
+            )
+        }
         XCTAssertEqual(persistedAccounts.map(\.id), ["openai-work"])
         XCTAssertEqual(persistedAccounts.first?.label, "Work")
         XCTAssertEqual(persistedAccounts.first?.storageScope, .deviceKeychain)
@@ -1882,6 +3117,126 @@ extension ProviderQuotaServiceTests {
         XCTAssertEqual(snapshot.hourlyBucket?.windowKind, .rollingHours)
         XCTAssertEqual(snapshot.weeklyBucket?.windowKind, .weekly)
         XCTAssertFalse(snapshot.buckets.contains { $0.key.contains("local") || $0.key == "ollama-cloud" })
+    }
+
+    /// Regression: clicking "Connect Ollama" stores a cookie header in
+    /// Keychain under `ollama_cookie_header`; the adapter must forward that
+    /// cookie to `ollama.com/settings` so quota actually gets read. Before the
+    /// fix the cookie was always nil and the cloud scrape silently no-op'd.
+    func test_ollamaCloud_storedCookieIsReplayedToOllamaSettings() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let cookieHeader = "ollama_session=test-session-value; signed-in=1"
+
+        let keyStore = ProviderAPIKeyStore(
+            keychain: KeychainStore(
+                service: "tests.\(UUID().uuidString)",
+                legacyServices: [],
+                backend: TestKeychainBackend()
+            )
+        )
+        try keyStore.setAPIKey(cookieHeader, for: "ollama_cookie_header")
+
+        let observedCookieHeaders = Locked<[String]>([])
+        let observedSettingsURLs = Locked<[String]>([])
+        let session = makeStubSession { request in
+            guard let urlString = request.url?.absoluteString else {
+                throw URLError(.badURL)
+            }
+            if urlString.contains("api/tags") {
+                let body = """
+                {"models": [{"name": "llama3:cloud"}]}
+                """
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            }
+            if urlString.contains("api/ps") {
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
+            }
+            if urlString.contains("ollama.com/settings") {
+                observedSettingsURLs.withLock { $0.append(urlString) }
+                if let cookie = request.value(forHTTPHeaderField: "Cookie") {
+                    observedCookieHeaders.withLock { $0.append(cookie) }
+                }
+                let html = """
+                <span>Cloud Usage</span><span>Cloud Pro</span>
+                <h3>5-hour usage</h3><div>17.5% used</div>
+                <h3>Weekly usage</h3><div>42% used</div>
+                """
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: html)
+            }
+            throw URLError(.badURL)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            keyStore: keyStore,
+            session: session,
+            environment: ["OLLAMA_HOST": "http://localhost:11434"]
+        )
+
+        await service.refresh(provider: .ollama, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .ollama))
+
+        XCTAssertEqual(observedSettingsURLs.read(), ["https://ollama.com/settings"],
+                      "Adapter must hit ollama.com/settings exactly once when a cookie is stored")
+        XCTAssertEqual(observedCookieHeaders.read(), [cookieHeader],
+                      "Adapter must replay the stored Ollama cookie jar")
+
+        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.buckets.map(\.key), ["ollama-cloud-session", "ollama-cloud-weekly"])
+        XCTAssertEqual(snapshot.hourlyBucket?.usedPercent, 17.5)
+        XCTAssertEqual(snapshot.weeklyBucket?.usedPercent, 42)
+    }
+
+    /// Without a stored Ollama login session the adapter must NOT touch
+    /// ollama.com (no anonymous probes, no broken auth attempts) and the
+    /// status message must point the user at the connect flow instead of
+    /// the legacy "Readable quota not available yet" generic copy.
+    func test_ollamaCloud_withoutStoredCookieSkipsRemoteFetchAndPromptsConnect() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+
+        let observedSettingsHits = Locked<Int>(0)
+        let session = makeStubSession { request in
+            guard let urlString = request.url?.absoluteString else {
+                throw URLError(.badURL)
+            }
+            if urlString.contains("api/tags") {
+                let body = """
+                {"models": [{"name": "llama3"}]}
+                """
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: body)
+            }
+            if urlString.contains("api/ps") {
+                return try self.httpResponse(url: request.url!, statusCode: 200, body: "{}")
+            }
+            if urlString.contains("ollama.com/settings") {
+                observedSettingsHits.withLock { $0 += 1 }
+                return try self.httpResponse(url: request.url!, statusCode: 401, body: "")
+            }
+            throw URLError(.badURL)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            environment: ["OLLAMA_HOST": "http://localhost:11434"]
+        )
+
+        await service.refresh(provider: .ollama, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .ollama))
+
+        XCTAssertEqual(observedSettingsHits.read(), 0,
+                      "Adapter must not hit ollama.com without a stored session cookie")
+        XCTAssertEqual(snapshot.confidence, .unavailable)
+        XCTAssertTrue(snapshot.buckets.isEmpty)
+        XCTAssertTrue(
+            snapshot.statusMessage.contains("Connect Ollama"),
+            "Status should prompt the user to connect — got: \(snapshot.statusMessage)"
+        )
     }
 
     func test_refreshAll_persistsKimiSlotsByMappingMoonshotCatalogToKimiAdapter() async throws {

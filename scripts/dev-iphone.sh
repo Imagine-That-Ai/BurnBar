@@ -14,21 +14,21 @@ DERIVED="${DERIVED:-build/DerivedData}"
 
 cd "$(dirname "$0")/.."
 
-echo "▶ Building $SCHEME for device $DEVICE_ID…"
+echo "▶ Building ${SCHEME} for device ${DEVICE_ID}…"
 xcodebuild \
   -project OpenBurnBar.xcodeproj \
-  -scheme "$SCHEME" \
-  -destination "platform=iOS,id=$DEVICE_ID" \
+  -scheme "${SCHEME}" \
+  -destination "platform=iOS,id=${DEVICE_ID}" \
   -derivedDataPath "$DERIVED" \
   -allowProvisioningUpdates \
   -quiet \
   build
 
 APP_PATH="$DERIVED/Build/Products/Debug-iphoneos/OpenBurnBarMobile.app"
-echo "▶ Installing $APP_PATH"
-xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH"
+echo "▶ Installing ${APP_PATH}"
+xcrun devicectl device install app --device "${DEVICE_ID}" "${APP_PATH}"
 
-echo "▶ Launching $BUNDLE_ID"
-xcrun devicectl device process launch --device "$DEVICE_ID" "$BUNDLE_ID"
+echo "▶ Launching ${BUNDLE_ID}"
+xcrun devicectl device process launch --device "${DEVICE_ID}" "${BUNDLE_ID}"
 
 echo "✅ Done."

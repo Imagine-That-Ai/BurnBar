@@ -110,3 +110,37 @@ struct TimelineScopePicker: View {
         )
     }
 }
+
+// MARK: - Display Mode Toggle
+//
+// Currency / Tokens chip used by Pulse's top toolbar. Lives next to the
+// timeline scope picker so the two read as a single control row across iOS
+// and Android.
+
+struct PulseDisplayModeToggle: View {
+    @Binding var displayMode: UsageDisplayMode
+
+    var body: some View {
+        Button {
+            withAnimation(AuroraDesign.Motion.auroraSnap) {
+                displayMode = displayMode == .currency ? .tokens : .currency
+            }
+            HapticBus.toggle()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: displayMode == .currency ? "dollarsign" : "number")
+                    .font(.system(size: 10, weight: .bold))
+                Text(displayMode.label)
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .foregroundStyle(MobileTheme.ember)
+            .background(Capsule().fill(MobileTheme.ember.opacity(0.18)))
+            .overlay(Capsule().stroke(MobileTheme.ember.opacity(0.4), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Toggle currency or tokens")
+    }
+}

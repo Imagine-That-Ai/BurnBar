@@ -784,7 +784,10 @@ final class HermesServiceTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let messages = try XCTUnwrap(object["messages"] as? [[String: String]])
         let streamOptions = try XCTUnwrap(object["stream_options"] as? [String: Any])
-        XCTAssertEqual(messages.map { $0["content"] }, ["Previous useful turn", "Current turn"])
+        let conversationalMessages = messages.filter { $0["role"] != "system" }
+        XCTAssertEqual(conversationalMessages.map { $0["content"] }, ["Previous useful turn", "Current turn"])
+        XCTAssertFalse(messages.contains { $0["content"]?.isEmpty == true })
+        XCTAssertFalse(messages.contains { $0["content"] == "Previous failure" })
         XCTAssertEqual(streamOptions["include_usage"] as? Bool, true)
     }
 

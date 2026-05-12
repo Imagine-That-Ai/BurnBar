@@ -487,10 +487,12 @@ function checkRunnerReadyz() {
 }
 
 function checkRedis() {
+  const redisName = "hermes-realtime-relay-redis-prod";
   const result = run("gcloud", [
     "redis",
     "instances",
-    "list",
+    "describe",
+    redisName,
     "--project",
     PROJECT,
     "--region",
@@ -498,13 +500,46 @@ function checkRedis() {
     "--format=json",
   ]);
   if (!result.ok) return { ok: false, error: result.stderr || result.stdout };
-  const instances = JSON.parse(result.stdout);
-  const redis = instances.find((instance) => instance.name?.includes("hermes-realtime-relay-redis-prod"));
+  const redis = JSON.parse(result.stdout);
+  const relay = run("gcloud", [
+    "run",
+    "services",
+    "describe",
+    "hermes-realtime-relay",
+    "--project",
+    PROJECT,
+    "--region",
+    REGION,
+    "--format=json",
+  ]);
+  if (!relay.ok) return { ok: false, error: relay.stderr || relay.stdout };
+  const relayService = JSON.parse(relay.stdout);
+  const env = relayService.spec?.template?.spec?.containers?.[0]?.env || [];
+  const redisURL = env.find((entry) => entry.name === "REDIS_URL")?.value || null;
+  let relayRedisHost = null;
+  try {
+    relayRedisHost = redisURL ? new URL(redisURL).hostname : null;
+  } catch {
+    relayRedisHost = null;
+  }
+  const maintenanceWindow = redis?.maintenancePolicy?.weeklyMaintenanceWindow?.[0] || null;
+  const ok = redis?.state === "READY" &&
+    redis?.tier === "STANDARD_HA" &&
+    Number(redis?.memorySizeGb || 0) >= 1 &&
+    relayRedisHost === redis?.host &&
+    maintenanceWindow?.day === "SUNDAY" &&
+    maintenanceWindow?.startTime?.hours === 9;
   return {
-    ok: redis?.state === "READY",
+    ok,
     name: redis?.name || null,
     tier: redis?.tier || null,
     state: redis?.state || null,
+    memorySizeGb: redis?.memorySizeGb || null,
+    redisVersion: redis?.redisVersion || null,
+    connectMode: redis?.connectMode || null,
+    maintenanceWindow,
+    relayRedisHost,
+    redisHost: redis?.host || null,
   };
 }
 

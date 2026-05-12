@@ -1,0 +1,475 @@
+---
+// A larger "Mac app dashboard" mockup — the home page hero secondary visual
+---
+
+<div class="dash-mockup" role="img" aria-label="OpenBurnBar dashboard showing today's burn, top providers, quota windows, and a Hermes insight card">
+  <div class="dash-mockup__chrome">
+    <div class="dash-mockup__traffic">
+      <span class="tl tl--r"></span><span class="tl tl--y"></span><span class="tl tl--g"></span>
+    </div>
+    <div class="dash-mockup__path mono">OpenBurnBar · Dashboard · Today</div>
+    <div class="dash-mockup__chromecaps">
+      <span class="cap mono">⌘K</span><span class="cap mono">●</span>
+    </div>
+  </div>
+
+  <div class="dash-mockup__body">
+    <aside class="dash-mockup__sidebar">
+      <ul>
+        <li class="active"><span aria-hidden="true">◐</span> Dashboard</li>
+        <li><span aria-hidden="true">⌁</span> Providers</li>
+        <li><span aria-hidden="true">⌬</span> Models</li>
+        <li><span aria-hidden="true">⊟</span> Sessions</li>
+        <li><span aria-hidden="true">⊕</span> Projects</li>
+        <li><span aria-hidden="true">≋</span> Streams</li>
+        <li class="sep"></li>
+        <li><span aria-hidden="true">☿</span> Hermes</li>
+        <li><span aria-hidden="true">⌥</span> Mission Control</li>
+        <li><span aria-hidden="true">⚙</span> Settings</li>
+      </ul>
+    </aside>
+
+    <section class="dash-mockup__main">
+      <div class="dash-mockup__topline">
+        <div>
+          <div class="dash-mockup__eyebrow mono">TODAY · LIVE · TUE 12 MAY</div>
+          <div class="dash-mockup__title">
+            <span class="huge"><span class="sign">$</span>14.27</span>
+            <div class="dash-mockup__title-meta">
+              <div><span class="mono">28,140</span> tokens · <span class="mono">19</span> sessions</div>
+              <div class="muted">across <span class="bright">4 providers</span>, <span class="bright">7 models</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="dash-mockup__window">
+          <span class="mono small muted">WINDOW</span>
+          <div class="dash-mockup__windowtabs mono">
+            <span>Today</span><span class="active">Week</span><span>Month</span><span>All</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-mockup__cards">
+        <div class="dcard">
+          <div class="dcard__head">
+            <span class="mono small muted">SPEND VS BUDGET</span>
+            <span class="tag tag--exact tag--plain mono">live</span>
+          </div>
+          <div class="dcard__big mono">$348.12 / $500</div>
+          <div class="dcard__bar"><div style="width:69%"></div></div>
+          <span class="muted small">May · 19 days in · pacing $549 / mo</span>
+        </div>
+        <div class="dcard">
+          <div class="dcard__head">
+            <span class="mono small muted">TOP MODEL</span>
+            <span class="tag tag--exact tag--plain mono">exact</span>
+          </div>
+          <div class="dcard__big">claude-opus-4-7</div>
+          <span class="muted small mono">$5.92 · 11,300 tok · 14 sessions</span>
+        </div>
+        <div class="dcard">
+          <div class="dcard__head">
+            <span class="mono small muted">CACHE HITS</span>
+            <span class="tag tag--mercury tag--plain mono">today</span>
+          </div>
+          <div class="dcard__big">38%</div>
+          <span class="muted small">Saved approx <span class="bright">$3.18</span> vs no-cache baseline</span>
+        </div>
+      </div>
+
+      <div class="dash-mockup__split">
+        <div class="dchart">
+          <div class="dchart__head">
+            <h4>Spend by provider · last 7 days</h4>
+            <span class="mono small muted">stacked area</span>
+          </div>
+          <svg viewBox="0 0 400 160" class="dchart__svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="aP1" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="#ff6a1a" stop-opacity="0.7"/>
+                <stop offset="100%" stop-color="#ff6a1a" stop-opacity="0.05"/>
+              </linearGradient>
+              <linearGradient id="aP2" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="#6fd189" stop-opacity="0.5"/>
+                <stop offset="100%" stop-color="#6fd189" stop-opacity="0.05"/>
+              </linearGradient>
+              <linearGradient id="aP3" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="#ffb547" stop-opacity="0.45"/>
+                <stop offset="100%" stop-color="#ffb547" stop-opacity="0.05"/>
+              </linearGradient>
+            </defs>
+            <path d="M0 40 C 50 60 100 30 150 50 S 250 25 300 40 S 380 30 400 28 L400 160 L0 160 Z" fill="url(#aP1)"/>
+            <path d="M0 90 C 50 80 100 95 150 88 S 250 100 300 92 S 380 86 400 84 L400 160 L0 160 Z" fill="url(#aP2)"/>
+            <path d="M0 130 C 50 132 100 124 150 130 S 250 128 300 130 S 380 124 400 126 L400 160 L0 160 Z" fill="url(#aP3)"/>
+            <path d="M0 40 C 50 60 100 30 150 50 S 250 25 300 40 S 380 30 400 28" stroke="#ff8a3d" stroke-width="1.2" fill="none"/>
+            <line x1="0" y1="40" x2="400" y2="40" stroke="#ff8a3d" stroke-dasharray="2,4" stroke-width="0.6" opacity="0.5"/>
+          </svg>
+          <div class="dchart__legend mono">
+            <span><span class="sw" style="background:#ff6a1a"></span>Claude Code</span>
+            <span><span class="sw" style="background:#6fd189"></span>Codex</span>
+            <span><span class="sw" style="background:#ffb547"></span>Cursor</span>
+          </div>
+        </div>
+
+        <div class="dquota">
+          <div class="dquota__head">
+            <h4>Quota — next to burn</h4>
+            <span class="mono small muted">refresh ⌘R</span>
+          </div>
+          <ul>
+            <li>
+              <div class="qline">
+                <span class="qprov">Claude Code · <span class="mono">5h</span></span>
+                <span class="qpct mono">68% · 1h 42m</span>
+              </div>
+              <div class="qbar"><div class="qfill" style="width:68%"></div></div>
+            </li>
+            <li>
+              <div class="qline">
+                <span class="qprov">Codex · <span class="mono">primary</span></span>
+                <span class="qpct mono">41% · 3h 12m</span>
+              </div>
+              <div class="qbar"><div class="qfill qfill--mid" style="width:41%"></div></div>
+            </li>
+            <li>
+              <div class="qline">
+                <span class="qprov">Cursor · <span class="mono">plan</span></span>
+                <span class="qpct mono">22% · cycle</span>
+              </div>
+              <div class="qbar"><div class="qfill qfill--low" style="width:22%"></div></div>
+            </li>
+            <li>
+              <div class="qline">
+                <span class="qprov">Copilot · <span class="mono">premium</span></span>
+                <span class="qpct mono">14% · 7d</span>
+              </div>
+              <div class="qbar"><div class="qfill qfill--low" style="width:14%"></div></div>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="dash-mockup__hermes">
+        <div class="dh__avatar" aria-hidden="true">☿</div>
+        <div class="dh__body">
+          <div class="dh__head">
+            <span class="dh__name">Hermes</span>
+            <span class="tag tag--mercury tag--plain mono">local index</span>
+          </div>
+          <p class="dh__msg">
+            Your <span class="atom atom--ember">Claude Code · 5h window</span> hits
+            <span class="atom mono">80%</span> at the current rate by
+            <span class="atom mono">3:47pm</span>. Top draw is
+            <span class="atom atom--mercury">opus-4-7</span> on the
+            <span class="atom atom--ember">ledger-rebuild</span> project.
+          </p>
+          <div class="dh__suggest mono small muted">
+            <span class="suggest">⮒ throttle opus on rebuild</span>
+            <span class="suggest">⮒ switch to sonnet</span>
+            <span class="suggest">⮒ snooze</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<style>
+  .dash-mockup {
+    width: 100%;
+    background:
+      linear-gradient(180deg, #1a1521 0%, #0e0a14 100%);
+    border: 1px solid var(--ink-line);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow:
+      0 28px 80px -40px rgba(0,0,0,0.95),
+      0 0 0 1px rgba(255,106,26,0.06);
+    color: var(--text-base);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .dash-mockup__chrome {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: #16131e;
+    border-bottom: 1px solid var(--ink-line);
+  }
+  .dash-mockup__traffic { display: inline-flex; gap: 6px; }
+  .tl { width: 11px; height: 11px; border-radius: 50%; }
+  .tl--r { background: #ff5f57; }
+  .tl--y { background: #febc2e; }
+  .tl--g { background: #28c840; }
+  .dash-mockup__path {
+    flex: 1;
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--text-mute);
+    letter-spacing: 0.04em;
+  }
+  .dash-mockup__chromecaps {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .cap {
+    border: 1px solid var(--ink-line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10.5px;
+    color: var(--text-mute);
+  }
+  .dash-mockup__body {
+    display: grid;
+    grid-template-columns: 168px 1fr;
+    min-height: 460px;
+  }
+  .dash-mockup__sidebar {
+    border-right: 1px solid var(--ink-line);
+    padding: 12px 0;
+    background: #11101a;
+  }
+  .dash-mockup__sidebar ul { display: grid; gap: 1px; }
+  .dash-mockup__sidebar li {
+    padding: 6px 14px;
+    font-size: 12.5px;
+    color: var(--text-mute);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    border-left: 2px solid transparent;
+  }
+  .dash-mockup__sidebar li.active {
+    color: var(--text-bright);
+    border-left-color: var(--ember-bright);
+    background: linear-gradient(90deg, rgba(255, 106, 26, 0.08), transparent);
+  }
+  .dash-mockup__sidebar li.sep {
+    height: 1px;
+    background: var(--ink-line);
+    padding: 0;
+    margin: 8px 14px;
+  }
+  .dash-mockup__sidebar li span { color: var(--ember-bright); width: 12px; }
+
+  .dash-mockup__main {
+    padding: 20px 22px;
+    display: grid;
+    gap: 18px;
+  }
+  .dash-mockup__topline {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .dash-mockup__eyebrow {
+    font-size: 10.5px;
+    color: var(--text-mute);
+    letter-spacing: 0.18em;
+    margin-bottom: 8px;
+  }
+  .dash-mockup__title { display: flex; gap: 16px; align-items: flex-end; }
+  .huge {
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 144, "wght" 460;
+    font-size: 52px;
+    line-height: 1;
+    color: var(--text-bright);
+    letter-spacing: -0.03em;
+  }
+  .huge .sign { color: var(--ember-bright); font-variation-settings: "wght" 340; }
+  .dash-mockup__title-meta { display: grid; gap: 2px; font-size: 12px; padding-bottom: 4px; }
+  .dash-mockup__title-meta .muted { color: var(--text-mute); }
+
+  .dash-mockup__window {
+    text-align: right;
+    display: grid;
+    gap: 6px;
+  }
+  .dash-mockup__windowtabs {
+    display: inline-flex;
+    border: 1px solid var(--ink-line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .dash-mockup__windowtabs span {
+    padding: 4px 10px;
+    font-size: 11px;
+    color: var(--text-mute);
+    border-right: 1px solid var(--ink-line);
+  }
+  .dash-mockup__windowtabs span:last-child { border-right: 0; }
+  .dash-mockup__windowtabs .active {
+    background: var(--ink-surface-2);
+    color: var(--text-bright);
+  }
+
+  .dash-mockup__cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .dcard {
+    border: 1px solid var(--ink-line);
+    border-radius: 10px;
+    padding: 12px;
+    background: var(--ink-base);
+    display: grid;
+    gap: 6px;
+  }
+  .dcard__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .dcard__big {
+    font-family: var(--font-display);
+    font-size: 22px;
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 36, "wght" 500;
+    letter-spacing: -0.01em;
+  }
+  .dcard__bar {
+    height: 3px;
+    background: var(--ink-line);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .dcard__bar div {
+    height: 100%;
+    background: linear-gradient(90deg, var(--ember-deep), var(--ember-core), var(--ember-bright));
+  }
+  .small { font-size: 11.5px; }
+
+  .dash-mockup__split {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 16px;
+  }
+  .dchart, .dquota {
+    border: 1px solid var(--ink-line);
+    border-radius: 10px;
+    padding: 14px;
+    background: var(--ink-base);
+    display: grid;
+    gap: 10px;
+  }
+  .dchart__head, .dquota__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .dchart h4, .dquota h4 {
+    font-size: 13px;
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 36, "wght" 540;
+    color: var(--text-bright);
+    letter-spacing: -0.01em;
+  }
+  .dchart__svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .dchart__legend {
+    display: flex;
+    gap: 14px;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    color: var(--text-mute);
+  }
+  .sw {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .dquota ul { display: grid; gap: 12px; }
+  .qline { display: flex; justify-content: space-between; font-size: 12px; }
+  .qprov { color: var(--text-bright); }
+  .qpct { color: var(--text-mute); }
+  .qfill { background: linear-gradient(90deg, var(--ember-deep), var(--ember-core), var(--ember-bright)); }
+  .qfill--mid { background: linear-gradient(90deg, #c0a14a, #ffb547); }
+  .qfill--low { background: linear-gradient(90deg, var(--mercury-deep), var(--mercury-bright)); }
+
+  .dash-mockup__hermes {
+    border: 1px solid color-mix(in oklab, var(--mercury-bright) 30%, var(--ink-line));
+    border-radius: 10px;
+    padding: 14px;
+    display: grid;
+    grid-template-columns: 38px 1fr;
+    gap: 12px;
+    background:
+      linear-gradient(135deg, rgba(214, 211, 223, 0.06), transparent 55%);
+  }
+  .dh__avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid color-mix(in oklab, var(--mercury-bright) 40%, var(--ink-line));
+    color: var(--mercury-bright);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(80% 80% at 30% 30%, rgba(214, 211, 223, 0.18), transparent 60%);
+    font-size: 16px;
+  }
+  .dh__head { display: flex; gap: 10px; align-items: center; margin-bottom: 4px; }
+  .dh__name {
+    color: var(--mercury-bright);
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 36, "wght" 500;
+    letter-spacing: -0.01em;
+  }
+  .dh__msg { font-size: 12.5px; color: var(--text-base); }
+  .atom {
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.92em;
+    color: var(--text-bright);
+    font-variation-settings: "wght" 500;
+  }
+  .atom--ember {
+    border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    color: var(--ember-bright);
+  }
+  .atom--mercury {
+    border-color: color-mix(in oklab, var(--mercury-bright) 30%, var(--ink-line));
+    color: var(--mercury-bright);
+  }
+  .dh__suggest {
+    margin-top: 8px;
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .suggest {
+    color: var(--text-mute);
+    border-bottom: 1px dashed var(--ink-line);
+    padding-bottom: 1px;
+  }
+
+  @media (max-width: 760px) {
+    .dash-mockup__body {
+      grid-template-columns: 1fr;
+    }
+    .dash-mockup__sidebar {
+      display: none;
+    }
+    .dash-mockup__cards {
+      grid-template-columns: 1fr;
+    }
+    .dash-mockup__split {
+      grid-template-columns: 1fr;
+    }
+    .huge { font-size: 40px; }
+  }
+</style>

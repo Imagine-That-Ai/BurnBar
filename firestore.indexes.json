@@ -97,6 +97,24 @@
         {"fieldPath": "status", "order": "ASCENDING"},
         {"fieldPath": "lastRefreshAt", "order": "ASCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "provider_account_device_links",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "accountID", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "lastObservedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "pi_agent_relay_requests",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {"fieldPath": "connectionId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "ASCENDING"}
+      ]
     }
   ],
   "fieldOverrides": [
@@ -108,6 +126,16 @@
     {
       "collectionGroup": "hermes_relay_requests",
       "fieldPath": "payloadCiphertext",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "pi_agent_relay_requests",
+      "fieldPath": "payloadCiphertext",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "pi_agent_relay_requests",
+      "fieldPath": "wrappedKey",
       "indexes": []
     },
     {

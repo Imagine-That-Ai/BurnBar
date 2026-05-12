@@ -21,6 +21,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case forgeDev = "Forge"
     case augment = "Augment"
     case hermes = "Hermes"
+    case piAgent = "Pi Agent"
     case geminiCLI = "Gemini CLI"
     case goose = "Goose"
     case openClaw = "OpenClaw"
@@ -36,6 +37,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     public static let quotaSignalProviders: [AgentProvider] = [
         .codex,
         .claudeCode,
+        .openAI,
         .copilot,
         .minimax,
         .zai,
@@ -141,6 +143,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .ollama
         case "hermes":
             return .hermes
+        case "pi", "piagent", "pi-agent":
+            return .piAgent
         case "factory":
             return .factory
         case "cursor":
@@ -194,6 +198,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .forgeDev:   return "ForgeLogo"
         case .augment:    return "AugmentLogo"
         case .hermes:     return "HermesLogo"
+        case .piAgent:    return "HermesLogo"
         case .geminiCLI:  return "GeminiCLILogo"
         case .goose:      return "GooseLogo"
         case .openClaw:   return "OpenClawLogo"
@@ -222,6 +227,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .forgeDev: return "flame.fill"
         case .augment: return "arrow.trianglehead.2.counterclockwise.rotate.90"
         case .hermes: return "wind"
+        case .piAgent: return "circle.hexagongrid.fill"
         case .geminiCLI: return "diamond.fill"
         case .goose: return "bird.fill"
         case .openClaw: return "point.3.connected.trianglepath.dotted"

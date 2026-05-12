@@ -98,6 +98,7 @@ public extension Double {
 public extension Int {
     /// Session-level and detail views: K / short M.
     func formatAsTokens() -> String {
+        if self >= 1_000_000_000 { return String(format: "%.2fB", Double(self) / 1_000_000_000) }
         if self >= 1_000_000 { return String(format: "%.1fM", Double(self) / 1_000_000) }
         if self >= 1_000 { return String(format: "%.1fK", Double(self) / 1_000) }
         return tokenFormatter.string(from: NSNumber(value: self)) ?? "\(self)"

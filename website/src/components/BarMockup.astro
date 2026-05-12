@@ -1,0 +1,435 @@
+---
+// Faithful re-render of the OpenBurnBar menu-bar popover. Layout, colors,
+// typography and copy all match the real macOS UI; data values were captured
+// live from the installed app on 2026-05-12 (11,377 sessions, real quota
+// windows for Anthropic + Codex, an active mission row). Rendered in CSS so
+// the popover reads cleanly without translucent desktop bleed.
+---
+
+<figure class="bar-mockup" aria-label="OpenBurnBar menu-bar popover showing live quota windows for Anthropic and Codex plus the LaHormigaDormida mission with $2,662.51 burned across 15.12 billion tokens">
+  <div class="bar-mockup__chrome" aria-hidden="true">
+    <div class="bar-mockup__menubar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="bar-mockup__menubar-spacer"></span>
+      <img src="/brand/logo-64.png" srcset="/brand/logo-64.png 1x, /brand/logo-256.png 2x" alt="" width="14" height="14" class="bar-mockup__menubar-logo" />
+      <span class="bar-mockup__menubar-label">OpenBurnBar</span>
+      <span class="bar-mockup__menubar-cap mono">Today · 2.17B</span>
+    </div>
+    <div class="bar-mockup__menubar-arrow" aria-hidden="true"></div>
+  </div>
+
+  <div class="popover">
+    <header class="popover__head">
+      <img src="/brand/logo-256.png" alt="" width="22" height="22" class="popover__icon" />
+      <span class="popover__name">OpenBurnBar</span>
+      <span class="popover__refresh" aria-hidden="true">↻</span>
+      <span class="popover__power" aria-hidden="true">⏻</span>
+    </header>
+
+    <div class="popover__meta">
+      <span class="popover__updated">Updated 4m ago</span>
+      <span class="popover__sessions mono"><span class="popover__sessions-dot" aria-hidden="true"></span>11,377 sessions</span>
+    </div>
+
+    <div class="popover__sectionhead mono">QUOTAS</div>
+
+    <ul class="popover__quotas">
+      <li>
+        <div class="qrow">
+          <img class="qicon" src="/brand/providers/anthropic.png" alt="" width="22" height="22" loading="lazy" decoding="async" />
+          <div class="qrow__bars">
+            <div class="qline">
+              <span class="qline__lbl mono">5h</span>
+              <div class="qbar"><div class="qfill qfill--anthropic" style="width:69%"></div></div>
+              <span class="qline__pct mono">69%</span>
+            </div>
+            <div class="qline">
+              <span class="qline__lbl mono">7d</span>
+              <div class="qbar"><div class="qfill qfill--anthropic" style="width:83%"></div></div>
+              <span class="qline__pct mono">83%</span>
+            </div>
+          </div>
+        </div>
+      </li>
+      <li>
+        <div class="qrow">
+          <img class="qicon" src="/brand/providers/codex.png" alt="" width="22" height="22" loading="lazy" decoding="async" />
+          <div class="qrow__bars">
+            <span class="qrow__name">Codex</span>
+            <div class="qline">
+              <span class="qline__lbl mono">5h</span>
+              <div class="qbar"><div class="qfill qfill--codex" style="width:57%"></div></div>
+              <span class="qline__pct mono">57%</span>
+            </div>
+            <div class="qline">
+              <span class="qline__lbl mono">7d</span>
+              <div class="qbar"><div class="qfill qfill--codex" style="width:34%"></div></div>
+              <span class="qline__pct mono">34%</span>
+            </div>
+          </div>
+        </div>
+      </li>
+      <li class="popover__claudeline">
+        <img class="qicon qicon--small" src="/brand/providers/claude-code.png" alt="" width="18" height="18" loading="lazy" decoding="async" />
+        <span class="popover__claude-name">Claude Code</span>
+      </li>
+    </ul>
+
+    <div class="popover__more mono">+3 more in Settings</div>
+
+    <div class="popover__mission">
+      <header>
+        <span class="popover__mission-name">LaHormigaDormida</span>
+        <span class="popover__mission-status mono">Not enough signal</span>
+      </header>
+      <p class="popover__mission-sub">
+        LaHormigaDormida · <span class="muted">not en…</span>
+      </p>
+      <div class="popover__mission-meta mono">
+        <span class="dot popover__mission-dot" aria-hidden="true"></span>
+        Provisional · In Os
+      </div>
+      <div class="popover__mission-grid mono">
+        <div><span class="lbl">Mission</span><span class="val">Needs approval</span></div>
+        <div><span class="lbl">Burn</span><span class="val">$2,662.51</span></div>
+        <div><span class="lbl">Tokens</span><span class="val">15.12B</span></div>
+      </div>
+      <div class="popover__mission-grid popover__mission-grid--two mono">
+        <div><span class="lbl">Questions</span><span class="val">0</span></div>
+        <div><span class="lbl">Followups</span><span class="val val--ember">2</span></div>
+        <div><span class="lbl">Mission</span><span class="val">Planned</span></div>
+        <div><span class="lbl">Runtime</span><span class="val val--ember">Local inference</span></div>
+      </div>
+      <a class="popover__mission-cta" href="#">Review mission approval →</a>
+    </div>
+
+    <div class="popover__footer">
+      <button class="popover__btn popover__btn--ember" type="button">
+        <span class="popover__btn-icon" aria-hidden="true">▸</span> Dashboard
+      </button>
+      <button class="popover__btn" type="button">
+        <span class="popover__btn-icon" aria-hidden="true">⚙</span> Settings
+      </button>
+    </div>
+  </div>
+
+  <figcaption class="bar-mockup__cap mono">
+    Faithful re-render · live data captured from OpenBurnBar.app on 2026-05-12
+  </figcaption>
+</figure>
+
+<style>
+  .bar-mockup {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+    max-width: 360px;
+    margin: 0;
+    font-family: var(--font-body);
+    font-size: 13px;
+  }
+  .bar-mockup__chrome { position: relative; }
+  .bar-mockup__menubar {
+    background: linear-gradient(180deg, #1a1822 0%, #14111c 100%);
+    border: 1px solid var(--ink-line);
+    border-radius: 10px;
+    height: 30px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: var(--shadow-card);
+  }
+  .bar-mockup__menubar .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #2a2434;
+  }
+  .bar-mockup__menubar-spacer { flex: 1; }
+  .bar-mockup__menubar-logo { border-radius: 22%; }
+  .bar-mockup__menubar-label {
+    color: var(--text-bright);
+    font-size: 12.5px;
+    font-variation-settings: "wght" 540;
+  }
+  .bar-mockup__menubar-cap {
+    font-size: 11px;
+    color: var(--ember-bright);
+    letter-spacing: 0.04em;
+  }
+  .bar-mockup__menubar-arrow {
+    position: absolute;
+    bottom: -7px;
+    right: 28px;
+    width: 12px;
+    height: 12px;
+    background: linear-gradient(180deg, #1f1b2a 0%, #181321 100%);
+    border: 1px solid var(--ink-line);
+    border-top: 0;
+    border-left: 0;
+    transform: rotate(45deg);
+  }
+
+  .popover {
+    background:
+      linear-gradient(180deg, #1f1b2a 0%, #14101a 100%);
+    border: 1px solid var(--ink-line);
+    border-radius: 16px;
+    padding: 14px 14px 12px;
+    box-shadow:
+      0 24px 64px -28px rgba(0,0,0,0.9),
+      0 0 0 1px rgba(255, 106, 26, 0.06),
+      0 0 60px -8px rgba(255, 106, 26, 0.18);
+    color: var(--text-base);
+    display: grid;
+    gap: 10px;
+  }
+
+  .popover__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .popover__icon { border-radius: 22%; }
+  .popover__name {
+    color: var(--text-bright);
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.012em;
+    flex: 1;
+  }
+  .popover__refresh, .popover__power {
+    color: var(--text-mute);
+    font-size: 13px;
+  }
+
+  .popover__meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.5px;
+    color: var(--text-mute);
+  }
+  .popover__sessions {
+    color: var(--ember-bright);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .popover__sessions-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--ember-core);
+    box-shadow: 0 0 6px rgba(255, 138, 61, 0.6);
+  }
+
+  .popover__sectionhead {
+    font-size: 10.5px;
+    color: var(--text-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    margin-top: 2px;
+  }
+
+  .popover__quotas {
+    display: grid;
+    gap: 10px;
+    padding: 6px 0 4px;
+  }
+  .qrow {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+  }
+  .qicon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    object-fit: contain;
+    background: rgba(255,255,255,0.04);
+    flex-shrink: 0;
+    display: block;
+  }
+  .qicon--small {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+  }
+  .popover__claude-name {
+    color: var(--text-bright);
+    font-size: 12px;
+    font-variation-settings: "wght" 540;
+  }
+  .qrow__bars { display: grid; gap: 4px; min-width: 0; }
+  .qrow__name {
+    color: var(--text-bright);
+    font-size: 12px;
+    font-variation-settings: "wght" 540;
+    margin-bottom: 2px;
+  }
+  .qline {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) 36px;
+    gap: 6px;
+    align-items: center;
+    font-size: 10.5px;
+  }
+  .qline__lbl { color: var(--text-dim); }
+  .qbar {
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    overflow: hidden;
+  }
+  .qfill {
+    height: 100%;
+    border-radius: inherit;
+  }
+  .qfill--anthropic {
+    background: linear-gradient(90deg, #c63d0f, #ff6a1a, #ffb547);
+    box-shadow: 0 0 6px rgba(255,138,61,0.45);
+  }
+  .qfill--codex {
+    background: linear-gradient(90deg, #2f7a4a, #6fd189);
+    box-shadow: 0 0 6px rgba(111,209,137,0.35);
+  }
+  .qline__pct {
+    color: var(--text-bright);
+    text-align: right;
+    font-variation-settings: "wght" 540;
+  }
+
+  .popover__claudeline {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-mute);
+    padding-left: 2px;
+  }
+
+  .popover__more {
+    font-size: 10.5px;
+    color: var(--ember-bright);
+    letter-spacing: 0.04em;
+    margin-top: -2px;
+  }
+
+  .popover__mission {
+    margin-top: 6px;
+    padding: 12px;
+    border-radius: 12px;
+    background:
+      linear-gradient(180deg, #2a2233 0%, #1c1626 100%);
+    border: 1px solid var(--ink-line);
+    display: grid;
+    gap: 6px;
+  }
+  .popover__mission header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .popover__mission-name {
+    color: var(--text-bright);
+    font-family: var(--font-display);
+    font-size: 13.5px;
+    font-variation-settings: "opsz" 36, "wght" 540;
+  }
+  .popover__mission-status {
+    font-size: 10px;
+    color: var(--text-mute);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--ink-line);
+    border-radius: 999px;
+    padding: 2px 8px;
+    letter-spacing: 0.04em;
+  }
+  .popover__mission-sub {
+    font-size: 11.5px;
+    color: var(--text-base);
+  }
+  .popover__mission-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10.5px;
+    color: var(--ember-bright);
+    letter-spacing: 0.04em;
+  }
+  .popover__mission-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ember-core);
+  }
+  .popover__mission-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0,1fr));
+    gap: 6px 12px;
+    margin-top: 2px;
+    font-size: 11px;
+  }
+  .popover__mission-grid--two {
+    grid-template-columns: repeat(4, minmax(0,1fr));
+  }
+  .popover__mission-grid > div {
+    display: grid;
+    gap: 1px;
+  }
+  .popover__mission-grid .lbl {
+    color: var(--text-dim);
+    font-size: 9.5px;
+    letter-spacing: 0.04em;
+  }
+  .popover__mission-grid .val {
+    color: var(--text-bright);
+    font-variation-settings: "wght" 500;
+    font-size: 11.5px;
+  }
+  .popover__mission-grid .val--ember {
+    color: var(--ember-bright);
+  }
+  .popover__mission-cta {
+    color: var(--ember-bright);
+    font-size: 11px;
+    font-variation-settings: "wght" 500;
+    margin-top: 4px;
+  }
+
+  .popover__footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .popover__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--ink-line);
+    color: var(--text-bright);
+    font-size: 11.5px;
+    font-variation-settings: "wght" 540;
+    cursor: pointer;
+  }
+  .popover__btn--ember {
+    background: linear-gradient(135deg, #c63d0f 0%, #ff6a1a 60%, #ffb547 100%);
+    color: #150b03;
+    border-color: transparent;
+  }
+  .popover__btn-icon { font-size: 11px; }
+
+  .bar-mockup__cap {
+    font-size: var(--t-caption);
+    color: var(--text-dim);
+    text-align: center;
+    letter-spacing: 0.04em;
+  }
+  .muted { color: var(--text-mute); }
+</style>

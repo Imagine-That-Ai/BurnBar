@@ -26,10 +26,17 @@ extension DashboardView {
                         let n = UserDefaults.standard.integer(forKey: "lastSeenSessionCountForChatBadge")
                         return dataStore.totalUsageSessionCount > n && dataStore.totalUsageSessionCount > 0
                     }(),
+                    isChatRoute: navigationModel.mainRoute == .chat,
                     onRequestOpen: {
                         consentCoordinator?.openChatPanelIfConsented(chatController: chatController) {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                                chatPanelOpen = true
+                            if preferMaximizedChat {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                    navigationModel.navigate(to: .chat)
+                                }
+                            } else {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                    chatPanelOpen = true
+                                }
                             }
                         }
                     },
@@ -38,6 +45,21 @@ extension DashboardView {
                         if navigationModel.mainRoute != .sessionLogs {
                             navigationModel.navigate(to: .sessionLogs)
                         }
+                    },
+                    onMaximize: {
+                        preferMaximizedChat = true
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                            chatPanelOpen = false
+                            navigationModel.navigate(to: .chat)
+                        }
+                    },
+                    onPopOut: {
+                        WindowManager.shared.openChatPopOutWindow(
+                            controller: chatController,
+                            dataStore: dataStore,
+                            settingsManager: settingsManager,
+                            accountManager: accountManager
+                        )
                     },
                     onClose: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -72,7 +94,8 @@ extension DashboardView {
                     accountManager: accountManager,
                     cloudSyncService: cloudSyncService,
                     iCloudSessionMirrorService: iCloudSessionMirrorService,
-                    dataStore: dataStore
+                    dataStore: dataStore,
+                    runtimeContext: runtimeContext
                 )
             }
             .onAppear {
@@ -114,10 +137,24 @@ extension DashboardView {
             }
             .onChange(of: navigationCoordinator.pendingNavigation) { _, destination in
                 guard let destination else { return }
-                if case .conversationSearch = destination, !chatPanelOpen {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) { chatPanelOpen = true }
-                } else if case .chatPanel = destination, !chatPanelOpen {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) { chatPanelOpen = true }
+                switch destination {
+                case .conversationSearch, .chatPanel:
+                    if preferMaximizedChat {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                            navigationModel.navigate(to: .chat)
+                        }
+                    } else if !chatPanelOpen {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) { chatPanelOpen = true }
+                    }
+                case .chatPopOut:
+                    WindowManager.shared.openChatPopOutWindow(
+                        controller: chatController,
+                        dataStore: dataStore,
+                        settingsManager: settingsManager,
+                        accountManager: accountManager
+                    )
+                default:
+                    break
                 }
                 navigationCoordinator.clearPendingNavigation()
             }

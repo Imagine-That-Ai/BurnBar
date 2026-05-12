@@ -19,17 +19,41 @@ final class CastActionsListener {
 
     private let accountManager: AccountManaging
     private let settingsManager: SettingsManager
+    private let repairCoordinator: SmartDisplayRepairCoordinator?
     private var listener: ListenerRegistration?
     private var listenerUID: String?
+    private var attachTask: Task<Void, Never>?
     private var processingDocs = Set<String>()
 
-    init(accountManager: AccountManaging, settingsManager: SettingsManager) {
+    init(
+        accountManager: AccountManaging,
+        settingsManager: SettingsManager,
+        repairCoordinator: SmartDisplayRepairCoordinator? = nil
+    ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
+        self.repairCoordinator = repairCoordinator
     }
 
     func start() {
-        guard accountManager.isFirebaseAvailable, let uid = accountManager.currentUID else { return }
+        if attachTask == nil {
+            attachTask = Task { @MainActor [weak self] in
+                while !Task.isCancelled {
+                    self?.attachIfPossible()
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                }
+            }
+        }
+        attachIfPossible()
+    }
+
+    private func attachIfPossible() {
+        guard accountManager.isFirebaseAvailable, let uid = accountManager.currentUID else {
+            listener?.remove()
+            listener = nil
+            listenerUID = nil
+            return
+        }
         guard listenerUID != uid else { return }
         listener?.remove()
         listenerUID = uid
@@ -46,6 +70,8 @@ final class CastActionsListener {
     }
 
     func stop() {
+        attachTask?.cancel()
+        attachTask = nil
         listener?.remove()
         listener = nil
         listenerUID = nil
@@ -85,19 +111,18 @@ final class CastActionsListener {
     }
 
     private func handleTest(document: QueryDocumentSnapshot, uid: String) async {
-        let scanner = CastDiscovery(onUpdate: { _ in })
-        scanner.start()
-        // Let it scan for 6 seconds, then publish.
-        try? await Task.sleep(nanoseconds: 6_000_000_000)
-
-        // Snapshot via a fresh discovery hop into a published list.
-        let devices = await collectDevicesOnce()
+        let devices = await collectDevicesOnce(duration: 12)
+        if let selected = devices.first(where: { matchesSelectedDevice($0) }) {
+            persistCastDevice(selected)
+        }
         let payload = devices.map { d in
             [
                 "serviceName": d.serviceName,
                 "friendlyName": d.friendlyName,
                 "model": d.model,
                 "host": d.host,
+                "port": d.port,
+                "identifier": d.identifier,
                 "iconKind": d.iconKind.rawValue,
                 "supportsDisplay": d.supportsDisplay
             ] as [String: Any]
@@ -106,6 +131,7 @@ final class CastActionsListener {
         let db = Firestore.firestore()
         let resultsRef = db.collection("users").document(uid).collection("cast_discovery_results").document("latest")
         try? await resultsRef.setData([
+            "actionId": document.documentID,
             "devices": payload,
             "publishedAt": ISO8601DateFormatter().string(from: Date())
         ], merge: true)
@@ -127,6 +153,18 @@ final class CastActionsListener {
         if let model = data["model"] as? String {
             settingsManager.castSelectedDeviceModel = model
         }
+        if let host = data["host"] as? String {
+            settingsManager.castSelectedDeviceHost = host
+        }
+        if let port = data["port"] as? Int, port > 0 {
+            settingsManager.castSelectedDevicePort = port
+        }
+        if let identifier = data["identifier"] as? String {
+            settingsManager.castSelectedDeviceIdentifier = identifier
+        }
+        if let supportsDisplay = data["supportsDisplay"] as? Bool {
+            settingsManager.castSelectedDeviceSupportsDisplay = supportsDisplay
+        }
         settingsManager.smartHubQuotaDisplayEnabled = true
         try? await document.reference.setData([
             "status": "completed",
@@ -135,7 +173,27 @@ final class CastActionsListener {
     }
 
     private func handleCast(document: QueryDocumentSnapshot, data: [String: Any]) async {
-        guard let url = URL(string: settingsManager.smartHubQuotaDashboardURL) else {
+        if let repairCoordinator {
+            let status = await repairCoordinator.repairNestHub()
+            if status.isHealthy {
+                try? await document.reference.setData([
+                    "status": "completed",
+                    "message": status.message,
+                    "proof": status.proof ?? "",
+                    "completedAt": ISO8601DateFormatter().string(from: Date())
+                ], merge: true)
+            } else {
+                try? await document.reference.setData([
+                    "status": "failed",
+                    "errorMessage": status.message,
+                    "proof": status.proof ?? "",
+                    "completedAt": ISO8601DateFormatter().string(from: Date())
+                ], merge: true)
+            }
+            return
+        }
+
+        guard let url = Self.castableDashboardURL(from: settingsManager.smartHubQuotaDashboardURL) else {
             await fail(document: document, message: "no dashboard URL configured")
             return
         }
@@ -143,9 +201,10 @@ final class CastActionsListener {
         let serviceName = (data["deviceId"] as? String)
             ?? settingsManager.castSelectedDeviceServiceName
         guard let device = await locateDevice(serviceName: serviceName) else {
-            await fail(document: document, message: "device not on network")
+            await fail(document: document, message: "device not on network; mDNS scan and cached endpoint both failed")
             return
         }
+        persistCastDevice(device)
         let strategy = CastReconnectStrategy(
             device: device,
             homeAssistantWebhookURL: homeAssistantRecoveryWebhookURL()
@@ -185,9 +244,10 @@ final class CastActionsListener {
     private func handleStop(document: QueryDocumentSnapshot) async {
         let serviceName = settingsManager.castSelectedDeviceServiceName
         guard let device = await locateDevice(serviceName: serviceName) else {
-            await fail(document: document, message: "device not on network")
+            await fail(document: document, message: "device not on network; mDNS scan and cached endpoint both failed")
             return
         }
+        persistCastDevice(device)
         let client = CastChannelClient(device: device)
         await client.stop()
         try? await document.reference.setData([
@@ -204,40 +264,106 @@ final class CastActionsListener {
         ], merge: true)
     }
 
-    /// 6-second mDNS scan, returning whatever devices were resolved.
-    private func collectDevicesOnce() async -> [CastDevice] {
-        await withCheckedContinuation { continuation in
-            var collected: [CastDevice] = []
-            let scanner = CastDiscovery(onUpdate: { devices in
-                collected = devices
-            })
-            scanner.start()
-            Task {
-                try? await Task.sleep(nanoseconds: 6_000_000_000)
-                scanner.stop()
-                continuation.resume(returning: collected)
-            }
-        }
+    /// mDNS scan, returning whatever devices were resolved.
+    private func collectDevicesOnce(duration: TimeInterval) async -> [CastDevice] {
+        await CastDiscovery.discoverOnce(duration: duration)
     }
 
     private func locateDevice(serviceName: String) async -> CastDevice? {
         await withCheckedContinuation { continuation in
             var resumed = false
             let scanner = CastDiscovery(onUpdate: { devices in
-                if let match = devices.first(where: { $0.serviceName == serviceName }), !resumed {
+                if let match = devices.first(where: { $0.serviceName.caseInsensitiveCompare(serviceName) == .orderedSame }), !resumed {
                     resumed = true
                     continuation.resume(returning: match)
                 }
             })
             scanner.start()
             Task {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                try? await Task.sleep(nanoseconds: 12_000_000_000)
                 scanner.stop()
                 if !resumed {
                     resumed = true
-                    continuation.resume(returning: nil)
+                    continuation.resume(returning: cachedSelectedDevice(matching: serviceName))
                 }
             }
         }
+    }
+
+    private func matchesSelectedDevice(_ device: CastDevice) -> Bool {
+        device.serviceName.caseInsensitiveCompare(settingsManager.castSelectedDeviceServiceName) == .orderedSame
+            || (!settingsManager.castSelectedDeviceIdentifier.isEmpty
+                && device.identifier.caseInsensitiveCompare(settingsManager.castSelectedDeviceIdentifier) == .orderedSame)
+    }
+
+    private func cachedSelectedDevice(matching serviceName: String) -> CastDevice? {
+        let cachedServiceName = settingsManager.castSelectedDeviceServiceName
+        guard !cachedServiceName.isEmpty,
+              cachedServiceName.caseInsensitiveCompare(serviceName) == .orderedSame else {
+            return nil
+        }
+        let host = settingsManager.castSelectedDeviceHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty else { return nil }
+        return CastDevice(
+            serviceName: cachedServiceName,
+            friendlyName: settingsManager.castSelectedDeviceFriendlyName.isEmpty
+                ? cachedServiceName
+                : settingsManager.castSelectedDeviceFriendlyName,
+            host: host,
+            port: settingsManager.castSelectedDevicePort > 0 ? settingsManager.castSelectedDevicePort : 8009,
+            model: settingsManager.castSelectedDeviceModel.isEmpty
+                ? "Cast Device"
+                : settingsManager.castSelectedDeviceModel,
+            identifier: settingsManager.castSelectedDeviceIdentifier.isEmpty
+                ? cachedServiceName
+                : settingsManager.castSelectedDeviceIdentifier,
+            supportsDisplay: settingsManager.castSelectedDeviceSupportsDisplay
+        )
+    }
+
+    private func persistCastDevice(_ device: CastDevice) {
+        settingsManager.castSelectedDeviceServiceName = device.serviceName
+        settingsManager.castSelectedDeviceFriendlyName = device.friendlyName
+        settingsManager.castSelectedDeviceModel = device.model
+        settingsManager.castSelectedDeviceHost = device.host
+        settingsManager.castSelectedDevicePort = device.port
+        settingsManager.castSelectedDeviceIdentifier = device.identifier
+        settingsManager.castSelectedDeviceSupportsDisplay = device.supportsDisplay
+    }
+
+    /// Rewrites a configured dashboard URL into one a Cast device can
+    /// actually load. The stored default is `http://127.0.0.1:8787/render.html`,
+    /// which resolves to the Nest Hub's *own* loopback — so DashCast
+    /// renders an error / cached surface instead of OpenBurnBar. We swap
+    /// loopback (and empty hosts) for the Mac's preferred LAN IPv4 so the
+    /// Hub fetches from this machine over Wi-Fi.
+    ///
+    /// We also rewrite the host when it is a *stale* LAN IPv4 — i.e. it
+    /// doesn't match any of the Mac's current local IPs. This is the
+    /// "DashCast stuck on splash" failure mode in the wild: the user
+    /// configured `http://192.168.68.87:8787/...` when the Mac was on
+    /// `.87`, the router handed out a new lease, the Mac is now `.93`,
+    /// and the Nest Hub spends forever trying to fetch a host that no
+    /// longer exists. The page never loads → DashCast splash.
+    static func castableDashboardURL(from raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let url = URL(string: trimmed) else { return nil }
+        let host = url.host?.lowercased() ?? ""
+        let loopback = host.isEmpty
+            || host == "localhost"
+            || host == "127.0.0.1"
+            || host == "0.0.0.0"
+            || host == "::1"
+
+        let localIPs = Set(LocalNetworkDiscovery.localIPv4Addresses())
+        let looksLikeIPv4 = host.split(separator: ".").count == 4
+            && host.allSatisfy { $0.isNumber || $0 == "." }
+        let isStaleLANIP = looksLikeIPv4 && !localIPs.isEmpty && !localIPs.contains(host)
+
+        guard loopback || isStaleLANIP else { return url }
+        guard let lan = LocalNetworkDiscovery.preferredLANIPv4Address() else { return nil }
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.host = lan
+        return components?.url
     }
 }

@@ -3,6 +3,8 @@ import SwiftUI
 struct ChatEngineBackendStrip: View {
     @Bindable var controller: ChatSessionController
     var settingsManager: SettingsManager
+    @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
+    @State private var piAgentRuntimeAdapter = PiAgentRuntimeAdapter()
 
     private var enabledChatBackendsForHeader: [ChatBackendID] {
         settingsManager.enabledChatBackends
@@ -26,30 +28,29 @@ struct ChatEngineBackendStrip: View {
                 HStack(spacing: 2) {
                     ForEach(enabledChatBackendsForHeader) { backend in
                         Button {
-                            if backend == .hermes && !settingsManager.hermesSetupWizardCompleted {
-                                WindowManager.shared.openHermesSetupWizard(
-                                    settingsManager: settingsManager,
-                                    chatController: controller
-                                )
-                                return
-                            }
-                            controller.setChatBackend(backend)
+                            handleBackendTap(backend)
                         } label: {
-                            Text(backend.shortLabel)
-                                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background {
-                                    if controller.chatBackend == backend {
-                                        Capsule(style: .continuous)
-                                            .fill(backend == .hermes ? AnyShapeStyle(DesignSystem.Colors.mercuryGradient) : AnyShapeStyle(DesignSystem.Colors.accentGradient))
-                                    }
+                            HStack(spacing: 3) {
+                                if shouldShowPlayAffordance(for: backend) {
+                                    Image(systemName: "play.fill")
+                                        .font(.system(size: 7, weight: .bold))
                                 }
-                                .foregroundStyle(
-                                    controller.chatBackend == backend
-                                        ? (backend == .hermes ? Color(hex: "151210") : .white)
-                                        : DesignSystem.Colors.textMuted
-                                )
+                                Text("\(backend.glyph) \(backend.shortLabel)")
+                            }
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background {
+                                if controller.chatBackend == backend {
+                                    Capsule(style: .continuous)
+                                        .fill(AnyShapeStyle(backend.gradient))
+                                }
+                            }
+                            .foregroundStyle(
+                                controller.chatBackend == backend
+                                    ? backend.activeForeground
+                                    : DesignSystem.Colors.textMuted
+                            )
                         }
                         .buttonStyle(.plain)
                         .disabled(isBackendUnavailable(backend))
@@ -65,14 +66,92 @@ struct ChatEngineBackendStrip: View {
         .animation(DesignSystem.Animation.snappy, value: enabledChatBackendsForHeader)
     }
 
+    private func shouldShowPlayAffordance(for backend: ChatBackendID) -> Bool {
+        switch backend {
+        case .hermes:
+            return controller.hermesAvailable == false && settingsManager.hermesSetupWizardCompleted
+        case .piAgent:
+            return controller.piAgentAvailable == false
+        case .codex, .claude, .openclaw:
+            return false
+        }
+    }
+
+    private func handleBackendTap(_ backend: ChatBackendID) {
+        if backend == .hermes && !settingsManager.hermesSetupWizardCompleted {
+            WindowManager.shared.openHermesSetupWizard(
+                settingsManager: settingsManager,
+                chatController: controller
+            )
+            return
+        }
+        if backend == .hermes && controller.hermesAvailable == false {
+            Task {
+                await hermesRuntimeLauncher.openHermesAndGateway(
+                    baseURL: resolvedHermesGatewayBaseURL,
+                    bearerToken: resolvedHermesBearerToken
+                )
+                await controller.probeHermesAvailability()
+                if controller.hermesAvailable {
+                    controller.setChatBackend(.hermes)
+                }
+            }
+            return
+        }
+        if backend == .piAgent && controller.piAgentAvailable == false {
+            Task {
+                syncPiAgentAdapterPreferences()
+                _ = await piAgentRuntimeAdapter.openManagedRuntime(
+                    baseURL: resolvedPiAgentGatewayBaseURL,
+                    bearerToken: resolvedPiAgentBearerToken
+                )
+                await controller.probePiAgentAvailability()
+                if controller.piAgentAvailable {
+                    controller.setChatBackend(.piAgent)
+                }
+            }
+            return
+        }
+        controller.setChatBackend(backend)
+    }
+
     private func isBackendUnavailable(_ backend: ChatBackendID) -> Bool {
         switch backend {
         case .hermes:
-            controller.hermesAvailable == false && settingsManager.hermesSetupWizardCompleted
+            false
         case .openclaw:
             controller.openClawAvailable == false
         case .codex, .claude:
             false
+        case .piAgent:
+            false
         }
+    }
+
+    private func syncPiAgentAdapterPreferences() {
+        let preferred = settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        piAgentRuntimeAdapter.preferredInstanceID = preferred.isEmpty ? nil : preferred
+        let redisRaw = settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        piAgentRuntimeAdapter.redisURL = redisRaw.isEmpty ? nil : URL(string: redisRaw)
+    }
+
+    private var resolvedHermesGatewayBaseURL: URL {
+        URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? URL(string: "http://127.0.0.1:8642")!
+    }
+
+    private var resolvedHermesBearerToken: String? {
+        let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
+    }
+
+    private var resolvedPiAgentGatewayBaseURL: URL {
+        URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? URL(string: "http://127.0.0.1:8765")!
+    }
+
+    private var resolvedPiAgentBearerToken: String? {
+        let token = settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
     }
 }

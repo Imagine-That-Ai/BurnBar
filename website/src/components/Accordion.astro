@@ -1,0 +1,77 @@
+---
+import type { FAQItem } from "@data/faq";
+
+interface Props {
+  items: FAQItem[];
+  open?: string;
+}
+const { items, open } = Astro.props;
+---
+
+<div class="accordion">
+  {items.map((item) => (
+    <details name="faq" open={open === item.id}>
+      <summary>
+        <span class="acc__q">{item.question}</span>
+        <span class="acc__chev" aria-hidden="true">+</span>
+      </summary>
+      <div class="acc__body">
+        {item.answer.split("\n\n").map((p) => <p>{p}</p>)}
+      </div>
+    </details>
+  ))}
+</div>
+
+<style>
+  .accordion {
+    display: grid;
+    border-top: 1px solid var(--ink-line);
+  }
+  details {
+    border-bottom: 1px solid var(--ink-line);
+  }
+  summary {
+    list-style: none;
+    cursor: pointer;
+    padding: var(--s-5) 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--s-4);
+    transition: color var(--dur-base) var(--ease-out);
+  }
+  summary::-webkit-details-marker { display: none; }
+  .acc__q {
+    font-family: var(--font-display);
+    font-size: var(--t-h4);
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 36, "wght" 500;
+    letter-spacing: -0.012em;
+    text-wrap: balance;
+  }
+  .acc__chev {
+    font-family: var(--font-mono);
+    color: var(--ember-bright);
+    font-size: 1.1rem;
+    transition: transform var(--dur-base) var(--ease-out);
+    line-height: 1;
+  }
+  details[open] .acc__chev {
+    transform: rotate(45deg);
+  }
+  summary:hover .acc__q {
+    color: var(--ember-bright);
+  }
+  .acc__body {
+    padding-bottom: var(--s-5);
+    color: var(--text-base);
+    display: grid;
+    gap: var(--s-3);
+    max-width: 64ch;
+    font-size: 1rem;
+    line-height: var(--leading-base);
+  }
+  .acc__body p {
+    white-space: pre-wrap;
+  }
+</style>

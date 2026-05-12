@@ -12,6 +12,13 @@ struct ChatPanel: View {
     var containerSize: CGSize
     var edgePadding: CGFloat = 20
     var onOpenConversationJump: (ConversationJumpTarget) -> Void = { _ in }
+    /// When set, replaces the floating panel with the maximized dashboard
+    /// workspace (matches Claude.ai / ChatGPT full-canvas layout). When `nil`,
+    /// the Maximize button is hidden.
+    var onMaximize: (() -> Void)? = nil
+    /// When set, opens a standalone pop-out chat window. When `nil`, the
+    /// Pop-out button is hidden.
+    var onPopOut: (() -> Void)? = nil
     var onClose: () -> Void
 
     @State private var brief = InsightBriefSnapshot()
@@ -22,6 +29,8 @@ struct ChatPanel: View {
     @State private var showHistoryPopover = false
     @State private var showClearChatPrompt = false
     @State private var didRequestHermesFirstRunSetup = false
+    @State private var showHermesRuntimePrompt = false
+    @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
     /// Atom router shared with every Hermes assistant bubble in the panel.
     /// Owned here so the popover anchors against the panel itself and any
     /// chip tap (current message or history scroll-back) opens through the
@@ -127,11 +136,29 @@ struct ChatPanel: View {
         } message: {
             Text("This starts a new chat. Previous Burn Bar chats stay in History.")
         }
+        .confirmationDialog("Open Hermes?", isPresented: $showHermesRuntimePrompt) {
+            Button("Open Hermes + Gateway") {
+                Task { await openHermesRuntime() }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Hermes is enabled but the local gateway is not reachable. OpenBurnBar can start the Hermes Dashboard and gateway for you.")
+        }
     }
 
     private func presentHermesSetupIfNeeded() {
         guard controller.chatBackend == .hermes else { return }
-        guard !settingsManager.hermesSetupWizardCompleted else { return }
+        if settingsManager.hermesSetupWizardCompleted {
+            if controller.hermesAvailable == false {
+                Task {
+                    await controller.probeHermesAvailability()
+                    if controller.hermesAvailable == false {
+                        showHermesRuntimePrompt = true
+                    }
+                }
+            }
+            return
+        }
         guard !didRequestHermesFirstRunSetup else { return }
         didRequestHermesFirstRunSetup = true
         WindowManager.shared.openHermesSetupWizard(
@@ -141,15 +168,48 @@ struct ChatPanel: View {
         )
     }
 
+    private func openHermesRuntime() async {
+        await hermesRuntimeLauncher.openHermesAndGateway(
+            baseURL: resolvedHermesGatewayBaseURL,
+            bearerToken: resolvedHermesBearerToken
+        )
+        await controller.probeHermesAvailability()
+        if controller.hermesAvailable {
+            controller.setChatBackend(.hermes)
+        }
+    }
+
+    private var resolvedHermesGatewayBaseURL: URL {
+        URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? URL(string: "http://127.0.0.1:8642")!
+    }
+
+    private var resolvedHermesBearerToken: String? {
+        let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
+    }
+
     // MARK: - Minimized Pill
 
     @State private var pillDragStart: CGSize?
 
+    // MARK: - Panel helpers
+
+    private var panelIconTint: Color {
+        switch controller.chatBackend {
+        case .hermes:   return DesignSystem.Colors.hermesAureate
+        case .piAgent:  return DesignSystem.Colors.whimsy
+        default:        return DesignSystem.Colors.whimsy
+        }
+    }
+
     private var minimizedPill: some View {
-        let modeColor: Color = controller.chatBackend == .hermes
+        let backend = controller.chatBackend
+        let modeColor: Color = backend == .hermes
             ? DesignSystem.Colors.hermesAureate
-            : DesignSystem.Colors.whimsy
-        let modeIcon = controller.chatBackend == .hermes ? "\u{263F}" : "bubble.left.and.bubble.right.fill"
+            : (backend == .piAgent ? DesignSystem.Colors.whimsy : DesignSystem.Colors.whimsy)
+        let modeGlyph = backend.glyph
+        let usesGlyph = backend == .hermes || backend == .piAgent
 
         return Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
@@ -157,12 +217,12 @@ struct ChatPanel: View {
             }
         } label: {
             HStack(spacing: DesignSystem.Spacing.sm) {
-                if controller.chatBackend == .hermes {
-                    Text(modeIcon)
+                if usesGlyph {
+                    Text(modeGlyph)
                         .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundStyle(modeColor)
                 } else {
-                    Image(systemName: modeIcon)
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(modeColor)
                 }
@@ -380,11 +440,7 @@ struct ChatPanel: View {
             } label: {
                 Image(systemName: "folder")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(
-                        controller.chatBackend == .hermes
-                            ? DesignSystem.Colors.hermesAureate
-                            : DesignSystem.Colors.whimsy
-                    )
+                    .foregroundStyle(panelIconTint)
             }
             .buttonStyle(.plain)
             .help("Show this chat’s workspace in Finder — each new chat uses its own folder under OpenBurnBar’s Application Support.")
@@ -397,11 +453,7 @@ struct ChatPanel: View {
             } label: {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(
-                        controller.chatBackend == .hermes
-                            ? DesignSystem.Colors.hermesAureate
-                            : DesignSystem.Colors.whimsy
-                    )
+                    .foregroundStyle(panelIconTint)
             }
             .buttonStyle(.plain)
             .help("New chat")
@@ -418,6 +470,28 @@ struct ChatPanel: View {
             .help("Chat options")
             .popover(isPresented: $showChatMenu, arrowEdge: .top) {
                 chatMenuPopover
+            }
+
+            // Pop out to its own window
+            if let onPopOut {
+                Button(action: onPopOut) {
+                    Image(systemName: "rectangle.on.rectangle")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(panelIconTint)
+                }
+                .buttonStyle(.plain)
+                .help("Pop out chat into its own window")
+            }
+
+            // Maximize into the dashboard chat workspace
+            if let onMaximize {
+                Button(action: onMaximize) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right.square")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(panelIconTint)
+                }
+                .buttonStyle(.plain)
+                .help("Maximize chat into the dashboard workspace")
             }
 
             // Minimize
@@ -545,191 +619,15 @@ struct ChatPanel: View {
         .buttonStyle(.plain)
     }
 
-    private func chatAssistantModelKey(for msg: ChatMessageRecord) -> String? {
-        guard msg.role == .assistant else { return nil }
-        switch controller.chatBackend {
-        case .hermes, .openclaw:
-            return controller.hermesModelName
-        default:
-            return nil
-        }
-    }
-
     private var content: some View {
-        Group {
-            if !controller.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               !controller.searchResults.isEmpty {
-                searchResultsList
-            } else if !controller.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                      controller.searchResults.isEmpty, !controller.isSearching {
-                Text("No matches")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                            if !controller.retrievalHealthSnapshot.degradedModes.isEmpty {
-                                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                                    ForEach(controller.retrievalHealthSnapshot.degradedModes) { state in
-                                        HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
-                                            Image(systemName: "exclamationmark.triangle.fill")
-                                                .font(.system(size: 10))
-                                                .foregroundStyle(DesignSystem.Colors.warning)
-                                                .padding(.top, 2)
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(state.title)
-                                                    .font(DesignSystem.Typography.tiny)
-                                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                                Text(state.message)
-                                                    .font(DesignSystem.Typography.tiny)
-                                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                                    .fixedSize(horizontal: false, vertical: true)
-                                            }
-                                        }
-                                        .padding(.horizontal, DesignSystem.Spacing.sm)
-                                        .padding(.vertical, DesignSystem.Spacing.xs)
-                                        .background(DesignSystem.Colors.warning.opacity(0.08))
-                                        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
-                                    }
-                                }
-                            }
-
-                            if !settingsManager.conversationIndexingEnabled {
-                                Text("Conversation indexing is off. Enable it in Settings to unlock search and richer context.")
-                                    .font(DesignSystem.Typography.caption)
-                                    .foregroundStyle(DesignSystem.Colors.warning)
-                                    .padding(.horizontal, DesignSystem.Spacing.sm)
-                            }
-
-                            ForEach(controller.messages) { msg in
-                                ChatMessageView(
-                                    message: msg,
-                                    isStreaming: controller.isStreaming && msg.id == controller.activeStreamMessageId && msg.role == .assistant,
-                                    showViaBadge: msg.cliUsed != nil,
-                                    isHermes: msg.cliUsed == "hermes" || msg.cliUsed == "openclaw",
-                                    assistantModelKey: chatAssistantModelKey(for: msg)
-                                )
-                                .id(msg.id)
-                            }
-
-                            if !controller.isStreaming,
-                               !controller.conversationJumpTargets.isEmpty {
-                                conversationJumpTargetsSection
-                            }
-                        }
-                        .padding(DesignSystem.Spacing.md)
-                    }
-                    .onChange(of: controller.messages.count) { _, _ in
-                        if let last = controller.messages.last {
-                            Task { @MainActor in
-                                withAnimation(.easeOut(duration: 0.2)) {
-                                    proxy.scrollTo(last.id, anchor: .bottom)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var searchResultsList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                ForEach(controller.searchResults) { r in
-                    Button {
-                        controller.selectSearchResult(r)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(r.conversation.inferredTaskTitle)
-                                .font(DesignSystem.Typography.body)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                .lineLimit(2)
-                            Text(r.snippet.strippingSimpleTags)
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                .lineLimit(2)
-                            Text("\(r.conversation.provider.displayName) · \(r.conversation.projectName)")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(DesignSystem.Spacing.sm)
-                        .background {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                                    .fill(.thinMaterial)
-                                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                                    .fill(DesignSystem.Colors.surface.opacity(0.3))
-                            }
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                                .strokeBorder(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.1), DesignSystem.Colors.border.opacity(0.3)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 0.5
-                                )
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(DesignSystem.Spacing.md)
-        }
-    }
-
-    private var conversationJumpTargetsSection: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            Text("Open Matched Sessions")
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-                .textCase(.uppercase)
-
-            ForEach(controller.conversationJumpTargets) { target in
-                Button {
-                    onOpenConversationJump(target)
-                } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Text(target.conversation.inferredTaskTitle)
-                                .font(DesignSystem.Typography.body)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                .lineLimit(1)
-                            Spacer(minLength: 8)
-                            Text("\(target.startOffset)-\(target.endOffset)")
-                                .font(DesignSystem.Typography.monoTiny)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
-                        }
-                        Text(target.snippet)
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .lineLimit(3)
-                        Text("\(target.conversation.provider.displayName) · \(target.conversation.projectName)")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(DesignSystem.Spacing.sm)
-                    .background {
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                            .fill(DesignSystem.Colors.surface.opacity(0.55))
-                    }
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                            .strokeBorder(DesignSystem.Colors.border.opacity(0.35), lineWidth: 0.5)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.top, DesignSystem.Spacing.sm)
+        ChatMessagesStream(
+            controller: controller,
+            settingsManager: settingsManager,
+            maxContentWidth: .infinity,
+            horizontalPadding: DesignSystem.Spacing.md,
+            verticalPadding: DesignSystem.Spacing.md,
+            onJumpToConversation: onOpenConversationJump
+        )
     }
 
     /// Agent / session context: shown as plain inline text above the composer (not boxed at the top of the scroll).
@@ -866,19 +764,28 @@ struct ChatPanel: View {
         case .claude: return "Ask Claude Code\u{2026}"
         case .hermes: return "Ask Hermes\u{2026}"
         case .openclaw: return "Ask OpenClaw\u{2026}"
+        case .piAgent: return "Ask Pi\u{2026}"
         }
     }
 
     private var inputStrokeGradient: LinearGradient {
-        controller.chatBackend == .hermes
-            ? LinearGradient(
+        switch controller.chatBackend {
+        case .hermes:
+            return LinearGradient(
                 colors: [DesignSystem.Colors.hermesMercury.opacity(0.4), DesignSystem.Colors.hermesAureate.opacity(0.3)],
                 startPoint: .topLeading, endPoint: .bottomTrailing
-              )
-            : LinearGradient(
+            )
+        case .piAgent:
+            return LinearGradient(
+                colors: [DesignSystem.Colors.whimsy.opacity(0.4), DesignSystem.Colors.whimsy.opacity(0.2)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+        default:
+            return LinearGradient(
                 colors: [DesignSystem.Colors.whimsy.opacity(0.3), DesignSystem.Colors.border.opacity(0.3)],
                 startPoint: .topLeading, endPoint: .bottomTrailing
-              )
+            )
+        }
     }
 
     private var inputRow: some View {
@@ -887,12 +794,5 @@ struct ChatPanel: View {
             chatBackend: controller.chatBackend,
             onSubmit: { Task { await controller.send() } }
         )
-    }
-}
-
-private extension String {
-    var strippingSimpleTags: String {
-        replacingOccurrences(of: "<b>", with: "")
-            .replacingOccurrences(of: "</b>", with: "")
     }
 }

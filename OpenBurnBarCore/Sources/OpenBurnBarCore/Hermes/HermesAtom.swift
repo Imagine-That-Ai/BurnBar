@@ -128,6 +128,10 @@ public enum HermesAtom: Hashable, Sendable {
             let k = Double(value) / 1_000
             return String(format: "%.1fk", k)
         }
+        if value >= 1_000_000_000 {
+            let b = Double(value) / 1_000_000_000
+            return String(format: "%.2fB", b)
+        }
         let m = Double(value) / 1_000_000
         return String(format: "%.1fM", m)
     }

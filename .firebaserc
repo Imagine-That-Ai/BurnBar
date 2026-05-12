@@ -1,5 +1,12 @@
 {
   "projects": {
     "default": "burnbar"
+  },
+  "targets": {
+    "burnbar": {
+      "hosting": {
+        "marketing": ["burnbar"]
+      }
+    }
   }
 }

@@ -112,7 +112,8 @@ final class WindowManager: ObservableObject {
         chatController: ChatSessionController,
         operatingLayer: OpenBurnBarOperatingLayer,
         navigationCoordinator: NavigationCoordinator,
-        settingsManager: SettingsManager
+        settingsManager: SettingsManager,
+        runtimeContext: OpenBurnBarRuntimeContext? = nil
     ) {
         NSApplication.shared.activate(ignoringOtherApps: true)
 
@@ -129,7 +130,8 @@ final class WindowManager: ObservableObject {
             iCloudSessionMirrorService: iCloudSessionMirrorService,
             chatController: chatController,
             operatingLayer: operatingLayer,
-            settingsManager: settingsManager
+            settingsManager: settingsManager,
+            runtimeContext: runtimeContext
         )
         .frame(minWidth: 900, minHeight: 600)
         .environment(settingsManager)
@@ -163,7 +165,8 @@ final class WindowManager: ObservableObject {
         accountManager: AccountManager,
         cloudSyncService: CloudSyncService?,
         iCloudSessionMirrorService: ICloudSessionMirrorService?,
-        dataStore: DataStore
+        dataStore: DataStore,
+        runtimeContext: OpenBurnBarRuntimeContext? = nil
     ) {
         NSApplication.shared.activate(ignoringOtherApps: true)
 
@@ -177,7 +180,8 @@ final class WindowManager: ObservableObject {
             accountManager: accountManager,
             cloudSyncService: cloudSyncService,
             iCloudSessionMirrorService: iCloudSessionMirrorService,
-            dataStore: dataStore
+            dataStore: dataStore,
+            runtimeContext: runtimeContext
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -395,6 +399,117 @@ final class WindowManager: ObservableObject {
         startupRecoveryWindow?.close()
         startupRecoveryWindow = nil
     }
+
+    // MARK: - Chat Pop-Out Window
+
+    private static var chatPopOutWindow: NSWindow?
+    private static var chatPopOutDelegate: ChatPopOutWindowLifecycleDelegate?
+
+    @discardableResult
+    func openChatPopOutWindow(
+        controller: ChatSessionController,
+        dataStore: DataStore,
+        settingsManager: SettingsManager,
+        accountManager: AccountManager
+    ) -> NSWindow {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        if let window = WindowManager.chatPopOutWindow {
+            window.makeKeyAndOrderFront(nil)
+            return window
+        }
+
+        let contentView = DashboardChatWorkspaceView(
+            controller: controller,
+            dataStore: dataStore,
+            settingsManager: settingsManager,
+            sharedFeaturesAvailable: accountManager.isSignedIn,
+            mode: .popOut,
+            onClose: { [weak self] in
+                self?.closeChatPopOutWindow()
+            }
+        )
+        .frame(minWidth: 780, minHeight: 560)
+        .environment(settingsManager)
+
+        let initialFrame = WindowManager.persistedChatPopOutFrame()
+            ?? NSRect(x: 0, y: 0, width: 1100, height: 760)
+
+        let window = NSWindow(
+            contentRect: initialFrame,
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Chat — OpenBurnBar"
+        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = NSColor(DesignSystem.Colors.background)
+        window.contentView = NSHostingView(rootView: contentView)
+        if WindowManager.persistedChatPopOutFrame() == nil {
+            window.center()
+        }
+        window.makeKeyAndOrderFront(nil)
+        window.isReleasedWhenClosed = false
+
+        let delegate = ChatPopOutWindowLifecycleDelegate { closed in
+            WindowManager.persistChatPopOutFrame(closed.frame)
+            WindowManager.chatPopOutWindow = nil
+            WindowManager.chatPopOutDelegate = nil
+        }
+        window.delegate = delegate
+
+        WindowManager.chatPopOutWindow = window
+        WindowManager.chatPopOutDelegate = delegate
+        return window
+    }
+
+    func closeChatPopOutWindow() {
+        WindowManager.chatPopOutWindow?.close()
+    }
+
+    /// Test-only accessor.
+    static func _currentChatPopOutWindow() -> NSWindow? { chatPopOutWindow }
+
+    fileprivate static func persistedChatPopOutFrame() -> NSRect? {
+        let raw = UserDefaults.standard.string(forKey: "dashboardChatPopOutFrameJSON") ?? ""
+        guard !raw.isEmpty,
+              let data = raw.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Double],
+              let x = dict["x"], let y = dict["y"], let w = dict["w"], let h = dict["h"],
+              w >= 780, h >= 560
+        else { return nil }
+        return NSRect(x: x, y: y, width: w, height: h)
+    }
+
+    fileprivate static func persistChatPopOutFrame(_ rect: NSRect) {
+        let dict: [String: Double] = [
+            "x": Double(rect.origin.x),
+            "y": Double(rect.origin.y),
+            "w": Double(rect.size.width),
+            "h": Double(rect.size.height)
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: dict),
+           let raw = String(data: data, encoding: .utf8) {
+            UserDefaults.standard.set(raw, forKey: "dashboardChatPopOutFrameJSON")
+        }
+    }
+}
+
+@MainActor
+private final class ChatPopOutWindowLifecycleDelegate: NSObject, NSWindowDelegate {
+    private let onWillClose: @MainActor (NSWindow) -> Void
+
+    init(onWillClose: @escaping @MainActor (NSWindow) -> Void) {
+        self.onWillClose = onWillClose
+    }
+
+    nonisolated func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        Task { @MainActor in
+            self.onWillClose(window)
+        }
+    }
 }
 
 @MainActor
@@ -490,7 +605,7 @@ struct OpenBurnBarApp: App {
             chatController: controller
         )
 
-        return OpenBurnBarRuntimeContext(
+        let context = OpenBurnBarRuntimeContext(
             dataStore: initializedStore,
             settingsManager: settings,
             accountManager: accountManager,
@@ -500,6 +615,8 @@ struct OpenBurnBarApp: App {
             chatController: controller,
             operatingLayer: layer
         )
+        context.startSmartDisplayServices()
+        return context
     }
 
     @MainActor
@@ -630,7 +747,8 @@ struct OpenBurnBarApp: App {
             chatController: context.chatController,
             operatingLayer: context.operatingLayer,
             navigationCoordinator: navigationCoordinator,
-            settingsManager: context.settingsManager
+            settingsManager: context.settingsManager,
+            runtimeContext: context
         )
     }
 
@@ -742,7 +860,8 @@ struct OpenBurnBarApp: App {
                                 accountManager: context.accountManager,
                                 cloudSyncService: context.cloudSyncService,
                                 iCloudSessionMirrorService: context.iCloudSessionMirrorService,
-                                dataStore: context.dataStore
+                                dataStore: context.dataStore,
+                                runtimeContext: context
                             )
                         },
                         chatController: context.chatController,
@@ -818,37 +937,19 @@ struct OpenBurnBarApp: App {
                         context.hermesRelayHostService = hermesRelayHost
                         hermesRelayHost.start()
 
-                        // Smart Hub bridge — local HTTP server that the
-                        // Google Nest Hub points at. Auto-starts when the
-                        // toggle in Settings → Provider Quota is on.
-                        let smartHubBridge: SmartHubBridgeController
-                        if let existingSmartHubBridge = context.smartHubBridgeController {
-                            smartHubBridge = existingSmartHubBridge
+                        let piRelayHost: PiAgentCloudRelayHostService
+                        if let existingPiRelayHost = context.piAgentRelayHostService {
+                            piRelayHost = existingPiRelayHost
                         } else {
-                            smartHubBridge = SmartHubBridgeController(
-                                settingsManager: context.settingsManager,
-                                quotaService: context.quotaService,
-                                dataStore: context.dataStore
-                            )
-                        }
-                        context.smartHubBridgeController = smartHubBridge
-                        smartHubBridge.start()
-
-                        // Cast Actions listener — proxies Cast requests
-                        // from iPhone via Firestore. We always start it
-                        // when the runtime is online; the iPhone wizard
-                        // is the only writer.
-                        let castListener: CastActionsListener
-                        if let existing = context.castActionsListener {
-                            castListener = existing
-                        } else {
-                            castListener = CastActionsListener(
+                            piRelayHost = PiAgentCloudRelayHostService(
                                 accountManager: context.accountManager,
                                 settingsManager: context.settingsManager
                             )
                         }
-                        context.castActionsListener = castListener
-                        castListener.start()
+                        context.piAgentRelayHostService = piRelayHost
+                        piRelayHost.start()
+
+                        context.startSmartDisplayServices()
 
                         let mirror: ICloudSessionMirrorService
                         if let existingMirror = context.iCloudSessionMirrorService {
@@ -886,11 +987,36 @@ struct OpenBurnBarApp: App {
                                 chatController: context.chatController,
                                 operatingLayer: context.operatingLayer,
                                 navigationCoordinator: navigationCoordinator,
-                                settingsManager: context.settingsManager
+                                settingsManager: context.settingsManager,
+                                runtimeContext: context
                             )
                         }
-                        // Probe Hermes availability in the background
+                        // Probe managed runtime availability in the background.
                         Task {
+                            if context.settingsManager.launchHermesWithOpenBurnBar {
+                                let baseURL = URL(string: context.settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+                                    ?? URL(string: "http://127.0.0.1:8642")!
+                                let bearerToken = context.settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                                await HermesRuntimeLauncher().openHermesAndGateway(
+                                    baseURL: baseURL,
+                                    bearerToken: bearerToken.isEmpty ? nil : bearerToken
+                                )
+                            }
+                            if context.settingsManager.launchPiAgentsWithOpenBurnBar {
+                                let baseURL = URL(string: context.settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+                                    ?? URL(string: "http://127.0.0.1:8765")!
+                                let bearerToken = context.settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                                let preferred = context.settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
+                                let redisRaw = context.settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                                let piAdapter = PiAgentRuntimeAdapter(
+                                    preferredInstanceID: preferred.isEmpty ? nil : preferred,
+                                    redisURL: redisRaw.isEmpty ? nil : URL(string: redisRaw)
+                                )
+                                _ = await piAdapter.openManagedRuntime(
+                                    baseURL: baseURL,
+                                    bearerToken: bearerToken.isEmpty ? nil : bearerToken
+                                )
+                            }
                             let enabledBackends = Set(context.settingsManager.enabledChatBackends)
                             if enabledBackends.contains(.hermes) || context.chatController.chatBackend == .hermes {
                                 await context.chatController.probeHermesAvailability()
@@ -902,13 +1028,28 @@ struct OpenBurnBarApp: App {
                             } else {
                                 context.chatController.openClawAvailable = false
                             }
+                            if enabledBackends.contains(.piAgent) || context.chatController.chatBackend == .piAgent {
+                                await context.chatController.probePiAgentAvailability()
+                            } else {
+                                context.chatController.piAgentAvailable = false
+                            }
                             await context.daemonManager.refreshHealth()
                             await context.operatingLayer.refreshControllerRuntime()
                         }
-                        // Delay the first scan briefly so app activation, menu-bar paint, and
-                        // dashboard construction are not competing with parser and DB I/O.
+                        // Delay the first scan so app activation, menu-bar paint, SmartHub
+                        // bridge startup, and Pixel Clock setup are not competing with parser
+                        // and DB I/O. When a physical clock is enabled, the hardware control
+                        // path needs to become responsive before historical log backfill starts.
                         Task(priority: .utility) {
-                            try? await Task.sleep(for: .seconds(2))
+                            for _ in 0..<30 where !context.accountManager.isSignedIn {
+                                try? await Task.sleep(for: .seconds(1))
+                                guard !Task.isCancelled else { return }
+                            }
+                            await sync.uploadPending()
+                            let startupScanDelay: Duration = context.settingsManager.pixelClockConfig.enabled
+                                ? .seconds(600)
+                                : .seconds(15)
+                            try? await Task.sleep(for: startupScanDelay)
                             guard !Task.isCancelled else { return }
                             await aggregator.refreshAll()
                             await sync.uploadPendingConversations()
@@ -924,7 +1065,10 @@ struct OpenBurnBarApp: App {
                         periodicRefreshTask?.cancel()
                         periodicRefreshTask = Task(priority: .utility) {
                             while !Task.isCancelled {
-                                let seconds = max(context.settingsManager.refreshInterval, 60)
+                                let minimumRefreshInterval: TimeInterval = context.settingsManager.pixelClockConfig.enabled
+                                    ? 10 * 60
+                                    : 60
+                                let seconds = max(context.settingsManager.refreshInterval, minimumRefreshInterval)
                                 let nanos = UInt64(seconds * 1_000_000_000)
                                 try? await Task.sleep(nanoseconds: nanos)
                                 if Task.isCancelled { break }

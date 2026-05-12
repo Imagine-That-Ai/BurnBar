@@ -66,6 +66,45 @@ final class OpenBurnBarDatabaseMigrationTests: XCTestCase {
         XCTAssertTrue(backups.isEmpty, "Current databases should not be copied on every launch: \(backups)")
     }
 
+    func test_runMigrationsSafely_skipsIntegrityCheck_whenFileBasedDBIsCurrent() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let lock = NSLock()
+        var tracedSQL: [String] = []
+        var config = Configuration()
+        config.prepareDatabase { db in
+            db.trace { event in
+                guard case let .statement(statement) = event else { return }
+                lock.lock()
+                tracedSQL.append(statement.sql.lowercased())
+                lock.unlock()
+            }
+        }
+
+        let dbPath = tempDir.appendingPathComponent("test.sqlite").path
+        let queue = try DatabaseQueue(path: dbPath, configuration: config)
+        let database = OpenBurnBarDatabase(databaseQueue: queue)
+
+        try database.runMigrationsSafely()
+
+        lock.lock()
+        tracedSQL.removeAll()
+        lock.unlock()
+
+        try database.runMigrationsSafely()
+
+        lock.lock()
+        let currentLaunchSQL = tracedSQL
+        lock.unlock()
+        XCTAssertFalse(
+            currentLaunchSQL.contains { $0.contains("integrity_check") },
+            "Current databases should not run full SQLite integrity_check on every app launch."
+        )
+    }
+
 
     func test_runMigrationsSafely_prunesOldBackups() throws {
         let tempDir = FileManager.default.temporaryDirectory

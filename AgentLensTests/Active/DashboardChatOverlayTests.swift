@@ -9,7 +9,10 @@ import GRDB
 @MainActor
 final class DashboardChatOverlayTests: XCTestCase {
 
-    private func makeOverlay(isOpen: Bool = false) -> (overlay: DashboardChatOverlay, binding: Binding<Bool>) {
+    private func makeOverlay(
+        isOpen: Bool = false,
+        isChatRoute: Bool = false
+    ) -> (overlay: DashboardChatOverlay, binding: Binding<Bool>) {
         let store = try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false)
         let settingsManager = SettingsManager()
         let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
@@ -27,6 +30,7 @@ final class DashboardChatOverlayTests: XCTestCase {
             sharedFeaturesAvailable: false,
             isOpen: binding,
             hasNewInsights: false,
+            isChatRoute: isChatRoute,
             onRequestOpen: {},
             onOpenConversationJump: { _ in },
             onClose: {}
@@ -61,5 +65,21 @@ final class DashboardChatOverlayTests: XCTestCase {
         let (view, binding) = makeOverlay(isOpen: true)
         view.testTriggerClose()
         XCTAssertFalse(binding.wrappedValue)
+    }
+
+    func test_isChatRoute_hidesEverything() throws {
+        // When the dashboard is on the maximized chat route, the floating
+        // overlay must render neither the ChatPanel (when open) nor the FAB
+        // (when closed). We verify by inspecting that no Button is found
+        // either way.
+        let (openView, _) = makeOverlay(isOpen: true, isChatRoute: true)
+        let openInspect = try openView.inspect()
+        let openButtons = try? openInspect.findAll(ViewType.Button.self)
+        XCTAssertTrue(openButtons?.isEmpty ?? true, "Open + chat route should hide ChatPanel")
+
+        let (closedView, _) = makeOverlay(isOpen: false, isChatRoute: true)
+        let closedInspect = try closedView.inspect()
+        let closedButtons = try? closedInspect.findAll(ViewType.Button.self)
+        XCTAssertTrue(closedButtons?.isEmpty ?? true, "Closed + chat route should hide FAB")
     }
 }

@@ -1,0 +1,280 @@
+---
+// Companions — iPhone, iPad, and Android (with real assets where available)
+---
+
+<section class="devices" aria-labelledby="devices-h">
+  <div class="container container--wide">
+    <header class="sec-head">
+      <span class="eyebrow eyebrow--ember">Companions</span>
+      <h2 id="devices-h">The phone, the tablet, the launcher.</h2>
+      <p class="lead">
+        The Mac records. The phone and tablet render. Companion apps stream
+        the same daemon data; widgets and Live Activity surface the burn even
+        without opening the app.
+      </p>
+    </header>
+
+    <div class="devices__grid">
+      <article class="device device--iphone">
+        <header class="device__head">
+          <span class="tag tag--review tag--plain mono">iOS · In App Store review</span>
+          <h3>iPhone</h3>
+        </header>
+        <div class="device__frame device__frame--iphone">
+          <img
+            src="/screens/ios-iphone-signin.png"
+            alt="OpenBurnBar iOS app — sign-in screen with Apple, Google, and email options"
+            width="394"
+            height="853"
+            decoding="async"
+            loading="lazy"
+          />
+        </div>
+        <p class="device__cap mono">"Your AI agents, in your pocket."</p>
+        <ul class="device__points">
+          <li>Quota Watch · Pulse · Streams</li>
+          <li>Live Activity + Dynamic Island</li>
+          <li>Siri shortcut: "What's my burn today?"</li>
+        </ul>
+      </article>
+
+      <article class="device device--ipad">
+        <header class="device__head">
+          <span class="tag tag--review tag--plain mono">iPadOS · In review (same build)</span>
+          <h3>iPad</h3>
+        </header>
+        <div class="device__frame device__frame--ipad">
+          <img
+            src="/screens/ios-ipad-signin.png"
+            alt="OpenBurnBar iPad app — sign-in screen with Apple, Google, and email options"
+            width="820"
+            height="1180"
+            decoding="async"
+            loading="lazy"
+          />
+        </div>
+        <p class="device__cap mono">Adaptive split-view · ⌘1–4 · ⌘R · ⌘H</p>
+        <ul class="device__points">
+          <li>Chart Studio — 10 Swift Charts kinds + Mermaid</li>
+          <li>Trend Atlas insights rotate across 9 rules</li>
+          <li>Hermes Realtime Relay (paid tier)</li>
+        </ul>
+      </article>
+
+      <article class="device device--android">
+        <header class="device__head">
+          <span class="tag tag--planned tag--plain mono">Android · In development</span>
+          <h3>Android</h3>
+        </header>
+        <div class="device__frame device__frame--iphone">
+          <img
+            src="/screens/mobile-pulse.png"
+            alt="OpenBurnBar mobile Pulse tab — burn 1.53B tokens, 14,276 requests, end-of-day forecast $1,232.36"
+            width="923"
+            height="2000"
+            decoding="async"
+            loading="lazy"
+          />
+        </div>
+        <p class="device__cap mono">Pulse · burn 1.53B tokens · projected $1,232.36</p>
+        <ul class="device__points">
+          <li>Material 3 + Jetpack Compose, edge-to-edge</li>
+          <li>Read-only Firestore consumer; Mac streams the data</li>
+          <li>97 Kotlin files, JDK 21, targetSdk 35</li>
+          <li>No Play Store distribution path yet</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<style>
+  .devices {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    background:
+      radial-gradient(60% 80% at 50% 0%, rgba(255, 106, 26, 0.04), transparent 70%);
+  }
+  .sec-head { display: grid; gap: var(--s-3); margin-bottom: var(--s-7); max-width: 64ch; }
+  .devices__grid {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr 1fr;
+    gap: var(--s-5);
+    align-items: start;
+  }
+  .device {
+    display: grid;
+    gap: var(--s-3);
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background: var(--ink-base);
+  }
+  .device__head { display: grid; gap: var(--s-2); }
+  .device h3 {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 80, "wght" 500;
+    letter-spacing: -0.02em;
+  }
+  .device__frame {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    border-radius: var(--r-4);
+    background: var(--ink-base);
+  }
+
+  /* iPhone bezel */
+  .device__frame--iphone {
+    aspect-ratio: 9/19;
+    background: #0a0a10;
+    padding: 6px;
+    position: relative;
+    border: 6px solid #1a1822;
+    border-radius: 38px;
+  }
+  .device__frame--iphone img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 30px;
+  }
+  .device__frame--iphone::before {
+    content: "";
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 88px;
+    height: 22px;
+    background: #000;
+    border-radius: 22px;
+    z-index: 2;
+  }
+
+  /* iPad bezel */
+  .device__frame--ipad {
+    aspect-ratio: 4/3;
+    background: #0a0a10;
+    padding: 8px;
+    border: 8px solid #1a1822;
+    border-radius: 22px;
+  }
+  .device__frame--ipad img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    border-radius: 12px;
+  }
+
+  /* Android bezel */
+  .device__frame--android {
+    aspect-ratio: 9/19;
+    background: #0a0a10;
+    padding: 6px;
+    border: 6px solid #1a1822;
+    border-radius: 32px;
+    position: relative;
+  }
+  .device__frame--android::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    background: #000;
+    border-radius: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+  }
+  .android-bezel {
+    width: 100%;
+    height: 100%;
+    border-radius: 26px;
+    overflow: hidden;
+    background: linear-gradient(180deg, #1a1721 0%, #100d18 60%, #1a1422 100%);
+  }
+  .android-screen {
+    padding: 56px 18px 28px;
+    display: grid;
+    gap: var(--s-3);
+    justify-items: center;
+    text-align: center;
+    height: 100%;
+  }
+  .android-icon {
+    width: clamp(60px, 38%, 110px);
+    height: auto;
+    border-radius: 22%;
+    box-shadow: 0 8px 30px -10px rgba(255, 106, 26, 0.6);
+  }
+  .android-title {
+    font-family: var(--font-display);
+    color: var(--text-bright);
+    font-size: 1.05rem;
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.014em;
+  }
+  .android-sub {
+    font-size: 0.62rem;
+    color: var(--text-mute);
+    letter-spacing: 0.06em;
+  }
+  .android-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    width: 100%;
+    margin-top: auto;
+  }
+  .android-grid span {
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    padding: 6px 2px;
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line);
+    border-radius: 6px;
+    color: var(--text-mute);
+    letter-spacing: 0.02em;
+  }
+
+  .device__cap {
+    text-align: center;
+    color: var(--ember-bright);
+    font-size: var(--t-caption);
+    letter-spacing: 0.04em;
+  }
+  .device__points {
+    display: grid;
+    gap: var(--s-2);
+    font-size: 0.86rem;
+  }
+  .device__points li {
+    color: var(--text-base);
+    padding-left: 1em;
+    position: relative;
+    line-height: 1.5;
+  }
+  .device__points li::before {
+    content: "→";
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+    position: absolute;
+    left: 0;
+    font-size: 0.85em;
+  }
+
+  @media (max-width: 1080px) {
+    .devices__grid { grid-template-columns: 1fr 1fr; }
+    .device--ipad { grid-column: 1 / -1; }
+    .device__frame--ipad { max-width: 720px; margin-inline: auto; }
+  }
+  @media (max-width: 640px) {
+    .devices__grid { grid-template-columns: 1fr; }
+  }
+</style>

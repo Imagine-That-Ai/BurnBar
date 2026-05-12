@@ -19,6 +19,7 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  getDoc,
   serverTimestamp,
   setDoc,
   Timestamp,
@@ -246,6 +247,312 @@ test("owners can delete old paid-backup data after entitlement lapses", async ()
 
   await assertSucceeds(deleteDoc(doc(db, `${logPath}/chunks/0`)));
   await assertSucceeds(deleteDoc(doc(db, logPath)));
+});
+
+test("owners can read derived project summaries but clients cannot write them", async () => {
+  const ownerDb = authedDb("erin");
+  const otherDb = authedDb("mallory");
+  const projectPath = "users/erin/projects/project-1";
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), projectPath), {
+      id: "project-1",
+      name: "Project One",
+      total_cost: 42,
+      updatedAt: serverTimestamp(),
+    });
+  });
+
+  await assertSucceeds(getDoc(doc(ownerDb, projectPath)));
+  await assertFails(getDoc(doc(otherDb, projectPath)));
+  await assertFails(
+    setDoc(doc(ownerDb, "users/erin/projects/project-2"), {
+      id: "project-2",
+      name: "Client-written project",
+      total_cost: 1,
+    })
+  );
+});
+
+test("owners can publish smart display config and complete setup actions", async () => {
+  const db = authedDb("erin");
+  const configPath = "users/erin/smart_hub_config/mac-device";
+  const actionPath = "users/erin/smart_display_actions/action-1";
+
+  const displayConfig = {
+    layout: "quotaCarousel",
+    palette: "emberWhimsy",
+    theme: "warmCharcoal",
+    background: "dashboard",
+    brightness: 0.85,
+    scrollSpeedSeconds: 8,
+    refreshCadenceSeconds: 5,
+    providerIDs: [],
+    audibleCue: false,
+    identifyOnRefresh: false,
+    updatedAt: "2026-05-10T00:00:00.000Z",
+  };
+
+  const pixelClock = {
+    enabled: true,
+    host: "192.168.68.92",
+    port: 80,
+    layout: "providerDashboard",
+    palette: "emberWhimsy",
+    timePeriod: "rolling5h",
+    workingSpinnerStyle: "scan",
+    workingSpinnerPrimaryHex: "#52D6FF",
+    workingSpinnerSecondaryHex: "#FFFFFF",
+    completionClockSoundEnabled: true,
+    completionLocalNotificationsEnabled: true,
+    pageDurationSeconds: 7,
+    updateIntervalSeconds: 60,
+    scrollSpeedPercent: 100,
+    brightness: 160,
+    providerIDs: [],
+    updatedAt: "2026-05-10T00:00:00.000Z",
+    lastProbeStatus: "unknown",
+  };
+
+  await assertSucceeds(
+    setDoc(doc(db, configPath), {
+      enabled: true,
+      dashboardURL: "http://192.168.68.93:7000/",
+      refreshURL: "http://192.168.68.93:7000/refresh",
+      voiceRefreshURL: "http://192.168.68.93:7000/voice-refresh",
+      sourceDeviceName: "OpenBurnBar Mac",
+      publishedAt: "2026-05-10T00:00:00.000Z",
+      timePeriod: "rolling5h",
+      pixelClock,
+      displayConfig,
+      displayOrder: ["nestHub", "pixelClock"],
+      schemaVersion: 3,
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, actionPath), {
+      type: "pixel_clock_prepare",
+      status: "pending",
+      requestedAt: "2026-05-10T00:00:01.000Z",
+      pixelClock,
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(
+      doc(db, actionPath),
+      {
+        status: "completed",
+        completedAt: "2026-05-10T00:00:02.000Z",
+        probeStatus: "stockUlanziFirmware",
+        setupMode: "stockSimulatorConfigured",
+        message: "Stock Ulanzi firmware was configured.",
+        suggestedServerHost: "192.168.68.93",
+        suggestedServerPort: 7001,
+        flasherURL: "https://blueforcer.github.io/awtrix3/#/flasher",
+      },
+      { merge: true }
+    )
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/erin/smart_display_actions/action-2"), {
+      type: "nest_hub_update_order",
+      status: "pending",
+      requestedAt: "2026-05-10T00:00:03.000Z",
+      displayOrder: ["pixelClock", "nestHub"],
+    })
+  );
+});
+
+test("owners can run Cast wizard actions and read discovery results", async () => {
+  const db = authedDb("fran");
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/fran/cast_actions/action-1"), {
+      type: "test",
+      status: "pending",
+      requestedAt: "2026-05-10T00:00:00.000Z",
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(
+      doc(db, "users/fran/cast_actions/action-1"),
+      {
+        status: "completed",
+        completedAt: "2026-05-10T00:00:01.000Z",
+      },
+      { merge: true }
+    )
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/fran/cast_discovery_results/latest"), {
+      devices: [
+        {
+          serviceName: "Google-Nest-Hub._googlecast._tcp.local.",
+          friendlyName: "Kitchen Display",
+          model: "Google Nest Hub",
+          host: "192.168.68.50",
+          port: 8009,
+          identifier: "nest-hub",
+          iconKind: "nestHub",
+          supportsDisplay: true,
+        },
+      ],
+      publishedAt: "2026-05-10T00:00:02.000Z",
+    })
+  );
+});
+
+test("Pi Agent relay requires hosted entitlement and encrypted v2 payloads", async () => {
+  const db = authedDb("gina");
+  const connectionPath = "users/gina/pi_agent_connections/relay-mac";
+  const requestPath = "users/gina/pi_agent_relay_requests/req-1";
+
+  const connectionDoc = {
+    id: "relay-mac",
+    displayName: "Mac Pi Relay",
+    mode: "relayLink",
+    status: "online",
+    advertisedModel: "pi-default",
+    selectedInstanceID: "default",
+    capabilities: ["chat_completions", "remote_relay"],
+    relayPublicKey: "pub",
+    relayKeyVersion: 1,
+    relayEncryption: "p256-hkdf-sha256-aesgcm",
+    createdAt: "2026-05-12T00:00:00.000Z",
+    updatedAt: "2026-05-12T00:00:00.000Z",
+    schemaVersion: 2,
+  };
+
+  await assertFails(setDoc(doc(db, connectionPath), connectionDoc));
+  await seedHostedCloudEntitlement("gina");
+  await assertSucceeds(setDoc(doc(db, connectionPath), connectionDoc));
+
+  await assertFails(
+    setDoc(doc(db, requestPath), {
+      id: "req-1",
+      connectionId: "relay-mac",
+      operation: "chatCompletions",
+      status: "pending",
+      method: "POST",
+      body: "{\"messages\":[]}",
+      chunkCount: 0,
+      createdAt: "2026-05-12T00:00:01.000Z",
+      updatedAt: "2026-05-12T00:00:01.000Z",
+      expiresAt: "2026-05-12T00:01:01.000Z",
+      expireAt: Timestamp.fromDate(new Date("2026-05-12T00:01:01.000Z")),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, requestPath), {
+      id: "req-1",
+      connectionId: "relay-mac",
+      operation: "chatCompletions",
+      status: "pending",
+      method: "POST",
+      payloadCiphertext: "ciphertext",
+      wrappedKey: "wrapped",
+      relayEncryption: "p256-hkdf-sha256-aesgcm",
+      relayKeyVersion: 1,
+      chunkCount: 0,
+      createdAt: "2026-05-12T00:00:01.000Z",
+      updatedAt: "2026-05-12T00:00:01.000Z",
+      expiresAt: "2026-05-12T00:01:01.000Z",
+      expireAt: Timestamp.fromDate(new Date("2026-05-12T00:01:01.000Z")),
+      schemaVersion: 2,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, `${requestPath}/chunks/00000000`), {
+      id: "00000000",
+      requestId: "req-1",
+      sequence: 0,
+      kind: "data",
+      data: "plain text",
+      createdAt: "2026-05-12T00:00:02.000Z",
+      schemaVersion: 2,
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, `${requestPath}/chunks/00000000`), {
+      id: "00000000",
+      requestId: "req-1",
+      sequence: 0,
+      kind: "data",
+      ciphertext: "encrypted chunk",
+      createdAt: "2026-05-12T00:00:02.000Z",
+      schemaVersion: 2,
+    })
+  );
+});
+
+test("runtime preferences are per device and provider device links are server-written", async () => {
+  const db = authedDb("hank");
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/hank/runtime_connection_preferences/mac-1_piAgent"), {
+      id: "mac-1_piAgent",
+      deviceID: "mac-1",
+      runtimeKind: "piAgent",
+      selectedConnectionID: "relay-mac",
+      selectedInstanceID: "default",
+      selectedModelID: "pi-default",
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:00.000Z",
+      schemaVersion: 1,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/hank/runtime_connection_preferences/mac-1_hermes"), {
+      id: "mac-1_hermes",
+      deviceID: "mac-1",
+      runtimeKind: "piAgent",
+      selectedConnectionID: "relay-mac",
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:00.000Z",
+      schemaVersion: 1,
+    })
+  );
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/hank/provider_account_device_links/acct-1_mac-1"), {
+      id: "acct-1_mac-1",
+      accountID: "acct-1",
+      deviceID: "mac-1",
+      deviceDisplayName: "Mac",
+      capability: "owner",
+      status: "active",
+      lastObservedAt: "2026-05-12T00:00:00.000Z",
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:00.000Z",
+      schemaVersion: 1,
+    });
+  });
+
+  await assertSucceeds(getDoc(doc(db, "users/hank/provider_account_device_links/acct-1_mac-1")));
+  await assertFails(
+    setDoc(doc(db, "users/hank/provider_account_device_links/acct-1_phone-1"), {
+      id: "acct-1_phone-1",
+      accountID: "acct-1",
+      deviceID: "phone-1",
+      deviceDisplayName: "Phone",
+      capability: "use",
+      status: "active",
+      lastObservedAt: "2026-05-12T00:00:00.000Z",
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:00.000Z",
+      schemaVersion: 1,
+    })
+  );
 });
 
 test("rules test environment is isolated", () => {

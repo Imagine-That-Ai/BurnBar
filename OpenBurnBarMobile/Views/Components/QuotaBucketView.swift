@@ -7,11 +7,6 @@ import OpenBurnBarCore
 struct QuotaBucketView: View {
     let bucket: ProviderQuotaBucket
 
-    private var fraction: Double {
-        guard bucket.limit > 0 else { return 0 }
-        return min(1, max(0, bucket.used / bucket.limit))
-    }
-
     private var remainingPercent: Double {
         guard bucket.limit > 0 else { return 0 }
         return max(0, bucket.remaining) / bucket.limit
@@ -36,9 +31,7 @@ struct QuotaBucketView: View {
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(bandColor)
             }
-            ProgressView(value: fraction)
-                .progressViewStyle(.linear)
-                .tint(bandColor)
+            remainingQuotaBar
             HStack(spacing: 6) {
                 Text(usageLine)
                     .font(MobileTheme.Typography.monoSmall)
@@ -54,6 +47,26 @@ struct QuotaBucketView: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text("\(bucket.name): \(usageLine), \(remainingPercentLabel) remaining"))
+    }
+
+    private var remainingQuotaBar: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.black.opacity(0.42))
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [bandColor.opacity(0.86), bandColor],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: geo.size.width * remainingPercent)
+            }
+        }
+        .frame(height: 5)
+        .accessibilityHidden(true)
     }
 
     private var usageLine: String {

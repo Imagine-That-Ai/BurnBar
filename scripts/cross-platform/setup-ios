@@ -1,0 +1,45 @@
+#!/bin/bash
+# Verify iOS development environment.
+# Usage:  scripts/setup-ios
+set -euo pipefail
+
+cd "$(dirname "$0")/../.."
+
+echo "🔎 Checking iOS dev environment…"
+
+# Xcode
+if ! command -v xcodebuild &>/dev/null; then
+    echo "❌ xcodebuild not found. Install Xcode from the Mac App Store."
+    exit 1
+fi
+echo "   ✓ xcodebuild $(xcodebuild -version | head -1)"
+
+# Xcode project
+if [ ! -f "OpenBurnBar.xcodeproj/project.pbxproj" ]; then
+    echo "❌ OpenBurnBar.xcodeproj not found in repo root."
+    exit 1
+fi
+echo "   ✓ Xcode project exists"
+
+# Simulator runtime
+echo "   Checking iOS simulator runtimes…"
+SIM_RUNTIMES=$(xcrun simctl list runtimes 2>/dev/null | grep "iOS" || true)
+if [ -z "$SIM_RUNTIMES" ]; then
+    echo "   ⚠ No iOS simulator runtimes found. Install via Xcode → Settings → Platforms."
+else
+    echo "   ✓ iOS simulator runtime available"
+fi
+
+# GoogleService-Info.plist (for Firebase)
+PLIST_FOUND=0
+for dir in OpenBurnBarMobile/Resources AgentLens/Resources; do
+    if [ -f "$dir/GoogleService-Info.plist" ]; then
+        echo "   ✓ $dir/GoogleService-Info.plist exists"
+        PLIST_FOUND=$((PLIST_FOUND + 1))
+    fi
+done
+if [ $PLIST_FOUND -eq 0 ]; then
+    echo "   ⚠ No GoogleService-Info.plist found. Download from Firebase Console → Project burnbar."
+fi
+
+echo "✅ iOS environment ready."

@@ -5,6 +5,8 @@ PROJECT_ID="${PROJECT_ID:?Set PROJECT_ID to the BurnBar Firebase/GCP project id}
 REGION="${REGION:-us-central1}"
 SERVICE_NAME="${SERVICE_NAME:-hermes-realtime-relay}"
 REDIS_URL="${REDIS_URL:?Set REDIS_URL, for example redis://10.0.0.3:6379}"
+REDIS_INSTANCE_NAME="${REDIS_INSTANCE_NAME:-hermes-realtime-relay-redis-prod}"
+SKIP_REDIS_PROJECT_GUARD="${SKIP_REDIS_PROJECT_GUARD:-false}"
 DEPLOY_PROFILE="${DEPLOY_PROFILE:-prod-safe}"
 REQUEST_TIMEOUT_SECONDS="${REQUEST_TIMEOUT_SECONDS:-3600}"
 SESSION_AFFINITY="${SESSION_AFFINITY:-true}"
@@ -65,6 +67,35 @@ fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICE_DIR="${ROOT_DIR}/services/hermes-realtime-relay"
+
+if [[ "${SKIP_REDIS_PROJECT_GUARD}" != "true" ]]; then
+  REDIS_HOST="$(REDIS_URL="${REDIS_URL}" node -e '
+const url = new URL(process.env.REDIS_URL);
+if (url.protocol !== "redis:" && url.protocol !== "rediss:") {
+  throw new Error(`REDIS_URL must use redis:// or rediss://, got ${url.protocol}`);
+}
+console.log(url.hostname);
+')"
+  REDIS_DESCRIBE="$(gcloud redis instances describe "${REDIS_INSTANCE_NAME}" \
+    --project "${PROJECT_ID}" \
+    --region "${REGION}" \
+    --format json)"
+  REDIS_ACTUAL_HOST="$(REDIS_DESCRIBE="${REDIS_DESCRIBE}" node -e 'console.log(JSON.parse(process.env.REDIS_DESCRIBE).host || "")')"
+  REDIS_STATE="$(REDIS_DESCRIBE="${REDIS_DESCRIBE}" node -e 'console.log(JSON.parse(process.env.REDIS_DESCRIBE).state || "")')"
+  REDIS_TIER="$(REDIS_DESCRIBE="${REDIS_DESCRIBE}" node -e 'console.log(JSON.parse(process.env.REDIS_DESCRIBE).tier || "")')"
+  if [[ "${REDIS_STATE}" != "READY" ]]; then
+    echo "Redis instance ${REDIS_INSTANCE_NAME} in ${PROJECT_ID}/${REGION} is ${REDIS_STATE}, not READY." >&2
+    exit 65
+  fi
+  if [[ "${REDIS_HOST}" != "${REDIS_ACTUAL_HOST}" ]]; then
+    echo "REDIS_URL host ${REDIS_HOST} does not match ${PROJECT_ID}/${REGION}/${REDIS_INSTANCE_NAME} host ${REDIS_ACTUAL_HOST}." >&2
+    exit 65
+  fi
+  if [[ "${DEPLOY_PROFILE}" != "staging-cheap" && "${REDIS_TIER}" != "STANDARD_HA" ]]; then
+    echo "Production relay profiles require STANDARD_HA Redis; ${REDIS_INSTANCE_NAME} is ${REDIS_TIER}." >&2
+    exit 65
+  fi
+fi
 
 cd "${SERVICE_DIR}"
 npm ci

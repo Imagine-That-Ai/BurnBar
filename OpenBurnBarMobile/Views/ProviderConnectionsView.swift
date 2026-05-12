@@ -59,7 +59,9 @@ struct ProviderConnectionsView: View {
                 .task {
                     await store.fetchConnections()
                     await connectionStore.load()
+                    connectionStore.startDeviceLinksStream()
                 }
+                .onDisappear { connectionStore.stopDeviceLinksStream() }
                 .refreshable {
                     await store.fetchConnections()
                     await connectionStore.load()
@@ -106,6 +108,9 @@ struct ProviderConnectionsView: View {
                                     selectedProvider = provider
                                     showAddSheet = true
                                 }
+                            },
+                            deviceLinksProvider: { accountID in
+                                connectionStore.deviceLinks(for: accountID)
                             }
                         )
                     }
@@ -229,6 +234,7 @@ private struct ProviderAccountGroupSection: View {
     let onRefresh: (ProviderAccountDoc) -> Void
     let onDelete: (ProviderAccountDoc) -> Void
     let onAddMore: () -> Void
+    var deviceLinksProvider: (String) -> [FirestoreRepository.ProviderAccountDeviceLinkProjection] = { _ in [] }
 
     var providerEnum: AgentProvider? {
         AgentProvider.fromProviderID(providerID)
@@ -255,6 +261,7 @@ private struct ProviderAccountGroupSection: View {
                 AccountRow(
                     account: account,
                     routingHint: routingHint(for: account),
+                    deviceLinks: deviceLinksProvider(account.id),
                     isRefreshing: isRefreshingID == account.id,
                     isDeleting: isDeletingID == account.id,
                     onRefresh: { onRefresh(account) },
@@ -350,6 +357,7 @@ struct AccountRoutingHint {
 private struct AccountRow: View {
     let account: ProviderAccountDoc
     var routingHint: AccountRoutingHint?
+    var deviceLinks: [FirestoreRepository.ProviderAccountDeviceLinkProjection] = []
     let isRefreshing: Bool
     let isDeleting: Bool
     let onRefresh: () -> Void
@@ -413,6 +421,10 @@ private struct AccountRow: View {
 
                     if let routingHint {
                         routingHintChip(routingHint)
+                    }
+
+                    if let chipText = deviceLinksChipText {
+                        deviceLinksChip(chipText)
                     }
 
                     Spacer(minLength: MobileTheme.Spacing.xs)
@@ -486,10 +498,39 @@ private struct AccountRow: View {
         return parts.joined(separator: ", ")
     }
 
+    private var deviceLinksChipText: String? {
+        let active = deviceLinks.filter { $0.status == .active }
+        guard !active.isEmpty else { return nil }
+        if active.count == 1, let only = active.first {
+            switch only.capability {
+            case .owner: return "On the Mac"
+            case .add:   return "Adds here"
+            case .use:   return "On this device"
+            }
+        }
+        return "On \(active.count) devices"
+    }
+
     @ViewBuilder
+    private func deviceLinksChip(_ text: String) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: "macbook.and.iphone")
+                .font(.system(size: 9, weight: .semibold))
+            Text(text)
+                .font(MobileTheme.Typography.tiny)
+                .fontWeight(.semibold)
+        }
+        .foregroundStyle(MobileTheme.whimsy)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(MobileTheme.whimsy.opacity(0.12))
+        .clipShape(Capsule())
+        .accessibilityLabel("\(text)")
+    }
+
     private func routingHintChip(_ hint: AccountRoutingHint) -> some View {
         let style = routingHintStyle(hint)
-        HStack(spacing: 3) {
+        return HStack(spacing: 3) {
             Image(systemName: style.icon)
                 .font(.system(size: 9, weight: .semibold))
             Text(style.label)
@@ -501,7 +542,7 @@ private struct AccountRow: View {
         .padding(.vertical, 2)
         .background(style.tint.opacity(0.12))
         .clipShape(Capsule())
-        .accessibilityLabel(routingHintAccessibilityFragment(hint))
+        .accessibilityLabel(Text(routingHintAccessibilityFragment(hint)))
     }
 
     private struct RoutingHintStyle {

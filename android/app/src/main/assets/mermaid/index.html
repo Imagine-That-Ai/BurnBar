@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=4.0, minimum-scale=1.0, user-scalable=yes" />
+<style>
+  html, body {
+    margin: 0;
+    padding: 12px;
+    background: transparent;
+    color: #E6EDF3;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  #stage {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #stage svg { max-width: 100%; height: auto; }
+  #placeholder {
+    opacity: 0.55;
+    text-align: center;
+    padding: 24px;
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+</head>
+<body>
+<div id="stage"><div id="placeholder">Waiting for a diagram…</div></div>
+<script>
+  let queued = null;
+  let booted = false;
+
+  function applyTheme(accent, theme) {
+    const themeName = (theme === "default") ? "default" : "dark";
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: themeName,
+      themeVariables: {
+        primaryColor: accent || "#F45B69",
+        primaryTextColor: "#E6EDF3",
+        primaryBorderColor: accent || "#F45B69",
+        lineColor: "#8B949E",
+        secondaryColor: "#161B22",
+        tertiaryColor: "#1F2630"
+      },
+      securityLevel: "loose",
+      fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif"
+    });
+  }
+
+  async function renderInternal(payload) {
+    try {
+      applyTheme(payload.accent, payload.theme);
+      const { svg } = await mermaid.render("diagram-" + Date.now(), payload.source);
+      document.getElementById("stage").innerHTML = svg;
+    } catch (err) {
+      document.getElementById("stage").innerHTML =
+        '<div id="placeholder">Mermaid render failed:<br/><code>' +
+        (err && err.message ? err.message : err) + '</code></div>';
+    }
+  }
+
+  window.__burnbar_render = function (payload) {
+    if (!booted) { queued = payload; return; }
+    renderInternal(payload);
+  };
+
+  window.addEventListener("load", () => {
+    booted = true;
+    if (queued) { renderInternal(queued); queued = null; }
+  });
+</script>
+</body>
+</html>

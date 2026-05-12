@@ -214,6 +214,21 @@ public struct BurnBarProviderRouter: Sendable {
         preferredProviderID: String? = nil,
         excludedRouteKeys: Set<String> = []
     ) async throws -> [BurnBarProviderRoute] {
+        let configurations = try await configStore.resolvedConfigurations()
+        return try candidateRoutes(
+            modelName: modelName,
+            preferredProviderID: preferredProviderID,
+            excludedRouteKeys: excludedRouteKeys,
+            configurations: configurations
+        )
+    }
+
+    private func candidateRoutes(
+        modelName: String,
+        preferredProviderID: String?,
+        excludedRouteKeys: Set<String>,
+        configurations: [BurnBarResolvedProviderConfiguration]
+    ) throws -> [BurnBarProviderRoute] {
         let trimmedModelName = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedModelName.isEmpty else {
             throw BurnBarProviderRouterError.unsupportedModel(modelName)
@@ -223,7 +238,6 @@ public struct BurnBarProviderRouter: Sendable {
             throw BurnBarProviderRouterError.unsupportedProvider(preferredProviderID)
         }
 
-        let configurations = try await configStore.resolvedConfigurations()
         let enabledConfigurations = configurations.filter { $0.settings.isEnabled }
         guard !enabledConfigurations.isEmpty else {
             throw BurnBarProviderRouterError.noEnabledProviders
@@ -491,10 +505,12 @@ extension BurnBarProviderRouter {
         preferredProviderID: String? = nil,
         excludedRouteKeys: Set<String> = []
     ) async throws -> BurnBarRouteRankingResult {
-        let candidates = try await candidateRoutes(
+        let configurations = try await configStore.resolvedConfigurations()
+        let candidates = try candidateRoutes(
             modelName: modelName,
             preferredProviderID: preferredProviderID,
-            excludedRouteKeys: excludedRouteKeys
+            excludedRouteKeys: excludedRouteKeys,
+            configurations: configurations
         )
 
         guard !candidates.isEmpty else {
@@ -502,7 +518,7 @@ extension BurnBarProviderRouter {
         }
 
         // Build slot-info map for trust/latency scoring
-        let slotInfoMap = try await buildSlotInfoMap(for: candidates)
+        let slotInfoMap = buildSlotInfoMap(for: candidates, configurations: configurations)
 
         // Extract raw cost range for normalization
         let costRange = extractCostRange(from: candidates)
@@ -551,14 +567,17 @@ extension BurnBarProviderRouter {
         modelName: String,
         preferredProviderID: String? = nil
     ) async throws -> [BurnBarRouteScoreBreakdown] {
-        let candidates = try await candidateRoutes(
+        let configurations = try await configStore.resolvedConfigurations()
+        let candidates = try candidateRoutes(
             modelName: modelName,
-            preferredProviderID: preferredProviderID
+            preferredProviderID: preferredProviderID,
+            excludedRouteKeys: [],
+            configurations: configurations
         )
 
         guard !candidates.isEmpty else { return [] }
 
-        let slotInfoMap = try await buildSlotInfoMap(for: candidates)
+        let slotInfoMap = buildSlotInfoMap(for: candidates, configurations: configurations)
         let costRange = extractCostRange(from: candidates)
 
         return candidates.map { route in
@@ -582,9 +601,9 @@ extension BurnBarProviderRouter {
     }
 
     private func buildSlotInfoMap(
-        for routes: [BurnBarProviderRoute]
-    ) async throws -> [String: SlotInfo] {
-        let configurations = try await configStore.resolvedConfigurations()
+        for routes: [BurnBarProviderRoute],
+        configurations: [BurnBarResolvedProviderConfiguration]
+    ) -> [String: SlotInfo] {
         var slotMap: [String: SlotInfo] = [:]
 
         for route in routes {

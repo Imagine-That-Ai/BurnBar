@@ -31,6 +31,15 @@ final class SmartHubBridgeServer {
     private(set) var boundPort: UInt16?
     private(set) var lastRefreshedAt: Date = Date()
     private(set) var refreshVersion: UInt64 = 0
+
+    /// Wall-clock timestamp of the last `/state.json` GET. Used by the
+    /// cast watchdog to distinguish "Nest Hub is actively rendering our
+    /// dashboard" (recent poll) from "Hub is stuck on DashCast's splash
+    /// because the page never finished loading" (no polls). Without this
+    /// signal the watchdog would force-recast every 45 s even when the
+    /// display is healthy — which is exactly the "stuck cycling on burn
+    /// bar status" failure mode the user sees.
+    private(set) var lastClientPollAt: Date = .distantPast
     private(set) var snapshot: SmartHubBridgeSnapshot = .empty
 
     /// `true` while a fresh quota fetch is in flight, so the on-device HTML
@@ -41,6 +50,11 @@ final class SmartHubBridgeServer {
     /// Time period the dashboard renders. Mirrors `SettingsManager.smartHubQuotaTimePeriod`
     /// so the on-device segmented control reflects the same source of truth.
     private(set) var timePeriod: SmartHubTimePeriod = .rolling5h
+
+    /// Per-display customization (palette/theme/brightness/background/cadence).
+    /// The bridge HTML reads this on every poll and re-applies CSS / behavior
+    /// without forcing a full reload.
+    private(set) var displayConfig: SmartHubDisplayConfig = .default
 
     /// Async refresh hook injected by `SmartHubBridgeController`. POST /refresh
     /// awaits this so the device sees fresh data after the request completes —
@@ -79,31 +93,97 @@ final class SmartHubBridgeServer {
         lastRefreshedAt = Date()
     }
 
+    /// Bridge controller forwards the latest display config (palette,
+    /// theme, brightness, …). We bump the version so the Hub's next
+    /// `/state.json` poll picks the change up immediately.
+    func updateDisplayConfig(_ config: SmartHubDisplayConfig) {
+        guard config != displayConfig else { return }
+        displayConfig = config
+        refreshVersion &+= 1
+        lastRefreshedAt = Date()
+    }
+
     // MARK: - Lifecycle
 
+    /// Maximum number of ports we try before giving up. The Nest Hub /
+    /// DashCast falls back to whatever ends up bound; the controller
+    /// reads `boundPort` to assemble the URL it actually casts.
+    private static let portFallbackAttempts: UInt16 = 8
+
     func start(port: UInt16 = 8787) {
-        guard !isRunning else { return }
+        // `isRunning` only flips to true once `NWListener` reaches `.ready`,
+        // which is delivered asynchronously on the listener's dispatch
+        // queue. During app startup `applySettings()` can fire twice in
+        // rapid succession (controller startup + heartbeat self-heal), and
+        // the second call sees `isRunning == false` even though we've
+        // already created a listener that's mid-startup. The second
+        // `tryBind` would then race the first for port 8787, fail with
+        // EADDRINUSE, and — worse — its `.failed` stateUpdateHandler clears
+        // `self.listener`, dropping the only strong reference to the
+        // original (successful) listener and tearing the bridge down
+        // silently. Guard against re-entrant start by checking
+        // `listener != nil` too.
+        guard !isRunning, listener == nil else { return }
+        tryBind(startingAt: port, attemptsRemaining: Self.portFallbackAttempts)
+    }
+
+    /// Recursive bind with port fallback. If 8787 is already taken by a
+    /// stale daemon or another tool, we walk forward (8788, 8789, …)
+    /// until something sticks. Without this, the Nest Hub gets a stuck
+    /// page because `boundPort` stays nil and the URL the device was
+    /// told to load never has a server behind it.
+    private func tryBind(startingAt port: UInt16, attemptsRemaining: UInt16) {
+        guard attemptsRemaining > 0, let nwPort = NWEndpoint.Port(rawValue: port) else {
+            isRunning = false
+            listener = nil
+            boundPort = nil
+            return
+        }
         do {
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
-            // Bind to all interfaces so the iPhone on the same Wi-Fi can
-            // hit `http://Mac.local:8787` if the user wants. We default
+            // Bind to all interfaces so the iPhone / Nest Hub on the
+            // same Wi-Fi can hit `http://<mac-lan-ip>:8787`. We default
             // documentation to localhost for security.
-            let listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
-            listener.newConnectionHandler = { [weak self] connection in
+            let nwListener = try NWListener(using: params, on: nwPort)
+            nwListener.newConnectionHandler = { [weak self] connection in
                 guard let self else { return }
                 Task { @MainActor in
                     self.handle(connection: connection)
                 }
             }
-            listener.stateUpdateHandler = { [weak self] state in
+            // Strong-capture `nwListener` so the closure keeps it alive
+            // long enough to deliver the `.ready` callback to MainActor.
+            // Previously the closure used `[weak nwListener]`, which made
+            // the listener eligible for deallocation as soon as the
+            // stateUpdateHandler's caller-frame returned — and Network.framework
+            // freed it before the queued MainActor Task could run, so the
+            // `.ready` branch never executed and `isRunning` stayed false.
+            nwListener.stateUpdateHandler = { [weak self] state in
                 guard let self else { return }
-                Task { @MainActor in
+                Task { @MainActor [nwListener] in
+                    // Only mutate shared state when the callback is for the
+                    // currently-tracked listener. Without this, a second
+                    // listener created during a startup race could deliver
+                    // a `.failed`/`.cancelled` after the first listener went
+                    // `.ready`, nuking the bridge we just stood up.
+                    guard self.listener === nwListener else { return }
                     switch state {
                     case .ready:
                         self.isRunning = true
                         self.boundPort = port
-                    case .failed, .cancelled:
+                    case .failed:
+                        self.isRunning = false
+                        self.listener = nil
+                        self.boundPort = nil
+                        // Self-heal: try the next port up. Network.framework
+                        // can hand back .failed for transient bind races
+                        // (lingering TIME_WAIT, sudden interface flap).
+                        self.tryBind(
+                            startingAt: port &+ 1,
+                            attemptsRemaining: attemptsRemaining &- 1
+                        )
+                    case .cancelled:
                         self.isRunning = false
                         self.listener = nil
                         self.boundPort = nil
@@ -112,12 +192,15 @@ final class SmartHubBridgeServer {
                     }
                 }
             }
-            listener.start(queue: queue)
-            self.listener = listener
+            self.listener = nwListener
+            nwListener.start(queue: queue)
         } catch {
+            // Synchronous bind failure (port collision, sandbox denial)
+            // — try the next port immediately.
             isRunning = false
             listener = nil
             boundPort = nil
+            tryBind(startingAt: port &+ 1, attemptsRemaining: attemptsRemaining &- 1)
         }
     }
 
@@ -193,6 +276,10 @@ final class SmartHubBridgeServer {
         case ("GET", "/render.html"):
             sendHTML(SmartHubBridgePage.html, on: connection)
         case ("GET", "/state.json"):
+            // Record the poll BEFORE serving so the watchdog sees the
+            // device's heartbeat the moment it arrives, not after the
+            // socket flushes.
+            lastClientPollAt = Date()
             sendJSON(stateJSON(), on: connection)
         case ("POST", "/refresh"):
             handleRefreshRequest(on: connection)
@@ -307,17 +394,51 @@ final class SmartHubBridgeServer {
         return nil
     }
 
+    /// Exposed for tests so the JSON contract can be asserted directly.
+    /// Production callers go through the `/state.json` HTTP endpoint.
+    func renderStateJSONForTesting() -> String {
+        stateJSON()
+    }
+
     private func stateJSON() -> String {
         let formatter = ISO8601DateFormatter()
-        let providersJSON = snapshot.providers.map { p in
-            """
-            {"name":"\(escape(p.name))","percent":\(p.percent),"label":"\(escape(p.label))","tone":"\(p.tone.rawValue)","window":"\(escape(p.windowLabel))"}
-            """
-        }.joined(separator: ",")
+
+        // Provider filter: honor displayConfig.providerIDs (case-insensitive,
+        // empty == "all"). Names align with `AgentProvider.persistedToken`,
+        // but `SmartHubBridgeSnapshot.Provider.name` is the display name —
+        // so we match on either to stay backward compatible.
+        let allowedSet = Set(displayConfig.providerIDs.map { $0.lowercased() })
+        let providers = snapshot.providers.filter { provider in
+            if allowedSet.isEmpty { return true }
+            return allowedSet.contains(provider.name.lowercased())
+                || allowedSet.contains(persistedTokenForName(provider.name))
+        }
+
+        let providersJSON = providers.map(Self.providerJSON).joined(separator: ",")
 
         let timePeriodOptions = SmartHubTimePeriod.allCases.map { period in
             "{\"value\":\"\(period.rawValue)\",\"short\":\"\(period.shortLabel)\",\"name\":\"\(escape(period.displayName))\"}"
         }.joined(separator: ",")
+
+        let providerIDsJSON = displayConfig.providerIDs.map { "\"\(escape($0))\"" }
+            .joined(separator: ",")
+        let theme = displayConfig.theme.backgroundPair
+        let displayJSON = """
+        {
+          "layout": "\(displayConfig.layout.rawValue)",
+          "palette": "\(displayConfig.palette.rawValue)",
+          "paletteHex": {"primary":"\(displayConfig.palette.primaryHex)","secondary":"\(displayConfig.palette.secondaryHex)"},
+          "theme": "\(displayConfig.theme.rawValue)",
+          "themeHex": {"top":"\(theme.top)","bottom":"\(theme.bottom)","text":"\(displayConfig.theme.textHex)"},
+          "background": "\(displayConfig.background.rawValue)",
+          "brightness": \(displayConfig.clampedBrightness),
+          "scrollSpeedSeconds": \(displayConfig.clampedScrollSpeed),
+          "refreshCadenceSeconds": \(displayConfig.clampedRefreshCadence),
+          "providerIDs": [\(providerIDsJSON)],
+          "audibleCue": \(displayConfig.audibleCue ? "true" : "false"),
+          "identifyOnRefresh": \(displayConfig.identifyOnRefresh ? "true" : "false")
+        }
+        """
 
         return """
         {
@@ -330,15 +451,53 @@ final class SmartHubBridgeServer {
           "totalSpend": "\(escape(snapshot.totalSpend))",
           "headline": "\(escape(snapshot.headline))",
           "subheadline": "\(escape(snapshot.subheadline))",
-          "providers": [\(providersJSON)]
+          "headerTimestamp": "\(escape(snapshot.headerTimestamp))",
+          "headerStatus": "\(escape(snapshot.headerStatus))",
+          "providers": [\(providersJSON)],
+          "display": \(displayJSON)
         }
         """
     }
 
-    private func escape(_ s: String) -> String {
+    /// Encodes one provider card. Splits into its own function (vs an
+    /// inline expression) because the rich-card payload has nested arrays
+    /// — buckets and accounts — that the legacy single-line emitter
+    /// couldn't express cleanly.
+    private static func providerJSON(_ p: SmartHubBridgeSnapshot.Provider) -> String {
+        let bucketsJSON = p.buckets.map { b in
+            """
+            {"name":"\(escape(b.name))","percent":\(b.percent),"headlineValue":"\(escape(b.headlineValue))","subLabel":"\(escape(b.subLabel))","tone":"\(b.tone.rawValue)"}
+            """
+        }.joined(separator: ",")
+
+        let accountsJSON = p.accounts.map { a in
+            """
+            {"label":"\(escape(a.label))","badge":"\(escape(a.badge))","tone":"\(a.tone.rawValue)","isActive":\(a.isActive ? "true" : "false")}
+            """
+        }.joined(separator: ",")
+
+        return """
+        {"name":"\(escape(p.name))","slug":"\(escape(p.slug))","percent":\(p.percent),"label":"\(escape(p.label))","tone":"\(p.tone.rawValue)","window":"\(escape(p.windowLabel))","accentHex":"\(escape(p.accentHex))","logoSVG":"\(escape(p.logoSVG))","tokenTotal":"\(escape(p.tokenTotal))","tokenTotalLabel":"\(escape(p.tokenTotalLabel))","statusPill":"\(escape(p.statusPill))","statusTone":"\(p.statusTone.rawValue)","freshnessLabel":"\(escape(p.freshnessLabel))","fetchedAtLabel":"\(escape(p.fetchedAtLabel))","runsLabel":"\(escape(p.runsLabel))","costLabel":"\(escape(p.costLabel))","buckets":[\(bucketsJSON)],"accounts":[\(accountsJSON)]}
+        """
+    }
+
+    private static func escape(_ s: String) -> String {
         s.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
+
+    /// Best-effort mapping from a provider display name back to its
+    /// persisted token so the filter accepts both forms. The actual
+    /// provider names emitted by `SmartHubBridgeController.quotaProviders`
+    /// come from `AgentProvider.displayName`, so we lowercase + strip
+    /// non-alphanumerics for the lookup.
+    private func persistedTokenForName(_ name: String) -> String {
+        let lowered = name.lowercased()
+        let alnum = lowered.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
+        return String(String.UnicodeScalarView(alnum))
+    }
+
+    private func escape(_ s: String) -> String { Self.escape(s) }
 
     // MARK: - Wire format helpers
 
@@ -410,6 +569,15 @@ final class SmartHubBridgeServer {
 
 // MARK: - Snapshot model
 
+/// Rich per-provider data the Nest Hub renders as one of the horizontal cards.
+///
+/// Why the old single-bucket shape (`percent`/`label`/`windowLabel`) is still
+/// here: existing serialization tests assert on the legacy JSON keys, and
+/// the mobile preview view (`NestHubMiniPreview`) reads them. The richer
+/// `buckets` / `accounts` / `tokenTotal` arrays are additive — they're how
+/// the redesigned dashboard renders horizontal cards with multiple usage
+/// bars + account chips per provider. Code that doesn't care about the
+/// rich form keeps reading the old fields.
 struct SmartHubBridgeSnapshot: Equatable, Sendable {
     var totalSpend: String
     var headline: String
@@ -418,26 +586,153 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
 
     struct Provider: Equatable, Sendable {
         var name: String
-        var percent: Int       // 0–100; quota used
-        var label: String      // e.g. "$120 / $300"
+        var percent: Int       // 0–100; quota used (legacy single-bucket view)
+        var label: String      // e.g. "$120 / $300" (legacy single-bucket view)
         var tone: Tone
         var windowLabel: String // e.g. "5h", "7d" — shown next to provider on Nest
 
+        // Rich card fields. All optional so existing snapshot literals (and
+        // the mobile preview) keep working without ceremony.
+
+        /// Stable lowercased token used as DOM id and CSS class hook on the
+        /// device (e.g. "claudecode"). Falls back to a slug derived from
+        /// the display name when omitted.
+        var slug: String
+
+        /// Brand accent (hex without leading `#`). Drives the card aura,
+        /// big-number color, and bar fills. Mirrors
+        /// `DesignSystem.Colors.primary(for:)`.
+        var accentHex: String
+
+        /// SVG markup for the provider logo. Embedded as inline SVG so the
+        /// Hub doesn't need to fetch additional assets.
+        var logoSVG: String
+
+        /// Big numerals at the top of the card (e.g. "5.4B"). Empty when
+        /// the provider doesn't surface a primary token total.
+        var tokenTotal: String
+
+        /// Label shown under `tokenTotal` (defaults to "TOKENS").
+        var tokenTotalLabel: String
+
+        /// Short status pill (e.g. "source 3h ago", "reset passed",
+        /// "live local"). Empty when there's nothing to surface.
+        var statusPill: String
+
+        /// Tone of the status pill — drives its color band.
+        var statusTone: Tone
+
+        /// Relative-time string for the last refresh (e.g. "3h ago").
+        var freshnessLabel: String
+
+        /// Absolute timestamp text matching the design (e.g.
+        /// "May 7, 6:58 PM").
+        var fetchedAtLabel: String
+
+        /// One usage bar per row on the card. Multi-bucket providers
+        /// (Claude: 5h + weekly, Codex: 5h + 7d, etc.) get one entry per
+        /// window.
+        var buckets: [Bucket]
+
+        /// Account chips rendered in the "ACCOUNTS" section. Empty array
+        /// hides the section entirely.
+        var accounts: [Account]
+
+        /// Footer left side — number of runs in the active period
+        /// (e.g. "852 runs"). Empty hides the footer text.
+        var runsLabel: String
+
+        /// Footer right side — spend in the active period (e.g.
+        /// "$52,262.22"). Empty hides the spend text.
+        var costLabel: String
+
         enum Tone: String, Sendable { case ember, whimsy, success, warning, mercury }
+
+        struct Bucket: Equatable, Sendable, Hashable {
+            var name: String      // "5-hour window", "Weekly limit", "API usage"
+            var percent: Int      // 0–100
+            var headlineValue: String // "33%", "$400.00", "350.8M"
+            var subLabel: String  // "67% left", "$0.00 left", "resets May 8, 3:35 AM"
+            var tone: Tone
+        }
+
+        struct Account: Equatable, Sendable, Hashable {
+            var label: String     // "Work", "alberto8793@g…", "alberto@imagine-t…"
+            var badge: String     // "MAIN", "ACTIVE", "CLI"
+            var tone: Tone
+            var isActive: Bool    // active routing target — drives the green dot
+        }
 
         init(
             name: String,
             percent: Int,
             label: String,
             tone: Tone,
-            windowLabel: String = ""
+            windowLabel: String = "",
+            slug: String = "",
+            accentHex: String = "",
+            logoSVG: String = "",
+            tokenTotal: String = "",
+            tokenTotalLabel: String = "TOKENS",
+            statusPill: String = "",
+            statusTone: Tone = .mercury,
+            freshnessLabel: String = "",
+            fetchedAtLabel: String = "",
+            buckets: [Bucket] = [],
+            accounts: [Account] = [],
+            runsLabel: String = "",
+            costLabel: String = ""
         ) {
             self.name = name
             self.percent = percent
             self.label = label
             self.tone = tone
             self.windowLabel = windowLabel
+            self.slug = slug.isEmpty ? Self.slug(forName: name) : slug
+            self.accentHex = accentHex
+            self.logoSVG = logoSVG
+            self.tokenTotal = tokenTotal
+            self.tokenTotalLabel = tokenTotalLabel
+            self.statusPill = statusPill
+            self.statusTone = statusTone
+            self.freshnessLabel = freshnessLabel
+            self.fetchedAtLabel = fetchedAtLabel
+            self.buckets = buckets
+            self.accounts = accounts
+            self.runsLabel = runsLabel
+            self.costLabel = costLabel
         }
+
+        private static func slug(forName name: String) -> String {
+            name.lowercased()
+                .unicodeScalars
+                .filter { CharacterSet.alphanumerics.contains($0) }
+                .reduce(into: "") { $0.append(Character($1)) }
+        }
+    }
+
+    /// Wall-clock label shown in the top header (e.g. "Thu, May 7  10:43 PM").
+    /// Empty falls back to the legacy "Updated …" sub-headline path.
+    var headerTimestamp: String
+
+    /// Short status text shown next to the live-pressure dot in the top
+    /// header (e.g. "live provider pressure"). Empty hides the dot row.
+    var headerStatus: String
+
+    init(
+        totalSpend: String,
+        headline: String,
+        subheadline: String,
+        providers: [Provider],
+        headerTimestamp: String = "",
+        headerStatus: String = ""
+    ) {
+        self.totalSpend = totalSpend
+        self.headline = headline
+        self.subheadline = subheadline
+        self.providers = providers
+        self.headerTimestamp = headerTimestamp
+        self.headerStatus = headerStatus
     }
 
     static let empty = SmartHubBridgeSnapshot(

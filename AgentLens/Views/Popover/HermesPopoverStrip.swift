@@ -1,12 +1,16 @@
 import SwiftUI
 
-// MARK: - Hermes Popover Strip
+// MARK: - Assistants Popover Strip
 
-/// Compact Hermes chat input in the menu bar popover.
-/// Shows a single-line input with mercury border, plus a tappable last-message preview
-/// when a conversation exists. Sending a message or tapping the preview collapses the
-/// entire popover into the full `HermesPopoverChatView`.
-struct HermesPopoverStrip: View {
+/// Compact chat input in the menu bar popover.
+/// Shows a single-line input with a backend-aware animated border, plus a
+/// tappable last-message preview when a conversation exists. Sending a
+/// message or tapping the preview collapses the entire popover into the full
+/// `AssistantsPopoverChatView`.
+///
+/// Plan 2 parity: border, glyph, and tint adapt to the active runtime
+/// (Hermes → mercury shimmer, Pi → whimsy gradient, CLI → accent gradient).
+struct AssistantsPopoverStrip: View {
     @Bindable var controller: ChatSessionController
     var onOpenDashboardWithChat: () -> Void
     var onActivateChat: (() -> Void)?
@@ -21,6 +25,7 @@ struct HermesPopoverStrip: View {
         case .claude: return "Ask Claude…"
         case .hermes: return "Ask Hermes…"
         case .openclaw: return "Ask OpenClaw…"
+        case .piAgent: return "Ask Pi…"
         }
     }
 
@@ -39,7 +44,7 @@ struct HermesPopoverStrip: View {
         .background(DesignSystem.Colors.surfaceElevated)
         .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
         .overlay {
-            mercuryBorder
+            runtimeBorder
         }
         .onHover { isHovered = $0 }
         .animation(DesignSystem.Animation.gentle, value: hasConversation)
@@ -50,9 +55,9 @@ struct HermesPopoverStrip: View {
 
     private var collapsedRow: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
-            Text("\u{263F}")
+            Text(controller.chatBackend.glyph)
                 .font(.system(size: 15, weight: .medium, design: .rounded))
-                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                .foregroundStyle(stripGlyphColor)
 
             TextField(stripPlaceholder, text: $controller.inputText)
                 .textFieldStyle(.plain)
@@ -68,7 +73,7 @@ struct HermesPopoverStrip: View {
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 18))
-                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                        .foregroundStyle(stripGlyphColor)
                 }
                 .buttonStyle(.plain)
                 .transition(.scale.combined(with: .opacity))
@@ -89,6 +94,14 @@ struct HermesPopoverStrip: View {
         .padding(.horizontal, DesignSystem.Spacing.md)
     }
 
+    private var stripGlyphColor: Color {
+        switch controller.chatBackend {
+        case .hermes:   return DesignSystem.Colors.hermesAureate
+        case .piAgent:  return DesignSystem.Colors.whimsy
+        default:        return DesignSystem.Colors.textSecondary
+        }
+    }
+
     // MARK: - Thread Preview
 
     private var stripThreadMessages: [ChatMessageRecord] {
@@ -105,7 +118,7 @@ struct HermesPopoverStrip: View {
                     let icon = last.role == .user ? "person.fill" : "sparkles"
                     Image(systemName: icon)
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.hermesMercury)
+                        .foregroundStyle(previewTint)
                     Text(last.content)
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
@@ -119,23 +132,47 @@ struct HermesPopoverStrip: View {
             }
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.xs + 2)
-            .background(DesignSystem.Colors.hermesMercury.opacity(0.04))
+            .background(previewTint.opacity(0.04))
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Mercury Border
+    private var previewTint: Color {
+        switch controller.chatBackend {
+        case .hermes:   return DesignSystem.Colors.hermesMercury
+        case .piAgent:  return DesignSystem.Colors.whimsy
+        default:        return DesignSystem.Colors.textMuted
+        }
+    }
 
-    private var mercuryBorder: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !isHovered && !controller.isStreaming)) { ctx in
-            let phase = ctx.date.timeIntervalSinceReferenceDate
-                .truncatingRemainder(dividingBy: 3.0) / 3.0
+    // MARK: - Runtime Border
 
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .strokeBorder(
-                    mercuryAnimatedGradient(phase: CGFloat(phase)),
-                    lineWidth: 1
-                )
+    private var runtimeBorder: some View {
+        Group {
+            switch controller.chatBackend {
+            case .hermes:
+                TimelineView(.animation(minimumInterval: 1 / 30, paused: !isHovered && !controller.isStreaming)) { ctx in
+                    let phase = ctx.date.timeIntervalSinceReferenceDate
+                        .truncatingRemainder(dividingBy: 3.0) / 3.0
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .strokeBorder(
+                            mercuryAnimatedGradient(phase: CGFloat(phase)),
+                            lineWidth: 1
+                        )
+                }
+            case .piAgent:
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .strokeBorder(
+                        DesignSystem.Colors.piGradient,
+                        lineWidth: 1
+                    )
+            default:
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .strokeBorder(
+                        DesignSystem.Colors.border,
+                        lineWidth: 0.5
+                    )
+            }
         }
         .allowsHitTesting(false)
     }
@@ -171,3 +208,8 @@ struct HermesPopoverStrip: View {
         controller.fireAndForgetSend()
     }
 }
+
+// MARK: - Backward compatibility
+
+@available(*, deprecated, renamed: "AssistantsPopoverStrip")
+typealias HermesPopoverStrip = AssistantsPopoverStrip

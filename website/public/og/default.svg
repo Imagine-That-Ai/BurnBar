@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#07060a"/>
+      <stop offset="100%" stop-color="#100a14"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="180" cy="560" r="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ff6a1a" stop-opacity="0.35"/>
+      <stop offset="60%" stop-color="#c63d0f" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- real brand logo -->
+  <image x="80" y="84" width="96" height="96" href="/brand/logo-512.png" />
+  <text x="200" y="148" font-family="Georgia, serif" font-size="38" fill="#f6f1e7" font-weight="500" letter-spacing="-1">
+    <tspan fill="#8b8275">Open</tspan>BurnBar
+  </text>
+
+  <!-- headline -->
+  <text x="80" y="298" font-family="Georgia, 'Times New Roman', serif" font-size="98" font-weight="500" fill="#f6f1e7" letter-spacing="-3.5">
+    Watch your AI agents.
+  </text>
+  <text x="80" y="392" font-family="Georgia, 'Times New Roman', serif" font-size="98" font-style="italic" font-weight="400" fill="#ff8a3d" letter-spacing="-3.5">
+    Before the bill.
+  </text>
+
+  <!-- subtitle -->
+  <text x="80" y="472" font-family="-apple-system, BlinkMacSystemFont, system-ui, sans-serif" font-size="26" fill="#d8d0c0" letter-spacing="-0.5">
+    Local-first cost, token, and quota tracking across Claude Code,
+  </text>
+  <text x="80" y="508" font-family="-apple-system, BlinkMacSystemFont, system-ui, sans-serif" font-size="26" fill="#d8d0c0" letter-spacing="-0.5">
+    Codex, Cursor, Copilot, Factory, MiniMax and more.
+  </text>
+
+  <!-- mono badges -->
+  <g transform="translate(80, 560)" font-family="ui-monospace, 'JetBrains Mono', Menlo, monospace" font-size="14" letter-spacing="2" fill="#8b8275">
+    <text>MACOS · IPHONE · IPAD · DAEMON · CLI · EDITOR · WIDGETS · SMART DISPLAYS</text>
+  </g>
+
+  <!-- url -->
+  <text x="1120" y="580" text-anchor="end" font-family="ui-monospace, 'JetBrains Mono', Menlo, monospace" font-size="18" fill="#ff8a3d" letter-spacing="2">
+    BURNBAR.AI
+  </text>
+</svg>

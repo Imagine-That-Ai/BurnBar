@@ -40,22 +40,21 @@ extension BufferedLineSequence {
 
         mutating func next() -> String? {
             while true {
-                // Search for a newline (0x0A) in the buffer.
-                // UTF-8 guarantees that 0x0A never appears inside a multi-byte
-                // character, so splitting on this byte is always safe.
-                if let newlineIndex = buffer.firstIndex(of: 0x0A) {
-                    let lineData = buffer.prefix(upTo: newlineIndex)
-                    buffer.removeSubrange(..<(newlineIndex + 1))
-
-                    var line = String(data: Data(lineData), encoding: .utf8)
-                        ?? String(decoding: Data(lineData), as: UTF8.self)
-
-                    // Strip a trailing CR for \r\n compatibility.
-                    if line.hasSuffix("\r") {
-                        line.removeLast()
+                // UTF-8 guarantees that ASCII line separators never appear
+                // inside a multi-byte character, so byte splitting is safe and
+                // avoids Swift.Character scanning over huge logs.
+                if let separatorIndex = buffer.firstIndex(where: { $0 == 0x0A || $0 == 0x0D }) {
+                    let separator = buffer[separatorIndex]
+                    let lineData = buffer.prefix(upTo: separatorIndex)
+                    var removeEnd = buffer.index(after: separatorIndex)
+                    if separator == 0x0D,
+                       removeEnd < buffer.endIndex,
+                       buffer[removeEnd] == 0x0A {
+                        removeEnd = buffer.index(after: removeEnd)
                     }
-
-                    return line
+                    buffer.removeSubrange(..<removeEnd)
+                    guard !lineData.isEmpty else { continue }
+                    return Self.decode(lineData)
                 }
 
                 // No complete line in buffer — read the next chunk.
@@ -64,12 +63,7 @@ extension BufferedLineSequence {
                     guard !buffer.isEmpty else { return nil }
                     let finalData = buffer
                     buffer.removeAll()
-                    var line = String(data: finalData, encoding: .utf8)
-                        ?? String(decoding: finalData, as: UTF8.self)
-                    if line.hasSuffix("\r") {
-                        line.removeLast()
-                    }
-                    return line
+                    return Self.decode(finalData)
                 }
 
                 let chunk = fileHandle.readData(ofLength: chunkSize)
@@ -79,6 +73,11 @@ extension BufferedLineSequence {
                 }
                 buffer.append(chunk)
             }
+        }
+
+        private static func decode<T: Collection>(_ bytes: T) -> String where T.Element == UInt8 {
+            let data = Data(bytes)
+            return String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
         }
     }
 }

@@ -1,0 +1,166 @@
+---
+import { NAV_FOOTER, SITE } from "@data/site";
+import Brandmark from "./Brandmark.astro";
+
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer">
+  <div class="container container--wide">
+    <div class="site-footer__grid">
+      <div class="site-footer__brand">
+        <Brandmark size={32} />
+        <p class="muted">
+          A local-first developer tool that watches AI coding agents. <br />
+          macOS · iPhone · iPad · daemon · CLI · editor.
+        </p>
+        <p class="site-footer__entity mono">
+          © {year} {SITE.entity}. <br />
+          Released under the {SITE.license} license.
+        </p>
+      </div>
+
+      <div>
+        <h5>Product</h5>
+        <ul>
+          {NAV_FOOTER.product.map((item) => (
+            <li><a href={item.href}>{item.label}</a></li>
+          ))}
+        </ul>
+      </div>
+
+      <div>
+        <h5>Trust</h5>
+        <ul>
+          {NAV_FOOTER.trust.map((item) => (
+            <li><a href={item.href}>{item.label}</a></li>
+          ))}
+        </ul>
+      </div>
+
+      <div>
+        <h5>Build</h5>
+        <ul>
+          {NAV_FOOTER.build.map((item) => (
+            <li>
+              <a
+                href={item.href}
+                target={item.external ? "_blank" : undefined}
+                rel={item.external ? "noopener noreferrer" : undefined}
+              >
+                {item.label}
+                {item.external && <span class="ext" aria-hidden="true">↗</span>}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+
+    <hr class="hairline" />
+
+    <div class="site-footer__base">
+      <p class="mono small">
+        burnbar.ai — built with restraint. No analytics, no trackers, no
+        third-party fonts loaded remotely.
+      </p>
+      <div class="site-footer__contact mono small">
+        <span>privacy@imagine-that.ai</span>
+        <span aria-hidden="true">·</span>
+        <a href="/legal/privacy-policy">Privacy policy</a>
+        <span aria-hidden="true">·</span>
+        <a href={SITE.github} target="_blank" rel="noopener noreferrer">github</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    margin-top: var(--s-10);
+    padding-block: var(--s-8) var(--s-6);
+    border-top: 1px solid var(--ink-line);
+    background:
+      radial-gradient(60% 80% at 50% -10%, var(--ember-wash), transparent 70%),
+      var(--ink-void);
+  }
+  .site-footer__grid {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1fr 1fr;
+    gap: var(--s-6) var(--s-5);
+    margin-bottom: var(--s-6);
+  }
+  .site-footer__brand {
+    max-width: 36ch;
+    display: grid;
+    gap: var(--s-3);
+  }
+  .site-footer__entity {
+    font-size: 0.74rem;
+    color: var(--text-dim);
+    letter-spacing: 0.02em;
+    margin-top: var(--s-3);
+    line-height: 1.5;
+  }
+  .site-footer h5 {
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-uppercase);
+    color: var(--text-mute);
+    font-variation-settings: "wght" 500;
+    margin-bottom: var(--s-3);
+  }
+  .site-footer ul {
+    display: grid;
+    gap: 0.4rem;
+  }
+  .site-footer ul a {
+    color: var(--text-base);
+    font-size: 0.92rem;
+  }
+  .site-footer ul a:hover {
+    color: var(--text-bright);
+  }
+  .ext {
+    margin-left: 0.25rem;
+    opacity: 0.5;
+    font-size: 0.85em;
+  }
+  .site-footer__base {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--s-4);
+    padding-top: var(--s-5);
+    flex-wrap: wrap;
+  }
+  .small {
+    font-size: var(--t-caption);
+    color: var(--text-dim);
+  }
+  .site-footer__contact {
+    display: flex;
+    gap: 0.8rem;
+    align-items: center;
+    color: var(--text-mute);
+  }
+  .site-footer__contact a {
+    color: var(--text-base);
+  }
+  .site-footer__contact a:hover {
+    color: var(--ember-bright);
+  }
+  @media (max-width: 880px) {
+    .site-footer__grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    .site-footer__brand {
+      grid-column: 1 / -1;
+    }
+  }
+  @media (max-width: 520px) {
+    .site-footer__grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

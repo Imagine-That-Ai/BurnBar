@@ -158,6 +158,7 @@ struct ProviderRow: View {
             case .forgeDev:   return Color(hex: "F97316")
             case .augment:    return Color(hex: "3B82F6")
             case .hermes:     return Color(hex: "A855F7")
+            case .piAgent:    return Color(hex: "A855F7")
             case .geminiCLI:  return Color(hex: "4285F4")
             case .goose:      return Color(hex: "0D9488")
             case .openClaw:   return Color(hex: "FF6B6B")

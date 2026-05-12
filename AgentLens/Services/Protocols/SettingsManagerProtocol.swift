@@ -158,8 +158,38 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Cloud Run WebSocket relay endpoint for low-latency Hermes remote relay.
     var hermesRealtimeRelayURL: String { get set }
 
+    /// Whether OpenBurnBar should launch Hermes Dashboard and its local gateway on app startup.
+    var launchHermesWithOpenBurnBar: Bool { get set }
+
+    /// Pi agent gateway base URL.
+    var piAgentGatewayBaseURL: String { get set }
+
+    /// Pi agent gateway bearer token, stored in Keychain.
+    var piAgentBearerToken: String { get set }
+
+    /// Optional Redis URL the Pi gateway should consult for instance discovery.
+    var piAgentRedisURL: String { get set }
+
+    /// User-selected Pi agent instance ID.
+    var piAgentSelectedInstanceID: String { get set }
+
+    /// Optional Pi chat model override.
+    var piAgentChatModelOverride: String { get set }
+
+    /// Whether OpenBurnBar should launch the Pi agent and gateway at startup.
+    var launchPiAgentsWithOpenBurnBar: Bool { get set }
+
+    /// Whether this Mac may relay local Pi traffic for signed-in mobile devices.
+    var piRemoteRelayEnabled: Bool { get set }
+
+    /// Cloud Run WebSocket relay endpoint for low-latency Pi remote relay.
+    var piRealtimeRelayURL: String { get set }
+
     /// Resolves the `model` field for Hermes `POST /v1/chat/completions`.
     func resolvedHermesChatModel(gatewayAdvertisedModel: String?) -> String
+
+    /// Resolves the `model` field for Pi `POST /v1/chat/completions`.
+    func resolvedPiChatModel(gatewayAdvertisedModel: String?) -> String
 
     // MARK: - Usage Display
 
@@ -225,6 +255,19 @@ protocol SettingsManagerProtocol: AnyObject {
 
     /// Time period (rolling 5h / 24h / 7d / 30d) the smart hub dashboard renders.
     var smartHubQuotaTimePeriod: SmartHubTimePeriod { get set }
+
+    /// ULANZI TC001 / AWTRIX pixel clock configuration.
+    var pixelClockConfig: PixelClockConfig { get set }
+
+    /// Smart-Hub-only display customization (palette, theme, brightness,
+    /// background mode, audible cue) the Nest Hub bridge HTML reads at
+    /// runtime via `/state.json`.
+    var smartHubDisplayConfig: SmartHubDisplayConfig { get set }
+
+    /// User-chosen order of the Smart Display cards in Settings → Devices
+    /// & Sync. Persisted so the user can keep their preferred display
+    /// (Nest Hub or Pixel Clock) at the top of the list.
+    var smartDisplayOrder: SmartDisplayOrder { get set }
 
     // MARK: - Artifact Discovery
 

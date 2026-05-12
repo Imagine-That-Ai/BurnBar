@@ -38,6 +38,7 @@ final class ProviderQuotaService {
     private(set) var claudeBridgeStatus: ClaudeQuotaBridgeStatus
     private(set) var routingStatesByProviderID: [ProviderID: ProviderRoutingStateSnapshot] = [:]
     private(set) var routingEvents: [ProviderRoutingDecisionEvent] = []
+    var onSnapshotsPersistedForCloudSync: (([ProviderQuotaSnapshot]) -> Void)?
     private var codexRolloutScanCache: CodexRolloutScanCache = .empty
     private var connectedQuotaProviderIDsCache: (fetchedAt: Date, ids: Set<ProviderID>)?
     private var suppressRoutingEventPersistence = false
@@ -115,28 +116,69 @@ final class ProviderQuotaService {
     }
 
     func snapshots(for providerID: ProviderID) -> [ProviderQuotaSnapshot] {
-        snapshotsByAccountID.values
-            .filter { $0.providerID == providerID }
-            .sorted { lhs, rhs in
-                let lhsLabel = lhs.accountLabel ?? lhs.accountID ?? lhs.sourceId
-                let rhsLabel = rhs.accountLabel ?? rhs.accountID ?? rhs.sourceId
-                let labelOrder = lhsLabel.localizedCaseInsensitiveCompare(rhsLabel)
-                if labelOrder != .orderedSame {
-                    return labelOrder == .orderedAscending
-                }
-                return lhs.fetchedAt > rhs.fetchedAt
+        // The on-disk `snapshotsByAccountID` is keyed by `providerID:accountID`
+        // or `providerID:sourceId`, which means a single logical account can
+        // produce two distinct keys (one record has `accountID` set, another
+        // has only `sourceId`). Without a render-time dedupe, the dashboard
+        // panel renders the same account twice with subtly different bucket
+        // values. Group by the most-specific identifier we can extract and
+        // keep the freshest record per group.
+        let candidates = snapshotsByAccountID.values.filter { $0.providerID == providerID }
+
+        func accountKey(_ snap: ProviderQuotaSnapshot) -> String {
+            if let id = snap.accountID?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !id.isEmpty {
+                return id.lowercased()
             }
+            if let label = snap.accountLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !label.isEmpty {
+                return label.lowercased()
+            }
+            return snap.sourceId.lowercased()
+        }
+
+        var freshest: [String: ProviderQuotaSnapshot] = [:]
+        for snap in candidates {
+            let key = accountKey(snap)
+            guard let incumbent = freshest[key] else {
+                freshest[key] = snap
+                continue
+            }
+            // Records with real buckets always beat empty placeholders;
+            // otherwise the most-recent `fetchedAt` wins.
+            let candidateHasBuckets = !snap.displayableQuotaBuckets.isEmpty
+            let incumbentHasBuckets = !incumbent.displayableQuotaBuckets.isEmpty
+            if candidateHasBuckets != incumbentHasBuckets {
+                if candidateHasBuckets { freshest[key] = snap }
+                continue
+            }
+            if snap.fetchedAt > incumbent.fetchedAt {
+                freshest[key] = snap
+            }
+        }
+
+        return freshest.values.sorted { lhs, rhs in
+            let lhsLabel = lhs.accountLabel ?? lhs.accountID ?? lhs.sourceId
+            let rhsLabel = rhs.accountLabel ?? rhs.accountID ?? rhs.sourceId
+            let labelOrder = lhsLabel.localizedCaseInsensitiveCompare(rhsLabel)
+            if labelOrder != .orderedSame {
+                return labelOrder == .orderedAscending
+            }
+            return lhs.fetchedAt > rhs.fetchedAt
+        }
     }
 
     var accountsByProvider: [ProviderID: [ProviderQuotaSnapshot]] {
-        Dictionary(grouping: snapshotsByAccountID.values, by: \.providerID)
-            .mapValues { snapshots in
-                snapshots.sorted { lhs, rhs in
-                    let lhsLabel = lhs.accountLabel ?? lhs.accountID ?? lhs.sourceId
-                    let rhsLabel = rhs.accountLabel ?? rhs.accountID ?? rhs.sourceId
-                    return lhsLabel.localizedCaseInsensitiveCompare(rhsLabel) == .orderedAscending
-                }
-            }
+        // Re-route through `snapshots(for:)` so this helper inherits the same
+        // account-level dedup — without it, popover summaries showed duplicate
+        // accounts whenever the storage map happened to keep both an
+        // accountID-keyed and a sourceId-keyed record for the same login.
+        let allProviders = Set(snapshotsByAccountID.values.map { $0.providerID })
+        var result: [ProviderID: [ProviderQuotaSnapshot]] = [:]
+        for providerID in allProviders {
+            result[providerID] = snapshots(for: providerID)
+        }
+        return result
     }
 
     var snapshotsForCloudSync: [ProviderQuotaSnapshot] {
@@ -555,6 +597,11 @@ final class ProviderQuotaService {
                     lastPayloadAt: nil
                 )
             },
+            claudeCredentialsReader: ClaudeCredentialsReader(
+                homeDirectoryURL: homeDirectoryURL,
+                environment: environment,
+                fileManager: fileManager
+            ),
             resolvedAPIKeys: resolvedKeys
         )
     }
@@ -826,6 +873,10 @@ final class ProviderQuotaService {
 
     private func persistSnapshots() {
         snapshotStore.persistSnapshots(snapshotsByProvider, accountSnapshots: snapshotsByAccountID)
+        let syncableSnapshots = snapshotsForCloudSync.filter { $0.source != .unavailable }
+        if !syncableSnapshots.isEmpty {
+            onSnapshotsPersistedForCloudSync?(syncableSnapshots)
+        }
     }
 
     private func loadPersistedRoutingEvents() {

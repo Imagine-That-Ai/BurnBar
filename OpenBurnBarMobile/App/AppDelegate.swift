@@ -43,8 +43,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         #if DEBUG
-        AppCheckDebugTokenEnvironment.configureIfAvailable(firebasePlistPath: path)
-        let factory = AppCheckDebugProviderFactory()
+        _ = AppCheckDebugTokenEnvironment.configureIfAvailable(firebasePlistPath: path)
+        let factory: AppCheckProviderFactory = AppCheckDebugProviderFactory()
         #else
         let factory = OpenBurnBarAppCheckProviderFactory()
         #endif

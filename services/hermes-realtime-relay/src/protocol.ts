@@ -19,6 +19,20 @@ export type HermesRelayChunkKind = "sse" | "data" | "error";
 
 export type HermesRelaySocketRole = "host" | "client";
 
+// Plan 2 §8: a single Cloud Run relay multiplexes Hermes and Pi sessions.
+// Frames may carry an explicit `runtime` discriminator so channel keys are
+// namespaced and a single host cannot accidentally cross-mount the other
+// runtime's traffic. Missing runtime defaults to `hermes` for back-compat.
+export type HermesRelayRuntime = "hermes" | "pi";
+const RELAY_RUNTIMES = new Set<HermesRelayRuntime>(["hermes", "pi"]);
+export const DEFAULT_RELAY_RUNTIME: HermesRelayRuntime = "hermes";
+
+export function normalizeRuntime(value: unknown): HermesRelayRuntime {
+  return typeof value === "string" && RELAY_RUNTIMES.has(value as HermesRelayRuntime)
+    ? (value as HermesRelayRuntime)
+    : DEFAULT_RELAY_RUNTIME;
+}
+
 export type HermesRealtimeFrameType =
   | "host.register"
   | "host.ready"
@@ -51,6 +65,9 @@ export interface HermesRealtimeFrame {
   connectionId: string;
   requestId?: string;
   protocolVersion: number;
+  /// Optional runtime discriminator. Hosts and clients in the same relay
+  /// session must agree on the value; when omitted, defaults to `hermes`.
+  runtime?: HermesRelayRuntime;
   payload?: HermesRealtimePayload;
 }
 
@@ -80,20 +97,36 @@ const RELAY_METHODS = new Set(["GET", "POST"]);
 const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9._:-]{1,160}$/;
 const BASE64ISH_PATTERN = /^[A-Za-z0-9+/=_-]+$/;
 
-export function reqChannel(uid: string, connectionId: string): string {
-  return `hermes:req:${uid}:${connectionId}`;
+export function reqChannel(
+  uid: string,
+  connectionId: string,
+  runtime: HermesRelayRuntime = DEFAULT_RELAY_RUNTIME
+): string {
+  return `${runtime}:req:${uid}:${connectionId}`;
 }
 
-export function respChannel(uid: string, requestId: string): string {
-  return `hermes:resp:${uid}:${requestId}`;
+export function respChannel(
+  uid: string,
+  requestId: string,
+  runtime: HermesRelayRuntime = DEFAULT_RELAY_RUNTIME
+): string {
+  return `${runtime}:resp:${uid}:${requestId}`;
 }
 
-export function hostPresenceKey(uid: string, connectionId: string): string {
-  return `hermes:host:${uid}:${connectionId}`;
+export function hostPresenceKey(
+  uid: string,
+  connectionId: string,
+  runtime: HermesRelayRuntime = DEFAULT_RELAY_RUNTIME
+): string {
+  return `${runtime}:host:${uid}:${connectionId}`;
 }
 
-export function hostControlChannel(uid: string, connectionId: string): string {
-  return `hermes:ctrl:${uid}:${connectionId}`;
+export function hostControlChannel(
+  uid: string,
+  connectionId: string,
+  runtime: HermesRelayRuntime = DEFAULT_RELAY_RUNTIME
+): string {
+  return `${runtime}:ctrl:${uid}:${connectionId}`;
 }
 
 export function parseFrame(
@@ -122,6 +155,9 @@ export function parseFrame(
   assertSafeIdentifier(parsed.connectionId, "connectionId");
   if (parsed.requestId !== undefined) assertSafeIdentifier(parsed.requestId, "requestId");
   if (parsed.protocolVersion !== PROTOCOL_VERSION) throw new Error("Unsupported realtime relay protocol version.");
+  if (parsed.runtime !== undefined && !RELAY_RUNTIMES.has(parsed.runtime as HermesRelayRuntime)) {
+    throw new Error("Unsupported relay runtime discriminator.");
+  }
   const frame = parsed as HermesRealtimeFrame;
   assertFrameShape(frame);
   return frame;

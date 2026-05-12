@@ -129,13 +129,174 @@ final class FirestoreNormalizationTests: XCTestCase {
                     "label": "Plan",
                     "unit": "requests",
                     "isEstimated": false,
-                    "priority": 1
+                    "priority": 1,
+                    "resetsAt": "2026-05-04T06:04:57.701Z"
                 ]
             ]
         ],
         "schemaVersion": 2,
         "updatedAt": "2026-05-04T06:04:57.701Z"
     ]
+
+    static let desktopStylePercentQuotaDoc: [String: Any] = [
+        "provider": "Claude Code",
+        "providerID": "claude-code",
+        "sourceKind": "localCLI",
+        "sourceId": "default",
+        "sourceID": "default",
+        "fetchedAt": "2026-05-12T00:16:44Z",
+        "source": "localCLI",
+        "confidence": "exact",
+        "statusMessage": "Quota captured from Claude Code's local status line JSON bridge.",
+        "buckets": [
+            [
+                "key": "claude-five_hour",
+                "label": "5-hour window",
+                "windowKind": "rollingHours",
+                "usedValue": 18.0,
+                "remainingValue": 82.0,
+                "usedPercent": 18.0,
+                "unit": "percent",
+                "isEstimated": false
+            ],
+            [
+                "key": "claude-seven_day",
+                "label": "7-day window",
+                "windowKind": "rollingDays",
+                "usedValue": 52.0,
+                "remainingValue": 48.0,
+                "usedPercent": 52.0,
+                "unit": "percent",
+                "isEstimated": false
+            ]
+        ],
+        "schemaVersion": 2,
+        "updatedAt": "2026-05-12T00:17:00Z"
+    ]
+
+    static let zeroLimitPercentQuotaDoc: [String: Any] = [
+        "provider": "Codex",
+        "providerID": "codex",
+        "sourceKind": "localSession",
+        "sourceId": "default",
+        "fetchedAt": "2026-05-12T00:16:55Z",
+        "source": "Codex",
+        "confidence": "high",
+        "buckets": [
+            [
+                "name": "codex-primary",
+                "used": 37.0,
+                "limit": 0.0,
+                "remaining": 63.0,
+                "window": "rollingHours",
+                "meta": [
+                    "label": "5-hour window",
+                    "unit": "percent",
+                    "usedPercent": "37.00"
+                ]
+            ]
+        ],
+        "schemaVersion": 2,
+        "updatedAt": "2026-05-12T00:17:00Z"
+    ]
+
+    static let miniMaxUnlimitedQuotaDoc: [String: Any] = [
+        "provider": "minimax",
+        "providerID": "minimax",
+        "sourceKind": "provider",
+        "sourceId": "minimax_default",
+        "fetchedAt": "2026-05-12T01:40:10Z",
+        "source": "provider",
+        "confidence": "high",
+        "accountID": "minimax_default",
+        "buckets": [
+            [
+                "name": "MiniMax-M*",
+                "used": 0,
+                "limit": -1,
+                "remaining": -1,
+                "window": "account"
+            ]
+        ],
+        "schemaVersion": 2,
+        "updatedAt": "2026-05-12T01:40:10Z"
+    ]
+
+    static let liveBackfilledQuotaDocs: [(id: String, data: [String: Any])] = [
+        (
+            id: "claude-code_unattributed_mac-local-cache",
+            data: canonicalQuotaDoc(provider: "claude-code", providerID: "claude-code", sourceKind: "localCLI", source: "localCLI", bucketName: "claude-five_hour", label: "5-hour window", unit: "percent", used: 21, limit: 100, remaining: 79)
+        ),
+        (
+            id: "codex_unattributed_mac-local-cache",
+            data: canonicalQuotaDoc(provider: "codex", providerID: "codex", sourceKind: "localSession", source: "localSession", bucketName: "codex-primary", label: "5-hour window", unit: "percent", used: 39, limit: 100, remaining: 61)
+        ),
+        (
+            id: "cursor_unattributed_mac-local-cache",
+            data: canonicalQuotaDoc(provider: "cursor", providerID: "cursor", sourceKind: "officialAPI", source: "officialAPI", bucketName: "cursor-plan", label: "Included usage", unit: "currency", used: 400, limit: 400, remaining: 0, window: "monthly")
+        ),
+        (
+            id: "factory_unattributed_mac-local-cache",
+            data: canonicalQuotaDoc(provider: "factory", providerID: "factory", sourceKind: "localSession", source: "localSession", bucketName: "factory-7d", label: "7-day rolling", unit: "tokens", used: 253_998_585, limit: 200_000_000, remaining: 0, window: "rollingDays")
+        ),
+        (
+            id: "minimax_unattributed_mac-local-cache",
+            data: canonicalQuotaDoc(provider: "minimax", providerID: "minimax", sourceKind: "officialAPI", source: "officialAPI", bucketName: "minimax-5-hour-window-minimax-m", label: "5-hour window", unit: "requests", used: 0, limit: 4_500, remaining: 4_500, window: "rollingHours")
+        ),
+        (
+            id: "ollama_unattributed_mac-local-cache",
+            data: canonicalQuotaDoc(provider: "ollama", providerID: "ollama", sourceKind: "officialAPI", source: "officialAPI", bucketName: "ollama-cloud-session", label: "Cloud 5-hour window", unit: "percent", used: 1.2, limit: 100, remaining: 98.8, window: "rollingHours")
+        ),
+        (
+            id: "openai_openai-team_api",
+            data: canonicalQuotaDoc(provider: "OpenAI", providerID: "openai", sourceKind: "officialAPI", source: "usage-api", bucketName: "Monthly budget", label: "Monthly budget", unit: "currency", used: 218, limit: 500, remaining: 282, window: "monthly")
+        ),
+        (
+            id: "zai_unattributed_mac-local-cache",
+            data: canonicalQuotaDoc(provider: "zai", providerID: "zai", sourceKind: "officialAPI", source: "officialAPI", bucketName: "zai-token-usage-5-hour-limits", label: "Token usage (5-hour)", unit: "percent", used: 17, limit: 100, remaining: 83, window: "custom")
+        )
+    ]
+
+    private static func canonicalQuotaDoc(
+        provider: String,
+        providerID: String,
+        sourceKind: String,
+        source: String,
+        bucketName: String,
+        label: String,
+        unit: String,
+        used: Double,
+        limit: Double,
+        remaining: Double,
+        window: String = "rollingHours"
+    ) -> [String: Any] {
+        [
+            "provider": provider,
+            "providerID": providerID,
+            "sourceKind": sourceKind,
+            "sourceId": "mac-local-cache",
+            "sourceID": "mac-local-cache",
+            "fetchedAt": "2026-05-12T00:40:10Z",
+            "source": source,
+            "confidence": "exact",
+            "buckets": [
+                [
+                    "name": bucketName,
+                    "used": used,
+                    "limit": limit,
+                    "remaining": remaining,
+                    "window": window,
+                    "meta": [
+                        "label": label,
+                        "unit": unit,
+                        "isEstimated": "false"
+                    ]
+                ]
+            ],
+            "schemaVersion": 2,
+            "updatedAt": "2026-05-12T00:40:10Z"
+        ]
+    }
 
     static let cloudFunctionConnectionDoc: [String: Any] = [
         "provider": "minimax",
@@ -257,6 +418,185 @@ final class FirestoreNormalizationTests: XCTestCase {
         XCTAssertEqual(snap?.confidence, .high)
         XCTAssertEqual(snap?.buckets.first?.meta?["isEstimated"], "false")
         XCTAssertEqual(snap?.buckets.first?.meta?["priority"], "1")
+        XCTAssertEqual(snap?.buckets.first?.meta?["resetsAt"], "2026-05-04T06:04:57.701Z")
+    }
+
+    func testDesktopStyleQuotaBucketsNormalizeForMobileDisplay() throws {
+        let snap = repo.decodeQuotaSnapshot(
+            from: Self.desktopStylePercentQuotaDoc,
+            docID: "claude-code_unattributed_default"
+        )
+
+        XCTAssertNotNil(snap)
+        XCTAssertEqual(snap?.providerID, .claudeCode)
+        XCTAssertEqual(snap?.buckets.count, 2)
+        XCTAssertEqual(snap?.buckets.first?.name, "claude-five_hour")
+        XCTAssertEqual(snap?.buckets.first?.limit, 100)
+        XCTAssertEqual(snap?.buckets.first?.remaining, 82)
+        XCTAssertEqual(snap?.buckets.first?.window, "rollingHours")
+        XCTAssertEqual(snap?.buckets.first?.meta?["label"], "5-hour window")
+        XCTAssertEqual(snap?.buckets.first?.meta?["unit"], "percent")
+        XCTAssertNotNil(snap?.filteringToDisplayableQuotaSignal())
+    }
+
+    func testZeroLimitPercentQuotaBucketsNormalizeToPercentDenominator() throws {
+        let snap = repo.decodeQuotaSnapshot(
+            from: Self.zeroLimitPercentQuotaDoc,
+            docID: "codex_unattributed_default"
+        )
+
+        XCTAssertNotNil(snap)
+        XCTAssertEqual(snap?.providerID, .codex)
+        XCTAssertEqual(snap?.buckets.first?.limit, 100)
+        XCTAssertEqual(snap?.buckets.first?.used, 37)
+        XCTAssertEqual(snap?.buckets.first?.remaining, 63)
+        XCTAssertNotNil(snap?.filteringToDisplayableQuotaSignal())
+    }
+
+    func testUnlimitedProviderQuotaBucketsRemainDisplayableOnMobile() throws {
+        let snap = repo.decodeQuotaSnapshot(
+            from: Self.miniMaxUnlimitedQuotaDoc,
+            docID: "minimax_minimax_default"
+        )
+
+        XCTAssertNotNil(snap)
+        XCTAssertEqual(snap?.providerID, ProviderID(rawValue: "minimax"))
+        XCTAssertEqual(snap?.buckets.first?.limit, 100)
+        XCTAssertEqual(snap?.buckets.first?.used, 0)
+        XCTAssertEqual(snap?.buckets.first?.remaining, 100)
+        XCTAssertEqual(snap?.buckets.first?.meta?["unit"], "unlimited")
+        XCTAssertEqual(snap?.buckets.first?.meta?["limitKind"], "unlimited")
+        XCTAssertNotNil(snap?.filteringToDisplayableQuotaSignal())
+    }
+
+    func testLiveBackfilledQuotaDocsDecodeIntoMultipleVisibleProviders() throws {
+        let visibleProviders = Self.liveBackfilledQuotaDocs.compactMap { fixture -> ProviderID? in
+            repo.decodeQuotaSnapshot(from: fixture.data, docID: fixture.id)?
+                .filteringToDisplayableQuotaSignal()?
+                .providerID
+        }
+
+        XCTAssertEqual(
+            Set(visibleProviders),
+            Set([
+                ProviderID.claudeCode,
+                ProviderID.codex,
+                ProviderID(rawValue: "cursor"),
+                ProviderID(rawValue: "factory"),
+                ProviderID(rawValue: "minimax"),
+                ProviderID(rawValue: "ollama"),
+                ProviderID.openAI,
+                ProviderID(rawValue: "zai")
+            ])
+        )
+    }
+
+    func testOpenAIBudgetQuotaIsDisplayableOnMobile() throws {
+        let fixture = Self.liveBackfilledQuotaDocs.first { $0.id == "openai_openai-team_api" }
+        XCTAssertNotNil(fixture)
+
+        let snap = repo.decodeQuotaSnapshot(from: fixture!.data, docID: fixture!.id)
+        let displayable = snap?.filteringToDisplayableQuotaSignal()
+
+        XCTAssertNotNil(displayable)
+        XCTAssertEqual(displayable?.providerID, .openAI)
+        XCTAssertEqual(displayable?.buckets.first?.used, 218)
+        XCTAssertEqual(displayable?.buckets.first?.limit, 500)
+        XCTAssertEqual(displayable?.buckets.first?.remaining, 282)
+    }
+
+    func testQuotaStoreAccountCountIncludesConnectedAccountsWithoutSnapshots() {
+        let now = Date(timeIntervalSinceReferenceDate: 0)
+        let accounts = [
+            ProviderAccountDoc(
+                id: "openai-team",
+                providerID: .openAI,
+                label: "OpenAI Team",
+                status: .connected,
+                credentialKind: .token,
+                storageScope: .serverPrivate,
+                redactedLabel: "sk-...team",
+                createdAt: now,
+                updatedAt: now
+            )
+        ]
+
+        XCTAssertEqual(
+            QuotaStore.accountCount(for: "openai", snapshots: [], accounts: accounts),
+            1
+        )
+    }
+
+    func testQuotaStoreGroupsAccountLinkedSnapshotsUnderConnectedAccountProvider() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 0)
+        let account = ProviderAccountDoc(
+            id: "openai-work",
+            providerID: .openAI,
+            label: "OpenAI Work",
+            status: .connected,
+            credentialKind: .token,
+            storageScope: .deviceKeychain,
+            redactedLabel: "sk-...work",
+            createdAt: now,
+            updatedAt: now
+        )
+        let snapshot = ProviderQuotaSnapshot(
+            id: "codex_openai-work_provider:openai-work",
+            provider: "codex",
+            providerID: .codex,
+            accountID: "openai-work",
+            accountLabel: "OpenAI Work",
+            accountStorageScope: .deviceKeychain,
+            sourceKind: .localSession,
+            sourceId: "provider:openai-work",
+            fetchedAt: now,
+            source: "localSession",
+            confidence: .high,
+            buckets: [
+                ProviderQuotaBucket(
+                    name: "codex-primary",
+                    used: 20,
+                    limit: 100,
+                    remaining: 80,
+                    window: "rollingHours",
+                    meta: ["unit": "percent"]
+                )
+            ],
+            updatedAt: now
+        )
+
+        let grouped = QuotaStore.snapshotsByDisplayProvider(
+            snapshots: [snapshot],
+            accounts: [account]
+        )
+
+        XCTAssertEqual(QuotaStore.providerDisplayKey(for: snapshot, accounts: [account]), "openai")
+        XCTAssertEqual(grouped["openai"]?.first?.id, snapshot.id)
+        XCTAssertNil(grouped["codex"])
+    }
+
+    func testQuotaStoreIgnoresCacheOnlyProviderRegression() {
+        XCTAssertFalse(QuotaStore.shouldApplySnapshotUpdate(
+            currentVisibleProviders: ["claude-code", "codex", "cursor", "factory", "minimax", "ollama", "zai"],
+            incomingVisibleProviders: ["cursor"],
+            isFromCache: true
+        ))
+    }
+
+    func testQuotaStoreAcceptsServerProviderRegression() {
+        XCTAssertTrue(QuotaStore.shouldApplySnapshotUpdate(
+            currentVisibleProviders: ["claude-code", "codex", "cursor", "factory", "minimax", "ollama", "zai"],
+            incomingVisibleProviders: ["cursor"],
+            isFromCache: false
+        ))
+    }
+
+    func testQuotaStoreAcceptsExpandingCacheUpdate() {
+        XCTAssertTrue(QuotaStore.shouldApplySnapshotUpdate(
+            currentVisibleProviders: ["cursor"],
+            incomingVisibleProviders: ["claude-code", "codex", "cursor", "factory", "minimax", "ollama", "zai"],
+            isFromCache: true
+        ))
     }
 
     func testRedactedUserIDOnlyExposesSuffix() {

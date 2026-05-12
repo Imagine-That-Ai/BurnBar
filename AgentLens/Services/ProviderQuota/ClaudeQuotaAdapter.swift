@@ -1,8 +1,46 @@
 import Foundation
 
+/// Multi-source Claude quota adapter. Tries the cheapest, most current
+/// data first and falls back gracefully — designed so users never have
+/// to launch the Claude CLI just to see a percentage in OpenBurnBar.
+///
+/// ## Collection cascade (May 2026)
+///
+/// 1. **Statusline bridge snapshot** — written by Claude's CLI on every
+///    turn. Most current data when present; only works after the user
+///    runs `claude` with the bridge installed.
+/// 2. **OAuth `/api/oauth/usage`** — direct call to Anthropic's
+///    endpoint using credentials read from the macOS Keychain. Works
+///    on fresh installs with zero user action. Aggressively cached on
+///    disk keyed by `resets_at` to avoid the 429 rate-limit wall
+///    documented in anthropics/claude-code#31637.
+/// 3. **JSONL token counting + plan cap** — sums real assistant-turn
+///    tokens from `~/.claude/projects/**/*.jsonl`. When OAuth surfaced
+///    a plan tier (Pro/Max), we annotate the JSONL buckets with the
+///    Anthropic-published cap so users see "% of plan" even when the
+///    OAuth endpoint is rate-limited and the bridge hasn't fired.
+/// 4. **Plan-only snapshot** — when even JSONL is empty but the
+///    Keychain says the user is on Pro/Max, render a snapshot with
+///    just the plan badge so the popover doesn't show "unavailable".
 struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     private enum ScannerPolicy {
         static let maxLineBytes = 2 * 1024 * 1024
+    }
+
+    /// Anthropic's published 5-hour / 7-day token allowances per plan
+    /// tier as of May 2026 (post claude-code-warp doubling). Used to
+    /// turn raw JSONL token counts into `usedPercent` values when the
+    /// OAuth endpoint is unreachable.
+    ///
+    /// Source: https://support.claude.com/en/articles/11145838 +
+    /// claudefa.st blog post "Claude Code Limits Doubled" (2026-05-10).
+    private struct ClaudePlanCaps {
+        let fiveHourTokens: Double
+        let sevenDayTokens: Double
+        static let pro = ClaudePlanCaps(fiveHourTokens: 220_000, sevenDayTokens: 880_000)
+        // Max-5x baseline. Max-20x scales linearly via `rateLimitTier`.
+        static let max5x = ClaudePlanCaps(fiveHourTokens: 880_000, sevenDayTokens: 7_700_000)
+        static let max20x = ClaudePlanCaps(fiveHourTokens: 3_520_000, sevenDayTokens: 30_800_000)
     }
 
     private struct JSONLTokenWindows {
@@ -15,21 +53,45 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let bridgeStatus = context.refreshClaudeBridgeStatus()
 
-        // Try the status line bridge first (CLI-only, exact data)
-        if bridgeStatus.state == .ready,
+        // Auto-install the statusline bridge on the first refresh that
+        // sees Claude Code present but no bridge configured. Silent —
+        // no UI prompts. If installation fails (permissions, etc.) we
+        // fall through to OAuth / JSONL paths so the user still gets
+        // a usable snapshot.
+        if shouldAutoInstallBridge(for: bridgeStatus, context: context) {
+            // Record the attempt BEFORE installing so a thrown error
+            // doesn't leave us in a retry loop. Worst case the user
+            // can manually install via Settings.
+            recordAutoInstallAttempt(in: context)
+            try? context.bridgeManager.installClaudeQuotaBridge()
+        }
+
+        // Re-read bridge status after potential auto-install so the
+        // status line below reflects reality.
+        let postInstallStatus = bridgeStatus.state == .notInstalled
+            ? context.refreshClaudeBridgeStatus()
+            : bridgeStatus
+
+        // 1. Statusline bridge — most current when the CLI has fired
+        //    at least once. Returns immediately if a fresh payload is
+        //    available.
+        if postInstallStatus.state == .ready,
            let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL),
-           let rateLimits = payload["rate_limits"] as? [String: Any] {
+           let rateLimitsDict = payload["rate_limits"] as? [String: Any] {
+            let rateLimits = ClaudeRateLimits(from: rateLimitsDict)
             let buckets = claudeQuotaBuckets(from: rateLimits)
             if !buckets.isEmpty {
+                let credentials = context.claudeCredentialsReader.load()
+                let planSuffix = credentials.map { " · Plan: \($0.planDisplayName)" } ?? ""
                 let statusMessage: String
                 if claudeAPIBillingOverrideDetected(environment: context.environment) {
-                    statusMessage = "Quota captured from Claude Code's local status line JSON bridge while API billing is also configured for this app process."
+                    statusMessage = "Quota captured from Claude Code's local status line JSON bridge while API billing is also configured for this app process.\(planSuffix)"
                 } else {
-                    statusMessage = "Quota captured from Claude Code's local status line JSON bridge."
+                    statusMessage = "Quota captured from Claude Code's local status line JSON bridge.\(planSuffix)"
                 }
                 return ProviderQuotaSnapshot(
                     provider: .claudeCode,
-                    fetchedAt: bridgeStatus.lastPayloadAt ?? Date(),
+                    fetchedAt: postInstallStatus.lastPayloadAt ?? Date(),
                     source: .localCLI,
                     confidence: .exact,
                     managementURL: "https://code.claude.com/docs/en/statusline",
@@ -47,69 +109,103 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             )
         }
 
-        // Try JSONL-based token counting from local Claude project files.
-        // This reads real per-API-call token counts from ~/.claude/projects/**/*.jsonl
-        // and gives exact token windows without requiring the statusline bridge.
+        // 2. OAuth `/api/oauth/usage` — works without the bridge.
+        //    Credentials come from the macOS Keychain (the
+        //    `Claude Code-credentials` item Anthropic writes on
+        //    every OAuth refresh) so users don't have to launch
+        //    the CLI before OpenBurnBar shows a percentage.
+        let workingCredentials = context.claudeCredentialsReader.load()
+        if let credentials = workingCredentials, credentials.canCallUsageEndpoint(now: Date()) {
+            let fetcher = ClaudeOAuthUsageFetcher(
+                session: context.session,
+                cacheURL: context.appPaths.claudeOAuthUsageCacheURL,
+                fileManager: context.fileManager
+            )
+            // Reader doubles as a writer for the `.credentials.json`
+            // fallback, so refreshed tokens flow back to disk and
+            // the next `claude` invocation picks them up.
+            let writer = context.claudeCredentialsReader as? ClaudeCredentialsPersisting
+            let result = await fetcher.fetchRateLimits(
+                credentials: credentials,
+                credentialsWriter: writer
+            )
+            if let rateLimits = result.rateLimits, !rateLimits.isEmpty {
+                let buckets = claudeQuotaBuckets(from: rateLimits)
+                if !buckets.isEmpty {
+                    let freshness = result.sourceWasCache ? " (cached)" : ""
+                    // Reflect refreshed plan info when the token was
+                    // refreshed mid-call (rare, but the new pair may
+                    // ship updated subscriptionType claims).
+                    let plan = result.refreshedCredentials?.planDisplayName ?? credentials.planDisplayName
+                    return ProviderQuotaSnapshot(
+                        provider: .claudeCode,
+                        fetchedAt: result.fetchedAt ?? Date(),
+                        source: .officialAPI,
+                        confidence: .exact,
+                        managementURL: "https://claude.ai/settings/usage",
+                        statusMessage: "Claude \(plan) quota from Anthropic OAuth usage endpoint\(freshness).",
+                        buckets: buckets
+                    )
+                }
+            }
+        }
+
+        // 3. JSONL-based token counting from local Claude project
+        //    files. Real per-message tokens from
+        //    `~/.claude/projects/**/*.jsonl`. When we know the plan
+        //    tier (from Keychain), annotate the buckets with the
+        //    published cap so users get a percent-of-plan figure
+        //    even when the OAuth endpoint is rate-limited.
         let jsonlWindows = (try? Self.scanJSONLTokenWindows(
             homeDirectoryURL: context.homeDirectoryURL,
             fileManager: context.fileManager
         )) ?? JSONLTokenWindows(fiveHourTokens: 0, sevenDayTokens: 0, latestTimestamp: nil, filesScanned: 0)
 
         if jsonlWindows.fiveHourTokens > 0 || jsonlWindows.sevenDayTokens > 0 {
-            var jsonlBuckets: [ProviderQuotaBucket] = []
-            let now = Date()
-            let calendar = Calendar.current
-
-            if jsonlWindows.fiveHourTokens > 0 {
-                jsonlBuckets.append(ProviderQuotaBucket(
-                    key: "claude-five-hour-jsonl",
-                    label: "5-hour window",
-                    windowKind: .rollingHours,
-                    usedValue: Double(jsonlWindows.fiveHourTokens),
-                    limitValue: nil,
-                    remainingValue: nil,
-                    usedPercent: nil,
-                    resetsAt: calendar.date(byAdding: .hour, value: 5, to: now),
-                    unit: .tokens,
-                    isEstimated: false
-                ))
-            }
-            if jsonlWindows.sevenDayTokens > 0 {
-                jsonlBuckets.append(ProviderQuotaBucket(
-                    key: "claude-seven-day-jsonl",
-                    label: "7-day window",
-                    windowKind: .rollingDays,
-                    usedValue: Double(jsonlWindows.sevenDayTokens),
-                    limitValue: nil,
-                    remainingValue: nil,
-                    usedPercent: nil,
-                    resetsAt: calendar.date(byAdding: .day, value: 7, to: now),
-                    unit: .tokens,
-                    isEstimated: false
-                ))
-            }
-
-            return ProviderQuotaSnapshot(
-                provider: .claudeCode,
-                fetchedAt: jsonlWindows.latestTimestamp ?? Date(),
-                source: .localSession,
-                confidence: .exact,
-                managementURL: nil,
-                statusMessage: "Token counts from \(jsonlWindows.filesScanned) local Claude project file(s). Install the CLI bridge for rate-limit percentages.",
-                buckets: jsonlBuckets
+            return makeJSONLSnapshot(
+                jsonlWindows: jsonlWindows,
+                credentials: workingCredentials,
+                bridgeStatus: postInstallStatus
             )
         }
 
-        // No bridge or JSONL data — return unavailable, not an estimate.
-        // Real Claude quota requires either the statusline bridge or local JSONL project files.
+        // 4. Plan-only snapshot — even when JSONL is empty, surface
+        //    the Keychain-derived plan badge so the popover doesn't
+        //    sit on "unavailable" when Claude Code is clearly
+        //    installed and signed in.
+        if let credentials = workingCredentials {
+            let badgeBucket = ProviderQuotaBucket(
+                key: "claude-plan-badge",
+                label: "Plan: \(credentials.planDisplayName)",
+                windowKind: .lifetime,
+                usedValue: nil,
+                limitValue: nil,
+                remainingValue: nil,
+                usedPercent: nil,
+                resetsAt: nil,
+                unit: .count,
+                isEstimated: false
+            )
+            return ProviderQuotaSnapshot(
+                provider: .claudeCode,
+                fetchedAt: Date(),
+                source: .localCLI,
+                confidence: .estimated,
+                managementURL: "https://claude.ai/settings/usage",
+                statusMessage: "Claude \(credentials.planDisplayName) detected via Keychain. Run any Claude Code prompt to capture rate-limit percentages.",
+                buckets: [badgeBucket]
+            )
+        }
+
+        // No bridge, no OAuth credentials, no JSONL — return unavailable.
         let fallbackMessage: String
-        switch bridgeStatus.state {
+        switch postInstallStatus.state {
         case .notInstalled, .invalidConfiguration:
-            fallbackMessage = bridgeStatus.detailText
+            fallbackMessage = "Sign in to Claude Code or install the OpenBurnBar bridge to capture quota."
         case .disabledByHooks:
-            fallbackMessage = bridgeStatus.detailText
+            fallbackMessage = postInstallStatus.detailText
         case .awaitingFirstPayload:
-            fallbackMessage = bridgeStatus.detailText
+            fallbackMessage = "Bridge installed but no payload yet. Send any Claude Code prompt to capture rate limits, or wait for OpenBurnBar's next OAuth poll."
         case .ready:
             fallbackMessage = "Bridge installed but no rate-limit payload captured yet."
         }
@@ -118,11 +214,161 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             return unavailableSnapshot(
                 for: .claudeCode,
                 source: .localSession,
-                message: "\(jsonlWindows.filesScanned) JSONL file(s) scanned but no recent token activity found. Install the CLI bridge for real-time rate limits."
+                message: "\(jsonlWindows.filesScanned) JSONL file(s) scanned but no recent token activity found. Sign in to Claude Code so OpenBurnBar can read your plan from Keychain."
             )
         }
 
         return unavailableSnapshot(for: .claudeCode, source: .localCLI, message: fallbackMessage)
+    }
+
+    // MARK: - Auto-Install
+
+    /// Returns true when the bridge is not installed AND Claude Code is
+    /// clearly present (settings.json or projects dir exists) AND we
+    /// haven't already tried to install it during this app lifetime.
+    /// Silent auto-install removes the most common "Connect Claude"
+    /// friction without ever prompting the user.
+    ///
+    /// The attempted-install marker prevents retry loops: if the
+    /// install fails (e.g. settings.json is read-only or symlinked
+    /// into a non-writable Time Machine snapshot), we don't keep
+    /// hammering it on every refresh tick. The user can re-run the
+    /// install manually via Settings.
+    private func shouldAutoInstallBridge(
+        for status: ClaudeQuotaBridgeStatus,
+        context: ProviderQuotaAdapterContext
+    ) -> Bool {
+        guard status.state == .notInstalled else { return false }
+        let fm = context.fileManager
+        let home = context.homeDirectoryURL
+        let claudeDir = home.appendingPathComponent(".claude", isDirectory: true)
+        let settingsURL = claudeDir.appendingPathComponent("settings.json")
+        let projectsURL = claudeDir.appendingPathComponent("projects", isDirectory: true)
+        let claudePresent = fm.fileExists(atPath: settingsURL.path)
+            || fm.fileExists(atPath: projectsURL.path)
+        guard claudePresent else { return false }
+        return !autoInstallAttemptMarkerExists(in: context)
+    }
+
+    private func autoInstallAttemptMarkerExists(in context: ProviderQuotaAdapterContext) -> Bool {
+        context.fileManager.fileExists(atPath: autoInstallAttemptMarkerURL(in: context).path)
+    }
+
+    private func recordAutoInstallAttempt(in context: ProviderQuotaAdapterContext) {
+        let url = autoInstallAttemptMarkerURL(in: context)
+        let parent = url.deletingLastPathComponent()
+        try? context.fileManager.createDirectory(at: parent, withIntermediateDirectories: true)
+        let envelope: [String: String] = [
+            "attemptedAt": ISO8601DateFormatter().string(from: Date())
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: envelope) {
+            try? data.write(to: url, options: [.atomic])
+        }
+    }
+
+    private func autoInstallAttemptMarkerURL(in context: ProviderQuotaAdapterContext) -> URL {
+        context.appPaths.claudeStatuslineSnapshotURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("claude-bridge-auto-install-attempted.json")
+    }
+
+    // MARK: - JSONL → Plan-Capped Snapshot
+
+    private func makeJSONLSnapshot(
+        jsonlWindows: JSONLTokenWindows,
+        credentials: ClaudeOAuthCredentials?,
+        bridgeStatus: ClaudeQuotaBridgeStatus
+    ) -> ProviderQuotaSnapshot {
+        let now = Date()
+        let calendar = Calendar.current
+        let caps = inferredCaps(from: credentials)
+
+        var buckets: [ProviderQuotaBucket] = []
+        if jsonlWindows.fiveHourTokens > 0 {
+            buckets.append(jsonlBucket(
+                key: "claude-five-hour-jsonl",
+                label: "5-hour window",
+                windowKind: .rollingHours,
+                used: jsonlWindows.fiveHourTokens,
+                cap: caps?.fiveHourTokens,
+                resetsAt: calendar.date(byAdding: .hour, value: 5, to: now)
+            ))
+        }
+        if jsonlWindows.sevenDayTokens > 0 {
+            buckets.append(jsonlBucket(
+                key: "claude-seven-day-jsonl",
+                label: "7-day window",
+                windowKind: .rollingDays,
+                used: jsonlWindows.sevenDayTokens,
+                cap: caps?.sevenDayTokens,
+                resetsAt: calendar.date(byAdding: .day, value: 7, to: now)
+            ))
+        }
+
+        let confidence: ProviderQuotaConfidence = caps != nil ? .estimated : .exact
+        let planSuffix = credentials.map { " · Plan: \($0.planDisplayName) (inferred caps)" } ?? ""
+        let bridgeNudge = bridgeStatus.state == .ready
+            ? ""
+            : " Install OpenBurnBar's status line bridge for exact percentages."
+        let message = "Token counts from \(jsonlWindows.filesScanned) local Claude project file(s).\(planSuffix)\(bridgeNudge)"
+
+        return ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            fetchedAt: jsonlWindows.latestTimestamp ?? Date(),
+            source: .localSession,
+            confidence: confidence,
+            managementURL: "https://claude.ai/settings/usage",
+            statusMessage: message,
+            buckets: buckets
+        )
+    }
+
+    private func jsonlBucket(
+        key: String,
+        label: String,
+        windowKind: ProviderQuotaWindowKind,
+        used: Int,
+        cap: Double?,
+        resetsAt: Date?
+    ) -> ProviderQuotaBucket {
+        let usedValue = Double(used)
+        let usedPercent: Double? = cap.map { c in min(max(usedValue / c * 100, 0), 100) }
+        let remaining: Double? = cap.map { max($0 - usedValue, 0) }
+        return ProviderQuotaBucket(
+            key: key,
+            label: label,
+            windowKind: windowKind,
+            usedValue: usedValue,
+            limitValue: cap,
+            remainingValue: remaining,
+            usedPercent: usedPercent,
+            resetsAt: resetsAt,
+            unit: .tokens,
+            isEstimated: cap != nil
+        )
+    }
+
+    /// Best-effort plan cap inference. The `rateLimitTier` Claude Code
+    /// emits in Keychain (`default_claude_max_20x`, `default_claude_pro_5x`,
+    /// etc.) tells us the multiplier; we map it to the Anthropic-published
+    /// allowance. Returns `nil` when we can't recognize the tier — in
+    /// that case the JSONL buckets render token counts only (still
+    /// useful, just without percentages).
+    private func inferredCaps(from credentials: ClaudeOAuthCredentials?) -> ClaudePlanCaps? {
+        guard let credentials else { return nil }
+        let tier = credentials.rateLimitTier.lowercased()
+        let sub = credentials.subscriptionType.lowercased()
+        let combined = tier + " " + sub
+        if combined.contains("20x") || combined.contains("max_20") {
+            return .max20x
+        }
+        if combined.contains("max") {
+            return .max5x
+        }
+        if combined.contains("pro") {
+            return .pro
+        }
+        return nil
     }
 
     // MARK: - File Discovery
@@ -231,49 +477,36 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         quotaNonEmpty(environment["ANTHROPIC_API_KEY"]) != nil
     }
 
-    private func claudeQuotaBuckets(from rateLimits: [String: Any]) -> [ProviderQuotaBucket] {
-        let candidates: [(String, String, ProviderQuotaWindowKind)] = [
-            ("five_hour", "5-hour window", .rollingHours),
-            ("seven_day", "7-day window", .rollingDays),
-            ("seven_day_sonnet", "7-day Sonnet window", .rollingDays),
-            ("seven_day_opus", "7-day Opus window", .rollingDays),
-            ("seven_day_oauth_apps", "7-day OAuth Apps window", .rollingDays),
-        ]
+    /// Anthropic-published window keys for Claude Code. Names map to
+    /// human labels and `ProviderQuotaWindowKind`. Adding a new label
+    /// is a one-line change.
+    private static let claudeWindowCandidates: [(key: String, label: String, kind: ProviderQuotaWindowKind)] = [
+        ("five_hour", "5-hour window", .rollingHours),
+        ("seven_day", "7-day window", .rollingDays),
+        ("seven_day_sonnet", "7-day Sonnet window", .rollingDays),
+        ("seven_day_opus", "7-day Opus window", .rollingDays),
+        ("seven_day_oauth_apps", "7-day OAuth Apps window", .rollingDays),
+    ]
 
-        return candidates.compactMap { key, label, windowKind in
-            guard let payload = rateLimits[key] as? [String: Any] else { return nil }
-            let usedPercent = FlexibleQuotaBucketNormalizer.number(
-                in: payload,
-                keys: ["used_percentage", "usedPercent", "percentage"]
-            )
-            let remaining = remainingPercent(from: payload)
-            guard usedPercent != nil || remaining != nil else { return nil }
+    private func claudeQuotaBuckets(from rateLimits: ClaudeRateLimits) -> [ProviderQuotaBucket] {
+        Self.claudeWindowCandidates.compactMap { key, label, windowKind in
+            guard let window = rateLimits.window(named: key) else { return nil }
+            guard window.usedPercentage != nil || window.remainingPercentage != nil else {
+                return nil
+            }
             return ProviderQuotaBucket(
                 key: "claude-\(FlexibleQuotaBucketNormalizer.sanitizeKey(key))",
                 label: label,
                 windowKind: windowKind,
-                usedValue: usedPercent,
+                usedValue: window.usedPercentage,
                 limitValue: 100,
-                remainingValue: remaining,
-                usedPercent: usedPercent,
-                resetsAt: FlexibleQuotaBucketNormalizer.date(
-                    in: payload,
-                    keys: ["resets_at", "reset_at", "resetTime"]
-                ),
+                remainingValue: window.remainingPercentage,
+                usedPercent: window.usedPercentage,
+                resetsAt: window.resetsAt,
                 unit: .percent,
                 isEstimated: false
             )
         }
-    }
-
-    private func remainingPercent(from dictionary: [String: Any]) -> Double? {
-        guard let used = FlexibleQuotaBucketNormalizer.number(
-            in: dictionary,
-            keys: ["used_percentage", "usedPercent", "percentage"]
-        ) else {
-            return nil
-        }
-        return max(0, 100 - used)
     }
 
     private static func parseTokenWindows(

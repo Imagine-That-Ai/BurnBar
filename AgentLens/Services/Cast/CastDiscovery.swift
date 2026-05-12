@@ -74,7 +74,64 @@ final class CastDiscovery {
         cache.removeAll()
     }
 
+    /// One-shot discovery used by Firestore-proxied mobile actions and
+    /// repair flows. It intentionally runs the NWBrowser path and the older
+    /// NetService path together: some macOS/network combinations surface
+    /// Google Cast records through Bonjour but never finish the transient
+    /// NWConnection we use to learn host:port.
+    static func discoverOnce(duration: TimeInterval) async -> [CastDevice] {
+        async let nwDevices = browseOnce(duration: duration)
+        async let netServiceDevices = CastNetServiceDiscovery().run(timeout: duration)
+        let resolvedNWDevices = await nwDevices
+        let resolvedNetServiceDevices = await netServiceDevices
+        return merge(resolvedNWDevices + resolvedNetServiceDevices)
+    }
+
     // MARK: - Internal
+
+    private static func browseOnce(duration: TimeInterval) async -> [CastDevice] {
+        await withCheckedContinuation { continuation in
+            var collected: [CastDevice] = []
+            let scanner = CastDiscovery(onUpdate: { devices in
+                collected = devices
+            })
+            scanner.start()
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+                scanner.stop()
+                continuation.resume(returning: collected)
+            }
+        }
+    }
+
+    private static func merge(_ devices: [CastDevice]) -> [CastDevice] {
+        var merged: [String: CastDevice] = [:]
+        for device in devices {
+            let key = device.serviceName.lowercased()
+            guard let existing = merged[key] else {
+                merged[key] = device
+                continue
+            }
+            if discoveryScore(device) >= discoveryScore(existing) {
+                merged[key] = device
+            }
+        }
+        return merged.values.sorted { lhs, rhs in
+            if lhs.supportsDisplay != rhs.supportsDisplay {
+                return lhs.supportsDisplay && !rhs.supportsDisplay
+            }
+            return lhs.friendlyName.localizedCaseInsensitiveCompare(rhs.friendlyName) == .orderedAscending
+        }
+    }
+
+    private static func discoveryScore(_ device: CastDevice) -> Int {
+        var score = 0
+        if !device.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { score += 4 }
+        if device.friendlyName != device.serviceName { score += 2 }
+        if device.model != "Cast Device" { score += 1 }
+        if device.identifier != device.serviceName { score += 1 }
+        return score
+    }
 
     private func applyChanges(
         results: Set<NWBrowser.Result>,
@@ -218,6 +275,127 @@ final class CastDiscovery {
     }
 }
 
+// MARK: - NetService fallback
+
+@MainActor
+private final class CastNetServiceDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
+    private let browser = NetServiceBrowser()
+    private var pendingServices: Set<NetService> = []
+    private var devices: [String: CastDevice] = [:]
+    private var continuation: CheckedContinuation<[CastDevice], Never>?
+    private var timeoutTask: Task<Void, Never>?
+
+    func run(timeout: TimeInterval) async -> [CastDevice] {
+        await withCheckedContinuation { (continuation: CheckedContinuation<[CastDevice], Never>) in
+            self.continuation = continuation
+            browser.delegate = self
+            browser.searchForServices(ofType: "_googlecast._tcp.", inDomain: "local.")
+
+            timeoutTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                self?.finish()
+            }
+        }
+    }
+
+    private func finish() {
+        guard let continuation else { return }
+        self.continuation = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        browser.stop()
+        pendingServices.forEach { $0.stop() }
+        pendingServices.removeAll()
+        continuation.resume(returning: Array(devices.values))
+    }
+
+    nonisolated func netServiceBrowser(
+        _ browser: NetServiceBrowser,
+        didFind service: NetService,
+        moreComing: Bool
+    ) {
+        Task { @MainActor in
+            self.pendingServices.insert(service)
+            service.delegate = self
+            service.resolve(withTimeout: 3)
+        }
+    }
+
+    nonisolated func netServiceDidResolveAddress(_ sender: NetService) {
+        Task { @MainActor in
+            self.record(sender)
+            self.pendingServices.remove(sender)
+        }
+    }
+
+    nonisolated func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
+        Task { @MainActor in
+            self.pendingServices.remove(sender)
+        }
+    }
+
+    nonisolated func netServiceBrowserDidStopSearch(_ browser: NetServiceBrowser) {
+        Task { @MainActor in self.finish() }
+    }
+
+    private func record(_ service: NetService) {
+        let txt = service.txtRecordData()
+            .map(NetService.dictionary(fromTXTRecord:)) ?? [:]
+        let serviceName = service.name
+        let friendlyName = txtString("fn", in: txt) ?? serviceName
+        let model = txtString("md", in: txt) ?? "Cast Device"
+        let identifier = txtString("id", in: txt) ?? serviceName
+        let capabilityFlags = txtString("ca", in: txt).flatMap(Int.init) ?? 0
+        let host = extractIPv4Addresses(from: service).first
+            ?? service.hostName?.replacingOccurrences(of: ".local.", with: ".local")
+            ?? ""
+        let port = service.port > 0 ? service.port : 8009
+
+        devices[serviceName] = CastDevice(
+            serviceName: serviceName,
+            friendlyName: friendlyName,
+            host: host,
+            port: port,
+            model: model,
+            identifier: identifier,
+            supportsDisplay: inferSupportsDisplay(
+                capabilityFlags: capabilityFlags,
+                model: model,
+                serviceName: serviceName
+            )
+        )
+    }
+
+    private func txtString(_ key: String, in record: [String: Data]) -> String? {
+        guard let data = record[key], !data.isEmpty else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func extractIPv4Addresses(from service: NetService) -> [String] {
+        guard let addresses = service.addresses else { return [] }
+        return addresses.compactMap { data -> String? in
+            data.withUnsafeBytes { buffer -> String? in
+                guard let socket = buffer.bindMemory(to: sockaddr.self).baseAddress,
+                      Int32(socket.pointee.sa_family) == AF_INET else {
+                    return nil
+                }
+                var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                let result = getnameinfo(
+                    socket,
+                    socklen_t(socket.pointee.sa_len),
+                    &hostname,
+                    socklen_t(hostname.count),
+                    nil,
+                    0,
+                    NI_NUMERICHOST
+                )
+                guard result == 0 else { return nil }
+                return String(cString: hostname)
+            }
+        }
+    }
+}
+
 // MARK: - Helpers
 
 private func hostString(_ host: NWEndpoint.Host) -> String {
@@ -247,7 +425,7 @@ private extension NWTXTRecord {
             return value
         case .some(.data(let data)):
             return String(data: data, encoding: .utf8)
-        case .some(.empty), .some(.none), .none:
+        case .some(.empty), .some(NWTXTRecord.Entry.none), nil:
             return nil
         @unknown default:
             return nil

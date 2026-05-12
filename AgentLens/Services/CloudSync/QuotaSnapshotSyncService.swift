@@ -210,6 +210,9 @@ final class QuotaSnapshotSyncService {
     /// The desktop model uses `key`/`label`/`usedValue`; the shared Codable
     /// type expects `name`/`used`/`limit`/`remaining`/`window`/`meta`.
     private func encodeBucket(_ bucket: ProviderQuotaBucket) -> [String: Any] {
+        let encodedLimit = encodedLimit(for: bucket)
+        let encodedUsed = encodedUsed(for: bucket, limit: encodedLimit)
+        let encodedRemaining = encodedRemaining(for: bucket, used: encodedUsed, limit: encodedLimit)
         var meta: [String: String] = [
             "label": bucket.label,
             "unit": bucket.unit.rawValue,
@@ -221,13 +224,49 @@ final class QuotaSnapshotSyncService {
         }
         var result: [String: Any] = [
             "name": bucket.key,
-            "used": bucket.usedValue ?? 0,
-            "limit": bucket.limitValue ?? 0,
-            "remaining": bucket.remainingValue ?? 0,
+            "used": encodedUsed,
+            "limit": encodedLimit,
+            "remaining": encodedRemaining,
             "window": bucket.windowKind.rawValue,
             "meta": meta
         ]
         return result
+    }
+
+    private func encodedLimit(for bucket: ProviderQuotaBucket) -> Double {
+        if let limitValue = bucket.limitValue {
+            return limitValue
+        }
+        if bucket.unit == .percent,
+           bucket.usedPercent != nil || bucket.remainingValue != nil {
+            return 100
+        }
+        return 0
+    }
+
+    private func encodedUsed(for bucket: ProviderQuotaBucket, limit: Double) -> Double {
+        if let usedValue = bucket.usedValue {
+            return usedValue
+        }
+        if let usedPercent = bucket.usedPercent {
+            return usedPercent
+        }
+        if bucket.unit == .percent,
+           let remainingValue = bucket.remainingValue,
+           limit > 0 {
+            return max(0, limit - remainingValue)
+        }
+        return 0
+    }
+
+    private func encodedRemaining(for bucket: ProviderQuotaBucket, used: Double, limit: Double) -> Double {
+        if let remainingValue = bucket.remainingValue {
+            return remainingValue
+        }
+        if bucket.unit == .percent, limit > 0 {
+            return max(0, limit - used)
+        }
+        return 0
     }
 }
 

@@ -39,7 +39,9 @@ final class FunctionsRepository {
         credential: String,
         kind: CredentialKind,
         label: String?,
-        accountID: String? = nil
+        accountID: String? = nil,
+        sourceDeviceID: String? = nil,
+        deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
         let callable = functions.httpsCallable("connectProviderAccount")
         var payload: [String: Any] = [
@@ -52,6 +54,12 @@ final class FunctionsRepository {
         }
         if let accountID, accountID.isEmpty == false {
             payload["accountID"] = accountID
+        }
+        if let sourceDeviceID, sourceDeviceID.isEmpty == false {
+            payload["sourceDeviceID"] = sourceDeviceID
+        }
+        if let deviceDisplayName, deviceDisplayName.isEmpty == false {
+            payload["deviceDisplayName"] = deviceDisplayName
         }
         let result = try await callable.call(payload)
         guard let data = result.data as? [String: Any],
@@ -67,7 +75,9 @@ final class FunctionsRepository {
         providerID: ProviderID,
         credential: String,
         label: String?,
-        accountID: String? = nil
+        accountID: String? = nil,
+        sourceDeviceID: String? = nil,
+        deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
         let callable = functions.httpsCallable("connectHostedQuotaAccount")
         var payload: [String: Any] = [
@@ -79,6 +89,12 @@ final class FunctionsRepository {
         }
         if let accountID, accountID.isEmpty == false {
             payload["accountID"] = accountID
+        }
+        if let sourceDeviceID, sourceDeviceID.isEmpty == false {
+            payload["sourceDeviceID"] = sourceDeviceID
+        }
+        if let deviceDisplayName, deviceDisplayName.isEmpty == false {
+            payload["deviceDisplayName"] = deviceDisplayName
         }
         let result = try await callable.call(payload)
         guard let data = result.data as? [String: Any],
@@ -93,7 +109,9 @@ final class FunctionsRepository {
     func connectSelfHostedQuotaAccount(
         providerID: ProviderID,
         label: String?,
-        accountID: String? = nil
+        accountID: String? = nil,
+        sourceDeviceID: String? = nil,
+        deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
         let callable = functions.httpsCallable("connectSelfHostedQuotaAccount")
         var payload: [String: Any] = ["provider": providerID.rawValue]
@@ -102,6 +120,12 @@ final class FunctionsRepository {
         }
         if let accountID, accountID.isEmpty == false {
             payload["accountID"] = accountID
+        }
+        if let sourceDeviceID, sourceDeviceID.isEmpty == false {
+            payload["sourceDeviceID"] = sourceDeviceID
+        }
+        if let deviceDisplayName, deviceDisplayName.isEmpty == false {
+            payload["deviceDisplayName"] = deviceDisplayName
         }
         let result = try await callable.call(payload)
         guard let data = result.data as? [String: Any],
@@ -140,7 +164,9 @@ final class FunctionsRepository {
         credential: String,
         kind: CredentialKind,
         label: String?,
-        accountID: String? = nil
+        accountID: String? = nil,
+        sourceDeviceID: String? = nil,
+        deviceDisplayName: String? = nil
     ) async throws -> ProviderAccountDoc {
         let callable = functions.httpsCallable("connectHostedQuotaAccount")
         var payload: [String: Any] = [
@@ -150,6 +176,8 @@ final class FunctionsRepository {
         ]
         if let label, label.isEmpty == false { payload["label"] = label }
         if let accountID, accountID.isEmpty == false { payload["accountID"] = accountID }
+        if let sourceDeviceID, sourceDeviceID.isEmpty == false { payload["sourceDeviceID"] = sourceDeviceID }
+        if let deviceDisplayName, deviceDisplayName.isEmpty == false { payload["deviceDisplayName"] = deviceDisplayName }
         let result = try await callable.call(payload)
         guard let data = result.data as? [String: Any],
               let sanitized = FirestoreRepository.shared.sanitizeForJSON(data) as? [String: Any],
@@ -287,10 +315,123 @@ final class FunctionsRepository {
         _ = try await callable.call(["connectionId": connectionId])
     }
 
+    // MARK: Pi Agent host pairing
+
+    func createPiAgentPairing(
+        deviceId: String? = nil,
+        platform: String? = nil,
+        displayName: String? = nil
+    ) async throws -> PiPairingSessionRecord {
+        let callable = functions.httpsCallable("createPiAgentPairing")
+        var payload: [String: Any] = [:]
+        if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
+        if let platform, !platform.isEmpty { payload["platform"] = platform }
+        if let displayName, !displayName.isEmpty { payload["displayName"] = displayName }
+
+        let result = try await callable.call(payload)
+        return try decodeHermesValue(PiPairingSessionRecord.self, from: result.data)
+    }
+
+    func completePiAgentPairing(
+        pairingId: String,
+        code: String,
+        connectionId: String? = nil,
+        displayName: String,
+        mode: PiConnectionMode = .directURL,
+        endpointURL: String,
+        advertisedModel: String? = nil,
+        selectedInstanceID: String? = nil,
+        redisURL: String? = nil,
+        capabilities: [String] = ["chat_completions"],
+        instances: [PiAgentInstanceRecord] = [],
+        models: [PiAgentRuntimeModelOption] = [],
+        relayPublicKey: String? = nil,
+        relayKeyVersion: Int? = nil,
+        relayEncryption: String? = nil,
+        realtimeRelayURL: String? = nil,
+        realtimeRelayStatus: String? = nil,
+        deviceId: String? = nil
+    ) async throws -> PiConnectionRecord {
+        let callable = functions.httpsCallable("completePiAgentPairing")
+        var payload: [String: Any] = [
+            "pairingId": pairingId,
+            "code": code,
+            "displayName": displayName,
+            "mode": mode.rawValue,
+            "endpointURL": endpointURL,
+            "capabilities": capabilities
+        ]
+        if let connectionId, !connectionId.isEmpty { payload["connectionId"] = connectionId }
+        if let advertisedModel, !advertisedModel.isEmpty { payload["advertisedModel"] = advertisedModel }
+        if let selectedInstanceID, !selectedInstanceID.isEmpty { payload["selectedInstanceID"] = selectedInstanceID }
+        if let redisURL, !redisURL.isEmpty { payload["redisURL"] = redisURL }
+        if !instances.isEmpty { payload["instances"] = try encodedFunctionValue(instances) }
+        if !models.isEmpty { payload["models"] = try encodedFunctionValue(models) }
+        if let relayPublicKey, !relayPublicKey.isEmpty { payload["relayPublicKey"] = relayPublicKey }
+        if let relayKeyVersion { payload["relayKeyVersion"] = relayKeyVersion }
+        if let relayEncryption, !relayEncryption.isEmpty { payload["relayEncryption"] = relayEncryption }
+        if let realtimeRelayURL, !realtimeRelayURL.isEmpty { payload["realtimeRelayURL"] = realtimeRelayURL }
+        if let realtimeRelayStatus, !realtimeRelayStatus.isEmpty { payload["realtimeRelayStatus"] = realtimeRelayStatus }
+        if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
+
+        let result = try await callable.call(payload)
+        return try decodeHermesValue(PiConnectionRecord.self, from: result.data)
+    }
+
+    func listPiAgentConnections(includeRevoked: Bool = false) async throws -> [PiConnectionRecord] {
+        let callable = functions.httpsCallable("listPiAgentConnections")
+        let result = try await callable.call(["includeRevoked": includeRevoked])
+        guard
+            let dict = result.data as? [String: Any],
+            let connections = dict["connections"]
+        else {
+            throw FunctionsError.decodingFailed
+        }
+        return try decodeHermesValue([PiConnectionRecord].self, from: connections)
+    }
+
+    func revokePiAgentConnection(connectionId: String, deviceId: String? = nil) async throws {
+        let callable = functions.httpsCallable("revokePiAgentConnection")
+        var payload: [String: Any] = ["connectionId": connectionId]
+        if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
+        _ = try await callable.call(payload)
+    }
+
+    func updatePiAgentConnectionStatus(
+        connectionId: String,
+        status: PiConnectionStatus,
+        advertisedModel: String? = nil,
+        selectedInstanceID: String? = nil,
+        capabilities: [String]? = nil,
+        instances: [PiAgentInstanceRecord]? = nil,
+        models: [PiAgentRuntimeModelOption]? = nil,
+        deviceId: String? = nil
+    ) async throws {
+        let callable = functions.httpsCallable("updatePiAgentConnectionStatus")
+        var payload: [String: Any] = [
+            "connectionId": connectionId,
+            "status": status.rawValue
+        ]
+        if let advertisedModel, !advertisedModel.isEmpty { payload["advertisedModel"] = advertisedModel }
+        if let selectedInstanceID, !selectedInstanceID.isEmpty { payload["selectedInstanceID"] = selectedInstanceID }
+        if let capabilities { payload["capabilities"] = capabilities }
+        if let instances { payload["instances"] = try encodedFunctionValue(instances) }
+        if let models { payload["models"] = try encodedFunctionValue(models) }
+        if let deviceId, !deviceId.isEmpty { payload["deviceId"] = deviceId }
+        _ = try await callable.call(payload)
+    }
+
     private func decodeHermesValue<T: Decodable>(_ type: T.Type, from raw: Any) throws -> T {
         let sanitized = FirestoreRepository.shared.sanitizeForJSON(raw)
         let data = try JSONSerialization.data(withJSONObject: sanitized)
         return try JSONDecoder().decode(type, from: data)
+    }
+
+    private func encodedFunctionValue<T: Encodable>(_ value: T) throws -> Any {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(value)
+        return try JSONSerialization.jsonObject(with: data)
     }
 
     // MARK: Apple-verified hosted quota entitlement
@@ -455,5 +596,40 @@ enum FunctionsError: Error, LocalizedError {
         switch self {
         case .decodingFailed: return "Failed to decode cloud function response."
         }
+    }
+}
+
+// MARK: - Provider Account Device Links
+
+extension FunctionsRepository {
+    /// Adopt a provider account onto this device with the given capability.
+    /// Mirrors the macOS owner-link write that happens automatically when
+    /// `connectSelfHostedQuotaAccount` runs on the Mac.
+    func adoptProviderAccountForDevice(
+        accountID: String,
+        deviceID: String,
+        deviceDisplayName: String,
+        capability: DeviceLinkCapability
+    ) async throws {
+        let callable = functions.httpsCallable("adoptProviderAccountForDevice")
+        _ = try await callable.call([
+            "accountID": accountID,
+            "deviceID": deviceID,
+            "deviceDisplayName": deviceDisplayName,
+            "capability": capability.rawValue
+        ])
+    }
+
+    func revokeProviderAccountDeviceLink(accountID: String, deviceID: String) async throws {
+        let callable = functions.httpsCallable("revokeProviderAccountDeviceLink")
+        _ = try await callable.call([
+            "accountID": accountID,
+            "deviceID": deviceID
+        ])
+    }
+
+    func backfillProviderAccountDeviceLinks() async throws {
+        let callable = functions.httpsCallable("backfillProviderAccountDeviceLinks")
+        _ = try await callable.call([:])
     }
 }

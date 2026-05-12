@@ -12,6 +12,8 @@ enum MacCopy {
     static let otherDevicesSectionTitle = "Other devices"
     static let activeGrantsSectionTitle = "Active grants"
     static let googleNestHubSectionTitle = "Google Nest Hub"
+    static let pixelClockSectionTitle = "ULANZI TC001 Pixel Clock"
+    static let smartDisplaysSectionTitle = "Smart Displays"
 
     static let cloudSyncHealthy = "Cloud sync healthy"
     static let cloudSyncDegraded = "Cloud sync degraded"
@@ -86,80 +88,156 @@ struct MercuryEnvelopeCard<Content: View>: View {
     }
 }
 
-// MARK: - Devices & Sync Settings
+// MARK: - Devices & Sync Settings (iOS-style landing)
 
 struct DevicesAndSyncSettingsView: View {
     @Bindable var settingsManager: SettingsManager
+    private let runtimeContext: OpenBurnBarRuntimeContext?
     @State private var deviceTrust: DeviceTrustViewModel
     @State private var exportViewModel: CredentialTransferExportViewModel
 
     init(
         settingsManager: SettingsManager,
+        runtimeContext: OpenBurnBarRuntimeContext? = nil,
         deviceTrust: DeviceTrustViewModel = DeviceTrustViewModel(),
         exportViewModel: CredentialTransferExportViewModel = CredentialTransferExportViewModel()
     ) {
         self._settingsManager = Bindable(settingsManager)
+        self.runtimeContext = runtimeContext
         self._deviceTrust = State(initialValue: deviceTrust)
         self._exportViewModel = State(initialValue: exportViewModel)
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                SettingsSectionHeader(title: MacCopy.cloudSyncSectionTitle)
-
-                MercuryEnvelopeCard {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                        Text(MacCopy.cloudSyncHealthy)
-                            .fontWeight(.semibold)
-                        Text(MacCopy.transferConfirmCopy)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    }
+        List {
+            Section {
+                NavigationLink {
+                    CloudSyncStatusDetailView()
+                } label: {
+                    SettingsDrillRow(
+                        icon: "icloud.fill",
+                        iconTint: DesignSystem.Colors.teal,
+                        title: MacCopy.cloudSyncSectionTitle,
+                        subtitle: "Status and security model for sync across devices",
+                        value: "Healthy",
+                        valueTint: DesignSystem.Colors.success
+                    )
                 }
-
-                SettingsSectionHeader(title: MacCopy.thisDeviceSectionTitle)
-                Text(MacCopy.bootstrapPrompt)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-
-                if let error = deviceTrust.lastErrorMessage {
-                    GlassCard {
-                        HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(DesignSystem.Colors.error)
-                            Text(error)
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            Button { deviceTrust.clearLastError() } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(DesignSystem.Spacing.md)
-                    }
-                }
-
-                deviceListSection
-
-                SettingsSectionHeader(title: MacCopy.googleNestHubSectionTitle)
-                ProviderQuotaSmartHubsSection(settingsManager: settingsManager)
-
-                SettingsSectionHeader(title: MacCopy.activeGrantsSectionTitle)
-                CredentialTransferSheet(
-                    provider: .minimax,
-                    deviceTrust: deviceTrust,
-                    exportViewModel: exportViewModel
-                )
+            } header: {
+                Text("Sync")
             }
-            .padding(DesignSystem.Spacing.xl)
-            .frame(maxWidth: 720, alignment: .leading)
+
+            Section {
+                NavigationLink {
+                    TrustedDevicesDetailView(
+                        deviceTrust: deviceTrust,
+                        exportViewModel: exportViewModel
+                    )
+                } label: {
+                    SettingsDrillRow(
+                        icon: "macbook.and.iphone",
+                        iconTint: DesignSystem.Colors.whimsy,
+                        title: "Trusted Devices",
+                        subtitle: "Approve, revoke, and transfer encrypted credentials between devices",
+                        value: trustedDevicesSummary
+                    )
+                }
+
+                NavigationLink {
+                    SmartDisplaysDetailView(
+                        settingsManager: settingsManager,
+                        runtimeContext: runtimeContext
+                    )
+                } label: {
+                    SettingsDrillRow(
+                        icon: "tv.fill",
+                        iconTint: DesignSystem.Colors.coral,
+                        title: MacCopy.smartDisplaysSectionTitle,
+                        subtitle: "Nest Hub and ULANZI Pixel Clock companion displays"
+                    )
+                }
+            } header: {
+                Text("Devices")
+            } footer: {
+                Text("Credentials never leave your devices unencrypted. Transfers use device trust and provider readback.")
+                    .font(DesignSystem.Typography.tiny)
+            }
         }
-        .task {
-            await deviceTrust.load()
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .background(DesignSystem.Colors.background)
+        .navigationTitle(MacCopy.devicesAndSyncTitle)
+        .task { await deviceTrust.load() }
+    }
+
+    private var trustedDevicesSummary: String {
+        if deviceTrust.isLoading { return "Loading…" }
+        if deviceTrust.trustedDevices.isEmpty { return "None" }
+        return "\(deviceTrust.trustedDevices.count)"
+    }
+}
+
+// MARK: - Cloud Sync Detail
+
+struct CloudSyncStatusDetailView: View {
+    var body: some View {
+        SettingsDetailContainer(
+            title: MacCopy.cloudSyncSectionTitle,
+            subtitle: "OpenBurnBar uses Firebase for cross-device sync. The transfer pipeline is end-to-end encrypted with device trust and provider readback."
+        ) {
+            MercuryEnvelopeCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Text(MacCopy.cloudSyncHealthy)
+                        .fontWeight(.semibold)
+                    Text(MacCopy.transferConfirmCopy)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+            }
         }
+    }
+}
+
+// MARK: - Trusted Devices Detail
+
+struct TrustedDevicesDetailView: View {
+    @Bindable var deviceTrust: DeviceTrustViewModel
+    @Bindable var exportViewModel: CredentialTransferExportViewModel
+
+    var body: some View {
+        SettingsDetailContainer(
+            title: "Trusted Devices",
+            subtitle: MacCopy.bootstrapPrompt
+        ) {
+            if let error = deviceTrust.lastErrorMessage {
+                GlassCard {
+                    HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(DesignSystem.Colors.error)
+                        Text(error)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button { deviceTrust.clearLastError() } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(DesignSystem.Spacing.md)
+                }
+            }
+
+            deviceListSection
+
+            SettingsSectionHeader(title: MacCopy.activeGrantsSectionTitle)
+            CredentialTransferSheet(
+                provider: .minimax,
+                deviceTrust: deviceTrust,
+                exportViewModel: exportViewModel
+            )
+        }
+        .task { await deviceTrust.load() }
     }
 
     @ViewBuilder
@@ -256,6 +334,25 @@ struct DevicesAndSyncSettingsView: View {
 
     private func deviceStatusColor(_ device: MacTrustedDevice) -> Color {
         device.isCurrentDevice ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted
+    }
+}
+
+// MARK: - Smart Displays Detail
+
+struct SmartDisplaysDetailView: View {
+    @Bindable var settingsManager: SettingsManager
+    let runtimeContext: OpenBurnBarRuntimeContext?
+
+    var body: some View {
+        SettingsDetailContainer(
+            title: MacCopy.smartDisplaysSectionTitle,
+            subtitle: "Companion displays show live OpenBurnBar status — Nest Hub for the wall, ULANZI Pixel Clock for the desk."
+        ) {
+            SmartDisplaysSection(
+                settingsManager: settingsManager,
+                runtimeContext: runtimeContext
+            )
+        }
     }
 }
 

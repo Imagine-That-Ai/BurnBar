@@ -105,7 +105,14 @@ final class LiveCloudReader: CloudReader {
 
     func loadDevices() async throws -> [DeviceRecord] {
         guard let uid else { throw CloudGatewayError.classified(.notAuthenticated) }
+        do {
+            return try await loadDevices(uid: uid)
+        } catch {
+            throw classify(error)
+        }
+    }
 
+    private func loadDevices(uid: String) async throws -> [DeviceRecord] {
         // Read from both devices and escrow_devices, merge by deviceId
         var deviceMap: [String: DeviceRecord] = [:]
 
@@ -241,7 +248,10 @@ final class LiveCloudReader: CloudReader {
         let ns = error as NSError
         if ns.domain == FirestoreErrorDomain {
             switch FirestoreErrorCode.Code(rawValue: ns.code) {
-            case .permissionDenied: return CloudGatewayError.classified(.permissionDenied)
+            case .permissionDenied:
+                return CloudGatewayError.classified(
+                    CloudErrorClassification.permissionDeniedClassification(message: ns.localizedDescription)
+                )
             case .unavailable: return CloudGatewayError.classified(.firestoreUnavailable)
             case .unauthenticated: return CloudGatewayError.classified(.notAuthenticated)
             default: break

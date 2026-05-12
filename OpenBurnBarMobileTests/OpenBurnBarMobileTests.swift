@@ -82,6 +82,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
     func testTokenFormatting() {
         XCTAssertEqual(1500.formatAsTokens(), "1.5K")
         XCTAssertEqual(1_500_000.formatAsTokens(), "1.5M")
+        XCTAssertEqual(1_500_000_000.formatAsTokens(), "1.50B")
         XCTAssertEqual(500.formatAsTokens(), "500")
         XCTAssertEqual(1234.formatAsTokens(), "1.2K")
     }

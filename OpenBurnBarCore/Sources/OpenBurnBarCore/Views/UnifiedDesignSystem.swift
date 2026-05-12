@@ -140,4 +140,13 @@ public enum UnifiedDesignSystem {
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
+
+    /// Pi runtime accent. Composed entirely from the existing `whimsy` brand
+    /// token so we ship no new colour values — Plan 2's runtime pill, header
+    /// glow, and message bubble strokes all key off this gradient.
+    public static let piGradient = LinearGradient(
+        colors: [Colors.whimsy, Colors.whimsy.opacity(0.65)],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
 }

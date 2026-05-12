@@ -62,9 +62,34 @@ final class UsageSyncService: CloudSyncDomain {
 
             lastSyncDate = Date()
             lastSyncError = nil
+            try await publishSyncHeartbeat(uid: uid, collectionsInSync: ["usage"])
         } catch {
             recordSyncError(error)
         }
+    }
+
+    private func publishSyncHeartbeat(uid: String, collectionsInSync: [String]) async throws {
+        let now = Date()
+        let deviceId = context.deviceId
+        let deviceName = Host.current().localizedName ?? "OpenBurnBar Mac"
+        let userRef = context.firestoreGateway.collection("users").document(uid)
+
+        try await userRef.collection("devices").document(deviceId).setData([
+            "deviceId": deviceId,
+            "deviceName": deviceName,
+            "platform": "macOS",
+            "isLocal": true,
+            "lastSeenAt": Timestamp(date: now),
+            "updatedAt": Timestamp(date: now)
+        ], merge: true)
+
+        try await userRef.collection("sync_status").document(deviceId).setData([
+            "deviceId": deviceId,
+            "isOnline": true,
+            "lastSyncAt": Timestamp(date: now),
+            "collectionsInSync": collectionsInSync,
+            "updatedAt": Timestamp(date: now)
+        ], merge: true)
     }
 
     private func recordSyncError(_ error: Error) {

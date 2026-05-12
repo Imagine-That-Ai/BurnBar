@@ -113,6 +113,10 @@ final class CastWizardModel {
             settings.castSelectedDeviceServiceName = device.serviceName
             settings.castSelectedDeviceFriendlyName = device.friendlyName
             settings.castSelectedDeviceModel = device.model
+            settings.castSelectedDeviceHost = device.host
+            settings.castSelectedDevicePort = device.port
+            settings.castSelectedDeviceIdentifier = device.identifier
+            settings.castSelectedDeviceSupportsDisplay = device.supportsDisplay
             // Auto-fill the four legacy URL fields so existing pipelines
             // (Firestore publisher, refresh button, etc.) just work.
             if let url = bridgeURLProvider() {
@@ -154,14 +158,10 @@ final class CastWizardModel {
 
     // MARK: - Defaults
 
-    /// Resolve the LAN URL the bridge is reachable at. We prefer the
-    /// hostname's `.local` form so the URL survives DHCP changes.
+    /// Resolve the LAN URL the bridge is reachable at. Cast devices tend
+    /// to resolve raw LAN IPs more reliably than Mac hostnames, so prefer
+    /// a non-loopback IPv4 and keep `.local` as a fallback candidate.
     static func defaultBridgeURL() -> URL? {
-        let hostName = Host.current().localizedName?
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "-")
-            .replacingOccurrences(of: "'", with: "")
-            ?? "openburnbar"
-        return URL(string: "http://\(hostName).local:8787/render.html")
+        LocalNetworkDiscovery.dashboardURLCandidates().first
     }
 }

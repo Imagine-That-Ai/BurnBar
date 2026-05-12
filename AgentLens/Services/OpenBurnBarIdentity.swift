@@ -36,6 +36,7 @@ enum OpenBurnBarIdentity {
     static let legacyProviderAPIKeychainServices = ["com.burnbar.provider-api-keys"]
     static let openClawBearerTokenAccount = "settings.chat.openclaw.bearerToken"
     static let hermesBearerTokenAccount = "settings.chat.hermes.bearerToken"
+    static let piAgentBearerTokenAccount = "settings.chat.piagent.bearerToken"
     static let gatewayAuthTokenAccount = "settings.gateway.http.authToken"
     static let daemonSocketAuthTokenAccount = "daemon.socket.authToken"
     static let switcherAuthKeychainService = "com.openburnbar.switcher-auth"
@@ -128,6 +129,14 @@ struct OpenBurnBarAppPaths {
 
     var claudeStatuslineBridgeMetadataURL: URL {
         supportDirectory.appendingPathComponent("claude_statusline_bridge_metadata.json")
+    }
+
+    /// On-disk cache for `/api/oauth/usage` responses keyed by their
+    /// `resets_at` windows. Used by `ClaudeOAuthUsageFetcher` to avoid
+    /// re-polling Anthropic's aggressive 429 wall once a fresh
+    /// payload is cached for the current 5h/7d window.
+    var claudeOAuthUsageCacheURL: URL {
+        supportDirectory.appendingPathComponent("claude_oauth_usage_cache.json")
     }
 
     var claudeQuotaBridgeScriptURL: URL {

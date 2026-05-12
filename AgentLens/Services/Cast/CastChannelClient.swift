@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 // MARK: - Cast Channel Client
 //
@@ -34,13 +35,26 @@ final class CastChannelClient {
         case timeout
     }
 
+    /// Snapshot of the receiver's current app state, exposed so callers
+    /// (e.g. the bridge watchdog) can decide whether to soft-refresh or
+    /// hard-kick the device. `appId` is empty when the receiver is on
+    /// the Backdrop / idle screen.
+    struct ReceiverState: Equatable {
+        let appId: String
+        let sessionId: String
+        let transportId: String?
+        let isDashCast: Bool
+    }
+
     private let device: CastDevice
     private let connection: CastTLSConnection
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "CastChannel")
 
     private var heartbeatTask: Task<Void, Never>?
     private var requestCounter: Int = 1
     private var currentSessionId: String?
     private var currentTransportId: String?
+    private var currentAppId: String?
 
     /// Pending continuations for request/response correlation. Cast V2
     /// uses a `requestId` round-trip pattern.
@@ -65,9 +79,12 @@ final class CastChannelClient {
     /// `.success` once the receiver acknowledges, `.failure(reason)` if
     /// the session can't be set up.
     func cast(url: URL) async -> Outcome {
+        Self.log.info("cast() begin host=\(self.device.host, privacy: .public) url=\(url.absoluteString, privacy: .public)")
         await ensureConnected()
         guard connection.state == .ready else {
-            return .failure(connectionFailureMessage())
+            let msg = connectionFailureMessage()
+            Self.log.error("cast() TLS not ready: \(msg, privacy: .public)")
+            return .failure(msg)
         }
 
         sendVirtual(namespace: Self.nsConnection, payload: [
@@ -77,9 +94,14 @@ final class CastChannelClient {
 
         let launchOutcome = await launchAppIfNeeded()
         switch launchOutcome {
-        case .failure(let reason): return .failure(reason)
-        case .timeout:             return .timeout
-        case .success:             break
+        case .failure(let reason):
+            Self.log.error("cast() LAUNCH failed: \(reason, privacy: .public)")
+            return .failure(reason)
+        case .timeout:
+            Self.log.error("cast() LAUNCH timed out")
+            return .timeout
+        case .success:
+            Self.log.info("cast() LAUNCH ok app=\(self.currentAppId ?? "?", privacy: .public) session=\(self.currentSessionId ?? "?", privacy: .public)")
         }
 
         // Open the virtual app channel.
@@ -91,18 +113,48 @@ final class CastChannelClient {
             "userAgent": "OpenBurnBar/1.0"
         ], destination: transportId)
 
-        sendVirtual(
-            namespace: Self.nsDashCast,
-            payload: Self.dashCastLoadPayload(
-                url: url,
-                sessionId: currentSessionId,
-                reloadSeconds: 60
-            ),
-            destination: transportId
-        )
+        // Brief settle: DashCast occasionally drops the very first
+        // LOAD if it lands on the wire before the transport CONNECT
+        // has been processed, leaving the Hub stuck on the splash.
+        try? await Task.sleep(nanoseconds: 250_000_000)
+
+        // Send the LOAD three times with growing spacing. DashCast
+        // treats duplicate LOADs to the same URL as a no-op once it
+        // has the page, so this is safe — and it reliably unsticks the
+        // splash when the first LOAD races a slow transport CONNECT.
+        await sendDashCastLoadWithRetries(url: url, transportId: transportId)
 
         startHeartbeat()
         return .success(sessionId: currentSessionId ?? "")
+    }
+
+    /// Sends `urn:x-cast:com.madmod.dashcast` LOAD up to 3 times with
+    /// increasing delays. The Nest Hub silently drops messages that
+    /// race a transport's CONNECT-ack or land during a Wi-Fi roam;
+    /// duplicates are harmless once DashCast has actually loaded the
+    /// URL, so this is the cheapest way to make LOAD reliable.
+    private func sendDashCastLoadWithRetries(url: URL, transportId: String) async {
+        let delays: [UInt64] = [0, 600_000_000, 1_500_000_000]
+        for (index, delay) in delays.enumerated() {
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: delay)
+            }
+            // First attempt uses force:false so existing pages survive;
+            // retries use force:true so a wedged splash is forced to
+            // reload with our URL.
+            let force = index > 0
+            Self.log.info("LOAD attempt=\(index + 1) force=\(force) transport=\(transportId, privacy: .public) url=\(url.absoluteString, privacy: .public)")
+            sendVirtual(
+                namespace: Self.nsDashCast,
+                payload: Self.dashCastLoadPayload(
+                    url: url,
+                    sessionId: currentSessionId,
+                    reloadSeconds: 60,
+                    force: force
+                ),
+                destination: transportId
+            )
+        }
     }
 
     func stop() async {
@@ -126,6 +178,107 @@ final class CastChannelClient {
         guard connection.state == .ready else { return false }
         sendVirtual(namespace: Self.nsHeartbeat, payload: ["type": "PING"], destination: CastMessage.defaultDestination)
         return true
+    }
+
+    /// Probe the receiver and report what app (if any) is currently
+    /// running. Lets the bridge watchdog distinguish "Hub is showing
+    /// our dashboard" from "Hub is on Backdrop / showing a stuck
+    /// DashCast splash / showing another Cast app" — only the first
+    /// is a healthy state.
+    func queryReceiverState() async -> ReceiverState? {
+        await ensureConnected()
+        guard connection.state == .ready else { return nil }
+        sendVirtual(namespace: Self.nsConnection, payload: [
+            "type": "CONNECT",
+            "userAgent": "OpenBurnBar/1.0"
+        ], destination: CastMessage.defaultDestination)
+
+        switch await request(
+            namespace: Self.nsReceiver,
+            payload: ["type": "GET_STATUS"],
+            destination: CastMessage.defaultDestination,
+            timeout: 4
+        ) {
+        case .success:
+            return ReceiverState(
+                appId: currentAppId ?? "",
+                sessionId: currentSessionId ?? "",
+                transportId: currentTransportId,
+                isDashCast: currentAppId == Self.dashCastAppId
+            )
+        case .failure, .timeout:
+            // Empty applications array → idle / Backdrop. We still
+            // return a state so the caller can launch fresh.
+            return ReceiverState(
+                appId: "",
+                sessionId: "",
+                transportId: nil,
+                isDashCast: false
+            )
+        }
+    }
+
+    /// Tear down whatever's running on the receiver and launch DashCast
+    /// from scratch with the given URL. Used by the watchdog when a
+    /// soft re-LOAD didn't unstick the Hub — typical symptom is the
+    /// device frozen on DashCast's splash because a previous LOAD got
+    /// dropped during a Wi-Fi roam.
+    func forceRecast(url: URL) async -> Outcome {
+        await ensureConnected()
+        guard connection.state == .ready else {
+            return .failure(connectionFailureMessage())
+        }
+        sendVirtual(namespace: Self.nsConnection, payload: [
+            "type": "CONNECT",
+            "userAgent": "OpenBurnBar/1.0"
+        ], destination: CastMessage.defaultDestination)
+
+        // STOP any currently-running app, regardless of which one it is.
+        if let sessionId = currentSessionId, !sessionId.isEmpty {
+            _ = await request(
+                namespace: Self.nsReceiver,
+                payload: ["type": "STOP", "sessionId": sessionId],
+                destination: CastMessage.defaultDestination,
+                timeout: 4
+            )
+        }
+        currentSessionId = nil
+        currentTransportId = nil
+        currentAppId = nil
+
+        // Brief settle so the receiver finishes tearing down before
+        // we ask it to launch again. Without this the LAUNCH often
+        // races the STOP and lands on a stale session.
+        try? await Task.sleep(nanoseconds: 800_000_000)
+
+        // Fresh LAUNCH of DashCast.
+        let launch = await request(
+            namespace: Self.nsReceiver,
+            payload: ["type": "LAUNCH", "appId": Self.dashCastAppId],
+            destination: CastMessage.defaultDestination,
+            timeout: 8
+        )
+        switch launch {
+        case .failure(let reason): return .failure(reason)
+        case .timeout:             return .timeout
+        case .success:             break
+        }
+
+        guard let transportId = currentTransportId else {
+            return .failure("Missing transport id after forced LAUNCH")
+        }
+        sendVirtual(namespace: Self.nsConnection, payload: [
+            "type": "CONNECT",
+            "userAgent": "OpenBurnBar/1.0"
+        ], destination: transportId)
+
+        try? await Task.sleep(nanoseconds: 250_000_000)
+
+        // Repeat-send LOAD to defeat receiver-side message drop on a
+        // fresh transport — same rationale as in `cast(url:)`.
+        await sendDashCastLoadWithRetries(url: url, transportId: transportId)
+        startHeartbeat()
+        return .success(sessionId: currentSessionId ?? "")
     }
 
     // MARK: - Internal
@@ -158,18 +311,43 @@ final class CastChannelClient {
     }
 
     private func launchAppIfNeeded() async -> Outcome {
-        // GET_STATUS first; if DashCast already running, reuse session.
-        let status = await request(
+        // GET_STATUS first; we can only reuse the session if DashCast
+        // itself is what's already running. If a different app is up
+        // (Backdrop, YouTube, the screensaver app the Nest Hub falls
+        // back to after timeout) the session/transport we'd reuse
+        // belongs to that other app — our LOAD would land on the wrong
+        // transport and DashCast would never take over. Symptom: Hub
+        // appears stuck on splash / Backdrop because we kept sending
+        // LOAD messages into the void.
+        _ = await request(
             namespace: Self.nsReceiver,
             payload: ["type": "GET_STATUS"],
             destination: CastMessage.defaultDestination,
             timeout: 4
         )
-        if case .success(let sessionId) = status, !sessionId.isEmpty {
-            return .success(sessionId: sessionId)
+        // Do not reuse an existing DashCast session. The Hub can report
+        // DashCast as active while it is visually stuck on DashCast's
+        // splash because the previous URL LOAD was dropped. Reusing that
+        // session is the failure mode; STOP below and relaunch cleanly.
+
+        // Something else is running (or nothing is) — STOP it first so
+        // LAUNCH lands on a clean slate. Without this, the receiver
+        // sometimes returns LAUNCH_ERROR=INVALID_PARAMETER because it
+        // already has a session in a non-DashCast app.
+        if let staleSessionId = currentSessionId, !staleSessionId.isEmpty {
+            _ = await request(
+                namespace: Self.nsReceiver,
+                payload: ["type": "STOP", "sessionId": staleSessionId],
+                destination: CastMessage.defaultDestination,
+                timeout: 4
+            )
+            currentSessionId = nil
+            currentTransportId = nil
+            currentAppId = nil
+            try? await Task.sleep(nanoseconds: 600_000_000)
         }
 
-        // Otherwise LAUNCH.
+        // LAUNCH DashCast fresh.
         return await request(
             namespace: Self.nsReceiver,
             payload: [
@@ -222,13 +400,20 @@ final class CastChannelClient {
     static func dashCastLoadPayload(
         url: URL,
         sessionId: String?,
-        reloadSeconds: TimeInterval
+        reloadSeconds: TimeInterval,
+        force: Bool = false
     ) -> [String: Any] {
+        // DashCast treats `force` as a different load mode: it opens the
+        // target URL directly instead of the reload-capable wrapper. Sending
+        // `force: true` and `reload: true` together can leave a Nest Hub on
+        // DashCast's splash screen even though the Cast receiver reports the
+        // app as running.
+        let shouldReload = !force && reloadSeconds > 0
         var payload: [String: Any] = [
             "url": url.absoluteString,
-            "force": false,
-            "reload": reloadSeconds > 0,
-            "reload_time": reloadSeconds > 0 ? reloadSeconds * 1_000 : 0
+            "force": force,
+            "reload": shouldReload,
+            "reload_time": shouldReload ? reloadSeconds * 1_000 : 0
         ]
         if let sessionId, !sessionId.isEmpty {
             payload["sessionId"] = sessionId
@@ -267,12 +452,22 @@ final class CastChannelClient {
                    let sessionId = first["sessionId"] as? String {
                     currentSessionId = sessionId
                     currentTransportId = first["transportId"] as? String
+                    currentAppId = first["appId"] as? String
+                    Self.log.info("RECEIVER_STATUS app=\(self.currentAppId ?? "?", privacy: .public) session=\(sessionId, privacy: .public) transport=\(self.currentTransportId ?? "?", privacy: .public)")
                     cb(.success(sessionId: sessionId))
                 } else {
+                    // Empty applications array means the receiver is on
+                    // Backdrop / idle — clear our cached app state so
+                    // the next launch path actually fires.
+                    Self.log.info("RECEIVER_STATUS idle (no applications)")
+                    currentSessionId = nil
+                    currentTransportId = nil
+                    currentAppId = nil
                     cb(.failure("Receiver returned no sessions"))
                 }
             case "LAUNCH_ERROR":
                 let reason = (obj["reason"] as? String) ?? "LAUNCH_ERROR"
+                Self.log.error("receiver LAUNCH_ERROR reason=\(reason, privacy: .public)")
                 // `NOT_FOUND` from a Cast receiver means the device
                 // doesn't have the requested receiver app installed
                 // (or refuses to install it). On audio-only devices

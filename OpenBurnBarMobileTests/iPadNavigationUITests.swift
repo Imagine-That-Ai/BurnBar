@@ -83,6 +83,17 @@ final class iPadNavigationUITests: XCTestCase {
         XCTAssertEqual(CloudSyncHealth.permissionDenied.detailText, CloudErrorClassification.permissionDenied.recoveryHint)
     }
 
+    func testCloudErrorClassifierSeparatesAppCheckFromRulesDenied() {
+        XCTAssertEqual(
+            CloudErrorClassification.permissionDeniedClassification(message: "Firebase App Check token is invalid."),
+            .appCheckBlocked
+        )
+        XCTAssertEqual(
+            CloudErrorClassification.permissionDeniedClassification(message: "Missing or insufficient permissions."),
+            .permissionDenied
+        )
+    }
+
     // MARK: - Provider Dashboard Store
 
     func testProviderDashboardStore_aggregatesWithRealisticData() {

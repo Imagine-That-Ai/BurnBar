@@ -26,7 +26,32 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .notifications: return "Notifications"
         case .devicesAndSync: return MacCopy.devicesAndSyncTitle
         case .switcher: return "Account Switcher"
-        case .hermes: return "Hermes"
+        case .hermes: return "AI Environments"
+        }
+    }
+
+    /// A short caption shown under the sidebar title so each entry says what
+    /// lives behind it without forcing the user to click in.
+    var subtitle: String {
+        switch self {
+        case .general:
+            return "Appearance, refresh, default view, indexing, summaries"
+        case .daemon:
+            return "Lifecycle, HTTP gateway, controller runtime"
+        case .account:
+            return "Sign-in, subscription, account actions"
+        case .providers:
+            return "Routed plans, accounts, CLI auth, log sources"
+        case .alerts:
+            return "Spend thresholds, daily digest"
+        case .notifications:
+            return "Local pings, Telegram, calendar"
+        case .devicesAndSync:
+            return "Cloud sync, trusted devices, smart displays"
+        case .switcher:
+            return "Browser and CLI profile launcher"
+        case .hermes:
+            return "Hermes, Pi, gateways, remote relay"
         }
     }
 

@@ -113,6 +113,44 @@ export interface ProviderAccountDoc {
 }
 
 // ---------------------------------------------------------------------------
+// Firestore: provider_account_device_links/{accountID}_{deviceID}
+// ---------------------------------------------------------------------------
+
+export type DeviceLinkCapability = "owner" | "use" | "add";
+export type DeviceLinkStatus = "active" | "revoked";
+
+export interface ProviderAccountDeviceLinkDoc {
+  id: string;
+  accountID: string;
+  deviceID: string;
+  deviceDisplayName: string;
+  capability: DeviceLinkCapability;
+  status: DeviceLinkStatus;
+  lastObservedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: runtime_connection_preferences/{deviceID}_{runtimeKind}
+// ---------------------------------------------------------------------------
+
+export type RuntimeConnectionPreferenceKind = "hermes" | "piAgent";
+
+export interface RuntimeConnectionPreferenceDoc {
+  id: string;
+  deviceID: string;
+  runtimeKind: RuntimeConnectionPreferenceKind;
+  selectedConnectionID: string;
+  selectedInstanceID?: string;
+  selectedModelID?: string;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+// ---------------------------------------------------------------------------
 // Firestore: provider_account_secret_refs/{uid}_{accountID} (server-private)
 // ---------------------------------------------------------------------------
 
@@ -275,6 +313,166 @@ export interface HermesRelayChunkDoc {
   text?: string;
   error?: string;
   ciphertext?: string;
+  createdAt: string;
+  updatedAt?: string;
+  schemaVersion: number;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: pi_agent_connections / pi_agent_pairings
+// ---------------------------------------------------------------------------
+
+export type PiAgentConnectionMode = "local" | "directURL" | "relayLink";
+
+export type PiAgentConnectionStatus =
+  | "pending"
+  | "online"
+  | "offline"
+  | "unauthorized"
+  | "revoked"
+  | "degraded";
+
+export interface PiAgentInstanceDoc {
+  id: string;
+  displayName: string;
+  endpointURL?: string;
+  status: PiAgentConnectionStatus;
+  modelName?: string;
+  capabilities: string[];
+  lastSeenAt?: string;
+  schemaVersion: number;
+}
+
+export interface PiAgentRuntimeModelDoc {
+  id: string;
+  providerID: string;
+  providerName: string;
+  modelID: string;
+  displayName: string;
+  instanceID?: string;
+  schemaVersion: number;
+}
+
+export interface PiAgentSessionDoc {
+  id: string;
+  title?: string;
+  preview?: string;
+  source?: string;
+  model?: string;
+  instanceID?: string;
+  startedAt?: string;
+  lastActiveAt?: string;
+  endedAt?: string;
+  isActive: boolean;
+  messageCount: number;
+  toolCallCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  schemaVersion: number;
+}
+
+export interface PiAgentConnectionDoc {
+  id: string;
+  displayName: string;
+  mode: PiAgentConnectionMode;
+  status: PiAgentConnectionStatus;
+  endpointURL?: string;
+  advertisedModel?: string;
+  selectedInstanceID?: string;
+  redisURL?: string;
+  relayPublicKey?: string;
+  relayKeyVersion?: number;
+  relayEncryption?: string;
+  realtimeRelayURL?: string;
+  realtimeRelayStatus?: string;
+  realtimeRelayLastSeenAt?: string;
+  realtimeRelayProtocolVersion?: number;
+  capabilities: string[];
+  instances?: PiAgentInstanceDoc[];
+  models?: PiAgentRuntimeModelDoc[];
+  lastSeenAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+export interface PiAgentPairingDoc {
+  id: string;
+  status: "pending" | "completed" | "expired" | "revoked";
+  codeHash: string;
+  failedAttempts?: number;
+  requestedByDeviceId?: string;
+  requestedByPlatform?: "ios" | "ipados" | "android" | "macos" | "web";
+  displayName?: string;
+  connectionId?: string;
+  expiresAt: string;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+}
+
+export interface PiAgentConnectionAuditEventDoc {
+  id: string;
+  eventType:
+    | "pairing_created"
+    | "pairing_completed"
+    | "pairing_failed"
+    | "connection_created"
+    | "connection_revoked"
+    | "connection_status_updated";
+  connectionId?: string;
+  pairingId?: string;
+  actorDeviceId?: string;
+  observedAt: string;
+  detail?: Record<string, unknown>;
+  schemaVersion: number;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+}
+
+export type PiAgentRelayOperation =
+  | "chatCompletions"
+  | "models"
+  | "sessions"
+  | "sessionDetail";
+
+export type PiAgentRelayRequestStatus =
+  | "pending"
+  | "claimed"
+  | "streaming"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "expired";
+
+export interface PiAgentRelayRequestDoc {
+  id: string;
+  connectionId: string;
+  operation: PiAgentRelayOperation;
+  status: PiAgentRelayRequestStatus;
+  method: "GET" | "POST";
+  payloadCiphertext: string;
+  wrappedKey: string;
+  relayEncryption: string;
+  relayKeyVersion: number;
+  error?: string;
+  chunkCount: number;
+  claimedAt?: string;
+  claimedBy?: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+  schemaVersion: number;
+}
+
+export interface PiAgentRelayChunkDoc {
+  id: string;
+  requestId: string;
+  sequence: number;
+  kind: "sse" | "data" | "error";
+  ciphertext: string;
   createdAt: string;
   updatedAt?: string;
   schemaVersion: number;

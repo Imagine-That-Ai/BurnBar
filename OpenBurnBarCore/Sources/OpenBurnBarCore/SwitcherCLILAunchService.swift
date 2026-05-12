@@ -23,6 +23,14 @@ import AppKit
 #if os(macOS)
 
 public enum CLILaunchAdapter {
+    private struct ExecutableResolutionCacheKey: Hashable, Sendable {
+        let cliType: SwitcherCLIProfileType
+        let homeDirectory: String
+        let path: String
+        let shell: String
+    }
+
+    private static let executableResolutionCache = Locked<[ExecutableResolutionCacheKey: String]>([:])
 
     // MARK: - Launch Result
 
@@ -36,9 +44,15 @@ public enum CLILaunchAdapter {
 
     /// Injectable resolver for executable availability.
     /// Defaults to real filesystem resolution. Override in tests for deterministic behavior.
-    public static var executableResolver: ((_ cliType: SwitcherCLIProfileType) -> URL?)?
-    static var environmentProvider: () -> [String: String] = { ProcessInfo.processInfo.environment }
-    static var homeDirectoryProvider: () -> String = { FileManager.default.homeDirectoryForCurrentUser.path }
+    public static var executableResolver: ((_ cliType: SwitcherCLIProfileType) -> URL?)? {
+        didSet { executableResolutionCache.write([:]) }
+    }
+    static var environmentProvider: () -> [String: String] = { ProcessInfo.processInfo.environment } {
+        didSet { executableResolutionCache.write([:]) }
+    }
+    static var homeDirectoryProvider: () -> String = { FileManager.default.homeDirectoryForCurrentUser.path } {
+        didSet { executableResolutionCache.write([:]) }
+    }
 
     // MARK: - Allowlisted Environment Variables
 
@@ -108,19 +122,52 @@ public enum CLILaunchAdapter {
         let fileManager = FileManager.default
         let environment = environmentProvider()
         let homeDirectory = homeDirectoryProvider()
-
-        for directory in trustedExecutableSearchDirectories(
-            for: cliType,
-            environment: environment,
+        let cacheKey = ExecutableResolutionCacheKey(
+            cliType: cliType,
             homeDirectory: homeDirectory,
+            path: environment["PATH"] ?? "",
+            shell: environment["SHELL"] ?? ""
+        )
+
+        if let cachedPath = executableResolutionCache.read()[cacheKey],
+           fileManager.isExecutableFile(atPath: cachedPath) {
+            return URL(fileURLWithPath: cachedPath)
+        }
+
+        if let path = firstExecutable(
+            named: cliType.executableName,
+            in: fastExecutableSearchDirectories(
+                for: cliType,
+                homeDirectory: homeDirectory
+            ),
             fileManager: fileManager
         ) {
-            let candidatePath = URL(fileURLWithPath: directory)
-                .appendingPathComponent(cliType.executableName)
-                .path
-            if fileManager.isExecutableFile(atPath: candidatePath) {
-                return URL(fileURLWithPath: candidatePath)
-            }
+            executableResolutionCache.withLock { $0[cacheKey] = path }
+            return URL(fileURLWithPath: path)
+        }
+
+        if let path = firstExecutable(
+            named: cliType.executableName,
+            in: userManagedExecutableSearchDirectories(
+                homeDirectory: homeDirectory,
+                fileManager: fileManager
+            ),
+            fileManager: fileManager
+        ) {
+            executableResolutionCache.withLock { $0[cacheKey] = path }
+            return URL(fileURLWithPath: path)
+        }
+
+        if let path = firstExecutable(
+            named: cliType.executableName,
+            in: ideManagedExecutableSearchDirectories(
+                homeDirectory: homeDirectory,
+                fileManager: fileManager
+            ),
+            fileManager: fileManager
+        ) {
+            executableResolutionCache.withLock { $0[cacheKey] = path }
+            return URL(fileURLWithPath: path)
         }
 
         if let shellPath = resolveExecutableFromLoginShell(
@@ -134,10 +181,47 @@ public enum CLILaunchAdapter {
             homeDirectory: homeDirectory,
             fileManager: fileManager
         ) {
+            executableResolutionCache.withLock { $0[cacheKey] = shellPath }
             return URL(fileURLWithPath: shellPath)
         }
 
         return nil
+    }
+
+    private static func fastExecutableSearchDirectories(
+        for cliType: SwitcherCLIProfileType,
+        homeDirectory: String
+    ) -> [String] {
+        let explicitDirectories = cliType.trustedExecutablePaths.map {
+            URL(fileURLWithPath: expandPath($0, homeDirectory: homeDirectory))
+                .deletingLastPathComponent()
+                .path
+        }
+
+        return deduplicatedDirectories(
+            explicitDirectories
+            + standardExecutableSearchDirectories(homeDirectory: homeDirectory)
+        )
+    }
+
+    private static func firstExecutable(
+        named executableName: String,
+        in directories: [String],
+        fileManager: FileManager
+    ) -> String? {
+        for directory in directories {
+            let candidatePath = URL(fileURLWithPath: directory)
+                .appendingPathComponent(executableName)
+                .path
+            if fileManager.isExecutableFile(atPath: candidatePath) {
+                return candidatePath
+            }
+        }
+        return nil
+    }
+
+    public static func clearExecutableResolutionCache() {
+        executableResolutionCache.write([:])
     }
 
     /// Expands ~ in paths to the user's home directory.
@@ -822,7 +906,8 @@ public struct CLILaunchInvoker {
     /// When set, replaces the real Process-based launch with the provided handler.
     /// Receives the launch parameters and returns a Result.
     public static var launchHandler: ((SwitcherCLIProfileType, URL, [String], [String: String], String?, (@Sendable (String) -> Void)?) async -> Result<Void, CLILaunchError>)?
-    static var startupObservationTimeout: TimeInterval = 1.5
+    public static let defaultStartupObservationTimeout: TimeInterval = 0.35
+    static var startupObservationTimeout: TimeInterval = defaultStartupObservationTimeout
 
     /// Launches a CLI process with the given configuration.
     /// Returns after the startup observation window passes or a startup failure is detected.

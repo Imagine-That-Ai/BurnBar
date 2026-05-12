@@ -1,4 +1,5 @@
 import Foundation
+import FirebaseFirestore
 import OpenBurnBarCore
 
 @Observable
@@ -14,8 +15,15 @@ final class ProviderConnectionStore {
     private(set) var accounts: [ProviderAccountDoc] = []
     private(set) var connections: [ProviderConnectionDoc] = []
     private(set) var quotaSnapshots: [ProviderQuotaSnapshot] = []
+    private(set) var deviceLinksByAccount: [String: [FirestoreRepository.ProviderAccountDeviceLinkProjection]] = [:]
     private(set) var isLoading = false
     private(set) var accountsByProvider: [(providerID: ProviderID, accounts: [ProviderAccountDoc])] = []
+
+    // Firestore's `ListenerRegistration` is thread-safe and cleanup must run
+    // from `deinit` (a nonisolated context). Marking the property
+    // `nonisolated(unsafe)` lets the actor-isolated store hold it while still
+    // allowing `deinit` to call `remove()`.
+    private nonisolated(unsafe) var deviceLinksListener: ListenerRegistration?
 
     init(
         functions: FunctionsRepository = FunctionsRepository(),
@@ -23,6 +31,32 @@ final class ProviderConnectionStore {
     ) {
         self.functions = functions
         self.firestore = firestore
+    }
+
+    deinit {
+        deviceLinksListener?.remove()
+    }
+
+    /// Begin streaming device-link adoption state. Idempotent — repeated calls
+    /// re-use the existing snapshot listener.
+    func startDeviceLinksStream() {
+        guard deviceLinksListener == nil else { return }
+        deviceLinksListener = firestore.listenProviderAccountDeviceLinks { [weak self] projections in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.deviceLinksByAccount = Dictionary(grouping: projections, by: \.accountID)
+            }
+        }
+    }
+
+    func stopDeviceLinksStream() {
+        deviceLinksListener?.remove()
+        deviceLinksListener = nil
+        deviceLinksByAccount.removeAll()
+    }
+
+    func deviceLinks(for accountID: String) -> [FirestoreRepository.ProviderAccountDeviceLinkProjection] {
+        deviceLinksByAccount[accountID] ?? []
     }
 
     func load() async {

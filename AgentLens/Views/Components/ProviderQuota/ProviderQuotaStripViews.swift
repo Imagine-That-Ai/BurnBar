@@ -15,7 +15,12 @@ struct QuotaDualWindowStrip: View {
     let provider: AgentProvider
     let isActive: Bool
 
+    @Environment(\.colorScheme) private var colorScheme
+
     private var theme: ProviderTheme { ProviderTheme.theme(for: provider) }
+    private var negativeSpaceColor: Color {
+        colorScheme == .dark ? Color.black.opacity(0.74) : Color.black.opacity(0.18)
+    }
 
     /// The "short" slot prefers the hourly bucket; falls back to a daily fallback.
     private var shortSlotBucket: ProviderQuotaBucket? {
@@ -105,15 +110,15 @@ struct QuotaDualWindowStrip: View {
                 ZStack(alignment: .leading) {
                     // Track
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+                        .fill(negativeSpaceColor)
                         .overlay(
                             RoundedRectangle(cornerRadius: 3, style: .continuous)
                                 .stroke(fill.opacity(0.18), lineWidth: 1)
                         )
 
                     // Fill
-                    if fraction > 0.02 {
-                        let fillWidth = max(geo.size.width * fraction, 6)
+                    if fraction > 0 {
+                        let fillWidth = geo.size.width * fraction
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
                             .fill(gradient)
                             .frame(width: fillWidth)
@@ -150,7 +155,7 @@ struct QuotaDualWindowStrip: View {
 
             // Empty track
             RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.4))
+                .fill(negativeSpaceColor)
                 .overlay(
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .stroke(

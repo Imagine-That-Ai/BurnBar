@@ -129,7 +129,10 @@ struct RootTabView: View {
 
     private var hermesStack: some View {
         NavigationStack {
-            HermesConversationListView(service: hermesService)
+            // Plan 2: the legacy `.hermes` destination now hosts the dual
+            // runtime Assistants surface. The enum case stays `.hermes` so
+            // existing routing/screenshot tooling remains valid.
+            AssistantsTabRoot(hermesService: hermesService, dashboardSnapshot: nil)
         }
     }
 

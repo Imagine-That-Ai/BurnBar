@@ -182,7 +182,12 @@ final class OpenBurnBarRuntimeContext {
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     var hermesRelayHostService: HermesRelayHostService?
+    var piAgentRelayHostService: PiAgentCloudRelayHostService?
     var smartHubBridgeController: SmartHubBridgeController?
+    var pixelClockController: PixelClockController?
+    var smartDisplayRepairCoordinator: SmartDisplayRepairCoordinator?
+    var smartDisplayConfigPublisher: SmartDisplayConfigPublisher?
+    var smartDisplayActionsListener: SmartDisplayActionsListener?
     var castActionsListener: CastActionsListener?
     let chatController: ChatSessionController
     let operatingLayer: OpenBurnBarOperatingLayer
@@ -211,5 +216,82 @@ final class OpenBurnBarRuntimeContext {
         self.iCloudSessionMirrorService = iCloudSessionMirrorService
         self.chatController = chatController
         self.operatingLayer = operatingLayer
+    }
+
+    func startSmartDisplayServices() {
+        let smartHubBridge: SmartHubBridgeController
+        if let existingSmartHubBridge = smartHubBridgeController {
+            smartHubBridge = existingSmartHubBridge
+        } else {
+            smartHubBridge = SmartHubBridgeController(
+                settingsManager: settingsManager,
+                quotaService: quotaService,
+                dataStore: dataStore
+            )
+            smartHubBridgeController = smartHubBridge
+        }
+        smartHubBridge.start()
+
+        let pixelClock: PixelClockController
+        if let existing = pixelClockController {
+            pixelClock = existing
+        } else {
+            pixelClock = PixelClockController(
+                settingsManager: settingsManager,
+                quotaService: quotaService
+            )
+            pixelClockController = pixelClock
+        }
+        pixelClock.start()
+
+        let repairCoordinator: SmartDisplayRepairCoordinator
+        if let existing = smartDisplayRepairCoordinator {
+            repairCoordinator = existing
+        } else {
+            repairCoordinator = SmartDisplayRepairCoordinator(
+                smartHubBridgeController: smartHubBridge,
+                pixelClockController: pixelClock
+            )
+            smartDisplayRepairCoordinator = repairCoordinator
+        }
+
+        let publisher: SmartDisplayConfigPublisher
+        if let existing = smartDisplayConfigPublisher {
+            publisher = existing
+        } else {
+            publisher = SmartDisplayConfigPublisher(
+                accountManager: accountManager,
+                settingsManager: settingsManager
+            )
+            smartDisplayConfigPublisher = publisher
+        }
+        publisher.start()
+
+        let displayListener: SmartDisplayActionsListener
+        if let existing = smartDisplayActionsListener {
+            displayListener = existing
+        } else {
+            displayListener = SmartDisplayActionsListener(
+                accountManager: accountManager,
+                settingsManager: settingsManager,
+                pixelClockController: pixelClock,
+                repairCoordinator: repairCoordinator
+            )
+            smartDisplayActionsListener = displayListener
+        }
+        displayListener.start()
+
+        let castListener: CastActionsListener
+        if let existing = castActionsListener {
+            castListener = existing
+        } else {
+            castListener = CastActionsListener(
+                accountManager: accountManager,
+                settingsManager: settingsManager,
+                repairCoordinator: repairCoordinator
+            )
+            castActionsListener = castListener
+        }
+        castListener.start()
     }
 }

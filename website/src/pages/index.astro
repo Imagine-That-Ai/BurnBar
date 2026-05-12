@@ -1,0 +1,877 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import BarMockup from "@components/BarMockup.astro";
+import DashboardMockup from "@components/DashboardMockup.astro";
+import DeviceShowcase from "@components/DeviceShowcase.astro";
+import SurfaceCard from "@components/SurfaceCard.astro";
+import ProviderTable from "@components/ProviderTable.astro";
+import { SITE } from "@data/site";
+import { SURFACES } from "@data/surfaces";
+import { PROVIDERS_PRIMARY } from "@data/providers";
+
+const previewProviders = PROVIDERS_PRIMARY.filter((p) =>
+  ["claude-code", "codex", "openai", "cursor", "copilot", "factory", "minimax", "warp"].includes(p.id)
+);
+const surfaceShowcase = SURFACES.filter((s) =>
+  ["macos", "ios", "cursor", "daemon", "cli", "widgets", "smart-display", "android"].includes(s.id)
+);
+---
+
+<BaseLayout
+  title={SITE.name}
+  description={SITE.description}
+  ogImage="/og/default.svg"
+>
+  <!-- ────────────────────────────────────────────────
+       HERO
+       ──────────────────────────────────────────────── -->
+  <section class="hero" aria-labelledby="hero-h">
+    <div class="container container--wide hero__grid">
+      <div class="hero__copy">
+        <div class="hero__eyebrow eyebrow">
+          <span>v{SITE.macReleaseLatest}</span>
+          <span aria-hidden="true">·</span>
+          <span>macOS public beta</span>
+          <span aria-hidden="true">·</span>
+          <span>iOS in App Store review</span>
+        </div>
+
+        <h1 id="hero-h" class="hero__h">
+          Watch your AI agents.
+          <span class="hero__h-second">Before the bill.</span>
+        </h1>
+
+        <p class="lead">
+          OpenBurnBar is a <strong>local-first developer tool</strong> that watches the AI
+          coding agents you already use — Claude Code, Codex, Cursor, Copilot, Factory,
+          MiniMax, and more — and gives you a live read on tokens burned, dollars spent,
+          and quota left, across all of them, on your machine.
+        </p>
+
+        <div class="hero__ctas">
+          <a class="btn btn--ember" href="/download">
+            Download for macOS
+            <span class="btn-arrow" aria-hidden="true">→</span>
+          </a>
+          <a class="btn btn--ghost" href="/privacy">
+            Read the privacy model
+          </a>
+        </div>
+
+        <div class="hero__attest mono">
+          <span><span class="ember">●</span> No telemetry by default</span>
+          <span><span class="ember">●</span> No account required</span>
+          <span><span class="ember">●</span> Reads logs, not your API keys</span>
+        </div>
+      </div>
+
+      <div class="hero__visual">
+        <BarMockup />
+        <div class="hero__visualcap mono">
+          <span>menu-bar popover · live data</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────
+       STAT BAND
+       ──────────────────────────────────────────────── -->
+  <section class="band" aria-label="At a glance">
+    <div class="container container--wide band__inner">
+      <div class="band__stat">
+        <div class="band__num mono">11</div>
+        <div class="band__lbl">Providers with real usage data today</div>
+      </div>
+      <div class="band__sep" aria-hidden="true"></div>
+      <div class="band__stat">
+        <div class="band__num mono">3</div>
+        <div class="band__lbl">Honest confidence labels — exact · estimated · unavailable</div>
+      </div>
+      <div class="band__sep" aria-hidden="true"></div>
+      <div class="band__stat">
+        <div class="band__num mono">0</div>
+        <div class="band__lbl">Telemetry, analytics, or crash reports out of the box</div>
+      </div>
+      <div class="band__sep" aria-hidden="true"></div>
+      <div class="band__stat">
+        <div class="band__num display"><span class="sym">∞</span></div>
+        <div class="band__lbl">Works offline. The whole product, locally.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────
+       THE PILLARS
+       ──────────────────────────────────────────────── -->
+  <section class="pillars" aria-labelledby="pillars-h">
+    <div class="container">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Three commitments</span>
+        <h2 id="pillars-h">A developer tool, not a SaaS dashboard.</h2>
+        <p class="lead">
+          OpenBurnBar is built for the kind of developer who has three agents open in
+          parallel and only checks the bill at the end of the month. Three things
+          shape every decision in the product.
+        </p>
+      </header>
+
+      <ol class="pillars__list">
+        <li class="pillar">
+          <div class="pillar__num mono">01</div>
+          <h3>Local-first by default.</h3>
+          <p>
+            The canonical store is a local SQLite database, run by a local daemon
+            under your user account. Firebase is an optional replication plane,
+            not the source of truth. The whole product works offline.
+          </p>
+          <a href="/privacy" class="pillar__more">How the privacy model works <span aria-hidden="true">→</span></a>
+        </li>
+        <li class="pillar">
+          <div class="pillar__num mono">02</div>
+          <h3>Honest about confidence.</h3>
+          <p>
+            Every provider row carries one of three labels — <span class="tag tag--exact tag--plain mono">exact</span>,
+            <span class="tag tag--estimated tag--plain mono">estimated</span>,
+            <span class="tag tag--unavailable tag--plain mono">unavailable</span>.
+            We don't pretend to know what the vendor doesn't tell us.
+          </p>
+          <a href="/providers" class="pillar__more">See the full provider matrix <span aria-hidden="true">→</span></a>
+        </li>
+        <li class="pillar">
+          <div class="pillar__num mono">03</div>
+          <h3>Built for multi-agent reality.</h3>
+          <p>
+            A single daemon owns routing, quota, retrieval, projects, and missions.
+            Every surface — macOS, iOS, iPad, Cursor, VS Code, CLI, widgets, smart
+            displays — speaks to the same daemon. One source of truth, many windows in.
+          </p>
+          <a href="/product" class="pillar__more">Tour the product <span aria-hidden="true">→</span></a>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────
+       DASHBOARD MOCKUP
+       ──────────────────────────────────────────────── -->
+  <section class="dashshow" aria-labelledby="dashshow-h">
+    <div class="container container--wide">
+      <header class="sec-head sec-head--split">
+        <div>
+          <span class="eyebrow eyebrow--ember">Inside the app</span>
+          <h2 id="dashshow-h">What a calm console looks like.</h2>
+        </div>
+        <p class="lead">
+          The macOS app is dense by design. Today's burn, top providers,
+          quota windows that matter, and an on-device assistant that knows
+          your data — one keystroke away.
+        </p>
+      </header>
+
+      <div class="dashshow__frame">
+        <DashboardMockup />
+        <p class="dashshow__cap mono">
+          Mockup uses representative data. The real product looks like this and renders your numbers.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────
+       DEVICES (iPhone · iPad · Android)
+       ──────────────────────────────────────────────── -->
+  <DeviceShowcase />
+
+  <!-- ────────────────────────────────────────────────
+       PROVIDER PREVIEW
+       ──────────────────────────────────────────────── -->
+  <section class="provshow" aria-labelledby="provshow-h">
+    <div class="container">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Providers</span>
+        <h2 id="provshow-h">The list of vendors it actually understands.</h2>
+        <p class="lead">
+          Eleven providers ship with real usage data today. Eight more are detected
+          at install but don't expose data — so we show "Installed / Not installed"
+          and stop there.
+        </p>
+      </header>
+
+      <ProviderTable rows={previewProviders} caption="Selected · see Providers for the full matrix" />
+
+      <div class="provshow__cta">
+        <a class="btn btn--ghost" href="/providers">
+          See all 19 providers <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────
+       SURFACES
+       ──────────────────────────────────────────────── -->
+  <section class="surfaces" aria-labelledby="surfaces-h">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Where it shows up</span>
+        <h2 id="surfaces-h">Eight surfaces, one daemon.</h2>
+        <p class="lead">
+          Every screen you care about — and a few you didn't expect — talks to the
+          same local daemon. Multi-agent work needs multi-surface visibility.
+        </p>
+      </header>
+
+      <div class="surfaces__grid">
+        {surfaceShowcase.map((s, i) => <SurfaceCard surface={s} index={i} />)}
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────
+       HERMES TEASER
+       ──────────────────────────────────────────────── -->
+  <section class="hermes" aria-labelledby="hermes-h">
+    <div class="container container--wide hermes__grid">
+      <div>
+        <span class="eyebrow eyebrow--mercury">Hermes</span>
+        <h2 id="hermes-h" class="hermes__h">
+          A messenger for your own data.
+        </h2>
+        <p class="lead">
+          Ask, in plain language, what your week looked like. What model burned
+          the most cache. Which window is about to roll over. Hermes pulls
+          context from your local SQLite — your sessions, providers, models,
+          tools — and answers right there, in chat.
+        </p>
+        <ul class="hermes__list">
+          <li>
+            <span class="hermes__mark mono">·</span>
+            <strong>Conversation Atoms.</strong>
+            Every entity Hermes mentions becomes a tappable chip — cost,
+            session, provider, model, window — that opens the matching native view.
+          </li>
+          <li>
+            <span class="hermes__mark mono">·</span>
+            <strong>Chart Studio.</strong>
+            On iPhone and iPad, Hermes streams JSON envelopes that render to
+            10 native Swift Charts kinds and sandboxed Mermaid diagrams.
+          </li>
+          <li>
+            <span class="hermes__mark mono">·</span>
+            <strong>Two backends.</strong>
+            Local Index for stateless per-turn answers via the CLI, or the
+            local Hermes Gateway for multi-turn, OpenAI-shaped chat with
+            server-side tool calls.
+          </li>
+          <li>
+            <span class="hermes__mark mono">·</span>
+            <strong>Hermes Remote Relay.</strong>
+            Reach the Mac's Hermes from anywhere over an end-to-end-encrypted
+            WebSocket. Paid-tier; relay never sees plaintext.
+          </li>
+        </ul>
+      </div>
+      <div class="hermes__visual" aria-hidden="true">
+        <div class="hermes__chat">
+          <div class="hermes__msg hermes__msg--user">
+            <span class="bubble">What's about to roll over?</span>
+          </div>
+          <div class="hermes__msg hermes__msg--hermes">
+            <span class="avatar">☿</span>
+            <span class="bubble">
+              Your <span class="atom atom--ember">Claude Code · 5h window</span>
+              hits <span class="atom mono">80%</span> at the current rate by
+              <span class="atom mono">3:47 pm</span>. Top draw is
+              <span class="atom atom--mercury">opus-4-7</span> on
+              <span class="atom atom--ember">ledger-rebuild</span>.
+            </span>
+          </div>
+          <div class="hermes__msg hermes__msg--user">
+            <span class="bubble">Show the burn for this week.</span>
+          </div>
+          <div class="hermes__msg hermes__msg--hermes">
+            <span class="avatar">☿</span>
+            <span class="bubble bubble--chart">
+              <svg viewBox="0 0 220 84" aria-hidden="true">
+                <defs>
+                  <linearGradient id="hcg" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#ff8a3d" stop-opacity="0.5"/>
+                    <stop offset="100%" stop-color="#ff8a3d" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path d="M0 60 C 30 56 40 40 70 44 S 110 30 140 36 S 180 28 220 22 L220 84 L0 84 Z" fill="url(#hcg)"/>
+                <path d="M0 60 C 30 56 40 40 70 44 S 110 30 140 36 S 180 28 220 22"
+                  stroke="#ff8a3d" stroke-width="1.5" fill="none"/>
+                <g font-family="ui-monospace, JetBrains Mono, Menlo, monospace" font-size="9" fill="#8b8275" text-anchor="middle">
+                  <text x="14" y="80">M</text><text x="50" y="80">T</text><text x="86" y="80">W</text>
+                  <text x="122" y="80">T</text><text x="158" y="80">F</text><text x="194" y="80">S</text>
+                </g>
+              </svg>
+              <span class="chart-cap mono">Mon → Sat · $87.34 total · trending +12% wow</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────
+       PRIVACY / TRUST
+       ──────────────────────────────────────────────── -->
+  <section class="trust" aria-labelledby="trust-h">
+    <div class="container container--wide trust__grid">
+      <header class="trust__head">
+        <span class="eyebrow eyebrow--ember">Privacy &amp; trust</span>
+        <h2 id="trust-h">By default, OpenBurnBar collects nothing.</h2>
+        <p class="lead">
+          All processing happens on your device. No telemetry, no analytics, no
+          crash reports — nothing is transmitted unless you explicitly opt in.
+        </p>
+        <ul class="trust__points">
+          <li><strong>No API keys read</strong> for local-only tracking.</li>
+          <li><strong>No account required</strong> for the core product.</li>
+          <li><strong>Optional Firebase sync</strong> after sign-in — metadata only by default.</li>
+          <li><strong>Optional iCloud mirror</strong> uses your Apple ID, separate from OpenBurnBar's servers.</li>
+          <li><strong>Hosted credentials</strong>, when used, go to Google Cloud Secret Manager — not Firestore.</li>
+          <li><strong>Claude Code is self-hosted only</strong>, by design.</li>
+        </ul>
+        <div class="trust__ctas">
+          <a class="btn btn--ghost" href="/privacy">Privacy model</a>
+          <a class="btn btn--ghost" href="/security">Security model</a>
+        </div>
+      </header>
+
+      <aside class="trust__quote">
+        <blockquote>
+          <p>
+            "Your API keys never leave the providers you already trust;
+            OpenBurnBar just reads crumbs they dropped on disk."
+          </p>
+          <footer class="mono small">— README.md · README · the team</footer>
+        </blockquote>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────
+       PRICING TEASER
+       ──────────────────────────────────────────────── -->
+  <section class="pricing-teaser" aria-labelledby="pricing-h">
+    <div class="container">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Pricing</span>
+        <h2 id="pricing-h">Free where it should be. Paid where it costs us money.</h2>
+      </header>
+
+      <div class="pricing-teaser__grid">
+        <article class="ptcard">
+          <header>
+            <span class="tag tag--plain mono tag--exact">Free, local-first</span>
+            <div class="ptcard__price mono">$0</div>
+            <p class="muted small">forever · no account · works offline</p>
+          </header>
+          <ul>
+            <li>Local tracking from your existing agent logs</li>
+            <li>Token + cost rollups, quota windows, insights</li>
+            <li>Daemon, CLI, Cursor / VS Code panel</li>
+            <li>iOS / iPadOS companion (with sign-in)</li>
+            <li>Self-hosted quota runner for Claude Code &amp; Codex</li>
+            <li>Optional Firebase sync — metadata only</li>
+          </ul>
+        </article>
+
+        <article class="ptcard ptcard--ember">
+          <header>
+            <span class="tag tag--ember tag--plain mono">OpenBurnBar Cloud</span>
+            <div class="ptcard__price">
+              <span class="mono">${SITE.iapPriceUSD}</span><span class="ptcard__period">/{SITE.iapPeriod}</span>
+            </div>
+            <p class="muted small">billed monthly by Apple · cancel anytime · no free trial</p>
+          </header>
+          <ul>
+            <li>Hosted Codex quota refresh from any signed-in device</li>
+            <li>Conversation backup &amp; resume across iPhone, iPad, Mac</li>
+            <li>Full session-log sync, searchable across devices</li>
+            <li>Hermes Remote Relay — reach your Mac's Hermes from anywhere</li>
+            <li>App Store-verified, App Check-enforced, JWS end-to-end</li>
+          </ul>
+          <a class="btn btn--ember" href="/pricing">
+            Pricing details <span class="btn-arrow" aria-hidden="true">→</span>
+          </a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────
+       CTA
+       ──────────────────────────────────────────────── -->
+  <section class="endcta">
+    <div class="container container--narrow endcta__inner">
+      <h2 class="endcta__h">
+        Watch the burn. <span class="ember">Keep building.</span>
+      </h2>
+      <p class="lead">
+        OpenBurnBar is MIT-licensed, signed and notarized for macOS, and
+        ready to run today.
+      </p>
+      <div class="endcta__ctas">
+        <a class="btn btn--ember" href="/download">
+          Download for macOS
+          <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="btn btn--ghost" href={SITE.github} target="_blank" rel="noopener noreferrer">
+          View on GitHub
+        </a>
+        <a class="btn btn--ghost" href="/faq">
+          Read the FAQ
+        </a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  /* ────────── hero ────────── */
+  .hero {
+    padding-block: var(--s-9) var(--s-8);
+    border-bottom: 1px solid var(--ink-line);
+  }
+  .hero__grid {
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: var(--s-7);
+    align-items: center;
+  }
+  .hero__eyebrow {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    color: var(--text-mute);
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    font-family: var(--font-mono);
+    margin-bottom: var(--s-5);
+  }
+  .hero__eyebrow::before { display: none; }
+  .hero__h {
+    font-size: var(--t-display);
+    line-height: 0.97;
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 144, "wght" 460;
+    letter-spacing: -0.04em;
+    text-wrap: balance;
+  }
+  .hero__h-second {
+    display: block;
+    color: var(--ember-bright);
+    font-style: italic;
+    font-variation-settings: "opsz" 144, "wght" 360, "ital" 1;
+    letter-spacing: -0.04em;
+  }
+  .hero .lead {
+    margin-top: var(--s-5);
+    max-width: 56ch;
+  }
+  .hero__ctas {
+    display: flex;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+    margin-top: var(--s-6);
+  }
+  .hero__attest {
+    margin-top: var(--s-5);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-5);
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+    letter-spacing: 0.03em;
+  }
+  .hero__attest span span.ember { color: var(--ember-bright); }
+
+  .hero__visual {
+    position: relative;
+    display: grid;
+    gap: var(--s-3);
+    justify-items: center;
+  }
+  .hero__visualcap {
+    font-size: var(--t-caption);
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+  }
+
+  @media (max-width: 960px) {
+    .hero__grid { grid-template-columns: 1fr; gap: var(--s-6); }
+    .hero__visual { justify-content: flex-start; }
+  }
+
+  /* ────────── band ────────── */
+  .band {
+    padding-block: var(--s-6);
+    border-bottom: 1px solid var(--ink-line);
+    background:
+      linear-gradient(180deg, transparent 0%, rgba(255, 106, 26, 0.025) 100%);
+  }
+  .band__inner {
+    display: flex;
+    align-items: center;
+    gap: var(--s-5);
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+  .band__stat { display: grid; gap: var(--s-2); flex: 1; min-width: 180px; }
+  .band__num {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 1.4rem + 2vw, 3.4rem);
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 144, "wght" 420;
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+  }
+  .band__num .sym { color: var(--ember-bright); }
+  .band__lbl { color: var(--text-mute); font-size: 0.9rem; max-width: 28ch; }
+  .band__sep {
+    width: 1px;
+    height: 56px;
+    background: var(--ink-line);
+  }
+
+  /* ────────── pillars ────────── */
+  .pillars {
+    padding-block: var(--s-9);
+  }
+  .sec-head {
+    display: grid;
+    gap: var(--s-3);
+    margin-bottom: var(--s-7);
+    max-width: 64ch;
+  }
+  .sec-head--split {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-6);
+    max-width: var(--container-wide);
+    align-items: end;
+  }
+  .pillars__list {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--s-5);
+    counter-reset: pillars;
+  }
+  .pillar {
+    display: grid;
+    gap: var(--s-3);
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background:
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    position: relative;
+  }
+  .pillar__num {
+    color: var(--ember-bright);
+    font-size: var(--t-caption);
+    letter-spacing: 0.16em;
+  }
+  .pillar h3 {
+    text-wrap: balance;
+  }
+  .pillar p { font-size: 0.95rem; }
+  .pillar__more {
+    color: var(--ember-bright);
+    font-size: 0.88rem;
+    margin-top: auto;
+    padding-top: var(--s-3);
+  }
+  @media (max-width: 880px) {
+    .pillars__list { grid-template-columns: 1fr; }
+    .sec-head--split { grid-template-columns: 1fr; }
+  }
+
+  /* ────────── dashshow ────────── */
+  .dashshow {
+    padding-block: var(--s-8);
+    border-block: 1px solid var(--ink-line);
+    background:
+      radial-gradient(80% 80% at 80% 0%, rgba(255, 106, 26, 0.04), transparent 60%);
+  }
+  .dashshow__frame {
+    margin-top: var(--s-6);
+    display: grid;
+    gap: var(--s-3);
+  }
+  .dashshow__cap {
+    font-size: var(--t-caption);
+    color: var(--text-dim);
+    text-align: center;
+  }
+
+  /* ────────── provshow ────────── */
+  .provshow {
+    padding-block: var(--s-9);
+  }
+  .provshow__cta {
+    margin-top: var(--s-5);
+    display: flex;
+    justify-content: center;
+  }
+
+  /* ────────── surfaces ────────── */
+  .surfaces {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+  .surfaces__grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--s-4);
+  }
+  @media (max-width: 1080px) { .surfaces__grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px) { .surfaces__grid { grid-template-columns: 1fr; } }
+
+  /* ────────── hermes ────────── */
+  .hermes {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    background:
+      radial-gradient(60% 60% at 100% 50%, rgba(214, 211, 223, 0.04), transparent 70%);
+  }
+  .hermes__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-7);
+    align-items: center;
+  }
+  .hermes__h {
+    margin-top: var(--s-2);
+    color: var(--text-bright);
+  }
+  .hermes__list {
+    margin-top: var(--s-5);
+    display: grid;
+    gap: var(--s-3);
+  }
+  .hermes__list li {
+    display: grid;
+    grid-template-columns: 1.5em 1fr;
+    gap: var(--s-2);
+    color: var(--text-base);
+  }
+  .hermes__mark { color: var(--ember-bright); }
+  .hermes__visual {
+    border: 1px solid var(--ink-line);
+    background:
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    border-radius: var(--r-4);
+    padding: var(--s-5);
+    position: relative;
+  }
+  .hermes__chat {
+    display: grid;
+    gap: var(--s-3);
+    font-size: 0.92rem;
+  }
+  .hermes__msg {
+    display: flex;
+    gap: var(--s-3);
+  }
+  .hermes__msg--user { justify-content: flex-end; }
+  .hermes__msg--user .bubble {
+    background: var(--ink-surface-2);
+    border: 1px solid var(--ink-line);
+    border-radius: 14px 14px 4px 14px;
+    padding: 0.6rem 0.9rem;
+    color: var(--text-bright);
+    max-width: 80%;
+  }
+  .hermes__msg--hermes .avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid color-mix(in oklab, var(--mercury-bright) 40%, var(--ink-line));
+    color: var(--mercury-bright);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    background: radial-gradient(80% 80% at 30% 30%, rgba(214, 211, 223, 0.2), transparent 60%);
+    flex-shrink: 0;
+  }
+  .hermes__msg--hermes .bubble {
+    background:
+      linear-gradient(135deg, rgba(214, 211, 223, 0.06), transparent 60%);
+    border: 1px solid color-mix(in oklab, var(--mercury-bright) 30%, var(--ink-line));
+    border-radius: 4px 14px 14px 14px;
+    padding: 0.6rem 0.9rem;
+    color: var(--text-base);
+    max-width: 80%;
+  }
+  .bubble--chart { display: grid; gap: var(--s-2); }
+  .chart-cap { font-size: var(--t-caption); color: var(--text-mute); }
+  .atom {
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--text-bright);
+    font-variation-settings: "wght" 500;
+    font-size: 0.88em;
+  }
+  .atom--ember {
+    border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    color: var(--ember-bright);
+  }
+  .atom--mercury {
+    border-color: color-mix(in oklab, var(--mercury-bright) 30%, var(--ink-line));
+    color: var(--mercury-bright);
+  }
+  @media (max-width: 900px) {
+    .hermes__grid { grid-template-columns: 1fr; }
+  }
+
+  /* ────────── trust ────────── */
+  .trust {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+  .trust__grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: var(--s-7);
+    align-items: start;
+  }
+  .trust__head h2 { margin-top: var(--s-2); }
+  .trust__points {
+    margin-top: var(--s-5);
+    display: grid;
+    gap: var(--s-3);
+    font-size: 0.95rem;
+  }
+  .trust__points li { color: var(--text-base); }
+  .trust__points strong { color: var(--text-bright); }
+  .trust__ctas {
+    margin-top: var(--s-5);
+    display: flex;
+    gap: var(--s-3);
+  }
+  .trust__quote {
+    border-left: 2px solid var(--ember-bright);
+    padding: var(--s-5);
+    background: var(--ink-base);
+    border-radius: 0 var(--r-4) var(--r-4) 0;
+  }
+  .trust__quote blockquote p {
+    font-family: var(--font-display);
+    font-size: var(--t-h3);
+    line-height: 1.2;
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 80, "wght" 400;
+    letter-spacing: -0.018em;
+  }
+  .trust__quote footer {
+    margin-top: var(--s-4);
+    color: var(--text-mute);
+  }
+  .small { font-size: var(--t-caption); }
+  @media (max-width: 900px) {
+    .trust__grid { grid-template-columns: 1fr; }
+  }
+
+  /* ────────── pricing teaser ────────── */
+  .pricing-teaser {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+  .pricing-teaser__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-5);
+  }
+  .ptcard {
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    padding: var(--s-6);
+    background:
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    display: grid;
+    gap: var(--s-4);
+  }
+  .ptcard__price {
+    font-family: var(--font-display);
+    font-size: clamp(2.2rem, 1.8rem + 1.5vw, 3rem);
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 144, "wght" 460;
+    line-height: 1;
+    letter-spacing: -0.03em;
+  }
+  .ptcard__period { color: var(--text-mute); font-size: 1rem; letter-spacing: 0; margin-left: 0.2em; }
+  .ptcard ul {
+    display: grid;
+    gap: var(--s-2);
+    font-size: 0.95rem;
+  }
+  .ptcard li {
+    color: var(--text-base);
+    padding-left: 1.1em;
+    position: relative;
+  }
+  .ptcard li::before {
+    content: "+";
+    position: absolute;
+    left: 0;
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+  }
+  .ptcard--ember {
+    border-color: color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
+    background:
+      linear-gradient(180deg, rgba(255, 106, 26, 0.05) 0%, var(--ink-base) 100%);
+    position: relative;
+  }
+  .ptcard--ember::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: 0 0 60px -20px rgba(255, 106, 26, 0.4);
+    pointer-events: none;
+  }
+  @media (max-width: 900px) {
+    .pricing-teaser__grid { grid-template-columns: 1fr; }
+  }
+
+  /* ────────── endcta ────────── */
+  .endcta {
+    padding-block: var(--s-10);
+    background:
+      radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.08), transparent 70%);
+  }
+  .endcta__inner {
+    text-align: center;
+    display: grid;
+    gap: var(--s-5);
+    justify-items: center;
+  }
+  .endcta__h {
+    font-size: var(--t-display);
+    line-height: 0.97;
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 144, "wght" 460;
+    letter-spacing: -0.04em;
+  }
+  .endcta__h .ember {
+    color: var(--ember-bright);
+    font-style: italic;
+    font-variation-settings: "opsz" 144, "wght" 360, "ital" 1;
+  }
+  .endcta__ctas {
+    display: flex;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+</style>

@@ -85,6 +85,14 @@ enum DesignSystem {
             endPoint: .bottomTrailing
         )
 
+        /// Pi runtime accent gradient. Mirrors `UnifiedDesignSystem.piGradient`
+        /// and `MobileTheme.piGradient` so visuals stay 1:1 across platforms.
+        static let piGradient = LinearGradient(
+            colors: [whimsy, whimsy.opacity(0.65)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
         static func primary(for provider: AgentProvider) -> Color {
             switch provider {
             case .factory:    return Color(hex: "8B5CF6")
@@ -103,6 +111,7 @@ enum DesignSystem {
             case .forgeDev:   return Color(hex: "F97316")
             case .augment:    return Color(hex: "3B82F6")
             case .hermes:     return Color(hex: "A855F7")
+            case .piAgent:    return Color(hex: "7C3AED")
             case .geminiCLI:  return Color(hex: "4285F4")
             case .goose:      return Color(hex: "0D9488")
             case .openClaw:   return Color(hex: "FF6B6B")
@@ -130,6 +139,7 @@ enum DesignSystem {
             case .forgeDev:   return Color(hex: "FB923C")
             case .augment:    return Color(hex: "60A5FA")
             case .hermes:     return Color(hex: "C084FC")
+            case .piAgent:    return Color(hex: "A78BFA")
             case .geminiCLI:  return Color(hex: "8AB4F8")
             case .goose:      return Color(hex: "2DD4BF")
             case .openClaw:   return Color(hex: "F472B6")
@@ -276,5 +286,27 @@ enum DesignSystem {
         // Hermes mercury motion
         static let mercuryShimmer = SwiftUI.Animation.linear(duration: 3.0).repeatForever(autoreverses: false)
         static let mercuryPulse = SwiftUI.Animation.easeInOut(duration: 1.5).repeatForever(autoreverses: true)
+    }
+
+    // MARK: - Shadows
+
+    // Centralized elevation specs. Mirrors `AuroraShadows` on Android so ad-hoc
+    // .shadow() calls migrate to a shared vocabulary and stay synced between
+    // platforms.
+    struct ShadowSpec {
+        let color: Color
+        let radius: CGFloat
+        let x: CGFloat
+        let y: CGFloat
+    }
+
+    enum Shadows {
+        static let none      = ShadowSpec(color: .clear,                 radius: 0,  x: 0, y: 0)
+        static let subtle    = ShadowSpec(color: Color.black.opacity(0.05), radius: 2,  x: 0, y: 1)
+        static let small     = ShadowSpec(color: Color.black.opacity(0.10), radius: 4,  x: 0, y: 2)
+        static let medium    = ShadowSpec(color: Color.black.opacity(0.12), radius: 8,  x: 0, y: 3)
+        static let cardHover = ShadowSpec(color: Colors.ember.opacity(0.40), radius: 12, x: 0, y: 4)
+        static let large     = ShadowSpec(color: Color.black.opacity(0.20), radius: 16, x: 0, y: 6)
+        static let fab       = ShadowSpec(color: Colors.amber.opacity(0.70), radius: 4,  x: 0, y: 2)
     }
 }

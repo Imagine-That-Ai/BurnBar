@@ -4,7 +4,7 @@ import XCTest
 final class CLILaunchInvokerTests: XCTestCase {
     override func tearDown() {
         CLILaunchInvoker.launchHandler = nil
-        CLILaunchInvoker.startupObservationTimeout = 1.5
+        CLILaunchInvoker.startupObservationTimeout = CLILaunchInvoker.defaultStartupObservationTimeout
         super.tearDown()
     }
 

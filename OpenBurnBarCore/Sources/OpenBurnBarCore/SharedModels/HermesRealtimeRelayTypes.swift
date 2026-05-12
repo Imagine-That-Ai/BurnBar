@@ -27,6 +27,7 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
     public var connectionId: String
     public var requestId: String?
     public var protocolVersion: Int
+    public var runtime: String?
     public var payload: HermesRealtimeRelayPayload?
 
     public init(
@@ -35,6 +36,7 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
         connectionId: String,
         requestId: String? = nil,
         protocolVersion: Int = HermesRealtimeRelayProtocol.version,
+        runtime: String? = nil,
         payload: HermesRealtimeRelayPayload? = nil
     ) {
         self.type = type
@@ -42,6 +44,7 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
         self.connectionId = connectionId
         self.requestId = requestId
         self.protocolVersion = protocolVersion
+        self.runtime = runtime
         self.payload = payload
     }
 }

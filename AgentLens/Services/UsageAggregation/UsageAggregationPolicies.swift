@@ -6,10 +6,10 @@ enum SummaryEndpointCooldownPolicy {
 
 enum ProjectionWorkerPolicy {
     /// Process indexing incrementally to keep UI work responsive.
-    static let maxJobsPerPass = 8
-    static let catchUpMaxJobsPerPass = 64
+    static let maxJobsPerPass = 2
+    static let catchUpMaxJobsPerPass = 8
     /// Small delay between backlog passes to reduce CPU pressure.
-    static let backlogDelayNanoseconds: UInt64 = 100_000_000
+    static let backlogDelayNanoseconds: UInt64 = 2_000_000_000
     /// Coalesce rapid-fire queue requests.
     static let coalesceDelayNanoseconds: UInt64 = 750_000_000
     /// Avoid rebuilding workflow insights on every tiny pass.

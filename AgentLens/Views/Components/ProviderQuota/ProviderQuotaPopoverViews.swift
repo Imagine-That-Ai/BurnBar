@@ -449,9 +449,12 @@ struct QuotaPopoverBar: View {
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
 
+            // Short labels — segmented controls in a 340pt popover can't
+            // fit the full "Plus (~100M/month, $100)" display name across
+            // four tiers (Unknown / Pro / Plus / Max).
             Picker("", selection: $localFactoryTier) {
                 ForEach(FactoryQuotaPlanTier.allCases) { tier in
-                    Text(tier.displayName).tag(tier)
+                    Text(tier.shortName).tag(tier)
                 }
             }
             .pickerStyle(.segmented)

@@ -1,0 +1,202 @@
+---
+import { NAV_PRIMARY, SITE } from "@data/site";
+import Brandmark from "./Brandmark.astro";
+
+const path = Astro.url.pathname.replace(/\/$/, "");
+---
+
+<header class="site-header" data-elevated="false">
+  <a href="#main" class="skip-link">Skip to content</a>
+  <div class="site-header__inner container container--wide">
+    <Brandmark size={28} />
+
+    <nav class="site-nav" aria-label="Primary">
+      <ul>
+        {
+          NAV_PRIMARY.map((item) => {
+            const itemPath = item.href.replace(/\/$/, "");
+            const active = path === itemPath || (itemPath !== "" && path.startsWith(itemPath));
+            return (
+              <li>
+                <a href={item.href} aria-current={active ? "page" : undefined} data-active={active}>
+                  {item.label}
+                </a>
+              </li>
+            );
+          })
+        }
+      </ul>
+    </nav>
+
+    <div class="site-header__cta">
+      <a class="btn btn--small btn--ghost" href={SITE.github} target="_blank" rel="noopener noreferrer">
+        GitHub
+      </a>
+      <a class="btn btn--small btn--ember" href="/download">
+        Download
+        <span class="btn-arrow" aria-hidden="true">→</span>
+      </a>
+    </div>
+
+    <button class="site-header__menu" type="button" aria-expanded="false" aria-controls="mobile-nav" aria-label="Open menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+
+  <div id="mobile-nav" class="mobile-nav" hidden>
+    <ul>
+      {
+        NAV_PRIMARY.map((item) => (
+          <li>
+            <a href={item.href}>{item.label}</a>
+          </li>
+        ))
+      }
+      <li>
+        <a href={SITE.github} target="_blank" rel="noopener noreferrer">GitHub</a>
+      </li>
+      <li>
+        <a class="btn btn--ember" href="/download">
+          Download for macOS
+          <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+      </li>
+    </ul>
+  </div>
+</header>
+
+<script>
+  // Elevation on scroll
+  const header = document.querySelector(".site-header");
+  if (header) {
+    const onScroll = () => {
+      header.setAttribute("data-elevated", window.scrollY > 8 ? "true" : "false");
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+  }
+
+  // Mobile nav toggle
+  const toggle = document.querySelector<HTMLButtonElement>(".site-header__menu");
+  const mobile = document.querySelector<HTMLElement>("#mobile-nav");
+  if (toggle && mobile) {
+    toggle.addEventListener("click", () => {
+      const open = toggle.getAttribute("aria-expanded") === "true";
+      toggle.setAttribute("aria-expanded", String(!open));
+      if (open) {
+        mobile.setAttribute("hidden", "");
+      } else {
+        mobile.removeAttribute("hidden");
+      }
+    });
+    mobile.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).tagName === "A") {
+        toggle.setAttribute("aria-expanded", "false");
+        mobile.setAttribute("hidden", "");
+      }
+    });
+  }
+</script>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    transition: background var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out);
+    background: color-mix(in oklab, var(--ink-void) 70%, transparent);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border-bottom: 1px solid transparent;
+  }
+  .site-header[data-elevated="true"] {
+    background: color-mix(in oklab, var(--ink-void) 90%, transparent);
+    border-bottom-color: var(--ink-line-soft);
+  }
+  .site-header__inner {
+    display: flex;
+    align-items: center;
+    gap: var(--s-5);
+    padding-block: 0.85rem;
+  }
+  .site-nav {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+  }
+  .site-nav ul {
+    display: flex;
+    gap: 0.2rem;
+  }
+  .site-nav a {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.85rem;
+    border-radius: var(--r-3);
+    font-size: 0.88rem;
+    color: var(--text-mute);
+    transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+  }
+  .site-nav a:hover {
+    color: var(--text-bright);
+    background: var(--ink-surface);
+  }
+  .site-nav a[data-active="true"] {
+    color: var(--text-bright);
+    background: var(--ink-surface);
+  }
+  .site-header__cta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .site-header__menu {
+    display: none;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--r-3);
+    border: 1px solid var(--ink-line);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  .site-header__menu span {
+    display: block;
+    width: 16px;
+    height: 1.5px;
+    background: var(--text-base);
+    border-radius: 1px;
+  }
+  .mobile-nav {
+    border-top: 1px solid var(--ink-line);
+    background: var(--ink-void);
+    padding: var(--s-5);
+  }
+  .mobile-nav ul {
+    display: grid;
+    gap: var(--s-3);
+  }
+  .mobile-nav a {
+    display: block;
+    padding: 0.75rem 0;
+    font-size: 1.1rem;
+    color: var(--text-bright);
+  }
+  @media (max-width: 880px) {
+    .site-nav {
+      display: none;
+    }
+    .site-header__cta .btn--ghost {
+      display: none;
+    }
+    .site-header__menu {
+      display: inline-flex;
+    }
+  }
+  @media (min-width: 881px) {
+    .mobile-nav {
+      display: none !important;
+    }
+  }
+</style>

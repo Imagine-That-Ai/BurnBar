@@ -1,0 +1,202 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { SITE } from "@data/site";
+---
+
+<BaseLayout
+  title="Security model"
+  description="OpenBurnBar's security stance — daemon socket auth, Keychain-scoped secrets, App Check, Apple JWS verification, ECIES cross-device credential escrow."
+>
+  <section class="pagehead">
+    <div class="container">
+      <span class="eyebrow eyebrow--ember">Security</span>
+      <h1 class="pagehead__h">A defensive product, not a hardened castle.</h1>
+      <p class="lead">
+        OpenBurnBar is a developer tool that runs as your user. That posture
+        shapes every security choice we make. Here's what we defend against,
+        what we don't pretend to, and how to reach us if you find something.
+      </p>
+    </div>
+  </section>
+
+  <section class="threats">
+    <div class="container">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Threats &amp; mitigations</span>
+        <h2>The top five we actively defend.</h2>
+      </header>
+
+      <ol class="threats__list">
+        <li>
+          <div class="threat__num mono">01</div>
+          <div>
+            <h3>Local user impersonation of the daemon RPC</h3>
+            <p>
+              The daemon socket is a UNIX socket under your home directory with
+              filesystem ACLs set to <code>0o600</code>. Every RPC requires an
+              auth token; the token is passed via <code>launchd</code>
+              <code>EnvironmentVariables</code>, not CLI args — keeping it out
+              of <code>ps aux</code>. The plist itself is <code>0o600</code>.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div class="threat__num mono">02</div>
+          <div>
+            <h3>Secrets at rest</h3>
+            <p>
+              Provider API keys go in the macOS Keychain with
+              <code>kSecAttrAccessibleWhenUnlockedThisDeviceOnly</code>. The
+              SQLCipher database key is held the same way. Equivalent risk to
+              any unsandboxed app running as your user.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div class="threat__num mono">03</div>
+          <div>
+            <h3>Unauthorized cloud access</h3>
+            <p>
+              Firestore is gated by Firebase Auth, owner-scoped rules per
+              <code>users/&#123;uid&#125;/…</code>, a secret-field-name denylist
+              (<code>apiKey</code>, <code>token</code>, <code>cookie</code>,
+              <code>credential</code>, …), and Firebase App Check attestation.
+              <code>provider_account_secret_refs</code> is server-only — all
+              client reads denied.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div class="threat__num mono">04</div>
+          <div>
+            <h3>Replayed or forged App Store entitlements</h3>
+            <p>
+              Every JWS receipt is verified server-side against a vendored set of
+              Apple root CAs, pinned by SHA-256. The
+              <code>appAccountToken</code> is a UUID bound to your Firebase UID.
+              Entitlement state is re-reconciled against
+              <code>getAllSubscriptionStatuses</code>.
+            </p>
+          </div>
+        </li>
+        <li>
+          <div class="threat__num mono">05</div>
+          <div>
+            <h3>Cross-device credential exposure</h3>
+            <p>
+              Cross-device credential transfer uses ECIES (P-256 + AES-GCM)
+              escrow. Private keys never leave the device Keychain. Firestore
+              only ever sees ciphertext and non-sensitive metadata.
+            </p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="notpretend">
+    <div class="container container--narrow">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">What we don't pretend</span>
+        <h2>Known limits, on the page.</h2>
+      </header>
+      <ul class="notpretend__list">
+        <li><strong>The macOS app is not sandboxed</strong>. Like most developer tools, it runs as your user. The security boundary is Developer ID signing + notarization + Gatekeeper, plus a defensive daemon and Keychain-scoped secrets.</li>
+        <li><strong>Provider APIs are not certificate-pinned</strong>. System trust store applies. If you need vendor-side pinning, this is on the candidate list.</li>
+        <li><strong>The optional Cursor connector tunnel</strong> routes BYOK traffic through Cloudflare when you turn it on. This is the only way today to land Cursor BYOK on a localhost endpoint.</li>
+        <li><strong>iCloud uses your Apple ID</strong>, not our infrastructure. Conflict copies can happen; that is iCloud's behavior.</li>
+        <li><strong>App Check enforcement is checked at launch-time and operationally</strong>, not at every request from a runtime probe. The commercial-launch gate enforces it before publishing.</li>
+        <li><strong>Sentry diagnostics</strong> (opt-in) anonymizes the user ID via a hash seeded from the bundle ID and full user name. Not direct PII, but worth knowing.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="releasechain">
+    <div class="container">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Releases</span>
+        <h2>Provenance you can verify.</h2>
+      </header>
+      <ul class="releasechain__list">
+        <li><strong>Signed and notarized</strong> with a Developer ID, stapled. <code>spctl</code> verifies on Gatekeeper-enabled Macs.</li>
+        <li><strong>SHA-256 and SHA-512 checksums</strong> are published next to each release artifact.</li>
+        <li><strong>Optional GPG-signed checksum file</strong> for stronger chain of trust.</li>
+        <li><strong>SPDX SBOM</strong> per release.</li>
+        <li><strong>Release-metadata JSON</strong> with build commit, build date, and verified artifact hashes.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="report">
+    <div class="container container--narrow">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Reporting</span>
+        <h2>If you find something, tell us.</h2>
+      </header>
+      <p class="lead">
+        Email <a href={`mailto:${SITE.privacyContact}`}>{SITE.privacyContact}</a> with a description of the issue.
+        Please don't open public GitHub issues for active vulnerabilities — give us a chance to fix them first.
+      </p>
+      <p class="muted">
+        See the full <a href={`${SITE.github}/blob/main/SECURITY.md`} target="_blank" rel="noopener noreferrer">SECURITY.md</a>
+        for the canonical disclosure policy.
+      </p>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .pagehead { padding-block: var(--s-9) var(--s-6); }
+  .pagehead__h { margin-top: var(--s-3); max-width: 22ch; }
+  .pagehead .lead { margin-top: var(--s-4); max-width: 60ch; }
+  .sec-head { display: grid; gap: var(--s-3); margin-bottom: var(--s-6); max-width: 64ch; }
+
+  .threats { padding-block: var(--s-9); border-top: 1px solid var(--ink-line); }
+  .threats__list { display: grid; gap: var(--s-5); }
+  .threats__list li {
+    display: grid;
+    grid-template-columns: 60px minmax(0, 1fr);
+    gap: var(--s-5);
+    padding-bottom: var(--s-5);
+    border-bottom: 1px solid var(--ink-line-soft);
+  }
+  .threats__list li > div { min-width: 0; }
+  @media (max-width: 560px) {
+    .threats__list li { grid-template-columns: minmax(0, 1fr); gap: var(--s-2); }
+  }
+  .threats__list li:last-child { border-bottom: 0; }
+  .threat__num {
+    font-size: 1.4rem;
+    font-family: var(--font-display);
+    color: var(--ember-bright);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .threats__list h3 {
+    font-family: var(--font-display);
+    color: var(--text-bright);
+    font-size: 1.2rem;
+    font-variation-settings: "opsz" 36, "wght" 540;
+    margin-bottom: var(--s-2);
+  }
+  .threats__list p { color: var(--text-base); }
+  .notpretend, .releasechain, .report {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+  .notpretend__list, .releasechain__list { display: grid; gap: var(--s-3); }
+  .notpretend__list li, .releasechain__list li {
+    color: var(--text-base);
+    padding-left: 1.1em;
+    position: relative;
+    line-height: 1.55;
+  }
+  .notpretend__list li::before, .releasechain__list li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--ember-bright);
+  }
+  .notpretend__list strong, .releasechain__list strong { color: var(--text-bright); }
+  .report a { color: var(--ember-bright); text-decoration: underline; }
+</style>

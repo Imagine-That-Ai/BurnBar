@@ -317,7 +317,10 @@ targets:
           - CFBundleTypeRole: Editor
             CFBundleURLName: com.openburnbar.app.google-sign-in
             CFBundleURLSchemes:
-              - com.googleusercontent.apps.246956661961-k53p0e4oln229kmmed459fm6i8i5vtoo
+              # MUST match REVERSED_CLIENT_ID in OpenBurnBarMobile/Resources/GoogleService-Info.plist.
+              # Mismatch crashes the app at GIDSignIn.signIn(withPresenting:) with an Objective-C
+              # exception about missing URL schemes that Swift cannot catch.
+              - com.googleusercontent.apps.246956661961-h48alif674cr67ojj4li9og8gbcjinbv
     dependencies:
       - target: OpenBurnBarWidget
       - package: OpenBurnBarCore

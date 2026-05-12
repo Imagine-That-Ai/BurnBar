@@ -97,9 +97,39 @@ for (const collection of ["hermes_relay_requests"]) {
   assert.notEqual(start, -1, "smart_hub_config rules block must exist");
   const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
   assert.match(block, /allow create, update: if ownerWritableNonSecret\(userId\)/);
-  assert.match(block, /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"dashboardURL"[\s\S]*"voiceRefreshURL"[\s\S]*"schemaVersion"[\s\S]*\]\)/);
+  assert.match(block, /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"dashboardURL"[\s\S]*"voiceRefreshURL"[\s\S]*"pixelClock"[\s\S]*"schemaVersion"[\s\S]*\]\)/);
   assert.match(block, /request\.resource\.data\.enabled is bool/);
   assert.match(block, /request\.resource\.data\.schemaVersion is int/);
+  assert.match(block, /validPixelClockConfig\(request\.resource\.data\.pixelClock\)/);
+}
+{
+  const start = rules.indexOf("match /users/{userId}/smart_display_actions/");
+  assert.notEqual(start, -1, "smart_display_actions rules block must exist");
+  const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
+  assert.match(block, /allow create, update: if ownerWritableNonSecret\(userId\)/);
+  assert.match(block, /request\.resource\.data\.type in \[/);
+  for (const actionType of [
+    "pixel_clock_probe",
+    "pixel_clock_test",
+    "pixel_clock_push",
+    "pixel_clock_remove",
+    "pixel_clock_update_config",
+  ]) {
+    assert.match(block, new RegExp(`"${actionType}"`));
+  }
+  assert.match(block, /request\.resource\.data\.status in \["pending", "completed", "failed"\]/);
+  assert.match(block, /validPixelClockConfig\(request\.resource\.data\.pixelClock\)/);
+}
+{
+  const start = rules.indexOf("function validPixelClockConfig(pixelClock)");
+  assert.notEqual(start, -1, "validPixelClockConfig helper must exist");
+  const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
+  assert.match(block, /pixelClock\.host\.size\(\) <= 255/);
+  assert.match(block, /pixelClock\.port >= 1[\s\S]*pixelClock\.port <= 65535/);
+  assert.match(block, /pixelClock\.layout in \["providerDashboard", "quotaCarousel", "burnStatus", "alertsOnly"\]/);
+  assert.match(block, /pixelClock\.brightness >= 0[\s\S]*pixelClock\.brightness <= 255/);
+  assert.match(block, /pixelClock\.providerIDs\.size\(\) <= 24/);
+  assert.match(block, /pixelClock\.lastProbeStatus in \["unknown", "awtrixReady", "stockUlanziFirmware", "unreachable", "unsupported", "error"\]/);
 }
 assert.match(rules, /request\.resource\.data\.schemaVersion < 2[\s\S]*!\("body" in request\.resource\.data\)[\s\S]*request\.resource\.data\.payloadCiphertext is string/);
 assert.match(rules, /request\.resource\.data\.schemaVersion < 2[\s\S]*!\("data" in request\.resource\.data\)[\s\S]*request\.resource\.data\.ciphertext is string/);

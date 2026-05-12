@@ -13,6 +13,7 @@ struct DashboardView: View {
     var accountManager: AccountManager
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
+    var runtimeContext: OpenBurnBarRuntimeContext?
     @State var navigationModel = DashboardNavigationModel()
     @State var consentCoordinator: DashboardConsentCoordinator?
     @State var mainRoute: DashboardMainRoute = .overview
@@ -34,6 +35,7 @@ struct DashboardView: View {
     @State var dashboardCanvasSize: CGSize = .zero
     @State var didAutoExpandEmptyTimeRange = false
     @State var showContextPackSheet = false
+    @AppStorage("dashboardChatPreferMaximized") var preferMaximizedChat = false
     var chatController: ChatSessionController
     @State var quotaService = ProviderQuotaService.shared
 
@@ -45,7 +47,8 @@ struct DashboardView: View {
         iCloudSessionMirrorService: ICloudSessionMirrorService? = nil,
         chatController: ChatSessionController,
         operatingLayer: OpenBurnBarOperatingLayer,
-        settingsManager: SettingsManager
+        settingsManager: SettingsManager,
+        runtimeContext: OpenBurnBarRuntimeContext? = nil
     ) {
         self._dataStore = Bindable(dataStore)
         self._operatingLayer = Bindable(operatingLayer)
@@ -54,6 +57,7 @@ struct DashboardView: View {
         self.accountManager = accountManager
         self.cloudSyncService = cloudSyncService
         self.iCloudSessionMirrorService = iCloudSessionMirrorService
+        self.runtimeContext = runtimeContext
         self.chatController = chatController
         self._consentCoordinator = State(initialValue: DashboardConsentCoordinator(
             settingsManager: settingsManager,
@@ -120,6 +124,7 @@ struct DashboardView: View {
         case .projects: return "Projects"
         case .missions: return "Missions"
         case .sessionLogs: return "Session Logs"
+        case .chat: return "Chat"
         case .provider(let provider): return provider.displayName
         case .model(let modelName): return modelName
         }
@@ -156,42 +161,65 @@ struct DashboardView: View {
         }
         .overlay(alignment: .bottomTrailing) {
             VStack(spacing: 12) {
-                if chatPanelOpen {
-                    ChatPanel(
-                        controller: chatController,
-                        dataStore: dataStore,
-                        settingsManager: settingsManager,
-                        sharedFeaturesAvailable: accountManager.isSignedIn,
-                        containerSize: dashboardCanvasSize,
-                        edgePadding: 20,
-                        onOpenConversationJump: { target in
-                            sessionLogJumpTarget = target
-                            if mainRoute != .sessionLogs {
-                                navigate(to: .sessionLogs)
+                if mainRoute != .chat {
+                    if chatPanelOpen {
+                        ChatPanel(
+                            controller: chatController,
+                            dataStore: dataStore,
+                            settingsManager: settingsManager,
+                            sharedFeaturesAvailable: accountManager.isSignedIn,
+                            containerSize: dashboardCanvasSize,
+                            edgePadding: 20,
+                            onOpenConversationJump: { target in
+                                sessionLogJumpTarget = target
+                                if mainRoute != .sessionLogs {
+                                    navigate(to: .sessionLogs)
+                                }
+                            },
+                            onMaximize: {
+                                preferMaximizedChat = true
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                    chatPanelOpen = false
+                                    navigate(to: .chat)
+                                }
+                            },
+                            onPopOut: {
+                                WindowManager.shared.openChatPopOutWindow(
+                                    controller: chatController,
+                                    dataStore: dataStore,
+                                    settingsManager: settingsManager,
+                                    accountManager: accountManager
+                                )
+                            },
+                            onClose: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                    chatPanelOpen = false
+                                    UserDefaults.standard.set(dataStore.totalUsageSessionCount, forKey: "lastSeenSessionCountForChatBadge")
+                                }
                             }
-                        },
-                        onClose: {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                                chatPanelOpen = false
-                                UserDefaults.standard.set(dataStore.totalUsageSessionCount, forKey: "lastSeenSessionCountForChatBadge")
+                        )
+                        .offset(x: chatController.panelFloatOffset.width, y: chatController.panelFloatOffset.height)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                    }
+                    if !chatPanelOpen {
+                        ChatFAB(hasNewInsights: hasNewInsightPulse) {
+                            if !settingsManager.cliAssistantConsentShown {
+                                showCLIConsentSheet = true
+                                return
                             }
-                        }
-                    )
-                    .offset(x: chatController.panelFloatOffset.width, y: chatController.panelFloatOffset.height)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .opacity
-                    ))
-                }
-                if !chatPanelOpen {
-                    ChatFAB(hasNewInsights: hasNewInsightPulse) {
-                        if !settingsManager.cliAssistantConsentShown {
-                            showCLIConsentSheet = true
-                            return
-                        }
-                        Task { await chatController.cliBridge.detect() }
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                            chatPanelOpen = true
+                            Task { await chatController.cliBridge.detect() }
+                            if preferMaximizedChat {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                    navigate(to: .chat)
+                                }
+                            } else {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                    chatPanelOpen = true
+                                }
+                            }
                         }
                     }
                 }
@@ -205,7 +233,8 @@ struct DashboardView: View {
                 accountManager: accountManager,
                 cloudSyncService: cloudSyncService,
                 iCloudSessionMirrorService: iCloudSessionMirrorService,
-                dataStore: dataStore
+                dataStore: dataStore,
+                runtimeContext: runtimeContext
             )
         }
         .onAppear {
@@ -248,9 +277,22 @@ struct DashboardView: View {
             guard let destination else { return }
             switch destination {
             case .conversationSearch, .chatPanel:
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                    chatPanelOpen = true
+                if preferMaximizedChat {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        navigate(to: .chat)
+                    }
+                } else {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        chatPanelOpen = true
+                    }
                 }
+            case .chatPopOut:
+                WindowManager.shared.openChatPopOutWindow(
+                    controller: chatController,
+                    dataStore: dataStore,
+                    settingsManager: settingsManager,
+                    accountManager: accountManager
+                )
             default:
                 break
             }
@@ -309,6 +351,36 @@ struct DashboardView: View {
                         iCloudMirrorService: iCloudSessionMirrorService,
                         jumpTarget: sessionLogJumpTarget,
                         preferredChatModelKey: chatController.hermesModelName
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .chat:
+                    DashboardChatWorkspaceView(
+                        controller: chatController,
+                        dataStore: dataStore,
+                        settingsManager: settingsManager,
+                        sharedFeaturesAvailable: accountManager.isSignedIn,
+                        mode: .embedded,
+                        onOpenConversationJump: { target in
+                            sessionLogJumpTarget = target
+                            if mainRoute != .sessionLogs {
+                                navigate(to: .sessionLogs)
+                            }
+                        },
+                        onPopOut: {
+                            WindowManager.shared.openChatPopOutWindow(
+                                controller: chatController,
+                                dataStore: dataStore,
+                                settingsManager: settingsManager,
+                                accountManager: accountManager
+                            )
+                        },
+                        onRestoreFloating: {
+                            preferMaximizedChat = false
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                goBack()
+                                chatPanelOpen = true
+                            }
+                        }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .provider(let provider):
@@ -374,7 +446,10 @@ struct DashboardView: View {
 
     @ViewBuilder
     private var dashboardWorkspaceNavStrip: some View {
-        DashboardWorkspaceNavStrip(currentRoute: mainRoute) { route in
+        DashboardWorkspaceNavStrip(
+            currentRoute: mainRoute,
+            activeChatBackend: chatController.chatBackend
+        ) { route in
             navigate(to: route)
         }
     }

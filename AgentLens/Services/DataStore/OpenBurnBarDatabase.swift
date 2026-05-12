@@ -33,11 +33,14 @@ final class OpenBurnBarDatabase: Sendable {
         case backupFailed(underlying: Error)
     }
 
-    /// Run integrity check, backup, then migrate.
+    /// Run integrity check and backup only when the schema actually needs a
+    /// migration, then migrate. A full SQLite `integrity_check` walks large FTS
+    /// indexes and can block app launch for minutes on real user databases; on
+    /// ordinary already-current launches, the database should open immediately.
     /// Skips backup for in-memory databases (tests).
     func runMigrationsSafely() throws {
-        try runIntegrityCheck()
         if try needsBackupBeforeMigration() {
+            try runIntegrityCheck()
             try createBackupIfNeeded()
         }
         try Self.migrator.migrate(dbQueue)

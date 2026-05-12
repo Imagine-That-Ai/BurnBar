@@ -12,7 +12,7 @@ struct PulseHeroBurnCard: View {
     let trailingTotal: RollupTotals?
     let dailyPoints: [RollupDailyPoint]
     let topProvider: AgentProvider?
-    @Binding var displayMode: UsageDisplayMode
+    let displayMode: UsageDisplayMode
     var scope: PulseTimelineScope = .day
 
     var body: some View {
@@ -51,7 +51,6 @@ struct PulseHeroBurnCard: View {
                     .modifier(BreathingPulse())
             }
             Spacer()
-            modeToggle
         }
     }
 
@@ -104,34 +103,6 @@ struct PulseHeroBurnCard: View {
         case .week:                return "30-day"
         case .month:               return "90-day"
         }
-    }
-
-    private var modeToggle: some View {
-        Button {
-            withAnimation(AuroraDesign.Motion.auroraSnap) {
-                displayMode = displayMode == .currency ? .tokens : .currency
-            }
-            HapticBus.toggle()
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: displayMode == .currency ? "dollarsign" : "number")
-                    .font(.system(size: 10, weight: .bold))
-                Text(displayMode.label)
-                    .font(MobileTheme.Typography.tiny)
-                    .fontWeight(.semibold)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .foregroundStyle(MobileTheme.ember)
-            .background(
-                Capsule().fill(MobileTheme.ember.opacity(0.18))
-            )
-            .overlay(
-                Capsule().stroke(MobileTheme.ember.opacity(0.4), lineWidth: 0.5)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Toggle currency or tokens")
     }
 
     // MARK: - Derivations

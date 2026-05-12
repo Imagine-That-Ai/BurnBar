@@ -1,0 +1,226 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import DashboardMockup from "@components/DashboardMockup.astro";
+import SurfaceCard from "@components/SurfaceCard.astro";
+import { SURFACES } from "@data/surfaces";
+import { FEATURES_BY_CATEGORY } from "@data/features";
+---
+
+<BaseLayout
+  title="Product"
+  description="OpenBurnBar — what it actually does. Local tracking, cost and tokens, quota windows, smart insights, daemon, CLI, Hermes assistant, surfaces."
+>
+  <section class="pagehead">
+    <div class="container">
+      <span class="eyebrow eyebrow--ember">Product</span>
+      <h1 class="pagehead__h">
+        Every agent, every model, every dollar — in one calm console.
+      </h1>
+      <p class="lead">
+        OpenBurnBar reads what your agents already leave behind on disk and turns it
+        into a coherent picture: today's burn, this week's pattern, this month's
+        budget, every session you ran, every quota window you're about to hit.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="container container--wide">
+      <DashboardMockup />
+    </div>
+  </section>
+
+  <!-- TRACKING -->
+  <section class="featgroup">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Tracking</span>
+        <h2>Cost, tokens, quota — local and live.</h2>
+        <p class="lead">
+          Numbers come from the vendor's own API or local logs. Confidence
+          is labeled on every row.
+        </p>
+      </header>
+      <ul class="featgroup__grid">
+        {FEATURES_BY_CATEGORY.tracking.map((f) => (
+          <li class="feat">
+            <h3>{f.title}</h3>
+            <p>{f.blurb}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <!-- ASSISTANT -->
+  <section class="featgroup featgroup--mercury">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--mercury">Hermes</span>
+        <h2>An assistant that knows your data.</h2>
+        <p class="lead">
+          Two runtimes share one identity. Stateless per-turn against a CLI subprocess
+          for quick answers, or multi-turn against a local Hermes Gateway for
+          deeper sessions — both grounded in your own OpenBurnBar SQLite.
+        </p>
+      </header>
+      <ul class="featgroup__grid">
+        {FEATURES_BY_CATEGORY.assistant.map((f) => (
+          <li class="feat feat--mercury">
+            <h3>{f.title}</h3>
+            <p>{f.blurb}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <!-- CONTROL -->
+  <section class="featgroup">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Control plane</span>
+        <h2>One daemon, every surface.</h2>
+        <p class="lead">
+          The daemon owns provider routing, quota refresh, retrieval, projects,
+          missions, and a JSONL run journal you can replay. The CLI scripts it.
+          Every other surface speaks to it.
+        </p>
+      </header>
+      <ul class="featgroup__grid">
+        {FEATURES_BY_CATEGORY.control.map((f) => (
+          <li class="feat">
+            <h3>{f.title}</h3>
+            <p>{f.blurb}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <!-- SURFACES -->
+  <section class="featgroup">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Surfaces</span>
+        <h2>The screens it shows up on.</h2>
+      </header>
+      <ul class="surfaces__grid">
+        {SURFACES.map((s, i) => <SurfaceCard surface={s} index={i} />)}
+      </ul>
+    </div>
+  </section>
+
+  <!-- HONESTY -->
+  <section class="featgroup featgroup--quiet">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">The honest part</span>
+        <h2>What it doesn't pretend.</h2>
+        <p class="lead">
+          A clean console is built on what you choose to leave out as much as
+          what you choose to put in.
+        </p>
+      </header>
+      <ul class="featgroup__grid">
+        {FEATURES_BY_CATEGORY.honesty.map((f) => (
+          <li class="feat">
+            <h3>{f.title}</h3>
+            <p>{f.blurb}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <section class="endcta endcta--inline">
+    <div class="container container--narrow">
+      <h2>Read it in code, not in marketing.</h2>
+      <p class="lead">
+        OpenBurnBar is MIT-licensed. The README, the architecture doc, the threat
+        model, the provider matrix, the changelog — all in the open.
+      </p>
+      <div class="endcta__ctas">
+        <a class="btn btn--ember" href="/download">Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a>
+        <a class="btn btn--ghost" href="/providers">See provider matrix</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .pagehead {
+    padding-block: var(--s-9) var(--s-6);
+  }
+  .pagehead__h {
+    margin-top: var(--s-3);
+    max-width: 22ch;
+  }
+  .pagehead .lead {
+    margin-top: var(--s-4);
+    max-width: 60ch;
+  }
+  .featgroup {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+  .featgroup--quiet {
+    background: var(--ink-base);
+  }
+  .featgroup--mercury {
+    background:
+      radial-gradient(60% 60% at 100% 50%, rgba(214, 211, 223, 0.04), transparent 70%);
+  }
+  .sec-head {
+    display: grid;
+    gap: var(--s-3);
+    margin-bottom: var(--s-6);
+    max-width: 64ch;
+  }
+  .featgroup__grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--s-4);
+  }
+  .feat {
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background: var(--ink-base);
+    display: grid;
+    gap: var(--s-2);
+  }
+  .feat h3 {
+    font-size: 1.1rem;
+    font-family: var(--font-display);
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.014em;
+  }
+  .feat p { color: var(--text-base); font-size: 0.94rem; }
+  .feat--mercury {
+    border-color: color-mix(in oklab, var(--mercury-bright) 22%, var(--ink-line));
+  }
+  .surfaces__grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--s-4);
+  }
+  @media (max-width: 1080px) {
+    .featgroup__grid { grid-template-columns: repeat(2, 1fr); }
+    .surfaces__grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 560px) {
+    .featgroup__grid { grid-template-columns: 1fr; }
+    .surfaces__grid { grid-template-columns: 1fr; }
+  }
+  .endcta--inline {
+    padding-block: var(--s-9);
+    text-align: center;
+    background:
+      radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.05), transparent 70%);
+  }
+  .endcta--inline h2 { margin-bottom: var(--s-3); }
+  .endcta--inline .lead { margin: 0 auto; }
+  .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+</style>

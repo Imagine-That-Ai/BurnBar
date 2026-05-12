@@ -76,6 +76,30 @@ struct DashboardDetailView: View {
                         preferredChatModelKey: chatController.hermesModelName
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .chat:
+                    DashboardChatWorkspaceView(
+                        controller: chatController,
+                        dataStore: dataStore,
+                        settingsManager: settingsManager,
+                        sharedFeaturesAvailable: accountManager.isSignedIn,
+                        mode: .embedded,
+                        onOpenConversationJump: onOpenSessionLogs,
+                        onPopOut: {
+                            WindowManager.shared.openChatPopOutWindow(
+                                controller: chatController,
+                                dataStore: dataStore,
+                                settingsManager: settingsManager,
+                                accountManager: accountManager
+                            )
+                        },
+                        onRestoreFloating: {
+                            UserDefaults.standard.set(false, forKey: "dashboardChatPreferMaximized")
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                onNavigate(.overview)
+                            }
+                        }
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .provider(let provider):
                     ProviderDashboardView(
                         provider: provider,

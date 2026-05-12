@@ -1,6 +1,9 @@
 import Foundation
 import FirebaseFirestore
 import OpenBurnBarCore
+import OSLog
+
+private let quotaStoreLogger = Logger(subsystem: "com.openburnbar.mobile", category: "QuotaStore")
 
 @Observable
 @MainActor
@@ -69,12 +72,24 @@ final class QuotaStore {
         guard !AppStoreScreenshotMode.isEnabled else { return }
         listener?.remove()
         captureCurrentUser()
-        listener = firestore.listenToQuotaSnapshots { [weak self] result in
+        listener = firestore.listenToQuotaSnapshotUpdates { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
                 switch result {
-                case .success(let snaps):
-                    self.applySnapshots(snaps)
+                case .success(let update):
+                    let incomingVisibleProviders = Self.visibleProviderIDs(in: self.normalizeQuotaSnapshots(update.snapshots))
+                    if Self.shouldApplySnapshotUpdate(
+                        currentVisibleProviders: Set(self.visibleProviders),
+                        incomingVisibleProviders: incomingVisibleProviders,
+                        isFromCache: update.isFromCache
+                    ) == false {
+                        quotaStoreLogger.info(
+                            "Ignored cache-only quota snapshot regression: currentProviders=[\(self.visibleProviders.joined(separator: ","), privacy: .public)] incomingProviders=[\(incomingVisibleProviders.sorted().joined(separator: ","), privacy: .public)] rawDocuments=\(update.rawDocumentCount)"
+                        )
+                        self.error = nil
+                        return
+                    }
+                    self.applySnapshots(update.snapshots)
                     self.error = nil
                     await self.refreshAccountsIfStale()
                 case .failure(let err):
@@ -110,6 +125,20 @@ final class QuotaStore {
         snapshots.compactMap { $0.filteringToDisplayableQuotaSignal() }
     }
 
+    nonisolated static func shouldApplySnapshotUpdate(
+        currentVisibleProviders: Set<String>,
+        incomingVisibleProviders: Set<String>,
+        isFromCache: Bool
+    ) -> Bool {
+        guard isFromCache else { return true }
+        guard currentVisibleProviders.isEmpty == false else { return true }
+        return incomingVisibleProviders.count >= currentVisibleProviders.count
+    }
+
+    nonisolated private static func visibleProviderIDs(in snapshots: [ProviderQuotaSnapshot]) -> Set<String> {
+        Set(snapshots.map(\.providerID.rawValue))
+    }
+
     func routingState(for providerID: ProviderID) -> ProviderRoutingStateSnapshot? {
         ProviderRoutingStateBuilder.build(
             providerID: providerID,
@@ -126,6 +155,7 @@ final class QuotaStore {
     private func applyAccounts(_ newAccounts: [ProviderAccountDoc]) {
         accounts = newAccounts
         lastAccountRefreshAt = Date()
+        rebuildDerivedSnapshotState()
     }
 
     private func refreshAccountsIfStale(maxAge: TimeInterval = 60) async {
@@ -144,7 +174,7 @@ final class QuotaStore {
             remainingFraction(for: $0) < remainingFraction(for: $1)
         }
 
-        snapshotsByProvider = Dictionary(grouping: snapshots, by: { $0.providerID.rawValue })
+        snapshotsByProvider = Self.snapshotsByDisplayProvider(snapshots: snapshots, accounts: accounts)
         visibleProviders = Array(snapshotsByProvider.keys).sorted()
         urgentProviders = snapshotsByProvider
             .filter { _, snaps in snaps.contains(where: { isUrgent($0) }) }
@@ -156,6 +186,18 @@ final class QuotaStore {
         healthyProviders = snapshotsByProvider.keys
             .filter { !urgent.contains($0) }
             .sorted()
+
+        let rawSnapshotProviders = Set(snapshots.map(\.providerID.rawValue)).sorted().joined(separator: ",")
+        let accountProviders = Set(
+            accounts
+                .filter { $0.status != .deleted }
+                .map(\.providerID.rawValue)
+        )
+            .sorted()
+            .joined(separator: ",")
+        quotaStoreLogger.info(
+            "Derived quota state: snapshots=\(self.snapshots.count) accounts=\(self.accounts.count) rawSnapshotProviders=[\(rawSnapshotProviders, privacy: .public)] visibleProviders=[\(self.visibleProviders.joined(separator: ","), privacy: .public)] accountProviders=[\(accountProviders, privacy: .public)]"
+        )
     }
 
     func sortedSnapshots(for provider: String) -> [ProviderQuotaSnapshot] {
@@ -167,12 +209,51 @@ final class QuotaStore {
     }
 
     func accountCount(for provider: String) -> Int {
-        let ids = Set((snapshotsByProvider[provider] ?? []).compactMap(\.accountID))
-        return max(ids.count, snapshotsByProvider[provider]?.isEmpty == false ? 1 : 0)
+        Self.accountCount(
+            for: provider,
+            snapshots: snapshotsByProvider[provider] ?? [],
+            accounts: accounts
+        )
+    }
+
+    nonisolated static func accountCount(
+        for provider: String,
+        snapshots: [ProviderQuotaSnapshot],
+        accounts: [ProviderAccountDoc]
+    ) -> Int {
+        let snapshotAccountIDs = Set(snapshots.compactMap(\.accountID))
+        let connectedAccountCount = accounts.filter {
+            $0.status != .deleted && $0.providerID.rawValue == provider
+        }.count
+        return max(connectedAccountCount, snapshotAccountIDs.count, snapshots.isEmpty ? 0 : 1)
+    }
+
+    nonisolated static func snapshotsByDisplayProvider(
+        snapshots: [ProviderQuotaSnapshot],
+        accounts: [ProviderAccountDoc]
+    ) -> [String: [ProviderQuotaSnapshot]] {
+        Dictionary(grouping: snapshots) { snapshot in
+            providerDisplayKey(for: snapshot, accounts: accounts)
+        }
+    }
+
+    nonisolated static func providerDisplayKey(
+        for snapshot: ProviderQuotaSnapshot,
+        accounts: [ProviderAccountDoc]
+    ) -> String {
+        guard let accountID = snapshot.accountID,
+              let account = accounts.first(where: { $0.id == accountID && $0.status != .deleted }) else {
+            return snapshot.providerID.rawValue
+        }
+        return account.providerID.rawValue
     }
 
     func snapshots(for provider: AgentProvider) -> [ProviderQuotaSnapshot] {
-        snapshots.filter { $0.providerID == provider.providerID || $0.provider == provider.rawValue }
+        snapshots.filter {
+            $0.providerID == provider.providerID
+                || Self.providerDisplayKey(for: $0, accounts: accounts) == provider.providerID.rawValue
+                || $0.provider == provider.rawValue
+        }
     }
 
     /// Fraction `0...1` representing the most-pressured bucket on a snapshot.

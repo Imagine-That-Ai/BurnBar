@@ -138,6 +138,9 @@ struct ProviderQuotaBucket: Codable, Hashable, Identifiable {
             let clamped = min(max(value, 0), 100)
             return "\(Int(clamped.rounded()))%"
         case .tokens:
+            if value >= 1_000_000_000 {
+                return String(format: "%.2fB", value / 1_000_000_000)
+            }
             if value >= 1_000_000 {
                 return String(format: "%.1fM", value / 1_000_000)
             }
@@ -466,9 +469,26 @@ enum MiniMaxQuotaMode: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+/// Factory's rolling rate-limit plans (per-org, not per-user).
+///
+/// Source: https://docs.factory.ai/pricing (May 2026 update — rolling
+/// rate limits across 5-hour / 7-day / 30-day windows).
+///
+/// All tiers share the same Standard Usage model — Standard tokens are
+/// consumed first, then Droid Core (separate free pool) or Extra Usage
+/// (prepaid credits) take over if enabled. The 5h / 7d / 30d caps are
+/// independent — hitting one window doesn't deplete the others, but every
+/// active window must have headroom to dispatch a request.
+///
+/// Factory publishes the Pro monthly equivalent as 20M tokens. Plus is
+/// "~5x Pro" and Max is "~10x Pro", so this enum reports 100M and 200M
+/// respectively. Per-window caps are not published — OpenBurnBar tracks
+/// 30-day burn against the monthly cap and uses the same value for 5h
+/// and 7d so the popover can show "% of plan" at all three time scales.
 enum FactoryQuotaPlanTier: String, CaseIterable, Codable, Identifiable {
     case unknown
     case pro
+    case plus
     case max
 
     var id: String { rawValue }
@@ -476,8 +496,20 @@ enum FactoryQuotaPlanTier: String, CaseIterable, Codable, Identifiable {
     var displayName: String {
         switch self {
         case .unknown: return "Unknown"
-        case .pro: return "Pro (20M/month)"
-        case .max: return "Max (200M/month)"
+        case .pro: return "Pro (20M/month, $20)"
+        case .plus: return "Plus (~100M/month, $100)"
+        case .max: return "Max (~200M/month, $200)"
+        }
+    }
+
+    /// Short label suitable for table rows / bucket titles where the
+    /// `(20M/month, $20)` suffix would be too noisy.
+    var shortName: String {
+        switch self {
+        case .unknown: return "Unknown"
+        case .pro: return "Pro"
+        case .plus: return "Plus"
+        case .max: return "Max"
         }
     }
 
@@ -485,6 +517,7 @@ enum FactoryQuotaPlanTier: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .unknown: return nil
         case .pro: return 20_000_000
+        case .plus: return 100_000_000
         case .max: return 200_000_000
         }
     }
