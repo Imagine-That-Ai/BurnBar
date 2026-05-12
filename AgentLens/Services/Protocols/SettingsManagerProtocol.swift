@@ -179,6 +179,12 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Whether OpenBurnBar should launch the Pi agent and gateway at startup.
     var launchPiAgentsWithOpenBurnBar: Bool { get set }
 
+    /// Whether this Mac may relay local Pi traffic for signed-in mobile devices.
+    var piRemoteRelayEnabled: Bool { get set }
+
+    /// Cloud Run WebSocket relay endpoint for low-latency Pi remote relay.
+    var piRealtimeRelayURL: String { get set }
+
     /// Resolves the `model` field for Hermes `POST /v1/chat/completions`.
     func resolvedHermesChatModel(gatewayAdvertisedModel: String?) -> String
 

@@ -121,10 +121,25 @@ struct ChatGatewaySettingsView: View {
                     SettingsDrillRow(
                         icon: "iphone.radiowaves.left.and.right",
                         iconTint: DesignSystem.Colors.coral,
-                        title: "Remote Relay",
+                        title: "Hermes Remote Relay",
                         subtitle: "Let iPhone and iPad chat with this Mac's Hermes over the network",
                         value: settingsManager.hermesRemoteRelayEnabled ? "On" : "Off",
                         valueTint: settingsManager.hermesRemoteRelayEnabled
+                            ? DesignSystem.Colors.success
+                            : DesignSystem.Colors.textMuted
+                    )
+                }
+
+                NavigationLink {
+                    RemoteRelayPiDetailView(settingsManager: settingsManager)
+                } label: {
+                    SettingsDrillRow(
+                        icon: "iphone.gen3.radiowaves.left.and.right",
+                        iconTint: DesignSystem.Colors.purple,
+                        title: "Pi Remote Relay",
+                        subtitle: "Let iPhone and iPad chat with this Mac's Pi over the network",
+                        value: settingsManager.piRemoteRelayEnabled ? "On" : "Off",
+                        valueTint: settingsManager.piRemoteRelayEnabled
                             ? DesignSystem.Colors.success
                             : DesignSystem.Colors.textMuted
                     )
@@ -174,7 +189,7 @@ struct ChatGatewaySettingsView: View {
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
         .background(DesignSystem.Colors.background)
-        .navigationTitle("Hermes & AI")
+        .navigationTitle("AI Environments")
     }
 
     private var openClawHostDisplay: String {
@@ -611,6 +626,50 @@ struct RemoteRelayDetailView: View {
                                 .fixedSize(horizontal: false, vertical: true)
 
                             TextField("Hosted relay URL", text: $settingsManager.hermesRealtimeRelayURL)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    }
+                    .font(DesignSystem.Typography.caption)
+                }
+                .padding(DesignSystem.Spacing.lg)
+            }
+        }
+    }
+}
+
+// MARK: - Remote Relay (Pi) Detail
+//
+// Sibling of `RemoteRelayDetailView` for the Pi runtime. Mirrors Hermes copy
+// and controls but writes to `piRemoteRelayEnabled` / `piRealtimeRelayURL`
+// so users can enable Pi Remote Relay independently. Plan 2 §8 — the relay
+// service multiplexes by `runtime` discriminator so a single Cloud Run host
+// handles both runtimes.
+
+struct RemoteRelayPiDetailView: View {
+    @Bindable var settingsManager: SettingsManager
+
+    var body: some View {
+        SettingsDetailContainer(
+            title: "Pi Remote Relay",
+            subtitle: "Premium accounts can use this Mac as a private Remote Relay host so iPhone and iPad can chat with local Pi over cell signal. Bearer tokens stay on this Mac; OpenBurnBar relays only encrypted request and response frames."
+        ) {
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                    SettingsToggle(
+                        title: "Allow iPhone/iPad Remote Relay for Pi",
+                        subtitle: "Enables relaying Pi chat through this Mac to mobile clients.",
+                        icon: "iphone.gen3.radiowaves.left.and.right",
+                        isOn: $settingsManager.piRemoteRelayEnabled
+                    )
+
+                    DisclosureGroup("Advanced relay endpoint") {
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                            Text("OpenBurnBar uses the hosted relay automatically for premium accounts. Change this only for development or self-hosted staging.")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            TextField("Hosted relay URL", text: $settingsManager.piRealtimeRelayURL)
                                 .textFieldStyle(.roundedBorder)
                         }
                     }

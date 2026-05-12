@@ -182,6 +182,7 @@ final class OpenBurnBarRuntimeContext {
     var cloudSyncService: CloudSyncService?
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     var hermesRelayHostService: HermesRelayHostService?
+    var piAgentRelayHostService: PiAgentCloudRelayHostService?
     var smartHubBridgeController: SmartHubBridgeController?
     var pixelClockController: PixelClockController?
     var smartDisplayRepairCoordinator: SmartDisplayRepairCoordinator?

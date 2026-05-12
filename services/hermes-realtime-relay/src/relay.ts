@@ -4,14 +4,17 @@ import {
   assertFrameForUid,
   assertRoleCanSend,
   assertRequestFrame,
+  DEFAULT_RELAY_RUNTIME,
   hostControlChannel,
   hostPresenceKey,
   MAX_RELAY_ERROR_LENGTH,
+  normalizeRuntime,
   parseFrame,
   reqChannel,
   respChannel,
   serializeFrame,
   type HermesRealtimeFrame,
+  type HermesRelayRuntime,
   type HermesRelaySocketRole,
 } from "./protocol.js";
 import type { RelayQuotaStore } from "./quota.js";
@@ -42,6 +45,7 @@ export class HermesRealtimeRelaySession {
   private readonly presenceTTLSeconds: number;
   private readonly quota: RelayQuotaStore;
   private registeredHostConnectionId: string | undefined;
+  private registeredRuntime: HermesRelayRuntime | undefined;
   private subscribedChannels = new Set<string>();
   private unsubscribeCallbacks: Array<() => Promise<void>> = [];
   private activeRequestIds = new Set<string>();
@@ -96,12 +100,16 @@ export class HermesRealtimeRelaySession {
         } else if (frame.requestId) {
           await this.releaseInFlight(frame.requestId);
         }
-        await this.subscribe(respChannel(frame.uid, frame.requestId!));
         {
-          const subscriberCount = await this.deps.bus.publish(reqChannel(frame.uid, frame.connectionId), serializeFrame(frame));
+          const runtime = this.frameRuntime(frame);
+          await this.subscribe(respChannel(frame.uid, frame.requestId!, runtime));
+          const subscriberCount = await this.deps.bus.publish(
+            reqChannel(frame.uid, frame.connectionId, runtime),
+            serializeFrame(frame)
+          );
           if (frame.type === "request.start" && typeof subscriberCount === "number" && subscriberCount === 0) {
             await this.releaseInFlight(frame.requestId!);
-            this.sendError(new Error("Realtime Hermes host is not connected."), frame);
+            this.sendError(new Error(`Realtime ${runtime} host is not connected.`), frame);
           }
         }
         return;
@@ -112,7 +120,10 @@ export class HermesRealtimeRelaySession {
         if (this.registeredHostConnectionId !== frame.connectionId) {
           throw new Error("Host response is not bound to this relay connection.");
         }
-        await this.deps.bus.publish(respChannel(frame.uid, frame.requestId), serializeFrame(frame));
+        await this.deps.bus.publish(
+          respChannel(frame.uid, frame.requestId, this.frameRuntime(frame)),
+          serializeFrame(frame)
+        );
         return;
       case "ping":
         this.socket.send(serializeFrame({ ...frame, type: "pong" }));
@@ -128,11 +139,12 @@ export class HermesRealtimeRelaySession {
       throw new Error("Host socket is already registered for another relay connection.");
     }
     this.registeredHostConnectionId = frame.connectionId;
-    await this.subscribe(reqChannel(frame.uid, frame.connectionId));
-    await this.subscribeControl(hostControlChannel(frame.uid, frame.connectionId));
+    this.registeredRuntime = this.frameRuntime(frame);
+    await this.subscribe(reqChannel(frame.uid, frame.connectionId, this.registeredRuntime));
+    await this.subscribeControl(hostControlChannel(frame.uid, frame.connectionId, this.registeredRuntime));
     await this.refreshPresence();
     await this.deps.bus.publish(
-      hostControlChannel(frame.uid, frame.connectionId),
+      hostControlChannel(frame.uid, frame.connectionId, this.registeredRuntime),
       JSON.stringify({ type: "host.replace", sessionID: this.deps.sessionID })
     );
     this.presenceTimer = setInterval(() => {
@@ -144,6 +156,7 @@ export class HermesRealtimeRelaySession {
       uid: frame.uid,
       connectionId: frame.connectionId,
       protocolVersion: frame.protocolVersion,
+      runtime: this.registeredRuntime,
       payload: { capabilities: frame.payload?.capabilities ?? [] },
     }));
   }
@@ -151,11 +164,15 @@ export class HermesRealtimeRelaySession {
   private async refreshPresence(): Promise<void> {
     if (!this.registeredHostConnectionId) return;
     await this.deps.bus.set(
-      hostPresenceKey(this.deps.uid, this.registeredHostConnectionId),
+      hostPresenceKey(this.deps.uid, this.registeredHostConnectionId, this.registeredRuntime ?? DEFAULT_RELAY_RUNTIME),
       JSON.stringify({ sessionID: this.deps.sessionID, observedAt: Date.now() }),
       "EX",
       this.presenceTTLSeconds
     );
+  }
+
+  private frameRuntime(frame: HermesRealtimeFrame): HermesRelayRuntime {
+    return normalizeRuntime(frame.runtime);
   }
 
   private async subscribe(channel: string): Promise<void> {
@@ -240,7 +257,11 @@ export class HermesRealtimeRelaySession {
     await Promise.allSettled([...this.activeRequestIds].map((requestID) => this.quota.releaseInFlight(this.deps.uid, requestID)));
     this.activeRequestIds.clear();
     if (this.registeredHostConnectionId) {
-      await this.deps.bus.del(hostPresenceKey(this.deps.uid, this.registeredHostConnectionId));
+      await this.deps.bus.del(hostPresenceKey(
+        this.deps.uid,
+        this.registeredHostConnectionId,
+        this.registeredRuntime ?? DEFAULT_RELAY_RUNTIME
+      ));
     }
     await this.quota.releaseSocket(this.deps.uid, this.deps.role, this.deps.sessionID);
   }

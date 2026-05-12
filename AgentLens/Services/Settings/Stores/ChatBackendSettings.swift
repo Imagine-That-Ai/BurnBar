@@ -85,6 +85,20 @@ final class ChatBackendSettings {
         didSet { persistence.set(launchPiAgentsWithOpenBurnBar, forKey: "launchPiAgentsWithOpenBurnBar") }
     }
 
+    // MARK: - Pi Remote Relay
+    //
+    // Pi gets its own relay toggle + URL so users can enable Pi-over-Relay
+    // independently of Hermes. The default URL is the same hosted Cloud Run
+    // relay used by Hermes — the relay service multiplexes by `runtime`
+    // discriminator (Plan 2 §8.2).
+    var piRemoteRelayEnabled: Bool = false {
+        didSet { persistence.set(piRemoteRelayEnabled, forKey: "piRemoteRelayEnabled") }
+    }
+
+    var piRealtimeRelayURL: String = HermesRealtimeRelayProtocol.defaultHostedRelayURLString {
+        didSet { persistence.set(piRealtimeRelayURL, forKey: "piRealtimeRelayURL") }
+    }
+
     var chatBackendOnboardingCompleted: Bool = false {
         didSet { persistence.set(chatBackendOnboardingCompleted, forKey: "chatBackendOnboardingCompleted") }
     }
@@ -158,6 +172,11 @@ final class ChatBackendSettings {
         self.piAgentSelectedInstanceID = persistence.string(forKey: "piAgentSelectedInstanceID")
         self.piAgentChatModelOverride = persistence.string(forKey: "piAgentChatModelOverride")
         self.launchPiAgentsWithOpenBurnBar = persistence.bool(forKey: "launchPiAgentsWithOpenBurnBar")
+        self.piRemoteRelayEnabled = persistence.bool(forKey: "piRemoteRelayEnabled")
+        self.piRealtimeRelayURL = persistence.string(
+            forKey: "piRealtimeRelayURL",
+            defaultValue: HermesRealtimeRelayProtocol.defaultHostedRelayURLString
+        )
         self.chatBackendOnboardingCompleted = persistence.bool(forKey: "chatBackendOnboardingCompleted")
         self.hermesSetupWizardCompleted = persistence.bool(forKey: "hermesSetupWizardCompleted")
         self.switcherOnboardingCompleted = persistence.bool(forKey: "switcherOnboardingCompleted")

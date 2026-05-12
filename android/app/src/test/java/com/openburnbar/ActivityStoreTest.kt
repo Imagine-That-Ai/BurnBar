@@ -9,9 +9,12 @@ import io.mockk.*
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
 
 class ActivityStoreTest {
+    @get:Rule
+    val mainDispatcherRule = MainDispatcherRule()
 
     @Test
     fun `loadInitial fetches first page`() = runTest {

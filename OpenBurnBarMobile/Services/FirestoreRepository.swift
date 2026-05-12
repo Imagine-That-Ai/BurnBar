@@ -737,6 +737,60 @@ final class FirestoreRepository {
         return sortProviderAccounts(results)
     }
 
+    // MARK: - Provider Account Device Links
+    //
+    // Streams `users/{uid}/provider_account_device_links` so the iOS Providers
+    // screen can render a "On N devices" chip per account in real time.
+
+    struct ProviderAccountDeviceLinkProjection: Identifiable, Hashable, Sendable {
+        let id: String
+        let accountID: String
+        let deviceID: String
+        let deviceDisplayName: String
+        let capability: DeviceLinkCapability
+        let status: DeviceLinkStatus
+        let lastObservedAt: Date?
+    }
+
+    func listenProviderAccountDeviceLinks(
+        onChange: @escaping ([ProviderAccountDeviceLinkProjection]) -> Void
+    ) -> ListenerRegistration? {
+        guard FirebaseApp.app() != nil,
+              let uid = Auth.auth().currentUser?.uid else {
+            return nil
+        }
+        return db.collection("users/\(uid)/provider_account_device_links")
+            .addSnapshotListener { snapshot, _ in
+                let docs = snapshot?.documents ?? []
+                let projections: [ProviderAccountDeviceLinkProjection] = docs.compactMap { doc in
+                    let data = doc.data()
+                    guard let accountID = data["accountID"] as? String,
+                          let deviceID = data["deviceID"] as? String else { return nil }
+                    let capability = DeviceLinkCapability(rawValue: (data["capability"] as? String) ?? "use") ?? .use
+                    let statusRaw = (data["status"] as? String) ?? "active"
+                    let status = DeviceLinkStatus(rawValue: statusRaw) ?? .active
+                    let deviceDisplayName = (data["deviceDisplayName"] as? String) ?? deviceID
+                    let lastObservedAt: Date? = {
+                        if let ts = data["lastObservedAt"] as? Timestamp { return ts.dateValue() }
+                        if let iso = data["lastObservedAt"] as? String {
+                            return ISO8601DateFormatter().date(from: iso)
+                        }
+                        return nil
+                    }()
+                    return ProviderAccountDeviceLinkProjection(
+                        id: doc.documentID,
+                        accountID: accountID,
+                        deviceID: deviceID,
+                        deviceDisplayName: deviceDisplayName,
+                        capability: capability,
+                        status: status,
+                        lastObservedAt: lastObservedAt
+                    )
+                }
+                onChange(projections)
+            }
+    }
+
     nonisolated func sortProviderAccounts(_ accounts: [ProviderAccountDoc]) -> [ProviderAccountDoc] {
         accounts.sorted {
             if $0.providerID.rawValue != $1.providerID.rawValue {

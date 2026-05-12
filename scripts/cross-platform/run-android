@@ -10,7 +10,41 @@ ANDROID_DIR="android"
 APK_PATH="$ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk"
 
 echo "▶ Building Android APK…"
-export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@21}"
+
+# Resolve JAVA_HOME: honor existing env if valid, else try common Homebrew
+# locations (system prefix `/opt/homebrew` and user-prefix `~/.homebrew`),
+# then fall back to whatever `java` resolves to on PATH.
+resolve_java_home() {
+    if [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/java" ]; then
+        echo "${JAVA_HOME}"
+        return
+    fi
+    for candidate in \
+        "/opt/homebrew/opt/openjdk@21" \
+        "${HOME}/.homebrew/opt/openjdk@21" \
+        "/usr/local/opt/openjdk@21"; do
+        if [ -x "${candidate}/bin/java" ]; then
+            echo "${candidate}"
+            return
+        fi
+    done
+    if command -v java >/dev/null 2>&1; then
+        # Strip /bin/java to derive JAVA_HOME from the resolved binary.
+        local java_bin
+        java_bin="$(command -v java)"
+        java_bin="$(readlink -f "${java_bin}" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "${java_bin}")"
+        echo "$(dirname "$(dirname "${java_bin}")")"
+        return
+    fi
+    echo ""
+}
+
+JAVA_HOME="$(resolve_java_home)"
+if [ -z "${JAVA_HOME}" ] || [ ! -x "${JAVA_HOME}/bin/java" ]; then
+    echo "❌ Could not locate a Java 21 runtime. Install with: brew install openjdk@21"
+    exit 1
+fi
+export JAVA_HOME
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android}"
 export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
 

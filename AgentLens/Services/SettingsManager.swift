@@ -425,6 +425,16 @@ final class SettingsManager {
         set { chatBackend.launchPiAgentsWithOpenBurnBar = newValue }
     }
 
+    var piRemoteRelayEnabled: Bool {
+        get { chatBackend.piRemoteRelayEnabled }
+        set { chatBackend.piRemoteRelayEnabled = newValue }
+    }
+
+    var piRealtimeRelayURL: String {
+        get { chatBackend.piRealtimeRelayURL }
+        set { chatBackend.piRealtimeRelayURL = newValue }
+    }
+
     var chatBackendOnboardingCompleted: Bool {
         get { chatBackend.chatBackendOnboardingCompleted }
         set { chatBackend.chatBackendOnboardingCompleted = newValue }

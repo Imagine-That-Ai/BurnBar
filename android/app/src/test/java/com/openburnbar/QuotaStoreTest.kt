@@ -7,9 +7,12 @@ import io.mockk.*
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
 
 class QuotaStoreTest {
+    @get:Rule
+    val mainDispatcherRule = MainDispatcherRule()
 
     @Test
     fun `load fetches snapshots and accounts`() = runTest {

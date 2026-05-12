@@ -85,6 +85,14 @@ enum DesignSystem {
             endPoint: .bottomTrailing
         )
 
+        /// Pi runtime accent gradient. Mirrors `UnifiedDesignSystem.piGradient`
+        /// and `MobileTheme.piGradient` so visuals stay 1:1 across platforms.
+        static let piGradient = LinearGradient(
+            colors: [whimsy, whimsy.opacity(0.65)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
         static func primary(for provider: AgentProvider) -> Color {
             switch provider {
             case .factory:    return Color(hex: "8B5CF6")

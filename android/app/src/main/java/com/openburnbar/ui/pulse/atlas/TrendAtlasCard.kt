@@ -102,6 +102,8 @@ fun TrendAtlasCard(
                 StudioPill(onClick = {
                     HapticBus.light(context)
                     paused = true
+                    // Present Chart Studio fullscreen with the live digest.
+                    com.openburnbar.ui.chartstudio.ChartStudioPresenter.present(digest)
                     onOpenStudio?.invoke()
                 })
             }
@@ -195,6 +197,8 @@ fun TrendAtlasCard(
                 StudioPill(onClick = {
                     HapticBus.light(context)
                     paused = true
+                    // Present Chart Studio fullscreen with the live digest.
+                    com.openburnbar.ui.chartstudio.ChartStudioPresenter.present(digest)
                     onOpenStudio?.invoke()
                 })
             }

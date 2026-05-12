@@ -195,6 +195,28 @@ class FirestoreRepository {
         return snapshot.documents.mapNotNull { it.toProviderAccount() }
     }
 
+    // ── Provider Account Device Links ──
+    //
+    // Plan 2 — streams `users/{uid}/provider_account_device_links` so the
+    // Android Providers screen can render a "On N devices" chip per account
+    // in real time. Reads are owner-scoped; writes funnel through the
+    // adoptProviderAccountForDevice / revokeProviderAccountDeviceLink
+    // callables.
+
+    private val providerAccountDeviceLinksCollection: CollectionReference
+        get() = db.collection("users").document(currentUserId()).collection("provider_account_device_links")
+
+    fun listenProviderAccountDeviceLinks(): Flow<List<ProviderAccountDeviceLink>> = callbackFlow {
+        val listener = providerAccountDeviceLinksCollection
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) { close(error); return@addSnapshotListener }
+                val docs = snapshot?.documents ?: emptyList()
+                val projections = docs.mapNotNull { it.toProviderAccountDeviceLink() }
+                trySend(projections)
+            }
+        awaitClose { listener.remove() }
+    }
+
     // ── Projects ──
     suspend fun fetchProjects(): List<ProjectSummary> {
         val snapshot = projectsCollection
@@ -371,6 +393,24 @@ private fun DocumentSnapshot.toProviderAccount(): ProviderAccount? {
         integration = data["integration"] as? String,
         latitude = (data["latitude"] as? Number)?.toDouble(),
         organizationId = data["organization_id"] as? String
+    )
+}
+
+private fun DocumentSnapshot.toProviderAccountDeviceLink(): ProviderAccountDeviceLink? {
+    val data = data ?: return null
+    val accountID = data["accountID"] as? String ?: return null
+    val deviceID = data["deviceID"] as? String ?: return null
+    return ProviderAccountDeviceLink(
+        id = id,
+        accountId = accountID,
+        deviceId = deviceID,
+        deviceDisplayName = data["deviceDisplayName"] as? String ?: deviceID,
+        capability = data["capability"] as? String ?: DeviceLinkCapability.USE.token,
+        status = data["status"] as? String ?: DeviceLinkStatus.ACTIVE.token,
+        lastObservedAtMillis = FirestoreValueParsers.millis(data["lastObservedAt"]),
+        createdAtMillis = FirestoreValueParsers.millis(data["createdAt"]),
+        updatedAtMillis = FirestoreValueParsers.millis(data["updatedAt"]),
+        schemaVersion = (data["schemaVersion"] as? Number)?.toInt() ?: 1
     )
 }
 

@@ -107,7 +107,16 @@ for (const collection of ["hermes_relay_requests"]) {
   assert.notEqual(start, -1, "smart_display_actions rules block must exist");
   const block = rules.slice(start, rules.indexOf("\n    }\n", start) + 7);
   assert.match(block, /allow create, update: if ownerWritableNonSecret\(userId\)/);
-  assert.match(block, /request\.resource\.data\.type in \["pixel_clock_probe", "pixel_clock_test", "pixel_clock_push", "pixel_clock_remove", "pixel_clock_update_config"\]/);
+  assert.match(block, /request\.resource\.data\.type in \[/);
+  for (const actionType of [
+    "pixel_clock_probe",
+    "pixel_clock_test",
+    "pixel_clock_push",
+    "pixel_clock_remove",
+    "pixel_clock_update_config",
+  ]) {
+    assert.match(block, new RegExp(`"${actionType}"`));
+  }
   assert.match(block, /request\.resource\.data\.status in \["pending", "completed", "failed"\]/);
   assert.match(block, /validPixelClockConfig\(request\.resource\.data\.pixelClock\)/);
 }

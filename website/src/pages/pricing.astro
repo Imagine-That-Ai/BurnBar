@@ -1,0 +1,268 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { SITE } from "@data/site";
+---
+
+<BaseLayout
+  title="Pricing"
+  description="OpenBurnBar pricing — free local-first tier plus an optional Hosted Quota Sync subscription. $4.99/month, billed by Apple, cancel anytime."
+>
+  <section class="pagehead">
+    <div class="container">
+      <span class="eyebrow eyebrow--ember">Pricing</span>
+      <h1 class="pagehead__h">Free where it should be. Paid where it costs us money.</h1>
+      <p class="lead">
+        The local product is free. There's one optional subscription —
+        <strong>OpenBurnBar Cloud</strong> — for the features that run
+        infrastructure on our side.
+      </p>
+    </div>
+  </section>
+
+  <section class="plans">
+    <div class="container container--wide">
+      <div class="plans__grid">
+        <!-- FREE -->
+        <article class="plan">
+          <header class="plan__head">
+            <span class="tag tag--exact tag--plain mono">Free, local-first</span>
+            <h2 class="plan__name">Local</h2>
+            <div class="plan__price">
+              <span class="plan__amount mono">$0</span>
+              <span class="plan__period">forever · no account</span>
+            </div>
+            <p class="plan__sub">
+              The full developer-side product. Works offline.
+            </p>
+          </header>
+          <ul class="plan__list">
+            <li>Local SQLite tracking, no telemetry</li>
+            <li>Cost &amp; token rollups — today / week / month / all-time</li>
+            <li>Provider, model, session, project, stream views</li>
+            <li>Smart insights &amp; configurable daily digest</li>
+            <li>Quota windows for 11 providers</li>
+            <li>Self-hosted quota runner for Claude Code &amp; Codex</li>
+            <li>Daemon, CLI, Cursor / VS Code panel</li>
+            <li>iOS &amp; iPadOS companion (with Firebase sign-in)</li>
+            <li>Optional Firebase sync — metadata only by default</li>
+            <li>Optional iCloud session-log mirror (uses your Apple ID)</li>
+            <li>Hermes assistant (local backends)</li>
+            <li>Smart-display surfaces (Nest Hub, Pixel Clock)</li>
+          </ul>
+          <a class="btn btn--ghost" href="/download">Get OpenBurnBar</a>
+        </article>
+
+        <!-- PAID -->
+        <article class="plan plan--ember">
+          <header class="plan__head">
+            <span class="tag tag--ember tag--plain mono">OpenBurnBar Cloud</span>
+            <h2 class="plan__name">Cloud</h2>
+            <div class="plan__price">
+              <span class="plan__amount mono">${SITE.iapPriceUSD}</span>
+              <span class="plan__period">/{SITE.iapPeriod} · billed by Apple</span>
+            </div>
+            <p class="plan__sub">
+              The hosted side — sync, backup, and remote relay.
+            </p>
+          </header>
+          <ul class="plan__list">
+            <li><strong>Hosted Codex quota refresh</strong> — refresh quota from any signed-in device. OpenBurnBar runs the runner. Rate-limited to 30/day, 300/month per account.</li>
+            <li><strong>Conversation backup &amp; resume</strong> — chat titles, previews, and message bodies, encrypted in transit, restored across iPhone, iPad, and Mac.</li>
+            <li><strong>Full session-log sync</strong> — complete agent runs mirrored to cloud, searchable across devices.</li>
+            <li><strong>Hermes Remote Relay</strong> — reach the Mac's local Hermes from anywhere over a verified WebSocket. App Check, JWS end-to-end.</li>
+            <li><strong>Apple-verified entitlement</strong> — server checks every JWS against pinned Apple root CAs.</li>
+            <li><strong>Bound to your account</strong> via a signed appAccountToken UUID.</li>
+          </ul>
+          <a class="btn btn--ember" href="/download#ios">
+            Subscribe through iOS app <span class="btn-arrow" aria-hidden="true">→</span>
+          </a>
+          <p class="plan__small mono">
+            product · <code>{SITE.iapProductId}</code>
+          </p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="paidcaveats">
+    <div class="container container--narrow">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Read this before subscribing</span>
+        <h2>The boring, important details.</h2>
+      </header>
+
+      <dl class="defs">
+        <div>
+          <dt>How am I billed?</dt>
+          <dd>
+            Apple bills you monthly as an auto-renewing in-app subscription
+            through the App Store. We never see your card. Manage or cancel
+            anytime from Settings → Apple ID on iPhone or iPad.
+          </dd>
+        </div>
+        <div>
+          <dt>Is there a free trial?</dt>
+          <dd>
+            No. There is no introductory offer configured. If a future trial
+            is added, it will say so on this page in plain English.
+          </dd>
+        </div>
+        <div>
+          <dt>What about refunds?</dt>
+          <dd>
+            Refunds are handled by Apple under the standard App Store policy.
+            Request one at <a href="https://reportaproblem.apple.com" target="_blank" rel="noopener noreferrer">reportaproblem.apple.com</a>.
+          </dd>
+        </div>
+        <div>
+          <dt>Why not a yearly plan?</dt>
+          <dd>
+            A yearly tier is on the roadmap. We won't ship a discount we don't
+            yet honor, so for now there's only the monthly plan.
+          </dd>
+        </div>
+        <div>
+          <dt>Who needs the subscription?</dt>
+          <dd>
+            If you're happy reading your burn on the Mac you sit at every day,
+            you don't. The subscription pays for features that have to run on
+            OpenBurnBar's infrastructure — hosted quota refresh, cross-device
+            backup, the relay. Local-first stays free.
+          </dd>
+        </div>
+        <div>
+          <dt>What about teams?</dt>
+          <dd>
+            There is no team plan today. Each developer subscribes individually
+            through their own App Store account. A team SKU is on the roadmap.
+          </dd>
+        </div>
+        <div>
+          <dt>Sign-in requirement?</dt>
+          <dd>
+            A Firebase account (Apple or Google sign-in) is required so the
+            entitlement document can be bound to your UID, plus an Apple ID
+            signed into the App Store on the device used to purchase.
+          </dd>
+        </div>
+        <div>
+          <dt>What can be cancelled later?</dt>
+          <dd>
+            All of it. Subscription, individual sync toggles, hosted credentials,
+            iCloud mirroring, and Sentry diagnostics — each one is a separate
+            switch with a clear cancellation path.
+          </dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="endcta endcta--inline">
+    <div class="container container--narrow">
+      <h2>Start with the free product. Upgrade only if it earns it.</h2>
+      <div class="endcta__ctas">
+        <a class="btn btn--ember" href="/download">Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a>
+        <a class="btn btn--ghost" href="/privacy">Read the privacy model</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .pagehead { padding-block: var(--s-9) var(--s-6); }
+  .pagehead__h { margin-top: var(--s-3); max-width: 22ch; }
+  .pagehead .lead { margin-top: var(--s-4); max-width: 60ch; }
+
+  .plans { padding-block: var(--s-6) var(--s-9); }
+  .plans__grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-5); }
+  .plan {
+    padding: var(--s-6);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    display: grid;
+    gap: var(--s-5);
+    align-content: start;
+  }
+  .plan--ember {
+    border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    background: linear-gradient(180deg, rgba(255, 106, 26, 0.06) 0%, var(--ink-base) 100%);
+    box-shadow: 0 0 60px -20px rgba(255, 106, 26, 0.4);
+  }
+  .plan__head { display: grid; gap: var(--s-3); }
+  .plan__name {
+    font-family: var(--font-display);
+    color: var(--text-bright);
+    font-size: clamp(1.6rem, 1.2rem + 1vw, 2rem);
+    font-variation-settings: "opsz" 80, "wght" 500;
+    letter-spacing: -0.02em;
+  }
+  .plan__price { display: flex; align-items: baseline; gap: var(--s-3); flex-wrap: wrap; }
+  .plan__amount {
+    font-family: var(--font-display);
+    font-size: clamp(2.8rem, 2.2rem + 2vw, 4.2rem);
+    color: var(--text-bright);
+    line-height: 1;
+    font-variation-settings: "opsz" 144, "wght" 460;
+    letter-spacing: -0.04em;
+  }
+  .plan__period { color: var(--text-mute); font-size: 0.9rem; }
+  .plan__sub { color: var(--text-mute); }
+  .plan__list { display: grid; gap: var(--s-3); font-size: 0.95rem; }
+  .plan__list li {
+    color: var(--text-base);
+    padding-left: 1.1em;
+    position: relative;
+    line-height: 1.5;
+  }
+  .plan__list li::before {
+    content: "+";
+    position: absolute;
+    left: 0;
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+  }
+  .plan__list strong { color: var(--text-bright); }
+  .plan__small {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+  }
+  @media (max-width: 880px) {
+    .plans__grid { grid-template-columns: 1fr; }
+  }
+
+  .paidcaveats {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+  .sec-head { display: grid; gap: var(--s-3); margin-bottom: var(--s-6); }
+  .defs { display: grid; gap: var(--s-5); }
+  .defs > div {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: var(--s-5);
+    padding-bottom: var(--s-4);
+    border-bottom: 1px solid var(--ink-line-soft);
+  }
+  .defs dt {
+    font-family: var(--font-display);
+    color: var(--text-bright);
+    font-size: 1.1rem;
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.012em;
+  }
+  .defs dd { color: var(--text-base); }
+  @media (max-width: 720px) {
+    .defs > div { grid-template-columns: 1fr; gap: var(--s-2); }
+  }
+
+  .endcta--inline {
+    padding-block: var(--s-9);
+    text-align: center;
+    background:
+      radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.05), transparent 70%);
+  }
+  .endcta--inline h2 { margin-bottom: var(--s-3); }
+  .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+</style>

@@ -1,0 +1,119 @@
+---
+import type { ProviderRow } from "@data/providers";
+
+interface Props {
+  rows: ProviderRow[];
+  caption?: string;
+  variant?: "full" | "compact";
+}
+const { rows, caption, variant = "full" } = Astro.props;
+---
+
+<div class={`provider-table ${variant === "compact" ? "provider-table--compact" : ""}`}>
+  {caption && <p class="provider-table__caption mono">{caption}</p>}
+  <div class="provider-table__scroll">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Provider</th>
+          <th scope="col">Where the data comes from</th>
+          <th scope="col">Cost</th>
+          <th scope="col">Quota</th>
+          {variant === "full" && <th scope="col">Credential</th>}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr>
+            <td>
+              <div class="pcell">
+                <strong>{row.name}</strong>
+                <span class="pcell__blurb">{row.blurb}</span>
+              </div>
+            </td>
+            <td><span class="mono small">{row.source}</span></td>
+            <td>
+              <span class={`tag tag--plain mono tag--${row.cost}`}>{row.cost}</span>
+            </td>
+            <td>
+              <span class={`tag tag--plain mono tag--${row.quota === "yes" ? "exact" : row.quota === "partial" ? "estimated" : "unavailable"}`}>
+                {row.quota === "yes" ? "yes" : row.quota === "partial" ? "partial" : "no"}
+              </span>
+            </td>
+            {variant === "full" && <td><span class="mono small">{row.cred}</span></td>}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .provider-table {
+    display: grid;
+    gap: var(--s-3);
+  }
+  .provider-table__caption {
+    color: var(--text-mute);
+    font-size: var(--t-caption);
+    letter-spacing: 0.04em;
+  }
+  .provider-table__scroll {
+    overflow-x: auto;
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    background: var(--ink-base);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+    min-width: 720px;
+  }
+  thead {
+    background: var(--ink-surface);
+  }
+  th {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--text-mute);
+    font-variation-settings: "wght" 500;
+    border-bottom: 1px solid var(--ink-line);
+  }
+  td {
+    padding: 0.85rem 1rem;
+    vertical-align: top;
+    border-bottom: 1px solid var(--ink-line-soft);
+    color: var(--text-base);
+  }
+  tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  tbody tr:hover td {
+    background: color-mix(in oklab, var(--ember-core) 5%, transparent);
+  }
+  .pcell {
+    display: grid;
+    gap: 4px;
+  }
+  .pcell strong {
+    color: var(--text-bright);
+    font-variation-settings: "wght" 540;
+  }
+  .pcell__blurb {
+    font-size: 0.82rem;
+    color: var(--text-mute);
+  }
+  .small {
+    font-size: 0.78rem;
+    color: var(--text-mute);
+  }
+  .provider-table--compact th,
+  .provider-table--compact td {
+    padding: 0.6rem 0.85rem;
+  }
+</style>

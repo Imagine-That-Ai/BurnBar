@@ -30,7 +30,10 @@ enum class AuroraNavDestination(val label: String) {
     PULSE("Pulse"),
     BURN("Burn"),
     STREAMS("Streams"),
-    HERMES("Hermes"),
+    // Plan 2: enum case stays HERMES so routing/asset bindings are stable,
+    // but the surfaced label flips to "Assistants" to reflect the dual-runtime
+    // landing screen (Hermes + Pi).
+    HERMES("Assistants"),
     YOU("You");
 
     val accent: Color

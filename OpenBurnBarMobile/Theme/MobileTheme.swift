@@ -27,6 +27,10 @@ enum MobileTheme {
     static let hermesAureate = UnifiedDesignSystem.Colors.hermesAureate
     static let mercuryGradient = UnifiedDesignSystem.mercuryGradient
 
+    /// Pi runtime accent gradient. Delegates to `UnifiedDesignSystem.piGradient`
+    /// so iOS and macOS share the same composed gradient — no new color values.
+    static let piGradient = UnifiedDesignSystem.piGradient
+
     static let chatUserStroke      = UnifiedDesignSystem.Colors.chatUserStroke
     static let chatAssistantStroke = UnifiedDesignSystem.Colors.chatAssistantStroke
 

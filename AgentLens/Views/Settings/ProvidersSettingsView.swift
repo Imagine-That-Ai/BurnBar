@@ -6,12 +6,29 @@ struct ProvidersSettingsView: View {
     @Bindable var settingsManager: SettingsManager
     @Bindable var daemonManager: OpenBurnBarDaemonManager
     let dataStore: DataStore
+    let accountManager: AccountManager
 
     @State private var quotaService = ProviderQuotaService.shared
+    @StateObject private var deviceLinksObserver: ProviderAccountDeviceLinksObserver
 
     @State private var wizardProviderID: ProviderWizardTarget?
     @State private var providerAccounts: [ProviderAccountDoc] = []
     @State private var providerAccountLoadError: String?
+
+    init(
+        settingsManager: SettingsManager,
+        daemonManager: OpenBurnBarDaemonManager,
+        dataStore: DataStore,
+        accountManager: AccountManager = .shared
+    ) {
+        self._settingsManager = Bindable(settingsManager)
+        self._daemonManager = Bindable(daemonManager)
+        self.dataStore = dataStore
+        self.accountManager = accountManager
+        self._deviceLinksObserver = StateObject(
+            wrappedValue: ProviderAccountDeviceLinksObserver(accountManager: accountManager)
+        )
+    }
 
     private var providers: [AgentProvider] {
         AgentProvider.allCases.sorted { $0.displayName < $1.displayName }
@@ -115,6 +132,8 @@ struct ProvidersSettingsView: View {
             loadProviderAccounts()
             await quotaService.refreshIfNeeded(dataStore: dataStore)
         }
+        .onAppear { deviceLinksObserver.start() }
+        .onDisappear { deviceLinksObserver.stop() }
     }
 
     @ViewBuilder
@@ -268,7 +287,8 @@ struct ProvidersSettingsView: View {
                     ForEach(activeAccounts) { account in
                         ProviderAccountRow(
                             account: account,
-                            routingHint: routingHint(for: account, in: routingState)
+                            routingHint: routingHint(for: account, in: routingState),
+                            deviceLinks: deviceLinksObserver.links(for: account.id)
                         )
                     }
                 }
@@ -278,7 +298,10 @@ struct ProvidersSettingsView: View {
                 DisclosureGroup {
                     VStack(spacing: 6) {
                         ForEach(removedAccounts) { account in
-                            ProviderAccountRow(account: account)
+                            ProviderAccountRow(
+                                account: account,
+                                deviceLinks: deviceLinksObserver.links(for: account.id)
+                            )
                                 .opacity(0.6)
                         }
                     }
@@ -526,6 +549,7 @@ struct ProviderAccountRoutingHint {
 private struct ProviderAccountRow: View {
     let account: ProviderAccountDoc
     var routingHint: ProviderAccountRoutingHint?
+    var deviceLinks: [ProviderAccountDeviceLinksObserver.Link] = []
 
     private var statusTint: Color {
         ProviderAccountStatusVisual.tint(account.status)
@@ -599,6 +623,10 @@ private struct ProviderAccountRow: View {
                         routingHintChip(routingHint)
                     }
 
+                    if let chipText = deviceLinksChipText {
+                        deviceLinksChip(chipText)
+                    }
+
                     Spacer(minLength: DesignSystem.Spacing.sm)
 
                     ProviderAccountStatusChip(status: account.status, compact: true)
@@ -656,6 +684,37 @@ private struct ProviderAccountRow: View {
             parts.append(hint)
         }
         return parts.joined(separator: ", ")
+    }
+
+    private var deviceLinksChipText: String? {
+        let active = deviceLinks.filter { $0.status != "revoked" }
+        guard !active.isEmpty else { return nil }
+        if active.count == 1, let only = active.first {
+            switch only.capability {
+            case .owner: return "This Mac"
+            case .add: return "Adds here"
+            case .use: return only.label.map { "On \($0)" } ?? "On 1 device"
+            }
+        }
+        return "On \(active.count) devices"
+    }
+
+    @ViewBuilder
+    private func deviceLinksChip(_ text: String) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: "macbook.and.iphone")
+                .font(.system(size: 9, weight: .semibold))
+            Text(text)
+                .font(DesignSystem.Typography.tiny)
+                .fontWeight(.semibold)
+        }
+        .foregroundStyle(DesignSystem.Colors.whimsy)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(DesignSystem.Colors.whimsy.opacity(0.12))
+        .clipShape(Capsule())
+        .help("Devices that have adopted this account")
+        .accessibilityLabel("\(text)")
     }
 
     @ViewBuilder

@@ -276,6 +276,12 @@ object AuroraGradients {
 
     val whimsyGradient = listOf(AuroraColors.whimsy, AuroraColors.whimsy.copy(alpha = 0.6f))
 
+    // Plan 2 Pi runtime accent gradient. Composed entirely from the existing
+    // `whimsy` brand color so no new tokens leak into the palette. Mirrors
+    // `UnifiedDesignSystem.piGradient` (iOS) and `DesignSystem.Colors.piGradient`
+    // (macOS) so the Pi runtime pill and bubble strokes match 1:1.
+    val piGradient = listOf(AuroraColors.whimsy, AuroraColors.whimsy.copy(alpha = 0.65f))
+
     // Edge gradient used for the 0.75dp glass-card stroke. Matches the iOS
     // UnifiedGlassCard border treatment.
     val glassStroke = listOf(

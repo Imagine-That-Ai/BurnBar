@@ -937,6 +937,18 @@ struct OpenBurnBarApp: App {
                         context.hermesRelayHostService = hermesRelayHost
                         hermesRelayHost.start()
 
+                        let piRelayHost: PiAgentCloudRelayHostService
+                        if let existingPiRelayHost = context.piAgentRelayHostService {
+                            piRelayHost = existingPiRelayHost
+                        } else {
+                            piRelayHost = PiAgentCloudRelayHostService(
+                                accountManager: context.accountManager,
+                                settingsManager: context.settingsManager
+                            )
+                        }
+                        context.piAgentRelayHostService = piRelayHost
+                        piRelayHost.start()
+
                         context.startSmartDisplayServices()
 
                         let mirror: ICloudSessionMirrorService

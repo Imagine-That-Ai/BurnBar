@@ -26,7 +26,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .notifications: return "Notifications"
         case .devicesAndSync: return MacCopy.devicesAndSyncTitle
         case .switcher: return "Account Switcher"
-        case .hermes: return "Hermes & AI"
+        case .hermes: return "AI Environments"
         }
     }
 
@@ -51,7 +51,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .switcher:
             return "Browser and CLI profile launcher"
         case .hermes:
-            return "Chat engines, gateways, remote relay"
+            return "Hermes, Pi, gateways, remote relay"
         }
     }
 

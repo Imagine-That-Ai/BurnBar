@@ -131,9 +131,23 @@ struct SettingsHubView: View {
                             authStore: authStore
                         )
                     } label: {
-                        SettingsLabel(icon: "antenna.radiowaves.left.and.right", color: MobileTheme.hermesAureate, title: "Hermes")
+                        SettingsLabel(
+                            icon: "antenna.radiowaves.left.and.right",
+                            color: MobileTheme.hermesAureate,
+                            title: "Hermes"
+                        )
                     }
-                } header: { groupHeader("Hermes") }
+
+                    NavigationLink {
+                        PiSettingsView(service: PiService(), authStore: authStore)
+                    } label: {
+                        SettingsLabel(
+                            icon: "circle.hexagongrid.fill",
+                            color: MobileTheme.whimsy,
+                            title: "Pi"
+                        )
+                    }
+                } header: { groupHeader("AI Environments") }
 
                 Section {
                     LabeledContent("Version", value: marketingVersion)

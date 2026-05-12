@@ -1,0 +1,48 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="Not found" description="That page doesn't exist." noindex>
+  <section class="four">
+    <div class="container container--narrow four__inner">
+      <div class="four__num mono">404</div>
+      <h1 class="four__h">This page went up in smoke.</h1>
+      <p class="lead">
+        That URL doesn't resolve. The pages that do are linked in the header
+        and the footer.
+      </p>
+      <div class="four__ctas">
+        <a class="btn btn--ember" href="/">Back to home <span class="btn-arrow" aria-hidden="true">→</span></a>
+        <a class="btn btn--ghost" href="/product">Product</a>
+        <a class="btn btn--ghost" href="/download">Download</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .four {
+    padding-block: var(--s-10);
+    background:
+      radial-gradient(60% 60% at 50% 40%, rgba(255, 106, 26, 0.08), transparent 70%);
+  }
+  .four__inner {
+    text-align: center;
+    display: grid;
+    gap: var(--s-5);
+    justify-items: center;
+  }
+  .four__num {
+    color: var(--ember-bright);
+    font-size: 0.95rem;
+    letter-spacing: 0.16em;
+  }
+  .four__h {
+    font-size: var(--t-display);
+    color: var(--text-bright);
+    line-height: 0.97;
+    font-variation-settings: "opsz" 144, "wght" 460;
+    letter-spacing: -0.04em;
+  }
+  .four__ctas { display: flex; gap: var(--s-3); flex-wrap: wrap; justify-content: center; }
+</style>

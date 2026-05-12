@@ -407,6 +407,154 @@ test("owners can run Cast wizard actions and read discovery results", async () =
   );
 });
 
+test("Pi Agent relay requires hosted entitlement and encrypted v2 payloads", async () => {
+  const db = authedDb("gina");
+  const connectionPath = "users/gina/pi_agent_connections/relay-mac";
+  const requestPath = "users/gina/pi_agent_relay_requests/req-1";
+
+  const connectionDoc = {
+    id: "relay-mac",
+    displayName: "Mac Pi Relay",
+    mode: "relayLink",
+    status: "online",
+    advertisedModel: "pi-default",
+    selectedInstanceID: "default",
+    capabilities: ["chat_completions", "remote_relay"],
+    relayPublicKey: "pub",
+    relayKeyVersion: 1,
+    relayEncryption: "p256-hkdf-sha256-aesgcm",
+    createdAt: "2026-05-12T00:00:00.000Z",
+    updatedAt: "2026-05-12T00:00:00.000Z",
+    schemaVersion: 2,
+  };
+
+  await assertFails(setDoc(doc(db, connectionPath), connectionDoc));
+  await seedHostedCloudEntitlement("gina");
+  await assertSucceeds(setDoc(doc(db, connectionPath), connectionDoc));
+
+  await assertFails(
+    setDoc(doc(db, requestPath), {
+      id: "req-1",
+      connectionId: "relay-mac",
+      operation: "chatCompletions",
+      status: "pending",
+      method: "POST",
+      body: "{\"messages\":[]}",
+      chunkCount: 0,
+      createdAt: "2026-05-12T00:00:01.000Z",
+      updatedAt: "2026-05-12T00:00:01.000Z",
+      expiresAt: "2026-05-12T00:01:01.000Z",
+      expireAt: Timestamp.fromDate(new Date("2026-05-12T00:01:01.000Z")),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, requestPath), {
+      id: "req-1",
+      connectionId: "relay-mac",
+      operation: "chatCompletions",
+      status: "pending",
+      method: "POST",
+      payloadCiphertext: "ciphertext",
+      wrappedKey: "wrapped",
+      relayEncryption: "p256-hkdf-sha256-aesgcm",
+      relayKeyVersion: 1,
+      chunkCount: 0,
+      createdAt: "2026-05-12T00:00:01.000Z",
+      updatedAt: "2026-05-12T00:00:01.000Z",
+      expiresAt: "2026-05-12T00:01:01.000Z",
+      expireAt: Timestamp.fromDate(new Date("2026-05-12T00:01:01.000Z")),
+      schemaVersion: 2,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, `${requestPath}/chunks/00000000`), {
+      id: "00000000",
+      requestId: "req-1",
+      sequence: 0,
+      kind: "data",
+      data: "plain text",
+      createdAt: "2026-05-12T00:00:02.000Z",
+      schemaVersion: 2,
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, `${requestPath}/chunks/00000000`), {
+      id: "00000000",
+      requestId: "req-1",
+      sequence: 0,
+      kind: "data",
+      ciphertext: "encrypted chunk",
+      createdAt: "2026-05-12T00:00:02.000Z",
+      schemaVersion: 2,
+    })
+  );
+});
+
+test("runtime preferences are per device and provider device links are server-written", async () => {
+  const db = authedDb("hank");
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/hank/runtime_connection_preferences/mac-1_piAgent"), {
+      id: "mac-1_piAgent",
+      deviceID: "mac-1",
+      runtimeKind: "piAgent",
+      selectedConnectionID: "relay-mac",
+      selectedInstanceID: "default",
+      selectedModelID: "pi-default",
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:00.000Z",
+      schemaVersion: 1,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/hank/runtime_connection_preferences/mac-1_hermes"), {
+      id: "mac-1_hermes",
+      deviceID: "mac-1",
+      runtimeKind: "piAgent",
+      selectedConnectionID: "relay-mac",
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:00.000Z",
+      schemaVersion: 1,
+    })
+  );
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/hank/provider_account_device_links/acct-1_mac-1"), {
+      id: "acct-1_mac-1",
+      accountID: "acct-1",
+      deviceID: "mac-1",
+      deviceDisplayName: "Mac",
+      capability: "owner",
+      status: "active",
+      lastObservedAt: "2026-05-12T00:00:00.000Z",
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:00.000Z",
+      schemaVersion: 1,
+    });
+  });
+
+  await assertSucceeds(getDoc(doc(db, "users/hank/provider_account_device_links/acct-1_mac-1")));
+  await assertFails(
+    setDoc(doc(db, "users/hank/provider_account_device_links/acct-1_phone-1"), {
+      id: "acct-1_phone-1",
+      accountID: "acct-1",
+      deviceID: "phone-1",
+      deviceDisplayName: "Phone",
+      capability: "use",
+      status: "active",
+      lastObservedAt: "2026-05-12T00:00:00.000Z",
+      createdAt: "2026-05-12T00:00:00.000Z",
+      updatedAt: "2026-05-12T00:00:00.000Z",
+      schemaVersion: 1,
+    })
+  );
+});
+
 test("rules test environment is isolated", () => {
   assert.ok(testEnv.projectId.startsWith("openburnbar-rules-"));
 });

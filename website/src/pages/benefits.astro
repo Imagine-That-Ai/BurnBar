@@ -1,0 +1,154 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Why it matters"
+  description="Why OpenBurnBar exists — avoid bill shock, understand agent spend, know quota before workflows fail, recover context fast, keep core data local."
+>
+  <section class="pagehead">
+    <div class="container">
+      <span class="eyebrow eyebrow--ember">Why it matters</span>
+      <h1 class="pagehead__h">
+        Multi-agent work needs <span class="ember">multi-agent visibility.</span>
+      </h1>
+      <p class="lead">
+        You don't run one model anymore. You run Claude in one tab, Codex in
+        another, Cursor and Copilot in the editor, and Factory or Forge on the
+        side. Spend is fractured across vendors and time zones, quotas don't
+        share a clock, and "why did the bill explode" arrives on the first
+        of the month.
+      </p>
+    </div>
+  </section>
+
+  <section class="benefits">
+    <div class="container container--wide">
+      <ul class="benefits__grid">
+        <li class="benefit">
+          <div class="benefit__num mono">B1</div>
+          <h3>Avoid bill shock.</h3>
+          <p>
+            See today's burn the moment you sit down. See this week's pattern.
+            See where it's going before the invoice rounds the corner.
+          </p>
+        </li>
+        <li class="benefit">
+          <div class="benefit__num mono">B2</div>
+          <h3>Understand agent spend.</h3>
+          <p>
+            Cost broken down by provider, by model, by session, by project.
+            Which model burned the most cache? Which agent doubled
+            this week? OpenBurnBar answers — locally.
+          </p>
+        </li>
+        <li class="benefit">
+          <div class="benefit__num mono">B3</div>
+          <h3>Know quota before workflows fail.</h3>
+          <p>
+            Five-hour windows. Weekly windows. Plan-tier ceilings. Lane-aware
+            counters. OpenBurnBar reads them all and tells you which one is
+            about to roll before your agent hits a wall.
+          </p>
+        </li>
+        <li class="benefit">
+          <div class="benefit__num mono">B4</div>
+          <h3>Recover context fast.</h3>
+          <p>
+            Sessions, projects, streams, tool calls, retrieval — all indexed
+            locally. When something goes sideways, you can replay the run,
+            inspect the tool trace, and pick up where the agent left off.
+          </p>
+        </li>
+        <li class="benefit">
+          <div class="benefit__num mono">B5</div>
+          <h3>Keep core data local.</h3>
+          <p>
+            Your sessions never have to leave your machine. The cloud is an
+            opt-in convenience, not a requirement. Disconnect the network and
+            the product keeps working.
+          </p>
+        </li>
+        <li class="benefit">
+          <div class="benefit__num mono">B6</div>
+          <h3>Use the cloud only when it helps.</h3>
+          <p>
+            When you want hosted quota refresh from a phone or a backed-up
+            conversation across devices, the cloud is there — gated by
+            Apple-verified entitlement and end-to-end encryption.
+          </p>
+        </li>
+        <li class="benefit">
+          <div class="benefit__num mono">B7</div>
+          <h3>Operate agents responsibly.</h3>
+          <p>
+            Whether you're a solo developer or a small team, OpenBurnBar makes
+            the cost of every agent legible. The dashboard is the operating
+            layer that lets you keep spending sane.
+          </p>
+        </li>
+        <li class="benefit">
+          <div class="benefit__num mono">B8</div>
+          <h3>Trust by inspection.</h3>
+          <p>
+            MIT-licensed. The threat model is in the repo. Provider claims
+            cite the file and line of the adapter. You can read every promise
+            in code, not just in copy.
+          </p>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="endcta endcta--inline">
+    <div class="container container--narrow">
+      <h2>The bill is going to find you anyway.</h2>
+      <p class="lead">
+        Read it on your own terms.
+      </p>
+      <div class="endcta__ctas">
+        <a class="btn btn--ember" href="/download">Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a>
+        <a class="btn btn--ghost" href="/product">Tour the product</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .pagehead { padding-block: var(--s-9) var(--s-6); }
+  .pagehead__h { margin-top: var(--s-3); max-width: 18ch; }
+  .pagehead .lead { margin-top: var(--s-4); max-width: 64ch; }
+  .benefits { padding-block: var(--s-9); border-top: 1px solid var(--ink-line); }
+  .benefits__grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--s-5);
+  }
+  .benefit {
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background: var(--ink-base);
+    display: grid;
+    gap: var(--s-2);
+  }
+  .benefit__num { color: var(--ember-bright); font-size: 0.85rem; letter-spacing: 0.12em; }
+  .benefit h3 {
+    font-family: var(--font-display);
+    color: var(--text-bright);
+    font-size: 1.25rem;
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.014em;
+  }
+  .benefit p { color: var(--text-base); }
+  @media (max-width: 880px) { .benefits__grid { grid-template-columns: 1fr; } }
+  .endcta--inline {
+    padding-block: var(--s-9);
+    text-align: center;
+    background:
+      radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.05), transparent 70%);
+    border-top: 1px solid var(--ink-line);
+  }
+  .endcta--inline h2 { margin-bottom: var(--s-3); }
+  .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+</style>

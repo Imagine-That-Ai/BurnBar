@@ -29,6 +29,7 @@ import com.openburnbar.ui.components.AuroraNavIcon
 import com.openburnbar.ui.components.BurnBarLogo
 import com.openburnbar.ui.components.FloatingChatMode
 import com.openburnbar.ui.components.FloatingChatPill
+import com.openburnbar.ui.hermes.AssistantsScreen
 import com.openburnbar.ui.hermes.HermesView
 import com.openburnbar.ui.pulse.PulseView
 import com.openburnbar.ui.streams.StreamsView
@@ -46,7 +47,10 @@ sealed class BurnBarTab(
     object PULSE   : BurnBarTab("pulse",   "Pulse",   AuroraNavDestination.PULSE)
     object BURN    : BurnBarTab("burn",    "Burn",    AuroraNavDestination.BURN)
     object STREAMS : BurnBarTab("streams", "Streams", AuroraNavDestination.STREAMS)
-    object HERMES  : BurnBarTab("hermes",  "Hermes",  AuroraNavDestination.HERMES)
+    // Plan 2: tab renamed to "Assistants" — the route stays `hermes` so deep
+    // links (`burnbar://hermes`, `burnbar://chat`) and bookmarks continue to
+    // resolve to the same destination.
+    object HERMES  : BurnBarTab("hermes",  "Assistants",  AuroraNavDestination.HERMES)
     object YOU     : BurnBarTab("you",     "You",     AuroraNavDestination.YOU)
 
     companion object {
@@ -183,6 +187,12 @@ fun BurnBarNavHost(
                     )
                 }
             }
+
+            // Chart Studio overlay — fullscreen when presented, FAB when
+            // minimized. Hidden mode is a no-op. Sits above everything else
+            // including the floating chat pill.
+            val hermesService: com.openburnbar.data.hermes.HermesService = viewModel()
+            com.openburnbar.ui.chartstudio.ChartStudioOverlay(hermes = hermesService)
         } else {
             val isSigningIn by userStore.isSigningIn.collectAsState()
             val authError by userStore.authError.collectAsState()
@@ -232,9 +242,10 @@ private fun BurnBarContent(
             BurnBarTab.HERMES.route,
             deepLinks = listOf(
                 navDeepLink { uriPattern = "burnbar://hermes" },
-                navDeepLink { uriPattern = "burnbar://chat" }
+                navDeepLink { uriPattern = "burnbar://chat" },
+                navDeepLink { uriPattern = "burnbar://assistants" }
             )
-        ) { HermesView() }
+        ) { AssistantsScreen() }
         composable(
             BurnBarTab.YOU.route,
             deepLinks = listOf(navDeepLink { uriPattern = "burnbar://you" })

@@ -7,9 +7,12 @@ import io.mockk.*
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
 
 class DashboardStoreTest {
+    @get:Rule
+    val mainDispatcherRule = MainDispatcherRule()
 
     @Test
     fun `load fetches rollups and starts listening`() = runTest {
