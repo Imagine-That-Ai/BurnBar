@@ -10,6 +10,9 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import java.time.Instant
+import java.time.format.DateTimeParseException
+import java.util.Date
 
 class FirestoreRepository {
     private val db = Firebase.firestore
@@ -83,25 +86,41 @@ class FirestoreRepository {
         if (allDocs.isEmpty()) return UsageRollups()
 
         // Pick the all_time doc for summaries, dailyPoints, etc.
-        val allTime = allDocs["all_time"] ?: allDocs.values.first()
-        // Window values come from their respective docs
+        val allTimeDoc = allDocs["all_time"] ?: allDocs.values.first()
+        fun UsageRollups.costUsd(): Double = totals["costUsd"] ?: 0.0
+        fun UsageRollups.tokens(): Long = listOfNotNull(
+            totals["tokens"],
+            today.takeIf { it > 0 },
+            sevenDays.takeIf { it > 0 },
+            thirtyDays.takeIf { it > 0 },
+            ninetyDays.takeIf { it > 0 },
+            allTime.takeIf { it > 0 }
+        ).firstOrNull()?.toLong() ?: 0L
+
+        // Cloud Functions store the window-key fields as token totals. Cost
+        // lives under totals.costUsd, so keep currency and token views separate.
         return UsageRollups(
-            today = allDocs["today"]?.today ?: allTime.today,
+            today = allDocs["today"]?.costUsd() ?: allTimeDoc.costUsd(),
             
-            sevenDays = allDocs["7d"]?.sevenDays ?: allTime.sevenDays,
+            sevenDays = allDocs["7d"]?.costUsd() ?: allTimeDoc.costUsd(),
             
-            thirtyDays = allDocs["30d"]?.thirtyDays ?: allTime.thirtyDays,
+            thirtyDays = allDocs["30d"]?.costUsd() ?: allTimeDoc.costUsd(),
             
-            ninetyDays = allDocs["90d"]?.ninetyDays ?: allTime.ninetyDays,
-            allTime = allTime.allTime,
-            totals = allTime.totals,
-            providerSummaries = allTime.providerSummaries,
-            accountSummaries = allTime.accountSummaries,
-            modelSummaries = allTime.modelSummaries,
-            deviceSummaries = allTime.deviceSummaries,
-            dailyPoints = allTime.dailyPoints,
-            computedAt = allTime.computedAt,
-            schemaVersion = allTime.schemaVersion
+            ninetyDays = allDocs["90d"]?.costUsd() ?: allTimeDoc.costUsd(),
+            allTime = allTimeDoc.costUsd(),
+            todayTokens = allDocs["today"]?.tokens() ?: allTimeDoc.tokens(),
+            sevenDayTokens = allDocs["7d"]?.tokens() ?: allTimeDoc.tokens(),
+            thirtyDayTokens = allDocs["30d"]?.tokens() ?: allTimeDoc.tokens(),
+            ninetyDayTokens = allDocs["90d"]?.tokens() ?: allTimeDoc.tokens(),
+            allTimeTokens = allTimeDoc.tokens(),
+            totals = allTimeDoc.totals,
+            providerSummaries = allTimeDoc.providerSummaries,
+            accountSummaries = allTimeDoc.accountSummaries,
+            modelSummaries = allTimeDoc.modelSummaries,
+            deviceSummaries = allTimeDoc.deviceSummaries,
+            dailyPoints = allTimeDoc.dailyPoints,
+            computedAt = allTimeDoc.computedAt,
+            schemaVersion = allTimeDoc.schemaVersion
         )
     }
 
@@ -120,13 +139,13 @@ class FirestoreRepository {
         endDate: Long? = null
     ): Pair<List<TokenUsage>, DocumentSnapshot?> {
         var query: Query = usageCollection
-            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .orderBy("startTime", Query.Direction.DESCENDING)
 
         provider?.let { query = query.whereEqualTo("provider", it) }
         model?.let { query = query.whereEqualTo("model", it) }
-        device?.let { query = query.whereEqualTo("device", it) }
-        startDate?.let { query = query.whereGreaterThanOrEqualTo("timestamp", it) }
-        endDate?.let { query = query.whereLessThanOrEqualTo("timestamp", it) }
+        device?.let { query = query.whereEqualTo("deviceId", it) }
+        startDate?.let { query = query.whereGreaterThanOrEqualTo("startTime", Timestamp(Date(it))) }
+        endDate?.let { query = query.whereLessThanOrEqualTo("startTime", Timestamp(Date(it))) }
         after?.let { query = query.startAfter(it) }
 
         val snapshot = query.limit(pageSize.toLong()).get().await()
@@ -139,7 +158,7 @@ class FirestoreRepository {
         pageSize: Int = 25
     ): Flow<List<TokenUsage>> = callbackFlow {
         val listener = usageCollection
-            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .orderBy("startTime", Query.Direction.DESCENDING)
             .limit(pageSize.toLong())
             .addSnapshotListener { snapshot, error ->
                 if (error != null) { close(error); return@addSnapshotListener }
@@ -151,14 +170,21 @@ class FirestoreRepository {
     // ── Quota Snapshots ──
     suspend fun fetchQuotaSnapshots(): List<ProviderQuotaSnapshot> {
         val snapshot = quotaCollection.get().await()
-        return snapshot.documents.mapNotNull { it.toQuotaSnapshot() }
+        return snapshot.documents
+            .mapNotNull { it.toQuotaSnapshot() }
+            .deduplicatedByProviderAccount()
     }
 
     fun listenToQuotaSnapshots(): Flow<List<ProviderQuotaSnapshot>> = callbackFlow {
         val listener = quotaCollection
             .addSnapshotListener { snapshot, error ->
                 if (error != null) { close(error); return@addSnapshotListener }
-                trySend(snapshot?.documents?.mapNotNull { it.toQuotaSnapshot() } ?: emptyList())
+                trySend(
+                    snapshot?.documents
+                        ?.mapNotNull { it.toQuotaSnapshot() }
+                        ?.deduplicatedByProviderAccount()
+                        ?: emptyList()
+                )
             }
         awaitClose { listener.remove() }
     }
@@ -176,6 +202,36 @@ class FirestoreRepository {
             .limit(20)
             .get().await()
         return snapshot.documents.mapNotNull { it.toProjectSummary() }
+    }
+}
+
+object FirestoreValueParsers {
+    fun millis(raw: Any?): Long {
+        return when (raw) {
+            is Timestamp -> raw.seconds * 1000 + raw.nanoseconds / 1_000_000
+            is Number -> raw.toLong()
+            is Date -> raw.time
+            is String -> parseIsoMillis(raw)
+            else -> 0L
+        }
+    }
+
+    fun string(data: Map<String, Any>, vararg keys: String): String? {
+        for (key in keys) {
+            val value = data[key] as? String
+            if (!value.isNullOrBlank()) return value
+        }
+        return null
+    }
+
+    private fun parseIsoMillis(raw: String): Long {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return 0L
+        return try {
+            Instant.parse(trimmed).toEpochMilli()
+        } catch (_: DateTimeParseException) {
+            0L
+        }
     }
 }
 
@@ -209,12 +265,19 @@ private fun Map<String, Any>.toRollupSummary(): RollupSummary = RollupSummary(
     accountLabel = this["accountLabel"] as? String ?: "",
     storageScope = this["storageScope"] as? String,
     totalRequests = (this["totalRequests"] as? Number)?.toInt() ?: (this["requests"] as? Number)?.toInt() ?: 0,
-    totalTokens = (this["totalTokens"] as? Number)?.toInt() ?: (this["tokens"] as? Number)?.toInt() ?: 0,
+    totalTokens = (this["totalTokens"] as? Number)?.toLong() ?: (this["tokens"] as? Number)?.toLong() ?: 0L,
     totalCost = (this["totalCost"] as? Number)?.toDouble() ?: (this["cost"] as? Number)?.toDouble() ?: 0.0
 )
 
 private fun DocumentSnapshot.toTokenUsage(): TokenUsage? {
     val data = data ?: return null
+    val startMillis = FirestoreValueParsers.millis(data["startTime"])
+    val endMillis = FirestoreValueParsers.millis(data["endTime"])
+    val createdMillis = FirestoreValueParsers.millis(data["createdAt"])
+    val updatedMillis = FirestoreValueParsers.millis(data["updatedAt"])
+    val timestampMillis = FirestoreValueParsers.millis(data["timestamp"]).takeIf { it > 0L }
+        ?: startMillis.takeIf { it > 0L }
+        ?: updatedMillis
     return TokenUsage(
         id = id,
         provider = data["provider"] as? String ?: "",
@@ -237,12 +300,12 @@ private fun DocumentSnapshot.toTokenUsage(): TokenUsage? {
         provenanceConfidence = data["provenanceConfidence"] as? String,
         provenanceMethod = data["provenanceMethod"] as? String,
         userDisplayId = data["user_display_id"] as? String,
-        projectName = data["project_name"] as? String,
-        timestamp = (data["timestamp"] as? Timestamp)?.let { it.seconds * 1000 + it.nanoseconds / 1_000_000 } ?: (data["timestamp"] as? Number)?.toLong() ?: 0L,
-        startTime = (data["startTime"] as? Timestamp)?.let { it.seconds * 1000 + it.nanoseconds / 1_000_000 } ?: (data["startTime"] as? Number)?.toLong() ?: 0L,
-        endTime = (data["endTime"] as? Timestamp)?.let { it.seconds * 1000 + it.nanoseconds / 1_000_000 } ?: (data["endTime"] as? Number)?.toLong() ?: 0L,
-        createdAt = (data["createdAt"] as? Timestamp)?.let { it.seconds * 1000 + it.nanoseconds / 1_000_000 } ?: (data["createdAt"] as? Number)?.toLong() ?: 0L,
-        updatedAt = (data["updatedAt"] as? Timestamp)?.let { it.seconds * 1000 + it.nanoseconds / 1_000_000 } ?: (data["updatedAt"] as? Number)?.toLong() ?: 0L,
+        projectName = FirestoreValueParsers.string(data, "projectName", "project_name"),
+        timestamp = timestampMillis,
+        startTime = startMillis,
+        endTime = endMillis,
+        createdAt = createdMillis,
+        updatedAt = updatedMillis,
         schemaVersion = (data["schemaVersion"] as? Number)?.toInt() ?: 0
     )
 }
@@ -317,7 +380,7 @@ private fun DocumentSnapshot.toProjectSummary(): ProjectSummary? {
         id = id,
         name = data["name"] as? String ?: "",
         totalCost = (data["total_cost"] as? Number)?.toDouble() ?: 0.0,
-        totalTokens = (data["total_tokens"] as? Number)?.toInt() ?: 0,
+        totalTokens = (data["total_tokens"] as? Number)?.toLong() ?: 0L,
         totalSessions = (data["total_sessions"] as? Number)?.toInt() ?: 0
     )
 }

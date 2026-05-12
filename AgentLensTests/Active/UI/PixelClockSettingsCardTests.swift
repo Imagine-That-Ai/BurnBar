@@ -26,9 +26,17 @@ final class PixelClockSettingsCardTests: XCTestCase {
         )
         let sut = try view.inspect()
 
+        // After the iOS-style drill-down redesign, Devices & Sync surfaces
+        // Smart Displays as a discoverable navigation row in its landing list.
         XCTAssertNoThrow(try sut.find(text: MacCopy.smartDisplaysSectionTitle))
-        // Existing Nest Hub control surface label remains accessible.
-        XCTAssertNoThrow(try sut.find(text: "Nest Hub quota display"))
+
+        // The Nest Hub controls themselves live in the drill-down destination.
+        let detail = SmartDisplaysDetailView(
+            settingsManager: SettingsManager(),
+            runtimeContext: nil
+        )
+        let detailSUT = try detail.inspect()
+        XCTAssertNoThrow(try detailSUT.find(text: "Nest Hub quota display"))
     }
 
     func test_pixelClockCardCollapsedWhenDisabled() throws {

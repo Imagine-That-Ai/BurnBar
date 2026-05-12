@@ -138,6 +138,9 @@ struct ProviderQuotaBucket: Codable, Hashable, Identifiable {
             let clamped = min(max(value, 0), 100)
             return "\(Int(clamped.rounded()))%"
         case .tokens:
+            if value >= 1_000_000_000 {
+                return String(format: "%.2fB", value / 1_000_000_000)
+            }
             if value >= 1_000_000 {
                 return String(format: "%.1fM", value / 1_000_000)
             }

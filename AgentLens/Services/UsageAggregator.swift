@@ -100,9 +100,24 @@ final class UsageAggregator {
         self.summaryEngine.onRequestProjectionSweep = { [weak self] in
             self?.requestProjectionSweep()
         }
+        self.quotaService.onSnapshotsPersistedForCloudSync = { [weak self] snapshots in
+            Task { @MainActor [weak self] in
+                await self?.publishQuotaSnapshotsForIOS(snapshots)
+            }
+        }
     }
 
     // MARK: - Refresh All
+
+    private func publishQuotaSnapshotsForIOS(_ snapshots: [ProviderQuotaSnapshot]) async {
+        if let coordinator = cloudSyncCoordinator {
+            await coordinator.syncProviderAccounts()
+            await coordinator.syncQuotaSnapshots(snapshots)
+        } else if let cloudSync {
+            await cloudSync.uploadProviderAccountsForIOS()
+            await cloudSync.uploadQuotaSnapshotsForIOS(snapshots)
+        }
+    }
 
     func refreshAll() async {
         guard !isRefreshing else { return }

@@ -72,6 +72,38 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(service.visiblePopoverProviders(dataStore: dataStore), [.codex])
     }
 
+    func test_refreshProviderPublishesDisplayableSnapshotsForCloudSync() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let dataStore = try makeDataStore()
+        let eventDate = recentUTCDate(daysAgo: 1, hour: 10)
+        let rolloutDirectory = codexRolloutDirectory(home: home, date: eventDate)
+        try FileManager.default.createDirectory(at: rolloutDirectory, withIntermediateDirectories: true)
+
+        let rolloutURL = codexRolloutFileURL(directory: rolloutDirectory, date: eventDate)
+        let payload = """
+        {"timestamp":"\(iso8601String(eventDate))","type":"event_msg","payload":{"type":"token_count","rate_limits":{"plan_type":"pro","primary":{"used_percent":22.0,"window_minutes":300,"resets_at":1774359600},"secondary":{"used_percent":20.0,"window_minutes":10080,"resets_at":1774801258}}}}
+        """
+        try Data(payload.utf8).write(to: rolloutURL)
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            refreshProviders: [.codex]
+        )
+        var publishedProviders: [AgentProvider] = []
+        var publishedBucketCounts: [Int] = []
+        service.onSnapshotsPersistedForCloudSync = { snapshots in
+            publishedProviders = snapshots.map(\.provider)
+            publishedBucketCounts = snapshots.map { $0.displayableQuotaBuckets.count }
+        }
+
+        await service.refresh(provider: .codex, dataStore: dataStore)
+
+        XCTAssertEqual(publishedProviders, [.codex])
+        XCTAssertEqual(publishedBucketCounts, [2])
+    }
+
     func test_snapshotsForCloudSync_excludesUsageOnlyAndActivitySnapshots() throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()

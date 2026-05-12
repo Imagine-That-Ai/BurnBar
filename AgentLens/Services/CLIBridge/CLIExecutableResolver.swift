@@ -1,6 +1,15 @@
 import Foundation
 
 struct CLIExecutableResolver: Sendable {
+    fileprivate struct CacheKey: Hashable, Sendable {
+        let name: String
+        let homeDirectory: String
+        let path: String
+        let shell: String
+    }
+
+    private static let cache = ExecutableResolverCache()
+
     private let environmentProvider: @Sendable () -> [String: String]
     private let homeDirectoryProvider: @Sendable () -> String
 
@@ -17,6 +26,17 @@ struct CLIExecutableResolver: Sendable {
             let env = environmentProvider()
             let homeDirectory = homeDirectoryProvider()
             let fileManager = FileManager.default
+            let cacheKey = CacheKey(
+                name: name,
+                homeDirectory: homeDirectory,
+                path: env["PATH"] ?? "",
+                shell: env["SHELL"] ?? ""
+            )
+
+            if let cachedPath = Self.cache.value(for: cacheKey),
+               fileManager.isExecutableFile(atPath: cachedPath) {
+                return cachedPath
+            }
 
             if let path = Self.resolveExecutable(
                 named: name,
@@ -26,14 +46,7 @@ struct CLIExecutableResolver: Sendable {
                 ),
                 fileManager: fileManager
             ) {
-                return path
-            }
-
-            if let path = Self.resolveExecutableFromLoginShell(
-                named: name,
-                environment: env,
-                fileManager: fileManager
-            ) {
+                Self.cache.set(path, for: cacheKey)
                 return path
             }
 
@@ -45,11 +58,25 @@ struct CLIExecutableResolver: Sendable {
                 ),
                 fileManager: fileManager
             ) {
+                Self.cache.set(path, for: cacheKey)
+                return path
+            }
+
+            if let path = Self.resolveExecutableFromLoginShell(
+                named: name,
+                environment: env,
+                fileManager: fileManager
+            ) {
+                Self.cache.set(path, for: cacheKey)
                 return path
             }
 
             return nil
         }.value
+    }
+
+    static func clearCache() {
+        cache.clear()
     }
 
     static func baseExecutableSearchDirectories(
@@ -229,6 +256,29 @@ struct CLIExecutableResolver: Sendable {
 
     private static func shellQuoted(_ string: String) -> String {
         "'" + string.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
+    }
+}
+
+private final class ExecutableResolverCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [CLIExecutableResolver.CacheKey: String] = [:]
+
+    func value(for key: CLIExecutableResolver.CacheKey) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return values[key]
+    }
+
+    func set(_ value: String, for key: CLIExecutableResolver.CacheKey) {
+        lock.lock()
+        defer { lock.unlock() }
+        values[key] = value
+    }
+
+    func clear() {
+        lock.lock()
+        defer { lock.unlock() }
+        values.removeAll()
     }
 }
 

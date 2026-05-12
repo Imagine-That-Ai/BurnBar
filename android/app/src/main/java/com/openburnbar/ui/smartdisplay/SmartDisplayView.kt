@@ -8,9 +8,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Brightness6
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,7 +41,7 @@ import com.openburnbar.ui.theme.AuroraType
 
 /**
  * Native Android port of iOS Views/SmartHub. Same information architecture
- * (Pixel Clock + HomeAssistant), Aurora glass treatment everywhere.
+ * (Google smart displays + Pixel Clock), Aurora glass treatment everywhere.
  */
 @Composable
 fun SmartDisplayView(
@@ -47,8 +52,8 @@ fun SmartDisplayView(
     val isDark = isSystemInDarkTheme()
 
     DisposableEffect(Unit) {
-        SmartHubBridgeClient.startDiscovery(context)
-        onDispose { SmartHubBridgeClient.stopDiscovery() }
+        SmartHubBridgeClient.start(context)
+        onDispose { SmartHubBridgeClient.stop() }
     }
 
     Column(
@@ -60,7 +65,6 @@ fun SmartDisplayView(
     ) {
         Spacer(modifier = Modifier.height(AuroraSpacing.lg.dp))
 
-        // Header
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (onBack != null) {
                 IconButton(onClick = onBack) {
@@ -71,18 +75,154 @@ fun SmartDisplayView(
                 }
             }
             Text("Smart Displays", style = AuroraType.displayLarge,
-                 color = MaterialTheme.colorScheme.onSurface)
+                 color = MaterialTheme.colorScheme.onSurface,
+                 modifier = Modifier.weight(1f))
+            IconButton(onClick = SmartHubBridgeClient::refresh) {
+                Icon(Icons.Filled.Refresh, contentDescription = "Refresh smart displays")
+            }
         }
 
         Spacer(Modifier.height(AuroraSpacing.md.dp))
 
-        PixelClockCard(state = state)
+        StatusFeedback(state)
+
+        NestHubCard(state = state)
 
         Spacer(Modifier.height(AuroraSpacing.lg.dp))
 
-        HomeAssistantCard(state = state)
+        PixelClockCard(state = state)
 
         Spacer(Modifier.height(AuroraSpacing.xxxl.dp))
+    }
+}
+
+@Composable
+private fun StatusFeedback(state: SmartHubSnapshot) {
+    val message = state.actionError ?: state.actionMessage ?: return
+    val tone = if (state.actionError != null) AuroraBadgeTone.Error else AuroraBadgeTone.Info
+    AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)
+        ) {
+            AuroraBadge(text = if (state.actionError != null) "Needs attention" else "Working", tone = tone)
+            Text(message, style = AuroraType.body, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+    Spacer(Modifier.height(AuroraSpacing.md.dp))
+}
+
+@Composable
+private fun NestHubCard(state: SmartHubSnapshot) {
+    val bridgeReady = state.bridgeEnabled && state.bridgeIsLive && !state.refreshUrl.isNullOrBlank()
+    AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Filled.Devices, contentDescription = null, tint = AuroraColors.whimsy)
+            Text("Google Smart Display", style = AuroraType.title, modifier = Modifier.weight(1f))
+            AuroraBadge(
+                text = when {
+                    state.isLoading -> "Loading"
+                    bridgeReady -> "Bridge ready"
+                    state.bridgeEnabled && !state.bridgeIsLive -> "Mac offline"
+                    state.bridgeEnabled -> "No refresh URL"
+                    else -> "No Mac bridge"
+                },
+                tone = when {
+                    bridgeReady -> AuroraBadgeTone.Success
+                    state.bridgeEnabled && !state.bridgeIsLive -> AuroraBadgeTone.Warning
+                    state.bridgeEnabled -> AuroraBadgeTone.Warning
+                    else -> AuroraBadgeTone.Neutral
+                }
+            )
+        }
+
+        Spacer(Modifier.height(AuroraSpacing.md.dp))
+
+        Text(
+            text = bridgeSummary(state),
+            style = AuroraType.body,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(Modifier.height(AuroraSpacing.md.dp))
+
+        Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+            AuroraSecondaryButton(
+                onClick = SmartHubBridgeClient::refreshNestHub,
+                enabled = !state.actionInFlight && bridgeReady,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.Refresh, contentDescription = null)
+                Text("Refresh display")
+            }
+            AuroraSecondaryButton(
+                onClick = SmartHubBridgeClient::repairAllSmartDisplays,
+                enabled = !state.actionInFlight && state.bridgeIsLive,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.Settings, contentDescription = null)
+                Text("Repair connection")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+                AuroraSecondaryButton(
+                    onClick = SmartHubBridgeClient::identifyNestHub,
+                    enabled = !state.actionInFlight && state.bridgeIsLive,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                    Text("Identify")
+                }
+                AuroraSecondaryButton(
+                    onClick = SmartHubBridgeClient::stopNestHub,
+                    enabled = !state.actionInFlight && state.bridgeIsLive,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Filled.Stop, contentDescription = null)
+                    Text("Stop")
+                }
+            }
+        }
+
+        Spacer(Modifier.height(AuroraSpacing.lg.dp))
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Available Google displays", style = AuroraType.caption,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f))
+            AuroraSecondaryButton(
+                onClick = SmartHubBridgeClient::runCastDiscovery,
+                enabled = !state.actionInFlight && state.bridgeIsLive,
+                loading = state.isDiscoveringCastDevices
+            ) {
+                Icon(Icons.Filled.Search, contentDescription = null)
+                Text("Find")
+            }
+        }
+
+        Spacer(Modifier.height(AuroraSpacing.xs.dp))
+
+        if (state.castDevices.isEmpty()) {
+            Text(
+                if (state.bridgeIsLive) {
+                    "Run Find while the Mac app is open. The Mac scans the network, then Android can save and cast to the selected display."
+                } else {
+                    state.bridgeFreshnessMessage
+                },
+                style = AuroraType.body,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            state.castDevices.forEach { device ->
+                CastDeviceRow(device = device, selected = device.id == state.selectedCastDeviceId, busy = state.actionInFlight)
+            }
+        }
     }
 }
 
@@ -109,9 +249,10 @@ private fun PixelClockCard(state: SmartHubSnapshot) {
         AuroraSettingsToggle(
             icon = Icons.Filled.Tv,
             label = "Enable Pixel Clock",
-            subtitle = "Stream BurnBar metrics to your nightstand",
+            subtitle = "Save the AWTRIX device to the same Mac bridge settings iOS uses",
             checked = state.pixelClockEnabled,
-            onCheckedChange = { SmartHubBridgeClient.setPixelClockEnabled(it) }
+            onCheckedChange = { SmartHubBridgeClient.setPixelClockEnabled(it) },
+            enabled = !state.actionInFlight
         )
 
         Spacer(Modifier.height(AuroraSpacing.sm.dp))
@@ -142,11 +283,33 @@ private fun PixelClockCard(state: SmartHubSnapshot) {
                              color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     AuroraSecondaryButton(
-                        onClick = { SmartHubBridgeClient.selectDevice(device.id.takeIf { !isSelected }) }
+                        onClick = { SmartHubBridgeClient.selectDevice(device.id.takeIf { !isSelected }) },
+                        enabled = !state.actionInFlight
                     ) {
                         Text(if (isSelected) "Disconnect" else "Use")
                     }
                 }
+            }
+        }
+
+        Spacer(Modifier.height(AuroraSpacing.md.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+            AuroraSecondaryButton(
+                onClick = SmartHubBridgeClient::repairPixelClock,
+                enabled = !state.actionInFlight && state.bridgeIsLive,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(Icons.Filled.Settings, contentDescription = null)
+                Text("Make work")
+            }
+            AuroraSecondaryButton(
+                onClick = SmartHubBridgeClient::pushPixelClockNow,
+                enabled = !state.actionInFlight && state.bridgeIsLive,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                Text("Push now")
             }
         }
 
@@ -162,8 +325,10 @@ private fun PixelClockCard(state: SmartHubSnapshot) {
         }
         Slider(
             value = state.pixelClockBrightness,
-            onValueChange = SmartHubBridgeClient::setBrightness,
-            steps = 9
+            onValueChange = SmartHubBridgeClient::previewBrightness,
+            onValueChangeFinished = SmartHubBridgeClient::commitPixelClockConfig,
+            steps = 9,
+            enabled = !state.actionInFlight
         )
 
         Spacer(Modifier.height(AuroraSpacing.sm.dp))
@@ -182,7 +347,8 @@ private fun PixelClockCard(state: SmartHubSnapshot) {
                         PixelClockTimeFormat.HOUR_24 -> PixelClockTimeFormat.HOUR_12
                     }
                     SmartHubBridgeClient.setTimeFormat(next)
-                }
+                },
+                enabled = !state.actionInFlight
             ) {
                 Text(
                     when (state.pixelClockTimeFormat) {
@@ -205,61 +371,73 @@ private fun PixelClockCard(state: SmartHubSnapshot) {
         }
         Slider(
             value = state.pixelClockRefreshSeconds.toFloat(),
-            onValueChange = { SmartHubBridgeClient.setRefreshSeconds(it.toInt()) },
+            onValueChange = { SmartHubBridgeClient.previewRefreshSeconds(it.toInt()) },
+            onValueChangeFinished = SmartHubBridgeClient::commitPixelClockConfig,
             valueRange = 5f..120f,
-            steps = 22
+            steps = 22,
+            enabled = !state.actionInFlight
         )
     }
 }
 
 @Composable
-private fun HomeAssistantCard(state: SmartHubSnapshot) {
-    AuroraGlassCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Filled.Home, contentDescription = null,
-                 tint = AuroraColors.whimsy)
-            Spacer(Modifier.width(AuroraSpacing.sm.dp))
-            Text("Home Assistant", style = AuroraType.title,
-                 modifier = Modifier.weight(1f))
-            AuroraBadge(
-                text = if (state.homeAssistantConnected) "Online" else "Offline",
-                tone = if (state.homeAssistantConnected) AuroraBadgeTone.Success
-                       else AuroraBadgeTone.Neutral
+private fun CastDeviceRow(device: CastDisplayDevice, selected: Boolean, busy: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AuroraSpacing.xs.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+                Text(device.friendlyName, style = AuroraType.body)
+                if (selected) {
+                    AuroraBadge(text = "Selected", tone = AuroraBadgeTone.Success)
+                }
+            }
+            Text(
+                listOf(device.model, device.host).filter { it.isNotBlank() }.joinToString(" • "),
+                style = AuroraType.tiny,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
-
-        Text(
-            text = if (state.homeAssistantConnected) {
-                val ago = state.homeAssistantLastSyncMs?.let {
-                    val sec = (System.currentTimeMillis() - it) / 1000
-                    when {
-                        sec < 60 -> "${sec}s ago"
-                        sec < 3600 -> "${sec / 60}m ago"
-                        else -> "${sec / 3600}h ago"
-                    }
-                } ?: "—"
-                "Last sync $ago — BurnBar can publish cost sensors to your dashboard."
-            } else {
-                "Connect Home Assistant to expose BurnBar cost metrics and quota alerts as sensors and automations."
-            },
-            style = AuroraType.body,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Spacer(Modifier.height(AuroraSpacing.md.dp))
-
         AuroraSecondaryButton(
-            onClick = {
-                SmartHubBridgeClient.setHomeAssistantConnected(!state.homeAssistantConnected)
-            },
-            modifier = Modifier.fillMaxWidth()
+            onClick = { SmartHubBridgeClient.saveCastSelection(device) },
+            enabled = !busy
         ) {
-            Text(if (state.homeAssistantConnected) "Disconnect" else "Connect")
+            Icon(Icons.Filled.Save, contentDescription = null)
+            Text("Save")
         }
+        Spacer(Modifier.width(AuroraSpacing.xs.dp))
+        AuroraSecondaryButton(
+            onClick = { SmartHubBridgeClient.testCast(device) },
+            enabled = !busy
+        ) {
+            Icon(Icons.Filled.PlayArrow, contentDescription = null)
+            Text("Cast")
+        }
+    }
+}
+
+private fun bridgeSummary(state: SmartHubSnapshot): String {
+    val source = state.bridgeSourceDeviceName?.takeIf { it.isNotBlank() } ?: "No Mac has published a bridge yet"
+    val published = state.bridgePublishedAtMs?.let { " • updated ${relativeAge(it)}" }.orEmpty()
+    val email = state.signedInEmail?.let { "\nAccount: $it" }.orEmpty()
+    val bridge = when {
+        state.refreshUrl != null && state.bridgeIsLive -> "Bridge: ready"
+        state.refreshUrl != null -> state.bridgeFreshnessMessage
+        state.bridgeEnabled -> "Bridge: enabled but missing refresh URL"
+        else -> "Bridge: not active"
+    }
+    return "$source$published\n$bridge$email"
+}
+
+private fun relativeAge(timestampMs: Long): String {
+    val seconds = ((System.currentTimeMillis() - timestampMs) / 1000).coerceAtLeast(0)
+    return when {
+        seconds < 60 -> "${seconds}s ago"
+        seconds < 3600 -> "${seconds / 60}m ago"
+        seconds < 86_400 -> "${seconds / 3600}h ago"
+        else -> "${seconds / 86_400}d ago"
     }
 }

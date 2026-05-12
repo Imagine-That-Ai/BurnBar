@@ -139,6 +139,7 @@ final class CloudSyncService {
 
             lastSyncDate = Date()
             lastSyncError = nil
+            try await publishSyncHeartbeat(uid: uid, collectionsInSync: ["usage"])
 
             TelemetryService.shared.record(feature: .cloudSync, outcome: .success, durationMs: Int(Date().timeIntervalSince(start) * 1000))
             if uploadedAnyBatch {
@@ -151,6 +152,30 @@ final class CloudSyncService {
         }
 
         isSyncing = false
+    }
+
+    private func publishSyncHeartbeat(uid: String, collectionsInSync: [String]) async throws {
+        let deviceId = accountManager.deviceId
+        let now = Date()
+        let deviceName = Host.current().localizedName ?? "OpenBurnBar Mac"
+        let userRef = db.collection("users").document(uid)
+
+        try await userRef.collection("devices").document(deviceId).setData([
+            "deviceId": deviceId,
+            "deviceName": deviceName,
+            "platform": "macOS",
+            "isLocal": true,
+            "lastSeenAt": Timestamp(date: now),
+            "updatedAt": Timestamp(date: now)
+        ], merge: true)
+
+        try await userRef.collection("sync_status").document(deviceId).setData([
+            "deviceId": deviceId,
+            "isOnline": true,
+            "lastSyncAt": Timestamp(date: now),
+            "collectionsInSync": collectionsInSync,
+            "updatedAt": Timestamp(date: now)
+        ], merge: true)
     }
 
     /// Uploads unsynced conversation metadata (excluding full transcripts) for cross-device recall.

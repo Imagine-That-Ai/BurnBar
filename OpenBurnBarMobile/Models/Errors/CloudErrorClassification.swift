@@ -34,4 +34,12 @@ public enum CloudErrorClassification: Sendable, Equatable {
         case .other(let m): return m
         }
     }
+
+    static func permissionDeniedClassification(message: String) -> CloudErrorClassification {
+        let normalized = message.replacingOccurrences(of: " ", with: "").lowercased()
+        if normalized.contains("appcheck") || normalized.contains("attestation") {
+            return .appCheckBlocked
+        }
+        return .permissionDenied
+    }
 }

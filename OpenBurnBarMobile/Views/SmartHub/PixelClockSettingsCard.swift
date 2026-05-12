@@ -47,6 +47,11 @@ struct PixelClockSettingsCard: View {
                 advancedDisclosure
             }
         }
+        // See NestHubSettingsCard for the same fix — without this, any
+        // wide child (long button label, fixed-size badge) makes the
+        // VStack grow past the form row and centre, clipping on both
+        // edges on iPhone.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(MobileTheme.Spacing.md)
         .background(
             RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
@@ -116,6 +121,13 @@ struct PixelClockSettingsCard: View {
 
     private var primarySetupPanel: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+            if !smartHubStore.hasLiveMacBridge {
+                Label(smartHubStore.bridgeFreshnessMessage, systemImage: "desktopcomputer")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             HStack(alignment: .center, spacing: MobileTheme.Spacing.sm) {
                 setupStatusIcon
                 VStack(alignment: .leading, spacing: 3) {
@@ -154,7 +166,7 @@ struct PixelClockSettingsCard: View {
                     .foregroundStyle(Color.white)
                 }
                 .buttonStyle(.plain)
-                .disabled(model.isBusy)
+                .disabled(model.isBusy || !smartHubStore.hasLiveMacBridge)
                 .accessibilityLabel(model.setupPrimaryTitle)
 
                 if let flasherURL = model.setupResult?.flasherURL,
@@ -270,7 +282,7 @@ struct PixelClockSettingsCard: View {
                 feedbackBadge
             }
         }
-        .disabled(model.isBusy)
+        .disabled(model.isBusy || !smartHubStore.hasLiveMacBridge)
     }
 
     private func operationButton(

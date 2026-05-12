@@ -19,14 +19,20 @@ final class CastActionsListener {
 
     private let accountManager: AccountManaging
     private let settingsManager: SettingsManager
+    private let repairCoordinator: SmartDisplayRepairCoordinator?
     private var listener: ListenerRegistration?
     private var listenerUID: String?
     private var attachTask: Task<Void, Never>?
     private var processingDocs = Set<String>()
 
-    init(accountManager: AccountManaging, settingsManager: SettingsManager) {
+    init(
+        accountManager: AccountManaging,
+        settingsManager: SettingsManager,
+        repairCoordinator: SmartDisplayRepairCoordinator? = nil
+    ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
+        self.repairCoordinator = repairCoordinator
     }
 
     func start() {
@@ -125,6 +131,7 @@ final class CastActionsListener {
         let db = Firestore.firestore()
         let resultsRef = db.collection("users").document(uid).collection("cast_discovery_results").document("latest")
         try? await resultsRef.setData([
+            "actionId": document.documentID,
             "devices": payload,
             "publishedAt": ISO8601DateFormatter().string(from: Date())
         ], merge: true)
@@ -166,6 +173,26 @@ final class CastActionsListener {
     }
 
     private func handleCast(document: QueryDocumentSnapshot, data: [String: Any]) async {
+        if let repairCoordinator {
+            let status = await repairCoordinator.repairNestHub()
+            if status.isHealthy {
+                try? await document.reference.setData([
+                    "status": "completed",
+                    "message": status.message,
+                    "proof": status.proof ?? "",
+                    "completedAt": ISO8601DateFormatter().string(from: Date())
+                ], merge: true)
+            } else {
+                try? await document.reference.setData([
+                    "status": "failed",
+                    "errorMessage": status.message,
+                    "proof": status.proof ?? "",
+                    "completedAt": ISO8601DateFormatter().string(from: Date())
+                ], merge: true)
+            }
+            return
+        }
+
         guard let url = Self.castableDashboardURL(from: settingsManager.smartHubQuotaDashboardURL) else {
             await fail(document: document, message: "no dashboard URL configured")
             return
@@ -239,18 +266,7 @@ final class CastActionsListener {
 
     /// mDNS scan, returning whatever devices were resolved.
     private func collectDevicesOnce(duration: TimeInterval) async -> [CastDevice] {
-        await withCheckedContinuation { continuation in
-            var collected: [CastDevice] = []
-            let scanner = CastDiscovery(onUpdate: { devices in
-                collected = devices
-            })
-            scanner.start()
-            Task {
-                try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
-                scanner.stop()
-                continuation.resume(returning: collected)
-            }
-        }
+        await CastDiscovery.discoverOnce(duration: duration)
     }
 
     private func locateDevice(serviceName: String) async -> CastDevice? {

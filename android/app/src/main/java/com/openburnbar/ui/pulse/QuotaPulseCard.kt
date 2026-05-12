@@ -67,7 +67,7 @@ fun QuotaPulseCard(
         modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp),
         cornerRadius = AuroraRadius.xl
     ) {
-        Column(modifier = Modifier.padding(AuroraSpacing.lg.dp)) {
+        Column() {
             // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -230,7 +230,7 @@ private fun QuotaProviderRow(
                 .background(statusColor)
         )
         Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
-        ProviderAuroraAvatar(providerKey = item.providerKey, size = 26, showHalo = false)
+        ProviderAuroraAvatar(providerKey = item.providerKey, size = 32, showHalo = false)
         Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(

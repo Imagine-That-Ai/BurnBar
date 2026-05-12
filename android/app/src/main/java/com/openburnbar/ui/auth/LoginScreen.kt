@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.stores.AuthError
 import com.openburnbar.data.stores.UserStore
+import com.openburnbar.ui.components.BurnBarLogo
 
 private val Ember = Color(0xFFFF6B35)
 private val Charcoal = Color(0xFF1A1A2E)
@@ -73,8 +74,8 @@ fun LoginScreen(
     Box(Modifier.fillMaxSize().background(bg).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { focus.clearFocus() }, contentAlignment = Alignment.Center) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             // Brand
-            Text("🔥", fontSize = 48.sp)
-            Spacer(Modifier.height(6.dp))
+            BurnBarLogo(size = 72.dp)
+            Spacer(Modifier.height(10.dp))
             Text("BurnBar", fontSize = 34.sp, fontWeight = FontWeight.Bold, color = onBg)
             Text("Track your agent spend", fontSize = 14.sp, color = sub)
             Spacer(Modifier.height(36.dp))

@@ -50,6 +50,12 @@ struct NestHubSettingsCard: View {
                 voiceRoutineHelper
             }
         }
+        // Without an explicit maxWidth the VStack grows to its widest
+        // child. On iPhone the action buttons row was ~440pt — wider
+        // than the form row, so the whole card centred inside the row
+        // and hung off both edges. Pinning to the parent width keeps
+        // every section anchored to the leading edge.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(MobileTheme.Spacing.md)
         .background(
             RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
@@ -93,9 +99,9 @@ struct NestHubSettingsCard: View {
                     .font(MobileTheme.Typography.body)
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
                 if let host = smartHubStore.config?.sourceDeviceName {
-                    Text("Bridge running on \(host)")
+                    Text(smartHubStore.hasLiveMacBridge ? "Bridge running on \(host)" : "Bridge offline on \(host)")
                         .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .foregroundStyle(smartHubStore.hasLiveMacBridge ? MobileTheme.Colors.textMuted : MobileTheme.Colors.warning)
                 } else {
                     Text("DashCast-compatible smart display")
                         .font(MobileTheme.Typography.caption)
@@ -135,19 +141,24 @@ struct NestHubSettingsCard: View {
 
     private var operationButtons: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
-            HStack(spacing: MobileTheme.Spacing.sm) {
-                operationButton(.test, prominent: true)
+            // Flow layout so the six action chips wrap onto multiple
+            // rows on narrow iPhones instead of overflowing the form row.
+            // On iPad they still fit on one line.
+            NestHubFlowLayout(
+                horizontalSpacing: MobileTheme.Spacing.sm,
+                verticalSpacing: MobileTheme.Spacing.xs
+            ) {
+                operationButton(.repair, prominent: true)
+                operationButton(.test, prominent: false)
                 operationButton(.identify, prominent: false)
                 operationButton(.refresh, prominent: false)
-            }
-            HStack(spacing: MobileTheme.Spacing.sm) {
                 operationButton(.open, prominent: false)
                 operationButton(.stop, prominent: false)
-                Spacer(minLength: 0)
-                feedbackBadge
             }
+            feedbackBadge
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .disabled(model.isBusy)
+        .disabled(model.isBusy || !smartHubStore.hasLiveMacBridge)
     }
 
     private func operationButton(
@@ -168,7 +179,7 @@ struct NestHubSettingsCard: View {
                 Text(isInflight ? kind.inFlightLabel : kind.displayName)
                     .font(MobileTheme.Typography.caption)
                     .fontWeight(.semibold)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .lineLimit(1)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -210,9 +221,9 @@ struct NestHubSettingsCard: View {
             Image(systemName: model.bridgeStatusSymbol)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(bridgeColor)
-            Text(model.bridgeStatusMessage)
+            Text(smartHubStore.hasLiveMacBridge ? model.bridgeStatusMessage : smartHubStore.bridgeFreshnessMessage)
                 .font(MobileTheme.Typography.tiny)
-                .foregroundStyle(model.bridgeStatusIsWarning
+                .foregroundStyle((model.bridgeStatusIsWarning || !smartHubStore.hasLiveMacBridge)
                     ? MobileTheme.Colors.warning
                     : MobileTheme.Colors.textSecondary
                 )
@@ -231,6 +242,7 @@ struct NestHubSettingsCard: View {
     }
 
     private var bridgeColor: Color {
+        if !smartHubStore.hasLiveMacBridge { return MobileTheme.Colors.warning }
         if model.bridgeStatusIsWarning { return MobileTheme.Colors.warning }
         switch model.bridgeStatus {
         case .bound:          return MobileTheme.Colors.success
@@ -593,9 +605,91 @@ struct NestHubSettingsCard: View {
         switch kind {
         case .test:     await model.test()
         case .identify: await model.identify()
+        case .repair:   await model.repair()
         case .refresh:  await model.refresh()
         case .stop:     await model.stop()
         case .open:     await model.open()
         }
+    }
+}
+
+// MARK: - Flow Layout
+//
+// Lays out children left-to-right, wrapping to a new row when the next
+// child would exceed the proposed width. Used for the Nest Hub action
+// chips so the row collapses gracefully on iPhone widths.
+
+private struct NestHubFlowLayout: Layout {
+    var horizontalSpacing: CGFloat
+    var verticalSpacing: CGFloat
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Void
+    ) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        let rows = layoutRows(maxWidth: maxWidth, subviews: subviews)
+        let totalHeight = rows.reduce(into: CGFloat(0)) { acc, row in
+            acc += row.height
+        } + verticalSpacing * CGFloat(max(0, rows.count - 1))
+        let widestRow = rows.map(\.width).max() ?? 0
+        return CGSize(
+            width: maxWidth.isFinite ? min(widestRow, maxWidth) : widestRow,
+            height: totalHeight
+        )
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Void
+    ) {
+        let rows = layoutRows(maxWidth: bounds.width, subviews: subviews)
+        var y = bounds.minY
+        for row in rows {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(
+                    at: CGPoint(x: x, y: y),
+                    anchor: .topLeading,
+                    proposal: ProposedViewSize(width: size.width, height: size.height)
+                )
+                x += size.width + horizontalSpacing
+            }
+            y += row.height + verticalSpacing
+        }
+    }
+
+    private struct Row {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func layoutRows(maxWidth: CGFloat, subviews: Subviews) -> [Row] {
+        var rows: [Row] = [Row()]
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let needsSpacing = !rows[rows.count - 1].indices.isEmpty
+            let prospectiveWidth =
+                rows[rows.count - 1].width
+                + (needsSpacing ? horizontalSpacing : 0)
+                + size.width
+            if prospectiveWidth > maxWidth, needsSpacing {
+                rows.append(Row())
+            }
+            var current = rows[rows.count - 1]
+            if !current.indices.isEmpty {
+                current.width += horizontalSpacing
+            }
+            current.indices.append(index)
+            current.width += size.width
+            current.height = max(current.height, size.height)
+            rows[rows.count - 1] = current
+        }
+        return rows
     }
 }

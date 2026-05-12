@@ -37,10 +37,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 fun AuroraGlassCard(
     modifier: Modifier = Modifier,
     cornerRadius: Int = AuroraRadius.lg,
-    contentPadding: Dp = AuroraSpacing.lg.dp,
+    contentPadding: Dp = AuroraSpacing.md.dp,
     interactive: Boolean = false,
     onClick: (() -> Unit)? = null,
-    shadow: AuroraShadowSpec = AuroraShadows.medium,
+    shadow: AuroraShadowSpec = AuroraShadows.small,
     content: @Composable ColumnScope.() -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -129,34 +129,8 @@ fun BreathingDot(
 }
 
 // ── Provider Avatar ──
-@Composable
-fun ProviderAvatar(
-    providerKey: String,
-    size: Int = 48,
-    modifier: Modifier = Modifier
-) {
-    val provider = com.openburnbar.data.models.AgentProvider.fromKey(providerKey)
-    val color = provider?.let { Color(it.brandColor) } ?: AuroraColors.whimsy
-
-    Box(
-        modifier = modifier
-            .size(size.dp)
-            .clip(CircleShape)
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(color, color.copy(alpha = 0.6f))
-                )
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = provider?.displayName?.take(2)?.uppercase() ?: "?",
-            color = Color.White,
-            fontSize = (size / 3).sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
+// (Moved to ProviderLogo.kt — that file now provides the logo-backed
+// ProviderAvatar / ProviderLogo / ModelLogo composables.)
 
 // ── Staggered Entrance ──
 // Spring-driven entrance matching iOS AnimatedEntranceModifier:

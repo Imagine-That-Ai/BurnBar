@@ -64,14 +64,14 @@ fun VelocityForecastCard(
 
     val projectedText = when (displayMode) {
         UsageDisplayMode.CURRENCY -> Formatting.formatCurrency(projected)
-        UsageDisplayMode.TOKENS -> Formatting.formatTokens(projected.toInt())
+        UsageDisplayMode.TOKENS -> Formatting.formatTokens(projected.toLong())
     }
 
     AuroraGlassCard(
         modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp),
         cornerRadius = AuroraRadius.xl
     ) {
-        Column(modifier = Modifier.padding(AuroraSpacing.lg.dp)) {
+        Column() {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

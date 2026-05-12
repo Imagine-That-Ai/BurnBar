@@ -549,7 +549,8 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
         }
 
         if let requestedProfileID = request.requestedProfileID {
-            guard let requestedProfile = profileStore.fetchProfile(id: requestedProfileID) else {
+            guard let requestedProfile = sameToolProfiles.first(where: { $0.id == requestedProfileID })
+                ?? profileStore.fetchProfile(id: requestedProfileID) else {
                 throw BurnBarSwitcherShellError.missingRequestedProfile(requestedProfileID)
             }
             guard requestedProfile.cliType == request.cliType else {
@@ -566,7 +567,7 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
         }
 
         guard let activeProfileID = profileStore.fetchActiveProfileID(),
-              let activeProfile = profileStore.fetchProfile(id: activeProfileID),
+              let activeProfile = sameToolProfiles.first(where: { $0.id == activeProfileID }),
               activeProfile.cliType == request.cliType,
               !activeProfile.isDisabled else {
             return sameToolProfiles

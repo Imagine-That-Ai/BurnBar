@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Devices
@@ -31,6 +32,7 @@ import com.openburnbar.data.stores.DevicesStore
 import com.openburnbar.data.stores.UserStore
 import com.openburnbar.menubar.SuppressionStore
 import com.openburnbar.ui.components.AuroraGlassCard
+import com.openburnbar.ui.components.AuroraSecondaryButton
 import com.openburnbar.ui.components.AuroraSettingsToggle
 import com.openburnbar.ui.smartdisplay.SmartDisplayView
 import com.openburnbar.ui.theme.AuroraColors
@@ -111,7 +113,7 @@ private fun YouRoot(
         SettingsRow(
             icon = Icons.Filled.Tv,
             title = "Smart Displays",
-            subtitle = "Pixel Clock · Home Assistant",
+            subtitle = "Google Smart Display · Pixel Clock",
             onClick = onOpenSmartDisplays
         )
 
@@ -127,6 +129,21 @@ private fun YouRoot(
             title = "Settings",
             subtitle = "Appearance, budget, notifications"
         ) {}
+
+        Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
+
+        AuroraSecondaryButton(
+            onClick = { userStore.signOut() },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Logout,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+            Text("Sign Out", fontWeight = FontWeight.SemiBold)
+        }
 
         Spacer(modifier = Modifier.height(AuroraSpacing.xxxl.dp))
     }

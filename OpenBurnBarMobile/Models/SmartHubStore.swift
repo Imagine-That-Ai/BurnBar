@@ -12,6 +12,7 @@ import OpenBurnBarCore
 
 @Observable @MainActor
 final class SmartHubStore {
+    private static let liveBridgeMaxAge: TimeInterval = 60
 
     enum CastState: Equatable {
         case idle
@@ -39,7 +40,23 @@ final class SmartHubStore {
     /// smart-hub config with at least a refresh URL we can hit.
     var canCast: Bool {
         guard let config, config.enabled else { return false }
-        return config.refreshURL != nil
+        return config.refreshURL != nil && hasLiveMacBridge
+    }
+
+    var hasLiveMacBridge: Bool {
+        guard let config else { return false }
+        return Date().timeIntervalSince(config.publishedAt) <= Self.liveBridgeMaxAge
+    }
+
+    var bridgeFreshnessMessage: String {
+        guard let config else {
+            return "Open BurnBar on your Mac to connect smart displays."
+        }
+        let age = Date().timeIntervalSince(config.publishedAt)
+        guard age <= Self.liveBridgeMaxAge else {
+            return "Mac bridge is offline. Last heartbeat was \(Self.relativeAge(age)) ago from \(config.sourceDeviceName ?? "your Mac")."
+        }
+        return "Mac bridge is live on \(config.sourceDeviceName ?? "your Mac")."
     }
 
     var dashboardURL: URL? {
@@ -75,6 +92,10 @@ final class SmartHubStore {
     /// POST the configured refresh URL. The Mac-side DashCast bridge
     /// receives the ping and re-renders the dashboard onto the Nest Hub.
     func cast() async {
+        guard hasLiveMacBridge else {
+            castState = .failure(message: bridgeFreshnessMessage)
+            return
+        }
         guard let config, config.enabled,
               let raw = config.refreshURL,
               let url = URL(string: raw) else {
@@ -266,6 +287,14 @@ final class SmartHubStore {
         try await publishNestHubAction(type: "nest_hub_refresh", display: nil)
     }
 
+    func repairNestHub() async throws -> WizardActionStatus {
+        try await publishNestHubAction(type: "nest_hub_repair", display: nil, timeout: 180)
+    }
+
+    func repairSmartDisplays() async throws -> WizardActionStatus {
+        try await publishNestHubAction(type: "smart_display_repair", display: nil, timeout: 300)
+    }
+
     func identifyNestHub() async throws -> WizardActionStatus {
         try await publishNestHubAction(type: "nest_hub_identify", display: nil)
     }
@@ -277,7 +306,8 @@ final class SmartHubStore {
     private func publishNestHubAction(
         type: String,
         display: SmartHubDisplayConfig?,
-        extra: [String: Any] = [:]
+        extra: [String: Any] = [:],
+        timeout: TimeInterval = 45
     ) async throws -> WizardActionStatus {
         var payload: [String: Any] = ["type": type]
         if let display {
@@ -286,7 +316,7 @@ final class SmartHubStore {
         for (key, value) in extra {
             payload[key] = value
         }
-        return try await publishAction(payload, collection: "smart_display_actions")
+        return try await publishAction(payload, collection: "smart_display_actions", timeout: timeout)
     }
 
     func probePixelClock() async throws -> WizardActionStatus {
@@ -405,6 +435,7 @@ final class SmartHubStore {
         guard let uid = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "SmartHubStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Not signed in."])
         }
+        try requireLiveMacBridge()
         let actionId = UUID().uuidString
         let actionsRef = db.collection("users").document(uid).collection("cast_actions").document(actionId)
         try await actionsRef.setData([
@@ -414,15 +445,33 @@ final class SmartHubStore {
         ])
         // Poll for completion (up to 25 seconds).
         let deadline = Date().addingTimeInterval(25)
+        var terminalStatus: String?
+        var terminalData: [String: Any] = [:]
         while Date() < deadline {
             try await Task.sleep(nanoseconds: 800_000_000)
             let snap = try await actionsRef.getDocument()
-            if let status = snap.data()?["status"] as? String, status != "pending" { break }
+            let data = snap.data() ?? [:]
+            if let status = data["status"] as? String, status != "pending" {
+                terminalStatus = status
+                terminalData = data
+                break
+            }
+        }
+        if terminalStatus == "failed" {
+            let message = (terminalData["errorMessage"] as? String) ?? "Mac discovery failed."
+            throw NSError(domain: "SmartHubStore", code: 3, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+        guard terminalStatus == "completed" else {
+            throw NSError(domain: "SmartHubStore", code: 4, userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for the Mac to scan Google smart displays."])
         }
         // Read whatever the Mac published.
         let resultsRef = db.collection("users").document(uid)
             .collection("cast_discovery_results").document("latest")
         let resultsSnap = try await resultsRef.getDocument()
+        if let resultActionId = resultsSnap.data()?["actionId"] as? String,
+           resultActionId != actionId {
+            throw NSError(domain: "SmartHubStore", code: 5, userInfo: [NSLocalizedDescriptionKey: "Mac returned stale discovery results. Run Find again."])
+        }
         guard let raw = resultsSnap.data()?["devices"] as? [[String: Any]] else { return [] }
         return raw.compactMap(WizardCastDevice.init(data:))
     }
@@ -442,13 +491,18 @@ final class SmartHubStore {
         ])
     }
 
-    private func publishAction(_ payload: [String: Any], collection: String = "cast_actions") async throws -> WizardActionStatus {
+    private func publishAction(
+        _ payload: [String: Any],
+        collection: String = "cast_actions",
+        timeout: TimeInterval = 45
+    ) async throws -> WizardActionStatus {
         guard FirebaseApp.app() != nil else {
             throw NSError(domain: "SmartHubStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Firebase is not configured."])
         }
         guard let uid = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "SmartHubStore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Not signed in."])
         }
+        try requireLiveMacBridge()
         let actionId = UUID().uuidString
         let actionsRef = db.collection("users").document(uid).collection(collection).document(actionId)
         var data = payload
@@ -457,7 +511,7 @@ final class SmartHubStore {
         lastPublishedActionData = data
         try await actionsRef.setData(data)
 
-        let deadline = Date().addingTimeInterval(45)
+        let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             try await Task.sleep(nanoseconds: 700_000_000)
             let snap = try await actionsRef.getDocument()
@@ -474,6 +528,24 @@ final class SmartHubStore {
             }
         }
         return .failed("Timed out waiting for the Mac.")
+    }
+
+    private func requireLiveMacBridge() throws {
+        guard hasLiveMacBridge else {
+            throw NSError(
+                domain: "SmartHubStore",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: bridgeFreshnessMessage]
+            )
+        }
+    }
+
+    private static func relativeAge(_ interval: TimeInterval) -> String {
+        let seconds = max(0, Int(interval.rounded()))
+        if seconds < 60 { return "\(seconds)s" }
+        if seconds < 3_600 { return "\(seconds / 60)m" }
+        if seconds < 86_400 { return "\(seconds / 3_600)h" }
+        return "\(seconds / 86_400)d"
     }
 }
 

@@ -414,11 +414,7 @@ final class SmartHubBridgeServer {
                 || allowedSet.contains(persistedTokenForName(provider.name))
         }
 
-        let providersJSON = providers.map { p in
-            """
-            {"name":"\(escape(p.name))","percent":\(p.percent),"label":"\(escape(p.label))","tone":"\(p.tone.rawValue)","window":"\(escape(p.windowLabel))"}
-            """
-        }.joined(separator: ",")
+        let providersJSON = providers.map(Self.providerJSON).joined(separator: ",")
 
         let timePeriodOptions = SmartHubTimePeriod.allCases.map { period in
             "{\"value\":\"\(period.rawValue)\",\"short\":\"\(period.shortLabel)\",\"name\":\"\(escape(period.displayName))\"}"
@@ -455,10 +451,39 @@ final class SmartHubBridgeServer {
           "totalSpend": "\(escape(snapshot.totalSpend))",
           "headline": "\(escape(snapshot.headline))",
           "subheadline": "\(escape(snapshot.subheadline))",
+          "headerTimestamp": "\(escape(snapshot.headerTimestamp))",
+          "headerStatus": "\(escape(snapshot.headerStatus))",
           "providers": [\(providersJSON)],
           "display": \(displayJSON)
         }
         """
+    }
+
+    /// Encodes one provider card. Splits into its own function (vs an
+    /// inline expression) because the rich-card payload has nested arrays
+    /// — buckets and accounts — that the legacy single-line emitter
+    /// couldn't express cleanly.
+    private static func providerJSON(_ p: SmartHubBridgeSnapshot.Provider) -> String {
+        let bucketsJSON = p.buckets.map { b in
+            """
+            {"name":"\(escape(b.name))","percent":\(b.percent),"headlineValue":"\(escape(b.headlineValue))","subLabel":"\(escape(b.subLabel))","tone":"\(b.tone.rawValue)"}
+            """
+        }.joined(separator: ",")
+
+        let accountsJSON = p.accounts.map { a in
+            """
+            {"label":"\(escape(a.label))","badge":"\(escape(a.badge))","tone":"\(a.tone.rawValue)","isActive":\(a.isActive ? "true" : "false")}
+            """
+        }.joined(separator: ",")
+
+        return """
+        {"name":"\(escape(p.name))","slug":"\(escape(p.slug))","percent":\(p.percent),"label":"\(escape(p.label))","tone":"\(p.tone.rawValue)","window":"\(escape(p.windowLabel))","accentHex":"\(escape(p.accentHex))","logoSVG":"\(escape(p.logoSVG))","tokenTotal":"\(escape(p.tokenTotal))","tokenTotalLabel":"\(escape(p.tokenTotalLabel))","statusPill":"\(escape(p.statusPill))","statusTone":"\(p.statusTone.rawValue)","freshnessLabel":"\(escape(p.freshnessLabel))","fetchedAtLabel":"\(escape(p.fetchedAtLabel))","runsLabel":"\(escape(p.runsLabel))","costLabel":"\(escape(p.costLabel))","buckets":[\(bucketsJSON)],"accounts":[\(accountsJSON)]}
+        """
+    }
+
+    private static func escape(_ s: String) -> String {
+        s.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
     /// Best-effort mapping from a provider display name back to its
@@ -472,10 +497,7 @@ final class SmartHubBridgeServer {
         return String(String.UnicodeScalarView(alnum))
     }
 
-    private func escape(_ s: String) -> String {
-        s.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-    }
+    private func escape(_ s: String) -> String { Self.escape(s) }
 
     // MARK: - Wire format helpers
 
@@ -547,6 +569,15 @@ final class SmartHubBridgeServer {
 
 // MARK: - Snapshot model
 
+/// Rich per-provider data the Nest Hub renders as one of the horizontal cards.
+///
+/// Why the old single-bucket shape (`percent`/`label`/`windowLabel`) is still
+/// here: existing serialization tests assert on the legacy JSON keys, and
+/// the mobile preview view (`NestHubMiniPreview`) reads them. The richer
+/// `buckets` / `accounts` / `tokenTotal` arrays are additive — they're how
+/// the redesigned dashboard renders horizontal cards with multiple usage
+/// bars + account chips per provider. Code that doesn't care about the
+/// rich form keeps reading the old fields.
 struct SmartHubBridgeSnapshot: Equatable, Sendable {
     var totalSpend: String
     var headline: String
@@ -555,26 +586,153 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
 
     struct Provider: Equatable, Sendable {
         var name: String
-        var percent: Int       // 0–100; quota used
-        var label: String      // e.g. "$120 / $300"
+        var percent: Int       // 0–100; quota used (legacy single-bucket view)
+        var label: String      // e.g. "$120 / $300" (legacy single-bucket view)
         var tone: Tone
         var windowLabel: String // e.g. "5h", "7d" — shown next to provider on Nest
 
+        // Rich card fields. All optional so existing snapshot literals (and
+        // the mobile preview) keep working without ceremony.
+
+        /// Stable lowercased token used as DOM id and CSS class hook on the
+        /// device (e.g. "claudecode"). Falls back to a slug derived from
+        /// the display name when omitted.
+        var slug: String
+
+        /// Brand accent (hex without leading `#`). Drives the card aura,
+        /// big-number color, and bar fills. Mirrors
+        /// `DesignSystem.Colors.primary(for:)`.
+        var accentHex: String
+
+        /// SVG markup for the provider logo. Embedded as inline SVG so the
+        /// Hub doesn't need to fetch additional assets.
+        var logoSVG: String
+
+        /// Big numerals at the top of the card (e.g. "5.4B"). Empty when
+        /// the provider doesn't surface a primary token total.
+        var tokenTotal: String
+
+        /// Label shown under `tokenTotal` (defaults to "TOKENS").
+        var tokenTotalLabel: String
+
+        /// Short status pill (e.g. "source 3h ago", "reset passed",
+        /// "live local"). Empty when there's nothing to surface.
+        var statusPill: String
+
+        /// Tone of the status pill — drives its color band.
+        var statusTone: Tone
+
+        /// Relative-time string for the last refresh (e.g. "3h ago").
+        var freshnessLabel: String
+
+        /// Absolute timestamp text matching the design (e.g.
+        /// "May 7, 6:58 PM").
+        var fetchedAtLabel: String
+
+        /// One usage bar per row on the card. Multi-bucket providers
+        /// (Claude: 5h + weekly, Codex: 5h + 7d, etc.) get one entry per
+        /// window.
+        var buckets: [Bucket]
+
+        /// Account chips rendered in the "ACCOUNTS" section. Empty array
+        /// hides the section entirely.
+        var accounts: [Account]
+
+        /// Footer left side — number of runs in the active period
+        /// (e.g. "852 runs"). Empty hides the footer text.
+        var runsLabel: String
+
+        /// Footer right side — spend in the active period (e.g.
+        /// "$52,262.22"). Empty hides the spend text.
+        var costLabel: String
+
         enum Tone: String, Sendable { case ember, whimsy, success, warning, mercury }
+
+        struct Bucket: Equatable, Sendable, Hashable {
+            var name: String      // "5-hour window", "Weekly limit", "API usage"
+            var percent: Int      // 0–100
+            var headlineValue: String // "33%", "$400.00", "350.8M"
+            var subLabel: String  // "67% left", "$0.00 left", "resets May 8, 3:35 AM"
+            var tone: Tone
+        }
+
+        struct Account: Equatable, Sendable, Hashable {
+            var label: String     // "Work", "alberto8793@g…", "alberto@imagine-t…"
+            var badge: String     // "MAIN", "ACTIVE", "CLI"
+            var tone: Tone
+            var isActive: Bool    // active routing target — drives the green dot
+        }
 
         init(
             name: String,
             percent: Int,
             label: String,
             tone: Tone,
-            windowLabel: String = ""
+            windowLabel: String = "",
+            slug: String = "",
+            accentHex: String = "",
+            logoSVG: String = "",
+            tokenTotal: String = "",
+            tokenTotalLabel: String = "TOKENS",
+            statusPill: String = "",
+            statusTone: Tone = .mercury,
+            freshnessLabel: String = "",
+            fetchedAtLabel: String = "",
+            buckets: [Bucket] = [],
+            accounts: [Account] = [],
+            runsLabel: String = "",
+            costLabel: String = ""
         ) {
             self.name = name
             self.percent = percent
             self.label = label
             self.tone = tone
             self.windowLabel = windowLabel
+            self.slug = slug.isEmpty ? Self.slug(forName: name) : slug
+            self.accentHex = accentHex
+            self.logoSVG = logoSVG
+            self.tokenTotal = tokenTotal
+            self.tokenTotalLabel = tokenTotalLabel
+            self.statusPill = statusPill
+            self.statusTone = statusTone
+            self.freshnessLabel = freshnessLabel
+            self.fetchedAtLabel = fetchedAtLabel
+            self.buckets = buckets
+            self.accounts = accounts
+            self.runsLabel = runsLabel
+            self.costLabel = costLabel
         }
+
+        private static func slug(forName name: String) -> String {
+            name.lowercased()
+                .unicodeScalars
+                .filter { CharacterSet.alphanumerics.contains($0) }
+                .reduce(into: "") { $0.append(Character($1)) }
+        }
+    }
+
+    /// Wall-clock label shown in the top header (e.g. "Thu, May 7  10:43 PM").
+    /// Empty falls back to the legacy "Updated …" sub-headline path.
+    var headerTimestamp: String
+
+    /// Short status text shown next to the live-pressure dot in the top
+    /// header (e.g. "live provider pressure"). Empty hides the dot row.
+    var headerStatus: String
+
+    init(
+        totalSpend: String,
+        headline: String,
+        subheadline: String,
+        providers: [Provider],
+        headerTimestamp: String = "",
+        headerStatus: String = ""
+    ) {
+        self.totalSpend = totalSpend
+        self.headline = headline
+        self.subheadline = subheadline
+        self.providers = providers
+        self.headerTimestamp = headerTimestamp
+        self.headerStatus = headerStatus
     }
 
     static let empty = SmartHubBridgeSnapshot(

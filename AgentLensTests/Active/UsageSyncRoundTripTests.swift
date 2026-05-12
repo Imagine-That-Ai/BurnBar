@@ -203,6 +203,43 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual((buckets.first?["meta"] as? [String: String])?["label"], "5-hour window")
     }
 
+    func test_quotaSnapshotUpload_encodesPercentBucketsWithoutLimitAsDisplayableMobileQuota() async throws {
+        let snapshot = ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            fetchedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            source: .localCLI,
+            sourceId: "claude-statusline",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "Claude quota from status line.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "claude-5h",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: nil,
+                    limitValue: nil,
+                    remainingValue: 82,
+                    usedPercent: 18,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+
+        await quotaSnapshotSync.uploadSnapshots([snapshot])
+
+        let path = "users/test-uid-1/quota_snapshots/claude-code_unattributed_claude-statusline"
+        let doc = try XCTUnwrap(fakeGateway.documentData(at: path))
+        let buckets = try XCTUnwrap(doc["buckets"] as? [[String: Any]])
+        XCTAssertEqual(buckets.first?["name"] as? String, "claude-5h")
+        XCTAssertEqual(buckets.first?["used"] as? Double, 18)
+        XCTAssertEqual(buckets.first?["limit"] as? Double, 100)
+        XCTAssertEqual(buckets.first?["remaining"] as? Double, 82)
+        XCTAssertEqual((buckets.first?["meta"] as? [String: String])?["unit"], "percent")
+    }
+
     func test_usageDownload_readsRemoteUsageIntoLocalStore() async throws {
         // Seed fake Firestore with a remote usage document from another device
         let remoteDeviceId = "remote-device-2"

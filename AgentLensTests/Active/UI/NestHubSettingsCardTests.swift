@@ -36,6 +36,7 @@ final class NestHubSettingsCardTests: XCTestCase {
         let sut = try card.inspect()
 
         XCTAssertNoThrow(try sut.find(text: "Live preview"))
+        XCTAssertNoThrow(try sut.find(text: "Make display work"))
         XCTAssertNoThrow(try sut.find(text: "Layout"))
         XCTAssertNoThrow(try sut.find(text: "Palette"))
         XCTAssertNoThrow(try sut.find(text: "Theme"))

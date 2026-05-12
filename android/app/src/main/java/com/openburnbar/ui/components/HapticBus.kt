@@ -25,7 +25,7 @@ object HapticBus {
             context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             when (type) {
                 HapticType.LIGHT -> vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
                 HapticType.MEDIUM -> vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK))

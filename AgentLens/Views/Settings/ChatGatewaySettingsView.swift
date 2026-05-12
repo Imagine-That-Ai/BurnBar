@@ -1,8 +1,10 @@
 import SwiftUI
 
-// MARK: - Chat Gateway Settings View
+// MARK: - Hermes & Chat Settings (iOS-style landing)
 
-/// Settings view for configuring chat backends and HTTP gateways
+/// Drill-down landing for the Hermes tab. Splits the previously-stacked
+/// Hermes/Pi/OpenClaw/Inventory cards into focused subscreens so each row in
+/// the landing reads like an iOS Settings entry: title + subtitle + status.
 struct ChatGatewaySettingsView: View {
     @Bindable var settingsManager: SettingsManager
     private let dataStore: DataStore
@@ -44,329 +46,449 @@ struct ChatGatewaySettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                headerSection
-                chatEnginesSection
-                hermesGatewaySection
-                piAgentSection
-                openclawSection
-                importSection
-                onboardingSection
+        List {
+            Section {
+                NavigationLink {
+                    ChatEnginesDetailView(settingsManager: settingsManager)
+                } label: {
+                    SettingsDrillRow(
+                        icon: "cpu",
+                        iconTint: DesignSystem.Colors.whimsy,
+                        title: "Chat Engines",
+                        subtitle: "Which engines appear in the dashboard and menu-bar chat header",
+                        value: "\(settingsManager.enabledChatBackends.count) on"
+                    )
+                }
+            } header: {
+                Text("Engines")
+            } footer: {
+                Text("Toggle the engines you want OpenBurnBar to surface. Configuration for each engine lives in its own row below.")
+                    .font(DesignSystem.Typography.tiny)
             }
-            .padding(DesignSystem.Spacing.lg)
-        }
-    }
 
-    // MARK: - Header
-
-    private var headerSection: some View {
-        GlassCard {
-            HStack(spacing: DesignSystem.Spacing.lg) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [DesignSystem.Colors.hermesMercury.opacity(0.3),
-                                         DesignSystem.Colors.hermesAureate.opacity(0.2)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 56, height: 56)
-                    Text("☿")
-                        .font(.system(size: 30, weight: .bold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [DesignSystem.Colors.hermesMercury,
-                                         DesignSystem.Colors.hermesAureate],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+            Section {
+                NavigationLink {
+                    HermesGatewayDetailView(
+                        settingsManager: settingsManager,
+                        hermesRuntimeLauncher: hermesRuntimeLauncher
+                    )
+                } label: {
+                    SettingsDrillRow(
+                        icon: "antenna.radiowaves.left.and.right",
+                        iconTint: DesignSystem.Colors.hermesAureate,
+                        title: "Hermes Gateway",
+                        subtitle: "Local webapi on :8642, auto-launch with OpenBurnBar",
+                        value: settingsManager.launchHermesWithOpenBurnBar ? "Auto" : "Manual",
+                        valueTint: settingsManager.launchHermesWithOpenBurnBar
+                            ? DesignSystem.Colors.success
+                            : DesignSystem.Colors.textMuted
+                    )
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Hermes")
-                        .font(DesignSystem.Typography.title)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text("Messenger AI configuration")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                NavigationLink {
+                    PiAgentDetailView(
+                        settingsManager: settingsManager,
+                        piAgentRuntimeAdapter: piAgentRuntimeAdapter
+                    )
+                } label: {
+                    SettingsDrillRow(
+                        icon: "circle.hexagongrid.fill",
+                        iconTint: DesignSystem.Colors.purple,
+                        title: "Pi Agent Instances",
+                        subtitle: "Pi gateway endpoint, optional Redis, instance selection",
+                        value: settingsManager.launchPiAgentsWithOpenBurnBar ? "Auto" : "Manual",
+                        valueTint: settingsManager.launchPiAgentsWithOpenBurnBar
+                            ? DesignSystem.Colors.success
+                            : DesignSystem.Colors.textMuted
+                    )
                 }
 
-                Spacer()
+                NavigationLink {
+                    OpenClawGatewayDetailView(settingsManager: settingsManager)
+                } label: {
+                    SettingsDrillRow(
+                        icon: "network.badge.shield.half.filled",
+                        iconTint: DesignSystem.Colors.teal,
+                        title: "OpenClaw Gateway",
+                        subtitle: "OpenAI-compatible gateway (default 127.0.0.1:18789)",
+                        value: openClawHostDisplay
+                    )
+                }
+
+                NavigationLink {
+                    RemoteRelayDetailView(settingsManager: settingsManager)
+                } label: {
+                    SettingsDrillRow(
+                        icon: "iphone.radiowaves.left.and.right",
+                        iconTint: DesignSystem.Colors.coral,
+                        title: "Remote Relay",
+                        subtitle: "Let iPhone and iPad chat with this Mac's Hermes over the network",
+                        value: settingsManager.hermesRemoteRelayEnabled ? "On" : "Off",
+                        valueTint: settingsManager.hermesRemoteRelayEnabled
+                            ? DesignSystem.Colors.success
+                            : DesignSystem.Colors.textMuted
+                    )
+                }
+            } header: {
+                Text("Gateways")
             }
-            .padding(DesignSystem.Spacing.lg)
+
+            Section {
+                NavigationLink {
+                    HermesInventoryImportDetailView(
+                        inventoryImportService: inventoryImportService
+                    )
+                } label: {
+                    SettingsDrillRow(
+                        icon: "tray.and.arrow.down.fill",
+                        iconTint: DesignSystem.Colors.hermesAureate,
+                        title: "Import Hermes Chats",
+                        subtitle: "Bring pre-OpenBurnBar Hermes conversations into the local index",
+                        value: inventoryStatusValue
+                    )
+                }
+
+                NavigationLink {
+                    HermesSetupDetailView(
+                        settingsManager: settingsManager,
+                        dataStore: dataStore,
+                        cloudSyncService: cloudSyncService,
+                        iCloudSessionMirrorService: iCloudSessionMirrorService
+                    )
+                } label: {
+                    SettingsDrillRow(
+                        icon: "wand.and.stars",
+                        iconTint: DesignSystem.Colors.amber,
+                        title: "Setup Assistant",
+                        subtitle: "Guided Hermes setup, mark onboarding complete",
+                        value: settingsManager.hermesSetupWizardCompleted ? "Done" : "Pending",
+                        valueTint: settingsManager.hermesSetupWizardCompleted
+                            ? DesignSystem.Colors.success
+                            : DesignSystem.Colors.warning
+                    )
+                }
+            } header: {
+                Text("Import & setup")
+            }
         }
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .background(DesignSystem.Colors.background)
+        .navigationTitle("Hermes & AI")
     }
 
-    // MARK: - Chat Engines
+    private var openClawHostDisplay: String {
+        let raw = settingsManager.openClawGatewayBaseURL
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty, let url = URL(string: raw), let host = url.host else {
+            return "Not set"
+        }
+        if let port = url.port { return "\(host):\(port)" }
+        return host
+    }
 
-    private var chatEnginesSection: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                sectionTitle("Chat Engines", icon: "cpu", color: DesignSystem.Colors.whimsy)
+    private var inventoryStatusValue: String {
+        switch inventoryImportService.phase {
+        case .scanning: return "Scanning"
+        case .importing: return "Importing"
+        case .complete: return "Imported"
+        case .failed: return "Error"
+        case .ready: return "Ready"
+        case .idle:
+            return inventoryImportService.hasImportableInventory ? "Ready" : "—"
+        }
+    }
+}
 
-                Text("Only the engines you enable here appear in the dashboard and menu bar chat header.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+// MARK: - Chat Engines Detail
 
+struct ChatEnginesDetailView: View {
+    @Bindable var settingsManager: SettingsManager
+
+    var body: some View {
+        SettingsDetailContainer(
+            title: "Chat Engines",
+            subtitle: "Only the engines you enable here appear in the dashboard and menu bar chat header."
+        ) {
+            GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                     ForEach(ChatBackendID.allCases) { backend in
                         Toggle(isOn: Binding(
                             get: { settingsManager.enabledChatBackends.contains(backend) },
                             set: { settingsManager.setChatBackendEnabled(backend, enabled: $0) }
                         )) {
-                            Text(backend.displayName)
-                                .font(DesignSystem.Typography.body)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(backend.displayName)
+                                    .font(DesignSystem.Typography.body)
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                Text(engineSubtitle(backend))
+                                    .font(DesignSystem.Typography.tiny)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                            }
+                        }
+                        if backend != ChatBackendID.allCases.last {
+                            Divider().background(DesignSystem.Colors.border)
                         }
                     }
                 }
+                .padding(DesignSystem.Spacing.lg)
             }
-            .padding(DesignSystem.Spacing.lg)
         }
     }
 
-    // MARK: - Hermes Gateway
+    private func engineSubtitle(_ backend: ChatBackendID) -> String {
+        switch backend {
+        case .hermes: return "Local Hermes webapi (recommended)"
+        case .piAgent: return "Pi agent via the Pi gateway"
+        case .openclaw: return "OpenClaw OpenAI-compatible gateway"
+        case .codex: return "Local Codex CLI session"
+        case .claude: return "Local Claude Code CLI session"
+        }
+    }
+}
 
-    private var hermesGatewaySection: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                sectionTitle("Hermes Gateway", icon: "network", color: DesignSystem.Colors.hermesAureate)
+// MARK: - Hermes Gateway Detail
 
-                Text("OpenBurnBar can start the Hermes Dashboard and local API gateway for you. The gateway defaults to port 8642.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+struct HermesGatewayDetailView: View {
+    @Bindable var settingsManager: SettingsManager
+    @Bindable var hermesRuntimeLauncher: HermesRuntimeLauncher
 
-                HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
-                    ZStack {
-                        Circle()
-                            .fill(hermesRuntimeLauncher.status.gatewayRunning ? DesignSystem.Colors.success.opacity(0.16) : DesignSystem.Colors.surface)
-                            .frame(width: 34, height: 34)
-                        if hermesRuntimeLauncher.isBusy {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: hermesRuntimeLauncher.status.gatewayRunning ? "checkmark" : "power")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(hermesRuntimeLauncher.status.gatewayRunning ? DesignSystem.Colors.success : DesignSystem.Colors.hermesAureate)
+    var body: some View {
+        SettingsDetailContainer(
+            title: "Hermes Gateway",
+            subtitle: "OpenBurnBar can start the Hermes Dashboard and local API gateway for you. The gateway defaults to port 8642."
+        ) {
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                    HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                        ZStack {
+                            Circle()
+                                .fill(hermesRuntimeLauncher.status.gatewayRunning
+                                    ? DesignSystem.Colors.success.opacity(0.16)
+                                    : DesignSystem.Colors.surface)
+                                .frame(width: 34, height: 34)
+                            if hermesRuntimeLauncher.isBusy {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: hermesRuntimeLauncher.status.gatewayRunning ? "checkmark" : "power")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(hermesRuntimeLauncher.status.gatewayRunning
+                                        ? DesignSystem.Colors.success
+                                        : DesignSystem.Colors.hermesAureate)
+                            }
                         }
-                    }
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(hermesRuntimeLauncher.status.message)
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(hermesRuntimeLauncher.lastError == nil ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.error)
-                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(hermesRuntimeLauncher.status.message)
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(hermesRuntimeLauncher.lastError == nil
+                                    ? DesignSystem.Colors.textPrimary
+                                    : DesignSystem.Colors.error)
+                                .fixedSize(horizontal: false, vertical: true)
 
-                        if let path = hermesRuntimeLauncher.status.hermesCLIPath {
-                            Text(path)
-                                .font(DesignSystem.Typography.monoTiny)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
+                            if let path = hermesRuntimeLauncher.status.hermesCLIPath {
+                                Text(path)
+                                    .font(DesignSystem.Typography.monoTiny)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
                         }
+
+                        Spacer()
                     }
 
-                    Spacer()
-                }
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Button {
+                            Task { await openHermes() }
+                        } label: {
+                            Label("Open Hermes + Gateway", systemImage: "play.circle.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DesignSystem.Colors.hermesAureate)
+                        .disabled(hermesRuntimeLauncher.isBusy)
 
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    Button {
-                        Task { await openHermesRuntime() }
-                    } label: {
-                        Label("Open Hermes + Gateway", systemImage: "play.circle.fill")
+                        Button {
+                            Task { await refreshHermes() }
+                        } label: {
+                            Label("Check Health", systemImage: "waveform.path.ecg")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(hermesRuntimeLauncher.isBusy)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(DesignSystem.Colors.hermesAureate)
-                    .disabled(hermesRuntimeLauncher.isBusy)
-
-                    Button {
-                        Task { await refreshHermesRuntimeStatus() }
-                    } label: {
-                        Label("Check Health", systemImage: "waveform.path.ecg")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(hermesRuntimeLauncher.isBusy)
-                }
-                .controlSize(.small)
-                .font(DesignSystem.Typography.caption)
-
-                Toggle("Launch Hermes Dashboard and gateway when OpenBurnBar opens", isOn: $settingsManager.launchHermesWithOpenBurnBar)
+                    .controlSize(.small)
                     .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Toggle("Launch Hermes Dashboard and gateway when OpenBurnBar opens",
+                           isOn: $settingsManager.launchHermesWithOpenBurnBar)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                }
+                .padding(DesignSystem.Spacing.lg)
+            }
+
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                     fieldLabel("Base URL")
                     TextField("http://localhost:8642", text: $settingsManager.hermesGatewayBaseURL)
                         .textFieldStyle(.roundedBorder)
-                }
 
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     fieldLabel("Bearer Token")
-                    SecureField("Same as API_SERVER_KEY (leave empty if unset)", text: $settingsManager.hermesBearerToken)
+                    SecureField("Same as API_SERVER_KEY (leave empty if unset)",
+                                text: $settingsManager.hermesBearerToken)
                         .textFieldStyle(.roundedBorder)
-                }
 
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     fieldLabel("Model Override")
-                    TextField("Leave empty for auto (e.g. gpt-5.5)", text: $settingsManager.hermesChatModelOverride)
+                    TextField("Leave empty for auto (e.g. gpt-5.5)",
+                              text: $settingsManager.hermesChatModelOverride)
                         .textFieldStyle(.roundedBorder)
                 }
-
-                Toggle("Allow iPhone/iPad Remote Relay through this Mac", isOn: $settingsManager.hermesRemoteRelayEnabled)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                DisclosureGroup("Advanced relay endpoint") {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                        Text("OpenBurnBar uses the hosted relay automatically for premium accounts. Change this only for development or self-hosted staging.")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        TextField("Hosted relay URL", text: $settingsManager.hermesRealtimeRelayURL)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                }
-                .font(DesignSystem.Typography.caption)
-
-                Text("Premium accounts can use this Mac as a private Remote Relay host so iPhone and iPad can chat with local Hermes over cell signal. The API_SERVER_KEY stays on this Mac; OpenBurnBar relays only encrypted request and response frames.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+                .padding(DesignSystem.Spacing.lg)
             }
-            .padding(DesignSystem.Spacing.lg)
         }
-        .task {
-            await refreshHermesRuntimeStatus()
-        }
+        .task { await refreshHermes() }
     }
 
-    // MARK: - Pi Agent Instances
+    private func refreshHermes() async {
+        _ = await hermesRuntimeLauncher.refreshStatus(
+            baseURL: resolvedBaseURL,
+            bearerToken: resolvedBearer
+        )
+    }
 
-    private var piAgentSection: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                sectionTitle("Pi Agent Instances", icon: "circle.hexagongrid.fill", color: DesignSystem.Colors.purple)
+    private func openHermes() async {
+        _ = await hermesRuntimeLauncher.openHermesAndGateway(
+            baseURL: resolvedBaseURL,
+            bearerToken: resolvedBearer
+        )
+    }
 
-                Text("OpenBurnBar can start the Pi agent and its local API gateway. Redis is optional and only used for richer multi-instance discovery and control.")
+    private var resolvedBaseURL: URL {
+        URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? URL(string: "http://127.0.0.1:8642")!
+    }
+
+    private var resolvedBearer: String? {
+        let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
+    }
+}
+
+// MARK: - Pi Agent Detail
+
+struct PiAgentDetailView: View {
+    @Bindable var settingsManager: SettingsManager
+    @Bindable var piAgentRuntimeAdapter: PiAgentRuntimeAdapter
+
+    var body: some View {
+        SettingsDetailContainer(
+            title: "Pi Agent Instances",
+            subtitle: "OpenBurnBar can start the Pi agent and its local API gateway. Redis is optional and only used for richer multi-instance discovery and control."
+        ) {
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                    HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                        ZStack {
+                            Circle()
+                                .fill(piAgentRuntimeAdapter.managedStatus.gatewayRunning
+                                    ? DesignSystem.Colors.success.opacity(0.16)
+                                    : DesignSystem.Colors.surface)
+                                .frame(width: 34, height: 34)
+                            if piAgentRuntimeAdapter.isBusy {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: piAgentRuntimeAdapter.managedStatus.gatewayRunning ? "checkmark" : "power")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(piAgentRuntimeAdapter.managedStatus.gatewayRunning
+                                        ? DesignSystem.Colors.success
+                                        : DesignSystem.Colors.purple)
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(piAgentRuntimeAdapter.managedStatus.message)
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(piAgentRuntimeAdapter.lastError == nil
+                                    ? DesignSystem.Colors.textPrimary
+                                    : DesignSystem.Colors.error)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            if let redis = piAgentRuntimeAdapter.managedStatus.redisStatus, !redis.isEmpty {
+                                Text(redis)
+                                    .font(DesignSystem.Typography.tiny)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                            }
+
+                            if let path = piAgentRuntimeAdapter.managedStatus.executablePath {
+                                Text(path)
+                                    .font(DesignSystem.Typography.monoTiny)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                        }
+
+                        Spacer()
+                    }
+
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Button {
+                            Task { await openPi() }
+                        } label: {
+                            Label("Open Pi + Gateway", systemImage: "play.circle.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DesignSystem.Colors.purple)
+                        .disabled(piAgentRuntimeAdapter.isBusy)
+
+                        Button {
+                            Task { await refreshPi() }
+                        } label: {
+                            Label("Check Health", systemImage: "waveform.path.ecg")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(piAgentRuntimeAdapter.isBusy)
+                    }
+                    .controlSize(.small)
                     .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
 
-                piAgentStatusRow
-
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    Button {
-                        Task { await openPiAgentRuntime() }
-                    } label: {
-                        Label("Open Pi + Gateway", systemImage: "play.circle.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(DesignSystem.Colors.purple)
-                    .disabled(piAgentRuntimeAdapter.isBusy)
-
-                    Button {
-                        Task { await refreshPiAgentRuntimeStatus() }
-                    } label: {
-                        Label("Check Health", systemImage: "waveform.path.ecg")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(piAgentRuntimeAdapter.isBusy)
+                    Toggle("Launch Pi agent and gateway when OpenBurnBar opens",
+                           isOn: $settingsManager.launchPiAgentsWithOpenBurnBar)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
                 }
-                .controlSize(.small)
-                .font(DesignSystem.Typography.caption)
+                .padding(DesignSystem.Spacing.lg)
+            }
 
-                Toggle("Launch Pi agent and gateway when OpenBurnBar opens", isOn: $settingsManager.launchPiAgentsWithOpenBurnBar)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                     fieldLabel("Base URL")
                     TextField("http://127.0.0.1:8765", text: $settingsManager.piAgentGatewayBaseURL)
                         .textFieldStyle(.roundedBorder)
-                }
 
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     fieldLabel("Bearer Token")
                     SecureField("Optional bearer token", text: $settingsManager.piAgentBearerToken)
                         .textFieldStyle(.roundedBorder)
-                }
 
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     fieldLabel("Redis URL (optional)")
                     TextField("redis://127.0.0.1:6379/0", text: $settingsManager.piAgentRedisURL)
                         .textFieldStyle(.roundedBorder)
-                }
 
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     fieldLabel("Model Override")
-                    TextField("Leave empty for gateway default", text: $settingsManager.piAgentChatModelOverride)
+                    TextField("Leave empty for gateway default",
+                              text: $settingsManager.piAgentChatModelOverride)
                         .textFieldStyle(.roundedBorder)
-                }
 
-                piAgentInstancePickerSection
+                    instancePicker
+                }
+                .padding(DesignSystem.Spacing.lg)
             }
-            .padding(DesignSystem.Spacing.lg)
         }
-        .task {
-            await refreshPiAgentRuntimeStatus()
-        }
+        .task { await refreshPi() }
     }
 
     @ViewBuilder
-    private var piAgentStatusRow: some View {
-        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
-            ZStack {
-                Circle()
-                    .fill(piAgentRuntimeAdapter.managedStatus.gatewayRunning
-                        ? DesignSystem.Colors.success.opacity(0.16)
-                        : DesignSystem.Colors.surface)
-                    .frame(width: 34, height: 34)
-                if piAgentRuntimeAdapter.isBusy {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: piAgentRuntimeAdapter.managedStatus.gatewayRunning ? "checkmark" : "power")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(piAgentRuntimeAdapter.managedStatus.gatewayRunning
-                            ? DesignSystem.Colors.success
-                            : DesignSystem.Colors.purple)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(piAgentRuntimeAdapter.managedStatus.message)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(piAgentRuntimeAdapter.lastError == nil ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.error)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let redis = piAgentRuntimeAdapter.managedStatus.redisStatus, !redis.isEmpty {
-                    Text(redis)
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
-
-                if let path = piAgentRuntimeAdapter.managedStatus.executablePath {
-                    Text(path)
-                        .font(DesignSystem.Typography.monoTiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-
-            Spacer()
-        }
-    }
-
-    @ViewBuilder
-    private var piAgentInstancePickerSection: some View {
+    private var instancePicker: some View {
         let instances = piAgentRuntimeAdapter.managedStatus.instances
         if !instances.isEmpty {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
@@ -374,9 +496,7 @@ struct ChatGatewaySettingsView: View {
                 Picker("Active instance", selection: Binding(
                     get: {
                         let stored = settingsManager.piAgentSelectedInstanceID
-                        if instances.contains(where: { $0.id == stored }) {
-                            return stored
-                        }
+                        if instances.contains(where: { $0.id == stored }) { return stored }
                         return instances.first?.id ?? ""
                     },
                     set: { newValue in
@@ -404,261 +524,179 @@ struct ChatGatewaySettingsView: View {
         }
     }
 
-    // MARK: - OpenClaw Gateway
+    private func refreshPi() async {
+        syncAdapter()
+        _ = await piAgentRuntimeAdapter.refreshManagedStatus(
+            baseURL: resolvedPiBaseURL,
+            bearerToken: resolvedPiBearer
+        )
+    }
 
-    private var openclawSection: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                sectionTitle("OpenClaw Gateway", icon: "network.badge.shield.half.filled", color: DesignSystem.Colors.teal)
+    private func openPi() async {
+        syncAdapter()
+        _ = await piAgentRuntimeAdapter.openManagedRuntime(
+            baseURL: resolvedPiBaseURL,
+            bearerToken: resolvedPiBearer
+        )
+    }
 
-                Text("OpenAI-compatible gateway, default 127.0.0.1:18789.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+    private func syncAdapter() {
+        let preferred = settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        piAgentRuntimeAdapter.preferredInstanceID = preferred.isEmpty ? nil : preferred
+        let redisRaw = settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        piAgentRuntimeAdapter.redisURL = redisRaw.isEmpty ? nil : URL(string: redisRaw)
+    }
 
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+    private var resolvedPiBaseURL: URL {
+        URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
+            ?? URL(string: "http://127.0.0.1:8765")!
+    }
+
+    private var resolvedPiBearer: String? {
+        let token = settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
+    }
+}
+
+// MARK: - OpenClaw Gateway Detail
+
+struct OpenClawGatewayDetailView: View {
+    @Bindable var settingsManager: SettingsManager
+
+    var body: some View {
+        SettingsDetailContainer(
+            title: "OpenClaw Gateway",
+            subtitle: "OpenAI-compatible gateway, default 127.0.0.1:18789."
+        ) {
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                     fieldLabel("Base URL")
                     TextField("http://127.0.0.1:18789", text: $settingsManager.openClawGatewayBaseURL)
                         .textFieldStyle(.roundedBorder)
-                }
 
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                     fieldLabel("Bearer Token")
                     SecureField("Optional bearer token", text: $settingsManager.openClawBearerToken)
                         .textFieldStyle(.roundedBorder)
                 }
+                .padding(DesignSystem.Spacing.lg)
             }
-            .padding(DesignSystem.Spacing.lg)
         }
     }
+}
 
-    // MARK: - Import
+// MARK: - Remote Relay Detail
 
-    private var importSection: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                sectionTitle("Import", icon: "tray.and.arrow.down.fill", color: DesignSystem.Colors.hermesAureate)
+struct RemoteRelayDetailView: View {
+    @Bindable var settingsManager: SettingsManager
 
-                hermesInventoryImportCard
-            }
-            .padding(DesignSystem.Spacing.lg)
-        }
-    }
+    var body: some View {
+        SettingsDetailContainer(
+            title: "Remote Relay",
+            subtitle: "Premium accounts can use this Mac as a private Remote Relay host so iPhone and iPad can chat with local Hermes over cell signal. The API_SERVER_KEY stays on this Mac; OpenBurnBar relays only encrypted request and response frames."
+        ) {
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                    SettingsToggle(
+                        title: "Allow iPhone/iPad Remote Relay",
+                        subtitle: "Enables relaying Hermes chat through this Mac to mobile clients.",
+                        icon: "iphone.radiowaves.left.and.right",
+                        isOn: $settingsManager.hermesRemoteRelayEnabled
+                    )
 
-    // MARK: - Onboarding
+                    DisclosureGroup("Advanced relay endpoint") {
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                            Text("OpenBurnBar uses the hosted relay automatically for premium accounts. Change this only for development or self-hosted staging.")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
 
-    private var onboardingSection: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                sectionTitle("Setup", icon: "wand.and.stars", color: DesignSystem.Colors.amber)
-
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    Button("Guided Hermes setup") {
-                        WindowManager.shared.openHermesSetupWizard(
-                            settingsManager: settingsManager,
-                            chatController: nil,
-                            dataStore: dataStore,
-                            cloudSyncService: cloudSyncService,
-                            iCloudSessionMirrorService: iCloudSessionMirrorService
-                        )
+                            TextField("Hosted relay URL", text: $settingsManager.hermesRealtimeRelayURL)
+                                .textFieldStyle(.roundedBorder)
+                        }
                     }
-                    .buttonStyle(.bordered)
-                    .tint(DesignSystem.Colors.hermesAureate)
                     .font(DesignSystem.Typography.caption)
-
-                    Spacer()
                 }
-
-                Toggle("Hermes setup completed", isOn: $settingsManager.hermesSetupWizardCompleted)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                Toggle("Chat setup completed", isOn: $settingsManager.chatBackendOnboardingCompleted)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-            }
-            .padding(DesignSystem.Spacing.lg)
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func sectionTitle(_ title: String, icon: String, color: Color) -> some View {
-        Label {
-            Text(title)
-                .font(DesignSystem.Typography.headline)
-                .fontWeight(.semibold)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-        } icon: {
-            ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(color.opacity(0.18))
-                    .frame(width: 28, height: 28)
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(color)
+                .padding(DesignSystem.Spacing.lg)
             }
         }
     }
+}
 
-    private func fieldLabel(_ text: String) -> some View {
-        Text(text)
-            .font(DesignSystem.Typography.caption)
-            .fontWeight(.semibold)
-            .foregroundStyle(DesignSystem.Colors.textSecondary)
-            .textCase(.uppercase)
-            .tracking(0.8)
-    }
+// MARK: - Inventory Import Detail
 
-    private var hermesInventoryImportCard: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
-                Image(systemName: "tray.and.arrow.down.fill")
-                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Import existing Hermes chats")
+struct HermesInventoryImportDetailView: View {
+    @Bindable var inventoryImportService: HermesInventoryImportService
+
+    var body: some View {
+        SettingsDetailContainer(
+            title: "Import Hermes Chats",
+            subtitle: "Bring your pre-OpenBurnBar Hermes conversations into the local index, then optionally back them up so iPhone and iPad can read them."
+        ) {
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                    Text(inventoryImportService.primaryStatusText)
                         .font(DesignSystem.Typography.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text("Bring your pre-OpenBurnBar Hermes conversations into the local index, then optionally back them up so iPhone and iPad can read them.")
+                        .foregroundStyle(statusColor)
+
+                    if inventoryImportService.hasImportableInventory {
+                        HStack(spacing: DesignSystem.Spacing.md) {
+                            metric("Chats", "\(inventoryImportService.summary.conversationCount)")
+                            metric("Usage rows", "\(inventoryImportService.summary.usageEventCount)")
+                            if let last = inventoryImportService.summary.lastActivityAt {
+                                metric("Latest", last.formatted(date: .abbreviated, time: .omitted))
+                            }
+                        }
+
+                        Toggle("Back up to OpenBurnBar Cloud for iPhone/iPad", isOn: Binding(
+                            get: { inventoryImportService.decision.backupToOpenBurnBarCloud },
+                            set: { inventoryImportService.decision.backupToOpenBurnBarCloud = $0 }
+                        ))
                         .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
 
-            Text(inventoryImportService.primaryStatusText)
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(statusColor)
-
-            if inventoryImportService.hasImportableInventory {
-                HStack(spacing: DesignSystem.Spacing.md) {
-                    metric("Chats", "\(inventoryImportService.summary.conversationCount)")
-                    metric("Usage rows", "\(inventoryImportService.summary.usageEventCount)")
-                    if let last = inventoryImportService.summary.lastActivityAt {
-                        metric("Latest", last.formatted(date: .abbreviated, time: .omitted))
+                        Toggle("Mirror raw Hermes files to iCloud Drive", isOn: Binding(
+                            get: { inventoryImportService.decision.mirrorToICloud },
+                            set: { inventoryImportService.decision.mirrorToICloud = $0 }
+                        ))
+                        .font(DesignSystem.Typography.caption)
                     }
+
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Button {
+                            Task { await inventoryImportService.scan() }
+                        } label: {
+                            Label("Scan", systemImage: "magnifyingglass")
+                        }
+                        .disabled(isBusy)
+
+                        Button {
+                            Task { await inventoryImportService.importInventory() }
+                        } label: {
+                            Label("Import", systemImage: "square.and.arrow.down")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isBusy || !inventoryImportService.hasImportableInventory)
+                    }
+                    .controlSize(.small)
+                    .font(DesignSystem.Typography.caption)
                 }
-
-                Toggle("Back up to OpenBurnBar Cloud for iPhone/iPad", isOn: Binding(
-                    get: { inventoryImportService.decision.backupToOpenBurnBarCloud },
-                    set: { inventoryImportService.decision.backupToOpenBurnBarCloud = $0 }
-                ))
-                .font(DesignSystem.Typography.caption)
-
-                Toggle("Mirror raw Hermes files to iCloud Drive", isOn: Binding(
-                    get: { inventoryImportService.decision.mirrorToICloud },
-                    set: { inventoryImportService.decision.mirrorToICloud = $0 }
-                ))
-                .font(DesignSystem.Typography.caption)
+                .padding(DesignSystem.Spacing.lg)
             }
-
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                Button {
-                    Task { await inventoryImportService.scan() }
-                } label: {
-                    Label("Scan", systemImage: "magnifyingglass")
-                }
-                .disabled(inventoryImportServiceIsBusy)
-
-                Button {
-                    Task { await inventoryImportService.importInventory() }
-                } label: {
-                    Label("Import", systemImage: "square.and.arrow.down")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(inventoryImportServiceIsBusy || !inventoryImportService.hasImportableInventory)
-            }
-            .controlSize(.small)
-            .font(DesignSystem.Typography.caption)
         }
-        .padding(DesignSystem.Spacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.7))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(DesignSystem.Colors.border.opacity(0.8), lineWidth: 1)
-        )
     }
 
-    private var inventoryImportServiceIsBusy: Bool {
+    private var isBusy: Bool {
         switch inventoryImportService.phase {
-        case .scanning, .importing:
-            return true
-        default:
-            return false
+        case .scanning, .importing: return true
+        default: return false
         }
     }
 
     private var statusColor: Color {
         switch inventoryImportService.phase {
-        case .failed:
-            return DesignSystem.Colors.error
-        case .complete:
-            return DesignSystem.Colors.success
-        default:
-            return DesignSystem.Colors.textSecondary
+        case .failed: return DesignSystem.Colors.error
+        case .complete: return DesignSystem.Colors.success
+        default: return DesignSystem.Colors.textSecondary
         }
-    }
-
-    private func refreshHermesRuntimeStatus() async {
-        _ = await hermesRuntimeLauncher.refreshStatus(
-            baseURL: resolvedHermesGatewayBaseURL,
-            bearerToken: resolvedHermesBearerToken
-        )
-    }
-
-    private func openHermesRuntime() async {
-        _ = await hermesRuntimeLauncher.openHermesAndGateway(
-            baseURL: resolvedHermesGatewayBaseURL,
-            bearerToken: resolvedHermesBearerToken
-        )
-    }
-
-    private var resolvedHermesGatewayBaseURL: URL {
-        URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8642")!
-    }
-
-    private var resolvedHermesBearerToken: String? {
-        let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        return token.isEmpty ? nil : token
-    }
-
-    // MARK: - Pi Agent helpers
-
-    private func refreshPiAgentRuntimeStatus() async {
-        syncPiAgentAdapterPreferences()
-        _ = await piAgentRuntimeAdapter.refreshManagedStatus(
-            baseURL: resolvedPiAgentGatewayBaseURL,
-            bearerToken: resolvedPiAgentBearerToken
-        )
-    }
-
-    private func openPiAgentRuntime() async {
-        syncPiAgentAdapterPreferences()
-        _ = await piAgentRuntimeAdapter.openManagedRuntime(
-            baseURL: resolvedPiAgentGatewayBaseURL,
-            bearerToken: resolvedPiAgentBearerToken
-        )
-    }
-
-    private func syncPiAgentAdapterPreferences() {
-        let preferredInstance = settingsManager.piAgentSelectedInstanceID.trimmingCharacters(in: .whitespacesAndNewlines)
-        piAgentRuntimeAdapter.preferredInstanceID = preferredInstance.isEmpty ? nil : preferredInstance
-        let redisRaw = settingsManager.piAgentRedisURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        piAgentRuntimeAdapter.redisURL = redisRaw.isEmpty ? nil : URL(string: redisRaw)
-    }
-
-    private var resolvedPiAgentGatewayBaseURL: URL {
-        URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8765")!
-    }
-
-    private var resolvedPiAgentBearerToken: String? {
-        let token = settingsManager.piAgentBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        return token.isEmpty ? nil : token
     }
 
     private func metric(_ label: String, _ value: String) -> some View {
@@ -672,4 +710,59 @@ struct ChatGatewaySettingsView: View {
                 .foregroundStyle(DesignSystem.Colors.textMuted)
         }
     }
+}
+
+// MARK: - Hermes Setup Detail
+
+struct HermesSetupDetailView: View {
+    @Bindable var settingsManager: SettingsManager
+    let dataStore: DataStore
+    let cloudSyncService: CloudSyncService?
+    let iCloudSessionMirrorService: ICloudSessionMirrorService?
+
+    var body: some View {
+        SettingsDetailContainer(
+            title: "Setup Assistant",
+            subtitle: "Run the guided Hermes setup or manually mark onboarding flows as complete."
+        ) {
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                    Button("Guided Hermes setup") {
+                        WindowManager.shared.openHermesSetupWizard(
+                            settingsManager: settingsManager,
+                            chatController: nil,
+                            dataStore: dataStore,
+                            cloudSyncService: cloudSyncService,
+                            iCloudSessionMirrorService: iCloudSessionMirrorService
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignSystem.Colors.hermesAureate)
+                    .controlSize(.regular)
+
+                    Divider().background(DesignSystem.Colors.border)
+
+                    Toggle("Hermes setup completed", isOn: $settingsManager.hermesSetupWizardCompleted)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                    Toggle("Chat setup completed", isOn: $settingsManager.chatBackendOnboardingCompleted)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                }
+                .padding(DesignSystem.Spacing.lg)
+            }
+        }
+    }
+}
+
+// MARK: - Shared helpers
+
+private func fieldLabel(_ text: String) -> some View {
+    Text(text)
+        .font(DesignSystem.Typography.caption)
+        .fontWeight(.semibold)
+        .foregroundStyle(DesignSystem.Colors.textSecondary)
+        .textCase(.uppercase)
+        .tracking(0.8)
 }

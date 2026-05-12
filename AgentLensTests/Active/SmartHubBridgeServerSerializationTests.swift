@@ -70,6 +70,105 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         XCTAssertTrue(json.contains("Codex"))
     }
 
+    // MARK: - Rich card payload
+
+    func test_stateJSONEmitsHeaderTimestampAndStatus() throws {
+        SmartHubBridgeServer.shared.updateSnapshot(
+            SmartHubBridgeSnapshot(
+                totalSpend: "$182.40",
+                headline: "Showing last 5 hours",
+                subheadline: "Updated at 9:42 PM",
+                providers: [],
+                headerTimestamp: "Thu, May 7  10:43 PM",
+                headerStatus: "live provider pressure"
+            )
+        )
+
+        let json = SmartHubBridgeServer.shared.renderStateJSONForTesting()
+        XCTAssertTrue(json.contains("\"headerTimestamp\": \"Thu, May 7  10:43 PM\""))
+        XCTAssertTrue(json.contains("\"headerStatus\": \"live provider pressure\""))
+    }
+
+    func test_stateJSONEmitsRichCardFieldsPerProvider() throws {
+        let provider = SmartHubBridgeSnapshot.Provider(
+            name: "Claude Code",
+            percent: 18,
+            label: "$120 / $300",
+            tone: .ember,
+            windowLabel: "5h",
+            slug: "claudecode",
+            accentHex: "CC785C",
+            logoSVG: "<svg/>",
+            tokenTotal: "5.4B",
+            tokenTotalLabel: "TOKENS",
+            statusPill: "source 3h ago",
+            statusTone: .whimsy,
+            freshnessLabel: "updated 3h ago",
+            fetchedAtLabel: "May 7, 6:58 PM",
+            buckets: [
+                .init(name: "5-hour limit", percent: 8, headlineValue: "8%", subLabel: "92% left", tone: .success),
+                .init(name: "Weekly limit", percent: 18, headlineValue: "18%", subLabel: "82% left", tone: .success)
+            ],
+            accounts: [
+                .init(label: "Work", badge: "MAIN", tone: .whimsy, isActive: false),
+                .init(label: "alberto8793@g…", badge: "ACTIVE", tone: .success, isActive: true)
+            ],
+            runsLabel: "1,002 runs",
+            costLabel: "$5,835.40"
+        )
+        SmartHubBridgeServer.shared.updateSnapshot(
+            SmartHubBridgeSnapshot(
+                totalSpend: "$5,835.40",
+                headline: "Showing last 5 hours",
+                subheadline: "Updated at 9:42 PM",
+                providers: [provider]
+            )
+        )
+
+        let json = SmartHubBridgeServer.shared.renderStateJSONForTesting()
+        XCTAssertTrue(json.contains("\"slug\":\"claudecode\""))
+        XCTAssertTrue(json.contains("\"accentHex\":\"CC785C\""))
+        XCTAssertTrue(json.contains("\"tokenTotal\":\"5.4B\""))
+        XCTAssertTrue(json.contains("\"statusPill\":\"source 3h ago\""))
+        XCTAssertTrue(json.contains("\"statusTone\":\"whimsy\""))
+        XCTAssertTrue(json.contains("\"freshnessLabel\":\"updated 3h ago\""))
+        XCTAssertTrue(json.contains("\"fetchedAtLabel\":\"May 7, 6:58 PM\""))
+        XCTAssertTrue(json.contains("\"runsLabel\":\"1,002 runs\""))
+        XCTAssertTrue(json.contains("\"costLabel\":\"$5,835.40\""))
+        // Two bucket rows + two account rows must be emitted under the
+        // nested arrays so the device can render them as multi-bar /
+        // chip rows on the card.
+        XCTAssertTrue(json.contains("\"5-hour limit\""))
+        XCTAssertTrue(json.contains("\"Weekly limit\""))
+        XCTAssertTrue(json.contains("\"badge\":\"MAIN\""))
+        XCTAssertTrue(json.contains("\"badge\":\"ACTIVE\""))
+        XCTAssertTrue(json.contains("\"isActive\":true"))
+    }
+
+    func test_stateJSONLeavesRichFieldsOutWhenSnapshotIsLegacyShape() throws {
+        // Legacy callers (NestHubMiniPreview, older unit tests) construct
+        // providers without the rich card fields. The bridge must still
+        // emit a parseable JSON document where the rich fields are present
+        // as empty strings / empty arrays.
+        SmartHubBridgeServer.shared.updateSnapshot(
+            SmartHubBridgeSnapshot(
+                totalSpend: "$0",
+                headline: "Last 5h",
+                subheadline: "",
+                providers: [
+                    .init(name: "Codex", percent: 50, label: "y", tone: .ember, windowLabel: "24h")
+                ]
+            )
+        )
+
+        let json = SmartHubBridgeServer.shared.renderStateJSONForTesting()
+        XCTAssertTrue(json.contains("\"name\":\"Codex\""))
+        XCTAssertTrue(json.contains("\"buckets\":[]"))
+        XCTAssertTrue(json.contains("\"accounts\":[]"))
+        XCTAssertTrue(json.contains("\"tokenTotal\":\"\""))
+        XCTAssertTrue(json.contains("\"runsLabel\":\"\""))
+    }
+
     // MARK: - Schema-v2 backward compat
 
     func test_legacySmartHubConfigDecodesWithoutDisplayConfig() throws {

@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **One-click smart-display repair with proof.** Nest Hub and ULANZI Pixel
+  Clock settings now share a `Make display work` action across macOS,
+  iOS, and iPadOS. The Mac runs the full recovery path, streams typed
+  repair status back through Firestore for mobile, and only marks a
+  repair healthy when there is display proof: Nest Hub `/state.json`
+  polling after cast/recast or Pixel Clock AWTRIX/stock-simulator frame
+  acceptance.
 - **Claude Code quota robustness: zero-CLI-launch capture across four
   cascading sources.** Claude quota used to require the user to run
   `claude` with the OpenBurnBar status line bridge installed before the
@@ -99,6 +106,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `ProviderQuotaServiceTests` pass in under three seconds.
 
 ### Fixed
+- **Mobile cloud-sync denial classification.** Android and iOS now split
+  Firestore rules denials from App Check enforcement failures instead of
+  showing every signed-in cloud-read failure as generic "Access denied";
+  Android also reads the latest macOS `sync_status/{deviceId}` document
+  instead of probing a stale `sync_status/latest` placeholder.
+- **Android Streams now follows the canonical usage timestamp.** Android now
+  orders and paginates `users/{uid}/usage` by `startTime`, matching iOS and
+  the Cloud Functions schema, so usage rows without the old `timestamp` field
+  no longer render as "No Activity Yet."
+- **Local macOS App Check debug tokens work outside Debug builds.** When a
+  local Firebase plist explicitly contains a registered App Check debug token,
+  the macOS publisher uses the debug provider before falling back to
+  App Attest/DeviceCheck.
+- **Mac cloud-sync health publishes immediately.** The macOS app now writes
+  `devices/{deviceId}` and `sync_status/{deviceId}` during the lightweight
+  startup sync heartbeat, so mobile clients do not stay degraded while the
+  heavier usage scan is delayed.
 - **`PixelClockQuotaRenderer.awtrixPayload` missing `return`.** A drive-by
   fix while running the Claude robustness suite — the function was
   trailing-closure-returning but missing the explicit `return` keyword,

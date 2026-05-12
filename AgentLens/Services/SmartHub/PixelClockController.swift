@@ -257,12 +257,16 @@ final class PixelClockController {
                 guard let self else { return }
                 await self.pushIfNeeded(force: forceNextPush)
                 forceNextPush = false
-                // After a successful push we tick every 5 s. After failures
-                // we apply a short exponential backoff (starting at 1.5 s)
-                // so a clock that just rebooted or briefly dropped wifi
-                // recovers in seconds — without pegging the loop when the
-                // device is genuinely gone.
-                let sleep = self.heartbeatSleepNanoseconds()
+                // After a successful push we normally tick every 5 s, but
+                // accelerate to a 1.5 s cadence whenever an agent is running
+                // so the working spinner animates instead of freezing on a
+                // single frame for the full heartbeat. After failures we
+                // apply a short exponential backoff (starting at 1.5 s) so a
+                // clock that just rebooted or briefly dropped wifi recovers
+                // in seconds — without pegging the loop when the device is
+                // genuinely gone.
+                let working = await self.hasWorkingActivity()
+                let sleep = self.heartbeatSleepNanoseconds(working: working)
                 try? await Task.sleep(nanoseconds: sleep)
             }
         }
@@ -520,10 +524,16 @@ final class PixelClockController {
         let payloadSignature = String(data: activePayloadBody, encoding: .utf8)
         let activeAppName = await client.currentAppName(config: config)
         let clockNeedsRepush = activeAppName.map { !Self.isManagedPixelClockAppName($0) } ?? true
+        // When an agent is running we want each heartbeat to land on the
+        // clock so the spinner can advance frames. The dedupe below would
+        // otherwise hold off pushes whenever the spinner tick produced the
+        // same signature as the previous push, which kept the spinner
+        // frozen on stale pixels for the entire `pageDuration` window.
         let minimumRepeatInterval = hasRunningActivity
-            ? TimeInterval(max(3, min(config.clampedUpdateInterval, config.clampedPageDuration)))
+            ? 0
             : TimeInterval(max(3, config.clampedPageDuration))
         if !force,
+           !hasRunningActivity,
            !clockNeedsRepush,
            config == lastPushedConfig,
            payloadSignature == lastPushedPayloadSignature,
@@ -580,7 +590,12 @@ final class PixelClockController {
         lastPushAt = now
         lastPushedConfig = config
         lastPushedPayloadSignature = payloadSignature
-        Self.logger.info("Pixel Clock pushed openburnbar0 page=\(activePageIndex, privacy: .public) count=\(payload.count, privacy: .public) working=\(hasRunningActivity, privacy: .public)")
+        let runningProviderTokens = statuses
+            .filter { $0.value == .running }
+            .keys
+            .sorted()
+            .joined(separator: ",")
+        Self.logger.info("Pixel Clock pushed openburnbar0 page=\(activePageIndex, privacy: .public) count=\(payload.count, privacy: .public) working=\(hasRunningActivity, privacy: .public) running=[\(runningProviderTokens, privacy: .public)] layout=\(config.layout.rawValue, privacy: .public)")
         updateProbeStatus(.awtrixReady)
     }
 
@@ -656,6 +671,67 @@ final class PixelClockController {
         )
     }
 
+    /// One-click repair for the physical Pixel Clock.
+    ///
+    /// This intentionally does not flash firmware or join the AWTRIX setup
+    /// Wi-Fi in the background. Those steps can temporarily disconnect the
+    /// Mac from the network, so repair reports `needsUserAction` with the
+    /// exact setup path instead of surprising the user.
+    func repairPixelClockDisplay(
+        progress: ((SmartDisplayDeviceRepairStatus) -> Void)? = nil
+    ) async -> SmartDisplayDeviceRepairStatus {
+        func emit(
+            _ phase: SmartDisplayRepairPhase,
+            _ message: String,
+            proof: String? = nil
+        ) -> SmartDisplayDeviceRepairStatus {
+            let status = SmartDisplayDeviceRepairStatus(
+                kind: .pixelClock,
+                phase: phase,
+                message: message,
+                proof: proof
+            )
+            progress?(status)
+            return status
+        }
+
+        let current = settingsManager.pixelClockConfig
+        guard current.enabled else {
+            return emit(.skipped, "Pixel Clock is turned off in OpenBurnBar.", proof: "disabled")
+        }
+
+        do {
+            _ = emit(.detecting, "Finding the Pixel Clock on Wi-Fi, Bonjour, or the saved host.")
+            let setup = try await preparePixelClock()
+            switch setup.mode {
+            case .awtrixLightReady:
+                _ = emit(.repairing, "Pushing the latest OpenBurnBar frame to AWTRIX.", proof: setup.clockHost)
+                try await pushPixelClockNow(force: true)
+                return emit(.working, "Pixel Clock is showing OpenBurnBar.", proof: setup.clockHost)
+
+            case .stockSimulatorConfigured:
+                _ = emit(.waitingForProof, "Waiting for the stock Ulanzi clock to connect to the Mac simulator.", proof: "\(setup.suggestedServerHost ?? ""):\(setup.suggestedServerPort ?? 7001)")
+                await updateStockSimulatorPages(config: settingsManager.pixelClockConfig)
+                if await waitForStockSimulatorClient(timeout: 18) {
+                    return emit(.working, "Stock Ulanzi clock is connected to the OpenBurnBar simulator.", proof: "stock_simulator_client_connected")
+                }
+                return emit(
+                    .needsUserAction,
+                    "OpenBurnBar configured the simulator, but the clock has not connected. Keep the clock on wall power and confirm Awtrix Simulator points to this Mac.",
+                    proof: "stock_simulator_no_client"
+                )
+
+            case .needsAwtrixLightFlash, .needsWiFiProvisioning:
+                return emit(.needsUserAction, setup.message, proof: setup.mode.rawValue)
+
+            case .unreachable:
+                return emit(.needsUserAction, setup.message, proof: "clock_unreachable")
+            }
+        } catch {
+            return emit(.failed, error.localizedDescription, proof: "pixel_clock_repair_error")
+        }
+    }
+
     private func pushIfNeeded(force: Bool = false) async {
         let config = settingsManager.pixelClockConfig
         guard config.enabled else {
@@ -678,14 +754,27 @@ final class PixelClockController {
         }
     }
 
-    /// Heartbeat sleep budget. Healthy clocks tick every 5 s. After failures
-    /// (clock rebooting, wifi dropped, DHCP shuffle) we use exponential backoff
-    /// from 1.5 s up to 30 s so recovery is fast when the device returns.
-    func heartbeatSleepNanoseconds() -> UInt64 {
-        guard consecutivePushFailures > 0 else { return 5_000_000_000 }
-        let exponent = Double(min(consecutivePushFailures - 1, 4))
-        let seconds = max(1.5, min(pow(2.0, exponent), 30.0))
-        return UInt64(seconds * 1_000_000_000)
+    /// Heartbeat sleep budget. Healthy clocks tick every 5 s, or every 1.5 s
+    /// when an agent is currently working so the spinner can animate. After
+    /// failures (clock rebooting, wifi dropped, DHCP shuffle) we use
+    /// exponential backoff from 1.5 s up to 30 s so recovery is fast when
+    /// the device returns.
+    func heartbeatSleepNanoseconds(working: Bool = false) -> UInt64 {
+        if consecutivePushFailures > 0 {
+            let exponent = Double(min(consecutivePushFailures - 1, 4))
+            let seconds = max(1.5, min(pow(2.0, exponent), 30.0))
+            return UInt64(seconds * 1_000_000_000)
+        }
+        return working ? 1_500_000_000 : 5_000_000_000
+    }
+
+    /// True whenever the agent-status store reports a running agent (either
+    /// from OpenBurnBar's CLI bridge or the external `/bin/ps` scanner).
+    /// Used by the heartbeat to decide between the fast spinner cadence and
+    /// the idle five-second heartbeat.
+    func hasWorkingActivity() async -> Bool {
+        let statuses = await PixelClockAgentStatusStore.shared.snapshotIncludingExternalProcesses()
+        return statuses.values.contains(.running)
     }
 
     private func updateStockSimulatorPages(config: PixelClockConfig) async {
@@ -702,6 +791,17 @@ final class PixelClockController {
             isWorking: hasRunningActivity
         )
         stockSimulator.update(pages: pages, config: config)
+    }
+
+    private func waitForStockSimulatorClient(timeout: TimeInterval) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if stockSimulator.connectedClientCount > 0 {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+        }
+        return false
     }
 
     private func resolveReachablePixelClockConfig() async -> AWTRIXClient.DiscoveryResult {

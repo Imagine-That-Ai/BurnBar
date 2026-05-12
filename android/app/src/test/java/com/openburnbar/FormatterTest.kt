@@ -14,6 +14,7 @@ class FormatterTest {
 
     @Test
     fun `formatTokens formats large numbers`() {
+        assertEquals("1.50B", Formatting.formatTokens(1_500_000_000))
         assertEquals("1.5M", Formatting.formatTokens(1_500_000))
         assertEquals("5.0K", Formatting.formatTokens(5_000))
         assertEquals("42", Formatting.formatTokens(42))

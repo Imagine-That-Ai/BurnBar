@@ -295,7 +295,7 @@ data class ProjectSummary(
     @PropertyName("total_cost")
     val totalCost: Double = 0.0,
     @PropertyName("total_tokens")
-    val totalTokens: Int = 0,
+    val totalTokens: Long = 0,
     @PropertyName("total_sessions")
     val totalSessions: Int = 0
 )
@@ -311,7 +311,7 @@ data class RollupSummary(
     val accountLabel: String = "",
     val storageScope: String? = null,
     val totalRequests: Int = 0,
-    val totalTokens: Int = 0,
+    val totalTokens: Long = 0,
     val totalCost: Double = 0.0
 )
 
@@ -325,6 +325,11 @@ data class UsageRollups(
     val thirtyDays: Double = 0.0,
     val ninetyDays: Double = 0.0,
     val allTime: Double = 0.0,
+    val todayTokens: Long = 0,
+    val sevenDayTokens: Long = 0,
+    val thirtyDayTokens: Long = 0,
+    val ninetyDayTokens: Long = 0,
+    val allTimeTokens: Long = 0,
     val totals: Map<String, Double> = emptyMap(),
     val providerSummaries: List<RollupSummary> = emptyList(),
     val accountSummaries: List<RollupSummary> = emptyList(),

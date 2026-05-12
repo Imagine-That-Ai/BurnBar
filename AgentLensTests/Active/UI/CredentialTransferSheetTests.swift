@@ -73,8 +73,17 @@ final class CredentialTransferSheetTests: XCTestCase {
         )
         let sut = try view.inspect()
 
-        XCTAssertNoThrow(try sut.find(text: MacCopy.googleNestHubSectionTitle))
-        XCTAssertNoThrow(try sut.find(text: "Nest Hub quota display"))
+        // The Devices landing exposes a Smart Displays drill-down row.
+        XCTAssertNoThrow(try sut.find(text: MacCopy.smartDisplaysSectionTitle))
+
+        // Drilling into Smart Displays shows the Nest Hub controls.
+        let detail = SmartDisplaysDetailView(
+            settingsManager: SettingsManager(),
+            runtimeContext: nil
+        )
+        let detailSUT = try detail.inspect()
+        XCTAssertNoThrow(try detailSUT.find(text: MacCopy.googleNestHubSectionTitle))
+        XCTAssertNoThrow(try detailSUT.find(text: "Nest Hub quota display"))
     }
 }
 

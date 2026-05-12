@@ -415,6 +415,7 @@ public enum StandardGallery {
 
     private static func formatTokens(_ value: Int) -> String {
         let v = Double(value)
+        if v >= 1_000_000_000 { return String(format: "%.2fB", v / 1_000_000_000) }
         if v >= 1_000_000 { return String(format: "%.1fM", v / 1_000_000) }
         if v >= 1_000     { return String(format: "%.1fK", v / 1_000) }
         return "\(value)"

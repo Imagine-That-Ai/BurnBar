@@ -17,10 +17,16 @@ final class MacSmartHubDisplayOperationsAdapter: SmartHubDisplayOperations {
 
     private let settingsManager: SettingsManager
     private weak var controller: SmartHubBridgeController?
+    private weak var repairCoordinator: SmartDisplayRepairCoordinator?
 
-    init(settingsManager: SettingsManager, controller: SmartHubBridgeController?) {
+    init(
+        settingsManager: SettingsManager,
+        controller: SmartHubBridgeController?,
+        repairCoordinator: SmartDisplayRepairCoordinator? = nil
+    ) {
         self.settingsManager = settingsManager
         self.controller = controller
+        self.repairCoordinator = repairCoordinator
     }
 
     func updateDisplayConfig(_ config: SmartHubDisplayConfig) async {
@@ -46,6 +52,21 @@ final class MacSmartHubDisplayOperationsAdapter: SmartHubDisplayOperations {
             return
         }
         _ = await controller.performForcedRefresh()
+    }
+
+    func repairDisplay() async -> SmartDisplayDeviceRepairStatus {
+        if let repairCoordinator {
+            return await repairCoordinator.repairNestHub()
+        }
+        if let controller {
+            return await controller.repairNestHubDisplay()
+        }
+        return SmartDisplayDeviceRepairStatus(
+            kind: .nestHub,
+            phase: .failed,
+            message: "Mac smart display controller is not running.",
+            proof: "missing_controller"
+        )
     }
 
     func identify() async {

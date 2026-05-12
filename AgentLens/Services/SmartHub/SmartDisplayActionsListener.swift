@@ -7,6 +7,7 @@ final class SmartDisplayActionsListener {
     private let accountManager: AccountManaging
     private let settingsManager: SettingsManager
     private let pixelClockController: PixelClockController
+    private let repairCoordinator: SmartDisplayRepairCoordinator?
     private var listener: ListenerRegistration?
     private var listenerUID: String?
     private var attachTask: Task<Void, Never>?
@@ -15,11 +16,13 @@ final class SmartDisplayActionsListener {
     init(
         accountManager: AccountManaging,
         settingsManager: SettingsManager,
-        pixelClockController: PixelClockController
+        pixelClockController: PixelClockController,
+        repairCoordinator: SmartDisplayRepairCoordinator? = nil
     ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.pixelClockController = pixelClockController
+        self.repairCoordinator = repairCoordinator
     }
 
     func start() {
@@ -146,6 +149,52 @@ final class SmartDisplayActionsListener {
                 } else {
                     await fail(document: document, message: "bridge not running")
                 }
+            case "nest_hub_repair":
+                guard let repairCoordinator else {
+                    await fail(document: document, message: "Mac smart display repair service is not running.")
+                    return
+                }
+                let status = await repairCoordinator.repairNestHub { status in
+                    Task { @MainActor in
+                        await self.updateProgress(document: document, key: "nestHub", status: status)
+                    }
+                }
+                if status.isHealthy {
+                    await complete(document: document, extra: ["nestHub": encode(status)])
+                } else {
+                    await fail(document: document, message: status.message, extra: ["nestHub": encode(status)])
+                }
+            case "pixel_clock_repair":
+                guard let repairCoordinator else {
+                    await fail(document: document, message: "Mac smart display repair service is not running.")
+                    return
+                }
+                let status = await repairCoordinator.repairPixelClock { status in
+                    Task { @MainActor in
+                        await self.updateProgress(document: document, key: "pixelClock", status: status)
+                    }
+                }
+                if status.isHealthy || status.phase == .skipped {
+                    await complete(document: document, extra: ["pixelClock": encode(status)])
+                } else {
+                    await fail(document: document, message: status.message, extra: ["pixelClock": encode(status)])
+                }
+            case "smart_display_repair":
+                guard let repairCoordinator else {
+                    await fail(document: document, message: "Mac smart display repair service is not running.")
+                    return
+                }
+                let report = await repairCoordinator.repairAll { report in
+                    Task { @MainActor in
+                        await self.updateProgress(document: document, report: report)
+                    }
+                }
+                let payload = encode(report)
+                if report.anyHealthy {
+                    await complete(document: document, extra: ["repair": payload])
+                } else {
+                    await fail(document: document, message: "No smart display reached a working state.", extra: ["repair": payload])
+                }
             case "nest_hub_identify":
                 // No-op endpoint — the iOS-side adapter only uses this
                 // as a "speak now" signal that we surface to future
@@ -216,11 +265,65 @@ final class SmartDisplayActionsListener {
         try? await document.reference.setData(payload, merge: true)
     }
 
-    private func fail(document: QueryDocumentSnapshot, message: String) async {
-        try? await document.reference.setData([
+    private func fail(document: QueryDocumentSnapshot, message: String, extra: [String: Any] = [:]) async {
+        var payload = extra
+        payload.merge([
             "status": PixelClockActionStatus.failed.rawValue,
             "errorMessage": message,
             "completedAt": ISO8601DateFormatter().string(from: Date())
+        ]) { _, new in new }
+        try? await document.reference.setData(payload, merge: true)
+    }
+
+    private func updateProgress(
+        document: QueryDocumentSnapshot,
+        key: String,
+        status: SmartDisplayDeviceRepairStatus
+    ) async {
+        try? await document.reference.setData([
+            key: encode(status),
+            "phase": status.phase.rawValue,
+            "message": status.message,
+            "updatedAt": ISO8601DateFormatter().string(from: Date())
         ], merge: true)
+    }
+
+    private func updateProgress(
+        document: QueryDocumentSnapshot,
+        report: SmartDisplayRepairReport
+    ) async {
+        try? await document.reference.setData([
+            "repair": encode(report),
+            "updatedAt": ISO8601DateFormatter().string(from: Date())
+        ], merge: true)
+    }
+
+    private func encode(_ report: SmartDisplayRepairReport) -> [String: Any] {
+        var payload: [String: Any] = [
+            "startedAt": ISO8601DateFormatter().string(from: report.startedAt)
+        ]
+        if let completedAt = report.completedAt {
+            payload["completedAt"] = ISO8601DateFormatter().string(from: completedAt)
+        }
+        if let nestHub = report.nestHub {
+            payload["nestHub"] = encode(nestHub)
+        }
+        if let pixelClock = report.pixelClock {
+            payload["pixelClock"] = encode(pixelClock)
+        }
+        return payload
+    }
+
+    private func encode(_ status: SmartDisplayDeviceRepairStatus) -> [String: Any] {
+        var payload: [String: Any] = [
+            "kind": status.kind.rawValue,
+            "phase": status.phase.rawValue,
+            "message": status.message,
+            "updatedAt": ISO8601DateFormatter().string(from: status.updatedAt)
+        ]
+        if let proof = status.proof {
+            payload["proof"] = proof
+        }
+        return payload
     }
 }

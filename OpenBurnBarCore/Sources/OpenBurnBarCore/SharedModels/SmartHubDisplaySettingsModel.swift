@@ -21,6 +21,10 @@ public protocol SmartHubDisplayOperations: AnyObject {
     /// Trigger a real refetch of provider data + bump the Hub.
     func refreshNow() async
 
+    /// Run the full repair path: start/recover the bridge, cast/recast,
+    /// and wait for proof that the Hub is actually rendering OpenBurnBar.
+    func repairDisplay() async -> SmartDisplayDeviceRepairStatus
+
     /// Ping `/voice-refresh` so the Hub speaks/blinks.
     func identify() async
 
@@ -74,6 +78,15 @@ public final class InMemorySmartHubDisplayOperations: SmartHubDisplayOperations 
         refreshCount += 1
     }
 
+    public func repairDisplay() async -> SmartDisplayDeviceRepairStatus {
+        refreshCount += 1
+        return SmartDisplayDeviceRepairStatus(
+            kind: .nestHub,
+            phase: probeResult == .bound ? .working : .failed,
+            message: probeResult == .bound ? "Nest Hub is showing OpenBurnBar." : "Nest Hub repair failed."
+        )
+    }
+
     public func identify() async {
         identifyCount += 1
     }
@@ -96,6 +109,7 @@ public final class InMemorySmartHubDisplayOperations: SmartHubDisplayOperations 
 public enum SmartHubDisplayOperationKind: String, Sendable {
     case test
     case identify
+    case repair
     case refresh
     case stop
     case open
@@ -104,6 +118,7 @@ public enum SmartHubDisplayOperationKind: String, Sendable {
         switch self {
         case .test:     return "Test bridge"
         case .identify: return "Identify"
+        case .repair:   return "Make display work"
         case .refresh:  return "Refresh Hub"
         case .stop:     return "Stop bridge"
         case .open:     return "Open"
@@ -114,6 +129,7 @@ public enum SmartHubDisplayOperationKind: String, Sendable {
         switch self {
         case .test:     return "Pinging…"
         case .identify: return "Identifying…"
+        case .repair:   return "Repairing…"
         case .refresh:  return "Refreshing…"
         case .stop:     return "Stopping…"
         case .open:     return "Opening…"
@@ -124,6 +140,7 @@ public enum SmartHubDisplayOperationKind: String, Sendable {
         switch self {
         case .test:     return "dot.radiowaves.left.and.right"
         case .identify: return "speaker.wave.2"
+        case .repair:   return "wand.and.stars"
         case .refresh:  return "arrow.clockwise"
         case .stop:     return "stop.circle"
         case .open:     return "arrow.up.right.square"
@@ -178,6 +195,10 @@ public final class SmartHubDisplaySettingsModel {
     /// Toast surfaced after Copy Voice URL completes.
     public var lastClipboardMessage: String?
 
+    /// Last proof-driven repair result. This is intentionally separate
+    /// from `bridgeStatus`, which only describes the local HTTP bridge.
+    public private(set) var lastRepairStatus: SmartDisplayDeviceRepairStatus?
+
     private let operations: any SmartHubDisplayOperations
     private var debounceTask: Task<Void, Never>?
     private let onEnabledChange: ((Bool) -> Void)?
@@ -207,6 +228,7 @@ public final class SmartHubDisplaySettingsModel {
         self.config = initialConfig
         self.bridgeStatus = .unknown
         self.operationState = .idle
+        self.lastRepairStatus = nil
         self.operations = operations
         self.availableProviders = availableProviders
         self.onEnabledChange = onEnabledChange
@@ -315,6 +337,23 @@ public final class SmartHubDisplaySettingsModel {
         }
     }
 
+    public func repair() async {
+        await runOperation(.repair) {
+            let result = await self.operations.repairDisplay()
+            self.lastRepairStatus = result
+            switch result.phase {
+            case .working:
+                self.bridgeStatus = .bound
+            case .needsUserAction, .failed:
+                self.bridgeStatus = .unreachable
+            case .waitingForProof, .repairing, .detecting:
+                self.bridgeStatus = .waitingForData
+            case .idle, .skipped:
+                break
+            }
+        }
+    }
+
     public func stop() async {
         await runOperation(.stop) {
             await self.operations.stopBridge()
@@ -338,6 +377,9 @@ public final class SmartHubDisplaySettingsModel {
     public var isBusy: Bool { inflightOperation != nil }
 
     public var bridgeStatusMessage: String {
+        if let lastRepairStatus {
+            return lastRepairStatus.message
+        }
         switch bridgeStatus {
         case .bound:          return "Bridge listening on the configured port."
         case .unreachable:    return "Bridge unreachable. Toggle off and on to restart."

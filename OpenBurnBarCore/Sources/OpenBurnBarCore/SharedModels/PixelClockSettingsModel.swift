@@ -84,7 +84,12 @@ public final class InMemoryPixelClockOperations: PixelClockOperations {
         flashCallCount += 1
         if let failureToThrow { throw failureToThrow }
         if let flashResult { return flashResult }
-        return try await preparePixelClock(config: config)
+        return PixelClockSetupResult(
+            mode: probeResult == .awtrixReady ? .awtrixLightReady : .needsAwtrixLightFlash,
+            probeStatus: probeResult,
+            message: probeResult == .awtrixReady ? "AWTRIX Light is ready." : "Pixel Clock needs setup.",
+            clockHost: config.host
+        )
     }
 
     public func testPixelClock(config: PixelClockConfig) async throws {
@@ -461,7 +466,7 @@ public final class PixelClockSettingsModel {
         switch firmware {
         case .stockUlanziFirmware:
             if setupResult?.mode == .stockSimulatorConfigured { return nil }
-            return "Stock Ulanzi needs Awtrix Simulator pointed at this Mac's IP."
+            return "Stock Ulanzi needs Awtrix Simulator pointed at this Mac's IP, not the clock IP."
         case .unreachable:
             return "Pixel Clock is unreachable. Verify the host and that it's on the same Wi-Fi."
         case .unsupported:

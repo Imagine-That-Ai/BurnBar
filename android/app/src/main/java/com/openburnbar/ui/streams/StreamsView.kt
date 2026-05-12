@@ -197,12 +197,27 @@ fun UsageCard(
                     Text(usage.provider, fontWeight = FontWeight.Bold, fontSize = AuroraTypography.caption.sp)
                     Text(" · ${usage.model}", fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text(Formatting.formatCurrency(usage.cost), fontWeight = FontWeight.Bold)
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        "Cost",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(Formatting.formatCurrency(usage.cost), fontWeight = FontWeight.Bold)
+                }
             }
             Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("${usage.inputTokens + usage.outputTokens} tokens", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(Formatting.formatRelativeTime(usage.timestamp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "Tokens: ${Formatting.formatTokens(usage.inputTokens.toLong() + usage.outputTokens.toLong())}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "Started: ${Formatting.formatRelativeTime(usage.timestamp)}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
             TextButton(
@@ -221,11 +236,22 @@ fun UsageCard(
 fun ModelSummaryCard(model: String, requestCount: Int, totalCost: Double) {
     AuroraGlassCard {
         Row(modifier = Modifier.fillMaxWidth().padding(AuroraSpacing.md.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column {
-                Text(model, fontWeight = FontWeight.Bold)
-                Text("$requestCount requests", fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ModelLogo(modelKey = model, size = 32.dp)
+                Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                Column {
+                    Text(model, fontWeight = FontWeight.Bold)
+                    Text("$requestCount requests", fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            Text(Formatting.formatCurrency(totalCost), fontWeight = FontWeight.Bold, color = AuroraColors.burnOrange)
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    "Total cost",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(Formatting.formatCurrency(totalCost), fontWeight = FontWeight.Bold, color = AuroraColors.burnOrange)
+            }
         }
     }
 }
@@ -243,8 +269,17 @@ fun ProjectCard(project: ProjectSummary) {
                 }
             }
             Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    "Cost",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Text(Formatting.formatCurrency(project.totalCost), fontWeight = FontWeight.Bold)
-                Text(Formatting.formatTokens(project.totalTokens), fontSize = AuroraTypography.caption.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "Tokens: ${Formatting.formatTokens(project.totalTokens)}",
+                    fontSize = AuroraTypography.caption.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

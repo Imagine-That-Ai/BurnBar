@@ -312,11 +312,12 @@ fun ChatView(
                             shape = RoundedCornerShape(AuroraRadius.sm.dp)
                         ) {
                             Row(modifier = Modifier.padding(AuroraSpacing.sm.dp), verticalAlignment = Alignment.CenterVertically) {
+                                com.openburnbar.ui.components.ModelLogo(modelKey = model, size = 24.dp)
+                                Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
+                                Text(model, fontSize = AuroraTypography.body.sp, modifier = Modifier.weight(1f))
                                 if (model == selectedModel) {
                                     Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(16.dp), tint = AuroraColors.hermesMercury)
-                                    Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
                                 }
-                                Text(model, fontSize = AuroraTypography.body.sp)
                             }
                         }
                     }
@@ -402,7 +403,7 @@ fun WelcomeBlock(
                 AssistChip(
                     onClick = {},
                     label = { Text(selectedModel, fontSize = AuroraTypography.tiny.sp) },
-                    leadingIcon = { Icon(Icons.Filled.Psychology, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                    leadingIcon = { com.openburnbar.ui.components.ModelLogo(modelKey = selectedModel, size = 16.dp) }
                 )
             }
         }

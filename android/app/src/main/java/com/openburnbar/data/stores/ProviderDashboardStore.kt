@@ -14,7 +14,7 @@ data class ProviderDashboard(
     val providerSummaries: List<RollupSummary> = emptyList(),
     val quotaSnapshots: List<ProviderQuotaSnapshot> = emptyList(),
     val totalCost: Double = 0.0,
-    val totalTokens: Int = 0
+    val totalTokens: Long = 0
 )
 
 class ProviderDashboardStore(
@@ -40,7 +40,7 @@ class ProviderDashboardStore(
                     providerSummaries = rollups.providerSummaries,
                     quotaSnapshots = quotas,
                     totalCost = rollups.allTime,
-                    totalTokens = rollups.totals["tokens"]?.toInt() ?: 0
+                    totalTokens = rollups.totals["tokens"]?.toLong() ?: 0L
                 )
             } catch (e: Exception) {
                 _error.value = e.message

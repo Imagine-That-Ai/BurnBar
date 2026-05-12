@@ -250,6 +250,45 @@ final class UsageStore: Sendable {
         }
     }
 
+    /// Lightweight per-provider totals (runs + cost + tokens) for a single
+    /// time window, used by the Smart Hub bridge to populate the footer of
+    /// each provider card on the Nest Hub.
+    ///
+    /// This is intentionally cheap compared to `fetchDashboardUsageSnapshot`
+    /// — one `GROUP BY provider` query, no per-model breakdown, no daily
+    /// series. The bridge calls it on its 5s snapshot pump so it has to
+    /// stay cheap.
+    func providerRunCostTotals(in dateRange: ClosedRange<Date>?) throws -> [AgentProvider: ProviderRunCostTotals] {
+        try dbQueue.read { db in
+            let predicate = Self.dateRangePredicate(dateRange)
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT provider,
+                           COUNT(*) AS sessionCount,
+                           COALESCE(SUM(totalTokens), 0) AS totalTokens,
+                           COALESCE(SUM(cost), 0) AS cost
+                    FROM token_usage
+                    \(predicate.whereSQL)
+                    GROUP BY provider
+                    """,
+                arguments: predicate.arguments
+            )
+
+            var result: [AgentProvider: ProviderRunCostTotals] = [:]
+            for row in rows {
+                guard let raw = row["provider"] as? String,
+                      let provider = AgentProvider(rawValue: raw) else { continue }
+                result[provider] = ProviderRunCostTotals(
+                    sessionCount: row["sessionCount"] as? Int ?? 0,
+                    totalTokens: row["totalTokens"] as? Int ?? 0,
+                    totalCost: row["cost"] as? Double ?? 0
+                )
+            }
+            return result
+        }
+    }
+
     // MARK: - Delete
 
     func deleteAll() throws {
@@ -880,6 +919,12 @@ final class UsageStore: Sendable {
             .map(\.summary)
             .sorted { $0.totalCost > $1.totalCost }
     }
+}
+
+struct ProviderRunCostTotals: Equatable, Sendable {
+    let sessionCount: Int
+    let totalTokens: Int
+    let totalCost: Double
 }
 
 private struct UsageTotals {

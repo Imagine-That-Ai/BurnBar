@@ -45,7 +45,7 @@ final class SwitcherCLIPostLaunchFallbackTests: XCTestCase {
     override func tearDown() {
         CLILaunchAdapter.executableResolver = nil
         CLILaunchInvoker.launchHandler = nil
-        CLILaunchInvoker.startupObservationTimeout = 1.5
+        CLILaunchInvoker.startupObservationTimeout = CLILaunchInvoker.defaultStartupObservationTimeout
         super.tearDown()
     }
 

@@ -184,6 +184,7 @@ final class OpenBurnBarRuntimeContext {
     var hermesRelayHostService: HermesRelayHostService?
     var smartHubBridgeController: SmartHubBridgeController?
     var pixelClockController: PixelClockController?
+    var smartDisplayRepairCoordinator: SmartDisplayRepairCoordinator?
     var smartDisplayConfigPublisher: SmartDisplayConfigPublisher?
     var smartDisplayActionsListener: SmartDisplayActionsListener?
     var castActionsListener: CastActionsListener?
@@ -242,6 +243,17 @@ final class OpenBurnBarRuntimeContext {
         }
         pixelClock.start()
 
+        let repairCoordinator: SmartDisplayRepairCoordinator
+        if let existing = smartDisplayRepairCoordinator {
+            repairCoordinator = existing
+        } else {
+            repairCoordinator = SmartDisplayRepairCoordinator(
+                smartHubBridgeController: smartHubBridge,
+                pixelClockController: pixelClock
+            )
+            smartDisplayRepairCoordinator = repairCoordinator
+        }
+
         let publisher: SmartDisplayConfigPublisher
         if let existing = smartDisplayConfigPublisher {
             publisher = existing
@@ -261,7 +273,8 @@ final class OpenBurnBarRuntimeContext {
             displayListener = SmartDisplayActionsListener(
                 accountManager: accountManager,
                 settingsManager: settingsManager,
-                pixelClockController: pixelClock
+                pixelClockController: pixelClock,
+                repairCoordinator: repairCoordinator
             )
             smartDisplayActionsListener = displayListener
         }
@@ -273,7 +286,8 @@ final class OpenBurnBarRuntimeContext {
         } else {
             castListener = CastActionsListener(
                 accountManager: accountManager,
-                settingsManager: settingsManager
+                settingsManager: settingsManager,
+                repairCoordinator: repairCoordinator
             )
             castActionsListener = castListener
         }

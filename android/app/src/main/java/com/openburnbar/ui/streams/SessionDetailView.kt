@@ -57,12 +57,19 @@ fun SessionDetailView(
                     ProviderAuroraAvatar(provider = it, size = 64, showHalo = true)
                 }
                 Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
-                Text(
-                    text = usage.model ?: "Unknown model",
-                    fontSize = AuroraTypography.headline.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val modelKey = usage.model
+                    if (!modelKey.isNullOrBlank()) {
+                        com.openburnbar.ui.components.ModelLogo(modelKey = modelKey, size = 20.dp)
+                        Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+                    }
+                    Text(
+                        text = modelKey ?: "Unknown model",
+                        fontSize = AuroraTypography.headline.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
                 Text(
                     text = provider?.displayName ?: usage.provider,
                     fontSize = AuroraTypography.body.sp,

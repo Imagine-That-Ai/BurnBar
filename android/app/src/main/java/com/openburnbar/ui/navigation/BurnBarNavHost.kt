@@ -23,8 +23,10 @@ import androidx.navigation.navDeepLink
 import com.openburnbar.data.stores.UserStore
 import com.openburnbar.ui.auth.LoginScreen
 import com.openburnbar.ui.burn.BurnView
+import com.openburnbar.ui.components.AuroraBackdrop
 import com.openburnbar.ui.components.AuroraNavDestination
 import com.openburnbar.ui.components.AuroraNavIcon
+import com.openburnbar.ui.components.BurnBarLogo
 import com.openburnbar.ui.components.FloatingChatMode
 import com.openburnbar.ui.components.FloatingChatPill
 import com.openburnbar.ui.hermes.HermesView
@@ -97,15 +99,28 @@ fun BurnBarNavHost(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
+        // Single global AuroraBackdrop behind everything. Painted before the
+        // nav scaffold/insets so the warm gradient extends edge-to-edge under
+        // the status bar AND the gesture bar — no dark strip behind the nav
+        // tray, no gap below the content. Per-screen AuroraBackdrop calls are
+        // now redundant but harmless (they overlay an identical gradient).
+        AuroraBackdrop()
+
         if (currentUser.isSignedIn) {
             if (isWideScreen) {
                 // Two-pane: NavigationRail (sidebar) + content
                 Row(modifier = Modifier.fillMaxSize()) {
                     BurnBarNavigationRail(
                         currentTab = currentTab,
-                        onSelect = navigateTo
+                        onSelect = navigateTo,
+                        modifier = Modifier.statusBarsPadding()
                     )
-                    Box(modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .statusBarsPadding()
+                            .navigationBarsPadding()
+                    ) {
                         BurnBarContent(
                             navController = navController,
                             navigateToBurn = { navigateTo(BurnBarTab.BURN) },
@@ -115,23 +130,39 @@ fun BurnBarNavHost(
                     }
                 }
             } else {
-                // Phone: full content + bottom nav pill
-                Column(modifier = Modifier.fillMaxSize()) {
-                    Box(modifier = Modifier.weight(1f)) {
-                        BurnBarContent(
-                            navController = navController,
-                            navigateToBurn = { navigateTo(BurnBarTab.BURN) },
-                            navigateToHermes = { navigateTo(BurnBarTab.HERMES) },
-                            navigateToStreams = { navigateTo(BurnBarTab.STREAMS) }
-                        )
-                    }
+                // Phone: content fills the whole screen behind a floating
+                // nav pill. No Column splitting — the pill literally hovers
+                // over the same Box as the content, so the gradient runs
+                // unbroken from status bar to gesture pill. Content reserves
+                // bottom space (≈96dp) so scrollable lists don't get hidden
+                // under the floating pill.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .padding(bottom = 96.dp)
+                ) {
+                    BurnBarContent(
+                        navController = navController,
+                        navigateToBurn = { navigateTo(BurnBarTab.BURN) },
+                        navigateToHermes = { navigateTo(BurnBarTab.HERMES) },
+                        navigateToStreams = { navigateTo(BurnBarTab.STREAMS) }
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .navigationBarsPadding(),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
                     AuroraNavigationTray(
                         destinations = BurnBarTab.all.map { it.destination },
                         selectedDestination = currentTab.destination,
                         onDestinationSelected = { dest ->
                             BurnBarTab.all.firstOrNull { it.destination == dest }?.let(navigateTo)
                         },
-                        userDisplayName = currentUser.displayName
+                        userDisplayName = currentUser.displayName,
+                        userPhotoUrl = currentUser.photoUrl
                     )
                 }
             }
@@ -226,14 +257,19 @@ private fun BurnBarContent(
 @Composable
 private fun BurnBarNavigationRail(
     currentTab: BurnBarTab,
-    onSelect: (BurnBarTab) -> Unit
+    onSelect: (BurnBarTab) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     NavigationRail(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxHeight()
             .width(96.dp),
         containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
     ) {
+        BurnBarLogo(
+            size = 44.dp,
+            modifier = Modifier.padding(top = 18.dp, bottom = 18.dp)
+        )
         BurnBarTab.all.forEach { tab ->
             NavigationRailItem(
                 selected = currentTab == tab,

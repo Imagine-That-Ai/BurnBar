@@ -37,6 +37,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     public static let quotaSignalProviders: [AgentProvider] = [
         .codex,
         .claudeCode,
+        .openAI,
         .copilot,
         .minimax,
         .zai,

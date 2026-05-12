@@ -17,6 +17,7 @@ public struct UnifiedQuotaSignalView: View {
 
     private var theme: UnifiedProviderTheme { UnifiedProviderTheme.theme(for: provider) }
     private var remainingFraction: Double {
+        if bucketUnit == .unlimited { return 1 }
         guard bucket.limit > 0 else { return 0 }
         return max(0, bucket.remaining) / bucket.limit
     }
@@ -180,6 +181,7 @@ public struct UnifiedQuotaSignalView: View {
         case currency
         case percent
         case tokens
+        case unlimited
         case count
 
         init(metaValue: String?) {
@@ -187,6 +189,7 @@ public struct UnifiedQuotaSignalView: View {
             case "currency", "usd", "dollars", "$": self = .currency
             case "percent", "%": self = .percent
             case "tokens", "tok": self = .tokens
+            case "unlimited": self = .unlimited
             default: self = .count
             }
         }
@@ -197,10 +200,12 @@ public struct UnifiedQuotaSignalView: View {
     }
 
     private var remainingText: String {
-        formatValue(bucket.remaining)
+        if bucketUnit == .unlimited { return "Unlimited" }
+        return formatValue(bucket.remaining)
     }
 
     private var usageText: String {
+        if bucketUnit == .unlimited { return "No fixed cap" }
         let used = formatValue(bucket.used)
         let limit = formatValue(bucket.limit)
         return "\(used) / \(limit)"
@@ -220,9 +225,12 @@ public struct UnifiedQuotaSignalView: View {
             let clamped = min(max(value, 0), 100)
             return "\(Int(clamped.rounded()))%"
         case .tokens:
+            if value >= 1_000_000_000 { return String(format: "%.2fB", value / 1_000_000_000) }
             if value >= 1_000_000 { return String(format: "%.1fM", value / 1_000_000) }
             if value >= 1_000 { return String(format: "%.1fK", value / 1_000) }
             return "\(Int(value.rounded()))"
+        case .unlimited:
+            return "Unlimited"
         case .count:
             let formatter = NumberFormatter()
             formatter.numberStyle = .decimal
@@ -232,6 +240,7 @@ public struct UnifiedQuotaSignalView: View {
     }
 
     private var remainingPercentText: String {
+        if bucketUnit == .unlimited { return "∞" }
         guard bucket.limit > 0 else { return "—" }
         let pct = remainingFraction * 100
         if pct < 1 {

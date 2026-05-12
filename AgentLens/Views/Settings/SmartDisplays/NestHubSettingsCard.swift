@@ -35,7 +35,8 @@ struct NestHubSettingsCard: View {
         } else {
             let adapter = MacSmartHubDisplayOperationsAdapter(
                 settingsManager: settingsManager,
-                controller: runtimeContext?.smartHubBridgeController
+                controller: runtimeContext?.smartHubBridgeController,
+                repairCoordinator: runtimeContext?.smartDisplayRepairCoordinator
             )
             resolvedModel = SmartHubDisplaySettingsModel(
                 enabled: settingsManager.smartHubQuotaDisplayEnabled,
@@ -148,7 +149,8 @@ struct NestHubSettingsCard: View {
     private var operationButtons: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             HStack(spacing: DesignSystem.Spacing.sm) {
-                operationButton(.test, style: .prominent)
+                operationButton(.repair, style: .prominent)
+                operationButton(.test, style: .regular)
                 operationButton(.identify, style: .regular)
                 operationButton(.refresh, style: .regular)
                 operationButton(.open, style: .regular)
@@ -604,6 +606,7 @@ struct NestHubSettingsCard: View {
         switch kind {
         case .test:     await model.test()
         case .identify: await model.identify()
+        case .repair:   await model.repair()
         case .refresh:  await model.refresh()
         case .stop:     await model.stop()
         case .open:     await model.open()

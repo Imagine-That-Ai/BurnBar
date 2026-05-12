@@ -19,6 +19,12 @@ struct StreamSessionLogManifest: Identifiable, Hashable, Sendable {
     let bodyHash: String?
 }
 
+struct QuotaSnapshotStreamUpdate: Sendable {
+    let snapshots: [ProviderQuotaSnapshot]
+    let rawDocumentCount: Int
+    let isFromCache: Bool
+}
+
 // MARK: - Firestore Repository
 
 @MainActor
@@ -69,11 +75,17 @@ final class FirestoreRepository {
     /// - ISO 8601 date strings (e.g. `computedAt`, `fetchedAt`) → Double
     /// - Nested dicts/arrays → recursively sanitized
     nonisolated func sanitizeForJSON(_ value: Any) -> Any {
+        sanitizeForJSON(value, preservingStringValues: false)
+    }
+
+    nonisolated private func sanitizeForJSON(_ value: Any, preservingStringValues: Bool) -> Any {
         switch value {
         case let ts as Timestamp:
             return ts.dateValue().timeIntervalSinceReferenceDate
         case let date as Date:
             return date.timeIntervalSinceReferenceDate
+        case let s as String where preservingStringValues:
+            return s
         case let s as String where Self.isISODateString(s):
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -86,9 +98,14 @@ final class FirestoreRepository {
             }
             return s
         case let dict as [String: Any]:
-            return dict.mapValues { sanitizeForJSON($0) }
+            return dict.reduce(into: [String: Any]()) { result, entry in
+                result[entry.key] = sanitizeForJSON(
+                    entry.value,
+                    preservingStringValues: preservingStringValues || entry.key == "meta"
+                )
+            }
         case let arr as [Any]:
-            return arr.map { sanitizeForJSON($0) }
+            return arr.map { sanitizeForJSON($0, preservingStringValues: preservingStringValues) }
         case is NSNull:
             return NSNull()
         default:
@@ -117,13 +134,13 @@ final class FirestoreRepository {
         }
         let sanitized = sanitizeForJSON(enriched) as? [String: Any] ?? enriched
         guard let jsonData = try? JSONSerialization.data(withJSONObject: sanitized) else {
-            logger.warning("Failed to serialize Firestore data for document \(docID): \(String(describing: T.self))")
+            logger.warning("Failed to serialize Firestore data for document \(docID, privacy: .public): \(String(describing: T.self), privacy: .public)")
             return nil
         }
         do {
             return try JSONDecoder().decode(T.self, from: jsonData)
         } catch {
-            logger.error("Failed to decode \(String(describing: T.self)) for document \(docID): \(error.localizedDescription)")
+            logger.error("Failed to decode \(String(describing: T.self), privacy: .public) for document \(docID, privacy: .public): \(String(describing: error), privacy: .public)")
             return nil
         }
     }
@@ -172,20 +189,137 @@ final class FirestoreRepository {
         }
 
         if let buckets = result["buckets"] as? [[String: Any]] {
-            result["buckets"] = buckets.map { bucket in
-                var normalized = bucket
-                if let meta = normalized["meta"] as? [String: Any] {
-                    normalized["meta"] = meta.mapValues { value in
-                        if let string = value as? String { return string }
-                        if value is NSNull { return "" }
-                        return String(describing: value)
-                    }
-                }
-                return normalized
-            }
+            result["buckets"] = buckets.compactMap(normalizeQuotaBucketData)
         }
 
         return result
+    }
+
+    nonisolated private func normalizeQuotaBucketData(_ bucket: [String: Any]) -> [String: Any]? {
+        var meta = normalizedQuotaBucketMeta(bucket["meta"])
+
+        let rawUnit = stringValue(bucket["unit"]) ?? meta["unit"]
+        if let rawUnit, meta["unit"] == nil {
+            meta["unit"] = rawUnit
+        }
+
+        let name = stringValue(bucket["name"])
+            ?? stringValue(bucket["key"])
+            ?? stringValue(bucket["label"])
+        guard let name, name.isEmpty == false else { return nil }
+
+        if meta["label"] == nil, let label = stringValue(bucket["label"]) {
+            meta["label"] = label
+        }
+        if meta["isEstimated"] == nil, let isEstimated = bucket["isEstimated"] {
+            meta["isEstimated"] = stringValue(isEstimated) ?? String(describing: isEstimated)
+        }
+        if meta["usedPercent"] == nil, let usedPercent = numericValue(bucket["usedPercent"]) {
+            meta["usedPercent"] = String(format: "%.2f", usedPercent)
+        }
+        if meta["resetsAt"] == nil, let resetsAt = stringValue(bucket["resetsAt"]) {
+            meta["resetsAt"] = resetsAt
+        }
+
+        let unit = rawUnit?.lowercased()
+        let window = stringValue(bucket["window"]) ?? stringValue(bucket["windowKind"])
+        let usedPercent = numericValue(bucket["usedPercent"]) ?? numericValue(meta["usedPercent"])
+        var used = numericValue(bucket["used"]) ?? numericValue(bucket["usedValue"])
+        var limit = numericValue(bucket["limit"]) ?? numericValue(bucket["limitValue"])
+        var remaining = numericValue(bucket["remaining"]) ?? numericValue(bucket["remainingValue"])
+
+        if let rawLimit = limit, rawLimit < 0 {
+            if let knownRemaining = remaining, knownRemaining > 0 {
+                used = max(0, used ?? 0)
+                limit = knownRemaining + max(0, used ?? 0)
+                remaining = knownRemaining
+                meta["limitKind"] = meta["limitKind"] ?? "remainingOnly"
+            } else {
+                used = 0
+                limit = 100
+                remaining = 100
+                meta["unit"] = meta["unit"] ?? "unlimited"
+                meta["limitKind"] = meta["limitKind"] ?? "unlimited"
+            }
+        }
+
+        // Desktop percent-window quota buckets historically carried
+        // `remainingValue`/`usedPercent` without `limitValue`; some cloud
+        // uploads encoded that as `limit: 0`. The mobile display model needs a
+        // positive denominator, so normalize percentage windows onto 0...100.
+        if unit == "percent",
+           (limit == nil || limit == 0),
+           usedPercent != nil || remaining != nil {
+            limit = 100
+        }
+        if used == nil, let usedPercent {
+            used = usedPercent
+        }
+        if remaining == nil,
+           unit == "percent",
+           let used,
+           (limit ?? 0) > 0 {
+            remaining = max(0, (limit ?? 100) - used)
+        }
+        if used == nil,
+           unit == "percent",
+           let remaining,
+           (limit ?? 0) > 0 {
+            used = max(0, (limit ?? 100) - remaining)
+        }
+
+        guard let used, let limit, let remaining else { return nil }
+
+        var normalized: [String: Any] = [
+            "name": name,
+            "used": used,
+            "limit": limit,
+            "remaining": remaining
+        ]
+        if let window { normalized["window"] = window }
+        if meta.isEmpty == false { normalized["meta"] = meta }
+        return normalized
+    }
+
+    nonisolated private func normalizedQuotaBucketMeta(_ raw: Any?) -> [String: String] {
+        guard let raw = raw as? [String: Any] else { return [:] }
+        return raw.reduce(into: [String: String]()) { result, entry in
+            if let string = entry.value as? String {
+                result[entry.key] = string
+            } else if entry.value is NSNull {
+                result[entry.key] = ""
+            } else {
+                result[entry.key] = String(describing: entry.value)
+            }
+        }
+    }
+
+    nonisolated private func stringValue(_ value: Any?) -> String? {
+        switch value {
+        case let value as String:
+            return value
+        case let value as NSNumber:
+            return value.stringValue
+        case .some(let value) where !(value is NSNull):
+            return String(describing: value)
+        default:
+            return nil
+        }
+    }
+
+    nonisolated private func numericValue(_ value: Any?) -> Double? {
+        switch value {
+        case let value as Double:
+            return value
+        case let value as Int:
+            return Double(value)
+        case let value as NSNumber:
+            return value.doubleValue
+        case let value as String:
+            return Double(value)
+        default:
+            return nil
+        }
     }
 
     /// Decodes a usage rollup with full field normalization.
@@ -340,10 +474,18 @@ final class FirestoreRepository {
 
     func fetchQuotaSnapshots() async throws -> [ProviderQuotaSnapshot] {
         let uid = try uid()
-        let snapshot = try await db.collection("users/\(uid)/quota_snapshots").getDocuments()
+        let collection = db.collection("users/\(uid)/quota_snapshots")
+        let snapshot: QuerySnapshot
+        do {
+            snapshot = try await collection.getDocuments(source: .server)
+        } catch {
+            logger.warning("Server quota snapshot fetch failed for account \(Self.redactedUserID(uid) ?? "unknown"): \(error.localizedDescription). Falling back to default Firestore source.")
+            snapshot = try await collection.getDocuments(source: .default)
+        }
         let (results, failedIDs) = decodeQuotaDocuments(snapshot.documents.map { ($0.documentID, $0.data()) })
         let rawCount = results.count + failedIDs.count
-        logger.info("Fetched \(results.count)/\(rawCount) quota snapshots for account \(Self.redactedUserID(uid) ?? "unknown")")
+        let providerIDs = Set(results.map(\.providerID.rawValue)).sorted().joined(separator: ",")
+        logger.info("Fetched \(results.count)/\(rawCount) quota snapshots for account \(Self.redactedUserID(uid) ?? "unknown") providers=[\(providerIDs, privacy: .public)]")
         if failedIDs.isEmpty == false {
             logger.warning("Skipped \(failedIDs.count) undecodable quota snapshot docs: \(failedIDs.joined(separator: ","), privacy: .private)")
         }
@@ -355,6 +497,14 @@ final class FirestoreRepository {
 
     func listenToQuotaSnapshots(
         onUpdate: @escaping @Sendable (Result<[ProviderQuotaSnapshot], Error>) -> Void
+    ) -> ListenerRegistration? {
+        listenToQuotaSnapshotUpdates { result in
+            onUpdate(result.map(\.snapshots))
+        }
+    }
+
+    func listenToQuotaSnapshotUpdates(
+        onUpdate: @escaping @Sendable (Result<QuotaSnapshotStreamUpdate, Error>) -> Void
     ) -> ListenerRegistration? {
         guard FirebaseApp.app() != nil else {
             onUpdate(.failure(FirestoreError.firebaseUnavailable))
@@ -380,8 +530,15 @@ final class FirestoreRepository {
                 onUpdate(.failure(FirestoreError.decodingFailed("Could not decode \(documents.count) quota snapshot document\(documents.count == 1 ? "" : "s").")))
                 return
             }
-            logger.debug("Quota listener update: \(results.count)/\(documents.count) snapshots")
-            onUpdate(.success(results))
+            let isFromCache = snapshot?.metadata.isFromCache ?? false
+            let source = isFromCache ? "cache" : "server"
+            let providerIDs = Set(results.map(\.providerID.rawValue)).sorted().joined(separator: ",")
+            logger.info("Quota listener update: \(results.count)/\(documents.count) snapshots source=\(source, privacy: .public) providers=[\(providerIDs, privacy: .public)]")
+            onUpdate(.success(QuotaSnapshotStreamUpdate(
+                snapshots: results,
+                rawDocumentCount: documents.count,
+                isFromCache: isFromCache
+            )))
         }
     }
 
@@ -546,21 +703,37 @@ final class FirestoreRepository {
 
     func fetchProviderConnections() async throws -> [ProviderConnectionDoc] {
         let uid = try uid()
-        let snapshot = try await db.collection("users/\(uid)/provider_connections").getDocuments()
+        let collection = db.collection("users/\(uid)/provider_connections")
+        let snapshot: QuerySnapshot
+        do {
+            snapshot = try await collection.getDocuments(source: .server)
+        } catch {
+            logger.warning("Server provider connection fetch failed for account \(Self.redactedUserID(uid) ?? "unknown"): \(error.localizedDescription). Falling back to default Firestore source.")
+            snapshot = try await collection.getDocuments(source: .default)
+        }
         let results = snapshot.documents.compactMap { doc -> ProviderConnectionDoc? in
             decodeWithDocID(ProviderConnectionDoc.self, from: doc.data(), docID: doc.documentID)
         }
-        logger.info("Fetched \(results.count) provider connections")
+        let providerIDs = Set(results.map(\.provider)).sorted().joined(separator: ",")
+        logger.info("Fetched \(results.count) provider connections for account \(Self.redactedUserID(uid) ?? "unknown") providers=[\(providerIDs, privacy: .public)]")
         return results
     }
 
     func fetchProviderAccounts() async throws -> [ProviderAccountDoc] {
         let uid = try uid()
-        let snapshot = try await db.collection("users/\(uid)/provider_accounts").getDocuments()
+        let collection = db.collection("users/\(uid)/provider_accounts")
+        let snapshot: QuerySnapshot
+        do {
+            snapshot = try await collection.getDocuments(source: .server)
+        } catch {
+            logger.warning("Server provider account fetch failed for account \(Self.redactedUserID(uid) ?? "unknown"): \(error.localizedDescription). Falling back to default Firestore source.")
+            snapshot = try await collection.getDocuments(source: .default)
+        }
         let results = snapshot.documents.compactMap { doc -> ProviderAccountDoc? in
             decodeWithDocID(ProviderAccountDoc.self, from: doc.data(), docID: doc.documentID)
         }
-        logger.info("Fetched \(results.count) provider accounts")
+        let providerIDs = Set(results.filter { $0.status != .deleted }.map(\.providerID.rawValue)).sorted().joined(separator: ",")
+        logger.info("Fetched \(results.count) provider accounts for account \(Self.redactedUserID(uid) ?? "unknown") providers=[\(providerIDs, privacy: .public)]")
         return sortProviderAccounts(results)
     }
 

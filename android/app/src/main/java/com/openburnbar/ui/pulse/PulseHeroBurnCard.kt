@@ -43,35 +43,38 @@ fun PulseHeroBurnCard(
     onDisplayModeChange: (UsageDisplayMode) -> Unit
 ) {
     val windowValue = when (scope) {
+        PulseTimelineScope.MINUTE,
+        PulseTimelineScope.HOUR,
         PulseTimelineScope.DAY -> rollups.today
         PulseTimelineScope.WEEK -> rollups.sevenDays
         PulseTimelineScope.MONTH -> rollups.thirtyDays
-        PulseTimelineScope.QUARTER -> rollups.ninetyDays
     }
     val trailingValue = when (scope) {
+        PulseTimelineScope.MINUTE,
+        PulseTimelineScope.HOUR -> rollups.today
         PulseTimelineScope.DAY -> rollups.sevenDays
         PulseTimelineScope.WEEK -> rollups.thirtyDays
         PulseTimelineScope.MONTH -> rollups.ninetyDays
-        PulseTimelineScope.QUARTER -> rollups.allTime
     }
     val totalTokens = rollups.totals["tokens"] ?: 0.0
     val totalRequests = rollups.totals["requests"] ?: 0.0
 
     val heroValueText = when (displayMode) {
         UsageDisplayMode.CURRENCY -> Formatting.formatCurrency(windowValue)
-        UsageDisplayMode.TOKENS -> Formatting.formatTokens(totalTokens.toInt())
+        UsageDisplayMode.TOKENS -> Formatting.formatTokens(totalTokens.toLong())
     }
     val heroSubtitleText = when (displayMode) {
-        UsageDisplayMode.CURRENCY -> "${Formatting.formatTokens(totalTokens.toInt())} tokens · ${totalRequests.toInt()} requests"
+        UsageDisplayMode.CURRENCY -> "${Formatting.formatTokens(totalTokens.toLong())} tokens · ${totalRequests.toInt()} requests"
         UsageDisplayMode.TOKENS -> "${Formatting.formatCurrency(windowValue)} · ${totalRequests.toInt()} requests"
     }
 
     // Delta calculation
     val divisor = when (scope) {
-        PulseTimelineScope.DAY -> 7.0
+        PulseTimelineScope.MINUTE,
+        PulseTimelineScope.HOUR,
+        PulseTimelineScope.DAY,
         PulseTimelineScope.WEEK -> 7.0
         PulseTimelineScope.MONTH -> 30.0
-        PulseTimelineScope.QUARTER -> 90.0
     }
     val avg = trailingValue / divisor
     val pct = if (avg > 0) ((windowValue - avg) / avg) * 100 else 0.0
@@ -101,7 +104,9 @@ fun PulseHeroBurnCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             letterSpacing = 2.sp
                         )
-                        if (scope == PulseTimelineScope.DAY) {
+                        if (scope == PulseTimelineScope.MINUTE ||
+                            scope == PulseTimelineScope.HOUR ||
+                            scope == PulseTimelineScope.DAY) {
                             Spacer(modifier = Modifier.width(6.dp))
                             BreathingDot(size = 6, color = AuroraColors.success)
                         }
@@ -218,9 +223,11 @@ private fun ModeToggleChip(
 }
 
 private fun trailingLabel(scope: PulseTimelineScope): String = when (scope) {
+    PulseTimelineScope.MINUTE,
+    PulseTimelineScope.HOUR,
     PulseTimelineScope.DAY -> "7-day"
     PulseTimelineScope.WEEK -> "30-day"
-    PulseTimelineScope.MONTH, PulseTimelineScope.QUARTER -> "90-day"
+    PulseTimelineScope.MONTH -> "90-day"
 }
 
 @Composable

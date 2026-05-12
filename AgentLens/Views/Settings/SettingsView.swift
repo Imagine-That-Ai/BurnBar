@@ -35,37 +35,51 @@ struct SettingsView: View {
     var body: some View {
         NavigationSplitView {
             List(SettingsTab.allCases, selection: $selectedTab) { tab in
-                Label {
-                    Text(tab.title)
-                } icon: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(tab.accentColor)
-                            .frame(width: 26, height: 26)
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white)
+                NavigationLink(value: tab) {
+                    HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(tab.accentColor)
+                                .frame(width: 28, height: 28)
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(tab.title)
+                                .font(DesignSystem.Typography.body)
+                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            Text(tab.subtitle)
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                                .lineLimit(2)
+                        }
                     }
+                    .padding(.vertical, 2)
                 }
                 .tag(tab)
             }
             .listStyle(.sidebar)
             .navigationTitle("Settings")
-            .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 280)
+            .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
         } detail: {
-            detailContent
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { dismiss() }
-                            .keyboardShortcut(.cancelAction)
+            NavigationStack {
+                detailContent
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { dismiss() }
+                                .keyboardShortcut(.cancelAction)
+                        }
                     }
-                }
+            }
+            .id(selectedTab)
         }
         .frame(
-            minWidth: 780,
-            idealWidth: 920,
-            minHeight: 560,
-            idealHeight: 660
+            minWidth: 820,
+            idealWidth: 980,
+            minHeight: 600,
+            idealHeight: 720
         )
         .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(settingsManager)

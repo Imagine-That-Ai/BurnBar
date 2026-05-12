@@ -83,13 +83,18 @@ class MenuBarService : Service() {
         const val CHANNEL_ID = "burnbar.menubar"
         const val NOTIFICATION_ID = 0xBBA12
 
-        fun start(context: Context) {
-            if (!SuppressionStore.allowed(context)) return
+        fun start(context: Context): Boolean {
+            if (!SuppressionStore.allowed(context)) return false
             val intent = Intent(context, MenuBarService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            return try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+                true
+            } catch (_: IllegalStateException) {
+                false
             }
         }
 

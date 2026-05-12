@@ -19,10 +19,13 @@ object Formatting {
 
     fun formatShortCurrency(amount: Double): String = shortCurrencyFormatter.format(amount)
 
-    fun formatTokens(count: Int): String {
+    fun formatTokens(count: Int): String = formatTokens(count.toLong())
+
+    fun formatTokens(count: Long): String {
         return when {
-            count >= 1_000_000 -> "${"%.1f".format(count / 1_000_000.0)}M"
-            count >= 1_000 -> "${"%.1f".format(count / 1_000.0)}K"
+            count >= 1_000_000_000L -> "${"%.2f".format(count / 1_000_000_000.0)}B"
+            count >= 1_000_000L -> "${"%.1f".format(count / 1_000_000.0)}M"
+            count >= 1_000L -> "${"%.1f".format(count / 1_000.0)}K"
             else -> count.toString()
         }
     }

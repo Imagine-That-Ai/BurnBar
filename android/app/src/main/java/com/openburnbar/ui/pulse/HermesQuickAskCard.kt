@@ -41,7 +41,7 @@ fun HermesQuickAskCard(
         modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp),
         cornerRadius = AuroraRadius.xl
     ) {
-        Column(modifier = Modifier.padding(AuroraSpacing.lg.dp)) {
+        Column() {
             // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),

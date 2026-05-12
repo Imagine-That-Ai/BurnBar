@@ -42,6 +42,7 @@ fun AuroraNavigationTray(
     selectedDestination: AuroraNavDestination,
     onDestinationSelected: (AuroraNavDestination) -> Unit,
     userDisplayName: String? = null,
+    userPhotoUrl: String? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -113,6 +114,7 @@ fun AuroraNavigationTray(
                     destination = dest,
                     isSelected = isSelected,
                     userDisplayName = if (dest == AuroraNavDestination.YOU) userDisplayName else null,
+                    userPhotoUrl = if (dest == AuroraNavDestination.YOU) userPhotoUrl else null,
                     onSelected = {
                         if (!isSelected) {
                             onDestinationSelected(dest)
@@ -146,6 +148,7 @@ private fun AuroraTabItem(
     destination: AuroraNavDestination,
     isSelected: Boolean,
     userDisplayName: String?,
+    userPhotoUrl: String?,
     onSelected: () -> Unit
 ) {
     val dotScale by animateFloatAsState(
@@ -175,7 +178,8 @@ private fun AuroraTabItem(
                 destination = destination,
                 size = IconSize.value.toInt(),
                 isSelected = isSelected,
-                userDisplayName = userDisplayName
+                userDisplayName = userDisplayName,
+                userPhotoUrl = userPhotoUrl
             )
 
             Spacer(modifier = Modifier.height(4.dp))

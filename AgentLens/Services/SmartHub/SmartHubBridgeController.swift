@@ -206,6 +206,101 @@ final class SmartHubBridgeController {
             : .bound
     }
 
+    /// One-click repair for the Google Nest Hub / DashCast path.
+    ///
+    /// Success is proof-driven: a Cast receiver ACK alone is not enough.
+    /// The Hub must load our page and poll `/state.json` after the cast
+    /// command, otherwise the common "stuck on DashCast splash" state would
+    /// be misreported as healthy.
+    func repairNestHubDisplay(
+        progress: ((SmartDisplayDeviceRepairStatus) -> Void)? = nil
+    ) async -> SmartDisplayDeviceRepairStatus {
+        func emit(
+            _ phase: SmartDisplayRepairPhase,
+            _ message: String,
+            proof: String? = nil
+        ) -> SmartDisplayDeviceRepairStatus {
+            let status = SmartDisplayDeviceRepairStatus(
+                kind: .nestHub,
+                phase: phase,
+                message: message,
+                proof: proof
+            )
+            progress?(status)
+            return status
+        }
+
+        _ = emit(.detecting, "Starting the Mac bridge and checking the saved Nest Hub.")
+        settingsManager.smartHubQuotaDisplayEnabled = true
+        applySettings()
+        healServerIfNeeded()
+        await waitForBridgeReady(timeout: 6)
+        await pumpSnapshot()
+
+        guard SmartHubBridgeServer.shared.isRunning else {
+            return emit(
+                .needsUserAction,
+                "Mac bridge is not running. Check Local Network permission and retry.",
+                proof: "bridge_not_running"
+            )
+        }
+        guard let url = preferredCastURL() else {
+            return emit(
+                .needsUserAction,
+                "OpenBurnBar could not build a LAN URL for this Mac. Connect the Mac to Wi-Fi and retry.",
+                proof: "missing_lan_url"
+            )
+        }
+        guard let device = await resolveCastDeviceForRepair() else {
+            return emit(
+                .needsUserAction,
+                "No display-capable Google Cast device was found. Wake the Nest Hub and keep it on the same Wi-Fi.",
+                proof: "cast_device_not_found"
+            )
+        }
+        persistCastDevice(device)
+
+        _ = emit(.repairing, "Casting OpenBurnBar to \(device.friendlyName).", proof: url.absoluteString)
+        let pollBaseline = SmartHubBridgeServer.shared.lastClientPollAt
+        let strategy = CastReconnectStrategy(
+            device: device,
+            homeAssistantWebhookURL: homeAssistantRecoveryWebhookURL()
+        )
+        let outcome = await strategy.castWithRecovery(url: url)
+        switch outcome {
+        case .success, .recoveredViaHomeAssistant:
+            break
+        case .failure(let reason, _):
+            return emit(.failed, "Couldn't cast to \(device.friendlyName): \(reason)", proof: "cast_failed")
+        }
+
+        _ = emit(.waitingForProof, "Waiting for the Nest Hub page to prove it loaded.")
+        if await waitForClientPoll(after: pollBaseline, timeout: 24) {
+            return emit(.working, "\(device.friendlyName) is showing OpenBurnBar.", proof: "state_json_polled")
+        }
+
+        _ = emit(.repairing, "DashCast accepted the command but did not load the page. Recasting from a clean session.")
+        let recastBaseline = SmartHubBridgeServer.shared.lastClientPollAt
+        let recastClient = CastChannelClient(device: device)
+        let recast = await recastClient.forceRecast(url: url)
+        await recastClient.stop()
+        switch recast {
+        case .success:
+            if await waitForClientPoll(after: recastBaseline, timeout: 24) {
+                return emit(.working, "\(device.friendlyName) recovered and is showing OpenBurnBar.", proof: "state_json_polled_after_recast")
+            }
+            return emit(
+                .failed,
+                "DashCast launched, but the Hub never loaded OpenBurnBar. Reboot the Hub or check Wi-Fi client isolation.",
+                proof: "no_state_json_poll"
+            )
+        case .failure(let reason):
+            return emit(.failed, "Recast failed: \(reason)", proof: "force_recast_failed")
+        case .timeout:
+            return emit(.failed, "Recast timed out while waiting for the Hub.", proof: "force_recast_timeout")
+        }
+    }
+
     /// Attempts to extract a port from `smartHubQuotaDashboardURL`. Falls
     /// back to 8787 — the documented default.
     private func portFromConfiguredURL() -> UInt16 {
@@ -217,6 +312,74 @@ final class SmartHubBridgeController {
             return 8787
         }
         return UInt16(port)
+    }
+
+    private func waitForBridgeReady(timeout: TimeInterval) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if SmartHubBridgeServer.shared.isRunning { return }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+    }
+
+    private func waitForClientPoll(after baseline: Date, timeout: TimeInterval) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if SmartHubBridgeServer.shared.lastClientPollAt > baseline {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+        }
+        return false
+    }
+
+    private func resolveCastDeviceForRepair() async -> CastDevice? {
+        if let cached = cachedCastDevice() {
+            let client = CastChannelClient(device: cached)
+            let state = await client.queryReceiverState()
+            await client.stop()
+            if state != nil {
+                return cached
+            }
+        }
+
+        let devices = await collectCastDevicesOnce(duration: 8)
+            .filter(\.supportsDisplay)
+        if let selected = devices.first(where: { matchesCachedCastDevice($0) }) {
+            return selected
+        }
+        if devices.count == 1 {
+            return devices[0]
+        }
+        return nil
+    }
+
+    private func collectCastDevicesOnce(duration: TimeInterval) async -> [CastDevice] {
+        await CastDiscovery.discoverOnce(duration: duration)
+    }
+
+    private func matchesCachedCastDevice(_ device: CastDevice) -> Bool {
+        let serviceName = settingsManager.castSelectedDeviceServiceName
+        let identifier = settingsManager.castSelectedDeviceIdentifier
+        return (!serviceName.isEmpty && device.serviceName.caseInsensitiveCompare(serviceName) == .orderedSame)
+            || (!identifier.isEmpty && device.identifier.caseInsensitiveCompare(identifier) == .orderedSame)
+    }
+
+    private func persistCastDevice(_ device: CastDevice) {
+        settingsManager.castSelectedDeviceServiceName = device.serviceName
+        settingsManager.castSelectedDeviceFriendlyName = device.friendlyName
+        settingsManager.castSelectedDeviceModel = device.model
+        settingsManager.castSelectedDeviceHost = device.host
+        settingsManager.castSelectedDevicePort = device.port
+        settingsManager.castSelectedDeviceIdentifier = device.identifier
+        settingsManager.castSelectedDeviceSupportsDisplay = device.supportsDisplay
+    }
+
+    private func homeAssistantRecoveryWebhookURL() -> URL? {
+        let raw = settingsManager.smartHubHomeAssistantRecoveryWebhookURL
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return nil }
+        return URL(string: raw)
     }
 
     // MARK: - Heartbeat snapshot pump
@@ -277,39 +440,387 @@ final class SmartHubBridgeController {
 
     private func buildSnapshot() -> SmartHubBridgeSnapshot {
         let period = settingsManager.smartHubQuotaTimePeriod
-        let providers = quotaProviders(period: period)
-        let timeFormatter = DateFormatter()
-        timeFormatter.timeStyle = .short
-        let now = timeFormatter.string(from: Date())
-        let totalText = providers.isEmpty ? "—" : "\(providers.count) tracked"
+        let now = Date()
+        let runCostTotals = runCostTotalsForPeriod(period, now: now)
+        let providers = quotaProviders(period: period, runCostTotals: runCostTotals, now: now)
+        let aggregateSpend = runCostTotals.values.reduce(0.0) { $0 + $1.totalCost }
+
+        let totalText: String
+        if providers.isEmpty {
+            totalText = "—"
+        } else if aggregateSpend > 0 {
+            totalText = Self.currencyFormatter.string(from: NSNumber(value: aggregateSpend))
+                ?? "$\(Int(aggregateSpend))"
+        } else {
+            totalText = "\(providers.count) tracked"
+        }
+
+        let headerFormatter = DateFormatter()
+        headerFormatter.dateFormat = "EEE, MMM d  h:mm a"
+        let headerTimestamp = headerFormatter.string(from: now)
+
+        let subFormatter = DateFormatter()
+        subFormatter.timeStyle = .short
 
         return SmartHubBridgeSnapshot(
             totalSpend: totalText,
             headline: providers.isEmpty
                 ? "Waiting on the first refresh"
                 : "Showing \(period.displayName.lowercased())",
-            subheadline: "Updated at \(now)",
-            providers: providers
+            subheadline: "Updated at \(subFormatter.string(from: now))",
+            providers: providers,
+            headerTimestamp: headerTimestamp,
+            headerStatus: providers.isEmpty ? "" : "live provider pressure"
         )
     }
 
-    /// Iterate the providers OpenBurnBar tracks; for each, ask the existing
-    /// `ProviderQuotaService` for a snapshot and surface the bucket whose
-    /// rolling window best matches the user-selected period.
-    private func quotaProviders(period: SmartHubTimePeriod) -> [SmartHubBridgeSnapshot.Provider] {
+    /// Pulls per-provider run/cost totals for the dashboard's active time
+    /// period. Wrapped in a try? — the bridge can render without footer
+    /// metrics if the DB read fails, so we don't take the whole pipeline
+    /// down on a transient SQLite blip.
+    private func runCostTotalsForPeriod(
+        _ period: SmartHubTimePeriod,
+        now: Date
+    ) -> [AgentProvider: ProviderRunCostTotals] {
+        guard let dataStore else { return [:] }
+        let range = Self.dateRange(for: period, now: now)
+        return (try? dataStore.usageStore.providerRunCostTotals(in: range)) ?? [:]
+    }
+
+    /// Iterate the providers OpenBurnBar tracks; for each, populate a
+    /// full card payload (multiple buckets, account chips, run/cost
+    /// footer, brand accent, freshness pill). Falls back to the legacy
+    /// single-bucket shape when the rich data isn't available so the
+    /// device never goes blank.
+    private func quotaProviders(
+        period: SmartHubTimePeriod,
+        runCostTotals: [AgentProvider: ProviderRunCostTotals],
+        now: Date
+    ) -> [SmartHubBridgeSnapshot.Provider] {
         guard let quotaService else { return [] }
+
         return AgentProvider.allCases.compactMap { provider -> SmartHubBridgeSnapshot.Provider? in
-            guard let snapshot = quotaService.snapshot(for: provider) else { return nil }
-            guard let bucket = Self.bestBucket(in: snapshot, for: period) else { return nil }
-            let percent = Int((bucket.progressFraction * 100).rounded())
+            // We aggregate across all accounts. A provider with no account
+            // snapshots at all is dropped — there's nothing meaningful to
+            // render on its card.
+            let accountSnapshots = quotaService.snapshots(for: provider)
+            guard let primary = quotaService.snapshot(for: provider) ?? accountSnapshots.first else {
+                return nil
+            }
+
+            // Primary bucket drives the legacy `percent` / `label` /
+            // `windowLabel` fields so older readers (NestHubMiniPreview,
+            // serialization tests) keep working.
+            let primaryBucket = Self.bestBucket(in: primary, for: period) ?? primary.primaryDisplayableBucket
+            let primaryPercent = primaryBucket.map { Int(($0.progressFraction * 100).rounded()) } ?? 0
+            let primaryTone = tone(for: primaryPercent)
+            let primaryLabel = primaryBucket?.usageText ?? primary.statusMessage
+            let primaryWindowLabel = primaryBucket.map(Self.windowLabel(for:)) ?? ""
+
+            // Rich card pieces.
+            let buckets = Self.bridgeBuckets(from: primary.displayableQuotaBuckets, tone: tone)
+            let accounts = Self.bridgeAccounts(
+                for: provider,
+                snapshots: accountSnapshots,
+                primary: primary,
+                routingState: quotaService.routingState(for: provider.providerID)
+            )
+            let tokenTotal = Self.bridgeTokenTotal(buckets: primary.displayableQuotaBuckets)
+            let statusPill = Self.bridgeStatusPill(snapshot: primary, now: now)
+            let statusTone = Self.statusPillTone(snapshot: primary, now: now)
+            let freshness = Self.bridgeFreshnessLabel(fetchedAt: primary.fetchedAt, now: now)
+            let absoluteFetched = Self.bridgeAbsoluteTimestamp(primary.fetchedAt)
+            let footer = runCostTotals[provider]
+            let runsLabel = Self.bridgeRunsLabel(footer?.sessionCount ?? 0)
+            let costLabel = Self.bridgeCostLabel(footer?.totalCost ?? 0)
+
             return SmartHubBridgeSnapshot.Provider(
                 name: provider.displayName,
-                percent: percent,
-                label: bucket.usageText,
-                tone: tone(for: percent),
-                windowLabel: Self.windowLabel(for: bucket)
+                percent: primaryPercent,
+                label: primaryLabel,
+                tone: primaryTone,
+                windowLabel: primaryWindowLabel,
+                slug: provider.persistedToken,
+                accentHex: Self.accentHex(for: provider),
+                logoSVG: Self.logoSVG(for: provider),
+                tokenTotal: tokenTotal,
+                tokenTotalLabel: "TOKENS",
+                statusPill: statusPill,
+                statusTone: statusTone,
+                freshnessLabel: freshness,
+                fetchedAtLabel: absoluteFetched,
+                buckets: buckets,
+                accounts: accounts,
+                runsLabel: runsLabel,
+                costLabel: costLabel
             )
         }
+    }
+
+    // MARK: - Rich snapshot helpers
+
+    /// Maps `SmartHubTimePeriod` → a `ClosedRange<Date>` for the SQL
+    /// query that powers the footer's run-count / cost numbers. Rolling
+    /// windows anchor to `now` so the numbers move with the dashboard.
+    private static func dateRange(for period: SmartHubTimePeriod, now: Date) -> ClosedRange<Date> {
+        let hours = period.spanHours
+        let start = now.addingTimeInterval(-hours * 3600)
+        return start...now
+    }
+
+    private static func bridgeBuckets(
+        from buckets: [ProviderQuotaBucket],
+        tone: (Int) -> SmartHubBridgeSnapshot.Provider.Tone
+    ) -> [SmartHubBridgeSnapshot.Provider.Bucket] {
+        buckets.prefix(4).map { bucket -> SmartHubBridgeSnapshot.Provider.Bucket in
+            let percent = Int((bucket.progressFraction * 100).rounded())
+            return SmartHubBridgeSnapshot.Provider.Bucket(
+                name: bucket.label,
+                percent: percent,
+                headlineValue: bridgeBucketHeadline(bucket),
+                subLabel: bridgeBucketSubLabel(bucket),
+                tone: tone(percent)
+            )
+        }
+    }
+
+    /// Right-hand value next to each bar (e.g. "33%", "350.8M", "$400.00").
+    /// Mirrors the visual hierarchy of the mock: the *headline value* is
+    /// the number the user actually cares about for that window, not the
+    /// usage ratio.
+    private static func bridgeBucketHeadline(_ bucket: ProviderQuotaBucket) -> String {
+        // Tokens / requests bucket: surface the absolute used count when
+        // we have it (e.g. "350.8M tokens"), otherwise the percent.
+        switch bucket.unit {
+        case .tokens, .requests, .currency:
+            if let used = bucket.usedValue, used > 0 {
+                return formatValueAbbreviation(used, unit: bucket.unit)
+            }
+            if let percent = bucket.usedPercent {
+                return "\(Int(percent.rounded()))%"
+            }
+        case .percent:
+            if let percent = bucket.usedPercent {
+                return "\(Int(percent.rounded()))%"
+            }
+        case .sessions, .lines, .files, .count:
+            if let used = bucket.usedValue {
+                return formatValueAbbreviation(used, unit: bucket.unit)
+            }
+        }
+        return ""
+    }
+
+    /// Sub-label rendered under each bar (e.g. "67% left",
+    /// "resets May 8, 3:35 AM"). Prefers the reset timestamp because that's
+    /// the actionable detail; falls back to remaining headroom.
+    private static func bridgeBucketSubLabel(_ bucket: ProviderQuotaBucket) -> String {
+        if let resetsAt = bucket.resetsAt {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d, h:mm a"
+            return "resets \(formatter.string(from: resetsAt))"
+        }
+        if let remaining = bucket.remainingPercent {
+            return "\(Int(remaining.rounded()))% left"
+        }
+        if let remainingValue = bucket.remainingValue, bucket.unit == .currency {
+            return "$\(String(format: "%.2f", remainingValue)) left"
+        }
+        return ""
+    }
+
+    /// Abbreviated number formatter that matches the visual style of the
+    /// mock ("5.4B", "42.0B", "113.2M", "$400.00").
+    private static func formatValueAbbreviation(_ value: Double, unit: ProviderQuotaUnit) -> String {
+        if unit == .currency {
+            return currencyFormatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
+        }
+        if value >= 1_000_000_000 {
+            return String(format: "%.1fB", value / 1_000_000_000)
+        }
+        if value >= 1_000_000 {
+            return String(format: "%.1fM", value / 1_000_000)
+        }
+        if value >= 1_000 {
+            return String(format: "%.1fK", value / 1_000)
+        }
+        return "\(Int(value.rounded()))"
+    }
+
+    private static let currencyFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        f.minimumFractionDigits = 2
+        f.maximumFractionDigits = 2
+        return f
+    }()
+
+    private static func bridgeAccounts(
+        for provider: AgentProvider,
+        snapshots: [ProviderQuotaSnapshot],
+        primary: ProviderQuotaSnapshot,
+        routingState: ProviderRoutingStateSnapshot?
+    ) -> [SmartHubBridgeSnapshot.Provider.Account] {
+        // Coalesce by accountID so a provider exposing the same account
+        // twice (cloud + local mirror) only renders one chip.
+        var seen: Set<String> = []
+        let activeAccountID = routingState?.activeAccount?.accountID
+
+        return snapshots.compactMap { snap -> SmartHubBridgeSnapshot.Provider.Account? in
+            let id = snap.accountID ?? snap.accountLabel ?? snap.sourceId
+            guard !id.isEmpty, seen.insert(id).inserted else { return nil }
+            let label = snap.accountLabel ?? snap.accountID ?? "Default"
+            let isActive = activeAccountID == snap.accountID
+            let (badge, tone) = accountBadge(for: snap, isActive: isActive, primary: primary)
+            return SmartHubBridgeSnapshot.Provider.Account(
+                label: label,
+                badge: badge,
+                tone: tone,
+                isActive: isActive
+            )
+        }
+    }
+
+    /// Compute the chip badge ("MAIN" / "ACTIVE" / "CLI" / "LOCAL") for
+    /// one account snapshot. We mirror the on-Mac account-cockpit logic:
+    /// the routing-active account wins; otherwise we badge by storage
+    /// scope so the user can tell at a glance whether the account is a
+    /// shared cloud credential or a local-only CLI handle.
+    private static func accountBadge(
+        for snap: ProviderQuotaSnapshot,
+        isActive: Bool,
+        primary: ProviderQuotaSnapshot
+    ) -> (String, SmartHubBridgeSnapshot.Provider.Tone) {
+        if isActive { return ("ACTIVE", .success) }
+        switch snap.accountStorageScope {
+        case .cloudRefreshable: return ("MAIN", .whimsy)
+        case .deviceKeychain:   return ("CLI", .mercury)
+        case .localOnly:        return ("LOCAL", .mercury)
+        case .serverPrivate:    return ("SERVER", .ember)
+        case .none:             return ("DEFAULT", .mercury)
+        }
+    }
+
+    /// Build the short pill that appears under the provider name (e.g.
+    /// "source 3h ago", "reset passed", "live local"). The pill is the
+    /// fastest signal the user has that the card is healthy; tied to
+    /// freshness + confidence + source kind.
+    private static func bridgeStatusPill(snapshot: ProviderQuotaSnapshot, now: Date) -> String {
+        let age = now.timeIntervalSince(snapshot.fetchedAt)
+        if age < 60 { return "live" }
+        if snapshot.confidence == .unavailable { return "unavailable" }
+        if snapshot.confidence == .estimated { return "estimated" }
+        switch snapshot.source {
+        case .localCLI, .localSession: return "live local"
+        case .officialAPI:
+            return age > 6 * 3600 ? "source \(Int(age / 3600))h ago" : "source live"
+        case .manualEstimate: return "manual"
+        case .unavailable:    return "unavailable"
+        }
+    }
+
+    private static func statusPillTone(
+        snapshot: ProviderQuotaSnapshot,
+        now: Date
+    ) -> SmartHubBridgeSnapshot.Provider.Tone {
+        let age = now.timeIntervalSince(snapshot.fetchedAt)
+        if snapshot.confidence == .unavailable { return .warning }
+        if age < 5 * 60 { return .success }
+        if age < 60 * 60 { return .whimsy }
+        if age < 6 * 3600 { return .mercury }
+        return .warning
+    }
+
+    /// Headline token count at the top of each card. Picks the biggest
+    /// `usedValue` across token/currency buckets so providers that expose
+    /// multiple windows ("5h" + "weekly") surface their dominant number
+    /// (matching how the mock renders "5.4B" for Claude, "42.0B" for Codex).
+    private static func bridgeTokenTotal(buckets: [ProviderQuotaBucket]) -> String {
+        let tokenBuckets = buckets.filter { $0.unit == .tokens || $0.unit == .currency }
+        let best = tokenBuckets.compactMap { bucket -> (Double, ProviderQuotaUnit)? in
+            guard let used = bucket.usedValue, used > 0 else { return nil }
+            return (used, bucket.unit)
+        }.max { $0.0 < $1.0 }
+        guard let best else { return "" }
+        return formatValueAbbreviation(best.0, unit: best.1)
+    }
+
+    private static func bridgeFreshnessLabel(fetchedAt: Date, now: Date) -> String {
+        let elapsed = max(0, now.timeIntervalSince(fetchedAt))
+        if elapsed < 60 { return "updated just now" }
+        if elapsed < 3600 {
+            return "updated \(Int(elapsed / 60))m ago"
+        }
+        if elapsed < 24 * 3600 {
+            return "updated \(Int(elapsed / 3600))h ago"
+        }
+        return "updated \(Int(elapsed / 86_400))d ago"
+    }
+
+    private static func bridgeAbsoluteTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, h:mm a"
+        return formatter.string(from: date)
+    }
+
+    private static func bridgeRunsLabel(_ count: Int) -> String {
+        guard count > 0 else { return "" }
+        if count >= 1000 {
+            return "\(NumberFormatter.localizedString(from: NSNumber(value: count), number: .decimal)) runs"
+        }
+        return "\(count) runs"
+    }
+
+    private static func bridgeCostLabel(_ cost: Double) -> String {
+        guard cost > 0 else { return "" }
+        return currencyFormatter.string(from: NSNumber(value: cost)) ?? String(format: "$%.2f", cost)
+    }
+
+    /// Hex string (no leading `#`) for the provider's brand accent.
+    /// Mirrors `DesignSystem.Colors.primary(for:)` — we keep the list
+    /// inline rather than reaching into SwiftUI so this function is
+    /// usable from non-UI contexts.
+    private static func accentHex(for provider: AgentProvider) -> String {
+        switch provider {
+        case .factory:    return "8B5CF6"
+        case .claudeCode: return "CC785C"
+        case .copilot:    return "23EA3B"
+        case .aider:      return "FF6B35"
+        case .cursor:     return "AC8C57"
+        case .openAI:     return "00A67E"
+        case .codex:      return "00A67E"
+        case .zai:        return "8B5CF6"
+        case .minimax:    return "F59E0B"
+        case .kimi:       return "6366F1"
+        case .cline:      return "D4A373"
+        case .kiloCode:   return "10B981"
+        case .rooCode:    return "EC4899"
+        case .forgeDev:   return "F97316"
+        case .augment:    return "3B82F6"
+        case .hermes:     return "A855F7"
+        case .piAgent:    return "7C3AED"
+        case .geminiCLI:  return "4285F4"
+        case .goose:      return "0D9488"
+        case .openClaw:   return "FF6B6B"
+        case .ollama:     return "6B7280"
+        case .windsurf:   return "06B6D4"
+        case .warp:       return "DDE4EA"
+        }
+    }
+
+    /// Inline SVG monogram used as the provider logo on the Hub. We embed
+    /// it directly in the JSON (vs serving an asset endpoint) so the page
+    /// renders without extra HTTP round-trips — the Nest Hub's DashCast
+    /// surface caches the dashboard aggressively but not provider assets.
+    /// The monogram is the provider's initial in a rounded square; not as
+    /// pretty as full brand marks, but legal-safe and instantly placeable.
+    private static func logoSVG(for provider: AgentProvider) -> String {
+        let initial = provider.displayName.first.map(String.init)?.uppercased() ?? "?"
+        let hex = "#\(accentHex(for: provider))"
+        return """
+        <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40' aria-hidden='true'><rect width='40' height='40' rx='10' fill='\(hex)'/><text x='50%' y='54%' text-anchor='middle' font-family='-apple-system,SF Pro Rounded,system-ui,sans-serif' font-size='22' font-weight='700' fill='white' dominant-baseline='middle'>\(initial)</text></svg>
+        """
     }
 
     /// Pick the bucket whose rolling window most closely matches the

@@ -38,16 +38,20 @@ struct PulseView: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
 
-                    TimelineScopePicker(selection: $timelineScope)
-                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                        .staggeredEntrance(delay: 0.0)
+                    HStack(alignment: .center, spacing: MobileTheme.Spacing.sm) {
+                        TimelineScopePicker(selection: $timelineScope)
+                        Spacer(minLength: MobileTheme.Spacing.sm)
+                        PulseDisplayModeToggle(displayMode: $displayMode)
+                    }
+                    .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                    .staggeredEntrance(delay: 0.0)
 
                     PulseHeroBurnCard(
                         total: dashboard.windowTotals[timelineScope.rollupKey],
                         trailingTotal: dashboard.windowTotals[timelineScope.trailingKey],
                         dailyPoints: dashboard.dailyPoints,
                         topProvider: topProvider,
-                        displayMode: $displayMode,
+                        displayMode: displayMode,
                         scope: timelineScope
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)

@@ -138,7 +138,9 @@ struct ProviderCard: View {
     }
 
     private func formatTokens(_ tokens: Int) -> String {
-        if tokens >= 1_000_000 {
+        if tokens >= 1_000_000_000 {
+            return String(format: "%.2fB", Double(tokens) / 1_000_000_000)
+        } else if tokens >= 1_000_000 {
             return String(format: "%.1fM", Double(tokens) / 1_000_000)
         } else if tokens >= 1_000 {
             return String(format: "%.1fK", Double(tokens) / 1_000)
@@ -552,7 +554,9 @@ struct TokenBreakdownChart: View {
     }
 
     private func formatTokens(_ tokens: Int) -> String {
-        if tokens >= 1_000_000 {
+        if tokens >= 1_000_000_000 {
+            return String(format: "%.2fB", Double(tokens) / 1_000_000_000)
+        } else if tokens >= 1_000_000 {
             return String(format: "%.1fM", Double(tokens) / 1_000_000)
         } else if tokens >= 1_000 {
             return String(format: "%.1fK", Double(tokens) / 1_000)

@@ -36,7 +36,7 @@ fun RecentSessionsStripCard(
         modifier = Modifier.padding(horizontal = AuroraSpacing.lg.dp),
         cornerRadius = AuroraRadius.xl
     ) {
-        Column(modifier = Modifier.padding(AuroraSpacing.lg.dp)) {
+        Column() {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -132,13 +132,20 @@ private fun SessionTileMicro(
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = usage.model ?: "Unknown model",
-            fontSize = AuroraTypography.caption.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val modelKey = usage.model
+            if (!modelKey.isNullOrBlank()) {
+                com.openburnbar.ui.components.ModelLogo(modelKey = modelKey, size = 16.dp)
+                Spacer(modifier = Modifier.width(6.dp))
+            }
+            Text(
+                text = modelKey ?: "Unknown model",
+                fontSize = AuroraTypography.caption.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
+            )
+        }
         if (!usage.projectName.isNullOrEmpty()) {
             Text(
                 text = usage.projectName,
@@ -150,7 +157,7 @@ private fun SessionTileMicro(
         Spacer(modifier = Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = Formatting.formatCurrency(usage.effectiveCost),
+                text = "Cost ${Formatting.formatCurrency(usage.effectiveCost)}",
                 fontSize = AuroraTypography.caption.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -160,7 +167,7 @@ private fun SessionTileMicro(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = Formatting.formatTokens(usage.totalTokens),
+                text = "Tokens ${Formatting.formatTokens(usage.totalTokens)}",
                 fontSize = AuroraTypography.tiny.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -1,11 +1,14 @@
 package com.openburnbar.ui.pulse
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -17,9 +20,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.data.models.UsageDisplayMode
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraTypography
-import androidx.compose.foundation.background
 
 enum class PulseTimelineScope(
     val label: String,
@@ -27,10 +30,11 @@ enum class PulseTimelineScope(
     val rollupKey: String,
     val trailingKey: String
 ) {
-    DAY("1D", "TODAY · LIVE", "today", "today"),
-    WEEK("7D", "7 DAYS", "7d", "7d"),
-    MONTH("30D", "30 DAYS", "30d", "last_30d"),
-    QUARTER("90D", "90 DAYS", "90d", "all_time");
+    MINUTE("1M", "LIVE · MINUTE", "today", "today"),
+    HOUR("1H", "LAST HOUR · LIVE", "today", "today"),
+    DAY("1D", "TODAY · LIVE", "today", "7d"),
+    WEEK("7D", "7 DAYS", "7d", "30d"),
+    MONTH("30D", "30 DAYS", "30d", "90d");
 }
 
 @Composable
@@ -75,5 +79,43 @@ fun TimelineScopePicker(
                 }
             }
         }
+    }
+}
+
+// Currency / Tokens chip used by Pulse's top toolbar. Sits to the right of
+// the timeline scope picker so the row reads identically on iOS and Android.
+@Composable
+fun PulseDisplayModeToggle(
+    displayMode: UsageDisplayMode,
+    onToggle: (UsageDisplayMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .clip(CircleShape)
+            .background(AuroraColors.ember.copy(alpha = 0.18f))
+            .border(0.5.dp, AuroraColors.ember.copy(alpha = 0.4f), CircleShape)
+            .clickable {
+                onToggle(
+                    if (displayMode == UsageDisplayMode.CURRENCY) UsageDisplayMode.TOKENS
+                    else UsageDisplayMode.CURRENCY
+                )
+            }
+            .padding(horizontal = 10.dp, vertical = 7.dp)
+    ) {
+        Text(
+            text = if (displayMode == UsageDisplayMode.CURRENCY) "$" else "#",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = AuroraColors.ember
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = displayMode.label,
+            fontSize = AuroraTypography.tiny.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = AuroraColors.ember
+        )
     }
 }

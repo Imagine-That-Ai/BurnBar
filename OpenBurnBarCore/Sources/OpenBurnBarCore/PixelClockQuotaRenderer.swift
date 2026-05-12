@@ -48,10 +48,20 @@ public enum PixelClockQuotaRenderer {
         now: Date = Date(),
         isWorking: Bool = false
     ) -> [PixelClockRenderedPage] {
+        // `.burnStatus` / `.alertsOnly` normally render scrolling text via
+        // AWTRIX's native renderer. When an agent is currently working the
+        // text mode can't show a pixel spinner overlay (AWTRIX drops the
+        // scrolling text whenever a custom draw list is attached), so we
+        // promote those layouts to the bitmap dashboard for the duration of
+        // the run. The user gets the working indicator without losing data —
+        // when the agent finishes, we fall back to the configured layout.
         switch config.layout {
         case .providerDashboard, .quotaCarousel:
             return renderProviderDashboard(items: items, config: config, now: now, isWorking: isWorking)
         case .burnStatus, .alertsOnly:
+            if isWorking {
+                return renderProviderDashboard(items: items, config: config, now: now, isWorking: true)
+            }
             return renderQuotaCarousel(items: items, config: config, now: now)
         }
     }
@@ -404,7 +414,7 @@ public enum PixelClockQuotaRenderer {
         if token.contains("claude") {
             return PixelClockProviderLogoAssets.claudeCode
         }
-        if token.contains("codex") || token.contains("openai") {
+        if token.contains("codex") {
             return PixelClockProviderLogoAssets.codex
         }
         if token.contains("factory") || token.contains("droid") {
@@ -447,9 +457,10 @@ public enum PixelClockQuotaRenderer {
         for (index, char) in chars.enumerated() {
             let glyph = glyph3x5(char)
             let x = index == 0 ? 0 : 4
+            let colorKey = index == 0 ? "1" : "2"
             for (row, bits) in glyph.enumerated() {
                 for (column, bit) in bits.enumerated() where bit == 1 {
-                    rows[row + 1][x + column] = "1"
+                    rows[row + 1][x + column] = colorKey
                 }
             }
         }

@@ -50,7 +50,11 @@ fun FloatingChatPill(
     modifier: Modifier = Modifier,
     accent: Color = AuroraColors.hermesAureate
 ) {
+    // Only surface the pill when there's actual conversational signal — either
+    // Hermes is mid-stream or we have a meaningful snippet to preview. An empty
+    // pill on a fresh dashboard is visual noise.
     if (mode == FloatingChatMode.Hidden) return
+    if (mode == FloatingChatMode.Idle && snippet.isBlank()) return
 
     var pressed by remember { mutableStateOf(false) }
     var offsetX by remember { mutableStateOf(0f) }
@@ -71,10 +75,11 @@ fun FloatingChatPill(
                 scaleX = scale
                 scaleY = scale
             }
-            .heightIn(min = 56.dp)
-            .widthIn(min = 200.dp, max = 320.dp)
+            .heightIn(min = 44.dp)
+            .widthIn(min = 180.dp, max = 280.dp)
             .auroraGlass(
                 cornerRadius = AuroraRadius.full.dp,
+                tintAlpha = 0.85f,
                 shadow = AuroraShadows.cardHover
             )
             .pointerInput(Unit) {

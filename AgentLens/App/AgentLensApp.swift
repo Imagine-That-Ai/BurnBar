@@ -1029,6 +1029,11 @@ struct OpenBurnBarApp: App {
                         // and DB I/O. When a physical clock is enabled, the hardware control
                         // path needs to become responsive before historical log backfill starts.
                         Task(priority: .utility) {
+                            for _ in 0..<30 where !context.accountManager.isSignedIn {
+                                try? await Task.sleep(for: .seconds(1))
+                                guard !Task.isCancelled else { return }
+                            }
+                            await sync.uploadPending()
                             let startupScanDelay: Duration = context.settingsManager.pixelClockConfig.enabled
                                 ? .seconds(600)
                                 : .seconds(15)

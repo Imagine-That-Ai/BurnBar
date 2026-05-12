@@ -336,6 +336,62 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         XCTAssertTrue(pages[0].draw.contains(.pixel(x: 27, y: 2, color: "#FFFFFF")))
     }
 
+    func testBurnStatusLayoutPromotesToDashboardWithSpinnerWhenWorking() {
+        let config = PixelClockConfig(
+            enabled: true,
+            layout: .burnStatus,
+            workingSpinnerStyle: .scan,
+            workingSpinnerPrimaryHex: "#00AAFF",
+            workingSpinnerSecondaryHex: "#FFFFFF"
+        )
+        let item = PixelClockQuotaItem(
+            providerID: "codex",
+            providerName: "Codex",
+            percentUsed: 20,
+            usageText: "20/100",
+            windowLabel: "7d"
+        )
+
+        let idle = PixelClockQuotaRenderer.renderPages(
+            items: [item], config: config, now: Date(timeIntervalSince1970: 0), isWorking: false
+        )
+        let working = PixelClockQuotaRenderer.renderPages(
+            items: [item], config: config, now: Date(timeIntervalSince1970: 0), isWorking: true
+        )
+
+        XCTAssertTrue(idle[0].draw.isEmpty,
+                      "burnStatus idle pages should still scroll text with no bitmap draw")
+        XCTAssertFalse(working[0].draw.isEmpty,
+                       "burnStatus working pages must promote to dashboard so the spinner has a draw list")
+        XCTAssertTrue(working[0].draw.contains(.pixel(x: 24, y: 1, color: "#00AAFF")),
+                      "burnStatus working pages must include the dashboard spinner pixels")
+    }
+
+    func testAlertsOnlyLayoutPromotesToDashboardWithSpinnerWhenWorking() {
+        let config = PixelClockConfig(
+            enabled: true,
+            layout: .alertsOnly,
+            workingSpinnerStyle: .scan,
+            workingSpinnerPrimaryHex: "#00AAFF"
+        )
+        let item = PixelClockQuotaItem(
+            providerID: "claudecode",
+            providerName: "Claude Code",
+            percentUsed: 40,
+            usageText: "40/100",
+            windowLabel: "5h"
+        )
+
+        let working = PixelClockQuotaRenderer.renderPages(
+            items: [item], config: config, now: Date(timeIntervalSince1970: 0), isWorking: true
+        )
+
+        XCTAssertFalse(working[0].draw.isEmpty,
+                       "alertsOnly working pages must promote to dashboard so the spinner has a draw list")
+        XCTAssertTrue(working[0].draw.contains(.pixel(x: 24, y: 1, color: "#00AAFF")),
+                      "alertsOnly working pages must include the dashboard spinner pixels")
+    }
+
     func testRenderPagesShowsCompletedStatusWithoutSpinner() {
         let config = PixelClockConfig(enabled: true, layout: .providerDashboard)
         let item = PixelClockQuotaItem(

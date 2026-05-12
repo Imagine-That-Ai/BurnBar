@@ -1,5 +1,6 @@
 package com.openburnbar.menubar
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
@@ -21,14 +22,16 @@ class MenuBarTileService : TileService() {
         qsTile?.apply {
             label = "BurnBar"
             contentDescription = "Open BurnBar quick glance"
-            subtitle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                MenuBarController.formatCost(snap.costToday)
-            } else null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                subtitle = MenuBarController.formatCost(snap.costToday)
+            }
             state = if (snap.streaming) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
             updateTile()
         }
     }
 
+    @Suppress("DEPRECATION")
+    @SuppressLint("StartActivityAndCollapseDeprecated")
     override fun onClick() {
         super.onClick()
         val intent = Intent(this, QuickGlanceActivity::class.java).apply {
@@ -42,7 +45,8 @@ class MenuBarTileService : TileService() {
             )
             startActivityAndCollapse(pi)
         } else {
-            @Suppress("DEPRECATION")
+            // Older API path uses the deprecated Intent overload; suppression
+            // is intentional because the PendingIntent variant is API 34+.
             startActivityAndCollapse(intent)
         }
     }

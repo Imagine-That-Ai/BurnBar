@@ -145,6 +145,39 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertTrue(dirs.contains("/Users/test/.factory/bin"))
     }
 
+    func test_cliExecutableResolver_checksUserManagedBinsBeforeLoginShell() async throws {
+        CLIExecutableResolver.clearCache()
+
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-resolver-\(UUID().uuidString)", isDirectory: true)
+        let binDirectory = root
+            .appendingPathComponent(".npm-global", isDirectory: true)
+            .appendingPathComponent("bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: binDirectory, withIntermediateDirectories: true)
+        let executable = binDirectory.appendingPathComponent("droid")
+        try "#!/bin/sh\nexit 0\n".write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+
+        let marker = root.appendingPathComponent("shell-invoked")
+        let shell = root.appendingPathComponent("slow-shell")
+        try "#!/bin/sh\ntouch \"\(marker.path)\"\nexit 1\n".write(to: shell, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shell.path)
+        defer {
+            CLIExecutableResolver.clearCache()
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let resolver = CLIExecutableResolver(
+            environmentProvider: { ["PATH": "/usr/bin:/bin", "SHELL": shell.path] },
+            homeDirectoryProvider: { root.path }
+        )
+
+        let resolved = await resolver.resolveExecutable(named: "droid")
+
+        XCTAssertEqual(resolved, executable.path)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+    }
+
     func test_cliBridge_openAICompatibleUsage_parsesUsagePayload() {
         let usage = CLIBridge.openAICompatibleUsage(from: [
             "usage": [

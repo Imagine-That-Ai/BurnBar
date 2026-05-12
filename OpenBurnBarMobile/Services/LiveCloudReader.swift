@@ -248,7 +248,10 @@ final class LiveCloudReader: CloudReader {
         let ns = error as NSError
         if ns.domain == FirestoreErrorDomain {
             switch FirestoreErrorCode.Code(rawValue: ns.code) {
-            case .permissionDenied: return CloudGatewayError.classified(.permissionDenied)
+            case .permissionDenied:
+                return CloudGatewayError.classified(
+                    CloudErrorClassification.permissionDeniedClassification(message: ns.localizedDescription)
+                )
             case .unavailable: return CloudGatewayError.classified(.firestoreUnavailable)
             case .unauthenticated: return CloudGatewayError.classified(.notAuthenticated)
             default: break

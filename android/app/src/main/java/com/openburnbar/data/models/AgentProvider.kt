@@ -27,7 +27,56 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     WARP("warp", "Warp", 0xFFDDE4EA, 0xFF111111);
 
     companion object {
-        fun fromKey(key: String): AgentProvider? = entries.find { it.key == key }
+        /**
+         * Looks up an [AgentProvider] from any incoming identifier — the Firestore
+         * data layer is inconsistent and emits keys like "claudecode", "Claude Code",
+         * "claude_code", "Codex", "openai", etc. across different surfaces. We try
+         * direct match first, then normalize (lowercase + strip non-alphanumerics)
+         * against keys and display names, and finally fall back to an alias table
+         * for the most common renamings (e.g. "codexcli" → CODEX).
+         */
+        fun fromKey(key: String?): AgentProvider? {
+            if (key.isNullOrBlank()) return null
+            // 1. Direct key match (fast path)
+            entries.find { it.key == key }?.let { return it }
+            // 2. Normalized match against key & display name
+            val n = normalize(key)
+            entries.find { normalize(it.key) == n }?.let { return it }
+            entries.find { normalize(it.displayName) == n }?.let { return it }
+            // 3. Explicit aliases for known variants
+            return aliases[n]
+        }
+
+        private fun normalize(s: String): String =
+            s.lowercase().filter { it.isLetterOrDigit() }
+
+        private val aliases: Map<String, AgentProvider> = mapOf(
+            // OpenAI family
+            "openaicodex"   to CODEX,
+            "codexcli"      to CODEX,
+            "chatgpt"       to OPEN_AI,
+            "openaiapi"     to OPEN_AI,
+            "gpt"           to OPEN_AI,
+            // Anthropic family
+            "anthropic"     to CLAUDE_CODE,
+            "anthropicapi"  to CLAUDE_CODE,
+            "claude"        to CLAUDE_CODE,
+            "claudecli"     to CLAUDE_CODE,
+            "claudecodecli" to CLAUDE_CODE,
+            // Google family
+            "gemini"        to GEMINI_CLI,
+            "google"        to GEMINI_CLI,
+            "googleai"      to GEMINI_CLI,
+            // Misc shorthand
+            "minmax"        to MINIMAX,
+            "rooclaw"       to OPEN_CLAW,
+            "openrouter"    to OPEN_AI,
+            "github"        to COPILOT,
+            "githubcopilot" to COPILOT,
+            "moonshot"      to KIMI,
+            "kimik2"        to KIMI,
+            "msft"          to COPILOT,
+        )
 
         fun chartPalette(provider: AgentProvider): List<Color> {
             val p = Color(provider.brandColor)

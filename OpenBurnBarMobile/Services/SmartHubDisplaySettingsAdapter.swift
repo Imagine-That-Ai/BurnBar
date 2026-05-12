@@ -49,6 +49,44 @@ final class MobileSmartHubDisplayOperationsAdapter: SmartHubDisplayOperations {
         _ = try? await store.refreshNestHub()
     }
 
+    func repairDisplay() async -> SmartDisplayDeviceRepairStatus {
+        do {
+            let outcome = try await store.repairNestHub()
+            switch outcome {
+            case .completed:
+                if let status = Self.repairStatus(from: store.lastPublishedActionData["nestHub"]) {
+                    return status
+                }
+                return SmartDisplayDeviceRepairStatus(
+                    kind: .nestHub,
+                    phase: .working,
+                    message: "Mac reports the Nest Hub is showing OpenBurnBar."
+                )
+            case .failed(let message):
+                if let status = Self.repairStatus(from: store.lastPublishedActionData["nestHub"]) {
+                    return status
+                }
+                return SmartDisplayDeviceRepairStatus(
+                    kind: .nestHub,
+                    phase: .failed,
+                    message: message
+                )
+            case .pending:
+                return SmartDisplayDeviceRepairStatus(
+                    kind: .nestHub,
+                    phase: .waitingForProof,
+                    message: "Mac is still repairing the Nest Hub."
+                )
+            }
+        } catch {
+            return SmartDisplayDeviceRepairStatus(
+                kind: .nestHub,
+                phase: .failed,
+                message: error.localizedDescription
+            )
+        }
+    }
+
     func identify() async {
         _ = try? await store.identifyNestHub()
     }
@@ -66,5 +104,19 @@ final class MobileSmartHubDisplayOperationsAdapter: SmartHubDisplayOperations {
         guard let raw = store.config?.voiceRefreshURL,
               !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         UIPasteboard.general.string = raw
+    }
+
+    private static func repairStatus(from value: Any?) -> SmartDisplayDeviceRepairStatus? {
+        guard let data = value as? [String: Any],
+              let phaseRaw = data["phase"] as? String,
+              let phase = SmartDisplayRepairPhase(rawValue: phaseRaw) else {
+            return nil
+        }
+        return SmartDisplayDeviceRepairStatus(
+            kind: .nestHub,
+            phase: phase,
+            message: data["message"] as? String ?? "Nest Hub repair updated.",
+            proof: data["proof"] as? String
+        )
     }
 }
