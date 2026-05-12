@@ -20,9 +20,13 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_supportedProviders_onlyIncludesRealQuotaSignalProviders() {
         XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.warp))
         XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.ollama))
+        // OpenAI is exposed as a quota-signal provider so the daemon can
+        // persist credential slots and surface them in the routing cockpit
+        // even though the admin-usage path is usage-only (no per-window
+        // quota refresh). See `AgentProvider.quotaSignalProviders`.
+        XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.openAI))
         XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.hermes))
         XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.aider))
-        XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.openAI))
         XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.forgeDev))
         XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.kiloCode))
     }
@@ -2054,7 +2058,16 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: .openAI)
 
-        XCTAssertTrue(service.snapshots(for: AgentProvider.openAI).isEmpty)
+        // OpenAI is usage-only: refreshAll may surface placeholder snapshot
+        // entries for the daemon credential slot, but none of them should
+        // carry real quota window data (the stub session would have
+        // XCTFail'd above if quota HTTP had been attempted).
+        for snapshot in service.snapshots(for: AgentProvider.openAI) {
+            XCTAssertTrue(
+                snapshot.buckets.isEmpty,
+                "OpenAI snapshots should not carry quota buckets — got \(snapshot.buckets)"
+            )
+        }
         XCTAssertEqual(persistedAccounts.map(\.id), ["openai-work"])
         XCTAssertEqual(persistedAccounts.first?.label, "Work")
         XCTAssertEqual(persistedAccounts.first?.storageScope, .deviceKeychain)

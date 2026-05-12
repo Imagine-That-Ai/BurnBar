@@ -75,7 +75,7 @@ final class PixelClockSettingsCardTests: XCTestCase {
         await model.probe()
         XCTAssertEqual(
             model.firmwareWarningMessage,
-            "Stock Ulanzi needs Awtrix Simulator pointed at this Mac's IP."
+            "Stock Ulanzi needs Awtrix Simulator pointed at this Mac's IP, not the clock IP."
         )
     }
 
