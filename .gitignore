@@ -133,3 +133,8 @@ qa-results/
 # Local language/tool caches and ad-hoc backups
 android/.kotlin/
 *.bak
+
+# Local commercial-launch proof bundle. These files can contain Firebase UIDs,
+# App Store transaction IDs, notification readbacks, and live infrastructure
+# evidence, so keep them local and attach/redact deliberately.
+launch-evidence/

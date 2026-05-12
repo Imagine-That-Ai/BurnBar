@@ -67,6 +67,20 @@ Notifications delivery after the app is live. It prints
 `WAITING_ON_APPLE`, `READY_FOR_MANUAL_RELEASE`, `READY_FOR_LIVE_PAID_PROOF`, or
 `NO_GO` with the evidence that led to the verdict.
 
+To preserve the launch gate JSON for handoff or review, capture it into the
+local evidence bundle from a clean, updated `main` checkout:
+
+```bash
+scripts/capture-commercial-launch-evidence.mjs
+```
+
+The helper writes timestamped JSON plus `latest-commercial-launch-gate.json`
+under `launch-evidence/`. That directory is ignored because later proof files
+can include Firebase UIDs, App Store transaction IDs, and live notification
+readbacks. Running the helper from a feature branch is still useful for capture
+testing, but the gate will report `NO_GO` until the branch is merged to
+`origin/main`.
+
 Before final submission, the status output must show:
 
 - `iosVersion.state` is `READY_FOR_REVIEW` before final submission.
@@ -245,3 +259,16 @@ The command must print JSON with `ok: true`, the
 `entitlement_events` audit row, and the requested backup/quota evidence paths.
 Attach that JSON to the launch evidence bundle. A green App Store status alone
 is not enough.
+
+To capture the proof safely without committing it:
+
+```bash
+OPENBURNBAR_PROOF_UID="FIREBASE_UID" \
+npm --prefix functions run prove:hosted-quota -- \
+  --project burnbar \
+  --environment Production \
+  --original-transaction-id "APPLE_ORIGINAL_TRANSACTION_ID" \
+  --require-backup \
+  --require-hosted-quota \
+  | scripts/capture-commercial-launch-evidence.mjs --kind paid-proof --input -
+```
