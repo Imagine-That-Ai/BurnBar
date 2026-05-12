@@ -62,7 +62,7 @@ All processing is local. No data leaves your machine unless you explicitly enabl
 
   supportUrl: 'https://github.com/Ajnunezg/OpenBurnBar/issues',
   marketingUrl: 'https://github.com/Ajnunezg/OpenBurnBar',
-  privacyPolicyUrl: 'https://github.com/Ajnunezg/OpenBurnBar/blob/main/docs/PRIVACY.md',
+  privacyPolicyUrl: 'https://openburnbar.com/legal/privacy-policy',
 
   version: '0.1.3',
   buildString: '1',
@@ -374,7 +374,7 @@ async function main() {
   // What's New
   const whatsNewSelectors = [
     'textarea[name="releaseNotes"]',
-    'textarea[placeholder*="what' s new" i]',
+    "textarea[placeholder*=\"what's new\" i]",
     '[data-test-id="whats-new"] textarea',
   ];
   for (const sel of whatsNewSelectors) {

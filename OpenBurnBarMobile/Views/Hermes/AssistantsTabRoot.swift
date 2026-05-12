@@ -54,9 +54,17 @@ struct AssistantsTabRoot: View {
             )
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ShowAssistantsTab"))) { note in
-            if let runtimeRaw = note.userInfo?["runtime"] as? String,
-               let parsed = AssistantRuntimeID(rawValue: runtimeRaw) {
-                rawRuntime = parsed.rawValue
+            let runtimeRaw = note.userInfo?["runtime"] as? String
+            let parsed = runtimeRaw.flatMap(AssistantRuntimeID.init(rawValue:)) ?? runtime
+            rawRuntime = parsed.rawValue
+
+            // Forward an attached prompt (e.g. from the "Ask Hermes" /
+            // "Ask Pi" widget chip AppIntent) into the pending-prompt
+            // singleton. The child conversation list observes the slot
+            // and auto-submits on appear.
+            if let prompt = note.userInfo?["prompt"] as? String,
+               !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                AssistantPendingPrompt.shared.stash(assistant: parsed, prompt: prompt)
             }
         }
     }

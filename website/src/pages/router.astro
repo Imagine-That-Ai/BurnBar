@@ -1,0 +1,651 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import RouterSwitchboard from "@components/RouterSwitchboard.astro";
+import RouterUseCases from "@components/RouterUseCases.astro";
+import { SITE } from "@data/site";
+---
+
+<BaseLayout
+  title="Fire Hydrant — the router"
+  description="OpenBurnBar's local multi-provider router routes Cursor, Factory, Forge, and OpenCode traffic across your provider accounts with automatic failover, round-robin, and five-minute cool-downs. The exact ranking policy, lifecycle states, and what is and isn't routed today."
+>
+  <section class="pagehead">
+    <div class="container">
+      <span class="eyebrow eyebrow--ember">Fire Hydrant · the router</span>
+      <h1 class="pagehead__h">
+        One local gateway. Every provider account you've added.
+        <span class="ember">No vendor lock-in.</span>
+      </h1>
+      <p class="lead">
+        The Fire Hydrant — OpenBurnBar's <strong>routed client gateway</strong> at
+        <span class="mono">127.0.0.1:8317</span> — receives OpenAI-shaped requests
+        from Cursor, Factory, Forge, and OpenCode, and forwards them to the
+        healthiest provider account you've configured. When an account hits its
+        quota, rate-limits, or sees an auth failure, the router shifts traffic
+        before your IDE notices. Routing is deterministic, auditable, and
+        entirely on-device.
+      </p>
+      <div class="pagehead__ctas">
+        <a class="btn btn--ember" href="/download">Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a>
+        <a class="btn btn--ghost" href={`${SITE.github}/blob/main/docs/ROUTED_CLIENT_GATEWAY.md`} target="_blank" rel="noopener noreferrer">Read the gateway doc</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ──────────── live switchboard ──────────── -->
+  <section class="routerboard">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">The board</span>
+        <h2>What it looks like in practice.</h2>
+        <p class="lead">
+          The diagram below mirrors what the macOS app shows on the
+          <strong>Router</strong> tab. Active routes glow ember, next-fallback
+          candidates wait in amber, cooled-down accounts recover quietly, and
+          exhausted accounts are visibly out of play until their cooldown elapses.
+        </p>
+      </header>
+
+      <RouterSwitchboard />
+    </div>
+  </section>
+
+  <!-- ──────────── what is / isn't routed ──────────── -->
+  <section class="scope">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">The honest scope</span>
+        <h2>Routed today vs. tracked today.</h2>
+        <p class="lead">
+          Some providers are routed through the Hydrant — your request lands at
+          OpenBurnBar's local gateway and gets forwarded. Others are
+          <em>tracked</em> for cost and quota only — we read the dashboard, we
+          don't proxy the inference. Both are useful. Only the routed ones
+          benefit from automatic failover today.
+        </p>
+      </header>
+
+      <div class="scope__grid">
+        <article class="scopecard scopecard--routed">
+          <header>
+            <span class="tag tag--exact tag--plain mono">Routed today</span>
+            <h3>Inference goes through the Hydrant.</h3>
+          </header>
+          <ul class="scope__list">
+            <li>
+              <img src="/brand/providers/zai.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>Z.ai (GLM)</strong><span>Coding-plan keys, token + MCP limits, live quota.</span></div>
+            </li>
+            <li>
+              <img src="/brand/providers/minimax.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>MiniMax</strong><span>Coding-plan keys (sk-cp-…); per-model remaining-quota signal.</span></div>
+            </li>
+            <li>
+              <img src="/brand/providers/ollama.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>Ollama Cloud</strong><span>API-keyed cloud routing; quota visible after sign-in.</span></div>
+            </li>
+            <li>
+              <img src="/brand/providers/ollama.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>Ollama Local</strong><span>localhost:11434; per-response prompt_eval / eval counts.</span></div>
+            </li>
+          </ul>
+          <p class="scope__cap mono">
+            Source · <code>OpenBurnBarCore/.../ProviderAccountTypes.swift</code>
+          </p>
+        </article>
+
+        <article class="scopecard scopecard--tracked">
+          <header>
+            <span class="tag tag--estimated tag--plain mono">Tracked today — not routed</span>
+            <h3>We read the dashboard, not the wire.</h3>
+          </header>
+          <ul class="scope__list">
+            <li>
+              <img src="/brand/providers/openai.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>OpenAI</strong><span>Org-wide usage from the admin API; quota inferred from runtime 429s.</span></div>
+            </li>
+            <li>
+              <img src="/brand/providers/anthropic.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>Anthropic Console</strong><span>Org-wide messages usage report (admin key, daily granularity).</span></div>
+            </li>
+            <li>
+              <img src="/brand/providers/codex.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>Codex</strong><span>Local rollout JSONL; primary 5h + secondary 7d quota windows.</span></div>
+            </li>
+            <li>
+              <img src="/brand/providers/copilot.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>GitHub Copilot · Kimi · Warp</strong><span>Per-seat or weekly-window limits read from each vendor's own API.</span></div>
+            </li>
+          </ul>
+          <p class="scope__cap mono">
+            Source · <code>docs/PROVIDERS.md</code> · <code>AgentLens/Services/ProviderQuota/</code>
+          </p>
+        </article>
+      </div>
+
+      <p class="scope__note mono">
+        The Hydrant fallback target for a Cursor BYOK route can be <em>any</em> account
+        you've pinned a credential for — including OpenAI or Anthropic with your own keys.
+        That's how a routed flow can still reach a tracked-only provider.
+      </p>
+    </div>
+  </section>
+
+  <!-- ──────────── ranking policy ──────────── -->
+  <section class="ranking">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">The ranking policy</span>
+        <h2>Six checks. One winner. One runner-up. Auditable.</h2>
+        <p class="lead">
+          When a request arrives, the router runs every candidate account through
+          a filter, then ranks the survivors with a stable, deterministic
+          comparator. The winner serves the request; the runner-up is held in
+          reserve for instant failover.
+        </p>
+      </header>
+
+      <table class="ranking__table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Rule</th>
+            <th>What it does</th>
+            <th>Tiebreaker on equal</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">F</td>
+            <td><strong>Filter</strong></td>
+            <td>Drop deleted, disabled, exhausted, rate-limited, cooling-down (until elapsed), auth-failed, model-incompatible, routing-disabled, missing-credential accounts.</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td class="mono">1</td>
+            <td><strong>Preferred pin</strong></td>
+            <td>If you've pinned an account as preferred and it's healthy, it wins. Period.</td>
+            <td>Fall through to #2</td>
+          </tr>
+          <tr>
+            <td class="mono">2</td>
+            <td><strong>Local credential</strong></td>
+            <td>An account with a credential available locally outranks one whose secret would have to be fetched.</td>
+            <td>Fall through to #3</td>
+          </tr>
+          <tr>
+            <td class="mono">3</td>
+            <td><strong>Quota health</strong></td>
+            <td>healthy &rsaquo; pressure &rsaquo; unknown &rsaquo; cooling-down &rsaquo; rate-limited &rsaquo; exhausted &rsaquo; auth-failed &rsaquo; disabled &rsaquo; deleted.</td>
+            <td>Fall through to #4</td>
+          </tr>
+          <tr>
+            <td class="mono">4</td>
+            <td><strong>Sort key</strong></td>
+            <td>The user-controlled <code>sortKey</code> field — drag-to-reorder in the Mac app.</td>
+            <td>Fall through to #5</td>
+          </tr>
+          <tr>
+            <td class="mono">5</td>
+            <td><strong>Least-recently-used</strong></td>
+            <td>The account whose last request is oldest wins — round-robins evenly across equally-healthy peers.</td>
+            <td>Fall through to #6</td>
+          </tr>
+          <tr>
+            <td class="mono">6</td>
+            <td><strong>Stable IDs</strong></td>
+            <td>Provider ID, then account ID. Guarantees the same ranking from the same inputs — every time.</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="ranking__cap mono">
+        Implementation · <code>ProviderRoutingPolicy.decide(...)</code> in <code>ProviderAccountTypes.swift:403–599</code>
+      </p>
+    </div>
+  </section>
+
+  <!-- ──────────── account lifecycle ──────────── -->
+  <section class="lifecycle">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Account health · the lifecycle</span>
+        <h2>Every signal an account can send. Every state it lands in.</h2>
+      </header>
+
+      <ul class="lifecycle__grid">
+        <li class="lcard lcard--good">
+          <header><span class="tag tag--exact tag--plain mono">healthy</span></header>
+          <p>Vendor quota API reports headroom. Recent requests have succeeded. Eligible to serve.</p>
+        </li>
+        <li class="lcard lcard--warn">
+          <header><span class="tag tag--estimated tag--plain mono">pressure</span></header>
+          <p>Less than 20% of the active quota bucket remains. Still eligible, but ranked below truly-healthy peers.</p>
+        </li>
+        <li class="lcard lcard--mute">
+          <header><span class="tag tag--unavailable tag--plain mono">cooling-down</span></header>
+          <p>Recent transient failure, 401, or rate-limit. Parked for five minutes — then automatically retried.</p>
+        </li>
+        <li class="lcard lcard--mute">
+          <header><span class="tag tag--unavailable tag--plain mono">rate-limited</span></header>
+          <p>Provider returned 429. Cool-down ticks while traffic shifts to the next healthy peer.</p>
+        </li>
+        <li class="lcard lcard--burn">
+          <header><span class="tag tag--burn tag--plain mono">exhausted</span></header>
+          <p>Daily / weekly / monthly cap hit on a quota bucket. Held until the window rolls or you swap keys.</p>
+        </li>
+        <li class="lcard lcard--burn">
+          <header><span class="tag tag--burn tag--plain mono">auth-failed</span></header>
+          <p>Token expired or revoked. Cool-down + UI flag so you re-auth at a moment that's convenient.</p>
+        </li>
+        <li class="lcard lcard--off">
+          <header><span class="tag tag--planned tag--plain mono">disabled</span></header>
+          <p>Routing turned off for this account by the user. Quota is still tracked; traffic is not sent.</p>
+        </li>
+        <li class="lcard lcard--off">
+          <header><span class="tag tag--planned tag--plain mono">unknown</span></header>
+          <p>Quota probe stale or never run. Eligible, but ranked below known-healthy peers.</p>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ──────────── use cases ──────────── -->
+  <section class="usecasesec">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Use cases</span>
+        <h2>What the Hydrant does for you, today.</h2>
+      </header>
+
+      <RouterUseCases />
+    </div>
+  </section>
+
+  <!-- ──────────── security & trust ──────────── -->
+  <section class="security">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Where keys live</span>
+        <h2>Routing happens locally. So do your secrets.</h2>
+      </header>
+
+      <ul class="security__list">
+        <li>
+          <strong>Local-only secrets by default.</strong>
+          Provider API keys live in the macOS Keychain with
+          <code>kSecAttrAccessibleWhenUnlockedThisDeviceOnly</code>. The Hydrant
+          fetches them on-demand for outbound requests; they never reach
+          OpenBurnBar's cloud unless you opted into hosted quota refresh.
+        </li>
+        <li>
+          <strong>BYOK tunnel for Cursor.</strong>
+          Cursor's BYOK endpoint speaks to a Cloudflare worker bound to
+          <span class="mono">your-handle.openburnbar.dev</span> that forwards
+          back into your Mac. Your keys stay on your Mac; the worker is a thin,
+          authenticated pipe.
+        </li>
+        <li>
+          <strong>Bound to localhost.</strong>
+          The gateway binds <span class="mono">127.0.0.1:8317</span> only. No
+          LAN exposure, no public surface, no inbound from outside your Mac.
+        </li>
+        <li>
+          <strong>No plaintext in the relay.</strong>
+          When Hermes Remote Relay is enabled, frames are end-to-end encrypted —
+          the Cloud Run relay never sees the prompt or the response. The router
+          stays on-device.
+        </li>
+        <li>
+          <strong>Every routing decision is logged.</strong>
+          The chosen account, the skipped accounts, and the reason for each
+          skip (exhausted, rate-limited, model-incompatible) land in a local
+          <code>ProviderRoutingDecisionEvent</code> stream you can inspect.
+        </li>
+      </ul>
+
+      <p class="security__cap mono">
+        Source · <code>docs/ROUTED_CLIENT_GATEWAY.md</code> · <code>docs/THREAT_MODEL.md</code> · <code>ProviderRoutingStateBuilder.swift</code>
+      </p>
+    </div>
+  </section>
+
+  <!-- ──────────── faq lite ──────────── -->
+  <section class="qa">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Quick answers</span>
+        <h2>The questions we get on every demo.</h2>
+      </header>
+
+      <dl class="qa__list">
+        <div>
+          <dt>Is this a load balancer?</dt>
+          <dd>
+            No — it's a single-tenant router on your Mac. It does not split a
+            request across providers or aggregate responses. One request, one
+            provider, picked by the policy above.
+          </dd>
+        </div>
+        <div>
+          <dt>What happens if every provider is exhausted?</dt>
+          <dd>
+            The Hydrant returns a structured 503 to the client with the
+            specific cooled-down accounts and the elapsed time until the
+            earliest one recovers. Your IDE sees a clear error, not a hang.
+          </dd>
+        </div>
+        <div>
+          <dt>Can I disable routing for an account but still track it?</dt>
+          <dd>
+            Yes. Toggle <span class="mono">routingEnabled</span> off on the
+            account; cost and quota continue to populate the dashboard while
+            the Hydrant skips it for outbound traffic.
+          </dd>
+        </div>
+        <div>
+          <dt>How long is the cool-down?</dt>
+          <dd>
+            Five minutes for transient failures, rate-limits, and auth failures.
+            Exhausted-bucket accounts stay parked until the bucket rolls
+            (daily, weekly, or monthly, per provider).
+          </dd>
+        </div>
+        <div>
+          <dt>Is there a config file?</dt>
+          <dd>
+            Routing rules are derived from the accounts you've added in the
+            macOS app and a per-account <span class="mono">sortKey</span> +
+            preferred-pin you can drag-to-reorder. No YAML, no hot-reload —
+            change the order in the UI, the new policy takes effect on the next
+            request.
+          </dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="endcta endcta--inline">
+    <div class="container container--narrow">
+      <h2>Build with two accounts. Sleep with five.</h2>
+      <p class="lead">
+        Add a second key, pin a preferred provider, and let the Fire Hydrant
+        keep the inference flowing.
+      </p>
+      <div class="endcta__ctas">
+        <a class="btn btn--ember" href="/download">Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a>
+        <a class="btn btn--ghost" href="/providers">See the provider matrix</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .pagehead { padding-block: var(--s-9) var(--s-6); }
+  .pagehead__h { margin-top: var(--s-3); max-width: 22ch; text-wrap: balance; }
+  .pagehead__h .ember {
+    color: var(--ember-bright);
+    font-style: italic;
+    font-variation-settings: "opsz" 144, "wght" 360, "ital" 1;
+  }
+  .pagehead .lead { margin-top: var(--s-4); max-width: 64ch; }
+  .pagehead__ctas { margin-top: var(--s-5); display: flex; gap: var(--s-3); flex-wrap: wrap; }
+
+  /* board */
+  .routerboard {
+    padding-block: var(--s-8);
+    border-top: 1px solid var(--ink-line);
+    background:
+      radial-gradient(70% 60% at 50% 0%, rgba(255, 106, 26, 0.06), transparent 60%);
+  }
+  .routerboard .sec-head { max-width: 64ch; margin-bottom: var(--s-6); }
+
+  /* scope */
+  .scope {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+  .scope__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-5);
+  }
+  .scopecard {
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    padding: var(--s-5);
+    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    display: grid;
+    gap: var(--s-4);
+  }
+  .scopecard--routed {
+    border-color: color-mix(in oklab, var(--status-exact) 30%, var(--ink-line));
+  }
+  .scopecard--tracked {
+    border-color: color-mix(in oklab, var(--status-estimated) 28%, var(--ink-line));
+  }
+  .scopecard header { display: grid; gap: var(--s-2); }
+  .scopecard h3 {
+    font-family: var(--font-display);
+    font-size: var(--t-h3);
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 80, "wght" 500;
+    letter-spacing: -0.018em;
+    text-wrap: balance;
+  }
+  .scope__list {
+    display: grid;
+    gap: var(--s-3);
+  }
+  .scope__list li {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: var(--s-3);
+    align-items: center;
+  }
+  .scope__list img {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--ink-line);
+    background: var(--ink-base);
+    object-fit: cover;
+  }
+  .scope__list strong { color: var(--text-bright); display: block; font-size: 0.95rem; }
+  .scope__list span { color: var(--text-mute); font-size: 0.84rem; }
+  .scope__cap, .ranking__cap, .security__cap, .scope__note {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    padding-top: var(--s-3);
+    border-top: 1px dashed var(--ink-line-soft);
+  }
+  .scope__cap code, .ranking__cap code, .security__cap code, .scope__note code {
+    color: var(--text-mute);
+    background: var(--ink-base);
+    padding: 1px 6px;
+    border-radius: var(--r-2);
+    border: 1px solid var(--ink-line);
+  }
+  .scope__note { max-width: 78ch; margin-top: var(--s-5); }
+  @media (max-width: 880px) {
+    .scope__grid { grid-template-columns: 1fr; }
+  }
+
+  /* ranking */
+  .ranking {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+  .ranking__table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    overflow: hidden;
+    font-size: 0.92rem;
+    background: var(--ink-base);
+  }
+  .ranking__table th, .ranking__table td {
+    padding: 0.85rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--ink-line-soft);
+    vertical-align: top;
+  }
+  .ranking__table thead {
+    background: var(--ink-surface);
+  }
+  .ranking__table th {
+    font-family: var(--font-mono);
+    font-size: var(--t-caption);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--text-mute);
+    font-variation-settings: "wght" 500;
+  }
+  .ranking__table tbody tr:last-child td { border-bottom: 0; }
+  .ranking__table td:first-child {
+    color: var(--ember-bright);
+    width: 3.5rem;
+    font-size: 0.84rem;
+    letter-spacing: 0.16em;
+  }
+  .ranking__table td:nth-child(2) { width: 14rem; }
+  .ranking__table td:last-child {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    width: 11rem;
+  }
+  .ranking__table strong { color: var(--text-bright); font-variation-settings: "wght" 540; }
+  .ranking__table code {
+    font-family: var(--font-mono);
+    font-size: 0.82em;
+    color: var(--ember-bright);
+    background: var(--ink-surface);
+    padding: 1px 6px;
+    border-radius: var(--r-2);
+  }
+  .ranking__cap { margin-top: var(--s-4); }
+  @media (max-width: 880px) {
+    .ranking__table { display: block; overflow-x: auto; }
+  }
+
+  /* lifecycle */
+  .lifecycle {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    background: var(--ink-base);
+  }
+  .lifecycle__grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--s-3);
+  }
+  .lcard {
+    padding: var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    display: grid;
+    gap: var(--s-2);
+  }
+  .lcard header { margin-bottom: var(--s-1); }
+  .lcard p { color: var(--text-mute); font-size: 0.85rem; line-height: 1.5; }
+  .lcard--good { border-color: color-mix(in oklab, var(--status-exact) 24%, var(--ink-line)); }
+  .lcard--warn { border-color: color-mix(in oklab, var(--status-estimated) 24%, var(--ink-line)); }
+  .lcard--burn { border-color: color-mix(in oklab, var(--status-burn) 18%, var(--ink-line)); }
+  .lcard--mute { opacity: 0.92; }
+  .lcard--off  { opacity: 0.8; }
+  @media (max-width: 1080px) { .lifecycle__grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px)  { .lifecycle__grid { grid-template-columns: 1fr; } }
+
+  /* use-cases */
+  .usecasesec {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+
+  /* security */
+  .security {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    background:
+      radial-gradient(60% 80% at 0% 0%, rgba(214, 211, 223, 0.03), transparent 60%);
+  }
+  .security__list {
+    display: grid;
+    gap: var(--s-3);
+    max-width: 78ch;
+  }
+  .security__list li {
+    color: var(--text-base);
+    line-height: 1.55;
+    padding-left: var(--s-4);
+    position: relative;
+  }
+  .security__list li::before {
+    content: "▸";
+    position: absolute;
+    left: 0;
+    top: 0.1em;
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+  }
+  .security__list strong { color: var(--text-bright); display: inline; font-variation-settings: "wght" 540; }
+  .security__list code {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    color: var(--text-bright);
+    background: var(--ink-surface);
+    padding: 1px 6px;
+    border-radius: var(--r-2);
+    border: 1px solid var(--ink-line);
+  }
+  .security__cap { margin-top: var(--s-5); max-width: 78ch; }
+
+  /* qa */
+  .qa {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+  .qa__list {
+    display: grid;
+    gap: var(--s-4);
+  }
+  .qa__list > div {
+    padding: var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background: var(--ink-base);
+  }
+  .qa__list dt {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.014em;
+    margin-bottom: var(--s-2);
+  }
+  .qa__list dd { color: var(--text-base); font-size: 0.94rem; line-height: 1.55; }
+  .qa__list code {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    color: var(--text-bright);
+    background: var(--ink-surface);
+    padding: 1px 6px;
+    border-radius: var(--r-2);
+    border: 1px solid var(--ink-line);
+  }
+
+  /* endcta */
+  .endcta--inline {
+    padding-block: var(--s-9);
+    text-align: center;
+    background: radial-gradient(60% 80% at 50% 50%, rgba(255, 106, 26, 0.06), transparent 70%);
+    border-top: 1px solid var(--ink-line);
+  }
+  .endcta--inline h2 { margin-bottom: var(--s-3); }
+  .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+</style>

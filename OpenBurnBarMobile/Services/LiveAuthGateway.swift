@@ -50,6 +50,12 @@ final class LiveAuthGateway: NSObject, AuthGateway {
         GIDSignIn.sharedInstance.signOut()
     }
 
+    func deleteAccount() async throws {
+        try validateFirebaseBundle()
+        try await authRepo.deleteCurrentUser()
+        GIDSignIn.sharedInstance.signOut()
+    }
+
     // MARK: - Apple
 
     private func signInWithApple() async throws {

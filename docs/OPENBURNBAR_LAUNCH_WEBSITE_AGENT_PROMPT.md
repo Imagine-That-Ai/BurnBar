@@ -138,7 +138,7 @@ Build the actual website with these sections or pages:
 3. Pricing
    - Free/local-first tier.
    - Paid hosted quota sync.
-   - Product id: com.openburnbar.hostedQuotaSync.monthly.
+   - Product id: com.openburnbar.hostedQuotaSync.cloud.monthly.
    - Intended price: $4.99/month, but verify before publishing.
    - Explain exactly what is free and what is paid.
    - Explain that Apple handles App Store billing.

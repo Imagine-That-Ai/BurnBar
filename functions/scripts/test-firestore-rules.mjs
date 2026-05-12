@@ -51,7 +51,7 @@ async function seedHostedCloudEntitlement(uid) {
       {
         id: "hosted_quota_sync",
         active: true,
-        productID: "com.openburnbar.hostedQuotaSync.monthly",
+        productID: "com.openburnbar.hostedQuotaSync.cloud.monthly",
         expiresAt: "2099-01-01T00:00:00.000Z",
         expireAt: Timestamp.fromDate(new Date("2099-01-01T00:00:00.000Z")),
         schemaVersion: 2,

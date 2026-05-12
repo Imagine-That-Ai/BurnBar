@@ -349,6 +349,21 @@ enum SmartHubBridgePage {
           color: var(--text-3);
           font-variant-numeric: tabular-nums;
         }
+        /* Reset-time row — its own line, slightly louder than `.sub` so the
+           5h / weekly refill moment reads from across the room. Tabular
+           nums keep the "in Xh Ym · MMM d, h:mm a" string from twitching on
+           every state.json poll. */
+        .bucket .reset {
+          grid-column: 1 / -1;
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.2px;
+          color: color-mix(in oklab, var(--card-accent) 78%, var(--text-2));
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
 
         .accounts-block { margin-top: 4px; }
         .accounts-block .header {
@@ -733,6 +748,12 @@ enum SmartHubBridgePage {
           wrap.appendChild(value);
           wrap.appendChild(bar);
           if (b.subLabel) wrap.appendChild(sub);
+          if (b.resetsLabel) {
+            const reset = document.createElement('div');
+            reset.className = 'reset';
+            reset.textContent = b.resetsLabel;
+            wrap.appendChild(reset);
+          }
           return wrap;
         }
 

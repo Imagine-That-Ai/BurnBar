@@ -219,6 +219,7 @@ struct HermesConversationListView: View {
     @State private var showSetupWizard = false
     @State private var didAutoPresentSetupWizard = false
     @State private var libraryStore = HermesCloudLibraryStore()
+    @State private var historyStore: MobileChatHistoryStore = .shared
     @State private var selectedLibrarySession: HermesLibrarySession?
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
 
@@ -232,7 +233,7 @@ struct HermesConversationListView: View {
             AuroraBackdrop()
 
             Group {
-                if service.sessions.isEmpty && libraryStore.sessions.isEmpty {
+                if service.sessions.isEmpty && libraryStore.sessions.isEmpty && onDeviceThreads.isEmpty {
                     emptyState
                 } else {
                     conversationList
@@ -322,10 +323,20 @@ struct HermesConversationListView: View {
             )
         }
         .task {
+            historyStore.bootstrap()
             service.loadHistory()
             async let reachability: Void = service.checkReachability()
             async let library: Void = libraryStore.refresh()
             _ = await (reachability, library)
+        }
+        // Pending-prompt consumer — picks up prompts stashed by the
+        // "Ask Hermes" widget chip AppIntent or a `burnbar://hermes?prompt=…`
+        // deep link. Non-empty values auto-send; an empty slot left over from
+        // a "focus the composer" widget tap is ignored at the list level
+        // (the user already landed here, and tapping into a session focuses
+        // the input).
+        .task(id: AssistantPendingPrompt.shared.hermes) {
+            await consumePendingHermesPrompt()
         }
         .onAppear {
             presentSetupWizardIfNeeded()
@@ -340,13 +351,52 @@ struct HermesConversationListView: View {
         showSetupWizard = true
     }
 
+    @MainActor
+    private func consumePendingHermesPrompt() async {
+        guard let pending = AssistantPendingPrompt.shared.consume(.hermes),
+              !pending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        // Small delay so the conversation list has settled before we
+        // create a new session and start streaming.
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        service.sendMessage(pending)
+    }
+
     // MARK: - Conversation List
 
     private var conversationList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
+                if !onDeviceThreads.isEmpty {
+                    let onDeviceSessionIDs = Set(sortedSessions.map(\.id))
+                    let onlyDeviceThreads = onDeviceThreads.filter { !onDeviceSessionIDs.contains($0.id) }
+                    if !onlyDeviceThreads.isEmpty {
+                        librarySectionHeader("On This Device", systemImage: "iphone")
+                        ForEach(onlyDeviceThreads) { thread in
+                            NavigationLink(value: HermesChatRoute.existing(sessionID: thread.id)) {
+                                OnDeviceHermesRow(thread: thread)
+                            }
+                            .buttonStyle(.plain)
+                            .simultaneousGesture(TapGesture().onEnded {
+                                HapticBus.sheetOpen()
+                                // Synchronously restore the thread so the detail
+                                // view's first paint shows the right messages.
+                                service.loadMobileThread(id: thread.id)
+                            })
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    service.deleteMobileThread(id: thread.id)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if !sortedSessions.isEmpty {
                     librarySectionHeader("Live Hermes Host", systemImage: "antenna.radiowaves.left.and.right")
+                        .padding(.top, onDeviceThreads.isEmpty ? 0 : 10)
                     ForEach(sortedSessions) { session in
                         NavigationLink(value: HermesChatRoute.existing(sessionID: session.id)) {
                             ConversationRow(
@@ -407,6 +457,10 @@ struct HermesConversationListView: View {
         libraryStore.sessions.sorted {
             ($0.lastActiveAt ?? .distantPast) > ($1.lastActiveAt ?? .distantPast)
         }
+    }
+
+    private var onDeviceThreads: [MobileChatThread] {
+        historyStore.threads(for: .hermes)
     }
 
     private func librarySectionHeader(_ title: String, systemImage: String) -> some View {
@@ -558,6 +612,57 @@ struct HermesConversationListView: View {
         .accessibilityLabel("Start new Hermes conversation")
         .simultaneousGesture(
             TapGesture().onEnded { HapticBus.primaryAction() }
+        )
+    }
+}
+
+// MARK: - On-Device Hermes Row
+
+private struct OnDeviceHermesRow: View {
+    let thread: MobileChatThread
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label {
+                    Text(thread.title)
+                        .font(MobileTheme.Typography.headline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                } icon: {
+                    Image(systemName: "iphone")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(MobileTheme.hermesAureate)
+                }
+                Spacer(minLength: 8)
+                Text(thread.updatedAt, style: .relative)
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary.opacity(0.85))
+                    .lineLimit(1)
+            }
+
+            if !thread.preview.isEmpty {
+                Text(thread.preview)
+                    .font(MobileTheme.Typography.body)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+
+            Text("\(thread.messageCount) messages")
+                .font(MobileTheme.Typography.tiny)
+                .foregroundStyle(MobileTheme.Colors.textSecondary.opacity(0.65))
+        }
+        .padding(MobileTheme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: AuroraDesign.Shape.standardCorner, style: .continuous)
+                .fill(MobileTheme.Colors.surfaceElevated)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AuroraDesign.Shape.standardCorner, style: .continuous)
+                        .stroke(MobileTheme.Colors.border.opacity(0.45), lineWidth: 0.5)
+                )
         )
     }
 }
@@ -1131,11 +1236,17 @@ struct HermesChatView: View {
             guard service.selectedSessionID != sessionID else { return }
             if let summary = service.sessions.first(where: { $0.id == sessionID }) {
                 await service.resumeSession(summary)
+            } else if MobileChatHistoryStore.shared.thread(id: sessionID)?.runtime == AssistantRuntimeID.hermes.rawValue {
+                // Mobile-only thread (host never assigned a session id, or the
+                // host is currently unreachable). Restore from the device cache.
+                service.loadMobileThread(id: sessionID)
             } else {
                 // Sessions list may not be loaded yet; refresh and try again once.
                 await service.refreshRuntime()
                 if let summary = service.sessions.first(where: { $0.id == sessionID }) {
                     await service.resumeSession(summary)
+                } else if MobileChatHistoryStore.shared.thread(id: sessionID)?.runtime == AssistantRuntimeID.hermes.rawValue {
+                    service.loadMobileThread(id: sessionID)
                 }
             }
         }

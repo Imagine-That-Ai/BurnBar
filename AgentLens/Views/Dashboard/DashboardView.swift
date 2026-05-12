@@ -134,7 +134,7 @@ struct DashboardView: View {
         @Bindable var chatController = chatController
         return NavigationSplitView {
             sidebarView
-                .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
+                .navigationSplitViewColumnWidth(min: 260, ideal: 280, max: 320)
                 .background(DesignSystem.Colors.background)
         } detail: {
             detailView
@@ -461,7 +461,17 @@ struct DashboardView: View {
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                    HStack(spacing: DesignSystem.Spacing.lg) {
+                    LazyVGrid(
+                        columns: [
+                            GridItem(
+                                .adaptive(minimum: 250),
+                                spacing: DesignSystem.Spacing.lg,
+                                alignment: .top
+                            )
+                        ],
+                        alignment: .leading,
+                        spacing: DesignSystem.Spacing.lg
+                    ) {
                         StatCard(
                             title: "Total Cost",
                             value: totalCostForTimeRange.formatAsCost(),
@@ -482,13 +492,21 @@ struct DashboardView: View {
                         )
                     }
                     NarrativeCardView(dataStore: dataStore)
-                    HStack(alignment: .top, spacing: DesignSystem.Spacing.xl) {
-                        VStack(spacing: DesignSystem.Spacing.xl) {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .top, spacing: DesignSystem.Spacing.xl) {
+                            VStack(spacing: DesignSystem.Spacing.xl) {
+                                providerLane
+                                modelLane
+                            }
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                            activityLane
+                        }
+
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
                             providerLane
                             modelLane
+                            activityLane
                         }
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                        activityLane
                     }
                 }
                 .padding(DesignSystem.Spacing.xl)

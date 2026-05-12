@@ -63,6 +63,10 @@ struct DashboardExtraLargeView: View {
 
                 Spacer(minLength: 0)
 
+                askChipRows
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
+
                 detailGrid
                     .padding(.horizontal, 20)
                     .padding(.bottom, 12)
@@ -159,6 +163,55 @@ struct DashboardExtraLargeView: View {
                         tokens: snap?.topProviderTokens[safe: index] ?? 0,
                         totalTokens: totalTokens
                     )
+                }
+            }
+        }
+    }
+
+    private var askChipRows: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Button(intent: AskAssistantIntent(assistant: .hermes, prompt: nil)) {
+                    AskChipLabel(
+                        icon: "sparkle",
+                        title: "Ask Hermes",
+                        color: WidgetDesignSystem.Colors.amber,
+                        prominent: true
+                    )
+                }
+                .buttonStyle(.plain)
+                Button(intent: AskAssistantIntent(assistant: .pi, prompt: nil)) {
+                    AskChipLabel(
+                        icon: "cpu",
+                        title: "Ask Pi",
+                        color: WidgetDesignSystem.Colors.whimsy,
+                        prominent: true
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            // Full 6-prompt catalog — 3 + 3 grid keeps row width sensible.
+            ForEach(0..<2, id: \.self) { rowIndex in
+                HStack(spacing: 6) {
+                    ForEach(
+                        Array(AssistantQuickPromptCatalog.all.dropFirst(rowIndex * 3).prefix(3)),
+                        id: \.id
+                    ) { prompt in
+                        Button(intent: AskAssistantIntent(
+                            assistant: AssistantRuntimeOption(rawValue: prompt.preferredAssistant.rawValue) ?? .hermes,
+                            prompt: prompt.fullPrompt
+                        )) {
+                            AskChipLabel(
+                                icon: nil,
+                                title: prompt.chipLabel,
+                                color: prompt.preferredAssistant == .pi
+                                    ? WidgetDesignSystem.Colors.whimsy
+                                    : WidgetDesignSystem.Colors.amber,
+                                prominent: false
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }

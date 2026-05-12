@@ -106,7 +106,8 @@ struct DaemonLifecycleDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "Lifecycle & Health",
-            subtitle: "Manage the OpenBurnBar daemon process: install it, repair it, and watch recent events."
+            subtitle: "Manage the OpenBurnBar daemon process: install it, repair it, and watch recent events.",
+            searchRoute: .daemonLifecycle
         ) {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -194,6 +195,7 @@ struct DaemonLifecycleDetailView: View {
                     }
                 }
                 .padding(DesignSystem.Spacing.lg)
+                .settingsAnchor(SettingsAnchor.daemonStatus)
             }
         }
     }
@@ -212,11 +214,19 @@ struct DaemonLifecycleDetailView: View {
 
 struct HTTPGatewayDetailView: View {
     @Bindable var settingsManager: SettingsManager
+    @Environment(SettingsRouter.self) private var router
+
+    private enum Focus: Hashable {
+        case host, port, authToken
+    }
+
+    @FocusState private var focus: Focus?
 
     var body: some View {
         SettingsDetailContainer(
             title: "HTTP Gateway",
-            subtitle: "Expose an OpenAI-compatible API on a local port for external tools (Vibe Proxy on 8317 is the typical setup)."
+            subtitle: "Expose an OpenAI-compatible API on a local port for external tools (Vibe Proxy on 8317 is the typical setup).",
+            searchRoute: .httpGateway
         ) {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -226,6 +236,7 @@ struct HTTPGatewayDetailView: View {
                         icon: "network",
                         isOn: $settingsManager.gatewayEnabled
                     )
+                    .settingsAnchor(SettingsAnchor.gatewayEnabled)
 
                     if settingsManager.gatewayEnabled {
                         Divider().background(DesignSystem.Colors.border)
@@ -244,7 +255,9 @@ struct HTTPGatewayDetailView: View {
                                 .textFieldStyle(.roundedBorder)
                                 .font(DesignSystem.Typography.monoSmall)
                                 .frame(width: 140)
+                                .focused($focus, equals: .host)
                         }
+                        .settingsAnchor(SettingsAnchor.gatewayHost)
 
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
@@ -260,7 +273,9 @@ struct HTTPGatewayDetailView: View {
                                 .textFieldStyle(.roundedBorder)
                                 .font(DesignSystem.Typography.monoSmall)
                                 .frame(width: 80)
+                                .focused($focus, equals: .port)
                         }
+                        .settingsAnchor(SettingsAnchor.gatewayPort)
 
                         let isLoopback = settingsManager.gatewayHost == "127.0.0.1"
                             || settingsManager.gatewayHost == "localhost"
@@ -283,7 +298,9 @@ struct HTTPGatewayDetailView: View {
                                     .textFieldStyle(.roundedBorder)
                                     .font(DesignSystem.Typography.monoSmall)
                                     .frame(width: 180)
+                                    .focused($focus, equals: .authToken)
                             }
+                            .settingsAnchor(SettingsAnchor.gatewayAuthToken)
                         }
 
                         Divider().background(DesignSystem.Colors.border)
@@ -300,6 +317,25 @@ struct HTTPGatewayDetailView: View {
                 .padding(DesignSystem.Spacing.lg)
             }
         }
+        .onAppear { applyPendingFocus() }
+        .onChange(of: router.pendingFocus) { _, _ in applyPendingFocus() }
+    }
+
+    private func applyPendingFocus() {
+        guard let pending = router.pendingFocus else { return }
+        let target: Focus?
+        switch pending {
+        case SettingsFocus.gatewayHost: target = .host
+        case SettingsFocus.gatewayPort: target = .port
+        case SettingsFocus.gatewayAuthToken: target = .authToken
+        default: target = nil
+        }
+        guard let resolved = target else { return }
+        // Delay a tick so the field is in the hierarchy before focusing.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            focus = resolved
+            router.consumePendingFocus(pending)
+        }
     }
 }
 
@@ -311,7 +347,8 @@ struct ControllerRuntimeDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "Controller Runtime",
-            subtitle: "Keep daemon-backed missions, followups, questions, and replay state mirrored into the OpenBurnBar UI."
+            subtitle: "Keep daemon-backed missions, followups, questions, and replay state mirrored into the OpenBurnBar UI.",
+            searchRoute: .controllerRuntime
         ) {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -321,6 +358,7 @@ struct ControllerRuntimeDetailView: View {
                         icon: "cpu",
                         isOn: $settingsManager.controllerRuntimeEnabled
                     )
+                    .settingsAnchor(SettingsAnchor.controllerEnabled)
 
                     Divider().background(DesignSystem.Colors.border)
 
@@ -342,6 +380,7 @@ struct ControllerRuntimeDetailView: View {
                         .pickerStyle(.menu)
                         .frame(width: 110)
                     }
+                    .settingsAnchor(SettingsAnchor.controllerRefresh)
 
                     Divider().background(DesignSystem.Colors.border)
 
@@ -351,6 +390,7 @@ struct ControllerRuntimeDetailView: View {
                         icon: "play.square.stack",
                         isOn: $settingsManager.controllerSimulatorToolsEnabled
                     )
+                    .settingsAnchor(SettingsAnchor.controllerSimulator)
                 }
                 .padding(DesignSystem.Spacing.lg)
             }

@@ -217,8 +217,21 @@ final class FirestoreRepository {
         if meta["usedPercent"] == nil, let usedPercent = numericValue(bucket["usedPercent"]) {
             meta["usedPercent"] = String(format: "%.2f", usedPercent)
         }
-        if meta["resetsAt"] == nil, let resetsAt = stringValue(bucket["resetsAt"]) {
-            meta["resetsAt"] = resetsAt
+        // Bring the top-level `resetsAt` (first-class field on the new
+        // `QuotaBucket` schema) into `meta` as an ISO 8601 string so the
+        // legacy back-compat path in `ProviderQuotaBucket.init(from:)`
+        // also sees it, regardless of whether Firestore returned a
+        // `Timestamp` (Double after `sanitizeForJSON`) or an already-ISO
+        // string from a Cloud Functions response.
+        if meta["resetsAt"] == nil {
+            if let isoString = stringValue(bucket["resetsAt"]) {
+                meta["resetsAt"] = isoString
+            } else if let interval = numericValue(bucket["resetsAt"]) {
+                let date = Date(timeIntervalSinceReferenceDate: interval)
+                let formatter = ISO8601DateFormatter()
+                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                meta["resetsAt"] = formatter.string(from: date)
+            }
         }
 
         let unit = rawUnit?.lowercased()
@@ -277,6 +290,14 @@ final class FirestoreRepository {
             "remaining": remaining
         ]
         if let window { normalized["window"] = window }
+        // Promote `resetsAt` to the top level so the new first-class field
+        // on `ProviderQuotaBucket` is hit directly by Codable, not just the
+        // legacy meta back-compat path.
+        if let resetsAtNumeric = numericValue(bucket["resetsAt"]) {
+            normalized["resetsAt"] = resetsAtNumeric
+        } else if let resetsAtString = stringValue(bucket["resetsAt"]) {
+            normalized["resetsAt"] = resetsAtString
+        }
         if meta.isEmpty == false { normalized["meta"] = meta }
         return normalized
     }

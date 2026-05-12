@@ -5,6 +5,8 @@ import DashboardMockup from "@components/DashboardMockup.astro";
 import DeviceShowcase from "@components/DeviceShowcase.astro";
 import SurfaceCard from "@components/SurfaceCard.astro";
 import ProviderTable from "@components/ProviderTable.astro";
+import RouterSwitchboard from "@components/RouterSwitchboard.astro";
+import RouterUseCases from "@components/RouterUseCases.astro";
 import { SITE } from "@data/site";
 import { SURFACES } from "@data/surfaces";
 import { PROVIDERS_PRIMARY } from "@data/providers";
@@ -97,6 +99,11 @@ const surfaceShowcase = SURFACES.filter((s) =>
       <div class="band__stat">
         <div class="band__num display"><span class="sym">∞</span></div>
         <div class="band__lbl">Works offline. The whole product, locally.</div>
+      </div>
+      <div class="band__sep" aria-hidden="true"></div>
+      <div class="band__stat">
+        <div class="band__num mono">5<span class="band__num-unit">min</span></div>
+        <div class="band__lbl">Auto-cool-down the Fire Hydrant applies when an account exhausts or fails</div>
       </div>
     </div>
   </section>
@@ -224,6 +231,91 @@ const surfaceShowcase = SURFACES.filter((s) =>
 
       <div class="surfaces__grid">
         {surfaceShowcase.map((s, i) => <SurfaceCard surface={s} index={i} />)}
+      </div>
+    </div>
+  </section>
+
+  <!-- ────────────────────────────────────────────────
+       FIRE HYDRANT — multi-provider router
+       ──────────────────────────────────────────────── -->
+  <section class="hydrantsec" aria-labelledby="hydrantsec-h">
+    <div class="container container--wide">
+      <header class="sec-head hydrantsec__head">
+        <span class="eyebrow eyebrow--ember">Fire Hydrant — the multi-provider router</span>
+        <h2 id="hydrantsec-h">
+          When one account runs dry,
+          <span class="hydrantsec__hb">the next picks up.</span>
+        </h2>
+        <p class="lead">
+          Cursor, Factory, Forge, and OpenCode speak OpenAI-shaped JSON to a
+          single local gateway — the OpenBurnBar <strong>Fire Hydrant</strong> at
+          <span class="mono">127.0.0.1:8317</span>. It ranks every provider account
+          you've added by live quota health and least-recently-used, swaps to a
+          healthy peer the moment one rate-limits or runs out, and parks failed
+          accounts in a five-minute cool-down so they recover on their own.
+          No vendor lock-in. No 429s landing in your IDE.
+        </p>
+      </header>
+
+      <div class="hydrantsec__board">
+        <RouterSwitchboard />
+      </div>
+
+      <header class="sec-head sec-head--mini hydrantsec__head--alt">
+        <span class="eyebrow eyebrow--ember">Use cases</span>
+        <h3 class="hydrantsec__h3">The four routing moves you'll lean on most.</h3>
+      </header>
+
+      <RouterUseCases />
+
+      <div class="hydrantsec__rules">
+        <header class="hydrantsec__rulehead">
+          <span class="eyebrow eyebrow--ember">How the Hydrant ranks accounts</span>
+          <h3 class="hydrantsec__h3">Four rules. No model marketing.</h3>
+        </header>
+        <ol class="hydrantsec__rulesl">
+          <li>
+            <span class="hydrantsec__num mono">01</span>
+            <div>
+              <strong>Preferred always wins — when healthy.</strong>
+              <span>A pinned account is honored unless it's exhausted, rate-limited, or off.</span>
+            </div>
+          </li>
+          <li>
+            <span class="hydrantsec__num mono">02</span>
+            <div>
+              <strong>Local credentials beat remote.</strong>
+              <span>An on-disk key is preferred over a hosted secret — lower latency, less surface area.</span>
+            </div>
+          </li>
+          <li>
+            <span class="hydrantsec__num mono">03</span>
+            <div>
+              <strong>Health rank, then sort key, then LRU.</strong>
+              <span>healthy &rsaquo; pressure &rsaquo; cooling-down &rsaquo; rate-limited &rsaquo; exhausted &rsaquo; auth-failed.</span>
+            </div>
+          </li>
+          <li>
+            <span class="hydrantsec__num mono">04</span>
+            <div>
+              <strong>Next-fallback is pre-selected.</strong>
+              <span>If the primary fails mid-request, the runner-up is already chosen — no second pass through the policy engine.</span>
+            </div>
+          </li>
+        </ol>
+        <p class="hydrantsec__rulescap mono">
+          Source · <code>ProviderAccountTypes.swift:403–599</code> · <code>docs/ROUTED_CLIENT_GATEWAY.md</code>
+        </p>
+      </div>
+
+      <div class="hydrantsec__cta">
+        <a class="btn btn--ember" href="/router">
+          Read how routing actually works
+          <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="btn btn--ghost" href="/providers">
+          See the provider matrix
+        </a>
       </div>
     </div>
   </section>
@@ -533,6 +625,14 @@ const surfaceShowcase = SURFACES.filter((s) =>
     letter-spacing: -0.04em;
   }
   .band__num .sym { color: var(--ember-bright); }
+  .band__num-unit {
+    font-family: var(--font-mono);
+    font-size: 0.45em;
+    color: var(--ember-bright);
+    letter-spacing: 0.04em;
+    margin-left: 0.2em;
+    font-variation-settings: "wght" 500;
+  }
   .band__lbl { color: var(--text-mute); font-size: 0.9rem; max-width: 28ch; }
   .band__sep {
     width: 1px;
@@ -632,6 +732,149 @@ const surfaceShowcase = SURFACES.filter((s) =>
   }
   @media (max-width: 1080px) { .surfaces__grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 560px) { .surfaces__grid { grid-template-columns: 1fr; } }
+
+  /* ────────── fire hydrant ────────── */
+  .hydrantsec {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    background:
+      radial-gradient(70% 60% at 50% 0%, rgba(255, 106, 26, 0.06), transparent 60%),
+      radial-gradient(40% 40% at 90% 90%, rgba(255, 106, 26, 0.04), transparent 70%);
+    position: relative;
+    overflow: hidden;
+  }
+  .hydrantsec::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(90deg, var(--ink-line-soft) 1px, transparent 1px),
+      linear-gradient(180deg, var(--ink-line-soft) 1px, transparent 1px);
+    background-size: 56px 56px;
+    background-position: -1px -1px;
+    opacity: 0.18;
+    mask-image: radial-gradient(70% 60% at 50% 50%, black 30%, transparent 75%);
+    -webkit-mask-image: radial-gradient(70% 60% at 50% 50%, black 30%, transparent 75%);
+    pointer-events: none;
+  }
+  .hydrantsec > .container { position: relative; z-index: 1; }
+  .hydrantsec__head {
+    max-width: 64ch;
+  }
+  .hydrantsec__head h2 {
+    text-wrap: balance;
+  }
+  .hydrantsec__hb {
+    color: var(--ember-bright);
+    font-style: italic;
+    font-variation-settings: "opsz" 144, "wght" 360, "ital" 1;
+    display: block;
+  }
+  .hydrantsec__board {
+    margin-block: var(--s-6) var(--s-8);
+  }
+  .hydrantsec__head--alt {
+    margin-bottom: var(--s-5);
+    max-width: 56ch;
+  }
+  .hydrantsec__h3 {
+    font-family: var(--font-display);
+    font-size: var(--t-h3);
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 80, "wght" 500;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .hydrantsec__rules {
+    margin-top: var(--s-8);
+    padding: var(--s-6);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-5);
+    background:
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  .hydrantsec__rules::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--ember-glow), transparent);
+    opacity: 0.6;
+  }
+  .hydrantsec__rulehead {
+    display: grid;
+    gap: var(--s-2);
+    margin-bottom: var(--s-5);
+    max-width: 50ch;
+  }
+  .hydrantsec__rulesl {
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--s-5);
+    margin-bottom: var(--s-5);
+  }
+  .hydrantsec__rulesl li {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--s-3);
+    align-items: start;
+    padding-top: var(--s-3);
+    border-top: 1px solid var(--ink-line);
+  }
+  .hydrantsec__rulesl li div {
+    display: grid;
+    gap: var(--s-2);
+  }
+  .hydrantsec__rulesl strong {
+    color: var(--text-bright);
+    font-variation-settings: "wght" 540;
+    font-size: 0.96rem;
+    display: block;
+  }
+  .hydrantsec__rulesl span {
+    color: var(--text-mute);
+    font-size: 0.86rem;
+    line-height: 1.5;
+  }
+  .hydrantsec__num {
+    color: var(--ember-bright);
+    font-size: var(--t-caption);
+    letter-spacing: 0.18em;
+    padding-top: 2px;
+  }
+  .hydrantsec__rulescap {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    padding-top: var(--s-4);
+    border-top: 1px dashed var(--ink-line-soft);
+  }
+  .hydrantsec__rulescap code {
+    color: var(--text-mute);
+    font-family: var(--font-mono);
+    background: var(--ink-base);
+    padding: 1px 6px;
+    border-radius: var(--r-2);
+    border: 1px solid var(--ink-line);
+  }
+  .hydrantsec__cta {
+    display: flex;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+    margin-top: var(--s-7);
+    justify-content: center;
+  }
+  @media (max-width: 1080px) {
+    .hydrantsec__rulesl { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 640px) {
+    .hydrantsec__rulesl { grid-template-columns: 1fr; }
+  }
 
   /* ────────── hermes ────────── */
   .hermes {

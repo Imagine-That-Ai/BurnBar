@@ -51,6 +51,17 @@ import BaseLayout from "@layouts/BaseLayout.astro";
             about to roll before your agent hits a wall.
           </p>
         </li>
+        <li class="benefit benefit--ember">
+          <div class="benefit__num mono">B3·5</div>
+          <h3>Never run out of quota mid-task.</h3>
+          <p>
+            The <a href="/router" class="benefit__link">Fire Hydrant</a> — our
+            local multi-provider router — sends Cursor, Factory, and Forge
+            traffic through one gateway and shifts to the next healthy account
+            the moment one rate-limits or runs out. Five-minute cool-downs.
+            Round-robin by least-recently-used. No 429s land in your IDE.
+          </p>
+        </li>
         <li class="benefit">
           <div class="benefit__num mono">B4</div>
           <h3>Recover context fast.</h3>
@@ -141,6 +152,22 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     letter-spacing: -0.014em;
   }
   .benefit p { color: var(--text-base); }
+  .benefit--ember {
+    border-color: color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
+    background:
+      linear-gradient(180deg, rgba(255, 106, 26, 0.05) 0%, var(--ink-base) 100%);
+    position: relative;
+    box-shadow: 0 12px 32px -20px rgba(255, 106, 26, 0.4);
+  }
+  .benefit--ember .benefit__num { color: var(--ember-bright); }
+  .benefit__link {
+    color: var(--ember-bright);
+    border-bottom: 1px dashed color-mix(in oklab, var(--ember-bright) 40%, var(--ink-line));
+  }
+  .benefit__link:hover {
+    color: var(--ember-glow);
+    border-bottom-color: var(--ember-bright);
+  }
   @media (max-width: 880px) { .benefits__grid { grid-template-columns: 1fr; } }
   .endcta--inline {
     padding-block: var(--s-9);

@@ -30,6 +30,7 @@ public protocol AuthGateway: AnyObject {
     func signIn(provider: MobileAuthProviderID) async throws
     func createEmailAccount(email: String, password: String) async throws
     func signInWithEmail(email: String, password: String) async throws
+    func deleteAccount() async throws
     func signOut() throws
 }
 

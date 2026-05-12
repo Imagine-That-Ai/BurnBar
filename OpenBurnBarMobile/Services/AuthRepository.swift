@@ -1,6 +1,7 @@
 import Foundation
 import FirebaseAuth
 import FirebaseCore
+import FirebaseFunctions
 
 // MARK: - Auth Repository
 
@@ -28,6 +29,18 @@ final class AuthRepository {
     func signOut() throws {
         guard let auth else { return }
         try auth.signOut()
+    }
+
+    func deleteCurrentUser() async throws {
+        guard let auth else {
+            throw CloudGatewayError.classified(.firebaseUnavailable)
+        }
+        guard auth.currentUser != nil else {
+            throw CloudGatewayError.classified(.notAuthenticated)
+        }
+        let callable = Functions.functions(region: "us-central1").httpsCallable("deleteUserCloudData")
+        _ = try await callable.call([String: Any]())
+        try? auth.signOut()
     }
 
     @discardableResult

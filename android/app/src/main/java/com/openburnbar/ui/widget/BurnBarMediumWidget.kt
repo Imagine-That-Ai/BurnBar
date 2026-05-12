@@ -30,6 +30,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.widget.BurnBarWidgetSnapshot
 import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 
@@ -51,13 +52,18 @@ class BurnBarMediumWidgetReceiver : GlanceAppWidgetReceiver() {
 
 @Composable
 private fun MediumContent(snap: BurnBarWidgetSnapshot) {
-    Row(
+    Column(
         modifier = GlanceModifier
             .fillMaxSize()
             .background(WidgetTheme.background)
             .cornerRadius(20.dp)
-            .clickable(openDashboardAction())
     ) {
+        Row(
+            modifier = GlanceModifier
+                .fillMaxWidth()
+                .defaultWeight()
+                .clickable(openDashboardAction())
+        ) {
         // Left: metric panel
         Column(
             modifier = GlanceModifier
@@ -139,6 +145,32 @@ private fun MediumContent(snap: BurnBarWidgetSnapshot) {
                     )
                 )
             }
+        }
+        }
+        // Ask Hermes / Ask Pi action row pinned to the bottom — single
+        // line of two chips matching iOS systemMedium parity.
+        Row(
+            modifier = GlanceModifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            WidgetAskChip(
+                label = "Ask Hermes",
+                assistant = ASK_CHIP_ASSISTANT_HERMES,
+                glyph = AssistantRuntimeID.HERMES.glyph,
+                accent = WidgetTheme.amber,
+                prominent = true,
+                modifier = GlanceModifier.defaultWeight()
+            )
+            Spacer(modifier = GlanceModifier.width(6.dp))
+            WidgetAskChip(
+                label = "Ask Pi",
+                assistant = ASK_CHIP_ASSISTANT_PI,
+                glyph = AssistantRuntimeID.PI.glyph,
+                accent = WidgetTheme.whimsy,
+                prominent = true,
+                modifier = GlanceModifier.defaultWeight()
+            )
         }
     }
 }

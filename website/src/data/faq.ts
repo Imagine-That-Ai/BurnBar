@@ -39,7 +39,7 @@ export const FAQ: FAQItem[] = [
     id: "hosted-quota",
     question: "What is Hosted Quota Sync?",
     answer:
-      "Hosted Quota Sync is the paid tier. It adds four capabilities to the free local product:\n\n1. Hosted Codex quota refresh from any signed-in device, with OpenBurnBar running the runner. Rate-limited to 30/day and 300/month per account.\n\n2. Conversation backup and resume — chat titles, previews, and message bodies, encrypted in transit, restored across iPhone, iPad, and Mac.\n\n3. Full session-log sync — complete agent runs mirrored to cloud and searchable across devices.\n\n4. Hermes Remote Relay — reach the Mac's local Hermes from anywhere over a verified WebSocket, with App Check attestation and Apple JWS end-to-end.\n\nProduct id com.openburnbar.hostedQuotaSync.monthly. Intended price $4.99/month via the App Store. Apple handles billing."
+      "Hosted Quota Sync is the paid tier. It adds four capabilities to the free local product:\n\n1. Hosted Codex quota refresh from any signed-in device, with OpenBurnBar running the runner. Rate-limited to 30/day and 300/month per account.\n\n2. Conversation backup and resume — chat titles, previews, and message bodies, encrypted in transit, restored across iPhone, iPad, and Mac.\n\n3. Full session-log sync — complete agent runs mirrored to cloud and searchable across devices.\n\n4. Hermes Remote Relay — reach the Mac's local Hermes from anywhere over a verified WebSocket, with App Check attestation and Apple JWS end-to-end.\n\nProduct id com.openburnbar.hostedQuotaSync.cloud.monthly. Intended price $4.99/month via the App Store. Apple handles billing."
   },
   {
     id: "claude-code-self-hosted",

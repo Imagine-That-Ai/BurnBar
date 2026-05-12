@@ -31,6 +31,9 @@ struct StatCard: View {
                     )
                     .contentTransition(.numericText())
                     .animation(DesignSystem.Animation.gentle, value: value)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                    .allowsTightening(true)
 
                 if let moodLabel, let moodColor {
                     HStack(spacing: DesignSystem.Spacing.xs) {
@@ -46,6 +49,7 @@ struct StatCard: View {
                 Text(detail)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 if let confidenceLabel, let confidenceColor {
                     HStack(spacing: DesignSystem.Spacing.xs) {

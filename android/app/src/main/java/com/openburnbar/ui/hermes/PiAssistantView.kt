@@ -40,10 +40,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.data.assistants.PiPendingPrompt
 import com.openburnbar.data.hermes.PiChatMessage
 import com.openburnbar.data.hermes.PiService
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
+import kotlinx.coroutines.delay
 
 // Plan 2 — Android Pi assistant pane. Minimal but functional sibling of
 // `HermesView` so users can chat with the Pi gateway from the Assistants
@@ -60,6 +62,21 @@ fun PiAssistantView(piService: PiService) {
     val listState = rememberLazyListState()
 
     LaunchedEffect(Unit) { piService.refreshRuntime() }
+
+    // Pending-prompt consumer — picks up prompts stashed by the
+    // "Ask Pi" widget chip via `MainActivity.stashPendingPromptFromIntent`
+    // or by a `burnbar://pi?prompt=…` deep link. Non-blank values
+    // auto-send once the composer surface is ready; an empty slot is
+    // ignored (chip with no prompt just lands the user on this screen
+    // with the composer ready).
+    LaunchedEffect(Unit) {
+        val pending = PiPendingPrompt.pending
+        if (!pending.isNullOrBlank()) {
+            PiPendingPrompt.pending = null
+            delay(250)
+            piService.send(pending.trim())
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         if (!isReachable) {

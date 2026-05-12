@@ -57,8 +57,13 @@ final class PiService {
     var runtimeErrorText: String?
     var lastError: String?
 
+    /// Identifier for the conversation currently in `messages`. Mints on the
+    /// first send of a fresh thread so chat history can survive app relaunches.
+    private(set) var currentThreadID: String?
+
     private let urlSession: URLSession
     private let defaults: UserDefaults
+    private let history: MobileChatHistoryStore
     private var currentTask: Task<Void, Never>?
 
     private let selectedConnectionDefaultsKey = "pi.selectedConnectionID"
@@ -68,10 +73,12 @@ final class PiService {
 
     init(
         urlSession: URLSession = .shared,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        history: MobileChatHistoryStore = .shared
     ) {
         self.urlSession = urlSession
         self.defaults = defaults
+        self.history = history
         self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
         self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
         // Restore previously-added direct URLs.
@@ -82,6 +89,7 @@ final class PiService {
            let match = connections.first(where: { $0.id == savedSelectedID }) {
             selectedConnection = match
         }
+        history.loadFromDiskIfNeeded()
     }
 
     // MARK: - Runtime
@@ -182,11 +190,14 @@ final class PiService {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
+        if currentThreadID == nil { currentThreadID = UUID().uuidString }
+
         messages.append(PiChatMessage(role: .user, text: trimmed))
         var assistant = PiChatMessage(role: .assistant, text: "", modelName: selectedModelID, isStreaming: true)
         messages.append(assistant)
         let assistantID = assistant.id
         isStreaming = true
+        persistCurrentThread()
 
         let baseURL = resolvedBaseURL
         let bearer = resolvedBearerToken
@@ -200,6 +211,7 @@ final class PiService {
                 if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
                     self.messages[idx].isStreaming = false
                 }
+                self.persistCurrentThread()
             }
             do {
                 try await self.streamChat(
@@ -233,8 +245,95 @@ final class PiService {
         isStreaming = false
     }
 
-    func clear() {
+    /// Starts a brand-new conversation in memory without deleting the previously
+    /// active thread (it remains in the chat history list).
+    func startNewThread() {
+        currentTask?.cancel()
+        currentTask = nil
+        isStreaming = false
         messages.removeAll()
+        currentThreadID = nil
+        lastError = nil
+    }
+
+    /// Restores `messages` from a persisted thread. Used when the user taps a
+    /// row in the chat history list.
+    func loadThread(id: String) {
+        guard let thread = history.thread(id: id), thread.runtime == AssistantRuntimeID.pi.rawValue else { return }
+        currentTask?.cancel()
+        currentTask = nil
+        isStreaming = false
+        currentThreadID = thread.id
+        messages = thread.messages.map { Self.convertFromStore($0) }
+    }
+
+    /// Removes a persisted thread (also clears the active chat when it matches).
+    func deleteThread(id: String) {
+        history.delete(threadID: id)
+        if currentThreadID == id {
+            startNewThread()
+        }
+    }
+
+    // MARK: - Persistence bridge
+
+    private func persistCurrentThread() {
+        guard let id = currentThreadID, !messages.isEmpty else { return }
+        let now = Date()
+        let createdAt = history.thread(id: id)?.createdAt ?? now
+        let title = Self.derivedTitle(from: messages)
+        let preview = Self.derivedPreview(from: messages)
+        let storedMessages = messages.map(Self.convertToStore)
+        let thread = MobileChatThread(
+            id: id,
+            runtime: AssistantRuntimeID.pi.rawValue,
+            title: title,
+            preview: preview,
+            modelName: selectedModelID,
+            createdAt: createdAt,
+            updatedAt: now,
+            messages: storedMessages
+        )
+        history.upsert(thread)
+    }
+
+    private static func convertToStore(_ message: PiChatMessage) -> MobileChatMessage {
+        MobileChatMessage(
+            id: message.id,
+            role: message.role.rawValue,
+            text: message.text,
+            timestamp: message.timestamp,
+            modelName: message.modelName,
+            isError: message.isError
+        )
+    }
+
+    private static func convertFromStore(_ message: MobileChatMessage) -> PiChatMessage {
+        PiChatMessage(
+            id: message.id,
+            role: PiChatRole(rawValue: message.role) ?? .assistant,
+            text: message.text,
+            modelName: message.modelName,
+            timestamp: message.timestamp,
+            isStreaming: false,
+            isError: message.isError
+        )
+    }
+
+    private static func derivedTitle(from messages: [PiChatMessage]) -> String {
+        if let firstUser = messages.first(where: { $0.role == .user })?.text.trimmingCharacters(in: .whitespacesAndNewlines),
+           !firstUser.isEmpty {
+            return String(firstUser.prefix(64))
+        }
+        return "New Pi chat"
+    }
+
+    private static func derivedPreview(from messages: [PiChatMessage]) -> String {
+        if let last = messages.last(where: { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
+            .text.trimmingCharacters(in: .whitespacesAndNewlines), !last.isEmpty {
+            return String(last.prefix(140))
+        }
+        return ""
     }
 
     // MARK: - HTTP

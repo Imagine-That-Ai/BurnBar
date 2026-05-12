@@ -184,7 +184,7 @@ extension DashboardView {
             .offset(y: overviewAppeared ? 0 : 8)
             .animation(UnifiedDesignSystem.Animation.standard.delay(0.34), value: overviewAppeared)
         }
-        .frame(width: 320, alignment: .topLeading)
+        .frame(minWidth: 300, idealWidth: 320, maxWidth: 360, alignment: .topLeading)
     }
 
     // MARK: - Metric Chip

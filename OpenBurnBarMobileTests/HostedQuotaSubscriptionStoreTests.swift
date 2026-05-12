@@ -2,7 +2,7 @@ import StoreKitTest
 import XCTest
 @testable import OpenBurnBarMobile
 
-private let hostedQuotaProductID = "com.openburnbar.hostedQuotaSync.monthly"
+private let hostedQuotaProductID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
 
 @MainActor
 final class HostedQuotaSubscriptionStoreTests: XCTestCase {

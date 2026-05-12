@@ -16,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,11 +27,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
+import com.openburnbar.MainActivity
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.PiService
 import com.openburnbar.ui.theme.AuroraColors
@@ -45,6 +48,25 @@ fun AssistantsScreen() {
     var rawRuntime by rememberSaveable { mutableStateOf(AssistantRuntimeID.HERMES.token) }
     val runtime = AssistantRuntimeID.fromToken(rawRuntime)
     val piService = remember { PiService() }
+    val context = LocalContext.current
+
+    // Honor the runtime hint carried by the launch / new intent — widget
+    // chips and `burnbar://pi` deep links both surface it here. Read once
+    // per intent identity so manual pill changes survive recompositions.
+    val activityIntent = (context as? MainActivity)?.intent
+    LaunchedEffect(activityIntent) {
+        val hint = activityIntent?.let { intent ->
+            intent.getStringExtra(MainActivity.EXTRA_ASSISTANT)?.lowercase()
+                ?: intent.data?.getQueryParameter("runtime")?.lowercase()
+                ?: intent.data?.host?.lowercase()?.takeIf {
+                    it == MainActivity.ASSISTANT_HERMES || it == MainActivity.ASSISTANT_PI
+                }
+        }
+        val resolved = AssistantRuntimeID.values().firstOrNull { it.token == hint }
+        if (resolved != null && resolved.token != rawRuntime) {
+            rawRuntime = resolved.token
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         AssistantRuntimePill(

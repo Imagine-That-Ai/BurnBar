@@ -82,7 +82,7 @@ export const APP_STORE_ENV: StringParam = defineString("APP_STORE_ENV", {
 /** StoreKit product id for hosted quota sync. */
 export const HOSTED_QUOTA_PRODUCT_ID: StringParam = defineString(
   "HOSTED_QUOTA_PRODUCT_ID",
-  { default: "com.openburnbar.hostedQuotaSync.monthly" }
+  { default: "com.openburnbar.hostedQuotaSync.cloud.monthly" }
 );
 
 /**
@@ -157,7 +157,7 @@ export function hostedQuotaProductID(): string {
   return (
     HOSTED_QUOTA_PRODUCT_ID.value().trim() ||
     getConfig().hostedQuotaProductID ||
-    "com.openburnbar.hostedQuotaSync.monthly"
+    "com.openburnbar.hostedQuotaSync.cloud.monthly"
   );
 }
 

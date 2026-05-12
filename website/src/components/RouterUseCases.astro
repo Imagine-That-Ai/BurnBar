@@ -1,0 +1,225 @@
+---
+/**
+ * Four real-world Fire Hydrant routing scenarios. Every claim maps to a
+ * routing-policy behaviour in
+ * OpenBurnBarCore/.../ProviderAccountTypes.swift:403-599 or to a state
+ * surfaced by ProviderRoutingStateBuilder.swift.
+ */
+
+interface Props {
+  /** When true, renders 2-up on wide viewports instead of 4-up (used inside narrower containers). */
+  twoUp?: boolean;
+}
+
+const { twoUp = false } = Astro.props;
+
+type Case = {
+  id: string;
+  flow: Array<{ logo: string; alt: string }>;
+  arrow: string;
+  headline: string;
+  body: string;
+  badge: string;
+  badgeClass: string;
+  evidence: string;
+};
+
+const CASES: Case[] = [
+  {
+    id: "zai-minimax",
+    flow: [
+      { logo: "/brand/providers/zai.png", alt: "Z.ai" },
+      { logo: "/brand/providers/minimax.png", alt: "MiniMax" }
+    ],
+    arrow: "→",
+    headline: "Z.ai hits its daily ceiling. Cursor never knows.",
+    body:
+      "Mid-PR, your Z.ai Coding Plan tops out. The hydrant marks the account exhausted, drops it into a five-minute cool-down, and the next request to /v1/chat/completions arrives at MiniMax instead. Cursor stays green.",
+    badge: "real failover",
+    badgeClass: "tag tag--exact tag--plain mono",
+    evidence: "ProviderAccountTypes.swift:512 · 5-minute cooldown on quotaExhausted"
+  },
+  {
+    id: "ollama-roundrobin",
+    flow: [
+      { logo: "/brand/providers/ollama.png", alt: "Ollama Cloud (1)" },
+      { logo: "/brand/providers/ollama.png", alt: "Ollama Cloud (2)" }
+    ],
+    arrow: "⇄",
+    headline: "Two Ollama Cloud keys. Fair-share by least-recently-used.",
+    body:
+      "Add two API keys for the same provider. When both are healthy, the router picks the one whose last request is older — a real round-robin that spreads tokens evenly instead of hammering one account into pressure.",
+    badge: "round-robin",
+    badgeClass: "tag tag--ember tag--plain mono",
+    evidence: "ProviderAccountTypes.swift · ranks by quota-health, then sortKey, then LRU"
+  },
+  {
+    id: "cursor-byok",
+    flow: [
+      { logo: "/brand/providers/cursor.png", alt: "Cursor" },
+      { logo: "/brand/providers/zai.png", alt: "Z.ai" },
+      { logo: "/brand/providers/openai.png", alt: "OpenAI" }
+    ],
+    arrow: "→",
+    headline: "BYOK in Cursor. Pin Z.ai, fall back to OpenAI.",
+    body:
+      "Cursor points at the local gateway through a BYOK tunnel. Pin Z.ai as your preferred provider for cost. When it runs dry, the router promotes the OpenAI account you've already added — and your IDE doesn't see a hiccup.",
+    badge: "preferred + fallback",
+    badgeClass: "tag tag--ember tag--plain mono",
+    evidence: "ROUTED_CLIENT_GATEWAY.md · preferred-provider promotion, instant next-fallback"
+  },
+  {
+    id: "auth-expired",
+    flow: [
+      { logo: "/brand/providers/cursor.png", alt: "Cursor" },
+      { logo: "/brand/providers/factory.png", alt: "Factory" },
+      { logo: "/brand/providers/forge.png", alt: "Forge" }
+    ],
+    arrow: "↻",
+    headline: "An auth token expires. The IDE never sees a 401.",
+    body:
+      "WorkOS session lapses, a sk-… key gets rotated, a provider returns 401. The hydrant marks the account auth-failed, parks it in a cool-down, and routes the next inference call through a healthy peer. You re-auth on your own clock.",
+    badge: "self-recovering",
+    badgeClass: "tag tag--exact tag--plain mono",
+    evidence: "ProviderAccountTypes.swift · authFailed → 5 min cooldown, traffic shifts immediately"
+  }
+];
+---
+
+<div class={`usecases ${twoUp ? "usecases--two" : ""}`}>
+  {CASES.map((c, idx) => (
+    <article class="ucard" style={`--idx:${idx}`}>
+      <header class="ucard__flow" aria-hidden="true">
+        {c.flow.map((node, i) => (
+          <>
+            <img
+              class="ucard__logo"
+              src={node.logo}
+              alt={node.alt}
+              width="32"
+              height="32"
+              loading="lazy"
+              decoding="async"
+            />
+            {i < c.flow.length - 1 && (
+              <span class="ucard__arrow mono">{c.arrow}</span>
+            )}
+          </>
+        ))}
+      </header>
+      <span class={c.badgeClass}>{c.badge}</span>
+      <h3 class="ucard__h">{c.headline}</h3>
+      <p class="ucard__body">{c.body}</p>
+      <p class="ucard__evidence mono" aria-label="Evidence file and behaviour">
+        <span class="ucard__bullet">·</span>
+        {c.evidence}
+      </p>
+    </article>
+  ))}
+</div>
+
+<style>
+  .usecases {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--s-4);
+  }
+  .usecases--two {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .ucard {
+    display: grid;
+    gap: var(--s-3);
+    align-content: start;
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    position: relative;
+    transition: border-color var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+    animation: ucard-rise 0.7s var(--ease-out) both;
+    animation-delay: calc(var(--idx, 0) * 110ms);
+  }
+  @keyframes ucard-rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .ucard::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255, 106, 26, 0.05), transparent 50%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease-out);
+  }
+  .ucard:hover {
+    border-color: color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
+    transform: translateY(-3px);
+  }
+  .ucard:hover::after {
+    opacity: 1;
+  }
+
+  .ucard__flow {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    flex-wrap: wrap;
+  }
+  .ucard__logo {
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+    border: 1px solid var(--ink-line);
+    background: var(--ink-base);
+    object-fit: cover;
+    display: block;
+  }
+  .ucard__arrow {
+    color: var(--ember-bright);
+    font-size: 1.05rem;
+    line-height: 1;
+  }
+
+  .ucard__h {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.018em;
+    line-height: 1.18;
+    text-wrap: balance;
+  }
+  .ucard__body {
+    color: var(--text-base);
+    font-size: 0.92rem;
+    line-height: 1.5;
+  }
+  .ucard__evidence {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+    line-height: 1.45;
+    padding-top: var(--s-3);
+    border-top: 1px dashed var(--ink-line-soft);
+    margin-top: auto;
+  }
+  .ucard__bullet {
+    color: var(--ember-bright);
+    margin-right: 0.4em;
+  }
+
+  @media (max-width: 1080px) {
+    .usecases { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 560px) {
+    .usecases { grid-template-columns: 1fr; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ucard { animation: none !important; }
+  }
+</style>

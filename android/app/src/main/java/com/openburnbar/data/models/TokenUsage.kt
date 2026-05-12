@@ -280,9 +280,30 @@ data class QuotaBucket(
     @PropertyName("window")
     val window: String? = null,
 
+    /**
+     * First-class refill moment. Mac writes a Firestore `Timestamp` on the
+     * bucket directly; older docs may instead carry an ISO 8601 string at
+     * `meta["resetsAt"]`. Use [effectiveResetsAt] to read either form.
+     */
+    @PropertyName("resetsAt")
+    val resetsAt: com.google.firebase.Timestamp? = null,
+
     @PropertyName("meta")
     val meta: Map<String, Any?>? = null
 )
+
+/**
+ * Resolves a bucket's reset moment from either the new top-level
+ * `resetsAt` field or the legacy ISO 8601 string at `meta["resetsAt"]`.
+ * Returns `null` when neither is present so callers can omit the reset
+ * row instead of showing a placeholder.
+ */
+val QuotaBucket.effectiveResetsAt: java.time.Instant?
+    get() {
+        resetsAt?.let { return it.toDate().toInstant() }
+        val legacy = meta?.get("resetsAt") as? String ?: return null
+        return runCatching { java.time.Instant.parse(legacy) }.getOrNull()
+    }
 
 /**
  * Mirrors the Firestore `ProjectSummary` (derived from usages collection).

@@ -14,6 +14,8 @@ export interface RelayLimitsConfig {
 export interface RelayConfig {
   port: number;
   redisURL: string;
+  redisTLSCA?: string;
+  redisTLSServername?: string;
   enforceAppCheck: boolean;
   verifyRevokedIdTokens: boolean;
   hostedRelayProductIDs: string[];
@@ -27,11 +29,13 @@ export function loadRelayConfig(env: NodeJS.ProcessEnv = process.env): RelayConf
   return {
     port: numberEnv(env.PORT, 8080),
     redisURL: env.REDIS_URL ?? "redis://127.0.0.1:6379",
+    redisTLSCA: textEnv(env.REDIS_TLS_CA_PEM) ?? base64TextEnv(env.REDIS_TLS_CA_BASE64),
+    redisTLSServername: textEnv(env.REDIS_TLS_SERVERNAME),
     enforceAppCheck: boolEnv(env.ENFORCE_APP_CHECK, true),
     verifyRevokedIdTokens: boolEnv(env.VERIFY_REVOKED_ID_TOKENS, false),
     hostedRelayProductIDs: listEnv(
       env.HOSTED_RELAY_PRODUCT_IDS ?? env.HOSTED_QUOTA_PRODUCT_ID,
-      ["com.openburnbar.hostedQuotaSync.monthly"]
+      ["com.openburnbar.hostedQuotaSync.cloud.monthly"]
     ),
     entitlementCacheTTLSeconds: numberEnv(env.ENTITLEMENT_CACHE_TTL_SECONDS, 60),
     entitlementNegativeCacheTTLSeconds: numberEnv(env.ENTITLEMENT_NEGATIVE_CACHE_TTL_SECONDS, 15),
@@ -67,4 +71,15 @@ function listEnv(value: string | undefined, fallback: string[]): string[] {
     .map((item) => item.trim())
     .filter(Boolean);
   return parsed.length > 0 ? parsed : fallback;
+}
+
+function textEnv(value: string | undefined): string | undefined {
+  if (value === undefined || value.trim() === "") return undefined;
+  return value.replace(/\\n/g, "\n").trim();
+}
+
+function base64TextEnv(value: string | undefined): string | undefined {
+  const encoded = textEnv(value);
+  if (!encoded) return undefined;
+  return Buffer.from(encoded, "base64").toString("utf8").replace(/\\n/g, "\n").trim();
 }

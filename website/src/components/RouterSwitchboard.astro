@@ -1,0 +1,665 @@
+---
+/**
+ * Fire Hydrant — multi-provider routing diagram.
+ *
+ * Shows three client targets (Cursor, Factory, Forge) flowing into a single
+ * local gateway (the hydrant), which routes onward to four routed provider
+ * accounts. Active route, next-fallback, cooling-down, and exhausted states
+ * are all represented honestly.
+ *
+ * Source of truth:
+ *   - OpenBurnBarCore/.../ProviderAccountTypes.swift:403-599 (routing policy)
+ *   - docs/ROUTED_CLIENT_GATEWAY.md
+ */
+
+interface Props {
+  /** Render a compact variant suitable for the /router page deep-dive (no decorative gutters). */
+  compact?: boolean;
+}
+
+const { compact = false } = Astro.props;
+
+const CLIENTS = [
+  {
+    id: "cursor",
+    name: "Cursor",
+    sub: "BYOK tunnel · Cloudflare worker",
+    logo: "/brand/providers/cursor.png"
+  },
+  {
+    id: "factory",
+    name: "Factory",
+    sub: "Droid agent · local gateway",
+    logo: "/brand/providers/factory.png"
+  },
+  {
+    id: "forge",
+    name: "Forge",
+    sub: "Local gateway · :8317",
+    logo: "/brand/providers/forge.png"
+  }
+];
+
+type LaneState = "active" | "fallback" | "cooling" | "exhausted";
+
+const LANES: Array<{
+  id: string;
+  name: string;
+  meta: string;
+  logo: string;
+  state: LaneState;
+  pillLabel: string;
+  pillClass: string;
+  lru: string;
+}> = [
+  {
+    id: "zai",
+    name: "Z.ai (GLM)",
+    meta: "Coding Plan · tokens healthy",
+    logo: "/brand/providers/zai.png",
+    state: "active",
+    pillLabel: "healthy · active",
+    pillClass: "tag tag--exact tag--plain mono",
+    lru: "last used 0s ago"
+  },
+  {
+    id: "minimax",
+    name: "MiniMax",
+    meta: "Coding Plan · 32% remaining",
+    logo: "/brand/providers/minimax.png",
+    state: "fallback",
+    pillLabel: "pressure · next-fallback",
+    pillClass: "tag tag--estimated tag--plain mono",
+    lru: "last used 14m ago"
+  },
+  {
+    id: "ollama-cloud",
+    name: "Ollama Cloud",
+    meta: "API key · healthy",
+    logo: "/brand/providers/ollama.png",
+    state: "cooling",
+    pillLabel: "cooling-down · 3m 42s",
+    pillClass: "tag tag--unavailable tag--plain mono",
+    lru: "last used 2h ago"
+  },
+  {
+    id: "ollama-local",
+    name: "Ollama Local",
+    meta: "localhost:11434 · qwen3:7b",
+    logo: "/brand/providers/ollama.png",
+    state: "exhausted",
+    pillLabel: "auth-failed · cooled",
+    pillClass: "tag tag--burn tag--plain mono",
+    lru: "last used 4d ago"
+  }
+];
+---
+
+<figure class={`switchboard ${compact ? "switchboard--compact" : ""}`} aria-labelledby="hydrantTitle" aria-describedby="hydrantDesc">
+  <figcaption id="hydrantTitle" class="sr-only">OpenBurnBar Fire Hydrant routing</figcaption>
+  <p id="hydrantDesc" class="sr-only">
+    Three local client targets — Cursor, Factory, and Forge — point at a single
+    local gateway running on 127.0.0.1:8317. The gateway applies a routing
+    policy that ranks healthy provider accounts by preferred flag, then by
+    local credential, then by quota health, then by least-recently-used.
+    Four provider lanes are shown — Z.ai is the active account, MiniMax is
+    the next-fallback candidate, Ollama Cloud is cooling down for three
+    minutes after a transient failure, and Ollama Local is paused after an
+    authentication error.
+  </p>
+
+  <div class="switchboard__board">
+
+    {/* LEFT COLUMN — CLIENT TARGETS */}
+    <aside class="switchboard__col switchboard__clients" aria-label="Local client targets">
+      <header class="switchboard__colhead mono">
+        <span class="switchboard__coltag">01</span>
+        <span>clients</span>
+      </header>
+      {CLIENTS.map((c, idx) => (
+        <article class="ncard ncard--client" style={`--idx:${idx}`}>
+          <img class="ncard__logo" src={c.logo} alt="" width="36" height="36" loading="lazy" decoding="async" />
+          <div class="ncard__body">
+            <strong class="ncard__name">{c.name}</strong>
+            <span class="ncard__sub mono">{c.sub}</span>
+          </div>
+          <span class="ncard__arrow" aria-hidden="true">→</span>
+        </article>
+      ))}
+    </aside>
+
+    {/* CENTER COLUMN — HYDRANT */}
+    <div class="switchboard__col switchboard__hydrantcol" aria-hidden="true">
+      <div class="hydrant">
+        <div class="hydrant__halo"></div>
+
+        <svg class="hydrant__glyph" viewBox="0 0 140 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Fire hydrant glyph">
+          <defs>
+            <linearGradient id="hydCore" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ffb547" stop-opacity="0.95"/>
+              <stop offset="55%" stop-color="#ff6a1a" stop-opacity="1"/>
+              <stop offset="100%" stop-color="#c63d0f" stop-opacity="1"/>
+            </linearGradient>
+            <linearGradient id="hydCap" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ffd07a"/>
+              <stop offset="100%" stop-color="#ff8a3d"/>
+            </linearGradient>
+            <radialGradient id="hydShine" cx="50%" cy="35%" r="60%">
+              <stop offset="0%" stop-color="rgba(255,255,255,0.35)"/>
+              <stop offset="60%" stop-color="rgba(255,255,255,0)"/>
+            </radialGradient>
+            <filter id="hydGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2.2" result="blur"/>
+              <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+
+          {/* base flange */}
+          <ellipse cx="70" cy="298" rx="44" ry="8" fill="#1a1422" stroke="#2a2030"/>
+          <rect x="34" y="280" width="72" height="14" rx="3" fill="#1a1422" stroke="#2a2030"/>
+
+          {/* barrel */}
+          <rect x="42" y="118" width="56" height="170" rx="10" fill="url(#hydCore)" stroke="#c63d0f" stroke-opacity="0.5"/>
+          <rect x="42" y="118" width="56" height="170" rx="10" fill="url(#hydShine)" opacity="0.7"/>
+
+          {/* barrel ring */}
+          <line x1="42" y1="158" x2="98" y2="158" stroke="#c63d0f" stroke-width="1.2" opacity="0.55"/>
+          <line x1="42" y1="222" x2="98" y2="222" stroke="#c63d0f" stroke-width="1.2" opacity="0.55"/>
+
+          {/* nozzle (front center) */}
+          <rect x="56" y="198" width="28" height="44" rx="4" fill="#1f1722" stroke="#2a2030"/>
+          <circle cx="70" cy="220" r="9" fill="#0c0a0f" stroke="#ff6a1a" stroke-opacity="0.7"/>
+          <text x="70" y="224" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#ff8a3d" font-weight="600">OBB</text>
+
+          {/* outlet stubs — RIGHT side (where routes leave) */}
+          <g class="hydrant__outlet" data-state="active" transform="translate(98, 150)">
+            <rect x="0" y="-9" width="22" height="18" rx="2" fill="#1f1722" stroke="#ff6a1a"/>
+            <circle cx="22" cy="0" r="4" fill="#ff8a3d"/>
+          </g>
+          <g class="hydrant__outlet" data-state="fallback" transform="translate(98, 190)">
+            <rect x="0" y="-9" width="22" height="18" rx="2" fill="#1f1722" stroke="#ffb547" stroke-opacity="0.7"/>
+            <circle cx="22" cy="0" r="3.5" fill="#ffb547" opacity="0.8"/>
+          </g>
+          <g class="hydrant__outlet" data-state="cooling" transform="translate(98, 230)">
+            <rect x="0" y="-9" width="22" height="18" rx="2" fill="#1f1722" stroke="#2a2030"/>
+            <circle cx="22" cy="0" r="3" fill="#5c5448"/>
+          </g>
+          <g class="hydrant__outlet" data-state="exhausted" transform="translate(98, 270)">
+            <rect x="0" y="-9" width="22" height="18" rx="2" fill="#1f1722" stroke="#2a2030"/>
+            <line x1="6" y1="-5" x2="16" y2="5" stroke="#e5483c" stroke-width="1.5"/>
+            <line x1="6" y1="5" x2="16" y2="-5" stroke="#e5483c" stroke-width="1.5"/>
+          </g>
+
+          {/* outlet stubs — LEFT side (incoming from clients) */}
+          <g transform="translate(42, 150)">
+            <rect x="-22" y="-9" width="22" height="18" rx="2" fill="#1f1722" stroke="#2a2030"/>
+            <circle cx="-22" cy="0" r="3.5" fill="#ff8a3d" opacity="0.8"/>
+          </g>
+          <g transform="translate(42, 200)">
+            <rect x="-22" y="-9" width="22" height="18" rx="2" fill="#1f1722" stroke="#2a2030"/>
+            <circle cx="-22" cy="0" r="3.5" fill="#ff8a3d" opacity="0.8"/>
+          </g>
+          <g transform="translate(42, 250)">
+            <rect x="-22" y="-9" width="22" height="18" rx="2" fill="#1f1722" stroke="#2a2030"/>
+            <circle cx="-22" cy="0" r="3.5" fill="#ff8a3d" opacity="0.8"/>
+          </g>
+
+          {/* neck */}
+          <rect x="50" y="92" width="40" height="32" rx="5" fill="#1a1422" stroke="#2a2030"/>
+          <line x1="50" y1="106" x2="90" y2="106" stroke="#3a342c"/>
+          <line x1="50" y1="116" x2="90" y2="116" stroke="#3a342c"/>
+
+          {/* bonnet (top cap with bolts) */}
+          <ellipse cx="70" cy="92" rx="36" ry="9" fill="url(#hydCap)" stroke="#c63d0f" stroke-opacity="0.55"/>
+          <rect x="34" y="60" width="72" height="38" rx="14" fill="url(#hydCap)" stroke="#c63d0f" stroke-opacity="0.55"/>
+          <rect x="34" y="60" width="72" height="38" rx="14" fill="url(#hydShine)" opacity="0.7"/>
+
+          {/* pentagonal operating nut on top */}
+          <polygon points="70,40 86,52 80,72 60,72 54,52" fill="#1a1422" stroke="#ff6a1a" stroke-opacity="0.55" filter="url(#hydGlow)"/>
+          <polygon points="70,46 82,55 77,69 63,69 58,55" fill="none" stroke="#ff8a3d" stroke-opacity="0.45"/>
+
+          {/* bolts */}
+          <circle cx="42" cy="80" r="2.5" fill="#1a1422" stroke="#c63d0f" stroke-opacity="0.6"/>
+          <circle cx="60" cy="78" r="2.5" fill="#1a1422" stroke="#c63d0f" stroke-opacity="0.6"/>
+          <circle cx="80" cy="78" r="2.5" fill="#1a1422" stroke="#c63d0f" stroke-opacity="0.6"/>
+          <circle cx="98" cy="80" r="2.5" fill="#1a1422" stroke="#c63d0f" stroke-opacity="0.6"/>
+
+          {/* chain hanging from nozzle (decorative — links back to the realism) */}
+          <path d="M 70 244 q 4 6 8 14 t -2 16" stroke="#5c5448" stroke-width="1" fill="none" stroke-dasharray="2 2"/>
+        </svg>
+
+        <ul class="hydrant__ring mono">
+          <li>routing policy</li>
+          <li>quota health</li>
+          <li>LRU round-robin</li>
+          <li>127.0.0.1:8317</li>
+        </ul>
+      </div>
+    </div>
+
+    {/* RIGHT COLUMN — PROVIDER LANES */}
+    <aside class="switchboard__col switchboard__providers" aria-label="Routed provider accounts">
+      <header class="switchboard__colhead mono">
+        <span class="switchboard__coltag">02</span>
+        <span>provider lanes</span>
+      </header>
+      {LANES.map((lane, idx) => (
+        <article class={`ncard ncard--lane ncard--state-${lane.state}`} style={`--idx:${idx}`}>
+          <span class="ncard__rail" aria-hidden="true">
+            <span class="ncard__pulse"></span>
+          </span>
+          <img class="ncard__logo" src={lane.logo} alt="" width="36" height="36" loading="lazy" decoding="async" />
+          <div class="ncard__body">
+            <div class="ncard__row">
+              <strong class="ncard__name">{lane.name}</strong>
+              <span class={lane.pillClass}>{lane.pillLabel}</span>
+            </div>
+            <div class="ncard__row ncard__row--sub">
+              <span class="ncard__sub mono">{lane.meta}</span>
+              <span class="ncard__lru mono">{lane.lru}</span>
+            </div>
+          </div>
+        </article>
+      ))}
+    </aside>
+  </div>
+
+  <footer class="switchboard__legend mono" aria-label="Diagram legend">
+    <span class="legend__item legend__item--active">
+      <span class="legend__dot" aria-hidden="true"></span> active route
+    </span>
+    <span class="legend__item legend__item--fallback">
+      <span class="legend__dot" aria-hidden="true"></span> next-fallback
+    </span>
+    <span class="legend__item legend__item--cooling">
+      <span class="legend__dot" aria-hidden="true"></span> cooling-down · 5 min
+    </span>
+    <span class="legend__item legend__item--exhausted">
+      <span class="legend__dot" aria-hidden="true"></span> exhausted · auth-failed
+    </span>
+  </footer>
+</figure>
+
+<style>
+  /* ===== container ===== */
+  .switchboard {
+    position: relative;
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-5);
+    background:
+      radial-gradient(85% 50% at 50% 0%, rgba(255, 106, 26, 0.06), transparent 60%),
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    padding: clamp(var(--s-4), 2vw, var(--s-6));
+    overflow: hidden;
+  }
+  .switchboard::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(40% 30% at 50% 45%, rgba(255, 106, 26, 0.06), transparent 70%);
+    animation: switchboard-drift var(--dur-glow) ease-in-out infinite alternate;
+    z-index: 0;
+  }
+  @keyframes switchboard-drift {
+    0%   { transform: translate3d(-2%, -1%, 0); opacity: 0.7; }
+    100% { transform: translate3d(2%, 1%, 0); opacity: 1; }
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* ===== board grid ===== */
+  .switchboard__board {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 160px minmax(0, 1.2fr);
+    gap: clamp(var(--s-3), 2vw, var(--s-5));
+    align-items: center;
+  }
+  .switchboard__col {
+    display: grid;
+    gap: var(--s-3);
+    align-content: center;
+  }
+  .switchboard__colhead {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    color: var(--text-dim);
+    font-size: var(--t-caption);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+    margin-bottom: var(--s-1);
+  }
+  .switchboard__coltag {
+    color: var(--ember-bright);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
+    padding: 1px 6px;
+    border-radius: var(--r-pill);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+  }
+
+  /* ===== cards ===== */
+  .ncard {
+    display: grid;
+    grid-template-columns: 36px 1fr auto;
+    gap: var(--s-3);
+    align-items: center;
+    padding: var(--s-3) var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background: var(--ink-base);
+    position: relative;
+    animation: card-rise 0.6s var(--ease-out) both;
+    animation-delay: calc(var(--idx, 0) * 90ms);
+  }
+  @keyframes card-rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .ncard__logo {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line);
+    object-fit: cover;
+    display: block;
+  }
+  .ncard__body {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .ncard__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--s-3);
+    min-width: 0;
+  }
+  .ncard__row--sub {
+    margin-top: 2px;
+  }
+  .ncard__name {
+    color: var(--text-bright);
+    font-variation-settings: "wght" 540;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ncard__sub {
+    color: var(--text-mute);
+    font-size: 0.78rem;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ncard__lru {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .ncard__arrow {
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+    font-size: 1rem;
+  }
+
+  /* === lane rail (connection line to the hydrant) === */
+  .ncard__rail {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    left: -16px;
+    width: 18px;
+    height: 2px;
+    background: var(--ink-line);
+    border-radius: 2px;
+  }
+  .ncard__pulse {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, currentColor, transparent);
+    opacity: 0;
+  }
+  .ncard--state-active {
+    border-color: color-mix(in oklab, var(--ember-core) 55%, var(--ink-line));
+    background:
+      linear-gradient(180deg, rgba(255, 106, 26, 0.05) 0%, var(--ink-base) 100%);
+    box-shadow: 0 12px 32px -16px rgba(255, 106, 26, 0.45);
+  }
+  .ncard--state-active .ncard__rail {
+    background: var(--ember-core);
+    box-shadow: 0 0 12px var(--ember-glow);
+    color: var(--ember-bright);
+  }
+  .ncard--state-active .ncard__pulse {
+    animation: rail-pulse 2.4s var(--ease-in-out) infinite;
+  }
+  @keyframes rail-pulse {
+    0%, 100% { opacity: 0; transform: translateX(-100%); }
+    40%      { opacity: 1; }
+    60%      { opacity: 1; }
+    100%     { opacity: 0; transform: translateX(100%); }
+  }
+
+  .ncard--state-fallback {
+    border-color: color-mix(in oklab, var(--ember-bright) 30%, var(--ink-line));
+  }
+  .ncard--state-fallback .ncard__rail {
+    background: repeating-linear-gradient(
+      90deg,
+      var(--ember-bright) 0,
+      var(--ember-bright) 4px,
+      transparent 4px,
+      transparent 8px
+    );
+    opacity: 0.7;
+  }
+  .ncard--state-cooling {
+    opacity: 0.78;
+  }
+  .ncard--state-cooling .ncard__rail {
+    background: var(--text-dim);
+    opacity: 0.45;
+  }
+  .ncard--state-exhausted {
+    opacity: 0.55;
+    border-color: color-mix(in oklab, var(--status-burn) 18%, var(--ink-line));
+  }
+  .ncard--state-exhausted .ncard__name {
+    text-decoration: line-through;
+    text-decoration-color: var(--status-burn);
+    text-decoration-thickness: 1.5px;
+  }
+  .ncard--state-exhausted .ncard__rail {
+    background: var(--ink-line);
+  }
+
+  /* === client cards === */
+  .ncard--client {
+    grid-template-columns: 36px 1fr auto;
+  }
+  .ncard--client::after {
+    content: "";
+    position: absolute;
+    right: -16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 2px;
+    background: var(--ember-glow);
+    opacity: 0.55;
+    border-radius: 2px;
+  }
+
+  /* ===== hydrant ===== */
+  .switchboard__hydrantcol {
+    position: relative;
+    justify-content: center;
+    justify-items: center;
+    min-height: 320px;
+  }
+  .hydrant {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    gap: var(--s-3);
+  }
+  .hydrant__halo {
+    position: absolute;
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    background: radial-gradient(60% 60% at 50% 50%, rgba(255, 106, 26, 0.22), transparent 70%);
+    top: 30%;
+    transform: translateY(-30%);
+    z-index: 0;
+    animation: halo-breathe var(--dur-glow) ease-in-out infinite alternate;
+  }
+  @keyframes halo-breathe {
+    0%   { opacity: 0.55; transform: translateY(-30%) scale(0.95); }
+    100% { opacity: 1;    transform: translateY(-30%) scale(1.08); }
+  }
+  .hydrant__glyph {
+    position: relative;
+    z-index: 1;
+    width: 130px;
+    height: auto;
+    filter: drop-shadow(0 14px 18px rgba(0,0,0,0.55));
+  }
+  .hydrant__ring {
+    position: relative;
+    z-index: 1;
+    list-style: none;
+    display: grid;
+    gap: 4px;
+    padding: var(--s-3) var(--s-4);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 30%, var(--ink-line));
+    border-radius: var(--r-3);
+    background: var(--ink-base);
+    color: var(--text-mute);
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .hydrant__ring li:first-child {
+    color: var(--ember-bright);
+  }
+
+  /* outlet pulse */
+  .hydrant__glyph .hydrant__outlet[data-state="active"] circle {
+    animation: outlet-pulse 1.8s var(--ease-in-out) infinite;
+    transform-origin: center;
+  }
+  @keyframes outlet-pulse {
+    0%, 100% { opacity: 0.55; r: 3.6; }
+    50%      { opacity: 1;    r: 4.6; }
+  }
+
+  /* ===== legend ===== */
+  .switchboard__legend {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3) var(--s-5);
+    margin-top: var(--s-5);
+    padding-top: var(--s-4);
+    border-top: 1px dashed var(--ink-line);
+    font-size: 0.72rem;
+    color: var(--text-mute);
+    letter-spacing: 0.04em;
+  }
+  .legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
+  .legend__dot {
+    width: 18px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--ink-line);
+    display: inline-block;
+  }
+  .legend__item--active .legend__dot {
+    background: var(--ember-core);
+    box-shadow: 0 0 10px var(--ember-glow);
+  }
+  .legend__item--fallback .legend__dot {
+    background: repeating-linear-gradient(
+      90deg,
+      var(--ember-bright) 0,
+      var(--ember-bright) 4px,
+      transparent 4px,
+      transparent 8px
+    );
+  }
+  .legend__item--cooling .legend__dot {
+    background: var(--text-dim);
+    opacity: 0.6;
+  }
+  .legend__item--exhausted .legend__dot {
+    background: var(--status-burn);
+    opacity: 0.55;
+  }
+
+  /* ===== responsive ===== */
+  @media (max-width: 880px) {
+    .switchboard__board {
+      grid-template-columns: 1fr;
+      gap: var(--s-4);
+    }
+    .switchboard__hydrantcol {
+      order: -1;
+      min-height: 0;
+      padding-block: var(--s-3);
+    }
+    .ncard--client::after,
+    .ncard__rail {
+      display: none;
+    }
+    .hydrant__glyph {
+      width: 110px;
+    }
+  }
+
+  /* ===== compact (used on /router page) ===== */
+  .switchboard--compact {
+    border-radius: var(--r-4);
+    padding: var(--s-4);
+  }
+  .switchboard--compact::before {
+    display: none;
+  }
+
+  /* ===== respect reduced motion ===== */
+  @media (prefers-reduced-motion: reduce) {
+    .switchboard::before,
+    .hydrant__halo,
+    .hydrant__glyph .hydrant__outlet[data-state="active"] circle,
+    .ncard--state-active .ncard__pulse,
+    .ncard {
+      animation: none !important;
+    }
+  }
+</style>

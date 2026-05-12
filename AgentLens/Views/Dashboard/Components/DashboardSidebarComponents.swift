@@ -34,11 +34,13 @@ struct SidebarItem: View {
                     Text(provider?.displayName ?? "All Providers")
                         .font(DesignSystem.Typography.body)
                         .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
 
                     Text("\(sessionCount) session\(sessionCount == 1 ? "" : "s")")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
+                .layoutPriority(1)
 
                 Spacer()
 
@@ -51,6 +53,9 @@ struct SidebarItem: View {
                         Text(primaryMetric)
                             .font(DesignSystem.Typography.monoSmall)
                             .foregroundStyle(isSelected ? theme.primaryColor : DesignSystem.Colors.textMuted)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .allowsTightening(true)
                     }
 
                     Image(systemName: "chevron.right")
@@ -109,6 +114,7 @@ struct ModelSidebarItem: View {
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
+                .layoutPriority(1)
 
                 Spacer()
 
@@ -116,6 +122,9 @@ struct ModelSidebarItem: View {
                     Text(settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens))
                         .font(DesignSystem.Typography.monoSmall)
                         .foregroundStyle(isSelected ? theme.primaryColor : DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .allowsTightening(true)
 
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
@@ -146,6 +155,7 @@ struct DashboardWorkspaceNavButton: View {
     let accent: Color
     let isSelected: Bool
     var trailingBadge: String? = nil
+    var isCompact: Bool = false
     let action: () -> Void
 
     var body: some View {
@@ -177,19 +187,29 @@ struct DashboardWorkspaceNavButton: View {
                                 .padding(.vertical, 2)
                                 .background(DesignSystem.Colors.amber.opacity(0.15))
                                 .clipShape(Capsule())
-                        }
+                            }
                     }
 
-                    Text(subtitle)
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(2)
-                        .frame(minWidth: 132, maxWidth: 200, alignment: .leading)
+                    if !isCompact {
+                        Text(subtitle)
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                            .allowsTightening(true)
+                    }
                 }
+                .layoutPriority(1)
             }
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.sm)
+            .frame(
+                minWidth: isCompact ? 106 : 150,
+                idealWidth: isCompact ? 116 : 176,
+                maxWidth: isCompact ? 132 : 220,
+                alignment: .leading
+            )
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                     .fill(isSelected ? accent.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(0.35))
@@ -200,7 +220,6 @@ struct DashboardWorkspaceNavButton: View {
             )
         }
         .buttonStyle(.plain)
-        .fixedSize(horizontal: true, vertical: false)
     }
 }
 

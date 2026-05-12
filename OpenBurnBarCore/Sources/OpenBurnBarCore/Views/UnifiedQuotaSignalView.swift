@@ -94,6 +94,16 @@ public struct UnifiedQuotaSignalView: View {
                                 Capsule().stroke(theme.primaryColor.opacity(0.18), lineWidth: 0.5)
                             )
                     }
+                    if compact, let pair = bucket.resetsAtDisplay {
+                        // Glance-level reset hint sits next to the window
+                        // pill so the compact card still answers "when does
+                        // this refill" without growing a new row.
+                        Text(pair.relative)
+                            .font(UnifiedDesignSystem.Typography.monoTiny)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted.opacity(0.85))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
                     Spacer(minLength: 0)
                     if compact {
                         Text(remainingPercentText)
@@ -161,6 +171,32 @@ public struct UnifiedQuotaSignalView: View {
                             .font(UnifiedDesignSystem.Typography.monoTiny)
                             .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                     }
+                }
+
+                // Reset row: lifts `bucket.resetsAt` into a dedicated line in
+                // the details sheet so 5h and weekly windows tell the user
+                // when they refill, not just how full they are. Compact mode
+                // squeezes only the relative half into the identity row's
+                // window pill area (see above).
+                if !compact, let pair = bucket.resetsAtDisplay {
+                    HStack(spacing: 4) {
+                        Text("Resets")
+                            .font(UnifiedDesignSystem.Typography.monoTiny)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                        Text(pair.relative)
+                            .font(UnifiedDesignSystem.Typography.monoTiny)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary.opacity(0.86))
+                        Text("·")
+                            .font(UnifiedDesignSystem.Typography.monoTiny)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                        Text(pair.absolute)
+                            .font(UnifiedDesignSystem.Typography.monoTiny)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                        Spacer(minLength: 0)
+                    }
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                 }
             }
             .padding(compact ? 10 : 12)

@@ -19,9 +19,18 @@ export interface AccountDeletionSummary {
   deletedDocuments: number;
 }
 
+export interface AccountDeletionResult extends AccountDeletionSummary {
+  deletedAuthUser: boolean;
+  authUserAlreadyMissing: boolean;
+}
+
 export interface AccountDeletionOptions {
   destroyCredential: (secretVersionName: string) => Promise<void>;
   logger?: Pick<typeof console, "warn">;
+}
+
+export interface DeleteUserAccountOptions extends AccountDeletionOptions {
+  deleteAuthUser: (uid: string) => Promise<void>;
 }
 
 const BATCH_LIMIT = 400;
@@ -32,6 +41,39 @@ export function userWorkspaceID(uid: string): string {
 
 export function providerSecretRefDocumentID(uid: string, accountID: string): string {
   return `${uid}_${accountID}`;
+}
+
+export async function eraseUserAccount(
+  db: Firestore,
+  uid: string,
+  options: DeleteUserAccountOptions
+): Promise<AccountDeletionResult> {
+  const summary = await eraseUserCloudData(db, uid, options);
+  if (summary.failedSecretDestroys > 0) {
+    return {
+      ...summary,
+      deletedAuthUser: false,
+      authUserAlreadyMissing: false,
+    };
+  }
+
+  try {
+    await options.deleteAuthUser(uid);
+    return {
+      ...summary,
+      deletedAuthUser: true,
+      authUserAlreadyMissing: false,
+    };
+  } catch (error) {
+    if (isFirebaseAuthUserNotFound(error)) {
+      return {
+        ...summary,
+        deletedAuthUser: false,
+        authUserAlreadyMissing: true,
+      };
+    }
+    throw error;
+  }
 }
 
 export async function eraseUserCloudData(
@@ -76,6 +118,12 @@ export async function eraseUserCloudData(
   await batcher.flush();
 
   return summary;
+}
+
+export function isFirebaseAuthUserNotFound(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybe = error as { code?: unknown; errorInfo?: { code?: unknown } };
+  return maybe.code === "auth/user-not-found" || maybe.errorInfo?.code === "auth/user-not-found";
 }
 
 async function deleteDocumentTree(

@@ -13,6 +13,8 @@ struct SettingsHubView: View {
     @Environment(\.cloudSubscriptionStore) private var sharedSubscriptionStore
     @State private var localSubscriptionStore = HostedQuotaSubscriptionStore()
     @State private var didLoadLocalSubscription = false
+    @State private var showDeleteAccountConfirmation = false
+    @State private var accountDeletionError: String?
 
     @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
     @AppStorage("usageDisplayMode") private var usageDisplayMode: String = "currency"
@@ -117,6 +119,35 @@ struct SettingsHubView: View {
                 } header: { groupHeader("Cloud") }
 
                 Section {
+                    if let identity = authStore.currentIdentity {
+                        LabeledContent("Signed in", value: identity.email ?? identity.displayName ?? "OpenBurnBar account")
+                    }
+                    Button(role: .destructive) {
+                        showDeleteAccountConfirmation = true
+                    } label: {
+                        HStack(spacing: 10) {
+                            if authStore.isDeletingAccount {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "person.crop.circle.badge.xmark")
+                                    .foregroundStyle(MobileTheme.Colors.error)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(authStore.isDeletingAccount ? "Deleting account..." : "Delete account")
+                                    .font(MobileTheme.Typography.body)
+                                Text("Permanently removes your OpenBurnBar cloud data and sign-in.")
+                                    .font(MobileTheme.Typography.tiny)
+                                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                            }
+                        }
+                    }
+                    .disabled(!authStore.state.isSignedIn || authStore.isDeletingAccount)
+                    .accessibilityIdentifier("settings.deleteAccount")
+                    .accessibilityHint("Permanently deletes your OpenBurnBar account and cloud data.")
+                } header: { groupHeader("Account") }
+
+                Section {
                     NavigationLink {
                         ProviderConnectionsView(showsDoneButton: false)
                     } label: {
@@ -152,10 +183,10 @@ struct SettingsHubView: View {
                 Section {
                     LabeledContent("Version", value: marketingVersion)
                     LabeledContent("Build", value: buildVersion)
-                    Link(destination: URL(string: "https://openburnbar.com/privacy")!) {
+                    Link(destination: URL(string: "https://openburnbar.com/legal/privacy-policy")!) {
                         SettingsLabel(icon: "hand.raised.fill", color: MobileTheme.whimsy, title: "Privacy policy")
                     }
-                    Link(destination: URL(string: "https://openburnbar.com/terms")!) {
+                    Link(destination: URL(string: "https://openburnbar.com/legal/terms")!) {
                         SettingsLabel(icon: "doc.text.fill", color: MobileTheme.amber, title: "Terms of service")
                     }
                 } header: { groupHeader("About") }
@@ -163,6 +194,25 @@ struct SettingsHubView: View {
             .scrollContentBackground(.hidden)
         }
         .navigationTitle("Settings")
+        .confirmationDialog(
+            "Delete OpenBurnBar account?",
+            isPresented: $showDeleteAccountConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete account", role: .destructive) {
+                Task { await deleteAccount() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your OpenBurnBar cloud data, provider account records, devices, usage history, and sign-in. This cannot be undone.")
+        }
+        .alert("Account deletion failed", isPresented: deletionErrorBinding) {
+            Button("OK", role: .cancel) {
+                accountDeletionError = nil
+            }
+        } message: {
+            Text(accountDeletionError ?? "Try signing in again, then delete the account from Settings.")
+        }
         .task {
             // Load only when no shared store is available (e.g. preview, deep
             // link to settings before root injection).
@@ -170,6 +220,20 @@ struct SettingsHubView: View {
                 didLoadLocalSubscription = true
                 await localSubscriptionStore.load()
             }
+        }
+    }
+
+    private var deletionErrorBinding: Binding<Bool> {
+        Binding(
+            get: { accountDeletionError != nil },
+            set: { if !$0 { accountDeletionError = nil } }
+        )
+    }
+
+    private func deleteAccount() async {
+        await authStore.deleteAccount()
+        if let error = authStore.lastError {
+            accountDeletionError = error.label
         }
     }
 

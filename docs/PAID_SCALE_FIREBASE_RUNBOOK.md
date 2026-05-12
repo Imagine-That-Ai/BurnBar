@@ -68,12 +68,15 @@ The checked-in policies watch, in priority order:
 ## Realtime Redis
 
 Production relay Redis lives in the `burnbar` project as
-`us-central1/hermes-realtime-relay-redis-prod`. The launch gate requires:
+`us-central1/hermes-realtime-relay-redis-prod-secure`. The launch gate requires:
 
 - Memorystore state `READY`
 - tier `STANDARD_HA`
 - at least 1 GiB provisioned memory
-- Cloud Run `hermes-realtime-relay` `REDIS_URL` host matching the Memorystore host
+- Redis AUTH enabled
+- Redis in-transit encryption mode `SERVER_AUTHENTICATION`
+- Cloud Run `hermes-realtime-relay` `REDIS_URL` injected from Secret Manager, using `rediss://`, with a host matching the Memorystore host
+- Cloud Run Redis CA material injected from Secret Manager for TLS server verification
 - maintenance window set to Sunday 09:00 UTC
 
 Do not create one Redis instance per runtime. Hermes and Pi share this one

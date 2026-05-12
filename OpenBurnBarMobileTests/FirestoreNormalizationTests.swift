@@ -419,6 +419,83 @@ final class FirestoreNormalizationTests: XCTestCase {
         XCTAssertEqual(snap?.buckets.first?.meta?["isEstimated"], "false")
         XCTAssertEqual(snap?.buckets.first?.meta?["priority"], "1")
         XCTAssertEqual(snap?.buckets.first?.meta?["resetsAt"], "2026-05-04T06:04:57.701Z")
+        // Resolved Date must round-trip through the bucket-level field on
+        // the shared model — that's the contract the iOS / Android details
+        // views rely on to render the reset row.
+        XCTAssertNotNil(snap?.buckets.first?.resetsAt,
+                        "legacy meta-only docs must still surface resetsAt on the bucket")
+    }
+
+    /// Bug B regression. Firestore-native docs carry `resetsAt` as a
+    /// top-level Timestamp on the bucket; `sanitizeForJSON` flattens that
+    /// to a `timeIntervalSinceReferenceDate` Double. The normalizer used
+    /// to throw the field away — every iOS reset rendered nil — so this
+    /// pins that the top-level path is carried through to the decoded
+    /// model.
+    func testTopLevelResetsAtTimestampSurvivesNormalizer() throws {
+        let resetDate = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let doc: [String: Any] = [
+            "provider": "claude-code",
+            "providerID": "claude-code",
+            "sourceKind": "officialAPI",
+            "sourceId": "default",
+            "fetchedAt": "2026-05-12T12:00:00Z",
+            "source": "officialAPI",
+            "confidence": "high",
+            "buckets": [
+                [
+                    "name": "5-hour window",
+                    "used": 50.0,
+                    "limit": 100.0,
+                    "remaining": 50.0,
+                    "window": "rollingHours",
+                    "resetsAt": resetDate.timeIntervalSinceReferenceDate
+                ]
+            ],
+            "schemaVersion": 1,
+            "updatedAt": "2026-05-12T12:00:00Z"
+        ]
+
+        let snap = repo.decodeQuotaSnapshot(from: doc, docID: "claude-code_default")
+
+        XCTAssertNotNil(snap)
+        XCTAssertEqual(snap?.buckets.first?.name, "5-hour window")
+        XCTAssertEqual(
+            snap?.buckets.first?.resetsAt?.timeIntervalSinceReferenceDate ?? 0,
+            resetDate.timeIntervalSinceReferenceDate,
+            accuracy: 1.0
+        )
+    }
+
+    /// Bug A regression. The Mac writer emits ISO 8601 with no fractional
+    /// seconds; the first decoder version only accepted the fractional
+    /// form. Verifies that meta-string fallback parses both shapes.
+    func testLegacyMetaResetsAtWithoutFractionalSecondsParses() throws {
+        let doc: [String: Any] = [
+            "provider": "claude-code",
+            "sourceKind": "officialAPI",
+            "sourceId": "default",
+            "fetchedAt": "2026-05-12T12:00:00Z",
+            "source": "officialAPI",
+            "confidence": "high",
+            "buckets": [
+                [
+                    "name": "Weekly",
+                    "used": 12.0, "limit": 50.0, "remaining": 38.0,
+                    "window": "weekly",
+                    "meta": [
+                        "label": "Weekly", "unit": "requests",
+                        "resetsAt": "2026-05-15T09:00:00Z"
+                    ]
+                ]
+            ],
+            "schemaVersion": 1,
+            "updatedAt": "2026-05-12T12:00:00Z"
+        ]
+
+        let snap = repo.decodeQuotaSnapshot(from: doc, docID: "claude-code_legacy")
+        XCTAssertNotNil(snap?.buckets.first?.resetsAt,
+                        "non-fractional ISO 8601 in meta must still parse")
     }
 
     func testDesktopStyleQuotaBucketsNormalizeForMobileDisplay() throws {

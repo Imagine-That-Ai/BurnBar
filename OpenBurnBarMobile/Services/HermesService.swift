@@ -455,6 +455,7 @@ final class HermesService {
     private let secretStore: HermesConnectionSecretStoring
     private let relayTransport: HermesRelayTransporting
     private let defaults: UserDefaults
+    private let history: MobileChatHistoryStore
     private var runtimeGeneration = 0
     private var runtimeRefreshTask: Task<Void, Never>?
     private let selectedConnectionDefaultsKey = "hermes.selectedConnectionID"
@@ -489,7 +490,8 @@ final class HermesService {
         connectionRepository: HermesConnectionListing = FirestoreHermesConnectionRepository.shared,
         secretStore: HermesConnectionSecretStoring = HermesConnectionSecretStore.shared,
         relayTransport: HermesRelayTransporting = HermesCompositeRelayTransport.shared,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        history: MobileChatHistoryStore = .shared
     ) {
         self.baseURL = baseURL
         self.urlSession = urlSession
@@ -498,8 +500,10 @@ final class HermesService {
         self.secretStore = secretStore
         self.relayTransport = relayTransport
         self.defaults = defaults
+        self.history = history
         self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
         self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
+        history.loadFromDiskIfNeeded()
     }
 
     func loadHistory() {
@@ -754,6 +758,182 @@ final class HermesService {
         currentConversationTokenBurn = 0
     }
 
+    // MARK: - Mobile chat history bridge
+
+    /// Restores a chat thread previously saved by the mobile history store.
+    /// Used when the user taps an on-device row in the conversation list.
+    func loadMobileThread(id: String) {
+        guard let thread = history.thread(id: id),
+              thread.runtime == AssistantRuntimeID.hermes.rawValue else { return }
+        currentTask?.cancel()
+        currentTask = nil
+        isStreaming = false
+        lastError = nil
+        selectedSessionID = thread.id
+        messages = thread.messages.map { Self.convertFromStore($0) }
+    }
+
+    /// Deletes a thread from the mobile history store. Clears the active chat
+    /// when the deleted thread was the one currently open.
+    func deleteMobileThread(id: String) {
+        history.delete(threadID: id)
+        if selectedSessionID == id {
+            startNewSession()
+        }
+    }
+
+    private func persistCurrentThread() {
+        guard let id = selectedSessionID, !messages.isEmpty else { return }
+        let now = Date()
+        let createdAt = history.thread(id: id)?.createdAt ?? messages.first?.timestamp ?? now
+        let title = Self.derivedTitle(from: messages)
+        let preview = Self.derivedPreview(from: messages)
+        let storedMessages = messages.compactMap(Self.convertToStore)
+        guard !storedMessages.isEmpty else { return }
+        let thread = MobileChatThread(
+            id: id,
+            runtime: AssistantRuntimeID.hermes.rawValue,
+            title: title,
+            preview: preview,
+            modelName: activeModelName ?? selectedModelID,
+            createdAt: createdAt,
+            updatedAt: now,
+            messages: storedMessages
+        )
+        history.upsert(thread)
+    }
+
+    private static func convertToStore(_ message: HermesChatMessage) -> MobileChatMessage? {
+        // Skip streaming-only placeholders that have no content yet AND no
+        // attachments — attachment-only sends are intentional and must persist.
+        let trimmed = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty || !message.toolCalls.isEmpty || !message.attachments.isEmpty else { return nil }
+        let role: String
+        switch message.role {
+        case .user: role = "user"
+        case .assistant: role = "assistant"
+        case .system: role = "system"
+        }
+        let storedAttachments = message.attachments.map { attachment in
+            MobileChatAttachment(
+                id: attachment.id,
+                kind: attachment.kind.rawValue,
+                displayName: attachment.displayName,
+                mimeType: attachment.mimeType,
+                byteSize: attachment.byteSize,
+                workspaceRelativePath: attachment.workspaceRelativePath,
+                thumbnailPNG: attachment.thumbnailPNG,
+                extractedTextPreview: attachment.extractedTextPreview
+            )
+        }
+        let storedToolCalls = message.toolCalls.map {
+            MobileChatToolCall(id: $0.id, name: $0.name, status: $0.status)
+        }
+        let usage: MobileChatTokenUsage? = {
+            let hasUsageSignal = message.outputTokenCount != nil
+                || message.totalTokenCount != nil
+                || message.providerGenerationDurationSeconds != nil
+                || message.providerTotalDurationSeconds != nil
+                || message.responseStartedAt != nil
+                || message.firstResponseChunkAt != nil
+                || message.responseCompletedAt != nil
+            guard hasUsageSignal else { return nil }
+            return MobileChatTokenUsage(
+                outputTokens: message.outputTokenCount,
+                totalTokens: message.totalTokenCount,
+                source: message.tokenCountSource?.rawValue,
+                providerGenerationDurationSeconds: message.providerGenerationDurationSeconds,
+                providerTotalDurationSeconds: message.providerTotalDurationSeconds,
+                responseStartedAt: message.responseStartedAt,
+                firstResponseChunkAt: message.firstResponseChunkAt,
+                responseCompletedAt: message.responseCompletedAt
+            )
+        }()
+        let hasHermesMetadata = message.requestedModelID != nil
+            || message.responseModelID != nil
+            || !storedToolCalls.isEmpty
+            || usage != nil
+        let metadata = hasHermesMetadata ? MobileChatHermesMetadata(
+            requestedModelID: message.requestedModelID,
+            responseModelID: message.responseModelID,
+            toolCalls: storedToolCalls,
+            usage: usage
+        ) : nil
+        return MobileChatMessage(
+            id: message.id,
+            role: role,
+            text: message.text,
+            timestamp: message.timestamp,
+            modelName: message.modelName,
+            isError: message.isError,
+            attachments: storedAttachments,
+            hermes: metadata
+        )
+    }
+
+    private static func convertFromStore(_ message: MobileChatMessage) -> HermesChatMessage {
+        let role: HermesChatRole
+        switch message.role {
+        case "user": role = .user
+        case "system": role = .system
+        default: role = .assistant
+        }
+        let restoredAttachments: [HermesAttachment] = message.attachments.compactMap { stored in
+            guard let kind = HermesAttachmentKind(rawValue: stored.kind) else { return nil }
+            return HermesAttachment(
+                id: stored.id,
+                kind: kind,
+                displayName: stored.displayName,
+                mimeType: stored.mimeType,
+                byteSize: stored.byteSize,
+                workspaceRelativePath: stored.workspaceRelativePath,
+                thumbnailPNG: stored.thumbnailPNG,
+                extractedTextPreview: stored.extractedTextPreview
+            )
+        }
+        let restoredToolCalls = (message.hermes?.toolCalls ?? []).map {
+            HermesToolCall(id: $0.id, name: $0.name, status: $0.status)
+        }
+        let usage = message.hermes?.usage
+        return HermesChatMessage(
+            id: message.id,
+            role: role,
+            text: message.text,
+            toolCalls: restoredToolCalls,
+            attachments: restoredAttachments,
+            requestedModelID: message.hermes?.requestedModelID,
+            responseModelID: message.hermes?.responseModelID,
+            modelName: message.modelName,
+            timestamp: message.timestamp,
+            isStreaming: false,
+            isError: message.isError,
+            responseStartedAt: usage?.responseStartedAt,
+            firstResponseChunkAt: usage?.firstResponseChunkAt,
+            responseCompletedAt: usage?.responseCompletedAt,
+            outputTokenCount: usage?.outputTokens,
+            totalTokenCount: usage?.totalTokens,
+            tokenCountSource: usage?.source.flatMap { HermesTokenCountSource(rawValue: $0) },
+            providerGenerationDurationSeconds: usage?.providerGenerationDurationSeconds,
+            providerTotalDurationSeconds: usage?.providerTotalDurationSeconds
+        )
+    }
+
+    private static func derivedTitle(from messages: [HermesChatMessage]) -> String {
+        if let firstUser = messages.first(where: { $0.role == .user })?.text.trimmingCharacters(in: .whitespacesAndNewlines),
+           !firstUser.isEmpty {
+            return String(firstUser.prefix(64))
+        }
+        return "Hermes conversation"
+    }
+
+    private static func derivedPreview(from messages: [HermesChatMessage]) -> String {
+        if let last = messages.last(where: { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
+            .text.trimmingCharacters(in: .whitespacesAndNewlines), !last.isEmpty {
+            return String(last.prefix(140))
+        }
+        return ""
+    }
+
     func selectModel(_ option: HermesRuntimeModelOption) {
         selectedModelID = option.modelID
         defaults.set(option.modelID, forKey: selectedModelDefaultsKey)
@@ -787,6 +967,12 @@ final class HermesService {
 
         preferSuggestedRelayWhenLocalHostIsOffline()
 
+        // Mint a local session id for brand-new chats so we can mirror the
+        // transcript even when the host or relay never assigns one.
+        if selectedSessionID == nil {
+            selectedSessionID = UUID().uuidString
+        }
+
         let userMessage = HermesChatMessage(
             role: .user,
             text: trimmed,
@@ -795,6 +981,7 @@ final class HermesService {
         messages.append(userMessage)
         isStreaming = true
         lastError = nil
+        persistCurrentThread()
 
         currentTask?.cancel()
         currentTask = Task { @MainActor in
@@ -807,6 +994,7 @@ final class HermesService {
                     isStreaming = false
                 }
             }
+            persistCurrentThread()
         }
     }
 

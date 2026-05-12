@@ -466,7 +466,7 @@ final class SmartHubBridgeServer {
     private static func providerJSON(_ p: SmartHubBridgeSnapshot.Provider) -> String {
         let bucketsJSON = p.buckets.map { b in
             """
-            {"name":"\(escape(b.name))","percent":\(b.percent),"headlineValue":"\(escape(b.headlineValue))","subLabel":"\(escape(b.subLabel))","tone":"\(b.tone.rawValue)"}
+            {"name":"\(escape(b.name))","percent":\(b.percent),"headlineValue":"\(escape(b.headlineValue))","subLabel":"\(escape(b.subLabel))","resetsLabel":"\(escape(b.resetsLabel))","tone":"\(b.tone.rawValue)"}
             """
         }.joined(separator: ",")
 
@@ -652,7 +652,12 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
             var name: String      // "5-hour window", "Weekly limit", "API usage"
             var percent: Int      // 0–100
             var headlineValue: String // "33%", "$400.00", "350.8M"
-            var subLabel: String  // "67% left", "$0.00 left", "resets May 8, 3:35 AM"
+            var subLabel: String  // "67% left", "$0.00 left"
+            // Combined relative+absolute reset string, e.g. "in 2h 14m · May 8,
+            // 3:35 AM". Empty when the underlying bucket has no `resetsAt`.
+            // Rendered as its own row under the bar so it reads at TV
+            // distance — was previously folded into `subLabel`.
+            var resetsLabel: String
             var tone: Tone
         }
 

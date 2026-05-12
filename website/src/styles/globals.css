@@ -328,6 +328,11 @@ section {
   color: var(--text-mute);
 }
 
+.tag--burn {
+  color: var(--status-burn);
+  border-color: color-mix(in oklab, var(--status-burn) 35%, var(--ink-line));
+}
+
 .tag::before {
   content: "";
   width: 6px;

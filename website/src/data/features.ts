@@ -83,6 +83,15 @@ export const FEATURES: Feature[] = [
     category: "control"
   },
   {
+    id: "router",
+    title: "Fire Hydrant — multi-provider router with automatic failover",
+    blurb:
+      "Cursor, Factory and OpenCode point at one local gateway. When a Z.ai or MiniMax account hits its quota — or a token expires — the router shifts traffic to the next healthy account, ranking by health then least-recently-used. No manual swaps. No failed calls landing in your IDE.",
+    evidence:
+      "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderAccountTypes.swift:403-599; docs/ROUTED_CLIENT_GATEWAY.md",
+    category: "control"
+  },
+  {
     id: "cli",
     title: "openburnbar — a real CLI",
     blurb:

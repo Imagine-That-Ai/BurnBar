@@ -498,6 +498,14 @@ export interface QuotaBucket {
   /** Window descriptor (e.g. "daily", "monthly", "lifetime"). */
   window?: string;
 
+  /**
+   * When this bucket refills. Mac writes a Firestore `Timestamp`; legacy
+   * docs may still carry an ISO 8601 string at `meta.resetsAt` (handled by
+   * each client's compat path). Server-side adapters that don't compute a
+   * reset moment leave this undefined.
+   */
+  resetsAt?: import("firebase-admin/firestore").Timestamp | string;
+
   /** Bucket-specific metadata from the provider. */
   meta?: Record<string, unknown>;
 }

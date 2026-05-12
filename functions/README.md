@@ -25,7 +25,7 @@ Mac → Firestore (usage, quota snapshots)
    cat > .env.PROJECT_ID <<'EOF'
    KMS_KEY_NAME=projects/PROJECT/locations/LOCATION/keyRings/RING/cryptoKeys/KEY
    HOSTED_QUOTA_RUNNER_URL=https://openburnbar-quota-runner-PROJECT.REGION.run.app
-   HOSTED_QUOTA_PRODUCT_ID=com.openburnbar.hostedQuotaSync.monthly
+   HOSTED_QUOTA_PRODUCT_ID=com.openburnbar.hostedQuotaSync.cloud.monthly
    EOF
    ```
 

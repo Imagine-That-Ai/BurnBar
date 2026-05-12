@@ -171,7 +171,7 @@ test("AppleJWSVerifier accepts Production when appAppleId is set", () => {
 // ---------------------------------------------------------------------------
 
 test("pickWinning ignores transactions with the wrong productId", () => {
-  const productID = "com.openburnbar.hostedQuotaSync.monthly";
+  const productID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
   const candidates = [
     fakeTx({ productId: "different", signedDate: 100 }),
     fakeTx({ productId: productID, signedDate: 50 }),
@@ -182,7 +182,7 @@ test("pickWinning ignores transactions with the wrong productId", () => {
 });
 
 test("pickWinning selects the most recent signedDate", () => {
-  const productID = "com.openburnbar.hostedQuotaSync.monthly";
+  const productID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
   const candidates = [
     fakeTx({ productId: productID, signedDate: 100, transactionId: "old" }),
     fakeTx({ productId: productID, signedDate: 200, transactionId: "new" }),
@@ -205,7 +205,7 @@ test("pickWinning returns undefined when no candidate matches productId", () => 
 // ---------------------------------------------------------------------------
 
 test("buildEntitlementDoc surfaces all v2 invariants", () => {
-  const productID = "com.openburnbar.hostedQuotaSync.monthly";
+  const productID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
   const expires = Date.now() + 30 * 24 * 60 * 60 * 1000;
   const candidate = fakeTx({
     productId: productID,
