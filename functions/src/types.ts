@@ -1735,6 +1735,7 @@ export interface InsightAnalysisContextDoc {
   evidenceIndex: InsightEvidenceDoc[];
   budgetReport: InsightContextBudgetReportDoc;
   priorRunSummaries: string[];
+  evidencePacks: InsightEvidencePackDoc[];
 }
 
 export interface InsightEvidenceDoc {
@@ -1744,6 +1745,46 @@ export interface InsightEvidenceDoc {
   summary: string;
   numericValue?: number;
 }
+
+export interface InsightEvidencePackDoc {
+  id: string;
+  sourcePlatform: InsightAnalysisPlatformDoc;
+  generatedAt: string;
+  timeWindow: InsightTimeWindowDoc;
+  includedDataSources: string[];
+  budgetReport: InsightContextBudgetReportDoc;
+  evidence: InsightEvidenceDoc[];
+  summary: string;
+  contentHash: string;
+  deepTranscriptIncluded: boolean;
+}
+
+export interface InsightPlatformCapabilityReportDoc {
+  platform: InsightAnalysisPlatformDoc;
+  providerFamilies: InsightProviderFamilyDoc[];
+  includedDataSources: string[];
+  supportsDeepLocalLogs: boolean;
+  supportsSyncedEvidencePacks: boolean;
+  supportsModelSelection: boolean;
+  supportsConversation: boolean;
+  supportsGeneratedWidgetPinning: boolean;
+  supportsAuditAndCache: boolean;
+  gaps: string[];
+}
+
+export type InsightProviderFamilyDoc =
+  | "codex"
+  | "claude"
+  | "minimax"
+  | "zai"
+  | "kimi"
+  | "ollama"
+  | "hermes"
+  | "openai"
+  | "pi"
+  | "openrouter"
+  | "local-rules"
+  | "other";
 
 export interface InsightContextBudgetReportDoc {
   maxEncodedBytes: number;

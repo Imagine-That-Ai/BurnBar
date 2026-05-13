@@ -87,12 +87,39 @@ export interface InsightEvidence {
   numericValue?: number;
 }
 
+export interface InsightEvidencePack {
+  id: string;
+  sourcePlatform: InsightAnalysisPlatform;
+  generatedAt: string;
+  timeWindow: InsightTimeWindowDoc;
+  includedDataSources: string[];
+  budgetReport: InsightContextBudgetReport;
+  evidence: InsightEvidence[];
+  summary: string;
+  contentHash: string;
+  deepTranscriptIncluded: boolean;
+}
+
+export interface InsightPlatformCapabilityReport {
+  platform: InsightAnalysisPlatform;
+  providerFamilies: InsightProviderFamily[];
+  includedDataSources: string[];
+  supportsDeepLocalLogs: boolean;
+  supportsSyncedEvidencePacks: boolean;
+  supportsModelSelection: boolean;
+  supportsConversation: boolean;
+  supportsGeneratedWidgetPinning: boolean;
+  supportsAuditAndCache: boolean;
+  gaps: string[];
+}
+
 export interface InsightAnalysisContext {
   digest: InsightDigestDoc;
   evidenceIndex: InsightEvidence[];
   budgetReport: InsightContextBudgetReport;
   /** Compact summaries of prior runs the engine should not duplicate. */
   priorRunSummaries: string[];
+  evidencePacks: InsightEvidencePack[];
 }
 
 // ---------------------------------------------------------------------------
@@ -269,6 +296,7 @@ export type InsightProviderFamily =
   | "openai"
   | "pi"
   | "openrouter"
+  | "local-rules"
   | "other";
 
 export interface InsightProviderFamilyEntry {
