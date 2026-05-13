@@ -14,9 +14,21 @@ jobs:
         run: curl -fsSL https://app.factory.ai/cli | sh
 
       - name: Generate wiki
+        id: generate-wiki
+        continue-on-error: true
+        timeout-minutes: 10
         # CI is non-interactive, so Droid cannot ask for tool permission
         # confirmation. The workflow has no write token, so this only permits
         # the checked-out read-only wiki generation run to proceed unattended.
         run: droid exec --skip-permissions-unsafe "/wiki"
         env:
           FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+
+      - name: Summarize wiki refresh outage
+        if: steps.generate-wiki.outcome == 'failure'
+        run: |
+          {
+            echo "## Droid wiki refresh skipped"
+            echo ""
+            echo "The optional Droid wiki refresh did not complete. This usually means Factory/Droid quota or service availability blocked the read-only /wiki run."
+          } >> "$GITHUB_STEP_SUMMARY"
