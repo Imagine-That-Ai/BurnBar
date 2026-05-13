@@ -8,7 +8,6 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -57,14 +56,13 @@ fun BurnView(
     val accounts by quotaStore.accounts.collectAsState()
     val isLoading by quotaStore.isLoading.collectAsState()
     val error by quotaStore.error.collectAsState()
-    val isDark = isSystemInDarkTheme()
+    val userStore: UserStore = viewModel()
+    val currentUser by userStore.user.collectAsState()
+
     var detailSnapshot by remember { mutableStateOf<ProviderQuotaSnapshot?>(null) }
     var displayMode by remember { mutableStateOf(UsageDisplayMode.CURRENCY) }
     var selectedPeriod by remember { mutableIntStateOf(0) }
     val periods = listOf("Today", "Week", "Month")
-
-    val userStore: UserStore = viewModel()
-    val currentUser by userStore.user.collectAsState()
 
     LaunchedEffect(currentUser.isSignedIn) {
         if (currentUser.isSignedIn) {
@@ -82,8 +80,6 @@ fun BurnView(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        AuroraBackdrop(isDark = isDark)
-
         when {
             isLoading && snapshots.isEmpty() -> {
                 Column(

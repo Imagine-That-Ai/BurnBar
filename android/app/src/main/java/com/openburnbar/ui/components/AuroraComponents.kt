@@ -1,6 +1,7 @@
 package com.openburnbar.ui.components
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -77,29 +78,284 @@ fun AuroraGlassCard(
 }
 
 // ── Aurora Backdrop ──
+// Cinematic, parallax-driven backdrop that replaces the simple gradient sweep
+// for every primary surface in the Android app.
+//
+// Layers (bottom to top):
+//   1. Base gradient (mode-aware)
+//   2. Drifting radial orbs (ember / amber / blaze / whimsy)
+//   3. Slow-drifting "aurora ribbon" along the top edge
+//   4. Subtle ember particles (drift only when motion allowed)
+//   5. Optional vignette
+//
+// Honors Reduce Motion (no infinite anims) and Reduce Transparency (drops blur).
+enum class AuroraDensity { FULL, SUBTLE, MINIMAL }
+
 @Composable
 fun AuroraBackdrop(
     isDark: Boolean = isSystemInDarkTheme(),
+    density: AuroraDensity = AuroraDensity.FULL,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition()
-    val sweepOffset by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
+    val reduceMotion = LocalAuroraReduceMotion.current
+
+    val infiniteTransition = rememberInfiniteTransition(label = "aurora")
+    val phase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(18000, easing = LinearEasing),
+            animation = tween(if (reduceMotion) 1 else 18000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
-        )
+        ),
+        label = "aurora-phase"
+    )
+    val ribbonPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * Math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (reduceMotion) 1 else 12000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ribbon-phase"
     )
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(
-                Brush.linearGradient(
-                    colors = AuroraGradients.auroraRibbon(isDark),
-                    start = Offset(sweepOffset * 2000f, 0f),
-                    end = Offset(sweepOffset * 2000f + 1000f, 1000f)
+    Box(modifier = modifier.fillMaxSize()) {
+        // 1. Base gradient
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = if (isDark) {
+                            listOf(
+                                AuroraColors.darkBackground,
+                                AuroraColors.darkBackground,
+                                AuroraColors.darkSurface
+                            )
+                        } else {
+                            listOf(
+                                Color(0xFFF4EFE7),
+                                Color(0xFFEFE7DC),
+                                Color(0xFFECE3D6)
+                            )
+                        }
+                    )
                 )
+        )
+
+        if (density != AuroraDensity.MINIMAL) {
+            // 2. Orb layer
+            OrbLayer(
+                isDark = isDark,
+                phase = if (reduceMotion) 0f else phase,
+                opacity = if (density == AuroraDensity.SUBTLE) 0.55f else 1f,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // 3. Aurora ribbon
+            RibbonLayer(
+                isDark = isDark,
+                ribbonPhase = if (reduceMotion) 0f else ribbonPhase,
+                opacity = if (density == AuroraDensity.SUBTLE) 0.35f else 0.55f,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp)
+                    .align(Alignment.TopCenter)
+            )
+
+            // 4. Ember particles (full only)
+            if (density == AuroraDensity.FULL && !reduceMotion) {
+                ParticleLayer(modifier = Modifier.fillMaxSize())
+            }
+        }
+
+        // 5. Vignette
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            if (isDark) Color.Black.copy(alpha = 0.32f)
+                            else Color(0xFF1C2014).copy(alpha = 0.10f)
+                        ),
+                        center = Offset(0.5f, 0.5f),
+                        radius = 0.8f
+                    )
+                )
+        )
+    }
+}
+
+@Composable
+private fun OrbLayer(
+    isDark: Boolean,
+    phase: Float,
+    opacity: Float,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier = modifier) {
+        // Ember orb
+        Orb(
+            color = if (isDark) AuroraColors.emberDark else AuroraColors.ember,
+            baseAlpha = if (isDark) 0.55f else 0.20f,
+            size = 460.dp,
+            offsetA = Offset(-100f, -200f),
+            offsetB = Offset(-60f, -176f),
+            phase = phase,
+            opacity = opacity
+        )
+        // Amber orb
+        Orb(
+            color = if (isDark) AuroraColors.amberDark else AuroraColors.amber,
+            baseAlpha = if (isDark) 0.45f else 0.16f,
+            size = 420.dp,
+            offsetA = Offset(120f, 240f),
+            offsetB = Offset(92f, 210f),
+            phase = phase,
+            opacity = opacity
+        )
+        // Blaze orb
+        Orb(
+            color = if (isDark) AuroraColors.blaze else AuroraColors.blaze,
+            baseAlpha = if (isDark) 0.30f else 0.12f,
+            size = 380.dp,
+            offsetA = Offset(-60f, 140f),
+            offsetB = Offset(-42f, 118f),
+            phase = phase,
+            opacity = opacity
+        )
+    }
+}
+
+@Composable
+private fun Orb(
+    color: Color,
+    baseAlpha: Float,
+    size: androidx.compose.ui.unit.Dp,
+    offsetA: Offset,
+    offsetB: Offset,
+    phase: Float,
+    opacity: Float
+) {
+    val interpolatedX = offsetA.x + (offsetB.x - offsetA.x) * phase
+    val interpolatedY = offsetA.y + (offsetB.y - offsetA.y) * phase
+    val displaySize = size * 1.4f // larger for softness
+
+    Box(
+        modifier = Modifier
+            .size(displaySize)
+            .offset {
+                androidx.compose.ui.unit.IntOffset(
+                    interpolatedX.toInt(),
+                    interpolatedY.toInt()
+                )
+            }
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(
+                        color.copy(alpha = baseAlpha * opacity),
+                        color.copy(alpha = (baseAlpha * 0.5f) * opacity),
+                        Color.Transparent
+                    ),
+                    center = Offset(0.5f, 0.5f),
+                    radius = 0.5f
+                ),
+                shape = CircleShape
+            )
+    )
+}
+
+@Composable
+private fun RibbonLayer(
+    isDark: Boolean,
+    ribbonPhase: Float,
+    opacity: Float,
+    modifier: Modifier = Modifier
+) {
+    val ember = if (isDark) AuroraColors.emberDark else AuroraColors.ember
+    val amber = if (isDark) AuroraColors.amberDark else AuroraColors.amber
+    val mercury = if (isDark) AuroraColors.hermesMercuryDark else AuroraColors.hermesMercury
+
+    Canvas(modifier = modifier) {
+        val amplitude = 24f
+        val frequency = 2 * Math.PI.toFloat()
+        val segments = 36
+        val path = androidx.compose.ui.graphics.Path()
+
+        for (i in 0..segments) {
+            val x = i.toFloat() / segments * size.width
+            val progress = i.toFloat() / segments
+            val y = size.height * 0.35f + kotlin.math.sin(
+                progress * frequency + ribbonPhase
+            ) * amplitude
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        for (i in segments downTo 0) {
+            val x = i.toFloat() / segments * size.width
+            val progress = i.toFloat() / segments
+            val y = size.height * 0.35f + kotlin.math.sin(
+                progress * frequency + ribbonPhase
+            ) * amplitude + 38f
+            path.lineTo(x, y)
+        }
+        path.close()
+
+        drawPath(
+            path = path,
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    ember.copy(alpha = if (isDark) 0.45f else 0.20f * opacity),
+                    amber.copy(alpha = if (isDark) 0.30f else 0.14f * opacity),
+                    mercury.copy(alpha = if (isDark) 0.18f else 0.08f * opacity)
+                ),
+                start = Offset(0f, 0f),
+                end = Offset(size.width, size.height)
+            )
+        )
+    }
+}
+
+@Composable
+private fun ParticleLayer(modifier: Modifier = Modifier) {
+    Box(modifier = modifier) {
+        for (index in 0 until 8) {
+            AuroraParticle(index = index)
+        }
+    }
+}
+
+@Composable
+private fun AuroraParticle(index: Int) {
+    val infiniteTransition = rememberInfiniteTransition(label = "particle-$index")
+    val rise by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 28f + index * 6f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = 5000 + index * 700,
+                easing = EaseInOut
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "particle-rise-$index"
+    )
+
+    val palette = listOf(AuroraColors.ember, AuroraColors.amber, AuroraColors.blaze, Color.White)
+    val particleColor = palette[index % palette.size]
+    val size = (3f + (index % 4) * 1.4f).dp
+    val startX = (-130 + index * 38).dp
+    val startY = (220 + (index % 3) * 36).dp
+    val alpha = 0.5f
+
+    Box(
+        modifier = Modifier
+            .size(size)
+            .offset(x = startX, y = startY - rise.dp)
+            .background(
+                particleColor.copy(alpha = alpha * (0.4f + (index % 3) * 0.18f)),
+                shape = CircleShape
             )
     )
 }
