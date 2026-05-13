@@ -97,19 +97,20 @@ object LocalRuleBasedAdapter {
         }
 
         // 5. Narrative with high-level summary
-        val tone = if (digest.totals.cacheReadTokens > digest.totals.totalTokens / 2) "positive" else "neutral"
         val cacheRate = if (digest.totals.totalTokens > 0) (digest.totals.cacheReadTokens.toDouble() / digest.totals.totalTokens.toDouble() * 100).toInt() else 0
+        val overview = InsightWidgetData.Narrative(
+            headline = "Spent \$${String.format("%.2f", digest.totals.costUSD)} across ${digest.providers.size} provider(s)",
+            body = "${digest.totals.sessionCount} sessions, ${digest.totals.totalTokens} tokens. Cache hit rate: $cacheRate%.",
+            bullets = digest.providers.take(3).map { "${it.displayName}: \$${String.format("%.2f", it.costUSD)}" },
+            tone = InsightWidgetData.Narrative.Tone.NEUTRAL,
+            sparkline = digest.daily.map { it.costUSD }
+        )
         widgets.add(InsightWidget(
             kind = InsightWidgetKind.NARRATIVE,
             title = "Overview",
             spec = InsightWidgetSpec.Narrative(InsightWidgetSpec.NarrativeSpec()),
-            dataBinding = InsightDataBinding.Narrative(InsightWidgetData.Narrative(
-                headline = "Spent \$${String.format("%.2f", digest.totals.costUSD)} across ${digest.providers.size} provider(s)",
-                body = "${digest.totals.sessionCount} sessions, ${digest.totals.totalTokens} tokens. Cache hit rate: $cacheRate%.",
-                bullets = digest.providers.take(3).map { "${it.displayName}: \$${String.format("%.2f", it.costUSD)}" },
-                tone = InsightWidgetData.Narrative.Tone.NEUTRAL,
-                sparkline = digest.daily.map { it.costUSD }
-            )),
+            dataBinding = InsightDataBinding.Narrative(overview),
+            data = overview,
             freshness = InsightFreshness.FRESH,
             modelTag = InsightModelTag(
                 providerKey = "local", modelID = "rules", displayName = "Local Rules",

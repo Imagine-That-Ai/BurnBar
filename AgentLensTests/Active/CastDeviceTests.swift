@@ -47,6 +47,34 @@ final class CastDeviceTests: XCTestCase {
         XCTAssertFalse(device.supportsDisplay)
     }
 
+    @MainActor
+    func testRepairSelectionPicksLikelyNestHubWhenMultipleDisplaysExist() {
+        let devices = [
+            make(
+                serviceName: "Google-Nest-Hub-Max-kitchen",
+                friendlyName: "Kitchen Display",
+                host: "192.168.68.40",
+                model: "Google Nest Hub Max"
+            ),
+            make(
+                serviceName: "Chromecast-living-room",
+                friendlyName: "Living Room TV",
+                host: "192.168.68.41",
+                model: "Chromecast"
+            ),
+            make(
+                serviceName: "Google-Nest-Hub-desk",
+                friendlyName: "Alberto's Display",
+                host: "192.168.68.42",
+                model: "Google Nest Hub"
+            )
+        ]
+
+        let selected = SmartHubBridgeController.preferredRepairCastDevice(from: devices)
+
+        XCTAssertEqual(selected?.friendlyName, "Alberto's Display")
+    }
+
     private func make(
         serviceName: String = "Google-Nest-Hub-abc",
         friendlyName: String = "Living Room Hub",

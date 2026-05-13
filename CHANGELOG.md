@@ -8,6 +8,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **System-wide Insights intelligence layer.** Insights now has a shared
+  structured analysis contract across Swift, Kotlin, and the canonical
+  Functions schema: `InsightAnalysisRequest`, `InsightAnalysisContext`,
+  `InsightAnalysisResult`, findings, anomalies, recommendations, citations,
+  generated widgets, follow-up questions, model preference, budget reports,
+  and audit entries. macOS and iOS/iPadOS aggregate privacy-bounded local or
+  Firestore-backed context into an analysis-first Intelligence Brief before
+  materializing generated widgets onto the canvas; Android now uses Firestore
+  rollups/quota snapshots through the same digest/evidence/budget pattern
+  instead of a production fixture/demo path. The default surfaces lead with
+  "what changed / why it matters / what to do next", show the selected model,
+  and keep generated widgets cited back to source data. The intelligence
+  contract is published as `InsightJSONSchema.analysisResultSchemaV1` —
+  identical strict-schema across Swift, Kotlin, and TypeScript — so tier-1
+  model gateways can validate `response_format` and tier-2 callers embed it
+  in the system prompt. Every run flows through a shared
+  `OrchestratedInsightAnalysisEngine` (Swift) / `AndroidInsightAnalysisEngine`
+  (Kotlin) that wraps the always-on rule-based fallback in a content-
+  addressed `InsightAnalysisCache` (LRU, 64 entries, keyed by prompt + digest
+  hash + model + instruction) and an append-only JSONL
+  `InsightAnalysisAuditLog` sibling to the canvas-investigation audit. Each
+  audit row records the request id, platform, model + egress tier, time
+  window, budget report (included sources + truncation summary + bytes/
+  tokens), prompt and result hashes, status (`started`/`succeeded`/`partial`/
+  `modelUnavailable`/`schemaViolation`/`cancelled`/`failed`), token usage,
+  and cost estimate. `InsightModelPreference` carries automatic vs explicit
+  mode plus `restrictToLocalOnly`, `maxEgressTier`, and `deepTranscriptOptIn`
+  so the composer can surface egress tier + larger-budget warnings before
+  any non-local call. The orchestrators now execute the selected user-owned
+  model gateway when registered, rather than only materializing local-rule
+  analysis: macOS wires OpenAI/Codex, Claude, MiniMax, Z.ai, Kimi, Ollama, and
+  local rules from user credentials or local runtimes; Android wires persisted
+  model selection with local rules and Ollama behind the same audit/cache
+  contract.
 - **Router mode toggle + model-landscape benchmark snapshots.** Settings ->
   Routing pools now persists a router mode in the daemon provider config:
   **Provider-Family Failover** keeps fallback inside the selected provider
@@ -140,6 +174,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   credential-store access patterns.
 
 ### Fixed
+- **macOS Google sign-in presentation.** Clicking **Sign in with Google** now
+  starts the interactive GoogleSignIn macOS flow immediately with a real
+  `ASWebAuthenticationSession` presentation window instead of first attempting
+  silent restore or forcing a nil-window external-browser path that could leave
+  the button spinning without showing auth UI.
 - **Append-safe persistence across local, iCloud, and Firestore sync paths.**
   iCloud session mirroring no longer deletes mirrored records just because a
   local source path disappears; Firestore download watermarks advance only

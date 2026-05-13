@@ -19,38 +19,33 @@ struct UsageModeToolbarPicker: View {
                 }
             }
         } label: {
-            HStack(spacing: DesignSystem.Spacing.xs) {
+            HStack(spacing: 5) {
+                Image(systemName: leadingSymbol(for: selection))
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
                 Text(selection.label)
-                    .font(DesignSystem.Typography.caption)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .padding(.leading, 1)
             }
-            .padding(.horizontal, DesignSystem.Spacing.md)
-            .padding(.vertical, DesignSystem.Spacing.sm)
-            .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .fill(DesignSystem.Colors.surface.opacity(0.5))
-                }
-            }
-            .foregroundStyle(DesignSystem.Colors.textPrimary)
-            .clipShape(.rect(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.5
-                    )
-            )
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .toolbarPill()
         }
         .menuStyle(.borderlessButton)
         .help("Show totals in USD or token volume")
+    }
+
+    private func leadingSymbol(for mode: UsageDisplayMode) -> String {
+        switch mode.label.lowercased() {
+        case let l where l.contains("usd") || l.contains("$") || l.contains("cost"):
+            return "dollarsign"
+        default:
+            return "number"
+        }
     }
 }
 

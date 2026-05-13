@@ -98,6 +98,7 @@
 		11BAC51219F1D5AFF99BF8CA /* MissionControlJournalRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC1D719D32AE7B3782AE8E48 /* MissionControlJournalRepository.swift */; };
 		1303E789DE930B547998D00A /* GoogleService-Info.plist.example in Resources */ = {isa = PBXBuildFile; fileRef = 6946C44F6035DB2BBC1D2137 /* GoogleService-Info.plist.example */; };
 		13104F035EF1D35EDD8E99E6 /* HermesAttachmentLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA7A1F3B00E656678204F40 /* HermesAttachmentLoader.swift */; };
+		D788286D678A31B6F240D44C /* MobileAssistantChatReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9020762BCA4356FCB2A10FA3 /* MobileAssistantChatReader.swift */; };
 		1388112A67967275B802857D /* ProviderQuotaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 440B5DB6483C144E3633C154 /* ProviderQuotaService.swift */; };
 		13B952DD60B1942A7B6AC5A5 /* RetrievalHealthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FAFD6C06941C87690FA444 /* RetrievalHealthService.swift */; };
 		1417342F6AF736959B8DA166 /* CardLayoutSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC3B3F992D6950CA902581AC /* CardLayoutSnapshotTests.swift */; };
@@ -1650,6 +1651,7 @@
 		9F34D2C71B3D6F0C272CD157 /* ProjectionPipelineHealthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionPipelineHealthModels.swift; sourceTree = "<group>"; };
 		9FA54AA6E0E81E3B86F84D68 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		9FA7A1F3B00E656678204F40 /* HermesAttachmentLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesAttachmentLoader.swift; sourceTree = "<group>"; };
+		9020762BCA4356FCB2A10FA3 /* MobileAssistantChatReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAssistantChatReader.swift; sourceTree = "<group>"; };
 		9FAA8FF1477BDE26DD708415 /* CastWizardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CastWizardModel.swift; sourceTree = "<group>"; };
 		9FCD41DCB625940ACE1D28CD /* HermesToolCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesToolCard.swift; sourceTree = "<group>"; };
 		9FCD7AC817A87C22891ED825 /* FlameRefreshIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlameRefreshIndicator.swift; sourceTree = "<group>"; };
@@ -3382,6 +3384,7 @@
 			isa = PBXGroup;
 			children = (
 				9FA7A1F3B00E656678204F40 /* HermesAttachmentLoader.swift */,
+				9020762BCA4356FCB2A10FA3 /* MobileAssistantChatReader.swift */,
 			);
 			path = Chat;
 			sourceTree = "<group>";
@@ -5093,6 +5096,7 @@
 				E744562F328864DC70FF668D /* GooseParser.swift in Sources */,
 				A554098D1518E76BB0E24798 /* HermesAtomComponents.swift in Sources */,
 				13104F035EF1D35EDD8E99E6 /* HermesAttachmentLoader.swift in Sources */,
+				D788286D678A31B6F240D44C /* MobileAssistantChatReader.swift in Sources */,
 				B569E46F427460840B69F5E5 /* HermesDataFolder.swift in Sources */,
 				8BC0E094D46A09FCC6AB47C5 /* HermesInventoryImportService.swift in Sources */,
 				D3D11058E5E7A4E4AF4E8853 /* HermesModelID.swift in Sources */,

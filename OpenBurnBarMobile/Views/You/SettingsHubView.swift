@@ -30,14 +30,12 @@ struct SettingsHubView: View {
     @AppStorage("costAlertThreshold") private var costAlertThreshold: Double = 10.0
 
     var body: some View {
-        NavigationStack(path: $router.path) {
-            hubContent
-                .navigationDestination(for: SettingsPageRoute.self) { route in
-                    destination(for: route)
-                        .environment(router)
-                }
-                .environment(router)
-        }
+        hubContent
+            .navigationDestination(for: SettingsPageRoute.self) { route in
+                destination(for: route)
+                    .environment(router)
+            }
+            .environment(router)
     }
 
     @ViewBuilder

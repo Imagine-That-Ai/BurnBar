@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GRDB
 import Security
@@ -1102,5 +1103,21 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertTrue(AccountManager.isRecoverableFirebaseAuthKeychainDeleteStatusForTesting(errSecSuccess))
         XCTAssertTrue(AccountManager.isRecoverableFirebaseAuthKeychainDeleteStatusForTesting(errSecItemNotFound))
         XCTAssertFalse(AccountManager.isRecoverableFirebaseAuthKeychainDeleteStatusForTesting(errSecMissingEntitlement))
+    }
+
+    func test_googleAuthPresentationWindow_returnsVisibleWindow() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Google Sign-In Presentation Test"
+        window.orderFront(nil)
+        defer { window.close() }
+
+        let resolvedWindow = AccountManager.googleAuthPresentationWindowForTesting(from: window)
+
+        XCTAssertTrue(resolvedWindow === window)
     }
 }

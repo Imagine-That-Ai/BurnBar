@@ -124,4 +124,52 @@ final class SettingsSearchEngineTests: XCTestCase {
                           "Section \(section.rawValue) is not represented in the manifest")
         }
     }
+
+    // MARK: - Router guards
+
+    @MainActor
+    func test_routerRepeatedDestinationNavigationCollapsesToSingleRoute() {
+        let router = SettingsRouter()
+        let item = SettingsItem(
+            id: "settings-hermes",
+            section: .hermesAI,
+            pageRoute: .hermes,
+            anchorID: SettingsAnchor.hermesRow,
+            title: "Hermes"
+        )
+
+        router.query = "hermes"
+        router.navigate(to: item)
+        router.navigate(to: item)
+
+        XCTAssertEqual(router.path, [.hermes])
+        XCTAssertEqual(router.pendingAnchor, SettingsAnchor.hermesRow)
+        XCTAssertEqual(router.highlightedAnchor, SettingsAnchor.hermesRow)
+        XCTAssertEqual(router.query, "")
+    }
+
+    @MainActor
+    func test_routerRootNavigationClearsSubpageInsteadOfStacking() {
+        let router = SettingsRouter()
+        let subpage = SettingsItem(
+            id: "settings-pi",
+            section: .hermesAI,
+            pageRoute: .pi,
+            anchorID: SettingsAnchor.piRow,
+            title: "Pi"
+        )
+        let rootItem = SettingsItem(
+            id: "settings-theme",
+            section: .appearance,
+            pageRoute: .hubRoot,
+            anchorID: SettingsAnchor.theme,
+            title: "Theme"
+        )
+
+        router.navigate(to: subpage)
+        router.navigate(to: rootItem)
+
+        XCTAssertTrue(router.path.isEmpty)
+        XCTAssertEqual(router.pendingAnchor, SettingsAnchor.theme)
+    }
 }

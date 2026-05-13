@@ -130,6 +130,9 @@ private struct AdaptiveInsightsLayout: View {
         if let canvas = store.currentCanvas {
             ScrollView {
                 LazyVStack(spacing: UnifiedDesignSystem.Spacing.md) {
+                    if let analysis = store.currentAnalysis {
+                        InsightsMobileAnalysisBrief(analysis: analysis)
+                    }
                     ForEach(canvas.widgets) { widget in
                         InsightWidgetRenderer(
                             widget: widget,
@@ -156,6 +159,45 @@ private struct AdaptiveInsightsLayout: View {
         InsightsMobileComposerBar(store: store)
             .padding(UnifiedDesignSystem.Spacing.md)
             .background(.thinMaterial)
+    }
+}
+
+private struct InsightsMobileAnalysisBrief: View {
+    let analysis: InsightAnalysisResult
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                Label("Intelligence Brief", systemImage: "sparkles")
+                    .font(UnifiedDesignSystem.Typography.headline)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                Spacer()
+                Text(analysis.modelTag.displayName)
+                    .font(UnifiedDesignSystem.Typography.tiny)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
+            }
+            Text(analysis.executiveSummary)
+                .font(UnifiedDesignSystem.Typography.body)
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(analysis.findings.prefix(3)) { finding in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(finding.title)
+                        .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                    Text(finding.recommendedAction)
+                        .font(UnifiedDesignSystem.Typography.caption)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(UnifiedDesignSystem.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
+                .fill(UnifiedDesignSystem.Colors.surface)
+        )
     }
 }
 

@@ -198,11 +198,55 @@ where Option.RawValue == String, Option.AllCases: RandomAccessCollection {
     }
 }
 
+// MARK: - Unified Toolbar Pill Chrome
+//
+// One shared chrome for every pill in the dashboard toolbar so they read as a
+// coherent family. Values mirror `GlassSegmentedPicker` exactly — that pill is
+// the visual anchor and everything else needs to match its radius, material,
+// tint, and hairline.
+
+/// Standard pill height for the dashboard toolbar (matches the segmented picker).
+let toolbarPillRadius: CGFloat = DesignSystem.Radius.sm + 2  // 8pt
+
+private struct ToolbarPillBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: toolbarPillRadius, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: toolbarPillRadius, style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.45))
+                }
+            )
+            .clipShape(.rect(cornerRadius: toolbarPillRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: toolbarPillRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.5
+                    )
+            )
+    }
+}
+
+extension View {
+    /// Apply the unified glass-pill chrome used across the dashboard toolbar.
+    func toolbarPill() -> some View {
+        modifier(ToolbarPillBackground())
+    }
+}
+
 // MARK: - Glass Picker
 
 struct GlassPicker<Option: Identifiable & Hashable>: View {
     @Binding var selection: Option
     let options: [Option]
+    var leadingSymbol: String? = nil
 
     var body: some View {
         Menu {
@@ -219,35 +263,23 @@ struct GlassPicker<Option: Identifiable & Hashable>: View {
                 }
             }
         } label: {
-            HStack(spacing: DesignSystem.Spacing.xs) {
-                Text(selectionLabel(selection))
-                    .font(DesignSystem.Typography.caption)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .medium))
-            }
-            .padding(.horizontal, DesignSystem.Spacing.md)
-            .padding(.vertical, DesignSystem.Spacing.sm)
-            .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .fill(DesignSystem.Colors.surface.opacity(0.5))
+            HStack(spacing: 5) {
+                if let leadingSymbol {
+                    Image(systemName: leadingSymbol)
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
+                Text(selectionLabel(selection))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .padding(.leading, 1)
             }
-            .foregroundStyle(DesignSystem.Colors.textPrimary)
-            .clipShape(.rect(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.5
-                    )
-            )
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .toolbarPill()
         }
         .menuStyle(.borderlessButton)
     }
@@ -270,28 +302,172 @@ struct GlassBadge<Content: View>: View {
 
     var body: some View {
         content()
-            .padding(.horizontal, DesignSystem.Spacing.md)
-            .padding(.vertical, DesignSystem.Spacing.sm)
-            .background {
-                ZStack {
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                        .fill(DesignSystem.Colors.surfaceElevated.opacity(0.5))
-                }
-            }
-            .clipShape(.rect(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.12), DesignSystem.Colors.border.opacity(0.35)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.5
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .toolbarPill()
+    }
+}
+
+// MARK: - Toolbar Metric Badge
+//
+// The live "tokens / cost" readout. Uses the shared pill chrome but earns
+// presence through its content: a softly pulsing gradient dot and the value
+// itself rendered in monospaced gradient text with numeric content transitions.
+
+struct ToolbarMetricBadge: View {
+    let value: String
+
+    @State private var pulsing = false
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(DesignSystem.Colors.primaryGradient)
+                .frame(width: 5, height: 5)
+                .shadow(color: DesignSystem.Colors.ember.opacity(0.55), radius: pulsing ? 5 : 2.5, x: 0, y: 0)
+                .opacity(pulsing ? 1 : 0.78)
+                .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: pulsing)
+
+            Text(value)
+                .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                .foregroundStyle(DesignSystem.Colors.primaryGradient)
+                .contentTransition(.numericText())
+                .animation(DesignSystem.Animation.gentle, value: value)
+                .monospacedDigit()
+                .kerning(0.3)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .toolbarPill()
+        .onAppear { pulsing = true }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("Total \(value)"))
+    }
+}
+
+// MARK: - Project Navigation Pill
+//
+// Replaces the bare `< Back` button + loose project name with one cohesive
+// navigation atom: chevron back, hairline divider, gradient project tile,
+// project name. Reads as a single object instead of three orphaned controls.
+
+struct ProjectNavigationPill: View {
+    let canGoBack: Bool
+    let projectName: String
+    let backHelp: String
+    let onBack: () -> Void
+
+    @State private var hoveringBack = false
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button {
+                guard canGoBack else { return }
+                withAnimation(DesignSystem.Animation.standard) { onBack() }
+            } label: {
+                Image(systemName: "chevron.backward")
+                    .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                    .foregroundStyle(canGoBack ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textMuted)
+                    .frame(width: 22, height: 22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(hoveringBack && canGoBack ? Color.white.opacity(0.07) : .clear)
                     )
-            )
+                    .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canGoBack)
+            .keyboardShortcut("[", modifiers: [.command])
+            .help(canGoBack ? backHelp : "Back")
+            .accessibilityLabel(canGoBack ? backHelp : "Back")
+            .onHover { hoveringBack = $0 }
+            .padding(.leading, 2)
+
+            Rectangle()
+                .fill(DesignSystem.Colors.border.opacity(canGoBack ? 0.32 : 0.18))
+                .frame(width: 0.5, height: 14)
+                .padding(.horizontal, 6)
+
+            HStack(spacing: 6) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(DesignSystem.Colors.primaryGradient)
+                        .frame(width: 14, height: 14)
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(.white)
+                }
+                .shadow(color: DesignSystem.Colors.ember.opacity(0.32), radius: 4, x: 0, y: 1)
+
+                Text(projectName)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            .padding(.trailing, 10)
+            .padding(.vertical, 4)
+        }
+        .toolbarPill()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(projectName) project")
+    }
+}
+
+// MARK: - Toolbar Action Cluster
+//
+// Groups the trailing icon buttons (scan / recount / settings) into one
+// segmented-style pill — the quieter sibling of the Agents/Models picker.
+// Hairline dividers between buttons read as one coherent control rather than
+// three orphans floating in the toolbar.
+
+struct ToolbarActionCluster<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        HStack(spacing: 0) { content() }
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
+            .toolbarPill()
+    }
+}
+
+struct ToolbarActionDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(DesignSystem.Colors.border.opacity(0.22))
+            .frame(width: 0.5, height: 14)
+            .padding(.horizontal, 1)
+    }
+}
+
+struct ToolbarPillButton<Label: View>: View {
+    let action: () -> Void
+    let help: String
+    let accessibilityLabel: String
+    var isDisabled: Bool = false
+    @ViewBuilder let label: () -> Label
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            label()
+                .frame(width: 24, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(hovering && !isDisabled ? Color.white.opacity(0.08) : .clear)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .opacity(isDisabled ? 0.45 : 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .help(help)
+        .accessibilityLabel(accessibilityLabel)
+        .onHover { hovering = $0 }
+        .animation(DesignSystem.Animation.snappy, value: hovering)
     }
 }
 

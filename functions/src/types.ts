@@ -1706,6 +1706,166 @@ export interface InsightDigestAnomalyDoc {
   detail?: string;
 }
 
+export type InsightAnalysisPlatformDoc =
+  | "macOS"
+  | "iOS"
+  | "iPadOS"
+  | "android";
+
+export type InsightAnalysisInstructionDoc =
+  | "defaultBrief"
+  | "answerFollowUp"
+  | "generateReport"
+  | "updateCanvas";
+
+export interface InsightAnalysisRequestDoc {
+  id: string;
+  prompt: string;
+  context: InsightAnalysisContextDoc;
+  currentCanvas?: InsightCanvasDoc;
+  selectedModel: InsightModelTagDoc;
+  instruction: InsightAnalysisInstructionDoc;
+  allowDeepTranscriptAnalysis: boolean;
+  maxGeneratedWidgets: number;
+  schemaVersion: 1;
+}
+
+export interface InsightAnalysisContextDoc {
+  digest: InsightDigestDoc;
+  evidenceIndex: InsightEvidenceDoc[];
+  budgetReport: InsightContextBudgetReportDoc;
+  priorRunSummaries: string[];
+}
+
+export interface InsightEvidenceDoc {
+  id: string;
+  citation: InsightCitationDoc;
+  source: string;
+  summary: string;
+  numericValue?: number;
+}
+
+export interface InsightContextBudgetReportDoc {
+  maxEncodedBytes: number;
+  encodedBytes: number;
+  estimatedPromptTokens: number;
+  includedDataSources: string[];
+  truncatedDataSources: string[];
+  truncationSummary: string;
+}
+
+export interface InsightAnalysisResultDoc {
+  id: string;
+  requestID: string;
+  schemaVersion: 1;
+  generatedAt: string;
+  platform: InsightAnalysisPlatformDoc;
+  timeWindow: InsightTimeWindowDoc;
+  executiveSummary: string;
+  modelTag: InsightModelTagDoc;
+  contextBudget: InsightContextBudgetReportDoc;
+  findings: InsightFindingDoc[];
+  anomalies: InsightAnomalyDoc[];
+  recommendations: InsightRecommendationDoc[];
+  generatedWidgets: InsightGeneratedWidgetDoc[];
+  followUpQuestions: InsightFollowUpQuestionDoc[];
+  citations: InsightCitationDoc[];
+  tokenUsage?: InsightTokenUsageDoc;
+  estimatedCostUSD?: number;
+  auditID?: string;
+  resultHash: string;
+}
+
+export type InsightConfidenceDoc = "low" | "medium" | "high";
+
+export type InsightSeverityDoc =
+  | "info"
+  | "low"
+  | "medium"
+  | "high"
+  | "critical";
+
+export interface InsightFindingDoc {
+  id: string;
+  title: string;
+  whyItMatters: string;
+  evidence: InsightCitationDoc[];
+  confidence: InsightConfidenceDoc;
+  severity: InsightSeverityDoc;
+  recommendedAction: string;
+  generatedWidgetID?: string;
+}
+
+export interface InsightAnomalyDoc {
+  id: string;
+  title: string;
+  occurredAt?: string;
+  detail: string;
+  score: number;
+  evidence: InsightCitationDoc[];
+  confidence: InsightConfidenceDoc;
+}
+
+export interface InsightRecommendationDoc {
+  id: string;
+  title: string;
+  rationale: string;
+  recommendedAction: string;
+  estimatedImpact?: string;
+  evidence: InsightCitationDoc[];
+  confidence: InsightConfidenceDoc;
+  severity: InsightSeverityDoc;
+}
+
+export interface InsightGeneratedWidgetDoc {
+  id: string;
+  widget: InsightWidgetDoc;
+  reason: string;
+  citations: InsightCitationDoc[];
+}
+
+export interface InsightFollowUpQuestionDoc {
+  id: string;
+  question: string;
+  rationale?: string;
+}
+
+export interface InsightAnalysisAuditEntryDoc {
+  id: string;
+  requestID: string;
+  platform: InsightAnalysisPlatformDoc;
+  selectedModel: InsightModelTagDoc;
+  egressTier: InsightEgressTier;
+  timeWindow: InsightTimeWindowDoc;
+  contextBudget: InsightContextBudgetReportDoc;
+  includedDataSources: string[];
+  truncationSummary: string;
+  promptHash: string;
+  resultHash: string;
+  status:
+    | "started"
+    | "succeeded"
+    | "partial"
+    | "modelUnavailable"
+    | "schemaViolation"
+    | "cancelled"
+    | "failed";
+  startedAt: string;
+  completedAt?: string;
+  errorDescription?: string;
+  tokenUsage?: InsightTokenUsageDoc;
+  estimatedCostUSD?: number;
+  ranAt: string;
+}
+
+export interface InsightModelPreferenceDoc {
+  mode: "automatic" | "explicit";
+  explicitModel?: InsightModelTagDoc;
+  restrictToLocalOnly: boolean;
+  maxEgressTier?: InsightEgressTier;
+  deepTranscriptOptIn: boolean;
+}
+
 export interface InsightTokenUsageDoc {
   providerKey: string;
   modelID: string;

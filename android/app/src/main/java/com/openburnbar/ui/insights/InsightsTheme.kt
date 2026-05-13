@@ -76,7 +76,7 @@ object InsightsColors {
 object InsightsSpacing {
     val widgetPadding = AuroraSpacing.sm // 8dp
     val widgetGap = AuroraSpacing.md // 12dp
-    val cardRadius = 16 // dp (lg from DESIGN.md)
-    val chartHeight = 180 // dp
-    val sparklineHeight = 24 // dp
+    val cardRadius = 8 // dp
+    val chartHeight = 128 // dp
+    val sparklineHeight = 22 // dp
 }

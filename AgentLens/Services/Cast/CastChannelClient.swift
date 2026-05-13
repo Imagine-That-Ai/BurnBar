@@ -10,6 +10,7 @@ import os
 //   - `cast(url:)` → ensures the receiver has the DashCast app running with
 //                    the requested URL loaded
 //   - `stop()`    → tears down the receiver app
+//   - `disconnect()` → closes only this Mac socket; leaves the Hub display alone
 //   - `ping()`    → sends a heartbeat to keep the session alive
 //
 // Auto-recovery for stuck sessions lives in `CastReconnectStrategy`.
@@ -172,13 +173,19 @@ final class CastChannelClient {
 
     func stop() async {
         await ensureConnected()
-        guard connection.state == .ready else { return }
-        if let sessionId = currentSessionId {
+        if connection.state == .ready, let sessionId = currentSessionId {
             await request(namespace: Self.nsReceiver, payload: [
                 "type": "STOP",
                 "sessionId": sessionId
             ], destination: CastMessage.defaultDestination)
         }
+        disconnect()
+    }
+
+    /// Close the sender connection without sending a receiver STOP.
+    /// Use this after probes or successful casts; `stop()` is a user-visible
+    /// command that removes DashCast from the Nest Hub.
+    func disconnect() {
         heartbeatTask?.cancel()
         heartbeatTask = nil
         connection.cancel()

@@ -17,42 +17,12 @@ struct DashboardToolbar: ToolbarContent {
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
-            Button {
-                guard navigationModel.canGoBack else { return }
-                withAnimation(DesignSystem.Animation.standard) {
-                    onBack()
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.backward")
-                        .font(.system(size: 13, weight: .semibold))
-
-                    Text("Back")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                }
-                .foregroundStyle(navigationModel.canGoBack ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textMuted)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule()
-                        .fill(DesignSystem.Colors.surfaceElevated.opacity(navigationModel.canGoBack ? 0.62 : 0.34))
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(DesignSystem.Colors.borderSubtle.opacity(navigationModel.canGoBack ? 0.70 : 0.30), lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(!navigationModel.canGoBack)
-            .keyboardShortcut("[", modifiers: [.command])
-            .help(navigationModel.canGoBack ? backButtonHelpText : "Back")
-            .accessibilityLabel(navigationModel.canGoBack ? backButtonHelpText : "Back")
-
-            Text("OpenBurnBar")
-                .font(.system(size: 13, weight: .semibold, design: .default))
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("OpenBurnBar")
+            ProjectNavigationPill(
+                canGoBack: navigationModel.canGoBack,
+                projectName: "OpenBurnBar",
+                backHelp: backButtonHelpText,
+                onBack: onBack
+            )
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
@@ -96,7 +66,8 @@ struct DashboardToolbar: ToolbarContent {
                     get: { navigationModel.selectedTimeRange },
                     set: { navigationModel.selectedTimeRange = $0 }
                 ),
-                options: TimeRange.allCases
+                options: TimeRange.allCases,
+                leadingSymbol: "calendar"
             )
 
             UsageModeToolbarPicker(selection: Binding(
@@ -104,45 +75,51 @@ struct DashboardToolbar: ToolbarContent {
                 set: { settingsManager.usageDisplayMode = $0 }
             ))
 
-            GlassBadge {
-                Text(settingsManager.formatUsageMetric(cost: totalCost, tokens: totalTokens))
-                    .font(DesignSystem.Typography.mono)
-                    .foregroundStyle(DesignSystem.Colors.primaryGradient)
-            }
+            ToolbarMetricBadge(
+                value: settingsManager.formatUsageMetric(cost: totalCost, tokens: totalTokens)
+            )
 
-            Button(action: onScan) {
-                Group {
+            ToolbarActionCluster {
+                ToolbarPillButton(
+                    action: onScan,
+                    help: "Import new and updated sessions from your agent log folders.",
+                    accessibilityLabel: "Import from logs",
+                    isDisabled: isScanning
+                ) {
                     if isScanning {
                         AnimatedMiningPickView()
-                            .frame(width: 17, height: 17)
+                            .frame(width: 14, height: 14)
                             .clipShape(.circle)
                     } else {
-                        DashboardActionGlyph(kind: .importFromLogs, size: 15)
+                        DashboardActionGlyph(kind: .importFromLogs, size: 13)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
                     }
                 }
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-            }
-            .buttonStyle(.plain)
-            .disabled(isScanning)
-            .accessibilityLabel("Import from logs")
-            .help("Import new and updated sessions from your agent log folders.")
 
-            Button(action: onRecount) {
-                DashboardActionGlyph(kind: .sweepRecount, size: 15)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-            }
-            .buttonStyle(.plain)
-            .disabled(isScanning || !canRunRecount)
-            .accessibilityLabel("Recount totals")
-            .help("Rebuild usage totals from saved sessions (clears derived numbers, then tallies again).")
+                ToolbarActionDivider()
 
-            Button(action: onSettings) {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                ToolbarPillButton(
+                    action: onRecount,
+                    help: "Rebuild usage totals from saved sessions (clears derived numbers, then tallies again).",
+                    accessibilityLabel: "Recount totals",
+                    isDisabled: isScanning || !canRunRecount
+                ) {
+                    DashboardActionGlyph(kind: .sweepRecount, size: 13)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+
+                ToolbarActionDivider()
+
+                ToolbarPillButton(
+                    action: onSettings,
+                    help: "Settings",
+                    accessibilityLabel: "Settings"
+                ) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
             }
-            .buttonStyle(.plain)
-            .help("Settings")
         }
     }
 }

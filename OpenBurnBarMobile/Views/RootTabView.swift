@@ -157,6 +157,7 @@ struct RootTabView: View {
                 case .sync: CloudSyncDetailsView(syncStore: syncHealthStore)
                 case .settings: SettingsHubView(authStore: authStore)
                 case .devices:  iPadDevicesSettingsView(hermesService: hermesService)
+                case .providers: ProviderConnectionsView(showsDoneButton: false)
                 }
             }
         }

@@ -107,7 +107,7 @@ final class PixelClockInputControllerTests: XCTestCase {
         XCTAssertEqual(returnToBurnBarCallCount, 1)
     }
 
-    func testDebounceSwallowsRepeatedSamePolls() async {
+    func testSentinelVisitOnlyDispatchesOnceUntilClockReturnsToBurnBar() async {
         configureForRotation(initialIndex: 0)
         let controller = makeController()
         let start = Date()
@@ -122,9 +122,14 @@ final class PixelClockInputControllerTests: XCTestCase {
             config: settingsManager.pixelClockConfig,
             now: start.addingTimeInterval(0.05)
         )
+        await controller.ingest(
+            currentAppName: "openburnbar_btn_right",
+            config: settingsManager.pixelClockConfig,
+            now: start.addingTimeInterval(1.00)
+        )
 
         XCTAssertEqual(settingsManager.pixelClockConfig.selectedProviderIndex, 1,
-                       "Two right-button polls within the 250 ms debounce window must only advance once.")
+                       "Repeated polls while the clock remains on one sentinel page must only advance once.")
     }
 
     func testReturningToBurnBarBetweenPressesAllowsTheNextActionToFire() async {

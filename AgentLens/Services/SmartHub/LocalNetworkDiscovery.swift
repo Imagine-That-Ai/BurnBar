@@ -10,6 +10,7 @@ import Foundation
 
 enum LocalNetworkDiscovery {
     private struct IPv4Interface {
+        var name: String
         var address: String
         var addressValue: UInt32
         var netmaskValue: UInt32
@@ -39,8 +40,13 @@ enum LocalNetworkDiscovery {
         while let current = cursor {
             defer { cursor = current.pointee.ifa_next }
             let flags = Int32(current.pointee.ifa_flags)
+            let name = String(cString: current.pointee.ifa_name)
             guard (flags & IFF_UP) != 0,
+                  (flags & IFF_RUNNING) != 0,
                   (flags & IFF_LOOPBACK) == 0,
+                  (flags & IFF_POINTOPOINT) == 0,
+                  (flags & IFF_BROADCAST) != 0,
+                  isUsableLANInterfaceName(name),
                   let address = current.pointee.ifa_addr,
                   let netmask = current.pointee.ifa_netmask,
                   address.pointee.sa_family == UInt8(AF_INET) else {
@@ -52,6 +58,7 @@ enum LocalNetworkDiscovery {
                   let netmaskValue = ipv4Value(from: netmask) else { continue }
             guard isUsableLANIPv4(ip) else { continue }
             snapshots.append(IPv4Interface(
+                name: name,
                 address: ip,
                 addressValue: addressValue,
                 netmaskValue: netmaskValue
@@ -76,6 +83,7 @@ enum LocalNetworkDiscovery {
                 return nil
             }
             return IPv4Interface(
+                name: "test",
                 address: snapshot.address,
                 addressValue: addressValue,
                 netmaskValue: netmaskValue
@@ -215,7 +223,24 @@ enum LocalNetworkDiscovery {
         guard parts.count == 4, parts.allSatisfy({ (0...255).contains($0) }) else { return false }
         if parts[0] == 127 || parts[0] == 0 { return false }
         if parts[0] == 169 && parts[1] == 254 { return false }
+        // RFC 6598 carrier-grade NAT is also where Tailscale assigns 100.64/10
+        // overlay addresses. Nest Hub and TC001 devices need a real broadcast
+        // Wi-Fi/Ethernet LAN address, not a point-to-point VPN address.
+        if parts[0] == 100 && (64...127).contains(parts[1]) { return false }
         return true
+    }
+
+    private static func isUsableLANInterfaceName(_ name: String) -> Bool {
+        guard !name.isEmpty else { return false }
+        let excludedPrefixes = [
+            "utun",     // VPN/Tailscale/Network Extension tunnels
+            "ipsec",    // VPN tunnel
+            "ppp",      // point-to-point links
+            "awdl",     // Apple Wireless Direct Link, not routable by Cast/TC001
+            "llw",      // low-latency Wi-Fi side interface
+            "bridge"    // VM/container bridge, not the user's display LAN
+        ]
+        return !excludedPrefixes.contains { name.hasPrefix($0) }
     }
 }
 

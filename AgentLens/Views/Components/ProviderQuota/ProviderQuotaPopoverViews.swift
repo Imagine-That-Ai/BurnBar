@@ -140,11 +140,14 @@ struct QuotaPopoverBar: View {
         let needsSetup = !isConnected && snapshot?.hasDisplayableQuotaSignal != true && !isActive
         let routingState = quotaService.routingStatesByProviderID[provider.providerID]
         let hasRoutingDetail = routingState?.hasMeaningfulRoutingDetail ?? false
+        let canExtend = isConnected
+            && snapshot?.hasDisplayableQuotaSignal == true
+            && (snapshot?.hourlyBucket?.resetsAt != nil || snapshot?.weeklyBucket?.resetsAt != nil)
 
         VStack(spacing: 0) {
             // Main row — always visible
             Button {
-                if needsSetup || isExpanded || hasRoutingDetail {
+                if needsSetup || isExpanded || hasRoutingDetail || canExtend {
                     withAnimation(DesignSystem.Animation.gentle) {
                         expandedProvider = isExpanded ? nil : provider
                         if !isExpanded { loadLocalState(for: provider) }
@@ -189,6 +192,23 @@ struct QuotaPopoverBar: View {
                         .padding(.horizontal, DesignSystem.Spacing.sm)
                         .padding(.vertical, 5)
                         .background(Capsule().fill(provider == .claudeCode ? DesignSystem.Colors.coral : DesignSystem.Colors.blaze))
+                    } else if canExtend && !isExpanded {
+                        HStack(spacing: DesignSystem.Spacing.xxs) {
+                            Text("Extend")
+                                .font(DesignSystem.Typography.tiny)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(DesignSystem.Colors.textMuted)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.8))
+                        }
+                        .padding(.horizontal, DesignSystem.Spacing.sm)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(DesignSystem.Colors.surface.opacity(0.6)))
+                        .overlay(
+                            Capsule()
+                                .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
+                        )
                     } else if isExpanded {
                         Image(systemName: "chevron.up")
                             .font(.system(size: 10, weight: .semibold))
@@ -212,7 +232,7 @@ struct QuotaPopoverBar: View {
             }
             .buttonStyle(.plain)
 
-            // Expanded inline setup
+            // Expanded inline detail
             if isExpanded {
                 VStack(spacing: DesignSystem.Spacing.sm) {
                     if let routingState, hasRoutingDetail {
@@ -223,6 +243,10 @@ struct QuotaPopoverBar: View {
 
                     if needsSetup {
                         providerSetupPanel(provider: provider)
+                    }
+
+                    if !needsSetup, let snapshot, canExtend {
+                        resetTimesPanel(snapshot: snapshot)
                     }
                 }
                 .padding(.top, DesignSystem.Spacing.xs)
@@ -290,6 +314,60 @@ struct QuotaPopoverBar: View {
 
             Spacer(minLength: 0)
         }
+    }
+
+    // MARK: - Reset Times Panel
+
+    @ViewBuilder
+    private func resetTimesPanel(snapshot: ProviderQuotaSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Divider().background(DesignSystem.Colors.border)
+
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Text("Reset times")
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                if let hourly = snapshot.hourlyBucket, let display = hourly.resetsAtDisplay {
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Text("5h window")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .frame(width: 62, alignment: .leading)
+                        QuotaMicroBadge(
+                            text: "\(display.relative) · \(display.absolute)",
+                            tint: DesignSystem.Colors.textMuted
+                        )
+                        Spacer()
+                    }
+                }
+
+                if let weekly = snapshot.weeklyBucket, let display = weekly.resetsAtDisplay {
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Text("7d window")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .frame(width: 62, alignment: .leading)
+                        QuotaMicroBadge(
+                            text: "\(display.relative) · \(display.absolute)",
+                            tint: DesignSystem.Colors.textMuted
+                        )
+                        Spacer()
+                    }
+                }
+            }
+            .padding(.leading, DesignSystem.Spacing.xl)
+        }
+        .padding(.leading, DesignSystem.Spacing.xl)
+        .padding(.trailing, DesignSystem.Spacing.sm)
+        .padding(.bottom, DesignSystem.Spacing.xs)
     }
 
     // MARK: - Provider Setup Panels

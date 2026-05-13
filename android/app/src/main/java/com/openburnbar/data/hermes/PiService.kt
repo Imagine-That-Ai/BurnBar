@@ -1,5 +1,8 @@
 package com.openburnbar.data.hermes
 
+import com.openburnbar.data.assistants.AssistantChatHistoryStore
+import com.openburnbar.data.assistants.AssistantChatMessage
+import com.openburnbar.data.assistants.AssistantChatThread
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -51,6 +54,14 @@ class PiService {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var streamJob: Job? = null
+
+    private val _currentThreadID = MutableStateFlow<String?>(null)
+    val currentThreadID: StateFlow<String?> = _currentThreadID
+
+    private var historyStore: AssistantChatHistoryStore? = null
+    fun bindHistoryStore(store: AssistantChatHistoryStore) {
+        this.historyStore = store
+    }
 
     // MARK: - Observable state
 
@@ -112,6 +123,73 @@ class PiService {
 
     fun clear() {
         _messages.value = emptyList()
+        _currentThreadID.value = null
+    }
+
+    /** Starts a brand-new conversation. The previous thread remains in history. */
+    fun startNewThread() {
+        _messages.value = emptyList()
+        _currentThreadID.value = null
+    }
+
+    /** Restores messages from a persisted thread. */
+    fun loadThread(id: String) {
+        val store = historyStore ?: return
+        val thread = store.thread(id) ?: return
+        if (thread.runtime != "pi") return
+        _currentThreadID.value = thread.id
+        _messages.value = thread.messages.map { stored ->
+            PiChatMessage(
+                id = stored.id,
+                role = stored.role,
+                content = stored.text,
+                modelName = stored.modelName,
+                isStreaming = false,
+                isError = stored.isError,
+                timestamp = stored.timestampMillis,
+                toolCalls = emptyList()
+            )
+        }
+    }
+
+    /** Removes a thread from chat history. Clears the active chat if it matches. */
+    fun deleteThread(id: String) {
+        historyStore?.delete(id)
+        if (_currentThreadID.value == id) startNewThread()
+    }
+
+    internal fun persistCurrentThread() {
+        val store = historyStore ?: return
+        val threadID = _currentThreadID.value ?: return
+        val msgs = _messages.value
+        if (msgs.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val existing = store.thread(threadID)
+        val createdAt = existing?.createdAtMillis ?: msgs.firstOrNull()?.timestamp ?: now
+
+        val storedMessages = msgs.map { msg ->
+            AssistantChatMessage(
+                id = msg.id,
+                role = msg.role,
+                text = msg.content,
+                timestampMillis = msg.timestamp,
+                modelName = msg.modelName,
+                isError = msg.isError
+            )
+        }
+        val firstUser = msgs.firstOrNull { it.role == "user" }?.content?.trim().orEmpty()
+        val lastNonEmpty = msgs.lastOrNull { it.content.trim().isNotEmpty() }?.content?.trim().orEmpty()
+        val thread = AssistantChatThread(
+            id = threadID,
+            runtime = "pi",
+            title = if (firstUser.isNotEmpty()) firstUser.take(64) else "New Pi chat",
+            preview = lastNonEmpty.take(140),
+            modelName = _selectedModelID.value,
+            createdAtMillis = createdAt,
+            updatedAtMillis = now,
+            messages = storedMessages
+        )
+        store.upsert(thread)
     }
 
     // MARK: - Probes
@@ -179,6 +257,10 @@ class PiService {
         val trimmed = prompt.trim()
         if (trimmed.isEmpty()) return
 
+        if (_currentThreadID.value == null) {
+            _currentThreadID.value = UUID.randomUUID().toString()
+        }
+
         val userMessage = PiChatMessage(role = "user", content = trimmed)
         val assistantPlaceholder = PiChatMessage(
             role = "assistant",
@@ -188,6 +270,7 @@ class PiService {
         )
         _messages.value = _messages.value + userMessage + assistantPlaceholder
         _isStreaming.value = true
+        persistCurrentThread()
 
         val assistantId = assistantPlaceholder.id
         streamJob?.cancel()
@@ -209,6 +292,7 @@ class PiService {
                         }
                     )
                 }
+                persistCurrentThread()
             }
         }
     }

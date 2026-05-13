@@ -69,6 +69,70 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         }
     }
 
+    public func analyze(
+        request: InsightAnalysisRequest,
+        platform: InsightAnalysisPlatform,
+        tools: InsightToolBroker?
+    ) async throws -> InsightAnalysisResult {
+        let startedAt = Date()
+        let prompt = InsightAnalysisModelPrompt()
+        let systemPrompt = prompt.systemPrompt(
+            for: request,
+            platform: platform,
+            strictSchema: capabilities.supportsStrictJSONSchema
+        )
+        let userPayload = try prompt.userPayload(for: request)
+        let userText = String(data: userPayload, encoding: .utf8) ?? ""
+
+        var body: [String: Any] = [
+            "model": request.selectedModel.modelID,
+            "messages": [
+                ["role": "system", "content": systemPrompt + "\n\nSchema:\n" + InsightJSONSchema.analysisResultSchemaV1],
+                ["role": "user", "content": userText]
+            ],
+            "temperature": 0.2,
+            "response_format": [
+                "type": "json_schema",
+                "json_schema": [
+                    "name": "insight_analysis_result_v1",
+                    "strict": true,
+                    "schema": (try? JSONSerialization.jsonObject(with: Data(InsightJSONSchema.analysisResultSchemaV1.utf8))) ?? [:]
+                ]
+            ]
+        ]
+        if !capabilities.supportsStrictJSONSchema {
+            body["response_format"] = ["type": "json_object"]
+        }
+
+        var url = baseURL
+        url.appendPathComponent("/v1/chat/completions")
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await urlSession.data(for: urlRequest)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw InsightGatewayError.requestRejected(
+                modelID: request.selectedModel.modelID,
+                reason: "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)"
+            )
+        }
+        let usage = tokenUsage(
+            from: data,
+            request: request,
+            startedAt: startedAt,
+            completedAt: Date()
+        )
+        return try InsightAnalysisModelDecoder.decode(
+            from: data,
+            request: request,
+            platform: platform,
+            tokenUsage: usage
+        )
+    }
+
     private func runInvestigation(request: InsightInvestigateRequest) async throws -> InsightCanvas {
         let promptEngine = InsightPromptEngine()
         let actualTier = capabilities.bestTier(requested: request.capabilityTier)
@@ -125,5 +189,31 @@ public struct OpenAIInsightAdapter: InsightModelGateway {
         return try AnthropicInsightAdapter.decodeCanvas(from: data,
                                                         fallbackTitle: "GPT canvas",
                                                         modelTag: request.modelTag)
+    }
+
+    private func tokenUsage(
+        from data: Data,
+        request: InsightAnalysisRequest,
+        startedAt: Date,
+        completedAt: Date
+    ) -> InsightTokenUsage? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let usage = json["usage"] as? [String: Any] else {
+            return nil
+        }
+        let input = usage["prompt_tokens"] as? Int ?? usage["input_tokens"] as? Int ?? 0
+        let output = usage["completion_tokens"] as? Int ?? usage["output_tokens"] as? Int ?? 0
+        let price = modelCatalog.first { $0.id == request.selectedModel.modelID }
+        let estimated = (Double(input) / 1_000_000.0) * (price?.inputCostPerMtoken ?? 0)
+            + (Double(output) / 1_000_000.0) * (price?.outputCostPerMtoken ?? 0)
+        return InsightTokenUsage(
+            providerKey: providerKey,
+            modelID: request.selectedModel.modelID,
+            inputTokens: input,
+            outputTokens: output,
+            estimatedCostUSD: estimated,
+            startedAt: startedAt,
+            completedAt: completedAt
+        )
     }
 }

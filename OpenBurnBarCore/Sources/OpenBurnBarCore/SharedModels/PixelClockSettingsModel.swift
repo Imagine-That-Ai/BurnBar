@@ -326,7 +326,7 @@ public final class PixelClockSettingsModel {
             let result = try await self.operations.preparePixelClock(config: self.config)
             self.setupResult = result
             self.firmware = result.probeStatus
-            self.mutate(persist: false) {
+            self.mutate {
                 $0.host = result.clockHost
                 $0.lastProbeStatus = result.probeStatus
             }
@@ -357,7 +357,7 @@ public final class PixelClockSettingsModel {
             let result = try await self.operations.flashPixelClockFirmware(config: self.config, wifiCredentials: wifiCredentials)
             self.setupResult = result
             self.firmware = result.probeStatus
-            self.mutate(persist: false) {
+            self.mutate {
                 $0.host = result.clockHost
                 $0.lastProbeStatus = result.probeStatus
             }
@@ -373,6 +373,9 @@ public final class PixelClockSettingsModel {
     public func push() async {
         await runOperation(.push) {
             try await self.operations.pushPixelClockNow(config: self.config)
+            if self.firmware == .awtrixReady {
+                self.mutate { $0.lastProbeStatus = .awtrixReady }
+            }
         }
     }
 

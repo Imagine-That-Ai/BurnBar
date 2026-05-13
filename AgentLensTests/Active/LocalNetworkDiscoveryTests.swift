@@ -16,12 +16,14 @@ final class LocalNetworkDiscoveryTests: XCTestCase {
 
     func testClassCCandidatesIgnoreLoopbackAndSelfAssignedAddresses() {
         let hosts = LocalNetworkDiscovery.classCCandidates(
-            localIPv4Addresses: ["127.0.0.1", "169.254.10.20", "10.0.1.7"],
-            pinnedHosts: ["127.0.0.1", "169.254.10.20"]
+            localIPv4Addresses: ["127.0.0.1", "169.254.10.20", "100.89.162.125", "10.0.1.7"],
+            pinnedHosts: ["127.0.0.1", "169.254.10.20", "100.89.162.125"]
         )
 
         XCTAssertFalse(hosts.contains("127.0.0.1"))
         XCTAssertFalse(hosts.contains("169.254.10.20"))
+        XCTAssertFalse(hosts.contains("100.89.162.125"))
+        XCTAssertFalse(hosts.contains("100.89.162.92"))
         XCTAssertTrue(hosts.contains("10.0.1.92"))
     }
 
@@ -37,5 +39,21 @@ final class LocalNetworkDiscoveryTests: XCTestCase {
         XCTAssertTrue(hosts.contains("192.168.70.254"))
         XCTAssertTrue(hosts.contains("192.168.71.254"))
         XCTAssertFalse(hosts.contains("192.168.72.1"))
+    }
+
+    func testSubnetCandidatesIgnoreTailscaleCarrierGradeNatOverlay() {
+        let hosts = LocalNetworkDiscovery.subnetCandidates(
+            localIPv4Interfaces: [
+                (address: "100.89.162.125", netmask: "255.255.255.0"),
+                (address: "192.168.68.89", netmask: "255.255.252.0")
+            ],
+            pinnedHosts: ["100.89.162.92", "192.168.68.92"]
+        )
+
+        XCTAssertEqual(hosts.first, "192.168.68.92")
+        XCTAssertFalse(hosts.contains("100.89.162.92"))
+        XCTAssertFalse(hosts.contains("100.89.162.1"))
+        XCTAssertTrue(hosts.contains("192.168.68.1"))
+        XCTAssertTrue(hosts.contains("192.168.71.254"))
     }
 }

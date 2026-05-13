@@ -263,7 +263,7 @@ final class AccountManager {
 
         let googleUser: GIDGoogleUser
         do {
-            googleUser = try await restoredOrInteractiveGoogleUser(presentingWindow: window)
+            googleUser = try await googleSignInResult(presentingWindow: window).user
         } catch {
             Self.logAuthFailure("Google Sign-In", error)
             guard Self.isGoogleSignInKeychainError(error),
@@ -429,34 +429,6 @@ final class AccountManager {
         refreshAuthStateSnapshot()
     }
 
-    private func restoredOrInteractiveGoogleUser(presentingWindow window: NSWindow) async throws -> GIDGoogleUser {
-        do {
-            return try await restorePreviousGoogleUser()
-        } catch {
-            let nsError = error as NSError
-            if nsError.domain != "com.google.GIDSignIn" || nsError.code != -4 {
-                Self.logAuthFailure("Google Sign-In restore", error)
-            }
-            return try await googleSignInResult(presentingWindow: window).user
-        }
-    }
-
-    private func restorePreviousGoogleUser() async throws -> GIDGoogleUser {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GIDGoogleUser, Error>) in
-            GIDSignIn.sharedInstance.restorePreviousSignIn { user, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                guard let user else {
-                    continuation.resume(throwing: AccountError.invalidCredential)
-                    return
-                }
-                continuation.resume(returning: user)
-            }
-        }
-    }
-
     private func googleSignInResult(presentingWindow window: NSWindow) async throws -> GIDSignInResult {
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<GIDSignInResult, Error>) in
             Self.startGoogleSignIn(window: window) { signInResult, error in
@@ -477,31 +449,11 @@ final class AccountManager {
         window: NSWindow,
         completion: @escaping @Sendable (GIDSignInResult?, Error?) -> Void
     ) {
-        if shouldUseExternalBrowserForGoogleAuth {
-            authLogger.info("Starting Google Sign-In with the external browser user agent")
-            GIDSignIn.sharedInstance.signIn(withPresenting: nilGooglePresentationWindow()) { result, error in
-                completion(result, error)
-            }
-            return
-        }
-
         let presentationWindow = googleAuthPresentationWindow(from: window)
         authLogger.info("Starting Google Sign-In with ASWebAuthenticationSession")
         GIDSignIn.sharedInstance.signIn(withPresenting: presentationWindow) { result, error in
             completion(result, error)
         }
-    }
-
-    /// GoogleSignIn's ObjC macOS implementation falls back to AppAuth's
-    /// `NSWorkspace.openURL` browser flow when its presenting window is nil.
-    /// The Swift import exposes the ObjC parameter as non-optional, so use a
-    /// contained nil bridge here instead of forking the OAuth flow ourselves.
-    private static func nilGooglePresentationWindow() -> NSWindow {
-        unsafeBitCast(0, to: NSWindow.self)
-    }
-
-    private static var shouldUseExternalBrowserForGoogleAuth: Bool {
-        true
     }
 
     private static func googleAuthPresentationWindow(from window: NSWindow) -> NSWindow {
@@ -727,6 +679,10 @@ final class AccountManager {
             service: service,
             synchronizable: synchronizable
         )
+    }
+
+    static func googleAuthPresentationWindowForTesting(from window: NSWindow) -> NSWindow {
+        googleAuthPresentationWindow(from: window)
     }
     #endif
 }

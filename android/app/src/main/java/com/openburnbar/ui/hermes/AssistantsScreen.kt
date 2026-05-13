@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.MainActivity
+import com.openburnbar.data.assistants.AssistantChatHistoryStore
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.ChatTilePreferences
 import com.openburnbar.data.hermes.PiService
@@ -56,7 +57,9 @@ fun AssistantsScreen() {
     var rawRuntime by rememberSaveable { mutableStateOf(visibleTiles.first().token) }
     val parsed = AssistantRuntimeID.fromToken(rawRuntime)
     val runtime = if (visibleTiles.contains(parsed)) parsed else visibleTiles.first()
-    val piService = remember { PiService() }
+    val historyStore = remember { AssistantChatHistoryStore.shared(context.applicationContext) }
+    LaunchedEffect(historyStore) { historyStore.bootstrap() }
+    val piService = remember { PiService().apply { bindHistoryStore(historyStore) } }
 
     // Honor the runtime hint carried by the launch / new intent — widget
     // chips and `burnbar://pi` deep links both surface it here. Read once

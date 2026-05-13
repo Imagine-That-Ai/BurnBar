@@ -45,6 +45,7 @@ The iOS-side bridge freshness gate (`SmartHubStore.hasLiveMacBridge`) requires a
 9. Verify every connected quota provider appears with both short and long window pages when buckets are available.
 10. Start an agent and verify the selected working spinner appears on the provider page.
 11. Finish the agent and verify the optional completion sound/visual notification fires when enabled.
+12. Press the clock's Left/Right hardware buttons after the display has been idle for several minutes. Verify they move to the previous/next provider page instead of reloading the same page.
 
 TC001 prevention rule: never push a dense bitmap while brightness is high. The firmware can become temporarily unreachable under high LED load, especially on marginal USB power. OpenBurnBar keeps pixel-clock brightness in a visible safe range and applies brightness before custom app writes so future setup flows fail visible instead of blanking or flapping the hardware.
 

@@ -15,7 +15,6 @@ import OSLog
 @MainActor
 final class PixelClockInputController {
     private static let logger = Logger(subsystem: "com.openburnbar.app", category: "PixelClockInput")
-    private static let debounceInterval: TimeInterval = 0.25
     private static let snoozeDuration: TimeInterval = 60 * 60
 
     private let settingsManager: SettingsManager
@@ -25,7 +24,6 @@ final class PixelClockInputController {
     private let returnToBurnBar: @MainActor (PixelClockConfig) async -> Void
 
     private var lastDispatchedSentinel: AWTRIXClient.SentinelApp?
-    private var lastDispatchAt: Date = .distantPast
 
     init(
         settingsManager: SettingsManager,
@@ -49,12 +47,10 @@ final class PixelClockInputController {
             return
         }
 
-        if sentinel == lastDispatchedSentinel,
-           now.timeIntervalSince(lastDispatchAt) < Self.debounceInterval {
+        guard lastDispatchedSentinel == nil else {
             return
         }
         lastDispatchedSentinel = sentinel
-        lastDispatchAt = now
 
         let action = action(for: sentinel, in: config)
         Self.logger.info("Sentinel \(sentinel.rawValue, privacy: .public) → action \(action.rawValue, privacy: .public)")

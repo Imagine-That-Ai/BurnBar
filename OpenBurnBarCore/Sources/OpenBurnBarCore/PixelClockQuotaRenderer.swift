@@ -298,7 +298,7 @@ public enum PixelClockQuotaRenderer {
         now: Date,
         isWorking: Bool
     ) -> PixelClockRenderedPage {
-        let color = providerAccentHex(for: item, fallback: config.palette.hexColor(for: item.percentUsed))
+        let color = config.palette.hexColor(for: item.percentUsed)
         let provider = shortProviderCode(for: item)
         let status = isWorking ? PixelClockAgentStatus.running : item.agentStatus
         let statusText = status == .ready
@@ -321,7 +321,7 @@ public enum PixelClockQuotaRenderer {
         isWorking: Bool
     ) -> [PixelClockDrawInstruction] {
         var draw: [PixelClockDrawInstruction] = []
-        let primary = providerAccentHex(for: item, fallback: config.palette.hexColor(for: item.percentUsed))
+        let primary = config.palette.hexColor(for: item.percentUsed)
         let status = isWorking ? PixelClockAgentStatus.running : item.agentStatus
         let remaining = remainingPercent(for: item)
 

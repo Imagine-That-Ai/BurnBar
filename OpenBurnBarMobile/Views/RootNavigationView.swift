@@ -269,6 +269,7 @@ struct RootNavigationView: View {
                 case .sync:     CloudSyncDetailsView(syncStore: syncHealthStore)
                 case .settings: SettingsHubView(authStore: authStore)
                 case .devices:  iPadDevicesSettingsView()
+                case .providers: ProviderConnectionsView(showsDoneButton: false)
                 }
             }
             .navigationDestination(for: TokenUsage.self) { usage in
