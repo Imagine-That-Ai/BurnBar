@@ -37,6 +37,7 @@ type TaskCategoryID = ModelBenchmarkTaskCategory;
 interface ModelMeta {
   modelID: string;
   modelDisplay: string;
+  selectionDisplayName?: string;
   providerID: string;
   providerDisplay: string;
   providerFamily: string;
@@ -46,6 +47,11 @@ interface ModelMeta {
   contextWindowTokens?: number;
   /** Normalized cost signal, 0..1 (1 = very cheap). */
   costSignal?: number;
+  aliases?: string[];
+  operatorPreferenceRank?: number;
+  operatorPreferencePrior?: number;
+  favoritePolicyVersion?: string;
+  preferredReasoningEffort?: string;
 }
 
 interface RuntimeMeta {
@@ -123,6 +129,50 @@ const WEIGHTS = {
 
 const TIER_MULTIPLIER = { flagship: 1.0, mid: 0.96, mini: 0.88, unknown: 0.98 } as const;
 const ROUTABLE_MULTIPLIER = { yes: 1.0, no: 0.8 } as const;
+export const FAVORITE_POLICY_VERSION = "2026-05-13.stable-favorites";
+export const FAVORITE_MIN_FRESHNESS = 0.55;
+export const EVIDENCE_DETHRONING_MARGIN = 0.08;
+export const BENCHMARK_DETHRONING_MARGIN = 0.05;
+export const SELECTION_SCORE_TOP = 0.99;
+export const SELECTION_SCORE_STEP = 0.03;
+export const SELECTION_SCORE_FLOOR = 0.05;
+
+const FAVORITE_LADDER = [
+  {
+    modelID: "gpt-5-5",
+    rank: 1,
+    prior: 0.12,
+    displayName: "GPT-5.5 xhigh",
+    preferredReasoningEffort: "xhigh",
+  },
+  {
+    modelID: "claude-opus-4-7",
+    rank: 2,
+    prior: 0.08,
+    displayName: "Claude Opus 4.7",
+    preferredReasoningEffort: null,
+  },
+  {
+    modelID: "glm-5-1",
+    rank: 3,
+    prior: 0.05,
+    displayName: "GLM 5.1",
+    preferredReasoningEffort: null,
+  },
+] as const;
+
+type FavoriteEntry = typeof FAVORITE_LADDER[number];
+const FAVORITE_BY_MODEL_ID: Map<string, FavoriteEntry> = new Map(
+  FAVORITE_LADDER.map((entry) => [entry.modelID as string, entry])
+);
+const FAVORITE_BY_RANK: Map<number, FavoriteEntry> = new Map(
+  FAVORITE_LADDER.map((entry) => [entry.rank as number, entry])
+);
+const BUILT_IN_ALIASES: Record<string, string[]> = {
+  "gpt-5-5": ["openai/gpt-5.5", "openai/gpt-5-5", "openai/gpt-5.5-xhigh", "openai/gpt-5-5-xhigh", "gpt-5.5", "gpt-5.5-xhigh", "gpt-5-5-xhigh"],
+  "claude-opus-4-7": ["anthropic/claude-opus-4-7", "anthropic/claude-opus-4.7", "claude-opus-4.7"],
+  "glm-5-1": ["zai-org/GLM-5.1", "zai/glm-5.1", "zai/glm-5-1", "z-ai/glm-5.1", "zhipuai/glm-5.1", "glm-5.1"],
+};
 
 const REDACTION_PATTERNS = [
   /\bsk-(?:ant-|cp-|or-|live-)[a-z0-9_-]{8,}\b/gi,
@@ -201,11 +251,234 @@ interface RundownInput {
   statuses: ModelBenchmarkSourceStatusDoc[];
   runtime: Record<string, RuntimeMeta>;
   notes?: string[];
+  previousRundown?: {
+    taskRankings?: Array<{
+      taskID?: string;
+      recommendations?: Array<{
+        modelID?: string;
+        score?: number;
+        signals?: { benchmarkScore?: number | null };
+      }>;
+      rejectedAlternatives?: Array<{
+        modelID?: string;
+        score?: number;
+        evidenceScore?: number;
+        benchmarkScore?: number | null;
+      }>;
+    }>;
+  };
+}
+
+type BuiltRecommendation = ReturnType<typeof buildRecommendation>;
+type PreviousTaskRanking = NonNullable<NonNullable<RundownInput["previousRundown"]>["taskRankings"]>[number];
+
+interface FavoriteSpec {
+  rank: number;
+  prior: number;
+  displayName: string;
+  preferredReasoningEffort: string | null;
+  policyVersion: string;
+}
+
+function normalizedModelID(modelID: string | null | undefined): string {
+  return typeof modelID === "string" ? modelID.trim().toLowerCase() : "";
+}
+
+function tailModelID(modelID: string | null | undefined): string {
+  const normalized = normalizedModelID(modelID);
+  return normalized.split("/").filter(Boolean).pop() ?? normalized;
+}
+
+function buildAliasIndex(models: ModelMeta[]): Map<string, string> {
+  const idx = new Map<string, string>();
+  for (const model of models) {
+    const candidates = [model.modelID, ...(model.aliases ?? []), ...(BUILT_IN_ALIASES[model.modelID] ?? [])];
+    for (const candidate of candidates) {
+      const normalized = normalizedModelID(candidate);
+      if (!normalized) continue;
+      idx.set(normalized, model.modelID);
+      idx.set(tailModelID(normalized), model.modelID);
+    }
+  }
+  return idx;
+}
+
+function canonicalizeModelID(modelID: string | null | undefined, aliasIndex: Map<string, string>): string | null {
+  const normalized = normalizedModelID(modelID);
+  if (!normalized) return null;
+  return aliasIndex.get(normalized) ?? aliasIndex.get(tailModelID(normalized)) ?? null;
+}
+
+function canonicalizeSnapshots(snapshots: ModelBenchmarkSnapshotDoc[], models: ModelMeta[]): ModelBenchmarkSnapshotDoc[] {
+  const aliasIndex = buildAliasIndex(models);
+  return snapshots.map((snapshot) => {
+    const canonical = canonicalizeModelID(snapshot.modelID, aliasIndex);
+    return canonical && canonical !== snapshot.modelID ? { ...snapshot, modelID: canonical } : snapshot;
+  });
+}
+
+function canonicalizeRuntime(runtime: Record<string, RuntimeMeta>, models: ModelMeta[]): Record<string, RuntimeMeta> {
+  const aliasIndex = buildAliasIndex(models);
+  const out: Record<string, RuntimeMeta> = { ...runtime };
+  for (const [modelID, meta] of Object.entries(runtime)) {
+    const canonical = canonicalizeModelID(modelID, aliasIndex);
+    if (canonical && out[canonical] == null) out[canonical] = meta;
+  }
+  return out;
+}
+
+function asPositiveInteger(value: number | undefined): number | undefined {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+function favoriteSpecForModel(model: ModelMeta): FavoriteSpec | null {
+  const builtIn = FAVORITE_BY_MODEL_ID.get(model.modelID);
+  const rank = asPositiveInteger(model.operatorPreferenceRank) ?? builtIn?.rank;
+  if (rank == null) return null;
+  const rankDefault = FAVORITE_BY_RANK.get(rank);
+  return {
+    rank,
+    prior: clamp01(model.operatorPreferencePrior) ?? rankDefault?.prior ?? builtIn?.prior ?? 0,
+    displayName: model.selectionDisplayName ?? builtIn?.displayName ?? model.modelDisplay,
+    preferredReasoningEffort: model.preferredReasoningEffort ?? builtIn?.preferredReasoningEffort ?? null,
+    policyVersion: model.favoritePolicyVersion ?? FAVORITE_POLICY_VERSION,
+  };
+}
+
+function hasHardGateSignals(rec: BuiltRecommendation): boolean {
+  return rec.signals.routable !== false
+    && rec.tier === "flagship"
+    && rec.signals.benchmarkScore != null
+    && rec.signals.benchmarkFreshness != null
+    && rec.signals.benchmarkFreshness >= FAVORITE_MIN_FRESHNESS;
+}
+
+function favoriteIsProtected(rec: BuiltRecommendation): boolean {
+  return rec.favoriteRank != null && hasHardGateSignals(rec);
+}
+
+function currentMarginsClear(challenger: BuiltRecommendation, incumbent: BuiltRecommendation): boolean {
+  if (!hasHardGateSignals(challenger)) return false;
+  if (incumbent.signals.benchmarkScore == null) return true;
+  const challengerBenchmark = challenger.signals.benchmarkScore ?? -Infinity;
+  const incumbentBenchmark = incumbent.signals.benchmarkScore ?? Infinity;
+  return challenger.score >= incumbent.score + EVIDENCE_DETHRONING_MARGIN
+    && challengerBenchmark >= incumbentBenchmark + BENCHMARK_DETHRONING_MARGIN;
+}
+
+function previousCandidate(previousTaskRanking: PreviousTaskRanking | undefined, modelID: string): {
+  score?: number;
+  benchmarkScore?: number | null;
+} | null {
+  if (!previousTaskRanking) return null;
+  for (const rec of previousTaskRanking.recommendations ?? []) {
+    if (rec.modelID !== modelID) continue;
+    return {
+      score: rec.score,
+      benchmarkScore: rec.signals?.benchmarkScore,
+    };
+  }
+  for (const rec of previousTaskRanking.rejectedAlternatives ?? []) {
+    if (rec.modelID !== modelID) continue;
+    return {
+      score: rec.evidenceScore ?? rec.score,
+      benchmarkScore: rec.benchmarkScore,
+    };
+  }
+  return null;
+}
+
+function previousMarginsClear(
+  challenger: BuiltRecommendation,
+  incumbent: BuiltRecommendation,
+  previousTaskRanking: PreviousTaskRanking | undefined
+): boolean {
+  const previousChallenger = previousCandidate(previousTaskRanking, challenger.modelID);
+  const previousIncumbent = previousCandidate(previousTaskRanking, incumbent.modelID);
+  if (!previousChallenger || !previousIncumbent) return false;
+  if (previousChallenger.score == null || previousIncumbent.score == null) return false;
+  if (previousChallenger.benchmarkScore == null || previousIncumbent.benchmarkScore == null) return false;
+  return previousChallenger.score >= previousIncumbent.score + EVIDENCE_DETHRONING_MARGIN
+    && previousChallenger.benchmarkScore >= previousIncumbent.benchmarkScore + BENCHMARK_DETHRONING_MARGIN;
+}
+
+function canDethrone(
+  challenger: BuiltRecommendation,
+  incumbent: BuiltRecommendation,
+  previousTaskRanking: PreviousTaskRanking | undefined
+): boolean {
+  if (!currentMarginsClear(challenger, incumbent)) return false;
+  if (!favoriteIsProtected(incumbent)) return true;
+  return previousMarginsClear(challenger, incumbent, previousTaskRanking);
+}
+
+function selectionReason(rec: BuiltRecommendation, protectedFavorite: boolean): string {
+  if (protectedFavorite) {
+    return `Stable favorite policy ${rec.favoritePolicyVersion}: favorite rank #${rec.favoriteRank} receives a deterministic ${(rec.favoritePrior * 100).toFixed(0)} point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.`;
+  }
+  if (rec.favoriteRank != null) {
+    return `Stable favorite policy ${rec.favoritePolicyVersion}: favorite prior withheld until the model is routable, flagship-tier, and backed by fresh benchmark evidence.`;
+  }
+  return "Evidence score only; to outrank a protected favorite, a challenger must clear both evidence and benchmark dethroning margins across consecutive rundowns.";
+}
+
+function annotateSelection(rec: BuiltRecommendation): BuiltRecommendation {
+  const protectedFavorite = favoriteIsProtected(rec);
+  const favoritePrior = protectedFavorite ? rec.favoritePrior : 0;
+  const selectionScore = clamp01(rec.score + favoritePrior) ?? rec.score;
+  return {
+    ...rec,
+    favoritePrior,
+    selectionScore,
+    selectionReason: selectionReason(rec, protectedFavorite),
+  };
+}
+
+function ordinalSelectionScore(index: number): number | undefined {
+  return clamp01(Math.max(SELECTION_SCORE_FLOOR, SELECTION_SCORE_TOP - index * SELECTION_SCORE_STEP));
+}
+
+function finalizeSelectionScores(ranked: BuiltRecommendation[]): BuiltRecommendation[] {
+  return ranked.map((rec, idx) => ({
+    ...rec,
+    selectionScore: ordinalSelectionScore(idx) ?? rec.selectionScore,
+  }));
+}
+
+function compareEvidence(a: BuiltRecommendation, b: BuiltRecommendation): number {
+  if (b.selectionScore !== a.selectionScore) return b.selectionScore - a.selectionScore;
+  if (b.score !== a.score) return b.score - a.score;
+  return a.modelID.localeCompare(b.modelID);
+}
+
+function compareSelection(
+  a: BuiltRecommendation,
+  b: BuiltRecommendation,
+  previousTaskRanking: PreviousTaskRanking | undefined
+): number {
+  const aProtected = favoriteIsProtected(a);
+  const bProtected = favoriteIsProtected(b);
+
+  if (aProtected && bProtected && a.favoriteRank !== b.favoriteRank) {
+    if ((a.favoriteRank ?? Infinity) < (b.favoriteRank ?? Infinity)) {
+      return canDethrone(b, a, previousTaskRanking) ? 1 : -1;
+    }
+    return canDethrone(a, b, previousTaskRanking) ? -1 : 1;
+  }
+  if (aProtected && !bProtected) return canDethrone(b, a, previousTaskRanking) ? 1 : -1;
+  if (!aProtected && bProtected) return canDethrone(a, b, previousTaskRanking) ? -1 : 1;
+  return compareEvidence(a, b);
 }
 
 export function buildRouterRundown(input: RundownInput) {
-  const { date, generatedAt, models, snapshots, statuses, runtime, notes } = input;
+  const { date, generatedAt, models, snapshots, statuses, runtime, notes, previousRundown } = input;
   const now = generatedAt;
+  const canonicalSnapshots = canonicalizeSnapshots(snapshots, models);
+  const canonicalRuntime = canonicalizeRuntime(runtime, models);
+  const previousTaskRankings = new Map(
+    (previousRundown?.taskRankings ?? []).map((task) => [task.taskID, task])
+  );
 
   const sourceStatuses = statuses.map((s) => {
     const meta = sourceMeta(s.source);
@@ -225,7 +498,7 @@ export function buildRouterRundown(input: RundownInput) {
 
   const taskRankings = TASK_CATEGORIES.map((task) => {
     const taskSnapshotsByModel = new Map<string, ModelBenchmarkSnapshotDoc[]>();
-    for (const snap of snapshots) {
+    for (const snap of canonicalSnapshots) {
       if (snap.taskCategory !== task.id) continue;
       const list = taskSnapshotsByModel.get(snap.modelID) ?? [];
       list.push(snap);
@@ -249,25 +522,43 @@ export function buildRouterRundown(input: RundownInput) {
       .map((m) => buildRecommendation({
         model: m,
         snapshots: taskSnapshotsByModel.get(m.modelID) ?? [],
-        runtime: runtime[m.modelID],
+        runtime: canonicalRuntime[m.modelID],
         now,
       }));
 
-    recs.sort((a, b) => b.score - a.score);
-    recs.forEach((r, i) => { r.rank = i + 1; });
+    if (recs.length === 0) {
+      return {
+        taskID: task.id,
+        taskLabel: task.label,
+        taskBlurb: task.blurb,
+        recommendations: [],
+        rejectedAlternatives: [],
+        note: `No catalogued model matched benchmark evidence for ${task.label} today — ranking is suppressed rather than guessed.`,
+        topPickRationale: "Insufficient evidence to recommend a top pick today.",
+      };
+    }
 
-    const top = recs[0];
-    const alternatives = recs.slice(1, 3);
-    const rejected = recs.slice(3).map((r) => ({
+    const previousTaskRanking = previousTaskRankings.get(task.id);
+    const ranked = finalizeSelectionScores(recs
+      .map(annotateSelection)
+      .sort((a, b) => compareSelection(a, b, previousTaskRanking))
+      .map((r, i) => ({ ...r, rank: i + 1 })));
+
+    const top = ranked[0];
+    const alternatives = ranked.slice(1, 3);
+    const rejected = ranked.slice(3).map((r) => ({
       modelID: r.modelID,
       modelDisplay: r.modelDisplay,
       providerID: r.providerID,
       providerDisplay: r.providerDisplay,
       providerLogo: r.providerLogo,
+      evidenceScore: r.score,
+      selectionScore: r.selectionScore,
+      benchmarkScore: r.signals.benchmarkScore,
       reason: rejectionReason(r),
       evidence: r.signals.benchmarkScore == null
         ? "No benchmark score from any active source for this task."
-        : `Composite ${(r.score * 100).toFixed(0)}/100 vs. leader ${(top.score * 100).toFixed(0)}/100.`,
+        : `Evidence ${(r.score * 100).toFixed(0)}/100; selection ${(r.selectionScore * 100).toFixed(0)}/100 vs. leader ${(top.selectionScore * 100).toFixed(0)}/100.`,
     }));
 
     return {
@@ -283,6 +574,7 @@ export function buildRouterRundown(input: RundownInput) {
 
   const globalLimitations = [
     "Benchmark snapshots are advisory only — runtime constraints (provider-family mode, user pinning, auth, quota, safety, and availability) override any ranking shown here.",
+    `Displayed order uses stable favorite policy ${FAVORITE_POLICY_VERSION}: GPT-5.5 xhigh, Claude Opus 4.7, then GLM 5.1 stay preferred while routable and freshly benchmarked; a challenger must beat both evidence and benchmark margins across consecutive rundowns to dethrone them.`,
     "BurnBar does not fabricate benchmark numbers. Missing data is reported as 'not reported', never guessed.",
     "Daily snapshots are sampled from public or documented sources; raw provider keys, cookies, and bearer tokens are never written into snapshots or this rundown.",
   ];
@@ -309,6 +601,7 @@ function buildRecommendation({
   runtime?: RuntimeMeta;
   now: string;
 }) {
+  const favorite = favoriteSpecForModel(model);
   const citations: Array<{
     source: ModelBenchmarkSource;
     attribution: string;
@@ -404,13 +697,20 @@ function buildRecommendation({
   return {
     rank: 0,
     modelID: model.modelID,
-    modelDisplay: model.modelDisplay,
+    modelDisplay: favorite?.displayName ?? model.modelDisplay,
+    canonicalModelDisplay: model.modelDisplay,
     providerID: model.providerID,
     providerDisplay: model.providerDisplay,
     providerLogo: model.providerLogo,
     providerFamily: model.providerFamily,
     tier,
     score,
+    selectionScore: score,
+    favoriteRank: favorite?.rank ?? null,
+    favoritePrior: favorite?.prior ?? 0,
+    favoritePolicyVersion: favorite?.policyVersion ?? null,
+    preferredReasoningEffort: favorite?.preferredReasoningEffort ?? null,
+    selectionReason: "Evidence score only.",
     rawScore,
     tierMultiplier: tierMul,
     routableMultiplier: routeMul,
@@ -446,12 +746,14 @@ function rejectionReason(rec: ReturnType<typeof buildRecommendation>): string {
   if (rec.signals.benchmarkFreshness != null && rec.signals.benchmarkFreshness < 0.4) return "Benchmark evidence is too old to outrank fresher peers.";
   if (rec.signals.routable === false) return "Not routable through a connected BurnBar provider account.";
   if (rec.signals.cost != null && rec.signals.cost < 0.2) return "Per-token cost is materially higher than the leader at comparable score.";
-  return "Composite score did not clear the leader's margin for this task.";
+  return "Selection policy did not clear the leader's margin for this task.";
 }
 
 function topPickRationale(top: ReturnType<typeof buildRecommendation> | undefined, runners: Array<ReturnType<typeof buildRecommendation>>): string {
   if (!top) return "No model met the floor today; routing falls back to user-pinned defaults.";
   const reasons: string[] = [];
+  if (top.favoriteRank != null && top.favoritePrior > 0) reasons.push(`stable favorite rank #${top.favoriteRank} under ${top.favoritePolicyVersion}`);
+  if (top.preferredReasoningEffort) reasons.push(`preferred reasoning effort ${top.preferredReasoningEffort}`);
   if (top.signals.benchmarkScore != null) reasons.push(`led the benchmark composite at ${(top.signals.benchmarkScore * 100).toFixed(0)}/100`);
   if (top.signals.benchmarkFreshness != null && top.signals.benchmarkFreshness >= 0.8) reasons.push("evidence is fresh");
   else if (top.signals.benchmarkFreshness != null) reasons.push("evidence is the freshest available, even though older than ideal");
@@ -505,14 +807,19 @@ export async function buildAndPersistRouterRundown(db: Firestore, now: Date = ne
   const date = now.toISOString().slice(0, 10);
   const generatedAt = now.toISOString();
 
-  const [snapshotsSnap, statusesSnap, catalog] = await Promise.all([
+  const [snapshotsSnap, statusesSnap, catalog, previousLatestSnap] = await Promise.all([
     db.collection("model_benchmark_snapshots").get(),
     db.collection("model_benchmark_source_status").get(),
     loadRundownCatalog(db),
+    db.doc("router_rundowns/latest").get(),
   ]);
 
   const snapshots: ModelBenchmarkSnapshotDoc[] = snapshotsSnap.docs.map((d) => d.data() as ModelBenchmarkSnapshotDoc);
   const statuses: ModelBenchmarkSourceStatusDoc[] = statusesSnap.docs.map((d) => d.data() as ModelBenchmarkSourceStatusDoc);
+  const previousLatest = previousLatestSnap.exists ? previousLatestSnap.data() : undefined;
+  const previousRundown = previousLatest?.date && previousLatest.date !== date
+    ? previousLatest as RundownInput["previousRundown"]
+    : undefined;
 
   if (catalog.models.length === 0) {
     console.warn("[routerRundown] router_rundown_catalog/current is empty; rundown will be empty until populated.");
@@ -525,6 +832,7 @@ export async function buildAndPersistRouterRundown(db: Firestore, now: Date = ne
     snapshots,
     statuses,
     runtime: catalog.runtime,
+    previousRundown,
   });
 
   const batch = db.batch();

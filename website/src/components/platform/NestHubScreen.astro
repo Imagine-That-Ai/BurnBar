@@ -31,11 +31,14 @@ const rundownDate = LATEST_RUNDOWN?.date ?? "—";
 const sourceCount = LATEST_RUNDOWN?.sourceStatuses.filter((s) => s.status === "fresh").length ?? 0;
 
 // Mirrors the Swift `placeholder` snapshot — provider rail with 4 cards.
+// Logos point at the same `/brand/providers/*.png` assets the desktop app
+// ships with, so the on-device render and the website mock are identical.
 const providers = [
   {
     id: "claude",
     name: "Claude",
     monogram: "C",
+    logo: "/brand/providers/claude-code.png",
     accent: "#E07868",
     tokens: "5.4B",
     tokenLabel: "TOKENS · 5H",
@@ -54,6 +57,7 @@ const providers = [
     id: "codex",
     name: "Codex",
     monogram: "C",
+    logo: "/brand/providers/codex.png",
     accent: "#A294F0",
     tokens: "42.0B",
     tokenLabel: "TOKENS · 7D",
@@ -72,6 +76,7 @@ const providers = [
     id: "cursor",
     name: "Cursor",
     monogram: "▣",
+    logo: "/brand/providers/cursor.png",
     accent: "#C8BFB5",
     tokens: "113.2M",
     tokenLabel: "TOKENS · MO",
@@ -90,6 +95,7 @@ const providers = [
     id: "droid",
     name: "Droid",
     monogram: "❄︎",
+    logo: "/brand/providers/factory.png",
     accent: "#5F7CD9",
     tokens: "11.2B",
     tokenLabel: "TOKENS · 7D",
@@ -142,7 +148,11 @@ const TONE_HEX: Record<string, string> = {
       <li class="ncard" style={`--accent:${p.accent};`}>
         <header class="ncard__head">
           <div class="ncard__logo" style={`--accent:${p.accent};`}>
-            <span>{p.monogram}</span>
+            {p.logo ? (
+              <img src={p.logo} alt="" width="20" height="20" loading="lazy" decoding="async" />
+            ) : (
+              <span>{p.monogram}</span>
+            )}
           </div>
           <div class="ncard__id">
             <strong class="ncard__name">{p.name}</strong>
@@ -185,7 +195,7 @@ const TONE_HEX: Record<string, string> = {
     <span class="nesthub-screen__footer-label">Today · Coding</span>
     <span class="nesthub-screen__footer-model" data-platform-top-pick-model>{topPick?.modelDisplay ?? "no rundown yet"}</span>
     <span class="nesthub-screen__footer-score" data-platform-top-pick-score>
-      {topPick ? `${Math.round(topPick.score * 100)}/100` : "—"}
+      {topPick ? `${Math.round((topPick.selectionScore ?? topPick.score) * 100)}/100` : "—"}
     </span>
     <span class="nesthub-screen__footer-sources" data-platform-top-pick-sources>
       {sourceCount} fresh source{sourceCount === 1 ? "" : "s"}
@@ -336,17 +346,25 @@ const TONE_HEX: Record<string, string> = {
     min-width: 0;
   }
   .ncard__logo {
-    width: clamp(14px, 1.6vw, 18px);
-    height: clamp(14px, 1.6vw, 18px);
-    border-radius: 4px;
-    background: color-mix(in oklab, var(--accent) 30%, transparent);
+    width: clamp(16px, 1.9vw, 22px);
+    height: clamp(16px, 1.9vw, 22px);
+    border-radius: 5px;
+    background: color-mix(in oklab, var(--accent) 24%, #0f0c14);
+    border: 0.75px solid color-mix(in oklab, var(--accent) 45%, transparent);
     display: grid;
     place-items: center;
     flex-shrink: 0;
+    overflow: hidden;
     color: #f6f1e7;
     font-family: var(--font-display);
     font-size: clamp(0.55rem, 0.7vw, 0.72rem);
     font-variation-settings: "wght" 800;
+  }
+  .ncard__logo img {
+    width: 84%;
+    height: 84%;
+    object-fit: contain;
+    display: block;
   }
   .ncard__id { display: grid; min-width: 0; }
   .ncard__name {

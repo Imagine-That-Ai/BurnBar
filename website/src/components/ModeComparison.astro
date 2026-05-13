@@ -25,7 +25,7 @@ const candidates: ScoreboardCandidate[] = (codingTask?.recommendations ?? [])
     modelDisplay: r.modelDisplay,
     providerDisplay: r.providerDisplay,
     providerLogo: r.providerLogo,
-    score: r.score,
+    score: r.selectionScore ?? r.score,
   }));
 
 const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
@@ -78,7 +78,7 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
       <header class="modecard__head">
         <span class="modecard__tag modecard__tag--mercury mono">02 · opt-in · intelligent model router</span>
         <h3 class="modecard__title">Different model — when you ask for one.</h3>
-        <p class="modecard__sub mono">researches candidates · benchmarks advisory · your pin still wins</p>
+        <p class="modecard__sub mono">model board researches candidates · your pin still wins</p>
       </header>
 
       <div class="modecard__viz">
@@ -91,10 +91,11 @@ const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
       </div>
 
       <ul class="modecard__bullets">
-        <li><strong>Nine surface signals · five weighted dimensions.</strong> Capability, cost, latency, trust, policy-fit — composite scored, deterministic.</li>
+        <li><strong>Daily model board.</strong> A board of language models runs research and analysis tasks before the deterministic ranking is published.</li>
         <li><strong>Benchmarks are advisory.</strong> Pulled from Artificial Analysis, Terminal-Bench, Design Arena. Older signals weigh less.</li>
+        <li><strong>Selection is deliberately stable.</strong> Favorites are only dethroned after clear evidence and benchmark margins repeat.</li>
         <li><strong>Your pin still wins.</strong> A pinned model that meets the floor beats a higher-scored alternative.</li>
-        <li><strong>Every pick is explainable.</strong> Today's rundown ships with citations and freshness states.</li>
+        <li><strong>Every pick is explainable.</strong> Today's rundown ships with citations, freshness states, and board verdicts.</li>
       </ul>
 
       <a class="modecard__foot modecard__foot--cta mono" href="/router/daily">

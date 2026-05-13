@@ -23,7 +23,7 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
 
 <BaseLayout
   title="Daily Router Rundown · archive"
-  description="Every dated OpenBurnBar Intelligent Router Rundown — frozen, source-cited, and inspectable. Benchmark data is advisory; runtime constraints win."
+  description="Every dated OpenBurnBar Intelligent Router model-board rundown — frozen, source-cited, and inspectable. Benchmark data is advisory; runtime constraints win."
 >
   <section class="pagehead pagehead--archive">
     <div class="container container--wide">
@@ -33,15 +33,16 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
         <span>Daily archive</span>
       </nav>
 
-      <span class="eyebrow eyebrow--ember">Operator log · the archive</span>
+      <span class="eyebrow eyebrow--ember">Model board · the archive</span>
       <h1 class="pagehead__h">
-        Every day, frozen, cited, and inspectable.
+        Every board verdict, frozen, cited, and inspectable.
       </h1>
       <p class="lead">
         The Intelligent Router refreshes its model-landscape snapshot once
-        every twenty-four hours. Each refresh produces a dated rundown — what
-        BurnBar would have recommended that day, the sources it cited, the
-        freshness of every signal, and the limitations of every claim.
+        every twenty-four hours, then a board of language models runs research
+        and analysis tasks over it. Each refresh produces a dated rundown —
+        what BurnBar would have recommended that day, the sources it cited,
+        the freshness of every signal, and the limitations of every claim.
         Nothing is overwritten. Future humans can verify what was said.
       </p>
 
@@ -57,7 +58,7 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     <div class="container container--wide">
       <p class="archive__advisory">
         Benchmark signals are <strong>advisory</strong>. Each rundown shows
-        what the daily snapshot said, not what the router actually ran —
+        what the daily model board recommended, not what the router actually ran —
         provider-family mode, user pinning, account auth, quota state, safety
         policy, and availability all override these recommendations at
         runtime. Use this archive to inspect <em>why</em> a given
@@ -95,7 +96,7 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
                             <span class="archcard__provider mono">{top.providerDisplay}</span>
                           </div>
                         </div>
-                        <span class="archcard__score mono">{pct(top.score)} / 100</span>
+                        <span class="archcard__score mono">{pct(top.selectionScore ?? top.score)} / 100</span>
                       </div>
                     ) : (
                       <p class="archcard__empty">No task rankings — sources were unavailable.</p>

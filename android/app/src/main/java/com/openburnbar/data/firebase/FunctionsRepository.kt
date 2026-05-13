@@ -24,6 +24,10 @@ class FunctionsRepository {
         functions.getHttpsCallable("rebuildUsageRollups").call().await()
     }
 
+    suspend fun seedAndroidDemoAccount(): Map<String, Any> {
+        return callMap("seedAndroidDemoAccount", emptyMap())
+    }
+
     suspend fun refreshQuota(accountId: String, providerId: String): Map<String, Any> {
         val result = functions.getHttpsCallable("refreshQuota")
             .call(mapOf("accountId" to accountId, "providerId" to providerId))

@@ -23,7 +23,17 @@ Intelligent Model Router is enabled.
 
 The daily `refreshModelLandscapeBenchmarks` Cloud Function normalizes public or
 fixture-backed model-landscape data into `model_benchmark_snapshots` and writes
-source health into `model_benchmark_source_status`.
+source health into `model_benchmark_source_status`. After those writes, the
+same job builds the public model-board rundown at `router_rundowns/<date>` and
+`router_rundowns/latest`.
+
+That public rundown is deliberately more stable than a raw leaderboard. A
+board of language models runs daily research and analysis tasks over the
+source feed, then deterministic code applies the favorite policy: GPT-5.5
+xhigh first, Claude Opus 4.7 second, GLM 5.1 third, until a challenger clears
+freshness/routability gates plus repeated dethroning margins. Runtime routing
+still evaluates user pins, auth, quota, safety, and availability before any
+benchmark-derived recommendation can matter.
 
 Current adapters:
 

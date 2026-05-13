@@ -101,14 +101,14 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
             <h3>Intelligent Model Router</h3>
           </header>
           <p>
-            Hand the router a task. It scores every candidate model on
-            capability, cost, latency, trust, and policy-fit — with benchmark
-            freshness adjusting capability — picks the best, holds a runner-up,
+            Hand the router a task. A daily board of language models researches
+            candidate models, BurnBar applies deterministic selection policy,
+            then the gateway picks the best available route, holds a runner-up,
             and streams a <span class="mono">decision_reason</span> with every
-            pick. Daily rundowns live at <a href="/router/daily">/router/daily</a>.
+            pick. Daily board verdicts live at <a href="/router/daily">/router/daily</a>.
           </p>
           <ul class="routing__bullets">
-            <li>9 surface signals · 5 weighted dimensions in code</li>
+            <li>Raw evidence score · stable selection score</li>
             <li>Sources: Artificial Analysis · Terminal-Bench · Design Arena</li>
             <li>Per-surface opt-in (autopilot, scout, researcher)</li>
             <li>Explainable: every decision logged locally</li>

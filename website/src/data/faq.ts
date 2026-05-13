@@ -15,7 +15,7 @@ export const FAQ: FAQItem[] = [
     id: "router-intelligent-mode",
     question: "What is the Intelligent Model Router?",
     answer:
-      "It's the opt-in routing mode. You tell BurnBar what the task is (or let your client surface it) and the router scores every candidate model on nine surface signals — task intent, model capability, quota health, local availability, cost, latency, context window, reliability, and benchmark freshness.\n\nIn code, those nine signals fold into five weighted dimensions: capability (0.20), cost (0.25), latency (0.15), trust (0.25), and policy-fit (0.15). Benchmark freshness adjusts the capability dimension — older signals weigh less.\n\nThe winner serves the request and a runner-up is held in reserve so failover is instant. Benchmarks are advisory — they help break ties and weigh recency, but they never override your pin or the live quota state. User choice, auth, quota, and availability always win."
+      "It's the opt-in routing mode. You tell BurnBar what the task is (or let your client surface it), and a daily board of language models runs research and analysis tasks over the model landscape.\n\nBurnBar keeps the result deterministic: the public rundown preserves the raw evidence score, then applies a stable favorite policy so GPT-5.5 xhigh, Claude Opus 4.7, and GLM 5.1 are not dethroned by one noisy refresh. A challenger has to clear freshness, routability, evidence, and benchmark margins across consecutive rundowns.\n\nThe winner serves the request and a runner-up is held in reserve so failover is instant. Benchmarks are advisory — they help break ties and weigh recency, but they never override your pin or the live quota state. User choice, auth, quota, and availability always win."
   },
   {
     id: "router-codex-to-claude",
@@ -33,7 +33,7 @@ export const FAQ: FAQItem[] = [
     id: "router-benchmark-sources",
     question: "What benchmark sources does BurnBar use?",
     answer:
-      "A curated set of recently refreshed, well-methodologized public sources: Artificial Analysis (intelligence + coding indices, plus TPS and pricing), Terminal-Bench via Hugging Face (shell-loop agents, verified-run flag), and Design Arena (pairwise Elo + win-rate by category). Manual cached fixtures cover gaps when a source's API is unavailable.\n\nEach score carries an age and a confidence label; older scores are weighted down, not silently dropped. The daily rundown at /router/daily shows what got cited and why, with logos for every source. The weighting curve is documented in functions/src/modelLandscape.ts.\n\nWe don't synthesize benchmarks. We cite, we don't fabricate. And no benchmark ever overrides your pin or beats live quota state — they're advisory signals."
+      "A curated set of recently refreshed, well-methodologized public sources: Artificial Analysis (intelligence + coding indices, plus TPS and pricing), Terminal-Bench via Hugging Face (shell-loop agents, verified-run flag), and Design Arena (pairwise Elo + win-rate by category). Manual cached fixtures cover gaps when a source's API is unavailable.\n\nEach score carries an age and a confidence label; older scores are weighted down, not silently dropped. The daily rundown at /router/daily shows the model-board verdict, the raw evidence score, the deterministic selection score, source logos, and freshness states.\n\nWe don't synthesize benchmarks. We cite, we don't fabricate. And no benchmark ever overrides your pin or beats live quota state — they're advisory signals."
   },
   {
     id: "router-logs-safe",

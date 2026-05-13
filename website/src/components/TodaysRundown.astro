@@ -28,7 +28,7 @@ const candidates: ScoreboardCandidate[] = (codingTask?.recommendations ?? [])
     modelDisplay: r.modelDisplay,
     providerDisplay: r.providerDisplay,
     providerLogo: r.providerLogo,
-    score: r.score,
+    score: r.selectionScore ?? r.score,
     badge: r.signals?.contextWindowTokens != null
       ? `ctx ${r.signals.contextWindowTokens >= 1_000_000 ? (r.signals.contextWindowTokens / 1_000_000).toFixed(0) + "M" : (Math.round(r.signals.contextWindowTokens / 1000)) + "k"}`
       : undefined,
@@ -54,17 +54,17 @@ const archiveCount = ALL_RUNDOWNS.length;
 
 <section class="todays" aria-labelledby="todays-h">
   <header class="todays__head">
-    <span class="eyebrow eyebrow--mercury">Research mode · live</span>
+    <span class="eyebrow eyebrow--mercury">Model board · daily</span>
     <h2 id="todays-h" class="todays__h">
-      Today's rundown — what intelligent mode would pick, with citations.
+      Today's board verdict — what intelligent mode would pick, with citations.
     </h2>
     <p class="todays__lead">
-      Every twenty-four hours the router refreshes its model-landscape snapshot
-      from public benchmark sources. Each rundown is frozen, dated, and
-      inspectable — the daily archive at
+      Every twenty-four hours a board of language models runs research and
+      analysis tasks against the model-landscape snapshot. The result is
+      frozen, dated, and inspectable — the daily archive at
       <a class="todays__link" href="/router/daily">/router/daily</a>
-      holds {archiveCount} of them. Below: today's top three coding candidates,
-      with the sources cited and their freshness shown alongside.
+      holds {archiveCount} of them. Below: today's top coding candidates,
+      with source freshness and the deterministic selection score shown alongside.
     </p>
   </header>
 
@@ -97,7 +97,7 @@ const archiveCount = ALL_RUNDOWNS.length;
                         <img class="taskchip__logo" src={t.top.providerLogo} alt="" width="20" height="20" loading="lazy" />
                       )}
                       <span class="taskchip__name">{t.top.modelDisplay}</span>
-                      <span class="taskchip__score mono">{Math.round(t.top.score * 100)}</span>
+                      <span class="taskchip__score mono">{Math.round((t.top.selectionScore ?? t.top.score) * 100)}</span>
                     </span>
                   ) : (
                     <span class="taskchip__none mono">no fresh evidence</span>

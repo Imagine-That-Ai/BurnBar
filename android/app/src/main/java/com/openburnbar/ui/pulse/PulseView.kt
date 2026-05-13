@@ -26,6 +26,7 @@ import com.openburnbar.data.models.UsageRollups
 import com.openburnbar.data.models.*
 import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.data.stores.DashboardStore
+import com.openburnbar.data.stores.DemoDataStore
 import com.openburnbar.data.stores.QuotaStore
 import com.openburnbar.data.stores.UserStore
 import com.openburnbar.ui.components.*
@@ -38,6 +39,7 @@ fun PulseView(
     dashboardStore: DashboardStore = viewModel(),
     quotaStore: QuotaStore = viewModel(),
     activityStore: ActivityStore = viewModel(),
+    demoDataStore: DemoDataStore = viewModel(),
     onNavigateToBurn: (() -> Unit)? = null,
     onNavigateToHermes: (() -> Unit)? = null,
     onNavigateToStreams: (() -> Unit)? = null,
@@ -46,6 +48,9 @@ fun PulseView(
     val rollups by dashboardStore.rollups.collectAsState()
     val isLoading by dashboardStore.isLoading.collectAsState()
     val error by dashboardStore.error.collectAsState()
+    val demoIsSeeding by demoDataStore.isSeeding.collectAsState()
+    val demoMessage by demoDataStore.message.collectAsState()
+    val demoError by demoDataStore.error.collectAsState()
     var timelineScope by remember { mutableStateOf(PulseTimelineScope.DAY) }
     var displayMode by remember { mutableStateOf(UsageDisplayMode.CURRENCY) }
     val currentUser by userStore.user.collectAsState()
@@ -113,8 +118,19 @@ fun PulseView(
                     timelineScope = timelineScope,
                     quotaStore = quotaStore,
                     activityStore = activityStore,
+                    demoIsSeeding = demoIsSeeding,
+                    demoMessage = demoMessage,
+                    demoError = demoError,
                     onDisplayModeChange = { displayMode = it },
                     onTimelineChange = { timelineScope = it },
+                    onLoadDemoData = {
+                        demoDataStore.seed {
+                            dashboardStore.refresh()
+                            quotaStore.refresh()
+                            activityStore.loadInitial(pageSize = 250)
+                        }
+                    },
+                    onDismissDemoStatus = { demoDataStore.clearStatus() },
                     onNavigateToBurn = onNavigateToBurn,
                     onNavigateToHermes = onNavigateToHermes,
                     onNavigateToStreams = onNavigateToStreams
@@ -131,14 +147,20 @@ private fun Content(
     timelineScope: PulseTimelineScope,
     quotaStore: QuotaStore,
     activityStore: ActivityStore,
+    demoIsSeeding: Boolean,
+    demoMessage: String?,
+    demoError: String?,
     onDisplayModeChange: (UsageDisplayMode) -> Unit,
     onTimelineChange: (PulseTimelineScope) -> Unit,
+    onLoadDemoData: () -> Unit,
+    onDismissDemoStatus: () -> Unit,
     onNavigateToBurn: (() -> Unit)?,
     onNavigateToHermes: (() -> Unit)?,
     onNavigateToStreams: (() -> Unit)?
 ) {
     val snapshots by quotaStore.snapshots.collectAsState()
     val recentUsages by activityStore.usages.collectAsState()
+    val shouldOfferDemoData = rollups.isEmpty() && snapshots.isEmpty() && recentUsages.isEmpty()
 
     val windowMetrics = pulseWindowMetrics(
         scope = timelineScope,
@@ -157,6 +179,18 @@ private fun Content(
         // overlay in the parent Box at top — otherwise the hero card slides
         // up underneath it and the texts collide.
         Spacer(modifier = Modifier.height(72.dp))
+
+        if (shouldOfferDemoData) {
+            StaggeredEntrance(delay = 0) {
+                DemoDataPromptCard(
+                    isLoading = demoIsSeeding,
+                    message = demoMessage,
+                    error = demoError,
+                    onLoadDemoData = onLoadDemoData,
+                    onDismissStatus = onDismissDemoStatus
+                )
+            }
+        }
 
         StaggeredEntrance(delay = 0) {
             Row(

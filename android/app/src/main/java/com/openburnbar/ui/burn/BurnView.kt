@@ -40,6 +40,7 @@ import com.openburnbar.data.stores.QuotaPreferences
 import com.openburnbar.data.stores.QuotaStore
 import com.openburnbar.data.stores.QuotaWindowKind
 import com.openburnbar.data.stores.UserStore
+import com.openburnbar.data.stores.DemoDataStore
 import com.openburnbar.data.stores.rememberQuotaDefaultWindow
 import com.openburnbar.ui.components.*
 import com.openburnbar.ui.theme.*
@@ -50,12 +51,16 @@ import kotlin.math.min
 
 @Composable
 fun BurnView(
-    quotaStore: QuotaStore = viewModel()
+    quotaStore: QuotaStore = viewModel(),
+    demoDataStore: DemoDataStore = viewModel()
 ) {
     val snapshots by quotaStore.snapshots.collectAsState()
     val accounts by quotaStore.accounts.collectAsState()
     val isLoading by quotaStore.isLoading.collectAsState()
     val error by quotaStore.error.collectAsState()
+    val demoIsSeeding by demoDataStore.isSeeding.collectAsState()
+    val demoMessage by demoDataStore.message.collectAsState()
+    val demoError by demoDataStore.error.collectAsState()
     val userStore: UserStore = viewModel()
     val currentUser by userStore.user.collectAsState()
 
@@ -100,10 +105,16 @@ fun BurnView(
                 )
             }
             !isLoading && snapshots.isEmpty() -> {
-                EmptyStateView(
-                    icon = Icons.Filled.LocalFireDepartment,
-                    title = "No Quota Data",
-                    message = "Connect provider accounts to see your quota usage."
+                DemoDataEmptyState(
+                    isLoading = demoIsSeeding,
+                    message = demoMessage,
+                    error = demoError,
+                    onLoadDemoData = {
+                        demoDataStore.seed {
+                            quotaStore.refresh()
+                        }
+                    },
+                    onDismissStatus = { demoDataStore.clearStatus() }
                 )
             }
             else -> {
