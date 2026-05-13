@@ -41,6 +41,7 @@ import org.json.JSONObject
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 interface InsightAnalysisEngine {
     suspend fun analyze(request: InsightAnalysisRequest): InsightAnalysisResult
@@ -154,7 +155,11 @@ class AndroidInsightAnalysisEngine(
 
 class OllamaInsightAnalysisGateway(
     private val baseURL: String = "http://127.0.0.1:11434",
-    private val client: OkHttpClient = OkHttpClient(),
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
+        .build(),
+    private val numPredict: Int = 1400,
 ) : InsightAnalysisModelGateway {
     override val providerKey: String = "ollama"
     override val displayName: String = "Ollama"
@@ -174,6 +179,11 @@ class OllamaInsightAnalysisGateway(
             put("model", request.selectedModel.modelID)
             put("stream", false)
             put("format", "json")
+            put("think", false)
+            put("options", JSONObject().apply {
+                put("temperature", 0.2)
+                put("num_predict", numPredict)
+            })
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "system")
@@ -218,7 +228,7 @@ class OllamaInsightAnalysisGateway(
         """.trimIndent()
 }
 
-private object InsightAnalysisResultJsonDecoder {
+object InsightAnalysisResultJsonDecoder {
     fun decode(content: String, request: InsightAnalysisRequest, usage: InsightTokenUsage?): InsightAnalysisResult {
         val root = extractObject(content)
         val resolver = CitationResolver(request.context)
