@@ -6,6 +6,42 @@ export interface FAQItem {
 
 export const FAQ: FAQItem[] = [
   {
+    id: "router-family-failover",
+    question: "What is Provider-Family Failover?",
+    answer:
+      "It's the default routing mode in BurnBar. We stretch capacity by failing over across multiple accounts inside the same provider family — never across families.\n\nIf your pinned Z.ai key throttles, BurnBar's local gateway picks up with your MiniMax or Kimi key. Both are OpenAI-shape, so the wire format never changes. Claude Code does the same inside the Anthropic family — your Pro plan as primary, your Console admin key as runner-up.\n\nThe mode is honored before ranking. If every account in the matching family is exhausted, BurnBar returns a structured 503 — it will not silently rewrite your request into a different family."
+  },
+  {
+    id: "router-intelligent-mode",
+    question: "What is the Intelligent Model Router?",
+    answer:
+      "It's the opt-in routing mode. You tell BurnBar what the task is (or let your client surface it) and the router scores every candidate model on nine signals — task intent, model capability, quota health, local availability, cost, latency, context window, reliability, and benchmark freshness.\n\nThe winner serves the request. A runner-up is held in reserve so failover is instant.\n\nBenchmarks are advisory — they help break ties and weigh recency, but they never override your pin or the live quota state. User choice, auth, quota, and availability always win."
+  },
+  {
+    id: "router-codex-to-claude",
+    question: "Will BurnBar send my Codex task to Claude?",
+    answer:
+      "Not in failover mode. The router refuses to cross the family boundary. Your Codex task stays on OpenAI-family accounts (Z.ai, MiniMax, Kimi, OpenAI, Ollama). Your Claude Code task stays on Anthropic-family accounts.\n\nIf every OpenAI-family account is rate-limited, you get a structured 503, not a stealth swap into Claude.\n\nIn Intelligent mode you can opt into cross-family routing per surface — but the surface (and you) have to ask for it explicitly. We never silently swap providers on a request that asked for a specific one."
+  },
+  {
+    id: "router-pin-model",
+    question: "Can I still pin a model?",
+    answer:
+      "Yes. Pinning is the strongest signal in both modes.\n\nIn Provider-Family Failover, you pin an account. The pinned account wins as long as it's healthy; the runner-up is pre-selected for instant failover.\n\nIn Intelligent Mode, you can pin a model, a family, or even a tier (e.g. \"always opus-class for the autopilot surface\"). The router still scores candidates and holds a runner-up, but it will not pick something else when your pin is healthy."
+  },
+  {
+    id: "router-benchmark-sources",
+    question: "What benchmark sources does BurnBar use?",
+    answer:
+      "A curated set of recently refreshed, well-methodologized coding benchmarks — currently Aider Leaderboard, LMSys Arena coding slice, and SWE-Bench Verified.\n\nEach score carries an age and a confidence label. Older scores are weighted down. The full source list ships with each release as a versioned JSON file you can audit, and the weighting curve is documented in docs/ROUTER_BENCHMARK_POLICY.md.\n\nWe don't synthesize our own benchmarks. We cite, we don't fabricate. And no benchmark ever overrides your pin or beats live quota state — they're advisory signals."
+  },
+  {
+    id: "router-logs-safe",
+    question: "Are routing logs safe?",
+    answer:
+      "Yes. The local ProviderRoutingDecisionEvent stream records the chosen account ID, the skipped account IDs, the reason each one was skipped, and the final ranking signals.\n\nIt never logs the API key. Never the OAuth bearer. Never the request body. Never the response body. Keys live in the macOS Keychain with device-local accessibility.\n\nLogs stay in the local SQLite store and never leave the device unless you explicitly enable an opt-in mirror."
+  },
+  {
     id: "data-anywhere",
     question: "Does OpenBurnBar send my data anywhere?",
     answer:

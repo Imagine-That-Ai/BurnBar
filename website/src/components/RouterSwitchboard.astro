@@ -2,10 +2,17 @@
 /**
  * Fire Hydrant — multi-provider routing diagram.
  *
- * Shows six client targets (Cursor, Factory, Forge, OpenCode, Codex CLI,
- * Claude Code) flowing into a single local gateway (the hydrant), which
- * routes onward to seven upstream provider accounts split across two
- * format pools (OpenAI-family on top, Anthropic-family on bottom).
+ * Two router modes:
+ *   - "family"      : Provider-Family Failover (default).
+ *                     Extends capacity across multiple accounts in the same
+ *                     provider family. Codex stays on OpenAI-family. Claude
+ *                     Code stays on Anthropic-family. Failover never crosses
+ *                     a family boundary.
+ *   - "intelligent" : Intelligent Model Router (opt-in).
+ *                     Chooses the best model/provider for the task using
+ *                     capability, quota, cost, latency, reliability, and
+ *                     benchmark freshness. Benchmark scores are advisory
+ *                     signals, not absolute truth.
  *
  * Source of truth:
  *   - OpenBurnBarCore/.../ProviderAccountTypes.swift:403-599 (routing policy)
@@ -16,9 +23,11 @@
 interface Props {
   /** Render a compact variant suitable for the /router page deep-dive (no decorative gutters). */
   compact?: boolean;
+  /** Router mode displayed in the mode strip. */
+  mode?: "family" | "intelligent";
 }
 
-const { compact = false } = Astro.props;
+const { compact = false, mode = "family" } = Astro.props;
 
 type PoolKey = "openai" | "anthropic";
 
@@ -84,6 +93,10 @@ interface Lane {
   pillLabel: string;
   pillClass: string;
   lru: string;
+  /** User-pinned (preferred) account, marked separately from the live state. */
+  selected?: boolean;
+  /** Short reason shown when the lane is blocked from serving traffic. */
+  blockedReason?: string;
 }
 
 const OPENAI_LANES: Lane[] = [
@@ -95,7 +108,8 @@ const OPENAI_LANES: Lane[] = [
     state: "active",
     pillLabel: "healthy · active",
     pillClass: "tag tag--exact tag--plain mono",
-    lru: "last used 0s ago"
+    lru: "last used 0s ago",
+    selected: true
   },
   {
     id: "minimax",
@@ -135,7 +149,8 @@ const OPENAI_LANES: Lane[] = [
     state: "cooling",
     pillLabel: "cooling-down · 3m 42s",
     pillClass: "tag tag--unavailable tag--plain mono",
-    lru: "last used 2h ago"
+    lru: "last used 2h ago",
+    blockedReason: "5xx — auto-retry in 3:42"
   },
   {
     id: "ollama-local",
@@ -145,7 +160,8 @@ const OPENAI_LANES: Lane[] = [
     state: "exhausted",
     pillLabel: "auth-failed · cooled",
     pillClass: "tag tag--burn tag--plain mono",
-    lru: "last used 4d ago"
+    lru: "last used 4d ago",
+    blockedReason: "auth-failed — re-auth required"
   }
 ];
 
@@ -158,7 +174,8 @@ const ANTHROPIC_LANES: Lane[] = [
     state: "active",
     pillLabel: "healthy · active",
     pillClass: "tag tag--mercury tag--plain mono",
-    lru: "last used 4s ago"
+    lru: "last used 4s ago",
+    selected: true
   },
   {
     id: "anthropic-console",
@@ -171,6 +188,38 @@ const ANTHROPIC_LANES: Lane[] = [
     lru: "last used 1d ago"
   }
 ];
+
+/* ── Decision strip copy, keyed by mode ── */
+const DECISION = {
+  family: {
+    modeName: "Provider-Family Failover",
+    modeSub: "default · protects intent · no cross-family translation",
+    headline: "GLM-4.5 → Z.ai",
+    reason: "pinned · healthy · LRU 0s",
+    considered: [
+      { name: "MiniMax", note: "pressure · ranked #2 (held in reserve)" },
+      { name: "Kimi", note: "healthy · LRU 38m" },
+      { name: "OpenAI", note: "healthy · LRU 1h" },
+      { name: "Ollama Cloud", note: "blocked · cooling 3:42" },
+      { name: "Ollama Local", note: "blocked · auth-failed" }
+    ]
+  },
+  intelligent: {
+    modeName: "Intelligent Model Router",
+    modeSub: "opt-in · scores task → model fit · benchmarks are advisory",
+    headline: "Long-context refactor → claude-opus-4-7",
+    reason: "capability 9.4 · ctx 1M · quota healthy · cost OK · benchmark T-3d",
+    considered: [
+      { name: "gpt-4.1-mini", note: "cap 8.1 · cheaper · ctx 256k (too small)" },
+      { name: "glm-4-plus", note: "cap 8.7 · ctx 128k (too small)" },
+      { name: "kimi-k2", note: "cap 8.9 · ctx 1M · benchmark T-21d (stale)" },
+      { name: "claude-sonnet-4-6", note: "cap 9.1 · faster · user pin: opus" }
+    ]
+  }
+} as const;
+
+const decision = DECISION[mode];
+const otherMode = mode === "family" ? DECISION.intelligent : DECISION.family;
 ---
 
 <figure class={`switchboard ${compact ? "switchboard--compact" : ""}`} aria-labelledby="hydrantTitle" aria-describedby="hydrantDesc">
@@ -178,17 +227,49 @@ const ANTHROPIC_LANES: Lane[] = [
   <p id="hydrantDesc" class="sr-only">
     Six client targets — Cursor, Factory, Forge, OpenCode, Codex CLI, and
     Claude Code — point at one local gateway running on 127.0.0.1:8317. The
-    gateway exposes two independent routing pools: OpenAI-compatible served
-    at /v1/chat/completions and Anthropic-compatible served at /v1/messages.
-    A request to one pool can only be served by accounts in that pool —
-    format families never cross. Inside each pool the router ranks healthy
-    accounts by preferred pin, then local credential, then quota health,
-    then a stable sort key, then least-recently-used. Six OpenAI-family
-    provider lanes are shown (Z.ai active, MiniMax next-fallback, Kimi and
-    OpenAI healthy, Ollama Cloud cooling-down, Ollama Local exhausted by
-    auth failure) plus two Anthropic-family lanes (Claude Pro active,
-    Anthropic Console next-fallback).
+    diagram shows the {decision.modeName} mode in action. {mode === "family"
+      ? "Inside each provider family the router picks the user-pinned account when healthy, falls over to the next-best peer when quota presses or the upstream errors, and parks failed accounts in a five-minute cool-down. Format families never cross."
+      : "The router scores the task against each candidate model on capability, quota health, cost, latency, context window, reliability, and benchmark freshness. The winner serves the request; the runner-up is held in reserve."}
   </p>
+
+  {/* ── mode + decision strip ── */}
+  <div class={`switchboard__mode switchboard__mode--${mode}`} aria-label="Active router mode and latest decision">
+    <div class="switchboard__modecol switchboard__modecol--toggle">
+      <span class="switchboard__modeeyebrow mono">router mode</span>
+      <div class="switchboard__modeswitch" role="radiogroup" aria-label="Router mode">
+        <span class={`switchboard__modepill ${mode === "family" ? "is-on" : ""}`}>
+          <span class="switchboard__moderadio" aria-hidden="true"></span>
+          <span class="switchboard__modetext">
+            <strong>{DECISION.family.modeName}</strong>
+            <em>{DECISION.family.modeSub}</em>
+          </span>
+        </span>
+        <span class={`switchboard__modepill ${mode === "intelligent" ? "is-on" : ""}`}>
+          <span class="switchboard__moderadio" aria-hidden="true"></span>
+          <span class="switchboard__modetext">
+            <strong>{DECISION.intelligent.modeName}</strong>
+            <em>{DECISION.intelligent.modeSub}</em>
+          </span>
+        </span>
+      </div>
+    </div>
+
+    <div class="switchboard__modecol switchboard__modecol--decision">
+      <span class="switchboard__modeeyebrow mono">latest decision · 0.42 ms</span>
+      <p class="switchboard__decision">
+        <span class="switchboard__decisionhead">{decision.headline}</span>
+        <span class="switchboard__decisionwhy mono">{decision.reason}</span>
+      </p>
+      <ul class="switchboard__considered mono" aria-label="Other candidates considered">
+        {decision.considered.slice(0, 3).map((c) => (
+          <li>
+            <span class="switchboard__considname">{c.name}</span>
+            <span class="switchboard__considnote">{c.note}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </div>
 
   <div class="switchboard__board">
 
@@ -314,7 +395,7 @@ const ANTHROPIC_LANES: Lane[] = [
         </svg>
 
         <ul class="hydrant__ring mono">
-          <li>routing policy</li>
+          <li>{mode === "family" ? "family-pool first" : "score-by-task"}</li>
           <li>quota health</li>
           <li>LRU round-robin</li>
           <li>127.0.0.1:8317</li>
@@ -335,20 +416,28 @@ const ANTHROPIC_LANES: Lane[] = [
           <span class="switchboard__poolendpoint">/v1/chat/completions</span>
         </header>
         {OPENAI_LANES.map((lane, idx) => (
-          <article class={`ncard ncard--lane ncard--state-${lane.state}`} style={`--idx:${idx}`}>
+          <article class={`ncard ncard--lane ncard--state-${lane.state} ${lane.selected ? "ncard--selected" : ""}`} style={`--idx:${idx}`}>
             <span class="ncard__rail" aria-hidden="true">
               <span class="ncard__pulse"></span>
             </span>
             <img class="ncard__logo" src={lane.logo} alt="" width="36" height="36" loading="lazy" decoding="async" />
             <div class="ncard__body">
               <div class="ncard__row">
-                <strong class="ncard__name">{lane.name}</strong>
+                <strong class="ncard__name">
+                  {lane.selected ? <span class="ncard__pin mono" title="User-pinned (preferred) account" aria-label="User-pinned account">◆ pinned</span> : null}
+                  {lane.name}
+                </strong>
                 <span class={lane.pillClass}>{lane.pillLabel}</span>
               </div>
               <div class="ncard__row ncard__row--sub">
                 <span class="ncard__sub mono">{lane.meta}</span>
                 <span class="ncard__lru mono">{lane.lru}</span>
               </div>
+              {lane.blockedReason ? (
+                <div class="ncard__row ncard__row--block">
+                  <span class="ncard__block mono">blocked · {lane.blockedReason}</span>
+                </div>
+              ) : null}
             </div>
           </article>
         ))}
@@ -360,20 +449,28 @@ const ANTHROPIC_LANES: Lane[] = [
           <span class="switchboard__poolendpoint">/v1/messages</span>
         </header>
         {ANTHROPIC_LANES.map((lane, idx) => (
-          <article class={`ncard ncard--lane ncard--state-${lane.state} ncard--anthropic`} style={`--idx:${idx + OPENAI_LANES.length}`}>
+          <article class={`ncard ncard--lane ncard--state-${lane.state} ncard--anthropic ${lane.selected ? "ncard--selected" : ""}`} style={`--idx:${idx + OPENAI_LANES.length}`}>
             <span class="ncard__rail ncard__rail--mercury" aria-hidden="true">
               <span class="ncard__pulse"></span>
             </span>
             <img class="ncard__logo" src={lane.logo} alt="" width="36" height="36" loading="lazy" decoding="async" />
             <div class="ncard__body">
               <div class="ncard__row">
-                <strong class="ncard__name">{lane.name}</strong>
+                <strong class="ncard__name">
+                  {lane.selected ? <span class="ncard__pin ncard__pin--mercury mono" title="User-pinned (preferred) account" aria-label="User-pinned account">◆ pinned</span> : null}
+                  {lane.name}
+                </strong>
                 <span class={lane.pillClass}>{lane.pillLabel}</span>
               </div>
               <div class="ncard__row ncard__row--sub">
                 <span class="ncard__sub mono">{lane.meta}</span>
                 <span class="ncard__lru mono">{lane.lru}</span>
               </div>
+              {lane.blockedReason ? (
+                <div class="ncard__row ncard__row--block">
+                  <span class="ncard__block mono">blocked · {lane.blockedReason}</span>
+                </div>
+              ) : null}
             </div>
           </article>
         ))}
@@ -382,11 +479,8 @@ const ANTHROPIC_LANES: Lane[] = [
   </div>
 
   <footer class="switchboard__legend mono" aria-label="Diagram legend">
-    <span class="legend__item legend__item--openai">
-      <span class="legend__dot" aria-hidden="true"></span> OpenAI-family rail
-    </span>
-    <span class="legend__item legend__item--anthropic">
-      <span class="legend__dot" aria-hidden="true"></span> Anthropic-family rail
+    <span class="legend__item legend__item--pinned">
+      <span class="legend__dot" aria-hidden="true"></span> selected · user pin
     </span>
     <span class="legend__item legend__item--active">
       <span class="legend__dot" aria-hidden="true"></span> active route
@@ -395,10 +489,16 @@ const ANTHROPIC_LANES: Lane[] = [
       <span class="legend__dot" aria-hidden="true"></span> next-fallback
     </span>
     <span class="legend__item legend__item--cooling">
-      <span class="legend__dot" aria-hidden="true"></span> cooling-down · 5 min
+      <span class="legend__dot" aria-hidden="true"></span> blocked · cooling 5 min
     </span>
     <span class="legend__item legend__item--exhausted">
-      <span class="legend__dot" aria-hidden="true"></span> exhausted · auth-failed
+      <span class="legend__dot" aria-hidden="true"></span> blocked · auth-failed
+    </span>
+    <span class="legend__item legend__item--openai">
+      <span class="legend__dot" aria-hidden="true"></span> OpenAI-family rail
+    </span>
+    <span class="legend__item legend__item--anthropic">
+      <span class="legend__dot" aria-hidden="true"></span> Anthropic-family rail
     </span>
   </footer>
 </figure>
@@ -435,6 +535,195 @@ const ANTHROPIC_LANES: Lane[] = [
     height: 1px;
     overflow: hidden;
     clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* ===== mode + decision strip ===== */
+  .switchboard__mode {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    gap: var(--s-5);
+    align-items: stretch;
+    margin-bottom: var(--s-5);
+    padding: var(--s-4) var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background:
+      linear-gradient(180deg, rgba(255, 106, 26, 0.04) 0%, transparent 80%),
+      var(--ink-base);
+    overflow: hidden;
+  }
+  .switchboard__mode--intelligent {
+    background:
+      linear-gradient(180deg, rgba(214, 211, 223, 0.06) 0%, transparent 80%),
+      var(--ink-base);
+    border-color: color-mix(in oklab, var(--mercury-bright) 22%, var(--ink-line));
+  }
+  .switchboard__mode::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--ember-glow), transparent);
+    opacity: 0.6;
+  }
+  .switchboard__mode--intelligent::after {
+    background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--mercury-bright) 70%, transparent), transparent);
+  }
+  .switchboard__modecol {
+    display: grid;
+    gap: var(--s-3);
+    align-content: start;
+    min-width: 0;
+  }
+  .switchboard__modecol--decision {
+    padding-left: var(--s-5);
+    border-left: 1px dashed var(--ink-line);
+  }
+  .switchboard__modeeyebrow {
+    color: var(--text-dim);
+    font-size: var(--t-eyebrow);
+    letter-spacing: var(--tracking-uppercase);
+    text-transform: uppercase;
+  }
+  .switchboard__modeswitch {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-3);
+  }
+  .switchboard__modepill {
+    display: grid;
+    grid-template-columns: 14px 1fr;
+    gap: var(--s-3);
+    align-items: center;
+    padding: var(--s-3) var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    background: var(--ink-surface);
+    transition:
+      border-color var(--dur-base) var(--ease-out),
+      background var(--dur-base) var(--ease-out);
+  }
+  .switchboard__modepill.is-on {
+    border-color: color-mix(in oklab, var(--ember-core) 55%, var(--ink-line));
+    background:
+      linear-gradient(180deg, rgba(255, 106, 26, 0.08) 0%, var(--ink-base) 100%);
+    box-shadow: 0 10px 28px -16px rgba(255, 106, 26, 0.45);
+  }
+  .switchboard__modepill:nth-child(2).is-on {
+    border-color: color-mix(in oklab, var(--mercury-bright) 45%, var(--ink-line));
+    background:
+      linear-gradient(180deg, rgba(214, 211, 223, 0.08) 0%, var(--ink-base) 100%);
+    box-shadow: 0 10px 28px -16px rgba(214, 211, 223, 0.3);
+  }
+  .switchboard__moderadio {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1.5px solid var(--text-dim);
+    background: transparent;
+    position: relative;
+  }
+  .switchboard__modepill.is-on .switchboard__moderadio {
+    border-color: var(--ember-bright);
+  }
+  .switchboard__modepill.is-on .switchboard__moderadio::after {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border-radius: 50%;
+    background: var(--ember-core);
+    box-shadow: 0 0 8px var(--ember-glow);
+  }
+  .switchboard__modepill:nth-child(2).is-on .switchboard__moderadio {
+    border-color: var(--mercury-bright);
+  }
+  .switchboard__modepill:nth-child(2).is-on .switchboard__moderadio::after {
+    background: var(--mercury-bright);
+    box-shadow: 0 0 8px color-mix(in oklab, var(--mercury-bright) 60%, transparent);
+  }
+  .switchboard__modetext {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .switchboard__modetext strong {
+    color: var(--text-bright);
+    font-variation-settings: "wght" 540;
+    font-size: 0.93rem;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+  .switchboard__modetext em {
+    font-style: normal;
+    color: var(--text-mute);
+    font-size: 0.74rem;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+    line-height: 1.3;
+  }
+  .switchboard__decision {
+    display: grid;
+    gap: 4px;
+    line-height: 1.2;
+  }
+  .switchboard__decisionhead {
+    color: var(--text-bright);
+    font-family: var(--font-display);
+    font-size: 1.18rem;
+    font-variation-settings: "opsz" 36, "wght" 520;
+    letter-spacing: -0.018em;
+    text-wrap: balance;
+  }
+  .switchboard__mode--family .switchboard__decisionhead {
+    border-bottom: 1px solid color-mix(in oklab, var(--ember-core) 28%, transparent);
+    padding-bottom: 4px;
+  }
+  .switchboard__mode--intelligent .switchboard__decisionhead {
+    border-bottom: 1px solid color-mix(in oklab, var(--mercury-bright) 28%, transparent);
+    padding-bottom: 4px;
+  }
+  .switchboard__decisionwhy {
+    color: var(--ember-bright);
+    font-size: 0.78rem;
+    letter-spacing: 0.03em;
+  }
+  .switchboard__mode--intelligent .switchboard__decisionwhy {
+    color: var(--mercury-bright);
+  }
+  .switchboard__considered {
+    list-style: none;
+    display: grid;
+    gap: 4px;
+    font-size: 0.74rem;
+    color: var(--text-mute);
+    letter-spacing: 0.02em;
+  }
+  .switchboard__considered li {
+    display: grid;
+    grid-template-columns: minmax(0, 9.5rem) 1fr;
+    gap: var(--s-3);
+    padding-left: var(--s-3);
+    position: relative;
+  }
+  .switchboard__considered li::before {
+    content: "·";
+    position: absolute;
+    left: 0;
+    color: var(--text-dim);
+  }
+  .switchboard__considname {
+    color: var(--text-base);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .switchboard__considnote {
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
@@ -610,6 +899,9 @@ const ANTHROPIC_LANES: Lane[] = [
   .ncard__row--sub {
     margin-top: 2px;
   }
+  .ncard__row--block {
+    margin-top: 4px;
+  }
   .ncard__name {
     color: var(--text-bright);
     font-variation-settings: "wght" 540;
@@ -617,6 +909,28 @@ const ANTHROPIC_LANES: Lane[] = [
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+  }
+  .ncard__pin {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ember-bright);
+    padding: 1px 6px;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
+    background: color-mix(in oklab, var(--ember-core) 10%, transparent);
+    line-height: 1;
+  }
+  .ncard__pin--mercury {
+    color: var(--mercury-bright);
+    border-color: color-mix(in oklab, var(--mercury-bright) 40%, var(--ink-line));
+    background: color-mix(in oklab, var(--mercury-bright) 12%, transparent);
   }
   .ncard__sub {
     color: var(--text-mute);
@@ -632,6 +946,16 @@ const ANTHROPIC_LANES: Lane[] = [
     letter-spacing: 0.03em;
     white-space: nowrap;
     flex-shrink: 0;
+  }
+  .ncard__block {
+    color: var(--status-burn);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-transform: lowercase;
+    opacity: 0.85;
+  }
+  .ncard--state-cooling .ncard__block {
+    color: var(--text-mute);
   }
   .ncard__arrow {
     color: var(--ember-bright);
@@ -708,6 +1032,20 @@ const ANTHROPIC_LANES: Lane[] = [
   }
   .ncard--state-exhausted .ncard__rail {
     background: var(--ink-line);
+  }
+
+  /* === selected (user-pinned) === */
+  .ncard--selected::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    pointer-events: none;
+    border-radius: inherit;
+    border: 1px dashed color-mix(in oklab, var(--ember-bright) 50%, transparent);
+    opacity: 0.75;
+  }
+  .ncard--anthropic.ncard--selected::after {
+    border-color: color-mix(in oklab, var(--mercury-bright) 55%, transparent);
   }
 
   /* === client cards === */
@@ -822,6 +1160,12 @@ const ANTHROPIC_LANES: Lane[] = [
     background: var(--ember-core);
     box-shadow: 0 0 10px var(--ember-glow);
   }
+  .legend__item--pinned .legend__dot {
+    background: transparent;
+    border: 1px dashed var(--ember-bright);
+    height: 10px;
+    border-radius: 2px;
+  }
   .legend__item--fallback .legend__dot {
     background: repeating-linear-gradient(
       90deg,
@@ -849,6 +1193,18 @@ const ANTHROPIC_LANES: Lane[] = [
   }
 
   /* ===== responsive ===== */
+  @media (max-width: 1080px) {
+    .switchboard__mode {
+      grid-template-columns: 1fr;
+      gap: var(--s-4);
+    }
+    .switchboard__modecol--decision {
+      padding-left: 0;
+      padding-top: var(--s-4);
+      border-left: 0;
+      border-top: 1px dashed var(--ink-line);
+    }
+  }
   @media (max-width: 880px) {
     .switchboard__board {
       grid-template-columns: 1fr;
@@ -865,6 +1221,13 @@ const ANTHROPIC_LANES: Lane[] = [
     }
     .hydrant__glyph {
       width: 110px;
+    }
+    .switchboard__modeswitch {
+      grid-template-columns: 1fr;
+    }
+    .switchboard__considered li {
+      grid-template-columns: 1fr;
+      gap: 2px;
     }
   }
 

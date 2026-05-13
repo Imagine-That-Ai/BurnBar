@@ -44,6 +44,58 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
     </div>
   </section>
 
+  <!-- ──────────── account-level routing preamble ──────────── -->
+  <section class="accountrouting">
+    <div class="container">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">How accounts route</span>
+        <h2>One row per account. Routing is per-account, not per-provider.</h2>
+        <p class="lead">
+          Each row below is one account you add to BurnBar — not the vendor in
+          the abstract. Add five Z.ai keys and you get five rows, five quota
+          buckets, five spots in the router rotation. The matrix shows what
+          BurnBar knows about each account; the router decides how to use them.
+        </p>
+      </header>
+
+      <ul class="accountrouting__grid">
+        <li class="accountrouting__card accountrouting__card--family">
+          <header>
+            <span class="mono accountrouting__tag">family boundaries</span>
+            <h3>Failover stays inside a provider family.</h3>
+          </header>
+          <p>
+            OpenAI-shape requests (Cursor, Factory, Forge, OpenCode, Codex CLI)
+            can only be served by OpenAI-family accounts: OpenAI, Z.ai, MiniMax,
+            Kimi, Ollama. Anthropic-shape requests (Claude Code) can only be
+            served by Anthropic-family accounts: Console + Pro/Team. The
+            router will never silently translate between formats. If you
+            haven't added an account in the matching family, the gateway
+            returns a structured 503 — never a stealth swap.
+          </p>
+        </li>
+        <li class="accountrouting__card accountrouting__card--account">
+          <header>
+            <span class="mono accountrouting__tag">account-level routing</span>
+            <h3>Accounts have their own clocks and quotas.</h3>
+          </header>
+          <p>
+            Each account keeps its own quota bucket, its own cool-down clock,
+            its own LRU timestamp, and its own decision history. BurnBar will
+            not collapse your accounts into a single generic pool. You added
+            them separately because they cost differently, throttle
+            differently, and recover differently — and the router treats them
+            that way.
+          </p>
+        </li>
+      </ul>
+
+      <p class="accountrouting__cap mono">
+        Want the policy in detail? · <a href="/router">read the router page</a>
+      </p>
+    </div>
+  </section>
+
   <section>
     <div class="container">
       <header class="sec-head">
@@ -227,4 +279,82 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
   .endcta--inline h2 { margin-bottom: var(--s-3); }
   .endcta--inline .lead { margin: 0 auto; }
   .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+
+  /* ─── account routing preamble ─── */
+  .accountrouting {
+    padding-block: var(--s-8) var(--s-7);
+    border-top: 1px solid var(--ink-line);
+    background:
+      radial-gradient(60% 50% at 10% 0%, rgba(255, 106, 26, 0.04), transparent 70%);
+  }
+  .accountrouting .sec-head { max-width: 68ch; }
+  .accountrouting__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-4);
+    list-style: none;
+  }
+  .accountrouting__card {
+    display: grid;
+    gap: var(--s-3);
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+  }
+  .accountrouting__card--family {
+    border-color: color-mix(in oklab, var(--ember-core) 30%, var(--ink-line));
+  }
+  .accountrouting__card--account {
+    border-color: color-mix(in oklab, var(--mercury-bright) 24%, var(--ink-line));
+  }
+  .accountrouting__card header {
+    display: grid;
+    gap: var(--s-2);
+  }
+  .accountrouting__card h3 {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.014em;
+    line-height: 1.18;
+    text-wrap: balance;
+  }
+  .accountrouting__tag {
+    color: var(--ember-bright);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    display: inline-block;
+    width: max-content;
+    padding: 1px 8px;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
+    background: color-mix(in oklab, var(--ember-core) 8%, transparent);
+  }
+  .accountrouting__card--account .accountrouting__tag {
+    color: var(--mercury-bright);
+    border-color: color-mix(in oklab, var(--mercury-bright) 32%, var(--ink-line));
+    background: color-mix(in oklab, var(--mercury-bright) 8%, transparent);
+  }
+  .accountrouting__card p {
+    color: var(--text-base);
+    font-size: 0.94rem;
+    line-height: 1.55;
+  }
+  .accountrouting__cap {
+    margin-top: var(--s-5);
+    padding-top: var(--s-3);
+    border-top: 1px dashed var(--ink-line-soft);
+    color: var(--text-dim);
+    font-size: 0.74rem;
+    letter-spacing: 0.04em;
+  }
+  .accountrouting__cap a {
+    color: var(--ember-bright);
+  }
+  @media (max-width: 880px) {
+    .accountrouting__grid { grid-template-columns: 1fr; }
+  }
 </style>

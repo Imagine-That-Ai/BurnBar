@@ -56,6 +56,68 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
     </div>
   </section>
 
+  <!-- ROUTING -->
+  <section class="featgroup featgroup--routing">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Routing</span>
+        <h2>Two routing modes, one local gateway.</h2>
+        <p class="lead">
+          The same daemon ships two postures. <strong>Provider-Family Failover</strong>
+          protects your intent and extends capacity inside a single provider
+          family. <strong>Intelligent Model Router</strong> scores the task and
+          picks the best fit. Benchmarks are advisory signals, never absolute
+          truth — user choice, auth, quota, and availability win.
+        </p>
+      </header>
+
+      <ul class="routing__grid">
+        <li class="routing__card routing__card--family">
+          <header>
+            <span class="mono routing__tag">default</span>
+            <h3>Provider-Family Failover</h3>
+          </header>
+          <p>
+            Pin an account. Add more accounts in the same family. When the
+            primary throttles, the runner-up serves the next request — never
+            crosses into a different family. Codex stays on OpenAI-shape,
+            Claude Code stays on Anthropic-shape.
+          </p>
+          <ul class="routing__bullets">
+            <li>Pinned account wins when healthy</li>
+            <li>Runner-up pre-selected — no second policy pass</li>
+            <li>5-minute cool-down on transient failures</li>
+            <li>Account-level routing — no quota pool collapse</li>
+          </ul>
+        </li>
+        <li class="routing__card routing__card--intelligent">
+          <header>
+            <span class="mono routing__tag routing__tag--mercury">opt-in</span>
+            <h3>Intelligent Model Router</h3>
+          </header>
+          <p>
+            Hand the router a task. It scores every candidate model on
+            capability, quota health, cost, latency, context window, reliability,
+            and benchmark freshness — picks the best, holds a runner-up, and
+            streams a <span class="mono">decision_reason</span> with every pick.
+          </p>
+          <ul class="routing__bullets">
+            <li>9 signals · weighted per task type</li>
+            <li>Benchmarks weighted by recency · never override pins</li>
+            <li>Per-surface opt-in (autopilot, scout, researcher)</li>
+            <li>Explainable: every decision logged locally</li>
+          </ul>
+        </li>
+      </ul>
+
+      <div class="routing__cta">
+        <a class="btn btn--ember" href="/router">
+          Read how routing actually works <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
   <!-- ASSISTANT -->
   <section class="featgroup featgroup--mercury">
     <div class="container container--wide">
@@ -227,4 +289,101 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
   .endcta--inline h2 { margin-bottom: var(--s-3); }
   .endcta--inline .lead { margin: 0 auto; }
   .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+
+  /* ─── routing ─── */
+  .featgroup--routing {
+    background:
+      radial-gradient(70% 60% at 50% 0%, rgba(255, 106, 26, 0.05), transparent 60%),
+      radial-gradient(50% 60% at 95% 100%, rgba(214, 211, 223, 0.04), transparent 70%);
+  }
+  .routing__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-4);
+    list-style: none;
+  }
+  .routing__card {
+    display: grid;
+    gap: var(--s-3);
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background:
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+  }
+  .routing__card--family {
+    border-color: color-mix(in oklab, var(--ember-core) 32%, var(--ink-line));
+    background:
+      linear-gradient(180deg, rgba(255, 106, 26, 0.05) 0%, var(--ink-base) 100%);
+  }
+  .routing__card--intelligent {
+    border-color: color-mix(in oklab, var(--mercury-bright) 30%, var(--ink-line));
+    background:
+      linear-gradient(180deg, rgba(214, 211, 223, 0.05) 0%, var(--ink-base) 100%);
+  }
+  .routing__card header {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+  }
+  .routing__card h3 {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.018em;
+    line-height: 1.15;
+  }
+  .routing__tag {
+    color: var(--ember-bright);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    background: color-mix(in oklab, var(--ember-core) 8%, transparent);
+  }
+  .routing__tag--mercury {
+    color: var(--mercury-bright);
+    border-color: color-mix(in oklab, var(--mercury-bright) 35%, var(--ink-line));
+    background: color-mix(in oklab, var(--mercury-bright) 8%, transparent);
+  }
+  .routing__card p {
+    color: var(--text-base);
+    font-size: 0.94rem;
+    line-height: 1.55;
+  }
+  .routing__bullets {
+    list-style: none;
+    display: grid;
+    gap: var(--s-2);
+    margin-top: var(--s-2);
+    padding-top: var(--s-3);
+    border-top: 1px dashed var(--ink-line-soft);
+  }
+  .routing__bullets li {
+    color: var(--text-base);
+    font-size: 0.9rem;
+    padding-left: var(--s-4);
+    position: relative;
+  }
+  .routing__bullets li::before {
+    content: "▸";
+    position: absolute;
+    left: 0;
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+  .routing__card--intelligent .routing__bullets li::before { color: var(--mercury-bright); }
+  .routing__cta {
+    margin-top: var(--s-5);
+    display: flex;
+    justify-content: flex-start;
+  }
+  @media (max-width: 960px) {
+    .routing__grid { grid-template-columns: 1fr; }
+  }
 </style>
