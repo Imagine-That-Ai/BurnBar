@@ -1,6 +1,6 @@
 {
   "date": "2026-05-13",
-  "generatedAt": "2026-05-13T15:01:13.016Z",
+  "generatedAt": "2026-05-13T15:02:42.722Z",
   "schemaVersion": 1,
   "sourceStatuses": [
     {
@@ -19,7 +19,7 @@
       "logo": "/brand/sources/terminal-bench.png",
       "url": "https://www.tbench.ai/",
       "status": "fresh",
-      "fetchedAt": "2026-05-13T15:01:13.016Z",
+      "fetchedAt": "2026-05-13T15:02:42.722Z",
       "ageHours": 0,
       "message": "Normalized 35 Terminal-Bench leaderboard rows."
     },
@@ -39,7 +39,7 @@
       "logo": "/brand/sources/manual-fixture.svg",
       "url": "/router#sources",
       "status": "fresh",
-      "fetchedAt": "2026-05-13T15:01:13.016Z",
+      "fetchedAt": "2026-05-13T15:02:42.722Z",
       "ageHours": 0,
       "message": "Normalized 34 manual fixture rows."
     }
