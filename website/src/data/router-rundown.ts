@@ -184,8 +184,22 @@ export interface Recommendation {
   providerLogo?: string;
   /** Wire-format family the model speaks: "openai_compat" | "anthropic". */
   providerFamily?: string;
-  /** Composite weighted score 0..1. */
+  /** Benchmark-derived evidence score 0..1 before favorite policy. */
   score: number;
+  /** Display/order score after stable favorite priors and dethroning gates. */
+  selectionScore?: number;
+  /** Operator favorite rank when the model is on the stable favorite ladder. */
+  favoriteRank?: number | null;
+  /** Favorite prior applied to `selectionScore` when eligibility gates pass. */
+  favoritePrior?: number;
+  /** Stable favorite policy version that produced the recommendation. */
+  favoritePolicyVersion?: string | null;
+  /** Preferred reasoning effort for display/runtime handoff, when applicable. */
+  preferredReasoningEffort?: string | null;
+  /** Plain-English description of why the selection score was used. */
+  selectionReason?: string;
+  /** Original catalog name when `modelDisplay` includes a selection suffix. */
+  canonicalModelDisplay?: string;
   /** Fraction of expected signals that were actually reported (0..1). */
   evidenceCoverage: number;
   signals: SignalBundle;
@@ -205,6 +219,9 @@ export interface RejectedAlternative {
   providerID: string;
   providerDisplay: string;
   providerLogo?: string;
+  evidenceScore?: number;
+  selectionScore?: number;
+  benchmarkScore?: number | null;
   reason: string;
   evidence?: string;
 }

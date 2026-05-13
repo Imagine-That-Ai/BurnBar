@@ -19,6 +19,9 @@
     if (x == null || !Number.isFinite(x)) return "—";
     return String(Math.round(x * 100));
   }
+  function displayScore(rec) {
+    return rec.selectionScore == null ? rec.score : rec.selectionScore;
+  }
   function tokens(x) {
     if (x == null) return "—";
     if (x >= 1_000_000) return (x / 1_000_000).toFixed(x % 1_000_000 === 0 ? 0 : 1) + "M";
@@ -62,9 +65,9 @@
       ]),
     ]);
     const score = el("div", { class: "rankrow__score" }, [
-      el("span", { class: "rankrow__scorenum", text: pct(rec.score) }),
-      el("span", { class: "rankrow__scorelab mono", text: "composite / 100" }),
-      el("span", { class: "rankrow__cov mono", text: "evidence " + pct(rec.evidenceCoverage) + "%" }),
+      el("span", { class: "rankrow__scorenum", text: pct(displayScore(rec)) }),
+      el("span", { class: "rankrow__scorelab mono", text: "selection / 100" }),
+      el("span", { class: "rankrow__cov mono", text: "evidence " + pct(rec.score) + " · coverage " + pct(rec.evidenceCoverage) + "%" }),
     ]);
     const s = rec.signals || {};
     function chip(label, value, tone) {
@@ -82,11 +85,12 @@
       chip("ctx", tokens(s.contextWindowTokens)),
       chip("avail", s.availability == null ? "unknown" : s.availability, s.availability === "common" ? "on" : s.availability === "limited" ? "warn" : "off"),
       s.routable === false ? chip("runtime", "not routable", "burn") : null,
+      rec.favoriteRank != null ? chip("board", "favorite #" + rec.favoriteRank, "on") : null,
     ].filter(Boolean));
     const body = el("div", { class: "rankrow__body" });
     const rationale = el("div", { class: "rankrow__rationale" }, [
-      el("h4", { class: "rankrow__rh mono", text: "Why this rank" }),
-      el("ul", { class: "rankrow__rlist" }, (rec.explanation || []).map((line) => el("li", { text: line }))),
+      el("h4", { class: "rankrow__rh mono", text: "Board verdict" }),
+      el("ul", { class: "rankrow__rlist" }, [rec.selectionReason].concat(rec.explanation || []).filter(Boolean).map((line) => el("li", { text: line }))),
     ]);
     const cites = el("div", { class: "rankrow__cites" }, [
       el("h4", { class: "rankrow__rh mono", text: "Source citations" }),
@@ -139,7 +143,7 @@
     if (task.rejectedAlternatives && task.rejectedAlternatives.length > 0) {
       const det = el("details", { class: "rejects" });
       const sum = el("summary");
-      sum.appendChild(el("span", { class: "rejects__sum", text: "Why other candidates didn't make the cut" }));
+      sum.appendChild(el("span", { class: "rejects__sum", text: "Why other candidates didn't make the board pick" }));
       sum.appendChild(el("span", { class: "rejects__count mono", text: task.rejectedAlternatives.length + " dropped" }));
       det.appendChild(sum);
       det.appendChild(el("ul", { class: "rejects__list" }, task.rejectedAlternatives.map((r) => {
@@ -166,7 +170,7 @@
     }
     if (metaEl) {
       const d = new Date(rundown.generatedAt);
-      metaEl.textContent = "Generated " + (isNaN(d.getTime()) ? rundown.generatedAt : d.toUTCString()) + " · schema v" + rundown.schemaVersion + " · benchmarks advisory · runtime constraints win";
+      metaEl.textContent = "Generated " + (isNaN(d.getTime()) ? rundown.generatedAt : d.toUTCString()) + " · schema v" + rundown.schemaVersion + " · model board · runtime constraints win";
     }
     const sources = root.querySelector(".rundown__sources");
     if (sources) {

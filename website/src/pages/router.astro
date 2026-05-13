@@ -19,7 +19,7 @@ const faqEntries = [
   },
   {
     q: "What is the Intelligent Model Router?",
-    a: "The opt-in mode. You tell BurnBar what the task is and the router scores every candidate model on nine surface signals — folded into five weighted dimensions in code (capability, cost, latency, trust, policy-fit). Benchmarks are advisory; pins and quota always win."
+    a: "The opt-in mode. You tell BurnBar what the task is; a daily board of language models researches the model landscape, and deterministic policy turns that work into a stable shortlist. Benchmarks are advisory; pins and quota always win."
   },
   {
     q: "What benchmark sources does BurnBar use?",
@@ -38,7 +38,7 @@ const faqEntries = [
 
 <BaseLayout
   title="The router — same model, every time"
-  description="BurnBar's local router preserves the exact model you asked for. Failover swaps accounts, never the model. Intelligent mode researches candidates against Artificial Analysis, Terminal-Bench, and Design Arena — benchmarks advisory, pins always win."
+  description="BurnBar's local router preserves the exact model you asked for. Failover swaps accounts, never the model. Intelligent mode uses a daily board of language models to research candidates against Artificial Analysis, Terminal-Bench, and Design Arena — benchmarks advisory, pins always win."
 >
   {/* ──────────────── 1 · HERO ──────────────── */}
   <section class="pagehead" aria-labelledby="hero-h">
@@ -61,7 +61,7 @@ const faqEntries = [
       <ul class="pagehead__chips mono" aria-label="Quick highlights">
         <li><span class="dot dot--ember"></span> 127.0.0.1:8317 · local-only</li>
         <li><span class="dot dot--ember"></span> two modes · one daemon</li>
-        <li><span class="dot dot--mercury"></span> benchmarks advisory · pins win</li>
+        <li><span class="dot dot--mercury"></span> daily model board · pins win</li>
       </ul>
 
       <div class="pagehead__visual">
@@ -195,7 +195,7 @@ const faqEntries = [
           <div>
             <h3 class="wontno__h">Will not treat benchmarks as absolute truth.</h3>
             <p>
-              Benchmark snapshots feed the <em>capability</em> dimension and inform tie-breakers. They never override a pin. They never beat live quota state. A model that benchmarks two points higher but is rate-limited right now still loses.
+              Benchmark snapshots feed the daily model board and inform deterministic selection. They never override a pin. They never beat live quota state. A model that benchmarks higher but is rate-limited right now still loses.
             </p>
           </div>
         </li>

@@ -10,7 +10,11 @@
  *   3. Missing source data shows a graceful source-status warning.
  *   4. Missing cost/latency/context does not crash rendering.
  *   5. Explanations do not include secrets or raw auth material.
- *   6. The committed daily history files render shape-correctly for
+ *   6. Stable favorite policy prefers GPT-5.5 xhigh, Opus 4.7, GLM 5.1.
+ *   7. Alias folding maps provider/source IDs onto canonical favorite IDs.
+ *   8. One-day challenger spikes do not dethrone protected favorites.
+ *   9. Confirmed consecutive margins can dethrone a protected favorite.
+ *   10. The committed daily history files render shape-correctly for
  *      multiple dates (smoke test against the actual archive).
  */
 
@@ -67,6 +71,66 @@ const runtime = {
   "openai/gpt-5": { availability: "common", routable: true, reliability: 0.88 },
   "zai/glm-5": { availability: "common", routable: true, reliability: 0.8 },
 };
+
+const favoriteModels = [
+  {
+    modelID: "gpt-5-5",
+    modelDisplay: "GPT-5.5",
+    selectionDisplayName: "GPT-5.5 xhigh",
+    preferredReasoningEffort: "xhigh",
+    operatorPreferenceRank: 1,
+    providerID: "openai",
+    providerDisplay: "OpenAI",
+    providerFamily: "openai_compat",
+    providerLogo: "/brand/providers/openai.png",
+    tier: "flagship",
+    contextWindowTokens: 400000,
+    costSignal: 0.22,
+    aliases: ["openai/gpt-5.5", "openai/gpt-5.5-xhigh"],
+  },
+  {
+    modelID: "claude-opus-4-7",
+    modelDisplay: "Claude Opus 4.7",
+    operatorPreferenceRank: 2,
+    providerID: "anthropic",
+    providerDisplay: "Anthropic",
+    providerFamily: "anthropic",
+    providerLogo: "/brand/providers/anthropic.png",
+    tier: "flagship",
+    contextWindowTokens: 1000000,
+    costSignal: 0.18,
+    aliases: ["anthropic/claude-opus-4-7"],
+  },
+  {
+    modelID: "glm-5-1",
+    modelDisplay: "GLM 5.1",
+    operatorPreferenceRank: 3,
+    providerID: "zai",
+    providerDisplay: "Z.ai",
+    providerFamily: "openai_compat",
+    providerLogo: "/brand/providers/zai.png",
+    tier: "flagship",
+    contextWindowTokens: 256000,
+    costSignal: 0.66,
+    aliases: ["zai-org/GLM-5.1"],
+  },
+  {
+    modelID: "gemini-3-1-pro-preview",
+    modelDisplay: "Gemini 3.1 Pro",
+    providerID: "google",
+    providerDisplay: "Google",
+    providerFamily: "openai_compat",
+    providerLogo: "/brand/providers/google.svg",
+    tier: "flagship",
+    contextWindowTokens: 2000000,
+    costSignal: 0.3,
+  },
+];
+
+const favoriteRuntime = Object.fromEntries(favoriteModels.map((m) => [
+  m.modelID,
+  { availability: "common", routable: true, reliability: 0.88, latencySignal: 0.62 },
+]));
 
 // ───────────────────────── 1. Fresh benchmark data → ordered recs ──────────
 
@@ -220,7 +284,106 @@ const runtime = {
   assert.ok(!/AIzaSy/.test(encoded));
 }
 
-// ────────────────── 6. Archive pages render for multiple dates ─────────────
+// ────────── 6. Stable favorites are deliberately sticky ────────────────────
+
+{
+  const now = "2026-05-13T12:00:00.000Z";
+  const snapshots = [
+    { source: "artificial_analysis", modelID: "gpt-5-5", taskCategory: "coding", score: 0.86, freshness: "fresh", confidence: 0.9, fetchedAt: "2026-05-13T08:00:00.000Z" },
+    { source: "artificial_analysis", modelID: "claude-opus-4-7", taskCategory: "coding", score: 0.90, freshness: "fresh", confidence: 0.9, fetchedAt: "2026-05-13T08:00:00.000Z" },
+    { source: "artificial_analysis", modelID: "glm-5-1", taskCategory: "coding", score: 0.84, freshness: "fresh", confidence: 0.9, fetchedAt: "2026-05-13T08:00:00.000Z" },
+    { source: "artificial_analysis", modelID: "gemini-3-1-pro-preview", taskCategory: "coding", score: 0.95, freshness: "fresh", confidence: 0.9, fetchedAt: "2026-05-13T08:00:00.000Z" },
+  ];
+  const ranking = buildTaskRanking({
+    taskID: "coding",
+    models: favoriteModels,
+    snapshots,
+    statuses: [{ source: "artificial_analysis", status: "fresh", message: "ok", fetchedAt: "2026-05-13T08:00:00.000Z" }],
+    runtime: favoriteRuntime,
+    now,
+  });
+
+  assert.deepEqual(ranking.recommendations.map((r) => r.modelID), ["gpt-5-5", "claude-opus-4-7", "glm-5-1"]);
+  assert.equal(ranking.recommendations[0].modelDisplay, "GPT-5.5 xhigh");
+  assert.equal(ranking.recommendations[0].preferredReasoningEffort, "xhigh");
+  assert.ok(ranking.recommendations[1].score > ranking.recommendations[0].score, "evidence score remains raw, even when selection favors rank #1");
+  assert.ok(ranking.recommendations[0].selectionScore > ranking.recommendations[0].score, "favorite prior is visible on selectionScore");
+  assert.ok(ranking.recommendations[0].selectionScore > ranking.recommendations[1].selectionScore, "displayed selection score matches final policy order");
+}
+
+// ────────── 7. Alias folding maps source IDs to canonical favorites ─────────
+
+{
+  const now = "2026-05-13T12:00:00.000Z";
+  const ranking = buildTaskRanking({
+    taskID: "coding",
+    models: favoriteModels,
+    snapshots: [
+      { source: "artificial_analysis", modelID: "openai/gpt-5.5-xhigh", taskCategory: "coding", score: 0.88, freshness: "fresh", confidence: 0.9, fetchedAt: "2026-05-13T08:00:00.000Z" },
+    ],
+    statuses: [{ source: "artificial_analysis", status: "fresh", message: "ok", fetchedAt: "2026-05-13T08:00:00.000Z" }],
+    runtime: { "openai/gpt-5.5-xhigh": { availability: "common", routable: true, reliability: 0.9 } },
+    now,
+  });
+
+  assert.equal(ranking.recommendations[0].modelID, "gpt-5-5");
+  assert.equal(ranking.recommendations[0].modelDisplay, "GPT-5.5 xhigh");
+  assert.equal(ranking.recommendations[0].signals.routable, true);
+}
+
+// ────────── 8. One-day spikes do not dethrone protected favorites ──────────
+
+{
+  const now = "2026-05-13T12:00:00.000Z";
+  const ranking = buildTaskRanking({
+    taskID: "coding",
+    models: favoriteModels,
+    snapshots: [
+      { source: "artificial_analysis", modelID: "gpt-5-5", taskCategory: "coding", score: 0.82, freshness: "fresh", confidence: 0.9, fetchedAt: "2026-05-13T08:00:00.000Z" },
+      { source: "artificial_analysis", modelID: "gemini-3-1-pro-preview", taskCategory: "coding", score: 0.94, freshness: "fresh", confidence: 0.9, fetchedAt: "2026-05-13T08:00:00.000Z" },
+    ],
+    statuses: [{ source: "artificial_analysis", status: "fresh", message: "ok", fetchedAt: "2026-05-13T08:00:00.000Z" }],
+    runtime: favoriteRuntime,
+    now,
+  });
+
+  assert.equal(ranking.recommendations[0].modelID, "gpt-5-5", "a single current spike is not enough to dethrone the protected favorite");
+  const challenger = ranking.recommendations.find((r) => r.modelID === "gemini-3-1-pro-preview")
+    ?? ranking.rejectedAlternatives.find((r) => r.modelID === "gemini-3-1-pro-preview");
+  assert.ok((challenger?.score ?? challenger?.evidenceScore) != null, "challenger evidence is retained for tomorrow's dethroning check");
+}
+
+// ────────── 9. Consecutive margins can dethrone a protected favorite ───────
+
+{
+  const now = "2026-05-13T12:00:00.000Z";
+  const previousRundown = {
+    taskRankings: [{
+      taskID: "coding",
+      recommendations: [
+        { modelID: "gpt-5-5", score: 0.64, signals: { benchmarkScore: 0.70 } },
+        { modelID: "gemini-3-1-pro-preview", score: 0.82, signals: { benchmarkScore: 0.98 } },
+      ],
+      rejectedAlternatives: [],
+    }],
+  };
+  const rundown = buildRundown({
+    date: "2026-05-13",
+    generatedAt: now,
+    models: favoriteModels,
+    snapshots: [
+      { source: "artificial_analysis", modelID: "gpt-5-5", taskCategory: "coding", score: 0.70, freshness: "fresh", confidence: 0.9, fetchedAt: "2026-05-13T08:00:00.000Z" },
+      { source: "artificial_analysis", modelID: "gemini-3-1-pro-preview", taskCategory: "coding", score: 0.99, freshness: "fresh", confidence: 0.9, fetchedAt: "2026-05-13T08:00:00.000Z" },
+    ],
+    statuses: [{ source: "artificial_analysis", status: "fresh", message: "ok", fetchedAt: "2026-05-13T08:00:00.000Z" }],
+    runtime: favoriteRuntime,
+    previousRundown,
+  });
+
+  assert.equal(rundown.taskRankings.find((t) => t.taskID === "coding").recommendations[0].modelID, "gemini-3-1-pro-preview");
+}
+
+// ────────────────── 10. Archive pages render for multiple dates ────────────
 
 {
   const files = await readdir(HISTORY_DIR).catch(() => []);
@@ -249,11 +412,11 @@ const runtime = {
   }
 }
 
-// ────────────── 7. Weighting sanity check (composite math is sane) ─────────
+// ────────────── 11. Weighting sanity check (composite math is sane) ────────
 
 {
   const totalWeight = Object.values(WEIGHTS).reduce((a, b) => a + b, 0);
   assert.ok(totalWeight > 0.99 && totalWeight < 1.01, `weights should approximately sum to 1.0, got ${totalWeight}`);
 }
 
-console.log("router-rundown generator: 7 test groups passed");
+console.log("router-rundown generator: 11 test groups passed");

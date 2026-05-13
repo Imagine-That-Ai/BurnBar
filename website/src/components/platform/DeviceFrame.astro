@@ -2,13 +2,17 @@
 /**
  * Hardware shell for a platform mockup.
  *
- * Renders the device chassis in CSS — bezel, body, base, cable — and slots
- * the screen-content child inside a clipped display area. Two kinds today;
- * adding a third is one switch arm + a new shell definition.
+ * Renders the device chassis in pure CSS and slots the screen-content child
+ * inside a clipped display area. The geometry is derived from front-on
+ * reference photos of each device so the silhouette is recognisable rather
+ * than aspirational.
  *
  * Kinds:
- *   - "nest-hub"     — 7" tilted smart display with chalk fabric base
- *   - "ulanzi-tc001" — cream desk box with a 32×8 LED panel on the front
+ *   - "nest-hub"     — 7" display rectangle sitting on a wider chalk fabric
+ *                      pedestal. The pedestal lives BELOW the screen and
+ *                      NEVER overlaps the slotted content.
+ *   - "ulanzi-tc001" — cream desk box with three top buttons, a recessed
+ *                      32×8 LED panel, two feet, and a trailing USB-C cable.
  */
 
 interface Props {
@@ -20,37 +24,49 @@ const { kind, label } = Astro.props;
 
 {kind === "nest-hub" && (
   <div class="deviceframe deviceframe--nest" role="img" aria-label={label ?? "Google Nest Hub device frame"}>
-    <div class="deviceframe__nest-base" aria-hidden="true">
-      <div class="deviceframe__nest-base-grain"></div>
-      <div class="deviceframe__nest-base-weave" aria-hidden="true"></div>
-      <div class="deviceframe__nest-base-toplight"></div>
-      <div class="deviceframe__nest-base-shadow"></div>
-    </div>
-    <div class="deviceframe__nest-display">
+    <div class="deviceframe__nest-shelf">
       <div class="deviceframe__nest-bezel">
         <div class="deviceframe__nest-glass">
           <slot />
           <div class="deviceframe__nest-reflection" aria-hidden="true"></div>
         </div>
+        <span class="deviceframe__nest-camera" aria-hidden="true"></span>
       </div>
-      <div class="deviceframe__nest-undershadow" aria-hidden="true"></div>
     </div>
+
+    <div class="deviceframe__nest-pedestal" aria-hidden="true">
+      <div class="deviceframe__nest-fabric"></div>
+      <div class="deviceframe__nest-weave"></div>
+      <div class="deviceframe__nest-toplight"></div>
+    </div>
+
     <div class="deviceframe__nest-floor" aria-hidden="true"></div>
   </div>
 )}
 
 {kind === "ulanzi-tc001" && (
-  <div class="deviceframe deviceframe--ulanzi" role="img" aria-label={label ?? "Ulanzi TC001 device frame"}>
-    <div class="deviceframe__ulanzi-cable" aria-hidden="true"></div>
+  <div class="deviceframe deviceframe--ulanzi" role="img" aria-label={label ?? "Ulanzi TC001 pixel clock"}>
+    <div class="deviceframe__ulanzi-cable" aria-hidden="true">
+      <span class="deviceframe__ulanzi-cable-plug"></span>
+    </div>
+
     <div class="deviceframe__ulanzi-body">
+      <div class="deviceframe__ulanzi-toprail" aria-hidden="true">
+        <span class="deviceframe__ulanzi-button"></span>
+        <span class="deviceframe__ulanzi-button"></span>
+        <span class="deviceframe__ulanzi-button"></span>
+      </div>
       <div class="deviceframe__ulanzi-top-highlight" aria-hidden="true"></div>
+
       <div class="deviceframe__ulanzi-panel">
         <slot />
       </div>
+
       <div class="deviceframe__ulanzi-feet" aria-hidden="true">
         <span></span><span></span>
       </div>
     </div>
+
     <div class="deviceframe__ulanzi-floor" aria-hidden="true"></div>
   </div>
 )}
@@ -62,47 +78,57 @@ const { kind, label } = Astro.props;
     container-type: inline-size;
   }
 
-  /* ─────────────────────── Nest Hub shell ─────────────────────── */
-  /*
-   * Real Nest Hub (2nd gen) proportions: ~7.0 × 4.7 × 2.7 inches viewed
-   * from the front the device reads as a tilted 16:9 screen sitting on a
-   * narrower fabric pillow. Our aspect-ratio reflects that. The base is
-   * positioned to overlap the screen's bottom edge so the silhouette is
-   * one coherent shape, not two floating pieces.
-   */
+  /* ═════════════════════════ NEST HUB ═════════════════════════
+     Real Nest Hub (2nd gen) viewed head-on:
+       1. The display unit is a slightly-rounded rectangle in matte black
+          with chunky bezels — equal on top + sides, thicker on the bottom
+          to make room for the ambient-light sensor / mic.
+       2. The chalk-fabric pedestal sits BELOW the display, the same width,
+          extending the silhouette downward by ~25% of the display height.
+          It is a soft pillow shape, not a tall oval.
+       3. From the front the device reads as one coherent shape — screen on
+          top, fabric pillow underneath, no visible hinge or mount.
+
+     Layout: a vertical flex stack. Display is the first child; pedestal is
+     the second child; the floor shadow is absolute under both.
+  ─────────────────────────────────────────────────────────────── */
   .deviceframe--nest {
-    aspect-ratio: 1.55 / 1;
-    transform-style: preserve-3d;
-    perspective: 1400px;
-    padding: 0 3% 3%;
-  }
-  .deviceframe__nest-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 0.5%;
     position: relative;
-    width: 100%;
-    transform: rotateX(5deg);
-    transform-origin: 50% 100%;
-    filter: drop-shadow(0 24px 32px rgba(0, 0, 0, 0.55));
-    z-index: 2;
   }
+
+  /* SHELF — the display unit. Filter drop-shadow falls on the pedestal
+     below for a real-world contact shadow. */
+  .deviceframe__nest-shelf {
+    width: 100%;
+    z-index: 2;
+    filter: drop-shadow(0 16px 28px rgba(0, 0, 0, 0.5));
+  }
+  /* BEZEL — chunky matte black with extra room on the bottom for the
+     chin (where the camera + sensors live on the real device). */
   .deviceframe__nest-bezel {
     width: 100%;
-    background:
-      linear-gradient(180deg, #0d0c10 0%, #0a090d 100%);
-    border-radius: 18px;
-    padding: 3.2% 3% 4%;
+    background: linear-gradient(180deg, #1d181f 0%, #0e0c11 100%);
+    border-radius: 10px;
+    padding: 5.2% 4.5% 9.5%;
     box-shadow:
-      inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-      inset 0 -1px 6px rgba(255, 255, 255, 0.02);
+      inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      inset 0 -1px 8px rgba(0, 0, 0, 0.55);
+    position: relative;
   }
   .deviceframe__nest-glass {
     position: relative;
     aspect-ratio: 16 / 9;
-    border-radius: 8px;
+    border-radius: 3px;
     overflow: hidden;
     background: #07060a;
     box-shadow:
       inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-      inset 0 0 18px rgba(0, 0, 0, 0.5);
+      inset 0 0 14px rgba(0, 0, 0, 0.55);
   }
   .deviceframe__nest-reflection {
     position: absolute;
@@ -110,62 +136,68 @@ const { kind, label } = Astro.props;
     pointer-events: none;
     background:
       linear-gradient(115deg,
-        rgba(255, 255, 255, 0.07) 0%,
-        transparent 35%,
-        transparent 65%,
-        rgba(255, 255, 255, 0.04) 95%);
+        rgba(255, 255, 255, 0.08) 0%,
+        transparent 32%,
+        transparent 68%,
+        rgba(255, 255, 255, 0.05) 95%);
     mix-blend-mode: screen;
-    opacity: 0.6;
+    opacity: 0.55;
   }
-  /* Soft inner shadow where the display meets the fabric. */
-  .deviceframe__nest-undershadow {
+  /* CAMERA dot embedded in the chin (bottom bezel area). The real Nest Hub
+     2nd gen does not have a front-facing camera — only an ambient-light
+     sensor — so the dot is intentionally subtle. */
+  .deviceframe__nest-camera {
     position: absolute;
-    left: 10%;
-    right: 10%;
-    bottom: -14%;
-    height: 24%;
+    bottom: 3.3%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: clamp(4px, 0.85cqi, 7px);
+    height: clamp(4px, 0.85cqi, 7px);
+    border-radius: 50%;
     background:
-      radial-gradient(60% 80% at 50% 0%, rgba(0, 0, 0, 0.55), transparent 70%);
-    filter: blur(10px);
+      radial-gradient(closest-side, #2a2030 35%, #0a070d 100%);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+      0 0 4px rgba(0, 0, 0, 0.6);
     pointer-events: none;
-    z-index: 1;
   }
-  /* Fabric pedestal — wider, taller, and pulled UP so its top edge tucks
-     under the screen's bottom bezel. Border-radius is a hand-drawn pebble
-     curve closer to the real device than the previous tall oval. */
-  .deviceframe__nest-base {
-    position: absolute;
-    left: 14%;
-    right: 14%;
-    bottom: 3%;
-    height: 36%;
-    border-radius: 50% 50% 28% 28% / 60% 60% 100% 100%;
+
+  /* PEDESTAL — chalk-fabric pillow. Narrower than the display rectangle so
+     the device reads as "screen on a smaller speaker base" — matches the
+     real Nest Hub silhouette from a front-view photo. */
+  .deviceframe__nest-pedestal {
+    position: relative;
+    width: 76%;
+    aspect-ratio: 7.2 / 1;
+    margin-top: -0.3%;
+    border-radius: 22% 22% 30% 30% / 60% 60% 100% 100%;
     background:
-      radial-gradient(120% 70% at 50% 0%, #faf3e4 0%, #e8dcc4 40%, #c8b893 100%),
-      linear-gradient(180deg, #efe7d8 0%, #d8cdb8 55%, #aa9d7e 100%);
-    background-blend-mode: multiply;
+      radial-gradient(140% 110% at 50% -20%,
+        #fbf3e2 0%,
+        #e8dcc1 45%,
+        #c1ad88 100%);
     box-shadow:
       inset 0 2px 0 rgba(255, 255, 255, 0.6),
-      inset 0 -10px 18px rgba(0, 0, 0, 0.18),
-      0 14px 28px -4px rgba(0, 0, 0, 0.5),
-      0 2px 0 rgba(255, 255, 255, 0.08);
+      inset 0 -8px 12px rgba(0, 0, 0, 0.16),
+      0 14px 24px -6px rgba(0, 0, 0, 0.55);
+    overflow: hidden;
     z-index: 1;
   }
-  /* The dotted fabric grain — visible at marketing zoom. */
-  .deviceframe__nest-base-grain {
+  /* Fabric grain — dual-offset dot field at marketing-zoom visibility. */
+  .deviceframe__nest-fabric {
     position: absolute;
     inset: 0;
     border-radius: inherit;
     background-image:
-      radial-gradient(rgba(0, 0, 0, 0.20) 1px, transparent 1.5px),
-      radial-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1.5px);
+      radial-gradient(rgba(0, 0, 0, 0.20) 0.8px, transparent 1.2px),
+      radial-gradient(rgba(255, 255, 255, 0.18) 0.8px, transparent 1.2px);
     background-size: 4px 4px, 4px 4px;
     background-position: 0 0, 2px 2px;
     mix-blend-mode: multiply;
     opacity: 0.55;
   }
-  /* Diagonal woven texture overlay — gives the fabric direction. */
-  .deviceframe__nest-base-weave {
+  /* Diagonal weave overlay for direction. */
+  .deviceframe__nest-weave {
     position: absolute;
     inset: 0;
     border-radius: inherit;
@@ -173,139 +205,170 @@ const { kind, label } = Astro.props;
       repeating-linear-gradient(
         38deg,
         rgba(0, 0, 0, 0.04) 0 1px,
-        transparent 1px 4px),
+        transparent 1px 3px),
       repeating-linear-gradient(
         -38deg,
         rgba(0, 0, 0, 0.04) 0 1px,
-        transparent 1px 4px);
+        transparent 1px 3px);
     mix-blend-mode: multiply;
     opacity: 0.7;
     pointer-events: none;
   }
-  /* Soft highlight along the upper curve. */
-  .deviceframe__nest-base-toplight {
+  /* Soft highlight along the crown of the pillow. */
+  .deviceframe__nest-toplight {
     position: absolute;
     inset: 0;
     border-radius: inherit;
     background:
-      radial-gradient(80% 50% at 50% 0%, rgba(255, 255, 255, 0.32), transparent 70%);
+      radial-gradient(70% 45% at 50% 0%, rgba(255, 255, 255, 0.4), transparent 75%);
     pointer-events: none;
   }
-  /* Floor shadow under the base. */
-  .deviceframe__nest-base-shadow {
-    position: absolute;
-    inset: auto 0 -6% 0;
-    height: 30%;
-    border-radius: inherit;
-    background:
-      radial-gradient(55% 30% at 50% 100%, rgba(0, 0, 0, 0.4), transparent 75%);
-    pointer-events: none;
-    z-index: -1;
-  }
+  /* FLOOR — soft contact shadow. */
   .deviceframe__nest-floor {
-    position: absolute;
-    left: 10%;
-    right: 10%;
-    bottom: -2%;
-    height: 4%;
+    width: 70%;
+    height: clamp(10px, 2.4cqi, 22px);
+    margin-top: -2.5%;
     border-radius: 50%;
-    background: radial-gradient(60% 100% at 50% 50%, rgba(0, 0, 0, 0.45), transparent 75%);
+    background:
+      radial-gradient(60% 100% at 50% 50%, rgba(0, 0, 0, 0.5), transparent 75%);
     filter: blur(10px);
     z-index: 0;
   }
 
-  /* ─────────────────────── Ulanzi shell ─────────────────────── */
+  /* ═════════════════════════ ULANZI TC001 ═════════════════════════
+     Real Ulanzi TC001 viewed head-on:
+       - Cream/off-white rectangular body, slightly rounded corners,
+         aspect ratio roughly 2.6:1.
+       - LED panel takes the majority of the front face.
+       - 3 small slot-shaped buttons on the top edge.
+       - 2 dark feet at the bottom.
+       - USB-C cable trailing out the right side.
+  ─────────────────────────────────────────────────────────────── */
   .deviceframe--ulanzi {
-    aspect-ratio: 4 / 1.25;
-    padding: 6% 6%;
+    aspect-ratio: 2.6 / 1;
+    padding: 0 6% 4%;
+    position: relative;
   }
   .deviceframe__ulanzi-cable {
     position: absolute;
-    right: 8%;
-    top: 32%;
+    right: 1%;
+    top: 36%;
     width: 14%;
-    height: 8px;
-    border-radius: 4px;
+    height: 6px;
+    border-radius: 3px;
     background:
-      linear-gradient(90deg, #1a1422 0%, #2a2030 70%, transparent 100%);
-    transform: rotate(-3deg);
+      linear-gradient(90deg, #1a1422 0%, #2a2030 60%, transparent 100%);
+    transform: rotate(-4deg);
+    transform-origin: left center;
     z-index: 0;
   }
-  .deviceframe__ulanzi-cable::after {
-    content: "";
+  .deviceframe__ulanzi-cable-plug {
     position: absolute;
-    right: -2px;
-    top: -2px;
-    width: 8px;
+    left: -8px;
+    top: -3px;
+    width: 10px;
     height: 12px;
     border-radius: 2px;
-    background: #2a2030;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+    background:
+      linear-gradient(180deg, #2a2030 0%, #1a1422 100%);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+      0 1px 3px rgba(0, 0, 0, 0.4);
   }
   .deviceframe__ulanzi-body {
     position: relative;
     width: 100%;
-    aspect-ratio: 4 / 1.05;
-    border-radius: 12px;
+    height: 100%;
+    border-radius: 10px;
     background:
       linear-gradient(180deg,
-        #f6efe1 0%,
-        #ebe1ce 35%,
-        #d9ccaf 100%);
-    border: 1px solid rgba(0, 0, 0, 0.18);
+        #f7f0e2 0%,
+        #ede2cd 40%,
+        #d5c6a8 100%);
+    border: 1px solid rgba(0, 0, 0, 0.22);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.7),
-      inset 0 -2px 4px rgba(0, 0, 0, 0.15),
-      0 14px 26px rgba(0, 0, 0, 0.45),
-      0 2px 0 rgba(255, 255, 255, 0.4);
-    padding: 5% 7%;
+      inset 0 1px 0 rgba(255, 255, 255, 0.8),
+      inset 0 -2px 4px rgba(0, 0, 0, 0.18),
+      0 14px 24px rgba(0, 0, 0, 0.5),
+      0 2px 0 rgba(255, 255, 255, 0.45);
+    padding: 9% 6% 8%;
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1;
   }
+  /* Top-rail buttons — three small slot-shaped buttons sitting on the
+     top edge of the case, like the real device. Sits above the bezel. */
+  .deviceframe__ulanzi-toprail {
+    position: absolute;
+    top: -3px;
+    right: 14%;
+    display: flex;
+    gap: clamp(4px, 1.2cqi, 10px);
+    z-index: 2;
+  }
+  .deviceframe__ulanzi-button {
+    width: clamp(10px, 3cqi, 26px);
+    height: clamp(3px, 0.8cqi, 6px);
+    border-radius: 2px 2px 0 0;
+    background:
+      linear-gradient(180deg, #efe4cc 0%, #c4b288 100%);
+    border: 1px solid rgba(0, 0, 0, 0.22);
+    border-bottom: none;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.6),
+      0 -2px 2px rgba(0, 0, 0, 0.18);
+  }
+  /* Top-edge cream highlight. */
   .deviceframe__ulanzi-top-highlight {
     position: absolute;
     top: 0;
-    left: 14%;
-    right: 14%;
-    height: 18%;
+    left: 10%;
+    right: 10%;
+    height: 16%;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.55), transparent 100%);
-    border-radius: 12px 12px 0 0;
-    opacity: 0.5;
+    border-radius: 10px 10px 0 0;
+    opacity: 0.55;
     pointer-events: none;
   }
   .deviceframe__ulanzi-panel {
     width: 100%;
+    border-radius: 4px;
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 0, 0, 0.28),
+      inset 0 1px 2px rgba(0, 0, 0, 0.5);
   }
   .deviceframe__ulanzi-feet {
     position: absolute;
-    left: 8%;
-    right: 8%;
-    bottom: -4%;
-    height: 8%;
+    left: 14%;
+    right: 14%;
+    bottom: -5px;
+    height: clamp(4px, 1.2cqi, 10px);
     display: flex;
     justify-content: space-between;
     pointer-events: none;
   }
   .deviceframe__ulanzi-feet span {
-    width: 8%;
+    width: clamp(14px, 4.5cqi, 36px);
     height: 100%;
     background:
-      linear-gradient(180deg, #c6b896 0%, #8c7e5d 100%);
-    border-radius: 0 0 6px 6px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+      linear-gradient(180deg, #2a2030 0%, #18141a 100%);
+    border-radius: 0 0 4px 4px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 2px 4px rgba(0, 0, 0, 0.5);
   }
   .deviceframe__ulanzi-floor {
     position: absolute;
     left: 8%;
     right: 8%;
-    bottom: -6%;
-    height: 4%;
+    bottom: -10px;
+    height: 8px;
     border-radius: 50%;
-    background: radial-gradient(60% 100% at 50% 50%, rgba(0, 0, 0, 0.4), transparent 75%);
-    filter: blur(6px);
+    background:
+      radial-gradient(60% 100% at 50% 50%, rgba(0, 0, 0, 0.45), transparent 75%);
+    filter: blur(8px);
     z-index: 0;
   }
 </style>

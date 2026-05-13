@@ -23,8 +23,8 @@ const taskCount = rundown.taskRankings.length;
 ---
 
 <BaseLayout
-  title={`Router Rundown · ${rundown.date}`}
-  description={`OpenBurnBar Intelligent Router Rundown for ${rundown.date}. ${taskCount} task categories ranked from ${sourcesCount} source(s). Benchmark data is advisory — provider-family mode, user pinning, auth, quota, safety, and availability win at runtime.`}
+  title={`Router Model Board · ${rundown.date}`}
+  description={`OpenBurnBar Intelligent Router model-board rundown for ${rundown.date}. ${taskCount} task categories ranked from ${sourcesCount} source(s). Benchmark data is advisory — provider-family mode, user pinning, auth, quota, safety, and availability win at runtime.`}
 >
   <section class="pagehead pagehead--archive">
     <div class="container container--wide">
@@ -36,15 +36,16 @@ const taskCount = rundown.taskRankings.length;
         <span>{rundown.date}</span>
       </nav>
 
-      <span class="eyebrow eyebrow--ember">Operator log · daily intelligent router rundown</span>
+      <span class="eyebrow eyebrow--ember">Model board · daily intelligent router rundown</span>
       <h1 class="pagehead__h">
-        What BurnBar recommended on
+        What the board recommended on
         <span class="ember mono">{rundown.date}</span>.
       </h1>
       <p class="lead">
-        Frozen snapshot. Same data the router used to score requests that day,
-        ordered by task and explained with source citations. Benchmark signals
-        are <strong>advisory</strong> — runtime constraints (provider-family
+        Frozen snapshot. A board of language models ran research and analysis
+        tasks over the same daily data, then BurnBar reduced the result to
+        deterministic selections with source citations. Benchmark signals are
+        <strong>advisory</strong> — runtime constraints (provider-family
         mode, pinning, auth, quota, safety, availability) always win.
       </p>
 

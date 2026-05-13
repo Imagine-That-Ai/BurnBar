@@ -24,6 +24,7 @@ import {
   collectModelLandscapeBenchmarks,
   writeModelLandscapeBenchmarks,
 } from "./modelLandscape.js";
+import { buildAndPersistRouterRundown } from "./routerRundown.js";
 import type { Provider, RollupJobDoc } from "./types.js";
 
 const ARTIFICIAL_ANALYSIS_API_KEY = defineSecret("ARTIFICIAL_ANALYSIS_API_KEY");
@@ -220,17 +221,24 @@ export const refreshModelLandscapeBenchmarks = onSchedule(
     schedule: "every 24 hours",
     region: "us-central1",
     secrets: [ARTIFICIAL_ANALYSIS_API_KEY],
+    // The bench fetch (AA + HF + Design Arena) plus retry/backoff can take
+    // 30-60 s; the rundown re-score adds a few more reads/writes. Give the
+    // function 5 minutes of headroom so a single transient 429 doesn't
+    // starve the rundown write at the end.
+    timeoutSeconds: 300,
   },
   async (_event) => {
     const db = getFirestore();
+    const now = new Date();
     const result = await collectModelLandscapeBenchmarks(
       {
         ...process.env,
         ARTIFICIAL_ANALYSIS_API_KEY: ARTIFICIAL_ANALYSIS_API_KEY.value()
           || process.env.ARTIFICIAL_ANALYSIS_API_KEY,
       },
-      new Date()
+      now
     );
     await writeModelLandscapeBenchmarks(db, result);
+    await buildAndPersistRouterRundown(db, now);
   }
 );

@@ -193,81 +193,174 @@ export function glyph6x7(ch) {
 // ─────────────────────────────────── Provider logos (5×5) ──────────────────
 
 /**
- * Pixel-art provider marks, painted into the leftmost 9 columns of the
- * matrix. Verbatim spirit-of-the-Swift `PixelClockQuotaRenderer`. Each
- * provider gets a recognizable 5×5 silhouette + 2 trailing letter glyphs.
+ * Provider logos — verbatim port of `PixelClockProviderLogoAssets.generated.swift`.
+ *
+ * Each entry is an 8×8 multi-color pixel array (row-major, [rows][columns]).
+ * `null` means transparent (skip), hex string means a lit pixel of that color.
+ * Logos paint at column 0, row 0 — taking the leftmost 8 columns × all 8 rows
+ * of the 32×8 matrix, exactly like the Swift source. Layouts (carousel /
+ * dashboard) place spinners + glyphs starting at column 10 to avoid overlap.
+ *
+ * DO NOT hand-edit shapes here. Regenerate via:
+ *   `python3 scripts/generate-pixel-clock-logos.py`
+ * in the OpenBurnBarCore Swift project, then copy the new arrays across.
  */
-const PROVIDER_LOGOS = {
-  anthropic: { hex: "#c79a6c", shape: [
-    // a stylized "A" wedge
-    [0,0,1,0,0],
-    [0,1,1,1,0],
-    [0,1,0,1,0],
-    [1,1,1,1,1],
-    [1,0,0,0,1],
-  ]},
-  openai: { hex: "#f6f1e7", shape: [
-    // hex-like rosette
-    [0,1,1,1,0],
-    [1,0,0,0,1],
-    [1,0,1,0,1],
-    [1,0,0,0,1],
-    [0,1,1,1,0],
-  ]},
-  google: { hex: "#f6f1e7", shape: [
-    [0,1,1,1,1],
-    [1,0,0,0,0],
-    [1,0,1,1,1],
-    [1,0,0,0,1],
-    [0,1,1,1,1],
-  ]},
-  zai: { hex: "#ffb547", shape: [
-    [1,1,1,1,1],
-    [0,0,0,1,0],
-    [0,0,1,0,0],
-    [0,1,0,0,0],
-    [1,1,1,1,1],
-  ]},
-  minimax: { hex: "#ff6a1a", shape: [
-    [1,0,0,0,1],
-    [1,1,0,1,1],
-    [1,0,1,0,1],
-    [1,0,0,0,1],
-    [1,0,0,0,1],
-  ]},
-  kimi: { hex: "#1d75ff", shape: [
-    [1,0,0,0,1],
-    [1,0,0,1,0],
-    [1,1,1,0,0],
-    [1,0,0,1,0],
-    [1,0,0,0,1],
-  ]},
-  deepseek: { hex: "#aeacba", shape: [
-    [0,1,1,1,0],
-    [1,0,0,0,1],
-    [1,0,1,0,1],
-    [1,0,0,0,1],
-    [0,1,1,1,0],
-  ]},
-  default: { hex: "#d6d3df", shape: [
-    [0,1,1,1,0],
-    [1,0,0,0,1],
-    [1,0,0,0,1],
-    [1,0,0,0,1],
-    [0,1,1,1,0],
-  ]},
-};
+const PROVIDER_LOGOS = Object.freeze({
+  claudeCode: [
+    [null, null, null, null, null, null, null, null],
+    [null, "#D97757", "#D97757", "#D97757", "#D97757", "#D97757", "#D97757", null],
+    [null, "#D97757", "#1A1208", "#D97757", "#D97757", "#1A1208", "#D97757", null],
+    ["#D97757", "#D97757", "#D97757", "#D97757", "#D97757", "#D97757", "#D97757", "#D97757"],
+    ["#D97757", "#D97757", "#D97757", "#D97757", "#D97757", "#D97757", "#D97757", "#D97757"],
+    ["#D97757", null, "#D97757", null, null, "#D97757", null, "#D97757"],
+    ["#D97757", null, "#D97757", null, null, "#D97757", null, "#D97757"],
+    [null, null, null, null, null, null, null, null],
+  ],
+  codex: [
+    [null, null, "#8EA0FF", "#8EA0FF", "#8EA0FF", "#8EA0FF", null, null],
+    [null, "#8EA0FF", "#8EA0FF", "#8EA0FF", "#8EA0FF", "#8EA0FF", "#8EA0FF", null],
+    ["#8EA0FF", "#8EA0FF", "#8EA0FF", "#8EA0FF", "#8EA0FF", "#8EA0FF", "#8EA0FF", "#8EA0FF"],
+    ["#8EA0FF", "#8EA0FF", "#FFFFFF", "#8EA0FF", "#8EA0FF", "#8EA0FF", "#8EA0FF", "#8EA0FF"],
+    ["#8EA0FF", "#8EA0FF", "#8EA0FF", "#FFFFFF", "#8EA0FF", "#8EA0FF", "#8EA0FF", "#8EA0FF"],
+    ["#8EA0FF", "#8EA0FF", "#FFFFFF", "#8EA0FF", "#8EA0FF", "#FFFFFF", "#FFFFFF", "#FFFFFF"],
+    [null, "#4258FF", "#4258FF", "#4258FF", "#4258FF", "#4258FF", "#4258FF", null],
+    [null, null, "#4258FF", "#4258FF", "#4258FF", "#4258FF", null, null],
+  ],
+  copilot: [
+    [null, "#0F4E70", "#1A80B6", "#187DB4", "#1050A2", "#091F60", null, null],
+    ["#05293E", "#118BD1", "#1397E1", "#148FDD", "#1558D0", "#1652BA", "#031121", null],
+    ["#1B656E", "#2BA1AF", "#2EA3A9", "#257F90", "#172C62", "#675CBC", "#7350AF", "#572E73"],
+    ["#529F62", "#60B46C", "#66B666", "#305A32", "#381429", "#C64FAF", "#BB51CC", "#B24FCB"],
+    ["#A5BB36", "#AFC033", "#ABB92D", "#2A310B", "#762D45", "#E55898", "#D954A7", "#BC4A97"],
+    ["#6C610A", "#AC8D13", "#D19422", "#75341D", "#CD5E5E", "#F46A80", "#F16187", "#963B57"],
+    [null, null, "#D26238", "#F36544", "#F88D61", "#F9886D", "#E6756A", "#452121"],
+    [null, null, "#67251B", "#B05634", "#BA7B40", "#BA7445", "#72442D", null],
+  ],
+  miniMax: [
+    ["#EC1970", null, null, "#EC1970", "#EC1970", null, null, "#EC1970"],
+    ["#EC1970", "#EC1970", null, "#EC1970", "#EC1970", null, "#EC1970", "#EC1970"],
+    ["#EC1970", "#EC1970", "#EC1970", "#EC1970", "#EC1970", "#EC1970", "#EC1970", "#EC1970"],
+    ["#EC1970", null, null, "#EC1970", "#EC1970", null, null, "#EC1970"],
+    ["#FF5B3F", null, null, "#FF5B3F", "#FF5B3F", null, null, "#FF5B3F"],
+    ["#FF5B3F", "#FF5B3F", null, "#FF5B3F", "#FF5B3F", null, "#FF5B3F", "#FF5B3F"],
+    ["#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F", "#FF5B3F"],
+    ["#FF5B3F", null, null, "#FF5B3F", "#FF5B3F", null, null, "#FF5B3F"],
+  ],
+  zai: [
+    ["#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", null],
+    ["#C9B6FF", "#C9B6FF", "#C9B6FF", "#C9B6FF", "#C9B6FF", "#C9B6FF", "#C9B6FF", null],
+    [null, null, null, null, "#FFFFFF", "#FFFFFF", "#FFFFFF", null],
+    [null, null, null, "#FFFFFF", "#FFFFFF", "#FFFFFF", null, null],
+    [null, null, "#FFFFFF", "#FFFFFF", "#FFFFFF", null, null, null],
+    [null, "#FFFFFF", "#FFFFFF", "#FFFFFF", null, null, null, null],
+    [null, "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF"],
+    [null, "#C9B6FF", "#C9B6FF", "#C9B6FF", "#C9B6FF", "#C9B6FF", "#C9B6FF", "#C9B6FF"],
+  ],
+  factory: [
+    [null, null, null, "#FFFFFF", null, null, null, null],
+    [null, "#FFFFFF", null, "#FFFFFF", null, "#FFFFFF", null, null],
+    ["#FFFFFF", null, "#FFFFFF", null, "#FFFFFF", null, "#FFFFFF", null],
+    [null, "#FFFFFF", "#FFFFFF", "#B8B8B8", "#FFFFFF", "#FFFFFF", null, null],
+    ["#FFFFFF", null, "#FFFFFF", null, "#FFFFFF", null, "#FFFFFF", null],
+    [null, "#FFFFFF", null, "#FFFFFF", null, "#FFFFFF", null, null],
+    [null, null, null, "#FFFFFF", null, null, null, null],
+    [null, null, null, null, null, null, null, null],
+  ],
+  cursor: [
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, "#FFFFFF", "#FFFFFF", null, null, null],
+    [null, null, "#FFFFFF", "#AEB7C2", "#AEB7C2", "#FFFFFF", null, null],
+    [null, "#FFFFFF", "#AEB7C2", "#30343A", "#7F8790", "#FFFFFF", null, null],
+    [null, null, "#30343A", "#30343A", "#7F8790", null, null, null],
+    [null, null, null, "#30343A", null, null, null, null],
+    [null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null],
+  ],
+  warp: [
+    ["#FFFFFF", "#FBFBFB", "#F4F5F6", "#F4F5F6", "#F5F6F7", "#F5F6F7", "#FBFBFB", "#FFFFFF"],
+    ["#FCFCFC", "#DCE0E3", "#D0D6DA", "#CFD5D9", "#D0D6DA", "#D0D6DA", "#DCE0E3", "#FBFCFC"],
+    ["#F6F7F8", "#CCD2D6", "#ADB2B6", "#A1A6AA", "#6E7173", "#777A7C", "#C4C9CD", "#F6F7F8"],
+    ["#F5F6F7", "#B3B8BC", "#3B3C3D", "#47494A", "#282828", "#373838", "#B2B7BB", "#F5F6F7"],
+    ["#F4F5F6", "#ACB1B4", "#313233", "#4B4C4D", "#323333", "#494A4B", "#B4B9BD", "#F4F5F6"],
+    ["#F4F5F6", "#C1C6CA", "#787B7D", "#8C8F92", "#ADB1B5", "#BBC0C4", "#CFD5D9", "#F3F5F5"],
+    ["#FBFCFC", "#E3E8EB", "#D4DADE", "#D2D8DC", "#D8DEE2", "#D6DCE0", "#E1E6E9", "#FBFCFC"],
+    ["#FFFFFF", "#FCFCFC", "#F5F7F7", "#F5F7F7", "#F6F7F8", "#F6F8F8", "#FCFCFD", "#FFFFFF"],
+  ],
+  ollama: [
+    [null, null, "#F6F8FF", null, null, null, null, null],
+    [null, "#F6F8FF", "#F6F8FF", "#F6F8FF", null, null, null, null],
+    [null, null, "#F6F8FF", "#F6F8FF", "#F6F8FF", "#F6F8FF", null, null],
+    [null, null, "#F6F8FF", "#1EA7FF", "#F6F8FF", "#F6F8FF", null, null],
+    [null, null, "#F6F8FF", "#F6F8FF", "#F6F8FF", "#0B0B0B", null, null],
+    [null, null, null, "#F6F8FF", "#F6F8FF", "#F6F8FF", null, null],
+    [null, null, null, "#F6F8FF", "#F6F8FF", null, null, null],
+    [null, null, null, "#F6F8FF", "#F6F8FF", null, null, null],
+  ],
+  kimi: [
+    [null, null, null, null, null, null, "#0A2E57", "#136CD2"],
+    [null, "#919191", null, null, "#828282", "#858585", "#0F1C2B", "#052040"],
+    ["#252525", "#C2C2C2", "#2F2F2F", "#8B8B8B", "#C2C2C2", "#2D2D2D", null, null],
+    ["#242424", "#C9C9C9", "#B2B2B2", "#D7D7D7", "#303030", null, null, null],
+    ["#232323", "#DFDFDF", "#DDDDDD", "#D3D3D3", "#8D8D8D", null, null, null],
+    ["#242424", "#CDCDCD", "#404040", "#313131", "#B8B8B8", "#C3C3C3", "#2F2F2F", null],
+    [null, "#7C7C7C", null, null, null, "#6F6F6F", "#343434", null],
+    [null, null, null, null, null, null, null, null],
+  ],
+});
 
-function logoFor(providerID) {
-  const id = String(providerID ?? "").toLowerCase();
-  if (id.includes("claude") || id.includes("anthropic")) return PROVIDER_LOGOS.anthropic;
-  if (id.includes("openai") || id.includes("gpt") || id.includes("codex")) return PROVIDER_LOGOS.openai;
-  if (id.includes("google") || id.includes("gemini")) return PROVIDER_LOGOS.google;
-  if (id.includes("zai") || id.includes("glm") || id.includes("z.ai")) return PROVIDER_LOGOS.zai;
-  if (id.includes("minimax")) return PROVIDER_LOGOS.minimax;
-  if (id.includes("kimi") || id.includes("moonshot")) return PROVIDER_LOGOS.kimi;
-  if (id.includes("deepseek")) return PROVIDER_LOGOS.deepseek;
-  return PROVIDER_LOGOS.default;
+/**
+ * Match a quota item to its 8×8 logo asset. Mirrors the matching order in
+ * `PixelClockQuotaRenderer.providerLogo(for:)` — both providerID and
+ * providerName participate in the token, and order is significant
+ * (specific brand keys before generic terms).
+ */
+function logoFor(item) {
+  const token = `${item?.providerID ?? ""} ${item?.providerName ?? ""}`.toLowerCase();
+  if (token.includes("claude")) return PROVIDER_LOGOS.claudeCode;
+  if (token.includes("codex")) return PROVIDER_LOGOS.codex;
+  if (token.includes("factory") || token.includes("droid")) return PROVIDER_LOGOS.factory;
+  if (token.includes("cursor")) return PROVIDER_LOGOS.cursor;
+  if (token.includes("warp")) return PROVIDER_LOGOS.warp;
+  if (token.includes("copilot")) return PROVIDER_LOGOS.copilot;
+  if (token.includes("kimi") || token.includes("moonshot")) return PROVIDER_LOGOS.kimi;
+  if (token.includes("ollama")) return PROVIDER_LOGOS.ollama;
+  if (token.includes("minimax")) return PROVIDER_LOGOS.miniMax;
+  if (token.includes("z.ai") || token.includes("zai")) return PROVIDER_LOGOS.zai;
+  return monogramLogoFor(item);
+}
+
+function shortProviderCode(item) {
+  const token = `${item?.providerID ?? ""} ${item?.providerName ?? ""}`.toLowerCase();
+  if (token.includes("claude")) return "CLD";
+  if (token.includes("codex")) return "CDX";
+  if (token.includes("factory") || token.includes("droid")) return "FAC";
+  if (token.includes("copilot")) return "COP";
+  if (token.includes("minimax")) return "MMX";
+  if (token.includes("cursor")) return "CUR";
+  if (token.includes("warp")) return "WRP";
+  if (token.includes("ollama")) return "OLL";
+  if (token.includes("kimi")) return "KIM";
+  if (token.includes("z.ai") || token.includes("zai")) return "ZAI";
+  const normalized = String(item?.providerName ?? "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  return normalized.slice(0, 3) || "OBB";
+}
+
+function monogramLogoFor(item) {
+  const rows = Array.from({ length: 8 }, () => Array.from({ length: 8 }, () => null));
+  const chars = [...shortProviderCode(item).toUpperCase()].slice(0, 2);
+  chars.forEach((char, index) => {
+    const glyph = glyph3x5(char);
+    const x = index === 0 ? 0 : 4;
+    const color = index === 0 ? "#FAFAFA" : "#A0A0A0";
+    for (let row = 0; row < glyph.length; row++) {
+      for (let column = 0; column < glyph[row].length; column++) {
+        if (glyph[row][column] === 1) rows[row + 1][x + column] = color;
+      }
+    }
+  });
+  return rows;
 }
 
 // ─────────────────────────────────── Painters ──────────────────────────────
@@ -299,13 +392,21 @@ export function paintBigGlyph(grid, char, originColumn, color) {
   }
 }
 
+/**
+ * Paint the 8×8 multi-color provider logo at native position (col 0, row 0),
+ * matching `PixelClockPreviewView.paintProviderLogo(for:into:)`. Null cells
+ * are skipped so the background stays unlit; cells with a hex string are
+ * painted as lit pixels using that color (no recoloring).
+ */
 export function paintProviderLogo(grid, item) {
-  const logo = logoFor(item?.providerID);
-  for (let r = 0; r < logo.shape.length; r++) {
-    for (let c = 0; c < logo.shape[r].length; c++) {
-      if (logo.shape[r][c] === 1 && inBounds(r + 1, c + 1)) {
-        grid[r + 1][c + 1] = pixel(true, logo.hex);
-      }
+  const logo = logoFor(item);
+  if (!logo) return;
+  for (let r = 0; r < logo.length; r++) {
+    for (let c = 0; c < logo[r].length; c++) {
+      const color = logo[r][c];
+      if (color == null) continue;
+      if (!inBounds(r, c)) continue;
+      grid[r][c] = pixel(true, color);
     }
   }
 }

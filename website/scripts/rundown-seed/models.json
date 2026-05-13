@@ -9,6 +9,8 @@
     "tier": "flagship",
     "contextWindowTokens": 1000000,
     "costSignal": 0.18,
+    "operatorPreferenceRank": 2,
+    "favoritePolicyVersion": "2026-05-13.stable-favorites",
     "aliases": [
       "anthropic/claude-opus-4-7",
       "anthropic/claude-opus-4.7",
@@ -42,9 +44,17 @@
     "tier": "flagship",
     "contextWindowTokens": 400000,
     "costSignal": 0.22,
+    "selectionDisplayName": "GPT-5.5 xhigh",
+    "preferredReasoningEffort": "xhigh",
+    "operatorPreferenceRank": 1,
+    "favoritePolicyVersion": "2026-05-13.stable-favorites",
     "aliases": [
       "openai/gpt-5.5",
+      "openai/gpt-5.5-xhigh",
       "openai/gpt-5-5",
+      "openai/gpt-5-5-xhigh",
+      "gpt-5.5-xhigh",
+      "gpt-5-5-xhigh",
       "gpt-5-5-medium",
       "gpt-5-5-high",
       "gpt-5-5-low",
@@ -130,10 +140,15 @@
     "tier": "flagship",
     "contextWindowTokens": 256000,
     "costSignal": 0.66,
+    "operatorPreferenceRank": 3,
+    "favoritePolicyVersion": "2026-05-13.stable-favorites",
     "aliases": [
       "zai-org/GLM-5.1",
+      "zai/glm-5.1",
+      "zai/glm-5-1",
       "z-ai/glm-5.1",
       "zhipuai/glm-5.1",
+      "glm-5.1",
       "glm-5-1-non-reasoning"
     ]
   },

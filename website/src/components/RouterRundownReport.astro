@@ -43,6 +43,10 @@ function pct(x: number | undefined): string {
   return `${Math.round(x * 100)}`;
 }
 
+function displayScore(rec: { score: number; selectionScore?: number }): number {
+  return rec.selectionScore ?? rec.score;
+}
+
 function tokens(x: number | undefined): string {
   if (x == null) return "—";
   if (x >= 1_000_000) return `${(x / 1_000_000).toFixed(x % 1_000_000 === 0 ? 0 : 1)}M`;
@@ -62,13 +66,13 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
   <!-- header strip -->
   <header class="rundown__head">
     <div class="rundown__headline">
-      <span class="eyebrow eyebrow--ember mono">Daily Intelligent Router Rundown</span>
+      <span class="eyebrow eyebrow--ember mono">Daily Intelligent Router Board</span>
       <h2 class="rundown__h" data-rundown-title>
-        {isPreview ? "Today's recommended ordering — at a glance." : `Rundown · ${rundown.date}`}
+        {isPreview ? "Today's model-board recommendation — at a glance." : `Rundown · ${rundown.date}`}
       </h2>
       <p class="rundown__sub mono">
         <span data-rundown-state class="rundown__state rundown__state--loading mono">loading live data…</span>
-        <span data-rundown-meta>Generated {generatedLabel} · schema v{rundown.schemaVersion} · benchmarks advisory · runtime constraints win</span>
+        <span data-rundown-meta>Generated {generatedLabel} · schema v{rundown.schemaVersion} · model board · runtime constraints win</span>
       </p>
     </div>
 
@@ -92,9 +96,10 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
   </header>
 
   <p class="rundown__advisory">
-    Benchmark data is <strong>advisory only</strong>. Provider-family mode,
-    user pinning, account auth, quota state, safety policy, and availability
-    are evaluated at runtime and override any ranking shown here.
+    A daily board of language models runs research and analysis tasks across
+    the benchmark feed, then BurnBar reduces their findings to this deterministic
+    recommendation. Benchmark data is <strong>advisory only</strong>; user pins,
+    auth, quota, safety, and availability still win at runtime.
   </p>
 
   {sortedTasks.length === 0 && (
@@ -135,9 +140,9 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
               </div>
 
               <div class="rankrow__score">
-                <span class="rankrow__scorenum">{pct(rec.score)}</span>
-                <span class="rankrow__scorelab mono">composite / 100</span>
-                <span class="rankrow__cov mono">evidence {pct(rec.evidenceCoverage)}%</span>
+                <span class="rankrow__scorenum">{pct(displayScore(rec))}</span>
+                <span class="rankrow__scorelab mono">selection / 100</span>
+                <span class="rankrow__cov mono">evidence {pct(rec.score)} · coverage {pct(rec.evidenceCoverage)}%</span>
               </div>
 
               <ul class="rankrow__chips" aria-label="Signal chips">
@@ -167,12 +172,18 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
                     <span class="chip__k mono">runtime</span><span class="chip__v">not routable</span>
                   </li>
                 )}
+                {rec.favoriteRank != null && (
+                  <li class="chip chip--on">
+                    <span class="chip__k mono">board</span><span class="chip__v">favorite #{rec.favoriteRank}</span>
+                  </li>
+                )}
               </ul>
 
               <div class="rankrow__body">
                 <div class="rankrow__rationale">
-                  <h4 class="rankrow__rh mono">Why this rank</h4>
+                  <h4 class="rankrow__rh mono">Board verdict</h4>
                   <ul class="rankrow__rlist">
+                    {rec.selectionReason && <li>{rec.selectionReason}</li>}
                     {rec.explanation.map((line) => <li>{line}</li>)}
                   </ul>
                 </div>
@@ -216,7 +227,7 @@ const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
         {task.rejectedAlternatives.length > 0 && (
           <details class="rejects">
             <summary>
-              <span class="rejects__sum">Why other candidates didn't make the cut</span>
+              <span class="rejects__sum">Why other candidates didn't make the board pick</span>
               <span class="rejects__count mono">{task.rejectedAlternatives.length} dropped</span>
             </summary>
             <ul class="rejects__list">

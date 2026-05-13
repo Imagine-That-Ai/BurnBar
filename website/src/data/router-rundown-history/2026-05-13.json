@@ -1,6 +1,6 @@
 {
   "date": "2026-05-13",
-  "generatedAt": "2026-05-13T15:13:25.090Z",
+  "generatedAt": "2026-05-13T15:43:14.751Z",
   "schemaVersion": 1,
   "sourceStatuses": [
     {
@@ -19,7 +19,7 @@
       "logo": "/brand/sources/terminal-bench.png",
       "url": "https://www.tbench.ai/",
       "status": "fresh",
-      "fetchedAt": "2026-05-13T15:13:25.090Z",
+      "fetchedAt": "2026-05-13T15:43:14.751Z",
       "ageHours": 0,
       "message": "Normalized 35 Terminal-Bench leaderboard rows."
     },
@@ -39,9 +39,9 @@
       "logo": "/brand/sources/manual-fixture.svg",
       "url": "/router#sources",
       "status": "fresh",
-      "fetchedAt": "2026-05-13T15:13:25.090Z",
+      "fetchedAt": "2026-05-13T15:43:14.751Z",
       "ageHours": 0,
-      "message": "Normalized 34 manual fixture rows."
+      "message": "Normalized 39 manual fixture rows."
     }
   ],
   "taskRankings": [
@@ -52,14 +52,74 @@
       "recommendations": [
         {
           "rank": 1,
+          "modelID": "gpt-5-5",
+          "modelDisplay": "GPT-5.5 xhigh",
+          "canonicalModelDisplay": "GPT-5.5",
+          "providerID": "openai",
+          "providerDisplay": "OpenAI",
+          "providerLogo": "/brand/providers/openai.png",
+          "providerFamily": "openai_compat",
+          "tier": "flagship",
+          "score": 0.7548278829604129,
+          "selectionScore": 0.99,
+          "favoriteRank": 1,
+          "favoritePrior": 0.12,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": "xhigh",
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #1 receives a deterministic 12 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
+          "rawScore": 0.7548278829604129,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.86,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.55,
+            "cost": 0.22,
+            "contextWindowTokens": 400000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 86/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Premium-tier per-token cost.",
+            "Context window: 400k tokens.",
+            "Wire-format family: openai_compat."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 2,
+              "score": 0.86,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        },
+        {
+          "rank": 2,
           "modelID": "claude-opus-4-7",
           "modelDisplay": "Claude Opus 4.7",
+          "canonicalModelDisplay": "Claude Opus 4.7",
           "providerID": "anthropic",
           "providerDisplay": "Anthropic",
           "providerLogo": "/brand/providers/anthropic.png",
           "providerFamily": "anthropic",
           "tier": "flagship",
           "score": 0.7644492254733221,
+          "selectionScore": 0.96,
+          "favoriteRank": 2,
+          "favoritePrior": 0.08,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": null,
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #2 receives a deterministic 8 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
           "rawScore": 0.7644492254733221,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
@@ -97,33 +157,40 @@
           "limitations": []
         },
         {
-          "rank": 2,
-          "modelID": "glm-5",
-          "modelDisplay": "GLM 5",
+          "rank": 3,
+          "modelID": "glm-5-1",
+          "modelDisplay": "GLM 5.1",
+          "canonicalModelDisplay": "GLM 5.1",
           "providerID": "zai",
           "providerDisplay": "Z.ai",
           "providerLogo": "/brand/providers/zai.png",
           "providerFamily": "openai_compat",
           "tier": "flagship",
-          "score": 0.7610929432013769,
-          "rawScore": 0.7610929432013769,
+          "score": 0.7754130808950087,
+          "selectionScore": 0.9299999999999999,
+          "favoriteRank": 3,
+          "favoritePrior": 0.05,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": null,
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #3 receives a deterministic 5 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
+          "rawScore": 0.7754130808950087,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
           "evidenceCoverage": 0.7142857142857143,
           "signals": {
-            "benchmarkScore": 0.82,
+            "benchmarkScore": 0.83,
             "benchmarkFreshness": 1,
-            "sourceConfidence": 0.55,
-            "cost": 0.68,
+            "sourceConfidence": 0.72,
+            "cost": 0.66,
             "contextWindowTokens": 256000,
             "availability": "unknown",
             "routable": true
           },
           "freshness": "manual",
           "explanation": [
-            "Composite benchmark score 82/100 across 1 source.",
+            "Composite benchmark score 83/100 across 1 source.",
             "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
-            "Cost-efficient at typical blended pricing.",
+            "Mid-tier per-token cost.",
             "Context window: 256k tokens.",
             "Wire-format family: openai_compat."
           ],
@@ -134,54 +201,8 @@
               "shortLabel": "OBB",
               "logo": "/brand/sources/manual-fixture.svg",
               "sourceURL": "https://docs.designarena.ai/introduction",
-              "rank": 4,
-              "score": 0.82,
-              "ageHours": 0,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        },
-        {
-          "rank": 3,
-          "modelID": "gpt-5-5",
-          "modelDisplay": "GPT-5.5",
-          "providerID": "openai",
-          "providerDisplay": "OpenAI",
-          "providerLogo": "/brand/providers/openai.png",
-          "providerFamily": "openai_compat",
-          "tier": "flagship",
-          "score": 0.7548278829604129,
-          "rawScore": 0.7548278829604129,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 0.7142857142857143,
-          "signals": {
-            "benchmarkScore": 0.86,
-            "benchmarkFreshness": 1,
-            "sourceConfidence": 0.55,
-            "cost": 0.22,
-            "contextWindowTokens": 400000,
-            "availability": "unknown",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 86/100 across 1 source.",
-            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Context window: 400k tokens.",
-            "Wire-format family: openai_compat."
-          ],
-          "citations": [
-            {
-              "source": "manual_fixture",
-              "attribution": "Manual OpenBurnBar fixture",
-              "shortLabel": "OBB",
-              "logo": "/brand/sources/manual-fixture.svg",
-              "sourceURL": "https://docs.designarena.ai/introduction",
-              "rank": 2,
-              "score": 0.86,
+              "rank": 3,
+              "score": 0.83,
               "ageHours": 0,
               "freshness": "manual"
             }
@@ -191,13 +212,28 @@
       ],
       "rejectedAlternatives": [
         {
+          "modelID": "glm-5",
+          "modelDisplay": "GLM 5",
+          "providerID": "zai",
+          "providerDisplay": "Z.ai",
+          "providerLogo": "/brand/providers/zai.png",
+          "evidenceScore": 0.7610929432013769,
+          "selectionScore": 0.9,
+          "benchmarkScore": 0.82,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 76/100; selection 90/100 vs. leader 99/100."
+        },
+        {
           "modelID": "gemini-3-1-pro-preview",
           "modelDisplay": "Gemini 3.1 Pro (preview)",
           "providerID": "google",
           "providerDisplay": "Google",
           "providerLogo": "/brand/providers/google.svg",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 75/100 vs. leader 76/100."
+          "evidenceScore": 0.7478915662650603,
+          "selectionScore": 0.87,
+          "benchmarkScore": 0.84,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 75/100; selection 87/100 vs. leader 99/100."
         },
         {
           "modelID": "minimax-m2-7",
@@ -205,8 +241,11 @@
           "providerID": "minimax",
           "providerDisplay": "MiniMax",
           "providerLogo": "/brand/providers/minimax.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 74/100 vs. leader 76/100."
+          "evidenceScore": 0.7386058519793459,
+          "selectionScore": 0.84,
+          "benchmarkScore": 0.79,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 74/100; selection 84/100 vs. leader 99/100."
         },
         {
           "modelID": "kimi-k2-6",
@@ -214,8 +253,11 @@
           "providerID": "kimi",
           "providerDisplay": "Moonshot · Kimi",
           "providerLogo": "/brand/providers/kimi.svg",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 72/100 vs. leader 76/100."
+          "evidenceScore": 0.7249569707401035,
+          "selectionScore": 0.81,
+          "benchmarkScore": 0.77,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 72/100; selection 81/100 vs. leader 99/100."
         },
         {
           "modelID": "claude-sonnet-4-6",
@@ -223,11 +265,14 @@
           "providerID": "anthropic",
           "providerDisplay": "Anthropic",
           "providerLogo": "/brand/providers/anthropic.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 70/100 vs. leader 76/100."
+          "evidenceScore": 0.7020805507745266,
+          "selectionScore": 0.78,
+          "benchmarkScore": 0.8,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 70/100; selection 78/100 vs. leader 99/100."
         }
       ],
-      "topPickRationale": "Today's pick: Claude Opus 4.7 — led the benchmark composite at 88/100; evidence is fresh; context window of 1000k clears typical large-context work; runner-up GLM 5 is held in reserve for instant failover."
+      "topPickRationale": "Today's pick: GPT-5.5 xhigh — stable favorite rank #1 under 2026-05-13.stable-favorites; preferred reasoning effort xhigh; led the benchmark composite at 86/100; evidence is fresh; context window of 400k clears typical large-context work; runner-up Claude Opus 4.7 is held in reserve for instant failover."
     },
     {
       "taskID": "terminal",
@@ -237,13 +282,20 @@
         {
           "rank": 1,
           "modelID": "gpt-5-5",
-          "modelDisplay": "GPT-5.5",
+          "modelDisplay": "GPT-5.5 xhigh",
+          "canonicalModelDisplay": "GPT-5.5",
           "providerID": "openai",
           "providerDisplay": "OpenAI",
           "providerLogo": "/brand/providers/openai.png",
           "providerFamily": "openai_compat",
           "tier": "flagship",
           "score": 0.7497934595524957,
+          "selectionScore": 0.99,
+          "favoriteRank": 1,
+          "favoritePrior": 0.12,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": "xhigh",
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #1 receives a deterministic 12 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
           "rawScore": 0.7497934595524957,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
@@ -284,12 +336,19 @@
           "rank": 2,
           "modelID": "claude-opus-4-7",
           "modelDisplay": "Claude Opus 4.7",
+          "canonicalModelDisplay": "Claude Opus 4.7",
           "providerID": "anthropic",
           "providerDisplay": "Anthropic",
           "providerLogo": "/brand/providers/anthropic.png",
           "providerFamily": "anthropic",
           "tier": "flagship",
           "score": 0.7258519793459552,
+          "selectionScore": 0.96,
+          "favoriteRank": 2,
+          "favoritePrior": 0.08,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": null,
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #2 receives a deterministic 8 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
           "rawScore": 0.7258519793459552,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
@@ -328,34 +387,41 @@
         },
         {
           "rank": 3,
-          "modelID": "kimi-k2-6",
-          "modelDisplay": "Kimi K2.6",
-          "providerID": "kimi",
-          "providerDisplay": "Moonshot · Kimi",
-          "providerLogo": "/brand/providers/kimi.svg",
+          "modelID": "glm-5-1",
+          "modelDisplay": "GLM 5.1",
+          "canonicalModelDisplay": "GLM 5.1",
+          "providerID": "zai",
+          "providerDisplay": "Z.ai",
+          "providerLogo": "/brand/providers/zai.png",
           "providerFamily": "openai_compat",
           "tier": "flagship",
-          "score": 0.7027604933726067,
-          "rawScore": 0.7027604933726067,
+          "score": 0.706993740795287,
+          "selectionScore": 0.9299999999999999,
+          "favoriteRank": 3,
+          "favoritePrior": 0.05,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": null,
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #3 receives a deterministic 5 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
+          "rawScore": 0.706993740795287,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
           "evidenceCoverage": 0.8571428571428571,
           "signals": {
-            "benchmarkScore": 0.6935,
+            "benchmarkScore": 0.7016666666666667,
             "benchmarkFreshness": 1,
-            "sourceConfidence": 0.75,
+            "sourceConfidence": 0.6733333333333333,
             "reliability": 0.65,
-            "cost": 0.6,
-            "contextWindowTokens": 320000,
+            "cost": 0.66,
+            "contextWindowTokens": 256000,
             "availability": "unknown",
             "routable": true
           },
           "freshness": "stale",
           "explanation": [
-            "Composite benchmark score 69/100 across 2 sources.",
+            "Composite benchmark score 70/100 across 3 sources.",
             "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
             "Mid-tier per-token cost.",
-            "Context window: 320k tokens.",
+            "Context window: 256k tokens.",
             "Wire-format family: openai_compat."
           ],
           "citations": [
@@ -365,8 +431,19 @@
               "shortLabel": "TB",
               "logo": "/brand/sources/terminal-bench.png",
               "sourceURL": "https://huggingface.co/api/datasets/harborframework/terminal-bench-2.0/leaderboard",
-              "rank": 4,
-              "score": 0.667,
+              "rank": 1,
+              "score": 0.69,
+              "ageHours": 0,
+              "freshness": "fresh"
+            },
+            {
+              "source": "terminal_bench",
+              "attribution": "Terminal-Bench (via Hugging Face)",
+              "shortLabel": "TB",
+              "logo": "/brand/sources/terminal-bench.png",
+              "sourceURL": "https://huggingface.co/api/datasets/harborframework/terminal-bench-2.0/leaderboard",
+              "rank": 6,
+              "score": 0.635,
               "ageHours": 0,
               "freshness": "fresh"
             },
@@ -376,8 +453,8 @@
               "shortLabel": "OBB",
               "logo": "/brand/sources/manual-fixture.svg",
               "sourceURL": "https://docs.designarena.ai/introduction",
-              "rank": 6,
-              "score": 0.72,
+              "rank": 3,
+              "score": 0.78,
               "ageHours": 0,
               "freshness": "manual"
             }
@@ -387,13 +464,28 @@
       ],
       "rejectedAlternatives": [
         {
+          "modelID": "kimi-k2-6",
+          "modelDisplay": "Kimi K2.6",
+          "providerID": "kimi",
+          "providerDisplay": "Moonshot · Kimi",
+          "providerLogo": "/brand/providers/kimi.svg",
+          "evidenceScore": 0.7027604933726067,
+          "selectionScore": 0.9,
+          "benchmarkScore": 0.6935,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 70/100; selection 90/100 vs. leader 99/100."
+        },
+        {
           "modelID": "deepseek-v4-pro",
           "modelDisplay": "DeepSeek V4 Pro",
           "providerID": "deepseek",
           "providerDisplay": "DeepSeek",
           "providerLogo": "/brand/providers/deepseek.svg",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 70/100 vs. leader 75/100."
+          "evidenceScore": 0.6970195139911634,
+          "selectionScore": 0.87,
+          "benchmarkScore": 0.679,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 70/100; selection 87/100 vs. leader 99/100."
         },
         {
           "modelID": "minimax-m2-7",
@@ -401,17 +493,11 @@
           "providerID": "minimax",
           "providerDisplay": "MiniMax",
           "providerLogo": "/brand/providers/minimax.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 69/100 vs. leader 75/100."
-        },
-        {
-          "modelID": "glm-5-1",
-          "modelDisplay": "GLM 5.1",
-          "providerID": "zai",
-          "providerDisplay": "Z.ai",
-          "providerLogo": "/brand/providers/zai.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 68/100 vs. leader 75/100."
+          "evidenceScore": 0.6856369661266567,
+          "selectionScore": 0.84,
+          "benchmarkScore": 0.6599999999999999,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 69/100; selection 84/100 vs. leader 99/100."
         },
         {
           "modelID": "claude-sonnet-4-6",
@@ -419,8 +505,11 @@
           "providerID": "anthropic",
           "providerDisplay": "Anthropic",
           "providerLogo": "/brand/providers/anthropic.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 68/100 vs. leader 75/100."
+          "evidenceScore": 0.6827483648881238,
+          "selectionScore": 0.81,
+          "benchmarkScore": 0.74,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 68/100; selection 81/100 vs. leader 99/100."
         },
         {
           "modelID": "glm-5",
@@ -428,8 +517,11 @@
           "providerID": "zai",
           "providerDisplay": "Z.ai",
           "providerLogo": "/brand/providers/zai.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 68/100 vs. leader 75/100."
+          "evidenceScore": 0.6821078792341679,
+          "selectionScore": 0.78,
+          "benchmarkScore": 0.647,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 68/100; selection 78/100 vs. leader 99/100."
         },
         {
           "modelID": "deepseek-v4-flash",
@@ -437,8 +529,11 @@
           "providerID": "deepseek",
           "providerDisplay": "DeepSeek",
           "providerLogo": "/brand/providers/deepseek.svg",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 62/100 vs. leader 75/100."
+          "evidenceScore": 0.6182721649484535,
+          "selectionScore": 0.75,
+          "benchmarkScore": 0.569,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 62/100; selection 75/100 vs. leader 99/100."
         },
         {
           "modelID": "kimi-k2-5",
@@ -446,8 +541,11 @@
           "providerID": "kimi",
           "providerDisplay": "Moonshot · Kimi",
           "providerLogo": "/brand/providers/kimi.svg",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 56/100 vs. leader 75/100."
+          "evidenceScore": 0.5560051546391752,
+          "selectionScore": 0.72,
+          "benchmarkScore": 0.43200000000000005,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 56/100; selection 72/100 vs. leader 99/100."
         },
         {
           "modelID": "glm-4-7",
@@ -455,11 +553,14 @@
           "providerID": "zai",
           "providerDisplay": "Z.ai",
           "providerLogo": "/brand/providers/zai.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 51/100 vs. leader 75/100."
+          "evidenceScore": 0.5071944035346095,
+          "selectionScore": 0.69,
+          "benchmarkScore": 0.33399999999999996,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 51/100; selection 69/100 vs. leader 99/100."
         }
       ],
-      "topPickRationale": "Today's pick: GPT-5.5 — led the benchmark composite at 82/100; evidence is fresh; context window of 400k clears typical large-context work; runner-up Claude Opus 4.7 is held in reserve for instant failover."
+      "topPickRationale": "Today's pick: GPT-5.5 xhigh — stable favorite rank #1 under 2026-05-13.stable-favorites; preferred reasoning effort xhigh; led the benchmark composite at 82/100; evidence is fresh; context window of 400k clears typical large-context work; runner-up Claude Opus 4.7 is held in reserve for instant failover."
     },
     {
       "taskID": "design",
@@ -468,14 +569,74 @@
       "recommendations": [
         {
           "rank": 1,
+          "modelID": "gpt-5-5",
+          "modelDisplay": "GPT-5.5 xhigh",
+          "canonicalModelDisplay": "GPT-5.5",
+          "providerID": "openai",
+          "providerDisplay": "OpenAI",
+          "providerLogo": "/brand/providers/openai.png",
+          "providerFamily": "openai_compat",
+          "tier": "flagship",
+          "score": 0.7307745266781412,
+          "selectionScore": 0.99,
+          "favoriteRank": 1,
+          "favoritePrior": 0.12,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": "xhigh",
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #1 receives a deterministic 12 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
+          "rawScore": 0.7307745266781412,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.8,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.78,
+            "cost": 0.22,
+            "contextWindowTokens": 400000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 80/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Premium-tier per-token cost.",
+            "Context window: 400k tokens.",
+            "Wire-format family: openai_compat."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 3,
+              "score": 0.8,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        },
+        {
+          "rank": 2,
           "modelID": "claude-opus-4-7",
           "modelDisplay": "Claude Opus 4.7",
+          "canonicalModelDisplay": "Claude Opus 4.7",
           "providerID": "anthropic",
           "providerDisplay": "Anthropic",
           "providerLogo": "/brand/providers/anthropic.png",
           "providerFamily": "anthropic",
           "tier": "flagship",
           "score": 0.7527022375215148,
+          "selectionScore": 0.96,
+          "favoriteRank": 2,
+          "favoritePrior": 0.08,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": null,
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #2 receives a deterministic 8 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
           "rawScore": 0.7527022375215148,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
@@ -513,79 +674,40 @@
           "limitations": []
         },
         {
-          "rank": 2,
-          "modelID": "gemini-3-1-pro-preview",
-          "modelDisplay": "Gemini 3.1 Pro (preview)",
-          "providerID": "google",
-          "providerDisplay": "Google",
-          "providerLogo": "/brand/providers/google.svg",
-          "providerFamily": "openai_compat",
-          "tier": "flagship",
-          "score": 0.7484509466437178,
-          "rawScore": 0.7484509466437178,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 0.7142857142857143,
-          "signals": {
-            "benchmarkScore": 0.82,
-            "benchmarkFreshness": 1,
-            "sourceConfidence": 0.78,
-            "cost": 0.3,
-            "contextWindowTokens": 2000000,
-            "availability": "unknown",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 82/100 across 1 source.",
-            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Context window: 2000k tokens.",
-            "Wire-format family: openai_compat."
-          ],
-          "citations": [
-            {
-              "source": "manual_fixture",
-              "attribution": "Manual OpenBurnBar fixture",
-              "shortLabel": "OBB",
-              "logo": "/brand/sources/manual-fixture.svg",
-              "sourceURL": "https://docs.designarena.ai/introduction",
-              "rank": 2,
-              "score": 0.82,
-              "ageHours": 0,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        },
-        {
           "rank": 3,
-          "modelID": "glm-5",
-          "modelDisplay": "GLM 5",
+          "modelID": "glm-5-1",
+          "modelDisplay": "GLM 5.1",
+          "canonicalModelDisplay": "GLM 5.1",
           "providerID": "zai",
           "providerDisplay": "Z.ai",
           "providerLogo": "/brand/providers/zai.png",
           "providerFamily": "openai_compat",
           "tier": "flagship",
-          "score": 0.7308864027538726,
-          "rawScore": 0.7308864027538726,
+          "score": 0.7323407917383821,
+          "selectionScore": 0.9299999999999999,
+          "favoriteRank": 3,
+          "favoritePrior": 0.05,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": null,
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #3 receives a deterministic 5 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
+          "rawScore": 0.7323407917383821,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
           "evidenceCoverage": 0.7142857142857143,
           "signals": {
-            "benchmarkScore": 0.75,
+            "benchmarkScore": 0.76,
             "benchmarkFreshness": 1,
-            "sourceConfidence": 0.78,
-            "cost": 0.68,
+            "sourceConfidence": 0.72,
+            "cost": 0.66,
             "contextWindowTokens": 256000,
             "availability": "unknown",
             "routable": true
           },
           "freshness": "manual",
           "explanation": [
-            "Composite benchmark score 75/100 across 1 source.",
+            "Composite benchmark score 76/100 across 1 source.",
             "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
-            "Cost-efficient at typical blended pricing.",
+            "Mid-tier per-token cost.",
             "Context window: 256k tokens.",
             "Wire-format family: openai_compat."
           ],
@@ -596,8 +718,8 @@
               "shortLabel": "OBB",
               "logo": "/brand/sources/manual-fixture.svg",
               "sourceURL": "https://docs.designarena.ai/introduction",
-              "rank": 5,
-              "score": 0.75,
+              "rank": 4,
+              "score": 0.76,
               "ageHours": 0,
               "freshness": "manual"
             }
@@ -607,13 +729,28 @@
       ],
       "rejectedAlternatives": [
         {
-          "modelID": "gpt-5-5",
-          "modelDisplay": "GPT-5.5",
-          "providerID": "openai",
-          "providerDisplay": "OpenAI",
-          "providerLogo": "/brand/providers/openai.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 73/100 vs. leader 75/100."
+          "modelID": "gemini-3-1-pro-preview",
+          "modelDisplay": "Gemini 3.1 Pro (preview)",
+          "providerID": "google",
+          "providerDisplay": "Google",
+          "providerLogo": "/brand/providers/google.svg",
+          "evidenceScore": 0.7484509466437178,
+          "selectionScore": 0.9,
+          "benchmarkScore": 0.82,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 75/100; selection 90/100 vs. leader 99/100."
+        },
+        {
+          "modelID": "glm-5",
+          "modelDisplay": "GLM 5",
+          "providerID": "zai",
+          "providerDisplay": "Z.ai",
+          "providerLogo": "/brand/providers/zai.png",
+          "evidenceScore": 0.7308864027538726,
+          "selectionScore": 0.87,
+          "benchmarkScore": 0.75,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 73/100; selection 87/100 vs. leader 99/100."
         },
         {
           "modelID": "kimi-k2-6",
@@ -621,8 +758,11 @@
           "providerID": "kimi",
           "providerDisplay": "Moonshot · Kimi",
           "providerLogo": "/brand/providers/kimi.svg",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 71/100 vs. leader 75/100."
+          "evidenceScore": 0.7132099827882962,
+          "selectionScore": 0.84,
+          "benchmarkScore": 0.73,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 71/100; selection 84/100 vs. leader 99/100."
         },
         {
           "modelID": "claude-sonnet-4-6",
@@ -630,11 +770,14 @@
           "providerID": "anthropic",
           "providerDisplay": "Anthropic",
           "providerLogo": "/brand/providers/anthropic.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 70/100 vs. leader 75/100."
+          "evidenceScore": 0.7026175559380379,
+          "selectionScore": 0.81,
+          "benchmarkScore": 0.78,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 70/100; selection 81/100 vs. leader 99/100."
         }
       ],
-      "topPickRationale": "Today's pick: Claude Opus 4.7 — led the benchmark composite at 84/100; evidence is fresh; context window of 1000k clears typical large-context work; runner-up Gemini 3.1 Pro (preview) is held in reserve for instant failover."
+      "topPickRationale": "Today's pick: GPT-5.5 xhigh — stable favorite rank #1 under 2026-05-13.stable-favorites; preferred reasoning effort xhigh; led the benchmark composite at 80/100; evidence is fresh; context window of 400k clears typical large-context work; runner-up Claude Opus 4.7 is held in reserve for instant failover."
     },
     {
       "taskID": "analysis",
@@ -643,33 +786,40 @@
       "recommendations": [
         {
           "rank": 1,
-          "modelID": "gemini-3-1-pro-preview",
-          "modelDisplay": "Gemini 3.1 Pro (preview)",
-          "providerID": "google",
-          "providerDisplay": "Google",
-          "providerLogo": "/brand/providers/google.svg",
+          "modelID": "gpt-5-5",
+          "modelDisplay": "GPT-5.5 xhigh",
+          "canonicalModelDisplay": "GPT-5.5",
+          "providerID": "openai",
+          "providerDisplay": "OpenAI",
+          "providerLogo": "/brand/providers/openai.png",
           "providerFamily": "openai_compat",
           "tier": "flagship",
-          "score": 0.7786574870912221,
-          "rawScore": 0.7786574870912221,
+          "score": 0.7671342512908779,
+          "selectionScore": 0.99,
+          "favoriteRank": 1,
+          "favoritePrior": 0.12,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": "xhigh",
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #1 receives a deterministic 12 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
+          "rawScore": 0.7671342512908779,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
           "evidenceCoverage": 0.7142857142857143,
           "signals": {
-            "benchmarkScore": 0.89,
+            "benchmarkScore": 0.88,
             "benchmarkFreshness": 1,
             "sourceConfidence": 0.55,
-            "cost": 0.3,
-            "contextWindowTokens": 2000000,
+            "cost": 0.22,
+            "contextWindowTokens": 400000,
             "availability": "unknown",
             "routable": true
           },
           "freshness": "manual",
           "explanation": [
-            "Composite benchmark score 89/100 across 1 source.",
+            "Composite benchmark score 88/100 across 1 source.",
             "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
             "Premium-tier per-token cost.",
-            "Context window: 2000k tokens.",
+            "Context window: 400k tokens.",
             "Wire-format family: openai_compat."
           ],
           "citations": [
@@ -679,8 +829,8 @@
               "shortLabel": "OBB",
               "logo": "/brand/sources/manual-fixture.svg",
               "sourceURL": "https://docs.designarena.ai/introduction",
-              "rank": 1,
-              "score": 0.89,
+              "rank": 2,
+              "score": 0.88,
               "ageHours": 0,
               "freshness": "manual"
             }
@@ -691,12 +841,19 @@
           "rank": 2,
           "modelID": "claude-opus-4-7",
           "modelDisplay": "Claude Opus 4.7",
+          "canonicalModelDisplay": "Claude Opus 4.7",
           "providerID": "anthropic",
           "providerDisplay": "Anthropic",
           "providerLogo": "/brand/providers/anthropic.png",
           "providerFamily": "anthropic",
           "tier": "flagship",
           "score": 0.7767555938037866,
+          "selectionScore": 0.96,
+          "favoriteRank": 2,
+          "favoritePrior": 0.08,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": null,
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #2 receives a deterministic 8 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
           "rawScore": 0.7767555938037866,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
@@ -735,20 +892,114 @@
         },
         {
           "rank": 3,
+          "modelID": "glm-5-1",
+          "modelDisplay": "GLM 5.1",
+          "canonicalModelDisplay": "GLM 5.1",
+          "providerID": "zai",
+          "providerDisplay": "Z.ai",
+          "providerLogo": "/brand/providers/zai.png",
+          "providerFamily": "openai_compat",
+          "tier": "flagship",
+          "score": 0.7938726333907057,
+          "selectionScore": 0.9299999999999999,
+          "favoriteRank": 3,
+          "favoritePrior": 0.05,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": null,
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #3 receives a deterministic 5 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
+          "rawScore": 0.7938726333907057,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.86,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.72,
+            "cost": 0.66,
+            "contextWindowTokens": 256000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 86/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Mid-tier per-token cost.",
+            "Context window: 256k tokens.",
+            "Wire-format family: openai_compat."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 3,
+              "score": 0.86,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        }
+      ],
+      "rejectedAlternatives": [
+        {
+          "modelID": "gemini-3-1-pro-preview",
+          "modelDisplay": "Gemini 3.1 Pro (preview)",
+          "providerID": "google",
+          "providerDisplay": "Google",
+          "providerLogo": "/brand/providers/google.svg",
+          "evidenceScore": 0.7786574870912221,
+          "selectionScore": 0.9,
+          "benchmarkScore": 0.89,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 78/100; selection 90/100 vs. leader 99/100."
+        },
+        {
+          "modelID": "claude-sonnet-4-6",
+          "modelDisplay": "Claude Sonnet 4.6",
+          "providerID": "anthropic",
+          "providerDisplay": "Anthropic",
+          "providerLogo": "/brand/providers/anthropic.png",
+          "evidenceScore": 0.7198017211703958,
+          "selectionScore": 0.87,
+          "benchmarkScore": 0.83,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 72/100; selection 87/100 vs. leader 99/100."
+        }
+      ],
+      "topPickRationale": "Today's pick: GPT-5.5 xhigh — stable favorite rank #1 under 2026-05-13.stable-favorites; preferred reasoning effort xhigh; led the benchmark composite at 88/100; evidence is fresh; context window of 400k clears typical large-context work; runner-up Claude Opus 4.7 is held in reserve for instant failover."
+    },
+    {
+      "taskID": "general",
+      "taskLabel": "General",
+      "taskBlurb": "Mixed-intent chat / one-shot questions / catch-all routing.",
+      "recommendations": [
+        {
+          "rank": 1,
           "modelID": "gpt-5-5",
-          "modelDisplay": "GPT-5.5",
+          "modelDisplay": "GPT-5.5 xhigh",
+          "canonicalModelDisplay": "GPT-5.5",
           "providerID": "openai",
           "providerDisplay": "OpenAI",
           "providerLogo": "/brand/providers/openai.png",
           "providerFamily": "openai_compat",
           "tier": "flagship",
-          "score": 0.7671342512908779,
-          "rawScore": 0.7671342512908779,
+          "score": 0.7609810671256455,
+          "selectionScore": 0.99,
+          "favoriteRank": 1,
+          "favoritePrior": 0.12,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": "xhigh",
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #1 receives a deterministic 12 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
+          "rawScore": 0.7609810671256455,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
           "evidenceCoverage": 0.7142857142857143,
           "signals": {
-            "benchmarkScore": 0.88,
+            "benchmarkScore": 0.87,
             "benchmarkFreshness": 1,
             "sourceConfidence": 0.55,
             "cost": 0.22,
@@ -758,7 +1009,7 @@
           },
           "freshness": "manual",
           "explanation": [
-            "Composite benchmark score 88/100 across 1 source.",
+            "Composite benchmark score 87/100 across 1 source.",
             "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
             "Premium-tier per-token cost.",
             "Context window: 400k tokens.",
@@ -771,72 +1022,7 @@
               "shortLabel": "OBB",
               "logo": "/brand/sources/manual-fixture.svg",
               "sourceURL": "https://docs.designarena.ai/introduction",
-              "rank": 2,
-              "score": 0.88,
-              "ageHours": 0,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        }
-      ],
-      "rejectedAlternatives": [
-        {
-          "modelID": "claude-sonnet-4-6",
-          "modelDisplay": "Claude Sonnet 4.6",
-          "providerID": "anthropic",
-          "providerDisplay": "Anthropic",
-          "providerLogo": "/brand/providers/anthropic.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 72/100 vs. leader 78/100."
-        }
-      ],
-      "topPickRationale": "Today's pick: Gemini 3.1 Pro (preview) — led the benchmark composite at 89/100; evidence is fresh; context window of 2000k clears typical large-context work; runner-up Claude Opus 4.7 is held in reserve for instant failover."
-    },
-    {
-      "taskID": "general",
-      "taskLabel": "General",
-      "taskBlurb": "Mixed-intent chat / one-shot questions / catch-all routing.",
-      "recommendations": [
-        {
-          "rank": 1,
-          "modelID": "gemini-3-1-pro-preview",
-          "modelDisplay": "Gemini 3.1 Pro (preview)",
-          "providerID": "google",
-          "providerDisplay": "Google",
-          "providerLogo": "/brand/providers/google.svg",
-          "providerFamily": "openai_compat",
-          "tier": "flagship",
-          "score": 0.7663511187607573,
-          "rawScore": 0.7663511187607573,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 0.7142857142857143,
-          "signals": {
-            "benchmarkScore": 0.87,
-            "benchmarkFreshness": 1,
-            "sourceConfidence": 0.55,
-            "cost": 0.3,
-            "contextWindowTokens": 2000000,
-            "availability": "unknown",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 87/100 across 1 source.",
-            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Context window: 2000k tokens.",
-            "Wire-format family: openai_compat."
-          ],
-          "citations": [
-            {
-              "source": "manual_fixture",
-              "attribution": "Manual OpenBurnBar fixture",
-              "shortLabel": "OBB",
-              "logo": "/brand/sources/manual-fixture.svg",
-              "sourceURL": "https://docs.designarena.ai/introduction",
-              "rank": 2,
+              "rank": 1,
               "score": 0.87,
               "ageHours": 0,
               "freshness": "manual"
@@ -848,12 +1034,19 @@
           "rank": 2,
           "modelID": "claude-opus-4-7",
           "modelDisplay": "Claude Opus 4.7",
+          "canonicalModelDisplay": "Claude Opus 4.7",
           "providerID": "anthropic",
           "providerDisplay": "Anthropic",
           "providerLogo": "/brand/providers/anthropic.png",
           "providerFamily": "anthropic",
           "tier": "flagship",
           "score": 0.7644492254733221,
+          "selectionScore": 0.96,
+          "favoriteRank": 2,
+          "favoritePrior": 0.08,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": null,
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #2 receives a deterministic 8 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
           "rawScore": 0.7644492254733221,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
@@ -892,33 +1085,40 @@
         },
         {
           "rank": 3,
-          "modelID": "gpt-5-5",
-          "modelDisplay": "GPT-5.5",
-          "providerID": "openai",
-          "providerDisplay": "OpenAI",
-          "providerLogo": "/brand/providers/openai.png",
+          "modelID": "glm-5-1",
+          "modelDisplay": "GLM 5.1",
+          "canonicalModelDisplay": "GLM 5.1",
+          "providerID": "zai",
+          "providerDisplay": "Z.ai",
+          "providerLogo": "/brand/providers/zai.png",
           "providerFamily": "openai_compat",
           "tier": "flagship",
-          "score": 0.7609810671256455,
-          "rawScore": 0.7609810671256455,
+          "score": 0.7815662650602411,
+          "selectionScore": 0.9299999999999999,
+          "favoriteRank": 3,
+          "favoritePrior": 0.05,
+          "favoritePolicyVersion": "2026-05-13.stable-favorites",
+          "preferredReasoningEffort": null,
+          "selectionReason": "Stable favorite policy 2026-05-13.stable-favorites: favorite rank #3 receives a deterministic 5 point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.",
+          "rawScore": 0.7815662650602411,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
           "evidenceCoverage": 0.7142857142857143,
           "signals": {
-            "benchmarkScore": 0.87,
+            "benchmarkScore": 0.84,
             "benchmarkFreshness": 1,
-            "sourceConfidence": 0.55,
-            "cost": 0.22,
-            "contextWindowTokens": 400000,
+            "sourceConfidence": 0.72,
+            "cost": 0.66,
+            "contextWindowTokens": 256000,
             "availability": "unknown",
             "routable": true
           },
           "freshness": "manual",
           "explanation": [
-            "Composite benchmark score 87/100 across 1 source.",
+            "Composite benchmark score 84/100 across 1 source.",
             "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Context window: 400k tokens.",
+            "Mid-tier per-token cost.",
+            "Context window: 256k tokens.",
             "Wire-format family: openai_compat."
           ],
           "citations": [
@@ -928,8 +1128,8 @@
               "shortLabel": "OBB",
               "logo": "/brand/sources/manual-fixture.svg",
               "sourceURL": "https://docs.designarena.ai/introduction",
-              "rank": 1,
-              "score": 0.87,
+              "rank": 3,
+              "score": 0.84,
               "ageHours": 0,
               "freshness": "manual"
             }
@@ -939,27 +1139,43 @@
       ],
       "rejectedAlternatives": [
         {
+          "modelID": "gemini-3-1-pro-preview",
+          "modelDisplay": "Gemini 3.1 Pro (preview)",
+          "providerID": "google",
+          "providerDisplay": "Google",
+          "providerLogo": "/brand/providers/google.svg",
+          "evidenceScore": 0.7663511187607573,
+          "selectionScore": 0.9,
+          "benchmarkScore": 0.87,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 77/100; selection 90/100 vs. leader 99/100."
+        },
+        {
           "modelID": "minimax-m2-7",
           "modelDisplay": "MiniMax M2.7",
           "providerID": "minimax",
           "providerDisplay": "MiniMax",
           "providerLogo": "/brand/providers/minimax.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 75/100 vs. leader 77/100."
+          "evidenceScore": 0.7509122203098108,
+          "selectionScore": 0.87,
+          "benchmarkScore": 0.81,
+          "reason": "Selection policy did not clear the leader's margin for this task.",
+          "evidence": "Evidence 75/100; selection 87/100 vs. leader 99/100."
         }
       ],
-      "topPickRationale": "Today's pick: Gemini 3.1 Pro (preview) — led the benchmark composite at 87/100; evidence is fresh; context window of 2000k clears typical large-context work; runner-up Claude Opus 4.7 is held in reserve for instant failover."
+      "topPickRationale": "Today's pick: GPT-5.5 xhigh — stable favorite rank #1 under 2026-05-13.stable-favorites; preferred reasoning effort xhigh; led the benchmark composite at 87/100; evidence is fresh; context window of 400k clears typical large-context work; runner-up Claude Opus 4.7 is held in reserve for instant failover."
     }
   ],
   "globalLimitations": [
     "Benchmark snapshots are advisory only — runtime constraints (provider-family mode, user pinning, auth, quota, safety, and availability) override any ranking shown here.",
+    "Displayed order uses stable favorite policy 2026-05-13.stable-favorites: GPT-5.5 xhigh, Claude Opus 4.7, then GLM 5.1 stay preferred while routable and freshly benchmarked; a challenger must beat both evidence and benchmark margins across consecutive rundowns to dethrone them.",
     "BurnBar does not fabricate benchmark numbers. Missing data is reported as 'not reported', never guessed.",
     "Daily snapshots are sampled from public or documented sources; raw provider keys, cookies, and bearer tokens are never written into snapshots or this rundown.",
     "One or more sources were unavailable for this day; the rundown reflects only the sources that responded."
   ],
   "notes": [
     "Generated by `node website/scripts/run-research.mjs` against live public benchmark adapters.",
-    "Snapshots from research: 69. Catalog matches: 12.",
+    "Snapshots from research: 74. Catalog matches: 12.",
     "Sources without an API key configured render as 'unavailable' — never guessed at."
   ]
 }

@@ -23,7 +23,7 @@ export interface ScoreboardCandidate {
   modelDisplay: string;
   providerDisplay: string;
   providerLogo?: string;
-  /** 0..1 composite score */
+  /** 0..1 displayed selection score */
   score: number;
   /** Optional badge on the row (e.g. context window, freshness) */
   badge?: string;
@@ -81,7 +81,7 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
 >
   {variant === "full" && (
     <header class="scoreboard__head">
-      <span class="scoreboard__eyebrow mono">researching candidates</span>
+      <span class="scoreboard__eyebrow mono">model board running research</span>
       <h3 id={`scoreboard-${heading.replace(/\W+/g, "-").toLowerCase()}`} class="scoreboard__h">{heading}</h3>
       {sub && <p class="scoreboard__sub">{sub}</p>}
     </header>
@@ -112,9 +112,9 @@ function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" |
 
   {variant === "full" && showAdvisory && (
     <p class="scoreboard__advisory">
-      Benchmark signals are <strong>advisory</strong>. Provider-family mode, user
-      pinning, account auth, quota state, safety policy, and availability are
-      evaluated at runtime and override any ranking shown here.
+      A board of language models runs the daily research pass, then BurnBar
+      reduces the findings to a deterministic selection score. Runtime pins,
+      auth, quota, safety, and availability still override the ranking.
     </p>
   )}
 

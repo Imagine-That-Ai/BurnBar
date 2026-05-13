@@ -54,6 +54,7 @@ async function main() {
   await mkdir(OUT_DIR, { recursive: true });
 
   const dates = [];
+  let previousRundown = null;
   for (const fileName of dailyFiles) {
     const dateMatch = fileName.match(/^snapshots-(\d{4}-\d{2}-\d{2})\.json$/);
     if (!dateMatch) continue;
@@ -68,11 +69,13 @@ async function main() {
       statuses: day.statuses ?? [],
       runtime: day.runtime ?? {},
       notes: day.notes ?? [],
+      previousRundown,
     });
 
     const outFile = path.join(OUT_DIR, `${date}.json`);
     await writeFile(outFile, `${JSON.stringify(rundown, null, 2)}\n`, "utf8");
     dates.push({ date, generatedAt: rundown.generatedAt });
+    previousRundown = rundown;
     console.log("[rundown] wrote", path.relative(ROOT, outFile));
   }
 

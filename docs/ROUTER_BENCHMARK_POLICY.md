@@ -109,28 +109,58 @@ score.
 
 ---
 
-## How freshness affects scoring
+## How daily rundown selection works
 
-The router's `scoreAndRankRoutes()` composite is:
+The public daily rundown has two numbers:
+
+- `score` — raw evidence score from benchmark/runtime signals. It stays
+  visible even when policy picks another model.
+- `selectionScore` — ordinal policy score after the final board order is
+  resolved. This is the number the website uses for the displayed order,
+  so the public score cannot contradict the public rank.
+
+The evidence score is deterministic:
 
 ```
-composite = capability * 0.20
-          + cost       * 0.25
-          + latency    * 0.15
-          + trust      * 0.25
-          + policyFit  * 0.15
+score = benchmarkScore     * 0.55
+      + benchmarkFreshness * 0.14
+      + sourceConfidence   * 0.05
+      + reliability        * 0.14
+      + latency            * 0.03
+      + cost               * 0.06
+      + contextFit         * 0.03
 ```
 
-Benchmark snapshots feed the **capability** dimension. Older signals are
-weighted down by `rankedCompositeScore()` before they influence the
-composite — they are never dropped without surfacing the age.
+Missing signals are excluded from the weighted average, then
+`evidenceCoverage` discounts incomplete rows. Older signals are weighted
+down by `freshnessSignal()` before they influence the evidence score —
+they are never dropped without surfacing the age.
 
-The five composite dimensions correspond to the nine surface-level
-signals the website lists (task intent, model capability, quota health,
-local availability, cost, latency, context window, reliability,
-benchmark freshness). The nine collapse into the five during scoring,
-and the explanation streamed with every decision names which signals
-moved the needle.
+After evidence is computed, the daily model board applies the stable
+favorite policy:
+
+1. GPT-5.5 xhigh
+2. Claude Opus 4.7
+3. GLM 5.1
+
+These favorites keep their order only while they clear hard gates:
+routable, flagship-tier, benchmark score present, and benchmark
+freshness at least `0.55`. A challenger can dethrone a protected
+favorite only when it is also routable/flagship/fresh and clears both
+margins:
+
+- evidence score beats the favorite by at least `0.08`
+- benchmark score beats the favorite by at least `0.05`
+- the same challenger beat the same favorite by those margins in the
+  previous rundown, unless the favorite failed a hard gate
+
+The board language is literal but bounded: it means a board of language
+models runs daily research and analysis tasks over the source feed. The
+published artifact is still deterministic code in
+[`functions/src/routerRundown.ts`](../functions/src/routerRundown.ts)
+and
+[`website/scripts/lib/rundown-generator.mjs`](../website/scripts/lib/rundown-generator.mjs),
+not an opaque vote.
 
 ---
 
@@ -173,13 +203,15 @@ twenty-four hours. Each rundown is frozen, dated, and inspectable:
 - **History:** [`website/src/data/router-rundown-history/`](../website/src/data/router-rundown-history/)
 
 Each rundown carries the source statuses for the day, per-task
-recommendations with composite scores, plain-English explanations, and
-explicit limitations. Build-time hydration is via
+recommendations with raw evidence `score`, policy `selectionScore`,
+plain-English board verdicts, and explicit limitations. Build-time
+hydration is via
 [`router-rundown-loader.ts`](../website/src/data/router-rundown-loader.ts);
 production daily refresh runs through the
-[`refreshModelLandscapeBenchmarks`](../functions/src/modelLandscape.ts)
-Cloud Function and writes to Firestore at
-`model_benchmark_snapshots/*` + `model_benchmark_source_status/*`.
+[`refreshModelLandscapeBenchmarks`](../functions/src/scheduled.ts)
+Cloud Function, writes Firestore at `model_benchmark_snapshots/*` +
+`model_benchmark_source_status/*`, then persists
+`router_rundowns/<date>` + `router_rundowns/latest`.
 
 ---
 
@@ -203,6 +235,6 @@ Cloud Function and writes to Firestore at
    build-time history with the new source name visible in the source
    masthead.
 
-The release-time grep `nine signals · five weighted dimensions` should
-return ≥ 1 match on both the `/router` page and this policy doc; if it
-ever drops to zero, the marketing language and the code have drifted.
+The release-time grep `stable favorite policy` should return matches in
+the generator, Functions implementation, policy doc, and generated rundown;
+if it ever drops to zero, the marketing language and the code have drifted.

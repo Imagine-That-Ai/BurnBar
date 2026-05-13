@@ -10,16 +10,20 @@
  * outputs. The test harness (`test-rundown.mjs`) drives this module
  * directly.
  *
- * Scoring model (deterministic, see WEIGHTS):
+ * Evidence model (deterministic, see WEIGHTS):
  *
- *   compositeScore =
- *      0.34 * benchmarkScore
- *    + 0.16 * benchmarkFreshness
- *    + 0.10 * sourceConfidence
+ *   score =
+ *      0.55 * benchmarkScore
+ *    + 0.14 * benchmarkFreshness
+ *    + 0.05 * sourceConfidence
  *    + 0.14 * reliability
- *    + 0.10 * latency
- *    + 0.10 * cost
- *    + 0.06 * contextFit
+ *    + 0.03 * latency
+ *    + 0.06 * cost
+ *    + 0.03 * contextFit
+ *
+ * Selection then applies the stable-favorite policy below. `score` remains
+ * the benchmark-derived evidence value; `selectionScore` is the value used
+ * for displayed ordering.
  *
  * All inputs are normalized to 0..1. If a signal is missing, it is excluded
  * from the weighted average (the weight is re-distributed across the
@@ -61,6 +65,46 @@ export const TIER_MULTIPLIER = Object.freeze({
 export const ROUTABLE_MULTIPLIER = Object.freeze({
   yes: 1.0,
   no: 0.80,
+});
+
+export const FAVORITE_POLICY_VERSION = "2026-05-13.stable-favorites";
+export const FAVORITE_MIN_FRESHNESS = 0.55;
+export const EVIDENCE_DETHRONING_MARGIN = 0.08;
+export const BENCHMARK_DETHRONING_MARGIN = 0.05;
+export const SELECTION_SCORE_TOP = 0.99;
+export const SELECTION_SCORE_STEP = 0.03;
+export const SELECTION_SCORE_FLOOR = 0.05;
+
+export const FAVORITE_LADDER = Object.freeze([
+  {
+    modelID: "gpt-5-5",
+    rank: 1,
+    prior: 0.12,
+    displayName: "GPT-5.5 xhigh",
+    preferredReasoningEffort: "xhigh",
+  },
+  {
+    modelID: "claude-opus-4-7",
+    rank: 2,
+    prior: 0.08,
+    displayName: "Claude Opus 4.7",
+    preferredReasoningEffort: null,
+  },
+  {
+    modelID: "glm-5-1",
+    rank: 3,
+    prior: 0.05,
+    displayName: "GLM 5.1",
+    preferredReasoningEffort: null,
+  },
+]);
+
+const FAVORITE_BY_MODEL_ID = new Map(FAVORITE_LADDER.map((entry) => [entry.modelID, entry]));
+const FAVORITE_BY_RANK = new Map(FAVORITE_LADDER.map((entry) => [entry.rank, entry]));
+const BUILT_IN_ALIASES = Object.freeze({
+  "gpt-5-5": ["openai/gpt-5.5", "openai/gpt-5-5", "openai/gpt-5.5-xhigh", "openai/gpt-5-5-xhigh", "gpt-5.5", "gpt-5.5-xhigh", "gpt-5-5-xhigh"],
+  "claude-opus-4-7": ["anthropic/claude-opus-4-7", "anthropic/claude-opus-4.7", "claude-opus-4.7"],
+  "glm-5-1": ["zai-org/GLM-5.1", "zai/glm-5.1", "zai/glm-5-1", "z-ai/glm-5.1", "zhipuai/glm-5.1", "glm-5.1"],
 });
 
 const SOURCE_LABELS = Object.freeze({
@@ -167,6 +211,182 @@ function sourceMeta(source) {
   return SOURCE_LABELS[source] ?? SOURCE_LABELS.manual_fixture;
 }
 
+function normalizedModelID(modelID) {
+  return typeof modelID === "string" ? modelID.trim().toLowerCase() : "";
+}
+
+function tailModelID(modelID) {
+  const lower = normalizedModelID(modelID);
+  return lower.split("/").filter(Boolean).pop() ?? lower;
+}
+
+function buildAliasIndex(models) {
+  const idx = new Map();
+  for (const model of models ?? []) {
+    if (!model?.modelID) continue;
+    const canonical = model.modelID;
+    for (const candidate of [model.modelID, ...(model.aliases ?? []), ...(BUILT_IN_ALIASES[model.modelID] ?? [])]) {
+      const normalized = normalizedModelID(candidate);
+      if (!normalized) continue;
+      idx.set(normalized, canonical);
+      idx.set(tailModelID(normalized), canonical);
+    }
+  }
+  return idx;
+}
+
+function canonicalizeModelID(modelID, aliasIndex) {
+  const normalized = normalizedModelID(modelID);
+  if (!normalized) return null;
+  return aliasIndex.get(normalized) ?? aliasIndex.get(tailModelID(normalized)) ?? null;
+}
+
+function canonicalizeSnapshots(snapshots, models) {
+  const aliasIndex = buildAliasIndex(models);
+  return (snapshots ?? []).map((snapshot) => {
+    const canonical = canonicalizeModelID(snapshot.modelID, aliasIndex);
+    return canonical && canonical !== snapshot.modelID ? { ...snapshot, modelID: canonical } : snapshot;
+  });
+}
+
+function canonicalizeRuntime(runtime, models) {
+  const aliasIndex = buildAliasIndex(models);
+  const out = { ...(runtime ?? {}) };
+  for (const [modelID, meta] of Object.entries(runtime ?? {})) {
+    const canonical = canonicalizeModelID(modelID, aliasIndex);
+    if (canonical && out[canonical] == null) out[canonical] = meta;
+  }
+  return out;
+}
+
+function asPositiveInteger(value) {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+function favoriteSpecForModel(model) {
+  const builtIn = FAVORITE_BY_MODEL_ID.get(model.modelID);
+  const rank = asPositiveInteger(model.operatorPreferenceRank) ?? builtIn?.rank;
+  if (rank == null) return null;
+  const rankDefault = FAVORITE_BY_RANK.get(rank);
+  return {
+    rank,
+    prior: clamp01(model.operatorPreferencePrior) ?? rankDefault?.prior ?? builtIn?.prior ?? 0,
+    displayName: model.selectionDisplayName ?? builtIn?.displayName ?? model.modelDisplay,
+    preferredReasoningEffort: model.preferredReasoningEffort ?? builtIn?.preferredReasoningEffort ?? null,
+    policyVersion: model.favoritePolicyVersion ?? FAVORITE_POLICY_VERSION,
+  };
+}
+
+function hasHardGateSignals(rec) {
+  return rec.signals.routable !== false
+    && rec.tier === "flagship"
+    && rec.signals.benchmarkScore != null
+    && rec.signals.benchmarkFreshness != null
+    && rec.signals.benchmarkFreshness >= FAVORITE_MIN_FRESHNESS;
+}
+
+function favoriteIsProtected(rec) {
+  return rec.favoriteRank != null && hasHardGateSignals(rec);
+}
+
+function currentMarginsClear(challenger, incumbent) {
+  if (!hasHardGateSignals(challenger)) return false;
+  if (incumbent.signals.benchmarkScore == null) return true;
+  const challengerBenchmark = challenger.signals.benchmarkScore ?? -Infinity;
+  const incumbentBenchmark = incumbent.signals.benchmarkScore ?? Infinity;
+  return challenger.score >= incumbent.score + EVIDENCE_DETHRONING_MARGIN
+    && challengerBenchmark >= incumbentBenchmark + BENCHMARK_DETHRONING_MARGIN;
+}
+
+function previousCandidate(previousTaskRanking, modelID) {
+  if (!previousTaskRanking) return null;
+  for (const rec of previousTaskRanking.recommendations ?? []) {
+    if (rec.modelID !== modelID) continue;
+    return {
+      score: rec.score,
+      benchmarkScore: rec.signals?.benchmarkScore,
+    };
+  }
+  for (const rec of previousTaskRanking.rejectedAlternatives ?? []) {
+    if (rec.modelID !== modelID) continue;
+    return {
+      score: rec.evidenceScore ?? rec.score,
+      benchmarkScore: rec.benchmarkScore,
+    };
+  }
+  return null;
+}
+
+function previousMarginsClear(challenger, incumbent, previousTaskRanking) {
+  const previousChallenger = previousCandidate(previousTaskRanking, challenger.modelID);
+  const previousIncumbent = previousCandidate(previousTaskRanking, incumbent.modelID);
+  if (!previousChallenger || !previousIncumbent) return false;
+  if (previousChallenger.score == null || previousIncumbent.score == null) return false;
+  if (previousChallenger.benchmarkScore == null || previousIncumbent.benchmarkScore == null) return false;
+  return previousChallenger.score >= previousIncumbent.score + EVIDENCE_DETHRONING_MARGIN
+    && previousChallenger.benchmarkScore >= previousIncumbent.benchmarkScore + BENCHMARK_DETHRONING_MARGIN;
+}
+
+function canDethrone(challenger, incumbent, previousTaskRanking) {
+  if (!currentMarginsClear(challenger, incumbent)) return false;
+  if (!favoriteIsProtected(incumbent)) return true;
+  return previousMarginsClear(challenger, incumbent, previousTaskRanking);
+}
+
+function selectionReason(rec, protectedFavorite) {
+  if (protectedFavorite) {
+    return `Stable favorite policy ${rec.favoritePolicyVersion}: favorite rank #${rec.favoriteRank} receives a deterministic ${(rec.favoritePrior * 100).toFixed(0)} point prior until a challenger clears both dethroning margins on consecutive rundowns; the final selection score is calibrated after policy ordering so the public number matches the chosen rank.`;
+  }
+  if (rec.favoriteRank != null) {
+    return `Stable favorite policy ${rec.favoritePolicyVersion}: favorite prior withheld until the model is routable, flagship-tier, and backed by fresh benchmark evidence.`;
+  }
+  return "Evidence score only; to outrank a protected favorite, a challenger must clear both evidence and benchmark dethroning margins across consecutive rundowns.";
+}
+
+function annotateSelection(rec) {
+  const protectedFavorite = favoriteIsProtected(rec);
+  const favoritePrior = protectedFavorite ? rec.favoritePrior : 0;
+  const selectionScore = clamp01(rec.score + favoritePrior) ?? rec.score;
+  return {
+    ...rec,
+    favoritePrior,
+    selectionScore,
+    selectionReason: selectionReason(rec, protectedFavorite),
+  };
+}
+
+function ordinalSelectionScore(index) {
+  return clamp01(Math.max(SELECTION_SCORE_FLOOR, SELECTION_SCORE_TOP - index * SELECTION_SCORE_STEP));
+}
+
+function finalizeSelectionScores(ranked) {
+  return ranked.map((rec, idx) => ({
+    ...rec,
+    selectionScore: ordinalSelectionScore(idx) ?? rec.selectionScore,
+  }));
+}
+
+function compareEvidence(a, b) {
+  if (b.selectionScore !== a.selectionScore) return b.selectionScore - a.selectionScore;
+  if (b.score !== a.score) return b.score - a.score;
+  return String(a.modelID).localeCompare(String(b.modelID));
+}
+
+function compareSelection(a, b, previousTaskRanking) {
+  const aProtected = favoriteIsProtected(a);
+  const bProtected = favoriteIsProtected(b);
+
+  if (aProtected && bProtected && a.favoriteRank !== b.favoriteRank) {
+    if (a.favoriteRank < b.favoriteRank) return canDethrone(b, a, previousTaskRanking) ? 1 : -1;
+    return canDethrone(a, b, previousTaskRanking) ? -1 : 1;
+  }
+  if (aProtected && !bProtected) return canDethrone(b, a, previousTaskRanking) ? 1 : -1;
+  if (!aProtected && bProtected) return canDethrone(a, b, previousTaskRanking) ? -1 : 1;
+
+  return compareEvidence(a, b);
+}
+
 /**
  * Build a Recommendation from a model's snapshot bundle for a task.
  *
@@ -178,6 +398,7 @@ function sourceMeta(source) {
  * @param {number} requiredTokens?  - optional context-window requirement
  */
 function buildRecommendation({ model, snapshots, statuses, runtime, now, requiredTokens }) {
+  const favorite = favoriteSpecForModel(model);
   const usableSnapshots = snapshots.filter((s) => s.score != null || s.rank != null || s.latencySignal != null || s.reliabilitySignal != null);
 
   const citations = [];
@@ -269,13 +490,20 @@ function buildRecommendation({ model, snapshots, statuses, runtime, now, require
   return {
     rank: 0, // assigned after sort
     modelID: model.modelID,
-    modelDisplay: model.modelDisplay,
+    modelDisplay: favorite?.displayName ?? model.modelDisplay,
+    canonicalModelDisplay: model.modelDisplay,
     providerID: model.providerID,
     providerDisplay: model.providerDisplay,
     providerLogo: model.providerLogo,
     providerFamily: model.providerFamily,
     tier,
     score,
+    selectionScore: score,
+    favoriteRank: favorite?.rank ?? null,
+    favoritePrior: favorite?.prior ?? 0,
+    favoritePolicyVersion: favorite?.policyVersion ?? null,
+    preferredReasoningEffort: favorite?.preferredReasoningEffort ?? null,
+    selectionReason: "Evidence score only.",
     rawScore,
     tierMultiplier: tierMul,
     routableMultiplier: routeMul,
@@ -325,6 +553,12 @@ function stableSort(list) {
 function topPickRationale(top, runners) {
   if (!top) return "No model met the floor today; routing falls back to user-pinned defaults.";
   const reasons = [];
+  if (top.favoriteRank != null && top.favoritePrior > 0) {
+    reasons.push(`stable favorite rank #${top.favoriteRank} under ${top.favoritePolicyVersion}`);
+  }
+  if (top.preferredReasoningEffort) {
+    reasons.push(`preferred reasoning effort ${top.preferredReasoningEffort}`);
+  }
   if (top.signals.benchmarkScore != null) {
     reasons.push(`led the benchmark composite at ${(top.signals.benchmarkScore * 100).toFixed(0)}/100`);
   }
@@ -358,10 +592,13 @@ function rejectedFor(task, all, top) {
       providerID: rec.providerID,
       providerDisplay: rec.providerDisplay,
       providerLogo: rec.providerLogo,
+      evidenceScore: rec.score,
+      selectionScore: rec.selectionScore,
+      benchmarkScore: rec.signals.benchmarkScore,
       reason: rejectionReason(rec),
       evidence: rec.signals.benchmarkScore == null
         ? "No benchmark score from any active source for this task."
-        : `Composite ${(rec.score * 100).toFixed(0)}/100 vs. leader ${(top.score * 100).toFixed(0)}/100.`,
+        : `Evidence ${(rec.score * 100).toFixed(0)}/100; selection ${(rec.selectionScore * 100).toFixed(0)}/100 vs. leader ${(top.selectionScore * 100).toFixed(0)}/100.`,
     }));
 }
 
@@ -378,7 +615,7 @@ function rejectionReason(rec) {
   if (rec.signals.cost != null && rec.signals.cost < 0.2) {
     return "Per-token cost is materially higher than the leader at comparable score.";
   }
-  return "Composite score did not clear the leader's margin for this task.";
+  return "Selection policy did not clear the leader's margin for this task.";
 }
 
 /**
@@ -392,11 +629,14 @@ function rejectionReason(rec) {
  * @param {object<string,object>} params.runtime - by modelID
  * @param {string} params.now
  * @param {number} [params.requiredTokens]
+ * @param {object} [params.previousTaskRanking]
  */
-export function buildTaskRanking({ taskID, models, snapshots, statuses, runtime, now, requiredTokens }) {
+export function buildTaskRanking({ taskID, models, snapshots, statuses, runtime, now, requiredTokens, previousTaskRanking }) {
   const taskMeta = TASK_CATEGORIES.find((t) => t.id === taskID);
+  const canonicalSnapshots = canonicalizeSnapshots(snapshots, models);
+  const canonicalRuntime = canonicalizeRuntime(runtime, models);
   const taskSnapshotsByModel = new Map();
-  for (const snap of snapshots) {
+  for (const snap of canonicalSnapshots) {
     if (snap.taskCategory !== taskID) continue;
     const list = taskSnapshotsByModel.get(snap.modelID) ?? [];
     list.push(snap);
@@ -428,7 +668,7 @@ export function buildTaskRanking({ taskID, models, snapshots, statuses, runtime,
       model: m,
       snapshots: taskSnapshotsByModel.get(m.modelID),
       statuses,
-      runtime: runtime?.[m.modelID],
+      runtime: canonicalRuntime?.[m.modelID],
       now,
       requiredTokens,
     }));
@@ -445,7 +685,10 @@ export function buildTaskRanking({ taskID, models, snapshots, statuses, runtime,
     };
   }
 
-  const ranked = stableSort(recs).map((rec, idx) => ({ ...rec, rank: idx + 1 }));
+  const ranked = finalizeSelectionScores([...recs]
+    .map(annotateSelection)
+    .sort((a, b) => compareSelection(a, b, previousTaskRanking))
+    .map((rec, idx) => ({ ...rec, rank: idx + 1 })));
   const top = ranked[0];
   const alternatives = ranked.slice(1, 3);
   const rejected = rejectedFor(taskID, ranked, top);
@@ -494,6 +737,7 @@ function buildSourceStatuses(statuses, now) {
  * @param {object[]} input.statuses      source statuses
  * @param {object} [input.runtime]       runtime/availability by modelID
  * @param {string[]} [input.notes]       operator notes for the day
+ * @param {object} [input.previousRundown] previous dated rundown for dethroning confirmation
  */
 export function buildRundown(input) {
   const date = input.date;
@@ -503,6 +747,7 @@ export function buildRundown(input) {
   const snapshots = Array.isArray(input.snapshots) ? input.snapshots : [];
   const models = Array.isArray(input.models) ? input.models : [];
   const runtime = input.runtime ?? {};
+  const previousTaskRankings = new Map((input.previousRundown?.taskRankings ?? []).map((task) => [task.taskID, task]));
 
   const taskRankings = TASK_CATEGORIES.map((t) => buildTaskRanking({
     taskID: t.id,
@@ -511,12 +756,14 @@ export function buildRundown(input) {
     statuses,
     runtime,
     now,
+    previousTaskRanking: previousTaskRankings.get(t.id),
   })).filter((r) => r.recommendations.length > 0);
 
   const sourceStatuses = buildSourceStatuses(statuses, now);
 
   const globalLimitations = [
     "Benchmark snapshots are advisory only — runtime constraints (provider-family mode, user pinning, auth, quota, safety, and availability) override any ranking shown here.",
+    `Displayed order uses stable favorite policy ${FAVORITE_POLICY_VERSION}: GPT-5.5 xhigh, Claude Opus 4.7, then GLM 5.1 stay preferred while routable and freshly benchmarked; a challenger must beat both evidence and benchmark margins across consecutive rundowns to dethrone them.`,
     "BurnBar does not fabricate benchmark numbers. Missing data is reported as 'not reported', never guessed.",
     "Daily snapshots are sampled from public or documented sources; raw provider keys, cookies, and bearer tokens are never written into snapshots or this rundown.",
   ];
