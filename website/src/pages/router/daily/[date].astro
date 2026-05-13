@@ -1,0 +1,143 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import RouterRundownReport from "@components/RouterRundownReport.astro";
+import { ALL_RUNDOWNS, ARCHIVE_DATES } from "@data/router-rundown-loader";
+import type { RouterDailyRundown } from "@data/router-rundown";
+import { SITE } from "@data/site";
+
+export async function getStaticPaths() {
+  return ALL_RUNDOWNS.map((rundown) => ({
+    params: { date: rundown.date },
+    props: { rundown },
+  }));
+}
+
+const { rundown } = Astro.props as { rundown: RouterDailyRundown };
+const { date } = Astro.params as { date: string };
+
+const idx = ALL_RUNDOWNS.findIndex((r) => r.date === date);
+const newer = idx > 0 ? ALL_RUNDOWNS[idx - 1] : undefined;
+const older = idx >= 0 && idx < ALL_RUNDOWNS.length - 1 ? ALL_RUNDOWNS[idx + 1] : undefined;
+const sourcesCount = rundown.sourceStatuses.length;
+const taskCount = rundown.taskRankings.length;
+---
+
+<BaseLayout
+  title={`Router Rundown · ${rundown.date}`}
+  description={`OpenBurnBar Intelligent Router Rundown for ${rundown.date}. ${taskCount} task categories ranked from ${sourcesCount} source(s). Benchmark data is advisory — provider-family mode, user pinning, auth, quota, safety, and availability win at runtime.`}
+>
+  <section class="pagehead pagehead--archive">
+    <div class="container container--wide">
+      <nav class="archive-bread mono" aria-label="Breadcrumbs">
+        <a href="/router">Fire Hydrant · the router</a>
+        <span aria-hidden="true">→</span>
+        <a href="/router/daily">Daily archive</a>
+        <span aria-hidden="true">→</span>
+        <span>{rundown.date}</span>
+      </nav>
+
+      <span class="eyebrow eyebrow--ember">Operator log · daily intelligent router rundown</span>
+      <h1 class="pagehead__h">
+        What BurnBar recommended on
+        <span class="ember mono">{rundown.date}</span>.
+      </h1>
+      <p class="lead">
+        Frozen snapshot. Same data the router used to score requests that day,
+        ordered by task and explained with source citations. Benchmark signals
+        are <strong>advisory</strong> — runtime constraints (provider-family
+        mode, pinning, auth, quota, safety, availability) always win.
+      </p>
+
+      <ul class="pagehead__chips mono" aria-label="Page summary">
+        <li><span class="dot dot--ember"></span> generated {rundown.generatedAt.slice(11, 16)} UTC</li>
+        <li><span class="dot dot--mercury"></span> {taskCount} task categor{taskCount === 1 ? "y" : "ies"}</li>
+        <li><span class="dot dot--ember"></span> {sourcesCount} source{sourcesCount === 1 ? "" : "s"}</li>
+      </ul>
+
+      <nav class="archive-nav" aria-label="Adjacent days">
+        {older && <a class="archive-nav__btn" href={`/router/daily/${older.date}`}><span class="mono">←</span><span>{older.date}</span></a>}
+        <a class="archive-nav__btn archive-nav__btn--latest" href="/router/daily">all dated rundowns</a>
+        {newer && <a class="archive-nav__btn" href={`/router/daily/${newer.date}`}><span>{newer.date}</span><span class="mono">→</span></a>}
+      </nav>
+    </div>
+  </section>
+
+  <section class="archive-body">
+    <div class="container container--wide">
+      <RouterRundownReport rundown={rundown} variant="full" archiveDates={ARCHIVE_DATES} />
+    </div>
+  </section>
+
+  <section class="endcta endcta--inline">
+    <div class="container container--narrow">
+      <h2>Re-run today's routing locally.</h2>
+      <p class="lead">
+        Add an account, pick a model, and let the Fire Hydrant do the routing.
+        Provider-family mode by default; intelligent mode opt-in.
+      </p>
+      <div class="endcta__ctas">
+        <a class="btn btn--ember" href="/download">Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a>
+        <a class="btn btn--ghost" href={`${SITE.github}/blob/main/docs/ROUTED_CLIENT_GATEWAY.md`} target="_blank" rel="noopener noreferrer">Read the gateway doc</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .pagehead--archive { padding-block: var(--s-8) var(--s-5); }
+  .archive-bread {
+    display: flex;
+    gap: var(--s-2);
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    margin-bottom: var(--s-4);
+  }
+  .archive-bread a {
+    color: var(--text-mute);
+    text-decoration: none;
+  }
+  .archive-bread a:hover { color: var(--ember-bright); }
+  .archive-bread span:not([aria-hidden]) { color: var(--text-base); }
+
+  .pagehead__h .ember {
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+    font-size: 0.7em;
+    letter-spacing: 0.04em;
+    padding: 0.2em 0.5em;
+    border: 1px solid color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    border-radius: var(--r-3);
+    background: color-mix(in oklab, var(--ember-core) 12%, var(--ink-base));
+    vertical-align: 0.18em;
+    margin-left: 0.2em;
+  }
+
+  .archive-nav {
+    display: flex;
+    gap: var(--s-3);
+    margin-top: var(--s-5);
+    flex-wrap: wrap;
+  }
+  .archive-nav__btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: var(--s-2) var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    background: var(--ink-base);
+    color: var(--text-base);
+    text-decoration: none;
+    font-size: 0.84rem;
+    font-family: var(--font-mono);
+    letter-spacing: 0.04em;
+  }
+  .archive-nav__btn:hover {
+    border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    color: var(--ember-bright);
+  }
+  .archive-nav__btn--latest { color: var(--text-mute); }
+
+  .archive-body { padding-block: var(--s-3) var(--s-9); }
+</style>

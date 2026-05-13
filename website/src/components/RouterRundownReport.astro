@@ -1,0 +1,821 @@
+---
+/**
+ * Daily Intelligent Router Rundown — operator-grade report component.
+ *
+ * Renders the rundown JSON shape as cited, source-attributed UI. The server
+ * renders a build-time fallback fixture; on the client we fetch the live
+ * rundown produced by the production daily Cloud Function and re-render in
+ * place so what you see is always what the router would recommend now.
+ *
+ * Hydration flow:
+ *   1. SSR pass: paint the build-time `rundown` prop (fallback fixture).
+ *   2. Client hydrate: fetch `/api/router-rundown/<date>` (same-origin
+ *      Firebase Hosting rewrite into `latestRouterRundown`).
+ *   3. If the live rundown is newer than the SSR one, swap it in.
+ *   4. If the fetch fails, leave the fallback rendered and surface a
+ *      degraded-state badge — never silently show old data without saying so.
+ */
+import type { RouterDailyRundown } from "@data/router-rundown";
+import { formatAge, freshnessTone } from "@data/router-rundown";
+
+interface Props {
+  rundown: RouterDailyRundown;
+  variant?: "preview" | "full";
+  archiveDates?: string[];
+  /** Date slug used to fetch the live rundown ('latest' for today). */
+  livePath?: string;
+}
+
+const { rundown, variant = "full", archiveDates = [], livePath = "latest" } = Astro.props;
+const isPreview = variant === "preview";
+
+const generatedLabel = (() => {
+  try {
+    const date = new Date(rundown.generatedAt);
+    return date.toUTCString();
+  } catch {
+    return rundown.generatedAt;
+  }
+})();
+
+function pct(x: number | undefined): string {
+  if (x == null || !Number.isFinite(x)) return "—";
+  return `${Math.round(x * 100)}`;
+}
+
+function tokens(x: number | undefined): string {
+  if (x == null) return "—";
+  if (x >= 1_000_000) return `${(x / 1_000_000).toFixed(x % 1_000_000 === 0 ? 0 : 1)}M`;
+  return `${Math.round(x / 1000)}k`;
+}
+
+const sortedTasks = rundown.taskRankings;
+const archive = archiveDates.filter((d) => d !== rundown.date).slice(0, 6);
+---
+
+<section
+  class={`rundown rundown--${variant}`}
+  aria-label="Daily Intelligent Router Rundown"
+  data-rundown-live-path={livePath}
+  data-rundown-fallback-date={rundown.date}
+>
+  <!-- header strip -->
+  <header class="rundown__head">
+    <div class="rundown__headline">
+      <span class="eyebrow eyebrow--ember mono">Daily Intelligent Router Rundown</span>
+      <h2 class="rundown__h" data-rundown-title>
+        {isPreview ? "Today's recommended ordering — at a glance." : `Rundown · ${rundown.date}`}
+      </h2>
+      <p class="rundown__sub mono">
+        <span data-rundown-state class="rundown__state rundown__state--loading mono">loading live data…</span>
+        <span data-rundown-meta>Generated {generatedLabel} · schema v{rundown.schemaVersion} · benchmarks advisory · runtime constraints win</span>
+      </p>
+    </div>
+
+    <ul class="rundown__sources" aria-label="Source freshness today">
+      {rundown.sourceStatuses.map((source) => (
+        <li class={`srctag srctag--${freshnessTone(source.status)}`}>
+          <img class="srctag__logo" src={source.logo} alt="" width="20" height="20" loading="lazy" />
+          <div class="srctag__body">
+            <strong class="srctag__name">{source.attribution}</strong>
+            <span class="srctag__age mono">
+              {source.status === "fresh" && "fresh"}
+              {source.status === "stale" && `stale · ${formatAge(source.ageHours)}`}
+              {source.status === "unavailable" && "unavailable"}
+              {source.status === "error" && "error"}
+            </span>
+          </div>
+          <span class={`srctag__dot srctag__dot--${freshnessTone(source.status)}`} aria-hidden="true"></span>
+        </li>
+      ))}
+    </ul>
+  </header>
+
+  <p class="rundown__advisory">
+    Benchmark data is <strong>advisory only</strong>. Provider-family mode,
+    user pinning, account auth, quota state, safety policy, and availability
+    are evaluated at runtime and override any ranking shown here.
+  </p>
+
+  {sortedTasks.length === 0 && (
+    <p class="rundown__empty">
+      No benchmark evidence was reported for any task category on this day.
+      Sources may have been unavailable or rate-limited; routing falls back to
+      user-pinned defaults until the next refresh.
+    </p>
+  )}
+
+  <!-- task cockpit -->
+  <ol class="rundown__tasks">
+    {sortedTasks.map((task) => (
+      <li class="taskcard" id={`task-${task.taskID}`}>
+        <header class="taskcard__head">
+          <div class="taskcard__headline">
+            <span class={`pill pill--${task.taskID}`}>{task.taskLabel}</span>
+            <p class="taskcard__blurb">{task.taskBlurb}</p>
+          </div>
+          {task.note && <p class="taskcard__note mono">{task.note}</p>}
+        </header>
+
+        <p class="taskcard__lede">{task.topPickRationale}</p>
+
+        <!-- ranked rows -->
+        <ol class="ranks">
+          {task.recommendations.map((rec) => (
+            <li class={`rankrow rankrow--rank${rec.rank} rankrow--${freshnessTone(rec.freshness)}`}>
+              <div class="rankrow__lead">
+                <span class="rankrow__num mono">#{rec.rank}</span>
+                {rec.providerLogo && (
+                  <img class="rankrow__logo" src={rec.providerLogo} alt="" width="36" height="36" loading="lazy" />
+                )}
+                <div class="rankrow__id">
+                  <strong class="rankrow__model">{rec.modelDisplay}</strong>
+                  <span class="rankrow__provider mono">{rec.providerDisplay}{rec.providerFamily ? ` · ${rec.providerFamily}` : ""}</span>
+                </div>
+              </div>
+
+              <div class="rankrow__score">
+                <span class="rankrow__scorenum">{pct(rec.score)}</span>
+                <span class="rankrow__scorelab mono">composite / 100</span>
+                <span class="rankrow__cov mono">evidence {pct(rec.evidenceCoverage)}%</span>
+              </div>
+
+              <ul class="rankrow__chips" aria-label="Signal chips">
+                <li class={`chip chip--${rec.signals.benchmarkScore != null ? "on" : "off"}`}>
+                  <span class="chip__k mono">bench</span><span class="chip__v">{pct(rec.signals.benchmarkScore)}</span>
+                </li>
+                <li class={`chip chip--${rec.signals.benchmarkFreshness != null ? freshnessTone(rec.freshness) : "off"}`}>
+                  <span class="chip__k mono">fresh</span><span class="chip__v">{pct(rec.signals.benchmarkFreshness)}</span>
+                </li>
+                <li class={`chip chip--${rec.signals.reliability != null ? "on" : "off"}`}>
+                  <span class="chip__k mono">rel</span><span class="chip__v">{pct(rec.signals.reliability)}</span>
+                </li>
+                <li class={`chip chip--${rec.signals.latency != null ? "on" : "off"}`}>
+                  <span class="chip__k mono">latency</span><span class="chip__v">{pct(rec.signals.latency)}</span>
+                </li>
+                <li class={`chip chip--${rec.signals.cost != null ? "on" : "off"}`}>
+                  <span class="chip__k mono">cost</span><span class="chip__v">{pct(rec.signals.cost)}</span>
+                </li>
+                <li class={`chip chip--${rec.signals.contextWindowTokens != null ? "on" : "off"}`}>
+                  <span class="chip__k mono">ctx</span><span class="chip__v">{tokens(rec.signals.contextWindowTokens)}</span>
+                </li>
+                <li class={`chip chip--${rec.signals.availability === "common" ? "on" : rec.signals.availability === "limited" ? "warn" : "off"}`}>
+                  <span class="chip__k mono">avail</span><span class="chip__v">{rec.signals.availability}</span>
+                </li>
+                {rec.signals.routable === false && (
+                  <li class="chip chip--burn">
+                    <span class="chip__k mono">runtime</span><span class="chip__v">not routable</span>
+                  </li>
+                )}
+              </ul>
+
+              <div class="rankrow__body">
+                <div class="rankrow__rationale">
+                  <h4 class="rankrow__rh mono">Why this rank</h4>
+                  <ul class="rankrow__rlist">
+                    {rec.explanation.map((line) => <li>{line}</li>)}
+                  </ul>
+                </div>
+
+                <div class="rankrow__cites">
+                  <h4 class="rankrow__rh mono">Source citations</h4>
+                  {rec.citations.length === 0 && (
+                    <p class="rankrow__none mono">No benchmark snapshot from any active source today.</p>
+                  )}
+                  <ul class="cites">
+                    {rec.citations.map((cite) => (
+                      <li class={`cite cite--${freshnessTone(cite.freshness)}`}>
+                        <img class="cite__logo" src={cite.logo} alt="" width="22" height="22" loading="lazy" />
+                        <div class="cite__body">
+                          <a class="cite__name" href={cite.sourceURL ?? "/router#sources"} target="_blank" rel="noopener noreferrer">{cite.attribution}</a>
+                          <div class="cite__meta mono">
+                            {cite.rank != null && <span>rank {cite.rank}</span>}
+                            {cite.score != null && <span>score {pct(cite.score)}</span>}
+                            <span>{formatAge(cite.ageHours)}</span>
+                            <span class="cite__fresh">{cite.freshness}</span>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {rec.limitations.length > 0 && (
+                  <div class="rankrow__lims">
+                    <h4 class="rankrow__rh mono">Limitations</h4>
+                    <ul class="rankrow__llist">
+                      {rec.limitations.map((line) => <li>{line}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        {task.rejectedAlternatives.length > 0 && (
+          <details class="rejects">
+            <summary>
+              <span class="rejects__sum">Why other candidates didn't make the cut</span>
+              <span class="rejects__count mono">{task.rejectedAlternatives.length} dropped</span>
+            </summary>
+            <ul class="rejects__list">
+              {task.rejectedAlternatives.map((r) => (
+                <li class="reject">
+                  {r.providerLogo && (
+                    <img class="reject__logo" src={r.providerLogo} alt="" width="22" height="22" loading="lazy" />
+                  )}
+                  <div>
+                    <strong>{r.modelDisplay}</strong>
+                    <span class="reject__provider mono"> · {r.providerDisplay}</span>
+                    <p class="reject__reason">{r.reason}</p>
+                    {r.evidence && <p class="reject__ev mono">{r.evidence}</p>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </li>
+    ))}
+  </ol>
+
+  <footer class="rundown__foot">
+    <div class="rundown__lims">
+      <h3 class="rundown__lh mono">What this rundown is — and isn't</h3>
+      <ul>
+        {rundown.globalLimitations.map((line) => <li>{line}</li>)}
+      </ul>
+    </div>
+
+    {rundown.notes.length > 0 && (
+      <div class="rundown__notes">
+        <h3 class="rundown__lh mono">Operator notes</h3>
+        <ul>
+          {rundown.notes.map((line) => <li>{line}</li>)}
+        </ul>
+      </div>
+    )}
+
+    {archive.length > 0 && (
+      <div class="rundown__archive">
+        <h3 class="rundown__lh mono">Archive</h3>
+        <ul class="rundown__archlist">
+          {archive.map((d) => (
+            <li><a href={`/router/daily/${d}`}><span class="mono">{d}</span><span class="rundown__archarrow" aria-hidden="true">→</span></a></li>
+          ))}
+          <li><a class="rundown__archall" href="/router/daily">all dated rundowns →</a></li>
+        </ul>
+      </div>
+    )}
+  </footer>
+</section>
+
+<script src="/router-rundown-hydrate.js" defer></script>
+
+
+<style>
+  .rundown {
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background:
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    padding: clamp(var(--s-5), 2.5vw, var(--s-7));
+    display: grid;
+    gap: var(--s-6);
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  /* live-state badge that sits in front of the meta line */
+  .rundown__state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    margin-right: var(--s-2);
+    border-radius: var(--r-pill);
+    border: 1px solid var(--ink-line);
+    font-size: 0.66rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    background: var(--ink-base);
+  }
+  .rundown__state::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--status-unavailable);
+  }
+  .rundown__state--loading::before { background: var(--mercury-base); }
+  .rundown__state--live {
+    color: var(--status-exact);
+    border-color: color-mix(in oklab, var(--status-exact) 35%, var(--ink-line));
+  }
+  .rundown__state--live::before { background: var(--status-exact); box-shadow: 0 0 8px var(--status-exact); }
+  .rundown__state--fallback {
+    color: var(--status-estimated);
+    border-color: color-mix(in oklab, var(--status-estimated) 30%, var(--ink-line));
+  }
+  .rundown__state--fallback::before { background: var(--status-estimated); }
+  .rundown::before {
+    content: "";
+    position: absolute;
+    inset: -40% -40% auto auto;
+    width: 60%;
+    height: 60%;
+    background: radial-gradient(closest-side, rgba(255, 106, 26, 0.08), transparent 70%);
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  /* ── header ── */
+  .rundown__head {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: var(--s-5);
+    align-items: end;
+  }
+  @media (max-width: 880px) {
+    .rundown__head { grid-template-columns: 1fr; }
+  }
+  .rundown__h {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 1.2rem + 1.4vw, 2.4rem);
+    font-variation-settings: "opsz" 80, "wght" 460;
+    letter-spacing: -0.022em;
+    margin-top: var(--s-3);
+    color: var(--text-bright);
+    text-wrap: balance;
+    max-width: 28ch;
+  }
+  .rundown__sub {
+    color: var(--text-dim);
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+    margin-top: var(--s-2);
+  }
+  .rundown__sources {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: var(--s-2);
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .srctag {
+    position: relative;
+    display: grid;
+    grid-template-columns: 24px 1fr 8px;
+    gap: var(--s-2);
+    align-items: center;
+    padding: var(--s-2) var(--s-3);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    background: var(--ink-base);
+    font-size: 0.78rem;
+  }
+  .srctag__logo {
+    width: 24px;
+    height: 24px;
+    border-radius: 5px;
+    border: 1px solid var(--ink-line);
+    background: var(--ink-surface);
+  }
+  .srctag__name { color: var(--text-bright); display: block; font-size: 0.82rem; }
+  .srctag__age { color: var(--text-mute); font-size: 0.7rem; letter-spacing: 0.04em; }
+  .srctag__dot { width: 8px; height: 8px; border-radius: var(--r-pill); }
+  .srctag--fresh { border-color: color-mix(in oklab, var(--status-exact) 35%, var(--ink-line)); }
+  .srctag--fresh .srctag__dot { background: var(--status-exact); box-shadow: 0 0 8px var(--status-exact); }
+  .srctag--warn { border-color: color-mix(in oklab, var(--status-estimated) 30%, var(--ink-line)); }
+  .srctag--warn .srctag__dot { background: var(--status-estimated); }
+  .srctag--stale { border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line)); }
+  .srctag--stale .srctag__dot { background: var(--mercury-base); }
+  .srctag--off { opacity: 0.7; }
+  .srctag--off .srctag__dot { background: var(--status-unavailable); }
+
+  /* ── advisory bar ── */
+  .rundown__advisory {
+    padding: var(--s-3) var(--s-4);
+    border: 1px dashed color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
+    border-radius: var(--r-3);
+    color: var(--text-base);
+    background:
+      linear-gradient(90deg, rgba(255, 106, 26, 0.06), transparent);
+    font-size: 0.86rem;
+  }
+  .rundown__advisory strong { color: var(--ember-bright); font-variation-settings: "wght" 540; }
+
+  .rundown__empty {
+    padding: var(--s-5);
+    border: 1px dashed var(--ink-line);
+    border-radius: var(--r-3);
+    color: var(--text-mute);
+    font-size: 0.9rem;
+  }
+
+  /* ── tasks ── */
+  .rundown__tasks { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s-5); }
+
+  .taskcard {
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    padding: var(--s-5);
+    background: var(--ink-base);
+    display: grid;
+    gap: var(--s-4);
+  }
+  .taskcard__head {
+    display: grid;
+    gap: var(--s-2);
+  }
+  .taskcard__headline { display: flex; align-items: baseline; gap: var(--s-3); flex-wrap: wrap; }
+  .taskcard__blurb { color: var(--text-mute); font-size: 0.88rem; }
+  .taskcard__note {
+    color: var(--status-estimated);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+  }
+  .taskcard__lede {
+    color: var(--text-bright);
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 60, "wght" 380, "ital" 1;
+    font-style: italic;
+    font-size: 1.05rem;
+    line-height: 1.4;
+    max-width: 78ch;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 0.15rem var(--s-3);
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 50%, var(--ink-line));
+    background: color-mix(in oklab, var(--ember-core) 18%, var(--ink-base));
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-variation-settings: "wght" 500;
+  }
+  .pill--terminal { border-color: color-mix(in oklab, var(--mercury-bright) 35%, var(--ink-line)); background: color-mix(in oklab, var(--mercury-bright) 12%, var(--ink-base)); color: var(--mercury-bright); }
+  .pill--design { border-color: color-mix(in oklab, var(--status-exact) 35%, var(--ink-line)); background: color-mix(in oklab, var(--status-exact) 12%, var(--ink-base)); color: var(--status-exact); }
+  .pill--analysis { border-color: color-mix(in oklab, var(--status-estimated) 35%, var(--ink-line)); background: color-mix(in oklab, var(--status-estimated) 12%, var(--ink-base)); color: var(--status-estimated); }
+  .pill--general { border-color: var(--ink-line); background: var(--ink-surface); color: var(--text-mute); }
+  .pill--agent { border-color: color-mix(in oklab, var(--ember-glow) 40%, var(--ink-line)); background: color-mix(in oklab, var(--ember-glow) 14%, var(--ink-base)); color: var(--ember-glow); }
+
+  /* ── ranks ── */
+  .ranks { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s-3); }
+
+  .rankrow {
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    background: var(--ink-surface);
+    padding: var(--s-4);
+    display: grid;
+    grid-template-columns: 1.6fr 1fr;
+    grid-template-areas:
+      "lead score"
+      "chips chips"
+      "body  body";
+    gap: var(--s-3) var(--s-4);
+    transition: border-color var(--dur-fast) var(--ease-out),
+                background var(--dur-fast) var(--ease-out);
+  }
+  @media (max-width: 720px) {
+    .rankrow {
+      grid-template-columns: 1fr;
+      grid-template-areas:
+        "lead"
+        "score"
+        "chips"
+        "body";
+    }
+  }
+
+  .rankrow--rank1 {
+    border-color: color-mix(in oklab, var(--ember-core) 55%, var(--ink-line));
+    background:
+      linear-gradient(180deg, color-mix(in oklab, var(--ember-core) 10%, var(--ink-surface)) 0%, var(--ink-surface) 70%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 181, 71, 0.05),
+      0 0 0 1px color-mix(in oklab, var(--ember-core) 18%, transparent);
+  }
+  .rankrow--rank1 .rankrow__num { color: var(--ember-bright); }
+  .rankrow--off { opacity: 0.85; }
+
+  .rankrow__lead {
+    grid-area: lead;
+    display: grid;
+    grid-template-columns: auto 38px minmax(0, 1fr);
+    gap: var(--s-3);
+    align-items: center;
+    min-width: 0;
+  }
+  .rankrow__id { min-width: 0; }
+  .rankrow__num {
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    color: var(--text-mute);
+    letter-spacing: 0.06em;
+    width: 2.4rem;
+  }
+  .rankrow__logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    border: 1px solid var(--ink-line);
+    background: #f6f1e7;
+    padding: 4px;
+    object-fit: contain;
+  }
+  .rankrow__model {
+    display: block;
+    color: var(--text-bright);
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 60, "wght": 480;
+    font-size: 1.18rem;
+    letter-spacing: -0.014em;
+    line-height: 1.15;
+    word-break: break-word;
+  }
+  .rankrow__provider {
+    color: var(--text-mute);
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+    display: block;
+    margin-top: 2px;
+  }
+
+  .rankrow__score {
+    grid-area: score;
+    display: grid;
+    justify-items: end;
+    align-content: center;
+    gap: 2px;
+  }
+  .rankrow__scorenum {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 1.6rem + 1.4vw, 2.6rem);
+    font-variation-settings: "opsz" 144, "wght" 420;
+    color: var(--text-bright);
+    line-height: 1;
+    letter-spacing: -0.04em;
+    font-feature-settings: "tnum" 1;
+  }
+  .rankrow--rank1 .rankrow__scorenum { color: var(--ember-bright); }
+  .rankrow__scorelab {
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+  }
+  .rankrow__cov {
+    color: var(--text-mute);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+  }
+
+  /* signal chips */
+  .rankrow__chips {
+    grid-area: chips;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--r-2);
+    border: 1px solid var(--ink-line);
+    background: var(--ink-base);
+    font-size: 0.74rem;
+    line-height: 1;
+  }
+  .chip__k {
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+  }
+  .chip__v {
+    color: var(--text-bright);
+    font-variation-settings: "wght" 520;
+  }
+  .chip--off { opacity: 0.55; }
+  .chip--off .chip__v { color: var(--text-mute); }
+  .chip--warn { border-color: color-mix(in oklab, var(--status-estimated) 40%, var(--ink-line)); }
+  .chip--warn .chip__v { color: var(--status-estimated); }
+  .chip--stale { border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line)); }
+  .chip--stale .chip__v { color: var(--mercury-base); }
+  .chip--burn { border-color: color-mix(in oklab, var(--status-burn) 40%, var(--ink-line)); }
+  .chip--burn .chip__v { color: var(--status-burn); }
+
+  /* body */
+  .rankrow__body {
+    grid-area: body;
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: var(--s-4);
+    border-top: 1px dashed var(--ink-line-soft);
+    padding-top: var(--s-3);
+  }
+  @media (max-width: 880px) {
+    .rankrow__body { grid-template-columns: 1fr; }
+  }
+  .rankrow__rh {
+    color: var(--text-dim);
+    font-size: 0.66rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: var(--s-2);
+  }
+  .rankrow__rlist, .rankrow__llist {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 4px;
+    font-size: 0.86rem;
+    color: var(--text-base);
+  }
+  .rankrow__rlist li::before { content: "·  "; color: var(--ember-bright); }
+  .rankrow__llist li::before { content: "!  "; color: var(--status-estimated); font-family: var(--font-mono); }
+  .rankrow__llist li { color: var(--text-mute); font-size: 0.82rem; }
+
+  /* citations */
+  .cites { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s-2); }
+  .cite {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: var(--s-2);
+    align-items: center;
+    padding: 6px 10px;
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-2);
+    background: var(--ink-base);
+  }
+  .cite__logo {
+    width: 26px;
+    height: 26px;
+    border-radius: 5px;
+    border: 1px solid var(--ink-line);
+    background: var(--ink-surface);
+  }
+  .cite__name {
+    display: block;
+    color: var(--text-bright);
+    font-size: 0.82rem;
+    font-variation-settings: "wght" 500;
+    text-decoration: none;
+  }
+  .cite__name:hover { color: var(--ember-bright); }
+  .cite__meta {
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+  }
+  .cite__fresh { color: var(--text-mute); }
+  .cite--warn { border-color: color-mix(in oklab, var(--status-estimated) 30%, var(--ink-line)); }
+  .cite--stale { border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line)); }
+  .cite--off { opacity: 0.7; }
+
+  .rankrow__none {
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    padding: var(--s-3);
+    border: 1px dashed var(--ink-line);
+    border-radius: var(--r-2);
+  }
+
+  /* rejected alternatives */
+  .rejects {
+    border-top: 1px dashed var(--ink-line-soft);
+    padding-top: var(--s-3);
+  }
+  .rejects summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s-3);
+    color: var(--text-mute);
+    font-size: 0.86rem;
+    font-variation-settings: "wght" 460;
+  }
+  .rejects summary::-webkit-details-marker { display: none; }
+  .rejects summary::before {
+    content: "▸ ";
+    color: var(--ember-bright);
+  }
+  .rejects[open] summary::before { content: "▾ "; }
+  .rejects__count { color: var(--text-dim); font-size: 0.74rem; letter-spacing: 0.06em; }
+  .rejects__list { list-style: none; padding: var(--s-3) 0 0; margin: 0; display: grid; gap: var(--s-3); }
+  .reject {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: var(--s-3);
+    align-items: start;
+    padding: var(--s-3);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    background: var(--ink-surface);
+  }
+  .reject__logo {
+    width: 26px;
+    height: 26px;
+    border-radius: 5px;
+    background: #f6f1e7;
+    padding: 3px;
+    border: 1px solid var(--ink-line);
+    object-fit: contain;
+  }
+  .reject strong { color: var(--text-bright); }
+  .reject__provider { color: var(--text-mute); font-size: 0.78rem; }
+  .reject__reason { color: var(--text-base); font-size: 0.86rem; margin-top: 4px; }
+  .reject__ev { color: var(--text-dim); font-size: 0.74rem; letter-spacing: 0.04em; margin-top: 2px; }
+
+  /* footer */
+  .rundown__foot {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: var(--s-5);
+    padding-top: var(--s-4);
+    border-top: 1px dashed var(--ink-line);
+  }
+  @media (max-width: 880px) {
+    .rundown__foot { grid-template-columns: 1fr; }
+  }
+  .rundown__lh {
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: var(--s-2);
+  }
+  .rundown__lims ul, .rundown__notes ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 6px;
+    font-size: 0.84rem;
+    color: var(--text-mute);
+    line-height: 1.45;
+  }
+  .rundown__lims li::before { content: "—  "; color: var(--ember-glow); }
+  .rundown__notes li::before { content: "·  "; color: var(--ember-bright); }
+  .rundown__archive {
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    padding: var(--s-3) var(--s-4);
+    background: var(--ink-base);
+  }
+  .rundown__archlist {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 4px;
+  }
+  .rundown__archlist a {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s-3);
+    color: var(--text-base);
+    text-decoration: none;
+    padding: 4px 0;
+    font-size: 0.84rem;
+    border-bottom: 1px dashed var(--ink-line-soft);
+  }
+  .rundown__archlist a:hover { color: var(--ember-bright); }
+  .rundown__archall {
+    color: var(--ember-bright) !important;
+    margin-top: var(--s-2);
+    border-bottom: 0 !important;
+    font-family: var(--font-mono);
+    font-size: 0.74rem !important;
+    letter-spacing: 0.08em;
+  }
+  .rundown__archarrow { color: var(--text-dim); }
+
+  /* preview variant — same look, just less verbose body */
+  .rundown--preview .rankrow__body { display: none; }
+  .rundown--preview .rejects { display: none; }
+  .rundown--preview .rundown__foot { padding-top: 0; border-top: 0; }
+</style>

@@ -1,0 +1,523 @@
+---
+/**
+ * IntelligentScoreboard — the "research" half of the router story.
+ *
+ * Renders a candidate scoreboard with an animated "researching candidates"
+ * source banner above it. Designed to feel alive on first sight: source
+ * chips flicker through fresh/stale states, score bars fill in staggered
+ * sequence on scroll-in, the #1 row gets an ember "selected" stamp.
+ *
+ * Two variants:
+ *   - "mini": fits inside the two-mode comparison card (no source breakdown)
+ *   - "full": stands alone on /router with full source banner + advisory line
+ *
+ * The data here is sourced from `router-rundown-history/latest.json` so the
+ * page never shows fabricated rankings.
+ */
+
+import { sourceMeta } from "@data/router-rundown";
+import type { SourceID, SourceStatusKind } from "@data/router-rundown";
+
+export interface ScoreboardCandidate {
+  rank: number;
+  modelDisplay: string;
+  providerDisplay: string;
+  providerLogo?: string;
+  /** 0..1 composite score */
+  score: number;
+  /** Optional badge on the row (e.g. context window, freshness) */
+  badge?: string;
+}
+
+export interface ScoreboardSource {
+  source: SourceID | string;
+  status: SourceStatusKind | "manual";
+  ageHours?: number;
+}
+
+interface Props {
+  variant?: "mini" | "full";
+  /** Heading inside the panel (e.g. "Coding · today's ranking"). */
+  heading: string;
+  /** Optional subtitle / lede. */
+  sub?: string;
+  candidates: ScoreboardCandidate[];
+  sources: ScoreboardSource[];
+  /** Optional CTA URL ("Browse the daily rundown →"). */
+  ctaURL?: string;
+  ctaLabel?: string;
+  /** Display the advisory line under the banner. */
+  showAdvisory?: boolean;
+}
+
+const {
+  variant = "full",
+  heading,
+  sub,
+  candidates,
+  sources,
+  ctaURL,
+  ctaLabel = "Browse today's rundown",
+  showAdvisory = false,
+} = Astro.props;
+
+function pct(x: number): string {
+  return `${Math.round(x * 100)}`;
+}
+function statusTone(s: ScoreboardSource["status"]): "fresh" | "warn" | "stale" | "off" {
+  switch (s) {
+    case "fresh": return "fresh";
+    case "stale": return "warn";
+    case "manual": return "stale";
+    default: return "off";
+  }
+}
+---
+
+<section
+  class={`scoreboard scoreboard--${variant}`}
+  data-animate-onview=""
+  aria-labelledby={`scoreboard-${heading.replace(/\W+/g, "-").toLowerCase()}`}
+>
+  {variant === "full" && (
+    <header class="scoreboard__head">
+      <span class="scoreboard__eyebrow mono">researching candidates</span>
+      <h3 id={`scoreboard-${heading.replace(/\W+/g, "-").toLowerCase()}`} class="scoreboard__h">{heading}</h3>
+      {sub && <p class="scoreboard__sub">{sub}</p>}
+    </header>
+  )}
+
+  {/* SOURCE BANNER */}
+  <ul class={`scoreboard__sources scoreboard__sources--${variant}`} aria-label="Benchmark sources consulted">
+    <li class="scoreboard__sourcestag mono" aria-hidden="true">
+      <span class="scoreboard__sourcestagdot" aria-hidden="true"></span>
+      sources
+    </li>
+    {sources.map((s, i) => {
+      const meta = sourceMeta(s.source as SourceID);
+      const tone = statusTone(s.status);
+      return (
+        <li class={`srcchip srcchip--${tone}`} style={`--chip-idx:${i}`}>
+          {meta?.logo ? (
+            <img class="srcchip__logo" src={meta.logo} alt="" width="20" height="20" loading="lazy" />
+          ) : (
+            <span class="srcchip__placeholder mono" aria-hidden="true">{(meta?.shortLabel ?? "·").charAt(0)}</span>
+          )}
+          <span class="srcchip__lab mono">{meta?.shortLabel ?? s.source}</span>
+          <span class={`srcchip__dot srcchip__dot--${tone}`} aria-hidden="true"></span>
+        </li>
+      );
+    })}
+  </ul>
+
+  {variant === "full" && showAdvisory && (
+    <p class="scoreboard__advisory">
+      Benchmark signals are <strong>advisory</strong>. Provider-family mode, user
+      pinning, account auth, quota state, safety policy, and availability are
+      evaluated at runtime and override any ranking shown here.
+    </p>
+  )}
+
+  {/* CANDIDATE ROWS */}
+  <ol class="scoreboard__rows" aria-label="Ranked candidate models">
+    {candidates.map((c, idx) => {
+      const widthPct = Math.max(2, Math.round(c.score * 100));
+      const isWinner = c.rank === 1;
+      return (
+        <li class={`scbrow ${isWinner ? "scbrow--winner" : ""}`} style={`--row-idx:${idx}`}>
+          <span class="scbrow__rank mono">#{c.rank}</span>
+          {c.providerLogo && (
+            <img class="scbrow__logo" src={c.providerLogo} alt="" width="28" height="28" loading="lazy" />
+          )}
+          <span class="scbrow__id">
+            <strong class="scbrow__model">{c.modelDisplay}</strong>
+            <span class="scbrow__provider mono">{c.providerDisplay}</span>
+          </span>
+          {c.badge && <span class="scbrow__badge mono">{c.badge}</span>}
+          <span class="scbrow__bar" aria-hidden="true">
+            <span class="scbrow__barfill" style={`--target:${widthPct}%`}></span>
+          </span>
+          <span class="scbrow__score mono">{pct(c.score)}</span>
+          {isWinner && <span class="scbrow__stamp mono">selected</span>}
+        </li>
+      );
+    })}
+  </ol>
+
+  {ctaURL && (
+    <a class="scoreboard__cta mono" href={ctaURL}>
+      <span>{ctaLabel}</span>
+      <span aria-hidden="true">→</span>
+    </a>
+  )}
+</section>
+
+<style>
+  .scoreboard {
+    --enter-stagger: 120ms;
+    position: relative;
+    display: grid;
+    gap: var(--s-4);
+    padding: var(--s-5);
+    border: 1px solid color-mix(in oklab, var(--mercury-bright) 22%, var(--ink-line));
+    border-radius: var(--r-4);
+    background:
+      radial-gradient(60% 50% at 100% 0%, rgba(214, 211, 223, 0.06), transparent 60%),
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .scoreboard--mini { padding: var(--s-4); gap: var(--s-3); border-radius: var(--r-3); }
+  .scoreboard::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--mercury-bright) 65%, transparent), transparent);
+    opacity: 0.6;
+  }
+
+  /* head */
+  .scoreboard__head { display: grid; gap: var(--s-2); }
+  .scoreboard__eyebrow {
+    color: var(--mercury-bright);
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .scoreboard__h {
+    font-family: var(--font-display);
+    font-size: clamp(1.15rem, 1rem + 0.6vw, 1.45rem);
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.014em;
+    line-height: 1.18;
+    text-wrap: balance;
+  }
+  .scoreboard__sub { color: var(--text-mute); font-size: 0.9rem; line-height: 1.5; }
+
+  /* SOURCE BANNER */
+  .scoreboard__sources {
+    list-style: none;
+    margin: 0;
+    padding: var(--s-2) var(--s-3);
+    border: 1px dashed color-mix(in oklab, var(--mercury-bright) 22%, var(--ink-line));
+    border-radius: var(--r-3);
+    background:
+      linear-gradient(90deg, rgba(214, 211, 223, 0.05), transparent 80%),
+      var(--ink-base);
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+    overflow: hidden;
+    position: relative;
+  }
+  .scoreboard__sources::after {
+    /* travelling scan beam */
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in oklab, var(--mercury-bright) 32%, transparent) 50%,
+      transparent 100%
+    );
+    width: 30%;
+    opacity: 0.6;
+    transform: translateX(-30%);
+    animation: scoreboard-scan 6s linear infinite;
+    pointer-events: none;
+  }
+  @keyframes scoreboard-scan {
+    0%   { transform: translateX(-30%); }
+    100% { transform: translateX(330%); }
+  }
+
+  .scoreboard__sourcestag {
+    color: var(--mercury-bright);
+    font-size: 0.66rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: var(--s-2);
+    border-right: 1px solid var(--ink-line);
+  }
+  .scoreboard__sourcestagdot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--mercury-bright);
+    box-shadow: 0 0 6px var(--mercury-bright);
+  }
+
+  .srcchip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 4px var(--s-2);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-pill);
+    background: var(--ink-base);
+    color: var(--text-mute);
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    position: relative;
+    z-index: 1;
+    animation: srcchip-blink 4s ease-in-out infinite;
+    animation-delay: calc(var(--chip-idx) * 220ms);
+  }
+  @keyframes srcchip-blink {
+    0%, 40%, 100% { opacity: 1; }
+    45% { opacity: 0.55; }
+  }
+  .srcchip__logo {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line);
+    padding: 1px;
+  }
+  .srcchip__placeholder {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-line);
+    font-size: 0.55rem;
+    color: var(--text-mute);
+  }
+  .srcchip__lab {
+    color: var(--text-bright);
+    font-variation-settings: "wght" 540;
+    letter-spacing: 0.08em;
+  }
+  .srcchip__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .srcchip--fresh { border-color: color-mix(in oklab, var(--status-exact) 38%, var(--ink-line)); }
+  .srcchip--fresh .srcchip__dot { background: var(--status-exact); box-shadow: 0 0 6px var(--status-exact); }
+  .srcchip--warn  { border-color: color-mix(in oklab, var(--status-estimated) 32%, var(--ink-line)); }
+  .srcchip--warn  .srcchip__dot { background: var(--status-estimated); }
+  .srcchip--stale { border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line)); }
+  .srcchip--stale .srcchip__dot { background: var(--mercury-base); }
+  .srcchip--off   { opacity: 0.7; }
+  .srcchip--off   .srcchip__dot { background: var(--status-unavailable); }
+
+  .scoreboard__advisory {
+    color: var(--text-base);
+    font-size: 0.84rem;
+    line-height: 1.5;
+    padding: var(--s-3) var(--s-4);
+    border-radius: var(--r-3);
+    border: 1px dashed color-mix(in oklab, var(--ember-core) 30%, var(--ink-line));
+    background: linear-gradient(90deg, rgba(255, 106, 26, 0.05), transparent 80%);
+  }
+  .scoreboard__advisory strong {
+    color: var(--ember-bright);
+    font-variation-settings: "wght" 540;
+  }
+
+  /* ROWS */
+  .scoreboard__rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--s-2);
+  }
+
+  .scbrow {
+    display: grid;
+    grid-template-columns: auto 28px minmax(0, 1.4fr) auto 1fr auto auto;
+    align-items: center;
+    gap: var(--s-2) var(--s-3);
+    padding: var(--s-3) var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    background: var(--ink-base);
+    position: relative;
+    overflow: hidden;
+  }
+  .scoreboard--mini .scbrow {
+    grid-template-columns: auto 24px minmax(0, 1fr) 1fr auto;
+    padding: var(--s-2) var(--s-3);
+  }
+  .scoreboard--mini .scbrow__badge,
+  .scoreboard--mini .scbrow__stamp { display: none; }
+
+  .scbrow__rank {
+    color: var(--text-mute);
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    width: 1.6rem;
+  }
+  .scbrow--winner .scbrow__rank { color: var(--ember-bright); font-variation-settings: "wght" 540; }
+  .scbrow__logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: #f6f1e7;
+    border: 1px solid var(--ink-line);
+    padding: 2px;
+    object-fit: contain;
+  }
+  .scoreboard--mini .scbrow__logo { width: 24px; height: 24px; }
+  .scbrow__id { display: grid; gap: 1px; min-width: 0; }
+  .scbrow__model {
+    color: var(--text-bright);
+    font-size: 0.9rem;
+    font-variation-settings: "wght" 540;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .scoreboard--mini .scbrow__model { font-size: 0.82rem; }
+  .scbrow__provider {
+    color: var(--text-mute);
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .scbrow__badge {
+    color: var(--mercury-bright);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    padding: 1px 6px;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--mercury-bright) 30%, var(--ink-line));
+    background: color-mix(in oklab, var(--mercury-bright) 8%, transparent);
+  }
+  .scbrow__bar {
+    position: relative;
+    height: 6px;
+    border-radius: var(--r-pill);
+    background: var(--ink-surface);
+    overflow: hidden;
+    min-width: 60px;
+  }
+  .scbrow__barfill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg,
+      color-mix(in oklab, var(--mercury-bright) 60%, transparent) 0%,
+      var(--mercury-bright) 100%);
+    transition: width 1200ms var(--ease-out);
+    transition-delay: calc(var(--row-idx) * var(--enter-stagger));
+  }
+  .scbrow--winner .scbrow__barfill {
+    background: linear-gradient(90deg,
+      color-mix(in oklab, var(--ember-core) 70%, transparent) 0%,
+      var(--ember-bright) 100%);
+    box-shadow: 0 0 12px color-mix(in oklab, var(--ember-core) 55%, transparent);
+  }
+  .scoreboard.is-visible .scbrow__barfill { width: var(--target); }
+
+  .scbrow__score {
+    color: var(--text-bright);
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    letter-spacing: 0.04em;
+    font-variation-settings: "wght" 540;
+    min-width: 2ch;
+    text-align: right;
+  }
+  .scbrow--winner .scbrow__score { color: var(--ember-bright); }
+  .scbrow__stamp {
+    color: var(--ember-bright);
+    font-size: 0.6rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
+    background: color-mix(in oklab, var(--ember-core) 10%, transparent);
+    opacity: 0;
+    animation: scbrow-stamp-in 600ms var(--ease-out) forwards;
+    animation-delay: calc(var(--row-idx) * var(--enter-stagger) + 900ms);
+  }
+  @keyframes scbrow-stamp-in {
+    from { opacity: 0; transform: translateY(2px) scale(0.92); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .scbrow--winner {
+    border-color: color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
+    background:
+      linear-gradient(180deg, color-mix(in oklab, var(--ember-core) 10%, var(--ink-base)) 0%, var(--ink-base) 70%);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--ember-core) 28%, transparent);
+  }
+
+  /* CTA */
+  .scoreboard__cta {
+    color: var(--mercury-bright);
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    text-transform: lowercase;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding-top: var(--s-2);
+    border-top: 1px dashed var(--ink-line-soft);
+    transition: color var(--dur-fast) var(--ease-out);
+  }
+  .scoreboard__cta:hover { color: var(--ember-bright); }
+
+  /* entrance */
+  .scoreboard[data-animate-onview] {
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 600ms var(--ease-out), transform 600ms var(--ease-out);
+  }
+  .scoreboard[data-animate-onview].is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  @media (max-width: 720px) {
+    .scbrow {
+      grid-template-columns: auto 28px 1fr auto;
+      grid-template-areas:
+        "rank logo id score"
+        "bar  bar  bar bar"
+        "badge badge stamp stamp";
+    }
+    .scbrow__rank   { grid-area: rank; }
+    .scbrow__logo   { grid-area: logo; }
+    .scbrow__id     { grid-area: id;   }
+    .scbrow__bar    { grid-area: bar;  }
+    .scbrow__badge  { grid-area: badge; }
+    .scbrow__score  { grid-area: score; }
+    .scbrow__stamp  { grid-area: stamp; justify-self: end; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scoreboard__sources::after,
+    .srcchip,
+    .scbrow__stamp {
+      animation: none !important;
+    }
+    .scbrow__barfill {
+      transition: none !important;
+      width: var(--target) !important;
+    }
+    .scoreboard[data-animate-onview] {
+      opacity: 1 !important;
+      transform: none !important;
+    }
+    .scbrow__stamp { opacity: 1 !important; }
+  }
+</style>

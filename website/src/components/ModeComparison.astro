@@ -1,0 +1,297 @@
+---
+/**
+ * ModeComparison — the two-mode panel for /router.
+ *
+ * Left: failover (LockedModelRelay mini) — proves model identity.
+ * Right: intelligent (IntelligentScoreboard mini) — proves research scoring.
+ *
+ * Both panels pull real data where they can. The scoreboard pulls today's
+ * top three coding candidates from `LATEST_RUNDOWN`; the relay uses the
+ * hero's locked model identity.
+ */
+
+import LockedModelRelay from "./LockedModelRelay.astro";
+import IntelligentScoreboard from "./IntelligentScoreboard.astro";
+import type { ScoreboardCandidate, ScoreboardSource } from "./IntelligentScoreboard.astro";
+import { LATEST_RUNDOWN } from "@data/router-rundown-loader";
+
+const codingTask = LATEST_RUNDOWN?.taskRankings.find((t) => t.taskID === "coding")
+  ?? LATEST_RUNDOWN?.taskRankings[0];
+
+const candidates: ScoreboardCandidate[] = (codingTask?.recommendations ?? [])
+  .slice(0, 3)
+  .map((r) => ({
+    rank: r.rank,
+    modelDisplay: r.modelDisplay,
+    providerDisplay: r.providerDisplay,
+    providerLogo: r.providerLogo,
+    score: r.score,
+  }));
+
+const sources: ScoreboardSource[] = (LATEST_RUNDOWN?.sourceStatuses ?? [])
+  .slice(0, 5)
+  .map((s) => ({ source: s.source, status: s.status, ageHours: s.ageHours }));
+---
+
+<section class="modes" aria-labelledby="modes-h">
+  <header class="modes__head">
+    <span class="eyebrow eyebrow--ember">Two modes · one switch</span>
+    <h2 id="modes-h" class="modes__h">
+      Pick a posture. The model stays itself either way.
+    </h2>
+    <p class="modes__lead">
+      Most days you want the router to honor what you asked for and only
+      stretch capacity behind the scenes. Some days you'd rather it look at
+      the task in front of you and pick the right tool from a researched
+      shortlist. Same gateway. Same accounts. Different posture.
+    </p>
+  </header>
+
+  <div class="modes__grid">
+    {/* LEFT — failover */}
+    <article class="modecard modecard--failover" data-animate-onview="">
+      <header class="modecard__head">
+        <span class="modecard__tag mono">01 · default · provider-family failover</span>
+        <h3 class="modecard__title">Same model. Different account.</h3>
+        <p class="modecard__sub mono">protects your model identity · scales your account capacity</p>
+      </header>
+
+      <div class="modecard__viz">
+        <LockedModelRelay variant="mini" modelID="gpt-4.1" />
+      </div>
+
+      <ul class="modecard__bullets">
+        <li><strong>Model identity is non-negotiable.</strong> Failover only considers accounts that already carry your model.</li>
+        <li><strong>Account-level capacity.</strong> Add a second key, pin a third — they all serve the same model.</li>
+        <li><strong>Pre-selected runner-up.</strong> If the primary stumbles, the next account is already chosen.</li>
+        <li><strong>Cool-downs heal themselves.</strong> 5-min parking on transient failures, auto-rejoin after.</li>
+      </ul>
+
+      <p class="modecard__foot mono">
+        <span class="modecard__dot modecard__dot--ember"></span>
+        On by default. No client changes needed.
+      </p>
+    </article>
+
+    {/* RIGHT — intelligent */}
+    <article class="modecard modecard--intelligent" data-animate-onview="">
+      <header class="modecard__head">
+        <span class="modecard__tag modecard__tag--mercury mono">02 · opt-in · intelligent model router</span>
+        <h3 class="modecard__title">Different model — when you ask for one.</h3>
+        <p class="modecard__sub mono">researches candidates · benchmarks advisory · your pin still wins</p>
+      </header>
+
+      <div class="modecard__viz">
+        <IntelligentScoreboard
+          variant="mini"
+          heading="Today · top three coding candidates"
+          candidates={candidates}
+          sources={sources}
+        />
+      </div>
+
+      <ul class="modecard__bullets">
+        <li><strong>Nine surface signals · five weighted dimensions.</strong> Capability, cost, latency, trust, policy-fit — composite scored, deterministic.</li>
+        <li><strong>Benchmarks are advisory.</strong> Pulled from Artificial Analysis, Terminal-Bench, Design Arena. Older signals weigh less.</li>
+        <li><strong>Your pin still wins.</strong> A pinned model that meets the floor beats a higher-scored alternative.</li>
+        <li><strong>Every pick is explainable.</strong> Today's rundown ships with citations and freshness states.</li>
+      </ul>
+
+      <a class="modecard__foot modecard__foot--cta mono" href="/router/daily">
+        <span class="modecard__dot modecard__dot--mercury"></span>
+        Browse today's rundown<span aria-hidden="true"> →</span>
+      </a>
+    </article>
+  </div>
+</section>
+
+<style>
+  .modes {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    background:
+      radial-gradient(60% 50% at 20% 0%, rgba(255, 106, 26, 0.05), transparent 70%),
+      radial-gradient(50% 60% at 90% 100%, rgba(214, 211, 223, 0.04), transparent 70%);
+    position: relative;
+    overflow: hidden;
+  }
+  .modes::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(90deg, var(--ink-line-soft) 1px, transparent 1px),
+      linear-gradient(180deg, var(--ink-line-soft) 1px, transparent 1px);
+    background-size: 64px 64px;
+    background-position: -1px -1px;
+    opacity: 0.12;
+    mask-image: radial-gradient(70% 60% at 50% 50%, black 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(70% 60% at 50% 50%, black 30%, transparent 80%);
+    pointer-events: none;
+  }
+  .modes > * { position: relative; z-index: 1; }
+  .modes__head {
+    max-width: 64ch;
+    margin: 0 auto var(--s-7);
+    text-align: center;
+    display: grid;
+    gap: var(--s-3);
+  }
+  .modes__h {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 80, "wght" 500;
+    letter-spacing: -0.022em;
+    text-wrap: balance;
+  }
+  .modes__lead { color: var(--text-base); max-width: 56ch; margin: 0 auto; line-height: 1.55; }
+
+  .modes__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-5);
+    align-items: stretch;
+  }
+  @media (max-width: 1000px) {
+    .modes__grid { grid-template-columns: 1fr; }
+  }
+
+  .modecard {
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    gap: var(--s-4);
+    padding: var(--s-6);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-5);
+    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .modecard::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, currentColor, transparent);
+    opacity: 0.55;
+  }
+  .modecard--failover {
+    border-color: color-mix(in oklab, var(--ember-core) 30%, var(--ink-line));
+    color: var(--ember-bright);
+  }
+  .modecard--intelligent {
+    border-color: color-mix(in oklab, var(--mercury-bright) 28%, var(--ink-line));
+    color: var(--mercury-bright);
+  }
+  .modecard > * { color: var(--text-base); }
+
+  .modecard__head { display: grid; gap: var(--s-2); }
+  .modecard__tag {
+    display: inline-block;
+    width: max-content;
+    color: var(--ember-bright);
+    font-size: 0.66rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 38%, var(--ink-line));
+    background: color-mix(in oklab, var(--ember-core) 8%, transparent);
+  }
+  .modecard__tag--mercury {
+    color: var(--mercury-bright);
+    border-color: color-mix(in oklab, var(--mercury-bright) 35%, var(--ink-line));
+    background: color-mix(in oklab, var(--mercury-bright) 8%, transparent);
+  }
+  .modecard__title {
+    font-family: var(--font-display);
+    font-size: clamp(1.4rem, 1.1rem + 1vw, 2rem);
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 80, "wght" 500;
+    letter-spacing: -0.022em;
+    line-height: 1.08;
+    text-wrap: balance;
+  }
+  .modecard__sub {
+    color: var(--ember-bright);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+  }
+  .modecard--intelligent .modecard__sub { color: var(--mercury-bright); }
+
+  .modecard__viz {
+    margin-top: var(--s-2);
+  }
+
+  .modecard__bullets {
+    list-style: none;
+    margin: 0;
+    padding: var(--s-4) 0 0;
+    border-top: 1px dashed var(--ink-line-soft);
+    display: grid;
+    gap: var(--s-3);
+  }
+  .modecard__bullets li {
+    padding-left: var(--s-4);
+    position: relative;
+    color: var(--text-base);
+    font-size: 0.92rem;
+    line-height: 1.5;
+  }
+  .modecard__bullets li::before {
+    content: "▸";
+    position: absolute;
+    left: 0;
+    top: 0.05em;
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+  .modecard--intelligent .modecard__bullets li::before { color: var(--mercury-bright); }
+  .modecard__bullets strong { color: var(--text-bright); font-variation-settings: "wght" 540; }
+
+  .modecard__foot {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-3);
+    padding-top: var(--s-3);
+    border-top: 1px dashed var(--ink-line-soft);
+    color: var(--text-mute);
+    font-size: 0.74rem;
+    letter-spacing: 0.04em;
+  }
+  .modecard__foot--cta {
+    color: var(--mercury-bright);
+    transition: color var(--dur-fast) var(--ease-out);
+  }
+  .modecard__foot--cta:hover { color: var(--ember-bright); }
+  .modecard__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .modecard__dot--ember { background: var(--ember-core); box-shadow: 0 0 8px var(--ember-glow); }
+  .modecard__dot--mercury { background: var(--mercury-bright); box-shadow: 0 0 8px color-mix(in oklab, var(--mercury-bright) 60%, transparent); }
+
+  /* entrance */
+  .modecard[data-animate-onview] {
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 700ms var(--ease-out), transform 700ms var(--ease-out);
+  }
+  .modecard[data-animate-onview].is-visible {
+    opacity: 1;
+    transform: none;
+  }
+  .modecard--intelligent[data-animate-onview] { transition-delay: 120ms; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .modecard[data-animate-onview] {
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>

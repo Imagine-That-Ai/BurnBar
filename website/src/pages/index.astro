@@ -5,8 +5,7 @@ import RealDashboard from "@components/RealDashboard.astro";
 import DeviceShowcase from "@components/DeviceShowcase.astro";
 import SurfaceCard from "@components/SurfaceCard.astro";
 import ProviderTable from "@components/ProviderTable.astro";
-import RouterSwitchboard from "@components/RouterSwitchboard.astro";
-import RouterUseCases from "@components/RouterUseCases.astro";
+import LockedModelRelay from "@components/LockedModelRelay.astro";
 import { SITE } from "@data/site";
 import { SURFACES } from "@data/surfaces";
 import { PROVIDERS_PRIMARY } from "@data/providers";
@@ -242,102 +241,52 @@ const surfaceShowcase = SURFACES.filter((s) =>
   <section class="hydrantsec" aria-labelledby="hydrantsec-h">
     <div class="container container--wide">
       <header class="sec-head hydrantsec__head">
-        <span class="eyebrow eyebrow--ember">BurnBar Router — two modes, one gateway</span>
+        <span class="eyebrow eyebrow--ember">BurnBar Router — same model, every time</span>
         <h2 id="hydrantsec-h">
-          Route by intent.
-          <span class="hydrantsec__hb">Fail over by family.</span>
+          Same model.
+          <span class="hydrantsec__hb">Different account.</span>
         </h2>
         <p class="hydrantsec__sub mono">
-          Provider-family failover · or intelligent model routing · always local
+          Failover swaps the account · the model id never moves
         </p>
         <p class="lead">
-          BurnBar can keep you on the account you selected, fail over only
-          within the same provider family when needed, or intelligently choose
-          the best model when you enable smart routing.
-          <strong>Provider-family mode protects your intent</strong> — Codex
-          stays on OpenAI-family accounts, Claude Code stays on Anthropic-family.
-          <strong>Intelligent mode optimizes the route</strong> — task intent,
-          capability, quota, cost, latency, context, reliability, and benchmark
-          freshness all weigh in. Benchmarks are advisory signals, never
-          absolute truth. User choice, auth, quota, and availability win.
+          BurnBar's local gateway preserves the exact model you asked for.
+          Your <span class="mono">gpt-4.1</span> stays
+          <span class="mono">gpt-4.1</span>; your
+          <span class="mono">claude-opus-4-7</span> stays itself. The router
+          picks from accounts in your library that already carry that model —
+          and if none survive, it returns a structured 503 instead of a
+          silent substitute. Two modes ship: <strong>Provider-Family Failover</strong>
+          (default) and <strong>Intelligent Model Router</strong> (opt-in, scored
+          against Artificial Analysis, Terminal-Bench, and Design Arena).
+          Benchmarks are advisory. Pins always win.
         </p>
 
         <ul class="hydrantsec__modes mono">
           <li class="hydrantsec__mode hydrantsec__mode--family">
             <span class="hydrantsec__modedot" aria-hidden="true"></span>
             <strong>Provider-Family Failover</strong>
-            <em>default · single intent · multiple accounts</em>
+            <em>default · same model · multiple accounts</em>
           </li>
           <li class="hydrantsec__mode hydrantsec__mode--intelligent">
             <span class="hydrantsec__modedot" aria-hidden="true"></span>
             <strong>Intelligent Model Router</strong>
-            <em>opt-in · scored per task · explainable</em>
+            <em>opt-in · researched per task · explainable</em>
           </li>
         </ul>
       </header>
 
       <div class="hydrantsec__board">
-        <RouterSwitchboard />
-      </div>
-
-      <header class="sec-head sec-head--mini hydrantsec__head--alt">
-        <span class="eyebrow eyebrow--ember">Use cases</span>
-        <h3 class="hydrantsec__h3">The four routing moves you'll lean on most.</h3>
-      </header>
-
-      <RouterUseCases />
-
-      <div class="hydrantsec__rules">
-        <header class="hydrantsec__rulehead">
-          <span class="eyebrow eyebrow--ember">How the Hydrant ranks accounts</span>
-          <h3 class="hydrantsec__h3">Four rules. No model marketing.</h3>
-        </header>
-        <ol class="hydrantsec__rulesl">
-          <li class="hydrantsec__rule hydrantsec__rule--pool">
-            <span class="hydrantsec__num mono">00</span>
-            <div>
-              <strong>Format pool first.</strong>
-              <span>An Anthropic-shape request can only be served by Anthropic accounts. An OpenAI-shape request only by OpenAI-family accounts. The remaining rules apply inside the chosen pool.</span>
-            </div>
-          </li>
-          <li>
-            <span class="hydrantsec__num mono">01</span>
-            <div>
-              <strong>Preferred always wins — when healthy.</strong>
-              <span>A pinned account is honored unless it's exhausted, rate-limited, or off.</span>
-            </div>
-          </li>
-          <li>
-            <span class="hydrantsec__num mono">02</span>
-            <div>
-              <strong>Local credentials beat remote.</strong>
-              <span>An on-disk key is preferred over a hosted secret — lower latency, less surface area.</span>
-            </div>
-          </li>
-          <li>
-            <span class="hydrantsec__num mono">03</span>
-            <div>
-              <strong>Health rank, then sort key, then LRU.</strong>
-              <span>healthy &rsaquo; pressure &rsaquo; cooling-down &rsaquo; rate-limited &rsaquo; exhausted &rsaquo; auth-failed.</span>
-            </div>
-          </li>
-          <li>
-            <span class="hydrantsec__num mono">04</span>
-            <div>
-              <strong>Next-fallback is pre-selected.</strong>
-              <span>If the primary fails mid-request, the runner-up is already chosen — no second pass through the policy engine.</span>
-            </div>
-          </li>
-        </ol>
-        <p class="hydrantsec__rulescap mono">
-          Source · <code>ProviderAccountTypes.swift:403–599</code> · <code>docs/ROUTED_CLIENT_GATEWAY.md</code>
-        </p>
+        <LockedModelRelay variant="big" modelID="gpt-4.1" modelTag="model id · invariant" />
       </div>
 
       <div class="hydrantsec__cta">
         <a class="btn btn--ember" href="/router">
-          Read how routing actually works
+          See how routing actually works
           <span class="btn-arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="btn btn--ghost" href="/router/daily">
+          Browse today's rundown
         </a>
         <a class="btn btn--ghost" href="/providers">
           See the provider matrix

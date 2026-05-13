@@ -61,17 +61,18 @@ const confidenceKeys: Confidence[] = ["exact", "estimated", "unavailable"];
       <ul class="accountrouting__grid">
         <li class="accountrouting__card accountrouting__card--family">
           <header>
-            <span class="mono accountrouting__tag">family boundaries</span>
-            <h3>Failover stays inside a provider family.</h3>
+            <span class="mono accountrouting__tag">model identity preserved</span>
+            <h3>Failover only picks accounts that carry your exact model.</h3>
           </header>
           <p>
-            OpenAI-shape requests (Cursor, Factory, Forge, OpenCode, Codex CLI)
-            can only be served by OpenAI-family accounts: OpenAI, Z.ai, MiniMax,
-            Kimi, Ollama. Anthropic-shape requests (Claude Code) can only be
-            served by Anthropic-family accounts: Console + Pro/Team. The
-            router will never silently translate between formats. If you
-            haven't added an account in the matching family, the gateway
-            returns a structured 503 — never a stealth swap.
+            Each row below lists which models that account carries.
+            Failover only considers other rows that <strong>list the same model
+            you asked for</strong> — MiniMax or Kimi only handle traffic for
+            the models they actually carry, never a generic OpenAI-shape
+            stand-in. The wire-format family (OpenAI-shape, Anthropic-shape)
+            is the outer boundary; the model id is the inner one. If no row
+            survives both filters, the gateway returns a structured 503 —
+            never a stealth swap into a different model.
           </p>
         </li>
         <li class="accountrouting__card accountrouting__card--account">

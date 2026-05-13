@@ -1,0 +1,494 @@
+---
+/**
+ * RuleVignette — a short looping scene that proves a single same-model rule.
+ *
+ * Each vignette is a horizontal sequence:
+ *   client → primary account (fails) → fallback account (succeeds)
+ * or, for the 503 case, the gate closes and no fallback is offered.
+ *
+ * The packet glides on a 5-second cycle. Its model-id text never changes.
+ * The component is pure CSS; one shared keyframe drives all three scenes,
+ * with each vignette nudged via `--phase-shift` so they pulse in a chord.
+ */
+
+export type RuleVariant = "swap-account" | "swap-auth" | "no-fallback";
+
+interface Endpoint {
+  /** Short title — e.g. "Codex CLI", "OpenAI", "Z.ai". */
+  name: string;
+  /** Provider logo path under /brand/providers/*.png. */
+  logo: string;
+  /** Optional one-word state pill below the name. */
+  state?: string;
+  /** Optional auth shape descriptor (mono badge under name). */
+  auth?: string;
+}
+
+interface Props {
+  /** Numeric step in the parent grid — also seeds the phase shift. */
+  idx: 1 | 2 | 3;
+  /** Variant controls the storyboard. */
+  variant: RuleVariant;
+  /** Model token to display on the packet. */
+  model: string;
+  /** Headline for the scene. */
+  title: string;
+  /** Eyebrow tag for the scene. */
+  eyebrow: string;
+  /** Inbound client. */
+  client: Endpoint;
+  /** Primary account that fails. */
+  primary: Endpoint;
+  /** Failure note ("429", "5h cap hit", "no other carrier"). */
+  failure: string;
+  /** Fallback account that recovers (omit for `no-fallback`). */
+  fallback?: Endpoint | null;
+  /** Single-line swap detail printed in the evidence footer. */
+  swapDetail: string;
+}
+
+const {
+  idx,
+  variant,
+  model,
+  title,
+  eyebrow,
+  client,
+  primary,
+  failure,
+  fallback = null,
+  swapDetail,
+} = Astro.props;
+
+const hasFallback = variant !== "no-fallback" && fallback != null;
+---
+
+<article
+  class={`vignette vignette--${variant} vignette--idx-${idx}`}
+  data-animate-onview=""
+  aria-labelledby={`vignette-${idx}-title`}
+>
+  <header class="vignette__head">
+    <span class="vignette__eyebrow mono">{eyebrow}</span>
+    <h3 id={`vignette-${idx}-title`} class="vignette__title">{title}</h3>
+  </header>
+
+  <div class="vignette__stage" aria-hidden="true">
+    {/* the gliding packet — model id is the invariant */}
+    <span class={`vignette__packet vignette__packet--${variant}`}>
+      <span class="vignette__pkglow" aria-hidden="true"></span>
+      <span class="vignette__pkmark" aria-hidden="true">◆</span>
+      <span class="vignette__pkname mono">{model}</span>
+    </span>
+
+    {/* the rail behind the nodes */}
+    <span class="vignette__rail" aria-hidden="true"></span>
+
+    {/* nodes */}
+    <ol class={`vignette__nodes vignette__nodes--${hasFallback ? "three" : "two"}`}>
+      <li class="vignette__node vignette__node--client">
+        <img class="vignette__logo" src={client.logo} alt="" width="34" height="34" loading="lazy" />
+        <span class="vignette__nodename mono">{client.name}</span>
+        {client.state && <span class="vignette__nodestate mono">{client.state}</span>}
+      </li>
+
+      <li class="vignette__node vignette__node--primary">
+        <img class="vignette__logo" src={primary.logo} alt="" width="34" height="34" loading="lazy" />
+        <span class="vignette__nodename mono">{primary.name}</span>
+        <span class="vignette__nodestate mono">{primary.state ?? "primary"}</span>
+        {primary.auth && <span class="vignette__nodeauth mono">{primary.auth}</span>}
+        <span class="vignette__failtag mono">{failure}</span>
+      </li>
+
+      {hasFallback ? (
+        <li class="vignette__node vignette__node--fallback">
+          <img class="vignette__logo" src={fallback!.logo} alt="" width="34" height="34" loading="lazy" />
+          <span class="vignette__nodename mono">{fallback!.name}</span>
+          <span class="vignette__nodestate mono">{fallback!.state ?? "healthy"}</span>
+          {fallback!.auth && <span class="vignette__nodeauth mono">{fallback!.auth}</span>}
+          <span class="vignette__okstamp mono">200 · ok</span>
+        </li>
+      ) : (
+        <li class="vignette__node vignette__node--gate">
+          <span class="vignette__gateleaf vignette__gateleaf--l" aria-hidden="true"></span>
+          <span class="vignette__gateleaf vignette__gateleaf--r" aria-hidden="true"></span>
+          <span class="vignette__gatemark mono">503</span>
+          <span class="vignette__gatesub mono">no eligible route</span>
+        </li>
+      )}
+    </ol>
+  </div>
+
+  <footer class="vignette__foot mono">
+    <span class="vignette__evidence">model identity → <strong>unchanged</strong></span>
+    <span class="vignette__swap">swap · {swapDetail}</span>
+  </footer>
+</article>
+
+<style>
+  .vignette {
+    --cycle: 5s;
+    --phase-shift: 0s;
+
+    position: relative;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: var(--s-4);
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background:
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    overflow: hidden;
+    contain: layout style;
+    isolation: isolate;
+  }
+  .vignette--idx-1 { --phase-shift: 0s; }
+  .vignette--idx-2 { --phase-shift: -1.7s; }
+  .vignette--idx-3 { --phase-shift: -3.4s; }
+
+  .vignette::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    background: radial-gradient(60% 50% at 0% 0%, rgba(255, 106, 26, 0.04), transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .vignette > * { position: relative; z-index: 1; }
+
+  /* head */
+  .vignette__head { display: grid; gap: var(--s-2); }
+  .vignette__eyebrow {
+    color: var(--ember-bright);
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .vignette--no-fallback .vignette__eyebrow { color: var(--status-burn); }
+  .vignette__title {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.014em;
+    line-height: 1.22;
+    text-wrap: balance;
+  }
+
+  /* stage */
+  .vignette__stage {
+    position: relative;
+    height: 130px;
+    border-radius: var(--r-3);
+    background:
+      radial-gradient(50% 50% at 50% 50%, rgba(255, 106, 26, 0.04), transparent 70%),
+      var(--ink-base);
+    border: 1px dashed var(--ink-line-soft);
+    overflow: hidden;
+  }
+
+  /* rail */
+  .vignette__rail {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    top: 50%;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--ink-line),
+      color-mix(in oklab, var(--ember-core) 35%, var(--ink-line)),
+      var(--ink-line),
+      transparent
+    );
+    opacity: 0.75;
+  }
+
+  /* nodes */
+  .vignette__nodes {
+    position: absolute;
+    inset: 0;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    align-items: center;
+  }
+  .vignette__nodes--three { grid-template-columns: 1fr 1fr 1fr; }
+  .vignette__nodes--two   { grid-template-columns: 1fr 1fr; }
+
+  .vignette__node {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    padding-block: var(--s-2);
+  }
+  .vignette__logo {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: #f6f1e7;
+    border: 1px solid var(--ink-line);
+    padding: 3px;
+    object-fit: contain;
+  }
+  .vignette__nodename {
+    color: var(--text-bright);
+    font-size: 0.74rem;
+    letter-spacing: 0.04em;
+  }
+  .vignette__nodestate {
+    color: var(--text-mute);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: lowercase;
+  }
+  .vignette__nodeauth {
+    color: var(--mercury-bright);
+    font-size: 0.6rem;
+    letter-spacing: 0.06em;
+    padding: 1px 6px;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--mercury-bright) 30%, var(--ink-line));
+    background: color-mix(in oklab, var(--mercury-bright) 8%, transparent);
+  }
+
+  /* primary node failure tag */
+  .vignette__failtag {
+    position: absolute;
+    top: -2px;
+    right: 12%;
+    color: var(--status-burn);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    padding: 1px 6px;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--status-burn) 45%, var(--ink-line));
+    background: color-mix(in oklab, var(--status-burn) 10%, var(--ink-base));
+    opacity: 0;
+    animation: vignette-fail-show var(--cycle) ease-in-out infinite;
+    animation-delay: var(--phase-shift);
+  }
+  @keyframes vignette-fail-show {
+    0%, 24% { opacity: 0; transform: translateY(-2px); }
+    28%, 48% { opacity: 1; transform: translateY(0); }
+    52%, 100% { opacity: 0.4; transform: translateY(0); }
+  }
+
+  /* fallback node success stamp */
+  .vignette__okstamp {
+    position: absolute;
+    top: -2px;
+    right: 8%;
+    color: var(--status-exact);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    padding: 1px 6px;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--status-exact) 45%, var(--ink-line));
+    background: color-mix(in oklab, var(--status-exact) 10%, var(--ink-base));
+    opacity: 0;
+    animation: vignette-ok-show var(--cycle) ease-in-out infinite;
+    animation-delay: var(--phase-shift);
+  }
+  @keyframes vignette-ok-show {
+    0%, 64% { opacity: 0; transform: scale(0.8); }
+    72%, 92% { opacity: 1; transform: scale(1); }
+    96%, 100% { opacity: 0; transform: scale(1); }
+  }
+
+  /* 503 gate */
+  .vignette__node--gate {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    gap: var(--s-2);
+  }
+  .vignette__gateleaf {
+    position: absolute;
+    top: 12%;
+    bottom: 12%;
+    width: 28%;
+    background: linear-gradient(180deg, var(--status-burn) 0%, color-mix(in oklab, var(--status-burn) 40%, var(--ink-line)) 100%);
+    border-radius: var(--r-2);
+    opacity: 0.18;
+    transition: none;
+  }
+  .vignette__gateleaf--l { left: 12%; transform-origin: left center; animation: vignette-gate-l var(--cycle) ease-in-out infinite; }
+  .vignette__gateleaf--r { right: 12%; transform-origin: right center; animation: vignette-gate-r var(--cycle) ease-in-out infinite; }
+  .vignette__gateleaf--l, .vignette__gateleaf--r { animation-delay: var(--phase-shift); }
+  @keyframes vignette-gate-l {
+    0%, 32%  { transform: rotateY(85deg); opacity: 0.18; }
+    40%, 80% { transform: rotateY(0deg); opacity: 0.6; }
+    88%, 100%{ transform: rotateY(85deg); opacity: 0.18; }
+  }
+  @keyframes vignette-gate-r {
+    0%, 32%  { transform: rotateY(-85deg); opacity: 0.18; }
+    40%, 80% { transform: rotateY(0deg); opacity: 0.6; }
+    88%, 100%{ transform: rotateY(-85deg); opacity: 0.18; }
+  }
+  .vignette__gatemark {
+    color: var(--status-burn);
+    font-size: 1.6rem;
+    font-variation-settings: "wght" 600;
+    letter-spacing: 0.08em;
+    position: relative;
+    z-index: 1;
+    opacity: 0;
+    animation: vignette-503-stamp var(--cycle) ease-in-out infinite;
+    animation-delay: var(--phase-shift);
+  }
+  .vignette__gatesub {
+    color: var(--text-mute);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: lowercase;
+    position: relative;
+    z-index: 1;
+    opacity: 0;
+    animation: vignette-503-stamp var(--cycle) ease-in-out infinite;
+    animation-delay: calc(var(--phase-shift) + 0.2s);
+  }
+  @keyframes vignette-503-stamp {
+    0%, 40% { opacity: 0; transform: scale(0.92); }
+    52%, 84% { opacity: 1; transform: scale(1); }
+    92%, 100% { opacity: 0; transform: scale(0.92); }
+  }
+
+  /* the moving packet */
+  .vignette__packet {
+    position: absolute;
+    top: 8px;
+    left: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 4px var(--s-3);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 55%, var(--ink-line));
+    border-radius: var(--r-pill);
+    background:
+      linear-gradient(180deg, color-mix(in oklab, var(--ember-core) 16%, var(--ink-base)) 0%, var(--ink-base) 100%);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--ember-core) 30%, transparent),
+      0 8px 20px -8px color-mix(in oklab, var(--ember-core) 55%, transparent);
+    z-index: 3;
+    will-change: transform, left, opacity;
+  }
+  .vignette__pkglow {
+    position: absolute;
+    inset: -4px;
+    border-radius: inherit;
+    background: radial-gradient(closest-side, color-mix(in oklab, var(--ember-core) 30%, transparent), transparent 70%);
+    z-index: -1;
+    opacity: 0;
+    animation: vignette-pulse 2.5s ease-in-out infinite alternate;
+  }
+  @keyframes vignette-pulse {
+    0% { opacity: 0.5; }
+    100% { opacity: 1; }
+  }
+  .vignette__pkmark {
+    color: var(--ember-bright);
+    font-size: 0.7rem;
+    line-height: 1;
+  }
+  .vignette__pkname {
+    color: var(--ember-bright);
+    font-size: 0.74rem;
+    letter-spacing: 0.04em;
+    font-variation-settings: "wght" 540;
+  }
+
+  /* 3-node packet path (swap-account, swap-auth) */
+  .vignette__packet--swap-account,
+  .vignette__packet--swap-auth {
+    animation: vignette-packet-3way var(--cycle) ease-in-out infinite;
+    animation-delay: var(--phase-shift);
+  }
+  @keyframes vignette-packet-3way {
+    0%, 4%   { left: 12%; top: 12%; opacity: 0.4; transform: scale(0.9); }
+    10%      { opacity: 1; transform: scale(1); }
+    22%      { left: 46%; top: 28%; opacity: 1; }
+    32%      { left: 46%; top: 6%;  opacity: 1; transform: scale(1.04); }
+    /* fail flash — packet jolts up slightly */
+    44%      { left: 46%; top: 32%; opacity: 0.85; }
+    60%      { left: 80%; top: 32%; opacity: 1; }
+    72%      { left: 80%; top: 28%; opacity: 1; transform: scale(1); }
+    90%      { left: 80%; top: 28%; opacity: 1; }
+    96%      { left: 80%; top: 28%; opacity: 0.6; }
+    100%     { left: 12%; top: 12%; opacity: 0; transform: scale(0.85); }
+  }
+
+  /* 2-node packet path (no-fallback / 503) */
+  .vignette__packet--no-fallback {
+    animation: vignette-packet-2way var(--cycle) ease-in-out infinite;
+    animation-delay: var(--phase-shift);
+  }
+  @keyframes vignette-packet-2way {
+    0%, 4%   { left: 18%; top: 12%; opacity: 0.4; transform: scale(0.9); }
+    10%      { opacity: 1; transform: scale(1); }
+    30%      { left: 62%; top: 28%; opacity: 1; }
+    38%      { left: 62%; top: 6%; opacity: 1; transform: scale(1.04); }
+    /* bounces back, dims out */
+    48%      { left: 56%; top: 8%; opacity: 0.85; }
+    62%      { left: 40%; top: 12%; opacity: 0.55; }
+    78%      { left: 24%; top: 14%; opacity: 0.25; }
+    100%     { left: 18%; top: 12%; opacity: 0; }
+  }
+
+  /* foot */
+  .vignette__foot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--s-3);
+    padding-top: var(--s-3);
+    border-top: 1px dashed var(--ink-line-soft);
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+  }
+  .vignette__evidence strong { color: var(--ember-bright); font-variation-settings: "wght" 540; }
+  .vignette__swap { color: var(--text-mute); }
+  .vignette--no-fallback .vignette__evidence strong { color: var(--status-burn); }
+
+  /* entrance */
+  .vignette[data-animate-onview] {
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 600ms var(--ease-out), transform 600ms var(--ease-out);
+  }
+  .vignette[data-animate-onview].is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* off-screen pause via content-visibility (browser-driven) */
+  .vignette {
+    content-visibility: auto;
+    contain-intrinsic-size: 320px 320px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .vignette__packet,
+    .vignette__pkglow,
+    .vignette__failtag,
+    .vignette__okstamp,
+    .vignette__gateleaf,
+    .vignette__gatemark,
+    .vignette__gatesub {
+      animation: none !important;
+    }
+    .vignette__packet--swap-account,
+    .vignette__packet--swap-auth { left: 46%; top: 6%; opacity: 1; }
+    .vignette__packet--no-fallback { left: 62%; top: 6%; opacity: 1; }
+    .vignette__failtag { opacity: 1 !important; }
+    .vignette__okstamp { opacity: 1 !important; }
+    .vignette__gateleaf { transform: none !important; opacity: 0.6 !important; }
+    .vignette__gatemark, .vignette__gatesub { opacity: 1 !important; transform: none !important; }
+    .vignette[data-animate-onview] { opacity: 1 !important; transform: none !important; }
+  }
+</style>

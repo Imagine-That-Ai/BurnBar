@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Design Arena attribution mark">
+  <title>Design Arena</title>
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="#0c0a0f" stroke="#2a2030" stroke-width="1.25"/>
+  <!-- arena: concentric ovals -->
+  <ellipse cx="32" cy="34" rx="22" ry="12" fill="none" stroke="#3a342c" stroke-width="1.25"/>
+  <ellipse cx="32" cy="34" rx="16" ry="8.5" fill="none" stroke="#5c5448" stroke-width="1"/>
+  <ellipse cx="32" cy="34" rx="10" ry="5" fill="none" stroke="#ffb547" stroke-width="1.25"/>
+  <!-- two contender markers -->
+  <circle cx="22" cy="34" r="3" fill="#ff6a1a"/>
+  <circle cx="42" cy="34" r="3" fill="#d6d3df"/>
+  <!-- crown above arena (the winner) -->
+  <path d="M 26 18 L 29 22 L 32 16 L 35 22 L 38 18 L 38 24 L 26 24 Z" fill="#ffb547" opacity="0.85"/>
+</svg>
