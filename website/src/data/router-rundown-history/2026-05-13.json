@@ -1,6 +1,6 @@
 {
   "date": "2026-05-13",
-  "generatedAt": "2026-05-13T12:00:00.000Z",
+  "generatedAt": "2026-05-13T13:00:14.391Z",
   "schemaVersion": 1,
   "sourceStatuses": [
     {
@@ -10,8 +10,7 @@
       "logo": "/brand/sources/artificial-analysis.svg",
       "url": "https://artificialanalysis.ai/",
       "status": "unavailable",
-      "fetchedAt": null,
-      "message": "ARTIFICIAL_ANALYSIS_API_KEY is not configured for this static build — production builds with the live key produce fresh snapshots."
+      "message": "ARTIFICIAL_ANALYSIS_API_KEY is not configured."
     },
     {
       "source": "terminal_bench",
@@ -19,10 +18,10 @@
       "shortLabel": "TB",
       "logo": "/brand/sources/terminal-bench.svg",
       "url": "https://www.tbench.ai/",
-      "status": "stale",
-      "fetchedAt": "2026-05-12T22:00:00.000Z",
-      "ageHours": 14,
-      "message": "Terminal-Bench leaderboard read via Hugging Face succeeded; mirroring last public ordering."
+      "status": "fresh",
+      "fetchedAt": "2026-05-13T13:00:14.391Z",
+      "ageHours": 0,
+      "message": "Normalized 35 Terminal-Bench leaderboard rows."
     },
     {
       "source": "design_arena",
@@ -30,255 +29,11 @@
       "shortLabel": "DA",
       "logo": "/brand/sources/design-arena.svg",
       "url": "https://www.designarena.ai/",
-      "status": "stale",
-      "fetchedAt": "2026-05-11T18:00:00.000Z",
-      "ageHours": 42,
-      "message": "Design Arena public ordering mirrored into cached fixture; live API key not configured for this build."
-    },
-    {
-      "source": "huggingface",
-      "attribution": "Hugging Face",
-      "shortLabel": "HF",
-      "logo": "/brand/sources/huggingface.svg",
-      "url": "https://huggingface.co/",
-      "status": "fresh",
-      "fetchedAt": "2026-05-13T08:12:00.000Z",
-      "ageHours": 3.8,
-      "message": "Public dataset endpoint responded normally."
-    },
-    {
-      "source": "manual_fixture",
-      "attribution": "Manual OpenBurnBar fixture",
-      "shortLabel": "OBB",
-      "logo": "/brand/sources/manual-fixture.svg",
-      "url": "/router#sources",
-      "status": "fresh",
-      "fetchedAt": "2026-05-13T06:00:00.000Z",
-      "ageHours": 6,
-      "message": "OpenBurnBar's cached daily fixture is the active backup while live sources are not configured."
+      "status": "unavailable",
+      "message": "DESIGN_ARENA_API_KEY and DESIGN_ARENA_FIXTURE_JSON are not configured."
     }
   ],
   "taskRankings": [
-    {
-      "taskID": "coding",
-      "taskLabel": "Coding",
-      "taskBlurb": "Refactors, multi-file edits, repo-grounded code generation.",
-      "recommendations": [
-        {
-          "rank": 1,
-          "modelID": "openai/gpt-5.5-codex",
-          "modelDisplay": "GPT-5.5 Codex",
-          "providerID": "openai",
-          "providerDisplay": "OpenAI",
-          "providerLogo": "/brand/providers/openai.png",
-          "providerFamily": "openai_compat",
-          "tier": "flagship",
-          "score": 0.7721999999999998,
-          "rawScore": 0.7721999999999998,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 1,
-          "signals": {
-            "benchmarkScore": 0.89,
-            "benchmarkFreshness": 0.55,
-            "sourceConfidence": 0.55,
-            "reliability": 0.9,
-            "latency": 0.56,
-            "cost": 0.24,
-            "contextWindowTokens": 400000,
-            "availability": "common",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 89/100 across 1 source.",
-            "Freshest evidence rated 55/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Latency is acceptable for non-interactive work.",
-            "Context window: 400k tokens.",
-            "Wire-format family: openai_compat."
-          ],
-          "citations": [
-            {
-              "source": "artificial_analysis",
-              "attribution": "Artificial Analysis",
-              "shortLabel": "AA",
-              "logo": "/brand/sources/artificial-analysis.svg",
-              "sourceURL": "https://artificialanalysis.ai/",
-              "rank": 1,
-              "score": 0.89,
-              "ageHours": 120,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        },
-        {
-          "rank": 2,
-          "modelID": "anthropic/claude-opus-4-7",
-          "modelDisplay": "Claude Opus 4.7",
-          "providerID": "anthropic",
-          "providerDisplay": "Anthropic",
-          "providerLogo": "/brand/providers/anthropic.png",
-          "providerFamily": "anthropic",
-          "tier": "flagship",
-          "score": 0.7572999999999999,
-          "rawScore": 0.7572999999999999,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 1,
-          "signals": {
-            "benchmarkScore": 0.88,
-            "benchmarkFreshness": 0.55,
-            "sourceConfidence": 0.55,
-            "reliability": 0.88,
-            "latency": 0.46,
-            "cost": 0.18,
-            "contextWindowTokens": 1000000,
-            "availability": "common",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 88/100 across 1 source.",
-            "Freshest evidence rated 55/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Latency is acceptable for non-interactive work.",
-            "Context window: 1000k tokens.",
-            "Wire-format family: anthropic."
-          ],
-          "citations": [
-            {
-              "source": "artificial_analysis",
-              "attribution": "Artificial Analysis",
-              "shortLabel": "AA",
-              "logo": "/brand/sources/artificial-analysis.svg",
-              "sourceURL": "https://artificialanalysis.ai/",
-              "rank": 1,
-              "score": 0.88,
-              "ageHours": 120,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        },
-        {
-          "rank": 3,
-          "modelID": "zai/glm-5",
-          "modelDisplay": "GLM 5",
-          "providerID": "zai",
-          "providerDisplay": "Z.ai",
-          "providerLogo": "/brand/providers/zai.png",
-          "providerFamily": "openai_compat",
-          "tier": "flagship",
-          "score": 0.7546999999999998,
-          "rawScore": 0.7546999999999998,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 1,
-          "signals": {
-            "benchmarkScore": 0.82,
-            "benchmarkFreshness": 0.55,
-            "sourceConfidence": 0.55,
-            "reliability": 0.84,
-            "latency": 0.7,
-            "cost": 0.66,
-            "contextWindowTokens": 256000,
-            "availability": "common",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 82/100 across 1 source.",
-            "Freshest evidence rated 55/100 — older sources are weighted down, not dropped.",
-            "Mid-tier per-token cost.",
-            "Latency profile is fast (high TPS, low TTFT).",
-            "Context window: 256k tokens.",
-            "Wire-format family: openai_compat."
-          ],
-          "citations": [
-            {
-              "source": "artificial_analysis",
-              "attribution": "Artificial Analysis",
-              "shortLabel": "AA",
-              "logo": "/brand/sources/artificial-analysis.svg",
-              "sourceURL": "https://artificialanalysis.ai/",
-              "rank": 4,
-              "score": 0.82,
-              "ageHours": 120,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        }
-      ],
-      "rejectedAlternatives": [
-        {
-          "modelID": "openai/gpt-5.5",
-          "modelDisplay": "GPT-5.5",
-          "providerID": "openai",
-          "providerDisplay": "OpenAI",
-          "providerLogo": "/brand/providers/openai.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 75/100 vs. leader 77/100."
-        },
-        {
-          "modelID": "minimax/minimax-2.7",
-          "modelDisplay": "MiniMax 2.7",
-          "providerID": "minimax",
-          "providerDisplay": "MiniMax",
-          "providerLogo": "/brand/providers/minimax.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 73/100 vs. leader 77/100."
-        },
-        {
-          "modelID": "moonshot/kimi-2.6",
-          "modelDisplay": "Kimi 2.6",
-          "providerID": "kimi",
-          "providerDisplay": "Moonshot · Kimi",
-          "providerLogo": "/brand/providers/kimi.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 72/100 vs. leader 77/100."
-        },
-        {
-          "modelID": "anthropic/claude-sonnet-4-6",
-          "modelDisplay": "Claude Sonnet 4.6",
-          "providerID": "anthropic",
-          "providerDisplay": "Anthropic",
-          "providerLogo": "/brand/providers/anthropic.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 70/100 vs. leader 77/100."
-        },
-        {
-          "modelID": "openai/gpt-5.5-mini",
-          "modelDisplay": "GPT-5.5 mini",
-          "providerID": "openai",
-          "providerDisplay": "OpenAI",
-          "providerLogo": "/brand/providers/openai.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 63/100 vs. leader 77/100."
-        },
-        {
-          "modelID": "anthropic/claude-haiku-4-5",
-          "modelDisplay": "Claude Haiku 4.5",
-          "providerID": "anthropic",
-          "providerDisplay": "Anthropic",
-          "providerLogo": "/brand/providers/anthropic.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 60/100 vs. leader 77/100."
-        },
-        {
-          "modelID": "google/gemini-3-pro",
-          "modelDisplay": "Gemini 3 Pro",
-          "providerID": "google",
-          "providerDisplay": "Google",
-          "providerLogo": "/brand/providers/google.svg",
-          "reason": "Not routable through a connected BurnBar provider account.",
-          "evidence": "Composite 59/100 vs. leader 77/100."
-        }
-      ],
-      "topPickRationale": "Today's pick: GPT-5.5 Codex — led the benchmark composite at 89/100; evidence is the freshest available, even though older than ideal; context window of 400k clears typical large-context work; runner-up Claude Opus 4.7 is held in reserve for instant failover."
-    },
     {
       "taskID": "terminal",
       "taskLabel": "Terminal",
@@ -286,36 +41,34 @@
       "recommendations": [
         {
           "rank": 1,
-          "modelID": "openai/gpt-5.5-codex",
-          "modelDisplay": "GPT-5.5 Codex",
-          "providerID": "openai",
-          "providerDisplay": "OpenAI",
-          "providerLogo": "/brand/providers/openai.png",
+          "modelID": "deepseek-v4-pro",
+          "modelDisplay": "DeepSeek V4 Pro",
+          "providerID": "deepseek",
+          "providerDisplay": "DeepSeek",
+          "providerLogo": "/brand/providers/deepseek.svg",
           "providerFamily": "openai_compat",
           "tier": "flagship",
-          "score": 0.8361999999999998,
-          "rawScore": 0.8361999999999998,
+          "score": 0.6970195139911634,
+          "rawScore": 0.6970195139911634,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
-          "evidenceCoverage": 1,
+          "evidenceCoverage": 0.8571428571428571,
           "signals": {
-            "benchmarkScore": 0.86,
+            "benchmarkScore": 0.679,
             "benchmarkFreshness": 1,
-            "sourceConfidence": 0.9,
-            "reliability": 0.9,
-            "latency": 0.56,
-            "cost": 0.24,
-            "contextWindowTokens": 400000,
-            "availability": "common",
+            "sourceConfidence": 0.65,
+            "reliability": 0.65,
+            "cost": 0.72,
+            "contextWindowTokens": 128000,
+            "availability": "unknown",
             "routable": true
           },
-          "freshness": "manual",
+          "freshness": "fresh",
           "explanation": [
-            "Composite benchmark score 86/100 across 1 source.",
+            "Composite benchmark score 68/100 across 1 source.",
             "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Latency is acceptable for non-interactive work.",
-            "Context window: 400k tokens.",
+            "Cost-efficient at typical blended pricing.",
+            "Context window: 128k tokens.",
             "Wire-format family: openai_compat."
           ],
           "citations": [
@@ -324,95 +77,44 @@
               "attribution": "Terminal-Bench (via Hugging Face)",
               "shortLabel": "TB",
               "logo": "/brand/sources/terminal-bench.svg",
-              "sourceURL": "https://www.tbench.ai/",
-              "rank": 1,
-              "score": 0.86,
-              "ageHours": 14,
-              "freshness": "manual"
+              "sourceURL": "https://huggingface.co/api/datasets/harborframework/terminal-bench-2.0/leaderboard",
+              "rank": 3,
+              "score": 0.679,
+              "ageHours": 0,
+              "freshness": "fresh"
             }
           ],
           "limitations": []
         },
         {
           "rank": 2,
-          "modelID": "openai/gpt-5.5",
-          "modelDisplay": "GPT-5.5",
-          "providerID": "openai",
-          "providerDisplay": "OpenAI",
-          "providerLogo": "/brand/providers/openai.png",
-          "providerFamily": "openai_compat",
-          "tier": "flagship",
-          "score": 0.8135999999999998,
-          "rawScore": 0.8135999999999998,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 1,
-          "signals": {
-            "benchmarkScore": 0.82,
-            "benchmarkFreshness": 1,
-            "sourceConfidence": 0.9,
-            "reliability": 0.9,
-            "latency": 0.58,
-            "cost": 0.22,
-            "contextWindowTokens": 400000,
-            "availability": "common",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 82/100 across 1 source.",
-            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Latency is acceptable for non-interactive work.",
-            "Context window: 400k tokens.",
-            "Wire-format family: openai_compat."
-          ],
-          "citations": [
-            {
-              "source": "terminal_bench",
-              "attribution": "Terminal-Bench (via Hugging Face)",
-              "shortLabel": "TB",
-              "logo": "/brand/sources/terminal-bench.svg",
-              "sourceURL": "https://www.tbench.ai/",
-              "rank": 2,
-              "score": 0.82,
-              "ageHours": 14,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        },
-        {
-          "rank": 3,
-          "modelID": "zai/glm-5",
-          "modelDisplay": "GLM 5",
+          "modelID": "glm-5-1",
+          "modelDisplay": "GLM 5.1",
           "providerID": "zai",
           "providerDisplay": "Z.ai",
           "providerLogo": "/brand/providers/zai.png",
           "providerFamily": "openai_compat",
           "tier": "flagship",
-          "score": 0.8051999999999999,
-          "rawScore": 0.8051999999999999,
+          "score": 0.684419182621502,
+          "rawScore": 0.684419182621502,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
-          "evidenceCoverage": 1,
+          "evidenceCoverage": 0.8571428571428571,
           "signals": {
-            "benchmarkScore": 0.77,
+            "benchmarkScore": 0.6625,
             "benchmarkFreshness": 1,
-            "sourceConfidence": 0.85,
-            "reliability": 0.84,
-            "latency": 0.7,
+            "sourceConfidence": 0.65,
+            "reliability": 0.65,
             "cost": 0.66,
             "contextWindowTokens": 256000,
-            "availability": "common",
+            "availability": "unknown",
             "routable": true
           },
-          "freshness": "manual",
+          "freshness": "fresh",
           "explanation": [
-            "Composite benchmark score 77/100 across 1 source.",
+            "Composite benchmark score 66/100 across 2 sources.",
             "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
             "Mid-tier per-token cost.",
-            "Latency profile is fast (high TPS, low TTFT).",
             "Context window: 256k tokens.",
             "Wire-format family: openai_compat."
           ],
@@ -422,573 +124,69 @@
               "attribution": "Terminal-Bench (via Hugging Face)",
               "shortLabel": "TB",
               "logo": "/brand/sources/terminal-bench.svg",
-              "sourceURL": "https://www.tbench.ai/",
-              "rank": 3,
-              "score": 0.77,
-              "ageHours": 14,
-              "freshness": "manual"
+              "sourceURL": "https://huggingface.co/api/datasets/harborframework/terminal-bench-2.0/leaderboard",
+              "rank": 1,
+              "score": 0.69,
+              "ageHours": 0,
+              "freshness": "fresh"
+            },
+            {
+              "source": "terminal_bench",
+              "attribution": "Terminal-Bench (via Hugging Face)",
+              "shortLabel": "TB",
+              "logo": "/brand/sources/terminal-bench.svg",
+              "sourceURL": "https://huggingface.co/api/datasets/harborframework/terminal-bench-2.0/leaderboard",
+              "rank": 6,
+              "score": 0.635,
+              "ageHours": 0,
+              "freshness": "fresh"
             }
           ],
           "limitations": []
-        }
-      ],
-      "rejectedAlternatives": [
-        {
-          "modelID": "minimax/minimax-2.7",
-          "modelDisplay": "MiniMax 2.7",
-          "providerID": "minimax",
-          "providerDisplay": "MiniMax",
-          "providerLogo": "/brand/providers/minimax.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 79/100 vs. leader 84/100."
         },
         {
-          "modelID": "anthropic/claude-opus-4-7",
-          "modelDisplay": "Claude Opus 4.7",
-          "providerID": "anthropic",
-          "providerDisplay": "Anthropic",
-          "providerLogo": "/brand/providers/anthropic.png",
-          "reason": "Per-token cost is materially higher than the leader at comparable score.",
-          "evidence": "Composite 79/100 vs. leader 84/100."
-        },
-        {
-          "modelID": "moonshot/kimi-2.6",
-          "modelDisplay": "Kimi 2.6",
+          "rank": 3,
+          "modelID": "kimi-k2-6",
+          "modelDisplay": "Kimi K2.6",
           "providerID": "kimi",
           "providerDisplay": "Moonshot · Kimi",
           "providerLogo": "/brand/providers/kimi.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 77/100 vs. leader 84/100."
-        },
-        {
-          "modelID": "anthropic/claude-sonnet-4-6",
-          "modelDisplay": "Claude Sonnet 4.6",
-          "providerID": "anthropic",
-          "providerDisplay": "Anthropic",
-          "providerLogo": "/brand/providers/anthropic.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 74/100 vs. leader 84/100."
-        },
-        {
-          "modelID": "openai/gpt-5.5-mini",
-          "modelDisplay": "GPT-5.5 mini",
-          "providerID": "openai",
-          "providerDisplay": "OpenAI",
-          "providerLogo": "/brand/providers/openai.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 67/100 vs. leader 84/100."
-        },
-        {
-          "modelID": "anthropic/claude-haiku-4-5",
-          "modelDisplay": "Claude Haiku 4.5",
-          "providerID": "anthropic",
-          "providerDisplay": "Anthropic",
-          "providerLogo": "/brand/providers/anthropic.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 64/100 vs. leader 84/100."
-        }
-      ],
-      "topPickRationale": "Today's pick: GPT-5.5 Codex — led the benchmark composite at 86/100; evidence is fresh; context window of 400k clears typical large-context work; runner-up GPT-5.5 is held in reserve for instant failover."
-    },
-    {
-      "taskID": "design",
-      "taskLabel": "Design",
-      "taskBlurb": "Website / UI / SVG / slide generation evaluated head-to-head.",
-      "recommendations": [
-        {
-          "rank": 1,
-          "modelID": "anthropic/claude-opus-4-7",
-          "modelDisplay": "Claude Opus 4.7",
-          "providerID": "anthropic",
-          "providerDisplay": "Anthropic",
-          "providerLogo": "/brand/providers/anthropic.png",
-          "providerFamily": "anthropic",
-          "tier": "flagship",
-          "score": 0.7837999999999999,
-          "rawScore": 0.7837999999999999,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 1,
-          "signals": {
-            "benchmarkScore": 0.84,
-            "benchmarkFreshness": 0.85,
-            "sourceConfidence": 0.78,
-            "reliability": 0.84,
-            "latency": 0.48,
-            "cost": 0.18,
-            "contextWindowTokens": 1000000,
-            "availability": "common",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 84/100 across 1 source.",
-            "Freshest evidence rated 85/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Latency is acceptable for non-interactive work.",
-            "Context window: 1000k tokens.",
-            "Wire-format family: anthropic."
-          ],
-          "citations": [
-            {
-              "source": "design_arena",
-              "attribution": "Design Arena",
-              "shortLabel": "DA",
-              "logo": "/brand/sources/design-arena.svg",
-              "sourceURL": "https://www.designarena.ai/",
-              "rank": 1,
-              "score": 0.84,
-              "ageHours": 42,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        },
-        {
-          "rank": 2,
-          "modelID": "openai/gpt-5.5",
-          "modelDisplay": "GPT-5.5",
-          "providerID": "openai",
-          "providerDisplay": "OpenAI",
-          "providerLogo": "/brand/providers/openai.png",
           "providerFamily": "openai_compat",
           "tier": "flagship",
-          "score": 0.7727999999999998,
-          "rawScore": 0.7727999999999998,
+          "score": 0.6833008100147274,
+          "rawScore": 0.6833008100147274,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
-          "evidenceCoverage": 1,
+          "evidenceCoverage": 0.8571428571428571,
           "signals": {
-            "benchmarkScore": 0.8,
-            "benchmarkFreshness": 0.85,
-            "sourceConfidence": 0.78,
-            "reliability": 0.88,
-            "latency": 0.58,
-            "cost": 0.22,
-            "contextWindowTokens": 400000,
-            "availability": "common",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 80/100 across 1 source.",
-            "Freshest evidence rated 85/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Latency is acceptable for non-interactive work.",
-            "Context window: 400k tokens.",
-            "Wire-format family: openai_compat."
-          ],
-          "citations": [
-            {
-              "source": "design_arena",
-              "attribution": "Design Arena",
-              "shortLabel": "DA",
-              "logo": "/brand/sources/design-arena.svg",
-              "sourceURL": "https://www.designarena.ai/",
-              "rank": 3,
-              "score": 0.8,
-              "ageHours": 42,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        },
-        {
-          "rank": 3,
-          "modelID": "zai/glm-5",
-          "modelDisplay": "GLM 5",
-          "providerID": "zai",
-          "providerDisplay": "Z.ai",
-          "providerLogo": "/brand/providers/zai.png",
-          "providerFamily": "openai_compat",
-          "tier": "flagship",
-          "score": 0.7696999999999999,
-          "rawScore": 0.7696999999999999,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 1,
-          "signals": {
-            "benchmarkScore": 0.75,
-            "benchmarkFreshness": 0.85,
-            "sourceConfidence": 0.78,
-            "reliability": 0.84,
-            "latency": 0.7,
-            "cost": 0.66,
-            "contextWindowTokens": 256000,
-            "availability": "common",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 75/100 across 1 source.",
-            "Freshest evidence rated 85/100 — older sources are weighted down, not dropped.",
-            "Mid-tier per-token cost.",
-            "Latency profile is fast (high TPS, low TTFT).",
-            "Context window: 256k tokens.",
-            "Wire-format family: openai_compat."
-          ],
-          "citations": [
-            {
-              "source": "design_arena",
-              "attribution": "Design Arena",
-              "shortLabel": "DA",
-              "logo": "/brand/sources/design-arena.svg",
-              "sourceURL": "https://www.designarena.ai/",
-              "rank": 5,
-              "score": 0.75,
-              "ageHours": 42,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        }
-      ],
-      "rejectedAlternatives": [
-        {
-          "modelID": "moonshot/kimi-2.6",
-          "modelDisplay": "Kimi 2.6",
-          "providerID": "kimi",
-          "providerDisplay": "Moonshot · Kimi",
-          "providerLogo": "/brand/providers/kimi.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 75/100 vs. leader 78/100."
-        },
-        {
-          "modelID": "anthropic/claude-sonnet-4-6",
-          "modelDisplay": "Claude Sonnet 4.6",
-          "providerID": "anthropic",
-          "providerDisplay": "Anthropic",
-          "providerLogo": "/brand/providers/anthropic.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 74/100 vs. leader 78/100."
-        },
-        {
-          "modelID": "google/gemini-3-pro",
-          "modelDisplay": "Gemini 3 Pro",
-          "providerID": "google",
-          "providerDisplay": "Google",
-          "providerLogo": "/brand/providers/google.svg",
-          "reason": "Not routable through a connected BurnBar provider account.",
-          "evidence": "Composite 63/100 vs. leader 78/100."
-        }
-      ],
-      "topPickRationale": "Today's pick: Claude Opus 4.7 — led the benchmark composite at 84/100; evidence is fresh; context window of 1000k clears typical large-context work; runner-up GPT-5.5 is held in reserve for instant failover."
-    },
-    {
-      "taskID": "analysis",
-      "taskLabel": "Analysis",
-      "taskBlurb": "Long-context reasoning, summarization, structured extraction.",
-      "recommendations": [
-        {
-          "rank": 1,
-          "modelID": "anthropic/claude-opus-4-7",
-          "modelDisplay": "Claude Opus 4.7",
-          "providerID": "anthropic",
-          "providerDisplay": "Anthropic",
-          "providerLogo": "/brand/providers/anthropic.png",
-          "providerFamily": "anthropic",
-          "tier": "flagship",
-          "score": 0.7660999999999998,
-          "rawScore": 0.7660999999999998,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 1,
-          "signals": {
-            "benchmarkScore": 0.9,
-            "benchmarkFreshness": 0.55,
-            "sourceConfidence": 0.55,
-            "reliability": 0.86,
-            "latency": 0.48,
-            "cost": 0.18,
-            "contextWindowTokens": 1000000,
-            "availability": "common",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 90/100 across 1 source.",
-            "Freshest evidence rated 55/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Latency is acceptable for non-interactive work.",
-            "Context window: 1000k tokens.",
-            "Wire-format family: anthropic."
-          ],
-          "citations": [
-            {
-              "source": "artificial_analysis",
-              "attribution": "Artificial Analysis",
-              "shortLabel": "AA",
-              "logo": "/brand/sources/artificial-analysis.svg",
-              "sourceURL": "https://artificialanalysis.ai/",
-              "rank": 1,
-              "score": 0.9,
-              "ageHours": 120,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        },
-        {
-          "rank": 2,
-          "modelID": "openai/gpt-5.5",
-          "modelDisplay": "GPT-5.5",
-          "providerID": "openai",
-          "providerDisplay": "OpenAI",
-          "providerLogo": "/brand/providers/openai.png",
-          "providerFamily": "openai_compat",
-          "tier": "flagship",
-          "score": 0.7632999999999998,
-          "rawScore": 0.7632999999999998,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 1,
-          "signals": {
-            "benchmarkScore": 0.88,
-            "benchmarkFreshness": 0.55,
-            "sourceConfidence": 0.55,
-            "reliability": 0.88,
-            "latency": 0.58,
-            "cost": 0.22,
-            "contextWindowTokens": 400000,
-            "availability": "common",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 88/100 across 1 source.",
-            "Freshest evidence rated 55/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Latency is acceptable for non-interactive work.",
-            "Context window: 400k tokens.",
-            "Wire-format family: openai_compat."
-          ],
-          "citations": [
-            {
-              "source": "artificial_analysis",
-              "attribution": "Artificial Analysis",
-              "shortLabel": "AA",
-              "logo": "/brand/sources/artificial-analysis.svg",
-              "sourceURL": "https://artificialanalysis.ai/",
-              "rank": 2,
-              "score": 0.88,
-              "ageHours": 120,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        },
-        {
-          "rank": 3,
-          "modelID": "anthropic/claude-sonnet-4-6",
-          "modelDisplay": "Claude Sonnet 4.6",
-          "providerID": "anthropic",
-          "providerDisplay": "Anthropic",
-          "providerLogo": "/brand/providers/anthropic.png",
-          "providerFamily": "anthropic",
-          "tier": "mid",
-          "score": 0.7157759999999999,
-          "rawScore": 0.7455999999999999,
-          "tierMultiplier": 0.96,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 1,
-          "signals": {
-            "benchmarkScore": 0.83,
-            "benchmarkFreshness": 0.55,
-            "sourceConfidence": 0.55,
-            "reliability": 0.86,
-            "latency": 0.6,
-            "cost": 0.42,
-            "contextWindowTokens": 1000000,
-            "availability": "common",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 83/100 across 1 source.",
-            "Freshest evidence rated 55/100 — older sources are weighted down, not dropped.",
-            "Mid-tier per-token cost.",
-            "Latency is acceptable for non-interactive work.",
-            "Context window: 1000k tokens.",
-            "Wire-format family: anthropic.",
-            "Tier · mid. Counted behind flagship siblings at equivalent benchmark; pin the tier explicitly to invert this."
-          ],
-          "citations": [
-            {
-              "source": "artificial_analysis",
-              "attribution": "Artificial Analysis",
-              "shortLabel": "AA",
-              "logo": "/brand/sources/artificial-analysis.svg",
-              "sourceURL": "https://artificialanalysis.ai/",
-              "rank": 4,
-              "score": 0.83,
-              "ageHours": 120,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        }
-      ],
-      "rejectedAlternatives": [
-        {
-          "modelID": "google/gemini-3-pro",
-          "modelDisplay": "Gemini 3 Pro",
-          "providerID": "google",
-          "providerDisplay": "Google",
-          "providerLogo": "/brand/providers/google.svg",
-          "reason": "Not routable through a connected BurnBar provider account.",
-          "evidence": "Composite 61/100 vs. leader 77/100."
-        }
-      ],
-      "topPickRationale": "Today's pick: Claude Opus 4.7 — led the benchmark composite at 90/100; evidence is the freshest available, even though older than ideal; context window of 1000k clears typical large-context work; runner-up GPT-5.5 is held in reserve for instant failover."
-    },
-    {
-      "taskID": "general",
-      "taskLabel": "General",
-      "taskBlurb": "Mixed-intent chat / one-shot questions / catch-all routing.",
-      "recommendations": [
-        {
-          "rank": 1,
-          "modelID": "anthropic/claude-opus-4-7",
-          "modelDisplay": "Claude Opus 4.7",
-          "providerID": "anthropic",
-          "providerDisplay": "Anthropic",
-          "providerLogo": "/brand/providers/anthropic.png",
-          "providerFamily": "anthropic",
-          "tier": "flagship",
-          "score": 0.7578999999999998,
-          "rawScore": 0.7578999999999998,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 1,
-          "signals": {
-            "benchmarkScore": 0.88,
-            "benchmarkFreshness": 0.55,
-            "sourceConfidence": 0.55,
-            "reliability": 0.88,
-            "latency": 0.48,
-            "cost": 0.18,
-            "contextWindowTokens": 1000000,
-            "availability": "common",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 88/100 across 1 source.",
-            "Freshest evidence rated 55/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Latency is acceptable for non-interactive work.",
-            "Context window: 1000k tokens.",
-            "Wire-format family: anthropic."
-          ],
-          "citations": [
-            {
-              "source": "artificial_analysis",
-              "attribution": "Artificial Analysis",
-              "shortLabel": "AA",
-              "logo": "/brand/sources/artificial-analysis.svg",
-              "sourceURL": "https://artificialanalysis.ai/",
-              "rank": 1,
-              "score": 0.88,
-              "ageHours": 120,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        },
-        {
-          "rank": 2,
-          "modelID": "openai/gpt-5.5",
-          "modelDisplay": "GPT-5.5",
-          "providerID": "openai",
-          "providerDisplay": "OpenAI",
-          "providerLogo": "/brand/providers/openai.png",
-          "providerFamily": "openai_compat",
-          "tier": "flagship",
-          "score": 0.7577999999999998,
-          "rawScore": 0.7577999999999998,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 1,
-          "signals": {
-            "benchmarkScore": 0.87,
-            "benchmarkFreshness": 0.55,
-            "sourceConfidence": 0.55,
-            "reliability": 0.88,
-            "latency": 0.58,
-            "cost": 0.22,
-            "contextWindowTokens": 400000,
-            "availability": "common",
-            "routable": true
-          },
-          "freshness": "manual",
-          "explanation": [
-            "Composite benchmark score 87/100 across 1 source.",
-            "Freshest evidence rated 55/100 — older sources are weighted down, not dropped.",
-            "Premium-tier per-token cost.",
-            "Latency is acceptable for non-interactive work.",
-            "Context window: 400k tokens.",
-            "Wire-format family: openai_compat."
-          ],
-          "citations": [
-            {
-              "source": "artificial_analysis",
-              "attribution": "Artificial Analysis",
-              "shortLabel": "AA",
-              "logo": "/brand/sources/artificial-analysis.svg",
-              "sourceURL": "https://artificialanalysis.ai/",
-              "rank": 1,
-              "score": 0.87,
-              "ageHours": 120,
-              "freshness": "manual"
-            }
-          ],
-          "limitations": []
-        },
-        {
-          "rank": 3,
-          "modelID": "minimax/minimax-2.7",
-          "modelDisplay": "MiniMax 2.7",
-          "providerID": "minimax",
-          "providerDisplay": "MiniMax",
-          "providerLogo": "/brand/providers/minimax.png",
-          "providerFamily": "openai_compat",
-          "tier": "flagship",
-          "score": 0.7434,
-          "rawScore": 0.7434,
-          "tierMultiplier": 1,
-          "routableMultiplier": 1,
-          "evidenceCoverage": 1,
-          "signals": {
-            "benchmarkScore": 0.81,
-            "benchmarkFreshness": 0.55,
-            "sourceConfidence": 0.55,
-            "reliability": 0.82,
-            "latency": 0.68,
-            "cost": 0.62,
+            "benchmarkScore": 0.667,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.65,
+            "reliability": 0.65,
+            "cost": 0.6,
             "contextWindowTokens": 320000,
-            "availability": "common",
+            "availability": "unknown",
             "routable": true
           },
-          "freshness": "manual",
+          "freshness": "fresh",
           "explanation": [
-            "Composite benchmark score 81/100 across 1 source.",
-            "Freshest evidence rated 55/100 — older sources are weighted down, not dropped.",
+            "Composite benchmark score 67/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
             "Mid-tier per-token cost.",
-            "Latency profile is fast (high TPS, low TTFT).",
             "Context window: 320k tokens.",
             "Wire-format family: openai_compat."
           ],
           "citations": [
             {
-              "source": "artificial_analysis",
-              "attribution": "Artificial Analysis",
-              "shortLabel": "AA",
-              "logo": "/brand/sources/artificial-analysis.svg",
-              "sourceURL": "https://artificialanalysis.ai/",
-              "rank": 5,
-              "score": 0.81,
-              "ageHours": 120,
-              "freshness": "manual"
+              "source": "terminal_bench",
+              "attribution": "Terminal-Bench (via Hugging Face)",
+              "shortLabel": "TB",
+              "logo": "/brand/sources/terminal-bench.svg",
+              "sourceURL": "https://huggingface.co/api/datasets/harborframework/terminal-bench-2.0/leaderboard",
+              "rank": 4,
+              "score": 0.667,
+              "ageHours": 0,
+              "freshness": "fresh"
             }
           ],
           "limitations": []
@@ -996,25 +194,52 @@
       ],
       "rejectedAlternatives": [
         {
-          "modelID": "openai/gpt-5.5-mini",
-          "modelDisplay": "GPT-5.5 mini",
-          "providerID": "openai",
-          "providerDisplay": "OpenAI",
-          "providerLogo": "/brand/providers/openai.png",
+          "modelID": "minimax-m2-7",
+          "modelDisplay": "MiniMax M2.7",
+          "providerID": "minimax",
+          "providerDisplay": "MiniMax",
+          "providerLogo": "/brand/providers/minimax.png",
           "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 64/100 vs. leader 76/100."
+          "evidence": "Composite 63/100 vs. leader 70/100."
         },
         {
-          "modelID": "google/gemini-3-pro",
-          "modelDisplay": "Gemini 3 Pro",
-          "providerID": "google",
-          "providerDisplay": "Google",
-          "providerLogo": "/brand/providers/google.svg",
-          "reason": "Not routable through a connected BurnBar provider account.",
-          "evidence": "Composite 61/100 vs. leader 76/100."
+          "modelID": "deepseek-v4-flash",
+          "modelDisplay": "DeepSeek V4 Flash",
+          "providerID": "deepseek",
+          "providerDisplay": "DeepSeek",
+          "providerLogo": "/brand/providers/deepseek.svg",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 62/100 vs. leader 70/100."
+        },
+        {
+          "modelID": "glm-5",
+          "modelDisplay": "GLM 5",
+          "providerID": "zai",
+          "providerDisplay": "Z.ai",
+          "providerLogo": "/brand/providers/zai.png",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 61/100 vs. leader 70/100."
+        },
+        {
+          "modelID": "kimi-k2-5",
+          "modelDisplay": "Kimi K2.5",
+          "providerID": "kimi",
+          "providerDisplay": "Moonshot · Kimi",
+          "providerLogo": "/brand/providers/kimi.png",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 56/100 vs. leader 70/100."
+        },
+        {
+          "modelID": "glm-4-7",
+          "modelDisplay": "GLM 4.7",
+          "providerID": "zai",
+          "providerDisplay": "Z.ai",
+          "providerLogo": "/brand/providers/zai.png",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 51/100 vs. leader 70/100."
         }
       ],
-      "topPickRationale": "Today's pick: Claude Opus 4.7 — led the benchmark composite at 88/100; evidence is the freshest available, even though older than ideal; context window of 1000k clears typical large-context work; runner-up GPT-5.5 is held in reserve for instant failover."
+      "topPickRationale": "Today's pick: DeepSeek V4 Pro — led the benchmark composite at 68/100; evidence is fresh; cost is competitive; runner-up GLM 5.1 is held in reserve for instant failover."
     }
   ],
   "globalLimitations": [
@@ -1024,8 +249,8 @@
     "One or more sources were unavailable for this day; the rundown reflects only the sources that responded."
   ],
   "notes": [
-    "Static demo fixture for the website build (2026-05-13). Snapshots use real source attribution but freshness is reduced to 'manual' because no live API key is configured at static-build time.",
-    "Production daily ordering is generated by `refreshModelLandscapeBenchmarks` (functions/src/scheduled.ts) reading the Firestore `model_benchmark_snapshots` collection.",
-    "Ordering reflects each model's tier: flagship beats mid beats mini at equivalent benchmark — pin a tier explicitly to invert this."
+    "Generated by `node website/scripts/run-research.mjs` against live public benchmark adapters.",
+    "Snapshots from research: 35. Catalog matches: 8.",
+    "Sources without an API key configured render as 'unavailable' — never guessed at."
   ]
 }

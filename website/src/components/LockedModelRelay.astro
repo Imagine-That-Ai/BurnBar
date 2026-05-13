@@ -25,7 +25,7 @@
 interface Props {
   /** Visual scale: 'big' for the /router hero, 'mini' for in-card use. */
   variant?: "big" | "mini";
-  /** Model token to display. Defaults to gpt-5 — the hero story. */
+  /** Model token to display. Defaults to gpt-5.5 — the hero story. */
   modelID?: string;
   /** Sub-label under the model name. Defaults to a routing-status hint. */
   modelTag?: string;
@@ -35,7 +35,7 @@ interface Props {
 
 const {
   variant = "big",
-  modelID = "gpt-5",
+  modelID = "gpt-5.5",
   modelTag = "model identity · invariant",
   animateOnView = true,
 } = Astro.props;

@@ -1,6 +1,6 @@
 [
   {
-    "modelID": "anthropic/claude-opus-4-7",
+    "modelID": "claude-opus-4-7",
     "modelDisplay": "Claude Opus 4.7",
     "providerID": "anthropic",
     "providerDisplay": "Anthropic",
@@ -8,10 +8,15 @@
     "providerLogo": "/brand/providers/anthropic.png",
     "tier": "flagship",
     "contextWindowTokens": 1000000,
-    "costSignal": 0.18
+    "costSignal": 0.18,
+    "aliases": [
+      "anthropic/claude-opus-4-7",
+      "anthropic/claude-opus-4.7",
+      "claude-opus-4-7-non-reasoning"
+    ]
   },
   {
-    "modelID": "anthropic/claude-sonnet-4-6",
+    "modelID": "claude-sonnet-4-6",
     "modelDisplay": "Claude Sonnet 4.6",
     "providerID": "anthropic",
     "providerDisplay": "Anthropic",
@@ -19,21 +24,16 @@
     "providerLogo": "/brand/providers/anthropic.png",
     "tier": "mid",
     "contextWindowTokens": 1000000,
-    "costSignal": 0.42
+    "costSignal": 0.42,
+    "aliases": [
+      "anthropic/claude-sonnet-4-6",
+      "anthropic/claude-sonnet-4.6",
+      "claude-sonnet-4-6-adaptive",
+      "claude-sonnet-4-6-non-reasoning-low-effort"
+    ]
   },
   {
-    "modelID": "anthropic/claude-haiku-4-5",
-    "modelDisplay": "Claude Haiku 4.5",
-    "providerID": "anthropic",
-    "providerDisplay": "Anthropic",
-    "providerFamily": "anthropic",
-    "providerLogo": "/brand/providers/anthropic.png",
-    "tier": "mini",
-    "contextWindowTokens": 200000,
-    "costSignal": 0.78
-  },
-  {
-    "modelID": "openai/gpt-5.5",
+    "modelID": "gpt-5-5",
     "modelDisplay": "GPT-5.5",
     "providerID": "openai",
     "providerDisplay": "OpenAI",
@@ -41,43 +41,104 @@
     "providerLogo": "/brand/providers/openai.png",
     "tier": "flagship",
     "contextWindowTokens": 400000,
-    "costSignal": 0.22
+    "costSignal": 0.22,
+    "aliases": [
+      "openai/gpt-5.5",
+      "openai/gpt-5-5",
+      "gpt-5-5-medium",
+      "gpt-5-5-high",
+      "gpt-5-5-low",
+      "gpt-5-5-non-reasoning",
+      "gpt-5-5-pro"
+    ]
   },
   {
-    "modelID": "openai/gpt-5.5-codex",
-    "modelDisplay": "GPT-5.5 Codex",
+    "modelID": "gpt-5-3-codex",
+    "modelDisplay": "GPT-5.3 Codex",
     "providerID": "openai",
     "providerDisplay": "OpenAI",
     "providerFamily": "openai_compat",
     "providerLogo": "/brand/providers/openai.png",
     "tier": "flagship",
     "contextWindowTokens": 400000,
-    "costSignal": 0.24
+    "costSignal": 0.24,
+    "aliases": [
+      "openai/gpt-5-3-codex",
+      "openai/gpt-5.3-codex"
+    ]
   },
   {
-    "modelID": "openai/gpt-5.5-mini",
-    "modelDisplay": "GPT-5.5 mini",
+    "modelID": "gpt-5-4-mini",
+    "modelDisplay": "GPT-5.4 mini",
     "providerID": "openai",
     "providerDisplay": "OpenAI",
     "providerFamily": "openai_compat",
     "providerLogo": "/brand/providers/openai.png",
     "tier": "mini",
     "contextWindowTokens": 400000,
-    "costSignal": 0.74
+    "costSignal": 0.74,
+    "aliases": [
+      "openai/gpt-5-4-mini",
+      "openai/gpt-5.4-mini",
+      "gpt-5-4-mini-medium",
+      "gpt-5-4-mini-non-reasoning"
+    ]
   },
   {
-    "modelID": "google/gemini-3-pro",
-    "modelDisplay": "Gemini 3 Pro",
+    "modelID": "gemini-3-1-pro-preview",
+    "modelDisplay": "Gemini 3.1 Pro (preview)",
     "providerID": "google",
     "providerDisplay": "Google",
     "providerFamily": "openai_compat",
     "providerLogo": "/brand/providers/google.svg",
     "tier": "flagship",
     "contextWindowTokens": 2000000,
-    "costSignal": 0.30
+    "costSignal": 0.30,
+    "aliases": [
+      "google/gemini-3-1-pro-preview",
+      "google/gemini-3.1-pro-preview",
+      "google/gemini-3-pro",
+      "google/gemini-3.0-pro",
+      "gemini-3-pro-low",
+      "gemini-3-deep-think"
+    ]
   },
   {
-    "modelID": "zai/glm-5",
+    "modelID": "gemini-3-flash",
+    "modelDisplay": "Gemini 3 Flash",
+    "providerID": "google",
+    "providerDisplay": "Google",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/google.svg",
+    "tier": "mid",
+    "contextWindowTokens": 1000000,
+    "costSignal": 0.62,
+    "aliases": [
+      "google/gemini-3-flash",
+      "google/gemini-3.0-flash",
+      "gemini-3-flash-reasoning",
+      "gemini-3-1-flash-lite-preview"
+    ]
+  },
+  {
+    "modelID": "glm-5-1",
+    "modelDisplay": "GLM 5.1",
+    "providerID": "zai",
+    "providerDisplay": "Z.ai",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/zai.png",
+    "tier": "flagship",
+    "contextWindowTokens": 256000,
+    "costSignal": 0.66,
+    "aliases": [
+      "zai-org/GLM-5.1",
+      "z-ai/glm-5.1",
+      "zhipuai/glm-5.1",
+      "glm-5-1-non-reasoning"
+    ]
+  },
+  {
+    "modelID": "glm-5",
     "modelDisplay": "GLM 5",
     "providerID": "zai",
     "providerDisplay": "Z.ai",
@@ -85,28 +146,110 @@
     "providerLogo": "/brand/providers/zai.png",
     "tier": "flagship",
     "contextWindowTokens": 256000,
-    "costSignal": 0.66
+    "costSignal": 0.68,
+    "aliases": [
+      "zai-org/GLM-5",
+      "z-ai/glm-5",
+      "zhipuai/glm-5"
+    ]
   },
   {
-    "modelID": "minimax/minimax-2.7",
-    "modelDisplay": "MiniMax 2.7",
+    "modelID": "glm-4-7",
+    "modelDisplay": "GLM 4.7",
+    "providerID": "zai",
+    "providerDisplay": "Z.ai",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/zai.png",
+    "tier": "flagship",
+    "contextWindowTokens": 256000,
+    "costSignal": 0.70,
+    "aliases": [
+      "zai-org/GLM-4.7",
+      "z-ai/glm-4.7",
+      "zhipuai/glm-4.7"
+    ]
+  },
+  {
+    "modelID": "minimax-m2-7",
+    "modelDisplay": "MiniMax M2.7",
     "providerID": "minimax",
     "providerDisplay": "MiniMax",
     "providerFamily": "openai_compat",
     "providerLogo": "/brand/providers/minimax.png",
     "tier": "flagship",
     "contextWindowTokens": 320000,
-    "costSignal": 0.62
+    "costSignal": 0.62,
+    "aliases": [
+      "MiniMaxAI/MiniMax-M2.7",
+      "minimax/minimax-m2.7",
+      "minimax/minimax-2.7"
+    ]
   },
   {
-    "modelID": "moonshot/kimi-2.6",
-    "modelDisplay": "Kimi 2.6",
+    "modelID": "kimi-k2-6",
+    "modelDisplay": "Kimi K2.6",
     "providerID": "kimi",
     "providerDisplay": "Moonshot · Kimi",
     "providerFamily": "openai_compat",
     "providerLogo": "/brand/providers/kimi.png",
     "tier": "flagship",
     "contextWindowTokens": 320000,
-    "costSignal": 0.60
+    "costSignal": 0.60,
+    "aliases": [
+      "moonshotai/Kimi-K2.6",
+      "moonshotai/kimi-k2.6",
+      "moonshot/kimi-2.6",
+      "kimi-k2-6-non-reasoning"
+    ]
+  },
+  {
+    "modelID": "kimi-k2-5",
+    "modelDisplay": "Kimi K2.5",
+    "providerID": "kimi",
+    "providerDisplay": "Moonshot · Kimi",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/kimi.png",
+    "tier": "flagship",
+    "contextWindowTokens": 320000,
+    "costSignal": 0.62,
+    "aliases": [
+      "moonshotai/Kimi-K2.5",
+      "moonshotai/kimi-k2.5",
+      "kimi-k2-5-non-reasoning"
+    ]
+  },
+  {
+    "modelID": "deepseek-v4-pro",
+    "modelDisplay": "DeepSeek V4 Pro",
+    "providerID": "deepseek",
+    "providerDisplay": "DeepSeek",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/deepseek.svg",
+    "tier": "flagship",
+    "contextWindowTokens": 128000,
+    "costSignal": 0.72,
+    "aliases": [
+      "deepseek-ai/DeepSeek-V4-Pro",
+      "deepseek/deepseek-v4-pro",
+      "deepseek-v4-pro-high",
+      "deepseek-v4-pro-non-reasoning"
+    ]
+  },
+  {
+    "modelID": "deepseek-v4-flash",
+    "modelDisplay": "DeepSeek V4 Flash",
+    "providerID": "deepseek",
+    "providerDisplay": "DeepSeek",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/deepseek.svg",
+    "tier": "mid",
+    "contextWindowTokens": 128000,
+    "costSignal": 0.84,
+    "aliases": [
+      "deepseek-ai/DeepSeek-V4-Flash",
+      "deepseek/deepseek-v4-flash",
+      "deepseek-v4-flash-high",
+      "deepseek-v4-flash-non-reasoning"
+    ]
   }
 ]
