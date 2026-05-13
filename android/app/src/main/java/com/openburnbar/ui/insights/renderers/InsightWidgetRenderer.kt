@@ -557,6 +557,28 @@ private fun MermaidRenderer(w: InsightWidget, onCite: (InsightCitation) -> Unit)
 // ─── ASCII Card ────────────────────────────────────────────────────────────────
 
 @Composable
+private fun ScatterRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+    val data = (w.data as? InsightWidgetData.Scatter) ?: return PlaceholderWidget(w)
+    val colors = InsightsColors.accentsFor(theme)
+    // Simplified scatter: render points as a labeled list until Vico integration
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(text = "${data.xAxisLabel} vs ${data.yAxisLabel}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        data.points.take(10).forEachIndexed { idx, point ->
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(6.dp).clip(CircleShape).coloredCircle(point.colorHex?.let { parseColor(it) } ?: colors.getOrElse(idx % colors.size) { colors[0] }))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = point.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(text = formatValue(point.x, data.xFormat), style = MaterialTheme.typography.labelSmall)
+                Text(text = " × ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = formatValue(point.y, data.yFormat), style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+// ─── ASCII Card ────────────────────────────────────────────────────────────────
+
+@Composable
 private fun AsciiRenderer(w: InsightWidget, onCite: (InsightCitation) -> Unit) {
     val data = (w.data as? InsightWidgetData.ASCIICard) ?: return EmptyWidget()
     Column {
