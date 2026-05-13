@@ -16,9 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   freshness signals. Routing decisions now carry sanitized explanations,
   rejected alternatives, mode, selected route identity, and benchmark status.
   A daily Cloud Function normalizes public or fixture-backed model-landscape
-  data from Artificial Analysis, Terminal-Bench/Hugging Face, Design Arena
-  fixtures, and manual fixtures into read-only benchmark snapshot/status
-  collections without scraping private pages or persisting secrets.
+  data from Artificial Analysis, Terminal-Bench/Hugging Face, Design Arena's
+  documented API or cached fixtures, and manual fixtures into read-only
+  benchmark snapshot/status collections without scraping private pages or
+  persisting secrets. The Artificial Analysis key is bound through Firebase
+  Secret Manager on the scheduled job.
 - **Routing pools surface + Claude Code / Codex wiring helpers (macOS).**
   Settings now has a top-level **Routing pools** tab that mirrors the Fire
   Hydrant's two-pool model on the desktop. Each pool tab lists the routed

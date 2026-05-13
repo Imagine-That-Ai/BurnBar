@@ -21,6 +21,7 @@ const STATUS_SCHEMA_VERSION = 1;
 const ARTIFICIAL_ANALYSIS_URL = "https://artificialanalysis.ai/api/v2/data/llms/models";
 const TERMINAL_BENCH_HF_LEADERBOARD_URL =
   "https://huggingface.co/api/datasets/harborframework/terminal-bench-2.0/leaderboard";
+const DESIGN_ARENA_MODELS_URL = "https://www.designarena.ai/api/v1/models";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -57,6 +58,22 @@ function scoreToUnit(value: number | undefined): number | undefined {
   return clamp01(value > 1 ? value / 100 : value);
 }
 
+function eloToUnit(value: number | undefined): number | undefined {
+  if (value == null) return undefined;
+  if (value <= 100) return scoreToUnit(value);
+  return clamp01((value - 1_000) / 600);
+}
+
+function confidenceToUnit(value: number | undefined): number | undefined {
+  if (value == null) return undefined;
+  return clamp01(value > 1 ? value / 100 : value);
+}
+
+function latencyMillisToSignal(value: number | undefined): number | undefined {
+  if (value == null) return undefined;
+  return clamp01(1 - Math.min(value, 180_000) / 180_000);
+}
+
 function stableSnapshotID(
   source: ModelBenchmarkSource,
   modelID: string,
@@ -74,6 +91,35 @@ function stableSnapshotID(
 function providerIDFromName(value: string | undefined): ProviderID | undefined {
   if (!value) return undefined;
   return value.toLowerCase().trim().replace(/[_\s]+/g, "-");
+}
+
+function designArenaTaskCategory(arena: string, category: string): ModelBenchmarkTaskCategory {
+  const joined = `${arena} ${category}`.toLowerCase();
+  if (joined.includes("agent") || joined.includes("automation")) return "agent";
+  if (
+    joined.includes("code")
+    || joined.includes("website")
+    || joined.includes("component")
+    || joined.includes("gamedev")
+    || joined.includes("3d")
+    || joined.includes("data")
+    || joined.includes("builder")
+  ) {
+    return "coding";
+  }
+  if (
+    joined.includes("design")
+    || joined.includes("image")
+    || joined.includes("logo")
+    || joined.includes("svg")
+    || joined.includes("slide")
+    || joined.includes("graphic")
+  ) {
+    return "design";
+  }
+  if (joined.includes("analysis") || joined.includes("reason")) return "analysis";
+  if (joined.includes("conversation") || joined.includes("chat") || joined.includes("text")) return "general";
+  return "unknown";
 }
 
 function status(
@@ -214,13 +260,103 @@ export function normalizeDesignArenaFixture(
       modelID,
       providerID: providerIDFromName(asString(item.providerID) ?? asString(item.provider)),
       taskCategory: category,
-      score: scoreToUnit(asNumber(item.score) ?? asNumber(item.elo)),
+      score: scoreToUnit(asNumber(item.score)) ?? eloToUnit(asNumber(item.elo)),
       rank: asNumber(item.rank) == null ? undefined : Math.trunc(asNumber(item.rank)!),
       confidence: clamp01(asNumber(item.confidence)) ?? 0.7,
       freshness: "manual",
       schemaVersion: SNAPSHOT_SCHEMA_VERSION,
       updatedAt: fetchedAt,
     }];
+  });
+}
+
+export function normalizeDesignArenaModels(
+  payload: unknown,
+  fetchedAt: string
+): ModelBenchmarkSnapshotDoc[] {
+  const root = asRecord(payload);
+  const rows = Array.isArray(payload)
+    ? payload
+    : asArray(root?.data ?? root?.models);
+
+  return rows.flatMap((row): ModelBenchmarkSnapshotDoc[] => {
+    const item = asRecord(row);
+    if (!item) return [];
+
+    const modelID = asString(item.openRouterId)
+      ?? asString(item.open_router_id)
+      ?? asString(item.id)
+      ?? asString(item.displayName)
+      ?? asString(item.name);
+    if (!modelID) return [];
+
+    const providerID = providerIDFromName(asString(item.provider));
+    const rankings = asRecord(item.rankings);
+    if (!rankings) return [];
+
+    const snapshots: ModelBenchmarkSnapshotDoc[] = [];
+    for (const [arena, arenaValue] of Object.entries(rankings)) {
+      const arenaRecord = asRecord(arenaValue);
+      if (!arenaRecord) continue;
+
+      for (const [category, metricValue] of Object.entries(arenaRecord)) {
+        const metrics = asRecord(metricValue);
+        if (!metrics) continue;
+
+        const taskCategory = designArenaTaskCategory(arena, category);
+        const rank = asNumber(metrics.rank);
+        const score = scoreToUnit(
+          asNumber(metrics.normalizedScore)
+            ?? asNumber(metrics.score)
+        ) ?? eloToUnit(asNumber(metrics.elo))
+          ?? scoreToUnit(asNumber(metrics.winRate) ?? asNumber(metrics.win_rate));
+        const latencySignal = latencyMillisToSignal(
+          asNumber(metrics.avgGenerationTimeMs)
+            ?? asNumber(metrics.avg_generation_time_ms)
+            ?? asNumber(metrics.latencyMs)
+        );
+        const reliabilitySignal = scoreToUnit(
+          asNumber(metrics.winRate)
+            ?? asNumber(metrics.win_rate)
+        );
+        const confidence = confidenceToUnit(asNumber(metrics.confidence)) ?? 0.75;
+
+        if (
+          score == null
+          && rank == null
+          && latencySignal == null
+          && reliabilitySignal == null
+        ) {
+          continue;
+        }
+
+        snapshots.push({
+          id: stableSnapshotID(
+            "design_arena",
+            [modelID, arena, category].join("-"),
+            taskCategory,
+            fetchedAt
+          ),
+          source: "design_arena",
+          sourceURL: DESIGN_ARENA_MODELS_URL,
+          attribution: "Design Arena",
+          fetchedAt,
+          modelID,
+          providerID,
+          taskCategory,
+          score,
+          rank: rank == null ? undefined : Math.trunc(rank),
+          latencySignal,
+          reliabilitySignal,
+          confidence,
+          freshness: "fresh",
+          schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+          updatedAt: fetchedAt,
+        });
+      }
+    }
+
+    return snapshots;
   });
 }
 
@@ -283,15 +419,51 @@ export async function collectModelLandscapeBenchmarks(
     statuses.push(status("terminal_bench", "error", `Terminal-Bench refresh failed: ${(err as Error).message}`, fetchedAt, undefined, "Terminal-Bench / Hugging Face"));
   }
 
+  const designArenaKey = env.DESIGN_ARENA_API_KEY?.trim();
   const designFixture = env.DESIGN_ARENA_FIXTURE_JSON?.trim();
-  if (designFixture) {
+  let designArenaStatusWritten = false;
+
+  if (designArenaKey) {
+    try {
+      const payload = await fetchJSON(DESIGN_ARENA_MODELS_URL, {
+        Authorization: `Bearer ${designArenaKey}`,
+      });
+      const normalized = normalizeDesignArenaModels(payload, fetchedAt);
+      snapshots.push(...normalized);
+      statuses.push(status(
+        "design_arena",
+        normalized.length > 0 ? "fresh" : "stale",
+        `Normalized ${normalized.length} Design Arena API rows.`,
+        fetchedAt,
+        fetchedAt,
+        "Design Arena"
+      ));
+      designArenaStatusWritten = true;
+    } catch (err) {
+      if (!designFixture) {
+        statuses.push(status(
+          "design_arena",
+          "error",
+          `Design Arena API refresh failed: ${(err as Error).message}`,
+          fetchedAt,
+          undefined,
+          "Design Arena"
+        ));
+        designArenaStatusWritten = true;
+      }
+    }
+  }
+
+  if (!designArenaStatusWritten && designFixture) {
     try {
       const normalized = normalizeDesignArenaFixture(JSON.parse(designFixture), fetchedAt);
       snapshots.push(...normalized);
       statuses.push(status(
         "design_arena",
-        "fresh",
-        `Normalized ${normalized.length} Design Arena fixture rows.`,
+        designArenaKey ? "stale" : "fresh",
+        designArenaKey
+          ? `Design Arena API failed; normalized ${normalized.length} cached fixture rows.`
+          : `Normalized ${normalized.length} Design Arena fixture rows.`,
         fetchedAt,
         fetchedAt,
         "Design Arena"
@@ -299,11 +471,11 @@ export async function collectModelLandscapeBenchmarks(
     } catch (err) {
       statuses.push(status("design_arena", "error", `Design Arena fixture failed: ${(err as Error).message}`, fetchedAt, undefined, "Design Arena"));
     }
-  } else {
+  } else if (!designArenaStatusWritten) {
     statuses.push(status(
       "design_arena",
       "unavailable",
-      "Design Arena API access requires an approved key; no fixture is configured, so the adapter is idle.",
+      "DESIGN_ARENA_API_KEY and DESIGN_ARENA_FIXTURE_JSON are not configured.",
       fetchedAt,
       undefined,
       "Design Arena"

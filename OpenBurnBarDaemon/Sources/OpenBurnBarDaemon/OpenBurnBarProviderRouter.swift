@@ -289,7 +289,11 @@ public struct BurnBarProviderRouter: Sendable {
         let configurations = try await configStore.resolvedConfigurations()
         let effectiveRouterMode = try await resolvedRouterMode(routerMode)
         let derivedPreferredProviderID = preferredProviderID == nil
-            ? preferredProviderForProviderFamilyMode(modelName: modelName, routerMode: effectiveRouterMode)
+            ? preferredProviderForProviderFamilyMode(
+                modelName: modelName,
+                routerMode: effectiveRouterMode,
+                configurations: configurations
+            )
             : nil
         let effectivePreferredProviderID = preferredProviderID ?? derivedPreferredProviderID
         return try candidateRoutes(
@@ -598,10 +602,25 @@ public struct BurnBarProviderRouter: Sendable {
 
     private func preferredProviderForProviderFamilyMode(
         modelName: String,
-        routerMode: ProviderRouterMode
+        routerMode: ProviderRouterMode,
+        configurations: [BurnBarResolvedProviderConfiguration]
     ) -> String? {
         guard routerMode == .providerFamilyFailover else { return nil }
-        return configStore.catalogSupport.catalog.vendorForModel(named: modelName)?.id
+        let enabledMatches = configurations.filter { configuration in
+            configuration.settings.isEnabled && resolveModel(named: modelName, in: configuration) != nil
+        }
+        if enabledMatches.count == 1 {
+            return enabledMatches[0].provider.id
+        }
+        if let catalogProviderID = configStore.catalogSupport.catalog.vendorForModel(named: modelName)?.id {
+            if enabledMatches.contains(where: { $0.provider.id == catalogProviderID }) {
+                return catalogProviderID
+            }
+            if enabledMatches.isEmpty {
+                return catalogProviderID
+            }
+        }
+        return enabledMatches.first?.provider.id
     }
 
     public func persistDecisionIfNeeded(
@@ -710,7 +729,11 @@ extension BurnBarProviderRouter {
         let configurations = try await configStore.resolvedConfigurations()
         let effectiveRouterMode = try await resolvedRouterMode(routerMode)
         let derivedPreferredProviderID = preferredProviderID == nil
-            ? preferredProviderForProviderFamilyMode(modelName: modelName, routerMode: effectiveRouterMode)
+            ? preferredProviderForProviderFamilyMode(
+                modelName: modelName,
+                routerMode: effectiveRouterMode,
+                configurations: configurations
+            )
             : nil
         let effectivePreferredProviderID = preferredProviderID ?? derivedPreferredProviderID
         let candidates = try candidateRoutes(
