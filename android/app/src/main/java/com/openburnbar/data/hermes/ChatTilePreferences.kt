@@ -16,7 +16,8 @@ package com.openburnbar.data.hermes
  */
 data class ChatTilePreferences(
     val enabledTiles: Set<AssistantRuntimeID> = AssistantRuntimeID.defaultEnabledTiles,
-    val enabledHermesSubProviders: Set<HermesSubProvider> = HermesSubProvider.defaultVisible
+    val enabledHermesSubProviders: Set<HermesSubProvider> = HermesSubProvider.defaultVisible,
+    val selectedHermesModelOverride: String? = null
 ) {
     fun withTile(id: AssistantRuntimeID, enabled: Boolean): ChatTilePreferences {
         val next = if (enabled) enabledTiles + id else enabledTiles - id
@@ -27,6 +28,9 @@ data class ChatTilePreferences(
         val next = if (enabled) enabledHermesSubProviders + provider else enabledHermesSubProviders - provider
         return copy(enabledHermesSubProviders = next)
     }
+
+    fun setSelectedHermesModel(id: String?): ChatTilePreferences =
+        copy(selectedHermesModelOverride = id?.trim()?.takeIf { it.isNotEmpty() })
 
     fun sanitized(): ChatTilePreferences =
         if (enabledTiles.isEmpty()) copy(enabledTiles = setOf(AssistantRuntimeID.HERMES)) else this
@@ -51,7 +55,12 @@ data class ChatTilePreferences(
             .map { "\"${it.token}\"" }
             .sorted()
             .joinToString(",")
-        return "{\"hermesSubProviders\":[$subs],\"tiles\":[$tiles]}"
+        val selected = selectedHermesModelOverride
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { ",\"selectedHermesModelOverride\":\"${escapeJsonString(it)}\"" }
+            .orEmpty()
+        return "{\"hermesSubProviders\":[$subs]$selected,\"tiles\":[$tiles]}"
     }
 
     companion object {
@@ -66,6 +75,7 @@ data class ChatTilePreferences(
 
             val tileTokens = extractStringArray(trimmed, "tiles")
             val subTokens = extractStringArray(trimmed, "hermesSubProviders")
+            val selectedModel = extractStringValue(trimmed, "selectedHermesModelOverride")
 
             val tiles = tileTokens
                 .mapNotNull { token -> AssistantRuntimeID.values().firstOrNull { it.token == token } }
@@ -79,9 +89,15 @@ data class ChatTilePreferences(
             // empty result honors user intent and is then sanitized to Hermes.
             return ChatTilePreferences(
                 enabledTiles = if (tileTokens.isEmpty()) AssistantRuntimeID.defaultEnabledTiles else tiles.ifEmpty { setOf(AssistantRuntimeID.HERMES) },
-                enabledHermesSubProviders = if (subTokens.isEmpty()) HermesSubProvider.defaultVisible else subs
+                enabledHermesSubProviders = if (subTokens.isEmpty()) HermesSubProvider.defaultVisible else subs,
+                selectedHermesModelOverride = selectedModel?.takeIf { it.isNotBlank() }
             )
         }
+
+        private fun escapeJsonString(value: String): String =
+            value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
 
         /**
          * Extracts a `["a","b","c"]` array for [key] without an `org.json`
@@ -102,6 +118,34 @@ data class ChatTilePreferences(
             return inner.split(',')
                 .map { it.trim().trim('"') }
                 .filter { it.isNotEmpty() }
+        }
+
+        private fun extractStringValue(json: String, key: String): String? {
+            val keyPattern = "\"$key\""
+            val keyIdx = json.indexOf(keyPattern)
+            if (keyIdx < 0) return null
+            val colonIdx = json.indexOf(':', startIndex = keyIdx)
+            if (colonIdx < 0) return null
+            val valueStart = json.indexOf('"', startIndex = colonIdx + 1)
+            if (valueStart < 0) return null
+            val builder = StringBuilder()
+            var escaped = false
+            var idx = valueStart + 1
+            while (idx < json.length) {
+                val ch = json[idx]
+                if (escaped) {
+                    builder.append(ch)
+                    escaped = false
+                } else if (ch == '\\') {
+                    escaped = true
+                } else if (ch == '"') {
+                    return builder.toString()
+                } else {
+                    builder.append(ch)
+                }
+                idx += 1
+            }
+            return null
         }
     }
 }

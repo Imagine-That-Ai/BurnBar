@@ -105,7 +105,7 @@ struct ProviderQuotaSnapshotStore {
         return "\(snapshot.providerID.rawValue):\(snapshot.sourceId)"
     }
 
-    func loadPersistedRoutingEvents(limit: Int = 100) -> ProviderQuotaPersistenceLoadResult<[ProviderRoutingDecisionEvent]> {
+    func loadPersistedRoutingEvents(limit: Int? = nil) -> ProviderQuotaPersistenceLoadResult<[ProviderRoutingDecisionEvent]> {
         guard fileManager.fileExists(atPath: appPaths.providerRoutingEventsURL.path) else {
             return .missing
         }
@@ -114,7 +114,11 @@ struct ProviderQuotaSnapshotStore {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             let events = try decoder.decode([ProviderRoutingDecisionEvent].self, from: data)
-            return .loaded(Array(events.sorted { $0.occurredAt < $1.occurredAt }.suffix(limit)))
+            let sorted = events.sorted { $0.occurredAt < $1.occurredAt }
+            if let limit {
+                return .loaded(Array(sorted.suffix(limit)))
+            }
+            return .loaded(sorted)
         } catch {
             return .failed(
                 target: .routingEvents,
@@ -123,14 +127,15 @@ struct ProviderQuotaSnapshotStore {
         }
     }
 
-    func persistRoutingEvents(_ events: [ProviderRoutingDecisionEvent], limit: Int = 100) {
+    func persistRoutingEvents(_ events: [ProviderRoutingDecisionEvent], limit: Int? = nil) {
         do {
             try ensureParentDirectory(for: appPaths.providerRoutingEventsURL)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
-            let cappedEvents = Array(events.sorted { $0.occurredAt < $1.occurredAt }.suffix(limit))
-            let data = try encoder.encode(cappedEvents)
+            let sorted = events.sorted { $0.occurredAt < $1.occurredAt }
+            let persisted = limit.map { Array(sorted.suffix($0)) } ?? sorted
+            let data = try encoder.encode(persisted)
             try data.write(to: appPaths.providerRoutingEventsURL, options: .atomic)
         } catch {
             AppLogger.dataStore.silentFailure("ProviderQuotaService: Failed to persist routing events", error: error)

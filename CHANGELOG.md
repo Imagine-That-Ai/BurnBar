@@ -65,6 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   two cases to five with stable persisted raw values
   (`hermes`/`pi`/`codex`/`claude`/`openclaw`) so existing
   `UserDefaults`/`SharedPreferences` selections continue to decode.
+  Android now persists the concrete Hermes model override in the same
+  preference blob and shows a resettable selected-model row in Settings,
+  while macOS upgrades its Hermes strip from family-only pills to grouped
+  live gateway-advertised model pills with the same family visibility gates.
 - **Fire Hydrant: two-pool same-format routing.** The local gateway at
   `127.0.0.1:8317` now exposes two parallel routing pools:
   `POST /v1/chat/completions` (OpenAI-family) and the new
@@ -123,6 +127,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   credential-store access patterns.
 
 ### Fixed
+- **Append-safe persistence across local, iCloud, and Firestore sync paths.**
+  iCloud session mirroring no longer deletes mirrored records just because a
+  local source path disappears; Firestore download watermarks advance only
+  after a full page persists locally; shared-artifact transactions merge
+  heads/revisions instead of replacing documents; remote device-local provider
+  accounts are namespaced on collision; and Insight canvas imports now
+  merge/preserve historical canvases instead of replacing or LRU-evicting
+  them. Local provider routing event trails also persist full history instead
+  of truncating storage to the display window. Regression coverage now
+  exercises Firestore-only, iCloud-only, dual-sync, idempotent retry, failure
+  retry, provider routing history, and insight-history preservation.
 - **Mobile cloud-sync denial classification.** Android and iOS now split
   Firestore rules denials from App Check enforcement failures instead of
   showing every signed-in cloud-read failure as generic "Access denied";

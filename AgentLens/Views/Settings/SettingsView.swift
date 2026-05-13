@@ -78,7 +78,7 @@ struct SettingsView: View {
             minHeight: 600,
             idealHeight: 720
         )
-        .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(settingsManager)
         .background(SettingsWindowReader(window: $presentationWindow))
     }

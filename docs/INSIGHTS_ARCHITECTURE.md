@@ -54,7 +54,7 @@ InsightModelGateway (per provider)
 InsightCanvas (typed JSON)
         │
         ▼
-InsightCanvasStore (file-backed, LRU 200, optional Firestore sync)
+InsightCanvasStore (file-backed, append-safe merge by canvas ID, optional Firestore sync)
         │
         ▼
 SwiftUI renderers
@@ -180,7 +180,7 @@ OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Insights/
    InsightFoundationTests.swift       — codecs, layout projection, taxonomy
    InsightDigestPrivacyTests.swift    — 24KB cap, redaction, taxonomy stability
    InsightExecutorTests.swift         — every binding kind
-   InsightCanvasStoreTests.swift      — file persistence, LRU eviction
+   InsightCanvasStoreTests.swift      — file persistence, append-safe import/merge
    InsightCacheAndAuditTests.swift    — cache keys, audit append/read
    InsightGatewayTests.swift          — LocalRuleBasedAdapter + prompt + broker
    InsightTestFixtures.swift          — shared synthetic dataset

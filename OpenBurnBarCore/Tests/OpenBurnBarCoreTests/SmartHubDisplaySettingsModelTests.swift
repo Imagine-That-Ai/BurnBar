@@ -73,4 +73,41 @@ final class SmartHubDisplaySettingsModelTests: XCTestCase {
         XCTAssertEqual(SmartHubDisplayOperationKind.repair.inFlightLabel, "Repairing…")
         XCTAssertEqual(SmartHubDisplayOperationKind.repair.symbolName, "wand.and.stars")
     }
+
+    func testEnableToggleRunsRepairPath() async throws {
+        let operations = InMemorySmartHubDisplayOperations(probeResult: .bound)
+        var persistedEnabled: Bool?
+        let model = SmartHubDisplaySettingsModel(
+            enabled: false,
+            initialConfig: .default,
+            operations: operations,
+            onEnabledChange: { persistedEnabled = $0 }
+        )
+
+        await model.setEnabledFromToggle(true)
+
+        XCTAssertTrue(model.enabled)
+        XCTAssertEqual(persistedEnabled, true)
+        XCTAssertEqual(model.lastRepairStatus?.phase, .working)
+        XCTAssertEqual(model.operationState.lastSucceededKind, .repair)
+        XCTAssertEqual(operations.refreshCount, 1)
+    }
+
+    func testDisableToggleStopsBridgeAndPersistsOff() async throws {
+        let operations = InMemorySmartHubDisplayOperations(probeResult: .bound)
+        var persistedEnabled: Bool?
+        let model = SmartHubDisplaySettingsModel(
+            enabled: true,
+            initialConfig: .default,
+            operations: operations,
+            onEnabledChange: { persistedEnabled = $0 }
+        )
+
+        await model.setEnabledFromToggle(false)
+
+        XCTAssertFalse(model.enabled)
+        XCTAssertEqual(persistedEnabled, false)
+        XCTAssertEqual(operations.stopCount, 1)
+        XCTAssertEqual(model.operationState.lastSucceededKind, .stop)
+    }
 }

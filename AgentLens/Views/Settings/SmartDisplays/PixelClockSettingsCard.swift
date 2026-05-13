@@ -707,8 +707,8 @@ struct PixelClockSettingsCard: View {
             didAutoPrepare = true
             Task { await model.setupAutomatically() }
         } else {
-            model.toggleEnabled(false)
             didAutoPrepare = false
+            Task { await model.disableAndRemove() }
         }
     }
 

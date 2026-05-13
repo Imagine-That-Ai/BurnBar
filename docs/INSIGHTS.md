@@ -12,8 +12,9 @@ it investigates, summarizes, and recommends across your AI-coding-agent
 activity.
 
 Each "canvas" is a persistent dashboard composed of typed widgets. The
-canvas lives on disk (with optional cloud sync), survives app restarts, and
-exports cleanly to JSON, PNG, PDF, or Markdown.
+canvas lives on disk (with optional cloud sync), survives app restarts, merges
+imports by stable canvas ID, and exports cleanly to JSON, PNG, PDF, or
+Markdown.
 
 ## Quick start
 
@@ -139,7 +140,7 @@ prompt, model, egress tier, byte count, and cost.
 
 ```
 ~/Library/Application Support/OpenBurnBar/Insights/
-├── canvases.json     — your canvases (LRU-capped at 200)
+├── canvases.json     — append-safe canvas history, merged by stable canvas ID
 ├── audit.jsonl       — investigation audit trail
 └── cache/            — content-addressed canvas cache
 ```

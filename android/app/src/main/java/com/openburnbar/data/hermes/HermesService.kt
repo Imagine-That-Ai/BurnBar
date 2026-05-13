@@ -85,7 +85,12 @@ class HermesService {
 
     private var webSocket: WebSocket? = null
     private var connection = HermesConnection()
+    private var chatTilePreferences = ChatTilePreferences.DEFAULT
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    fun setChatTilePreferences(preferences: ChatTilePreferences) {
+        chatTilePreferences = preferences.sanitized()
+    }
 
     fun connect(connection: HermesConnection = HermesConnection()) {
         this.connection = connection
@@ -124,10 +129,15 @@ class HermesService {
     }
 
     fun sendMessage(content: String, modelName: String = "hermes", conversationId: String? = null) {
+        val resolvedModelName = chatTilePreferences.selectedHermesModelOverride
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: modelName.trim().takeIf { it.isNotEmpty() }
+            ?: "hermes"
         val json = JSONObject().apply {
             put("type", "chat")
             put("content", content)
-            put("model", modelName)
+            put("model", resolvedModelName)
             conversationId?.let { put("conversation_id", it) }
         }
         webSocket?.send(json.toString())
@@ -136,7 +146,7 @@ class HermesService {
         _messages.value = _messages.value + HermesMessage(
             role = "user",
             content = content,
-            modelName = modelName,
+            modelName = resolvedModelName,
             timestamp = System.currentTimeMillis()
         )
     }

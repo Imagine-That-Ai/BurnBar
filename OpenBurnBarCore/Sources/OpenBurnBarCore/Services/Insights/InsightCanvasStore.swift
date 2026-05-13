@@ -3,8 +3,9 @@ import Foundation
 /// Thread-safe, file-backed canvas persistence.
 ///
 /// Canvases live in a single JSON file under Application Support so the
-/// store can be opened, mutated, exported, and synced atomically. Cap at
-/// 200 canvases with LRU eviction based on `updatedAt`.
+/// store can be opened, mutated, exported, and synced atomically. The store
+/// is append-safe: imports merge by stable canvas id and never truncate the
+/// existing canvas library.
 public actor InsightCanvasStore {
 
     public struct Snapshot: Codable, Hashable, Sendable {
@@ -16,7 +17,9 @@ public actor InsightCanvasStore {
         }
     }
 
-    public static let maxCanvases: Int = 200
+    public static let legacySoftCanvasLimit: Int = 200
+    @available(*, deprecated, message: "Canvases are no longer evicted; use UI-level pagination or filtering instead.")
+    public static let maxCanvases: Int = legacySoftCanvasLimit
 
     private let fileURL: URL
     private var snapshot: Snapshot
@@ -63,7 +66,7 @@ public actor InsightCanvasStore {
         snapshot.canvases.first { $0.id == id }
     }
 
-    /// Insert or update; bumps `updatedAt`, then trims LRU and persists.
+    /// Insert or update by stable id; bumps `updatedAt` and preserves all other canvases.
     public func upsert(_ canvas: InsightCanvas) async throws {
         var working = canvas
         working.updatedAt = Date()
@@ -72,7 +75,6 @@ public actor InsightCanvasStore {
         } else {
             snapshot.canvases.append(working)
         }
-        evictIfNeeded()
         try await persist()
     }
 
@@ -82,10 +84,13 @@ public actor InsightCanvasStore {
         try await persist()
     }
 
-    /// Replace the entire canvas list (used when importing).
+    /// Merge an imported canvas list into the existing library.
+    ///
+    /// Kept under the legacy name for caller compatibility, but the operation
+    /// is no longer destructive. New ids are appended; existing ids resolve to
+    /// the highest layout revision, then newest `updatedAt`.
     public func replaceAll(_ canvases: [InsightCanvas]) async throws {
-        snapshot.canvases = canvases
-        evictIfNeeded()
+        snapshot.canvases = Self.mergedCanvases(existing: snapshot.canvases, incoming: canvases)
         try await persist()
     }
 
@@ -109,12 +114,27 @@ public actor InsightCanvasStore {
         try await persist()
     }
 
-    // MARK: - Eviction
+    // MARK: - Merge
 
-    private func evictIfNeeded() {
-        guard snapshot.canvases.count > Self.maxCanvases else { return }
-        let sorted = snapshot.canvases.sorted { $0.updatedAt > $1.updatedAt }
-        snapshot.canvases = Array(sorted.prefix(Self.maxCanvases))
+    static func mergedCanvases(existing: [InsightCanvas], incoming: [InsightCanvas]) -> [InsightCanvas] {
+        var merged = existing
+        var indexByID = Dictionary(uniqueKeysWithValues: existing.enumerated().map { ($0.element.id, $0.offset) })
+        for canvas in incoming {
+            guard let index = indexByID[canvas.id] else {
+                indexByID[canvas.id] = merged.count
+                merged.append(canvas)
+                continue
+            }
+            merged[index] = preferredCanvas(merged[index], canvas)
+        }
+        return merged
+    }
+
+    private static func preferredCanvas(_ lhs: InsightCanvas, _ rhs: InsightCanvas) -> InsightCanvas {
+        if lhs.layout.revision != rhs.layout.revision {
+            return lhs.layout.revision > rhs.layout.revision ? lhs : rhs
+        }
+        return lhs.updatedAt >= rhs.updatedAt ? lhs : rhs
     }
 
     // MARK: - Persistence

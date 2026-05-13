@@ -93,6 +93,15 @@ fun ChatTilesSettingsScreen(onBack: () -> Unit) {
             )
         }
 
+        SelectedHermesModelRow(
+            selectedModel = prefs.selectedHermesModelOverride,
+            onReset = {
+                val next = prefs.setSelectedHermesModel(null)
+                prefs = next
+                savePrefs(context, next)
+            }
+        )
+
         Spacer(modifier = Modifier.height(AuroraSpacing.xl.dp))
     }
 }
@@ -174,6 +183,47 @@ private fun TileToggleRow(
             Text(text = subtitle, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f))
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun SelectedHermesModelRow(
+    selectedModel: String?,
+    onReset: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AuroraSpacing.lg.dp, vertical = AuroraSpacing.sm.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Selected: ${selectedModel?.takeIf { it.isNotBlank() } ?: "Automatic"}",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Automatic lets Hermes use the gateway default.",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+            )
+        }
+        Text(
+            text = "Reset",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (selectedModel.isNullOrBlank()) {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+            } else {
+                MaterialTheme.colorScheme.primary
+            },
+            modifier = Modifier
+                .clip(RoundedCornerShape(7.dp))
+                .clickable(enabled = !selectedModel.isNullOrBlank()) { onReset() }
+                .padding(horizontal = AuroraSpacing.sm.dp, vertical = AuroraSpacing.xs.dp)
+        )
     }
 }
 

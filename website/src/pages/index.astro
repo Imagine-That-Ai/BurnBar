@@ -1,7 +1,7 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import BarMockup from "@components/BarMockup.astro";
-import DashboardMockup from "@components/DashboardMockup.astro";
+import RealDashboard from "@components/RealDashboard.astro";
 import DeviceShowcase from "@components/DeviceShowcase.astro";
 import SurfaceCard from "@components/SurfaceCard.astro";
 import ProviderTable from "@components/ProviderTable.astro";
@@ -177,10 +177,11 @@ const surfaceShowcase = SURFACES.filter((s) =>
       </header>
 
       <div class="dashshow__frame">
-        <DashboardMockup />
-        <p class="dashshow__cap mono">
-          Mockup uses representative data. The real product looks like this and renders your numbers.
-        </p>
+        <RealDashboard
+          src="/screens/ipad-burn.png"
+          alt="OpenBurnBar iPad app — Burn tab showing Fleet Quota 42% Pressured, per-provider rings (Claude Code 18%, Codex 51%, OpenAI 56%), $18.74 today, $126.40 over 7 days, $613.92 over 30 days, $6,264.44 all-time"
+          caption="Real iPadOS capture · same SwiftUI design renders on macOS"
+        />
       </div>
     </div>
   </section>

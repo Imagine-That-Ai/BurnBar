@@ -1,5 +1,6 @@
 package com.openburnbar.ui.hermes
 
+import android.content.Context
 import androidx.compose.animation.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -41,14 +43,23 @@ import org.json.JSONObject
 fun HermesView(
     hermesService: HermesService = remember { HermesService() }
 ) {
+    val context = LocalContext.current
     var showConversationList by remember { mutableStateOf(true) }
     var conversationTitle by remember { mutableStateOf("New Chat") }
+    var tilePrefs by remember { mutableStateOf(loadChatTilePreferences(context).sanitized()) }
     val messages by hermesService.messages.collectAsState()
     val isConnected by hermesService.isConnected.collectAsState()
     val availableModels by hermesService.availableModels.collectAsState()
     val runtimeInfo by hermesService.runtimeInfo.collectAsState()
 
-    LaunchedEffect(Unit) { hermesService.connect() }
+    LaunchedEffect(Unit) {
+        hermesService.setChatTilePreferences(tilePrefs)
+        hermesService.connect()
+    }
+
+    LaunchedEffect(tilePrefs) {
+        hermesService.setChatTilePreferences(tilePrefs)
+    }
 
     // Consume pending prompt from cross-tab navigation
     LaunchedEffect(showConversationList) {
@@ -80,6 +91,11 @@ fun HermesView(
             availableModels = availableModels,
             runtimeInfo = runtimeInfo,
             conversationTitle = conversationTitle,
+            tilePreferences = tilePrefs,
+            onTilePreferencesChange = { next ->
+                tilePrefs = next.sanitized()
+                saveChatTilePreferences(context, tilePrefs)
+            },
             onBack = { showConversationList = true },
             onSend = { msg, model -> hermesService.sendMessage(msg, model) },
             onDisconnect = { hermesService.disconnect() }
@@ -181,17 +197,36 @@ fun ChatView(
     availableModels: List<String>,
     runtimeInfo: Map<String, String>,
     conversationTitle: String,
+    tilePreferences: ChatTilePreferences,
+    onTilePreferencesChange: (ChatTilePreferences) -> Unit,
     onBack: () -> Unit,
     onSend: (String, String) -> Unit,
     onDisconnect: () -> Unit
 ) {
     var inputText by remember { mutableStateOf("") }
-    var selectedModel by remember { mutableStateOf(availableModels.firstOrNull() ?: "hermes") }
+    var selectedModel by remember(tilePreferences.selectedHermesModelOverride) {
+        mutableStateOf(tilePreferences.selectedHermesModelOverride ?: availableModels.firstOrNull() ?: "hermes")
+    }
     var showModelPicker by remember { mutableStateOf(false) }
     var showConnectionSettings by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
+    val visibleModels = remember(availableModels, tilePreferences.enabledHermesSubProviders, selectedModel) {
+        val filtered = if (tilePreferences.enabledHermesSubProviders.isEmpty()) {
+            availableModels
+        } else {
+            availableModels.filter { model ->
+                val family = hermesFamilyForModel(model)
+                family == null || tilePreferences.enabledHermesSubProviders.contains(family)
+            }
+        }
+        if (selectedModel.isNotBlank() && !filtered.contains(selectedModel)) {
+            listOf(selectedModel) + filtered
+        } else {
+            filtered
+        }
+    }
 
     val sendMessage = {
         if (inputText.isNotBlank()) {
@@ -245,8 +280,11 @@ fun ChatView(
                     WelcomeBlock(
                         runtimeInfo = runtimeInfo,
                         selectedModel = selectedModel,
-                        availableModels = availableModels,
-                        onModelSelect = { selectedModel = it },
+                        availableModels = visibleModels,
+                        onModelSelect = {
+                            selectedModel = it
+                            onTilePreferencesChange(tilePreferences.setSelectedHermesModel(it))
+                        },
                         onTriggerPrompt = { prompt -> onSend(prompt, selectedModel) }
                     )
                 }
@@ -305,9 +343,13 @@ fun ChatView(
             title = { Text("Select Model") },
             text = {
                 Column {
-                    availableModels.forEach { model ->
+                    visibleModels.forEach { model ->
                         Surface(
-                            onClick = { selectedModel = model; showModelPicker = false },
+                            onClick = {
+                                selectedModel = model
+                                onTilePreferencesChange(tilePreferences.setSelectedHermesModel(model))
+                                showModelPicker = false
+                            },
                             modifier = Modifier.fillMaxWidth(),
                             color = if (model == selectedModel) AuroraColors.hermesMercury.copy(alpha = 0.15f) else Color.Transparent,
                             shape = RoundedCornerShape(AuroraRadius.sm.dp)
@@ -578,4 +620,28 @@ fun summarizeHermesToolDetail(tc: ToolCall): String? {
         }
     }
     return null
+}
+
+private fun loadChatTilePreferences(context: Context): ChatTilePreferences {
+    val prefs = context.getSharedPreferences("chat.tile_preferences", Context.MODE_PRIVATE)
+    return ChatTilePreferences.fromJsonString(prefs.getString(ChatTilePreferences.USER_DEFAULTS_KEY, null))
+}
+
+private fun saveChatTilePreferences(context: Context, value: ChatTilePreferences) {
+    val prefs = context.getSharedPreferences("chat.tile_preferences", Context.MODE_PRIVATE)
+    prefs.edit().putString(ChatTilePreferences.USER_DEFAULTS_KEY, value.toJsonString()).apply()
+}
+
+private fun hermesFamilyForModel(model: String): HermesSubProvider? {
+    val normalized = model.lowercase().replace(" ", "")
+    HermesSubProvider.fromToken(normalized)?.let { return it }
+    return when {
+        "claude" in normalized || "anthropic" in normalized -> HermesSubProvider.CLAUDE
+        "codex" in normalized || "openai" in normalized || normalized.startsWith("gpt-") -> HermesSubProvider.CODEX
+        "zai" in normalized || "z.ai" in normalized || "glm" in normalized -> HermesSubProvider.ZAI
+        "kimi" in normalized || "moonshot" in normalized -> HermesSubProvider.KIMI
+        "minimax" in normalized -> HermesSubProvider.MINIMAX
+        "ollama" in normalized || "llama" in normalized || "mistral" in normalized || "qwen" in normalized -> HermesSubProvider.OLLAMA
+        else -> null
+    }
 }

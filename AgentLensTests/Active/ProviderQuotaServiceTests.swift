@@ -2294,6 +2294,42 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(reloaded.routingEvents.first?.selectedAccountID, "openai-personal")
     }
 
+    func test_providerRoutingEventPersistencePreservesHistoryBeyondDisplayLimit() throws {
+        let appSupport = try makeTemporaryDirectory()
+        let paths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let store = ProviderQuotaSnapshotStore(appPaths: paths, fileManager: .default)
+        let events = (0..<150).map { index in
+            ProviderRoutingDecisionEvent(
+                occurredAt: Date(timeIntervalSince1970: TimeInterval(index)),
+                modelID: nil,
+                selected: nil,
+                nextFallback: nil,
+                reason: "route-\(index)",
+                skipped: []
+            )
+        }
+
+        store.persistRoutingEvents(events)
+
+        switch store.loadPersistedRoutingEvents() {
+        case .loaded(let reloaded):
+            XCTAssertEqual(reloaded.count, 150)
+            XCTAssertEqual(reloaded.first?.reason, "route-0")
+            XCTAssertEqual(reloaded.last?.reason, "route-149")
+        default:
+            XCTFail("Expected persisted routing events to reload")
+        }
+
+        switch store.loadPersistedRoutingEvents(limit: 100) {
+        case .loaded(let displayWindow):
+            XCTAssertEqual(displayWindow.count, 100)
+            XCTAssertEqual(displayWindow.first?.reason, "route-50")
+            XCTAssertEqual(displayWindow.last?.reason, "route-149")
+        default:
+            XCTFail("Expected limited routing event readback to reload")
+        }
+    }
+
     func test_miniMaxRefresh_rejectsStandardAPIKeysBeforeNetworkCall() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()

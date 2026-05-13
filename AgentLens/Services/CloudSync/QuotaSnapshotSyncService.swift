@@ -220,10 +220,9 @@ final class QuotaSnapshotSyncService {
         ]
         if let v = bucket.usedPercent { meta["usedPercent"] = String(format: "%.2f", v) }
         if let d = bucket.resetsAt {
-            // Legacy side-car. Kept for one release so older mobile clients
-            // that read `meta["resetsAt"]` still see the reset moment.
-            // TODO(0.2.x): drop after iOS + Android pick up the top-level
-            // `resetsAt` field below.
+            // Legacy side-car for mobile clients that still read
+            // `meta["resetsAt"]`; the top-level `resetsAt` timestamp below is
+            // the canonical field for new clients.
             meta["resetsAt"] = ISO8601DateFormatter().string(from: d)
         }
         var result: [String: Any] = [

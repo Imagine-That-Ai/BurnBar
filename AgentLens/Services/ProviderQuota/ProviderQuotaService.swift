@@ -271,7 +271,11 @@ final class ProviderQuotaService {
                 nextFallback: decision.nextFallback,
                 exhaustedOrCoolingDownAccounts: decision.exhaustedOrCoolingDown,
                 lastSwitchReason: decision.lastSwitchReason,
-                recentEvents: routingEvents.filter { $0.selectedProviderID == providerID || $0.nextFallbackProviderID == providerID }
+                recentEvents: Array(
+                    routingEvents
+                        .filter { $0.selectedProviderID == providerID || $0.nextFallbackProviderID == providerID }
+                        .suffix(100)
+                )
             )
         }
 
@@ -400,9 +404,6 @@ final class ProviderQuotaService {
         }
         routingEvents.append(event)
         routingEventsDirty = true
-        if routingEvents.count > 100 {
-            routingEvents.removeFirst(routingEvents.count - 100)
-        }
         if !suppressRoutingEventPersistence {
             routingEventsDirty = false
             persistRoutingEvents()

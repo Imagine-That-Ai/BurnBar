@@ -68,15 +68,97 @@ final class InsightCanvasStoreTests: XCTestCase {
         XCTAssertEqual(all.map(\.title), ["C", "A", "B"])
     }
 
-    func testLRUEvictionRespectsMax() async throws {
+    func testUpsertAccumulatesBeyondLegacySoftLimit() async throws {
         let store = try InsightCanvasStore(fileURL: fileURL)
-        for i in 0..<(InsightCanvasStore.maxCanvases + 10) {
+        for i in 0..<(InsightCanvasStore.legacySoftCanvasLimit + 10) {
             var canvas = InsightCanvas(title: "C\(i)")
-            // Spread updatedAt so eviction is deterministic.
             canvas.updatedAt = Date(timeIntervalSince1970: TimeInterval(i))
             try await store.upsert(canvas)
         }
         let all = await store.allCanvases()
-        XCTAssertEqual(all.count, InsightCanvasStore.maxCanvases)
+        XCTAssertEqual(all.count, InsightCanvasStore.legacySoftCanvasLimit + 10)
+        XCTAssertNotNil(all.first { $0.title == "C0" })
+        XCTAssertNotNil(all.first { $0.title == "C\(InsightCanvasStore.legacySoftCanvasLimit + 9)" })
+    }
+
+    func testReplaceAllMergesImportWithoutDroppingExistingCanvases() async throws {
+        let store = try InsightCanvasStore(fileURL: fileURL)
+        let existing = InsightCanvas(
+            title: "Existing",
+            updatedAt: Date(timeIntervalSince1970: 100),
+            sortIndex: 0
+        )
+        let imported = InsightCanvas(
+            title: "Imported",
+            updatedAt: Date(timeIntervalSince1970: 200),
+            sortIndex: 1
+        )
+
+        try await store.upsert(existing)
+        try await store.replaceAll([imported])
+
+        let all = await store.allCanvases()
+        XCTAssertEqual(all.count, 2)
+        XCTAssertNotNil(all.first { $0.id == existing.id })
+        XCTAssertNotNil(all.first { $0.id == imported.id })
+    }
+
+    func testMergePreservesExistingOrderAndAppendsNewIDs() {
+        let canvasA = InsightCanvas(
+            title: "A",
+            updatedAt: Date(timeIntervalSince1970: 100),
+            sortIndex: 0
+        )
+        let canvasB = InsightCanvas(
+            title: "B",
+            updatedAt: Date(timeIntervalSince1970: 100),
+            sortIndex: 1
+        )
+        let updatedA = InsightCanvas(
+            id: canvasA.id,
+            title: "A updated",
+            updatedAt: Date(timeIntervalSince1970: 200),
+            sortIndex: 0
+        )
+        let canvasC = InsightCanvas(
+            title: "C",
+            updatedAt: Date(timeIntervalSince1970: 100),
+            sortIndex: 2
+        )
+
+        let merged = InsightCanvasStore.mergedCanvases(existing: [canvasA, canvasB], incoming: [updatedA, canvasC])
+
+        XCTAssertEqual(merged.map(\.id), [canvasA.id, canvasB.id, canvasC.id])
+        XCTAssertEqual(merged.first?.title, "A updated")
+    }
+
+    func testReplaceAllChoosesHigherRevisionForSameCanvasID() async throws {
+        let store = try InsightCanvasStore(fileURL: fileURL)
+        let canvasID = UUID()
+        var oldLayout = InsightLayout(revision: 1)
+        oldLayout.placeNew(widgetID: UUID(), defaultSpan: (columns: 1, rows: 1))
+        var newerLayout = oldLayout
+        newerLayout.revision = oldLayout.revision + 10
+
+        let existing = InsightCanvas(
+            id: canvasID,
+            title: "Old",
+            layout: oldLayout,
+            updatedAt: Date(timeIntervalSince1970: 300)
+        )
+        let imported = InsightCanvas(
+            id: canvasID,
+            title: "New",
+            layout: newerLayout,
+            updatedAt: Date(timeIntervalSince1970: 200)
+        )
+
+        try await store.upsert(existing)
+        try await store.replaceAll([imported])
+
+        let maybeRestored = await store.canvas(id: canvasID)
+        let restored = try XCTUnwrap(maybeRestored)
+        XCTAssertEqual(restored.title, "New")
+        XCTAssertEqual(restored.layout.revision, newerLayout.revision)
     }
 }

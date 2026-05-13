@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.openburnbar.ui.components.aurora.BurnGlyph
 import com.openburnbar.ui.components.aurora.HermesGlyph
+import com.openburnbar.ui.components.aurora.InsightsGlyph
 import com.openburnbar.ui.components.aurora.PulseGlyph
 import com.openburnbar.ui.components.aurora.StreamsGlyph
 import com.openburnbar.ui.components.aurora.YouGlyph
@@ -29,6 +30,7 @@ import com.openburnbar.ui.theme.AuroraGradients
 enum class AuroraNavDestination(val label: String) {
     PULSE("Pulse"),
     BURN("Burn"),
+    INSIGHTS("Insights"),
     STREAMS("Streams"),
     // Plan 2: enum case stays HERMES so routing/asset bindings are stable,
     // but the surfaced label flips to "Assistants" to reflect the dual-runtime
@@ -40,6 +42,7 @@ enum class AuroraNavDestination(val label: String) {
         get() = when (this) {
             PULSE -> AuroraColors.ember
             BURN -> AuroraColors.amber
+            INSIGHTS -> AuroraColors.purple
             STREAMS -> AuroraColors.whimsy
             HERMES -> AuroraColors.hermesAureate
             YOU -> AuroraColors.blaze
@@ -49,6 +52,7 @@ enum class AuroraNavDestination(val label: String) {
         get() = when (this) {
             PULSE -> listOf(AuroraColors.ember, AuroraColors.amber)
             BURN -> listOf(AuroraColors.amber, AuroraColors.blaze)
+            INSIGHTS -> listOf(AuroraColors.purple, AuroraColors.whimsy)
             STREAMS -> listOf(AuroraColors.whimsy, AuroraColors.whimsy.copy(alpha = 0.55f))
             HERMES -> AuroraGradients.mercuryGradient
             YOU -> listOf(AuroraColors.blaze, AuroraColors.ember)
@@ -77,10 +81,11 @@ fun AuroraNavIcon(
         contentAlignment = Alignment.Center
     ) {
         when (destination) {
-            AuroraNavDestination.PULSE   -> PulseGlyph(size = size.dp, isSelected = isSelected)
-            AuroraNavDestination.BURN    -> BurnGlyph(size = size.dp, isSelected = isSelected)
-            AuroraNavDestination.STREAMS -> StreamsGlyph(size = size.dp, isSelected = isSelected)
-            AuroraNavDestination.HERMES  -> HermesGlyph(size = size.dp, isSelected = isSelected)
+            AuroraNavDestination.PULSE    -> PulseGlyph(size = size.dp, isSelected = isSelected)
+            AuroraNavDestination.BURN     -> BurnGlyph(size = size.dp, isSelected = isSelected)
+            AuroraNavDestination.INSIGHTS -> InsightsGlyph(size = size.dp, isSelected = isSelected)
+            AuroraNavDestination.STREAMS  -> StreamsGlyph(size = size.dp, isSelected = isSelected)
+            AuroraNavDestination.HERMES   -> HermesGlyph(size = size.dp, isSelected = isSelected)
             AuroraNavDestination.YOU     -> {
                 val initials = userDisplayName
                     ?.split(" ", "-")

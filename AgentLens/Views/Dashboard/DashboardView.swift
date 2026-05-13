@@ -305,7 +305,7 @@ struct DashboardView: View {
                 chatPanelOpen = true
             }
         }
-        .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(settingsManager)
     }
 

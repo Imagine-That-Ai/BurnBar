@@ -86,7 +86,7 @@ struct SwitcherOnboardingWizardView: View {
         }
         .frame(width: 520, height: 620)
         .background(DesignSystem.Colors.background)
-        .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .onAppear {
             Task {
                 await discoveryService.scan(dataStore: dataStore)

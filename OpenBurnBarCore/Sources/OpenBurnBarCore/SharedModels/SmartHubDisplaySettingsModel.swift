@@ -271,6 +271,21 @@ public final class SmartHubDisplaySettingsModel {
         onEnabledChange?(newValue)
     }
 
+    /// User-facing master switch behavior. Turning the Nest Hub on should
+    /// actually start/recover the Cast display, and turning it off should stop
+    /// the local bridge instead of only changing persisted preference state.
+    public func setEnabledFromToggle(_ newValue: Bool) async {
+        if newValue {
+            if !enabled {
+                enabled = true
+                onEnabledChange?(true)
+            }
+            await repair()
+        } else {
+            await stop()
+        }
+    }
+
     // MARK: - Display config bindings
 
     public func updateLayout(_ layout: SmartHubDisplayLayout) {
@@ -381,6 +396,7 @@ public final class SmartHubDisplaySettingsModel {
         await runOperation(.stop) {
             await self.operations.stopBridge()
             self.enabled = false
+            self.onEnabledChange?(false)
         }
     }
 

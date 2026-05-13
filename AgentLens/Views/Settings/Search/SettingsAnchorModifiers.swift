@@ -18,7 +18,7 @@ import SwiftUI
 /// belongs to `route`, it scrolls there, paints a brief halo, and asks the
 /// router to clear its pending state.
 struct SettingsDeepLinkScrollContainer<Content: View>: View {
-    @Environment(SettingsRouter.self) private var router
+    @Environment(SettingsRouter.self) private var router: SettingsRouter?
     let route: SettingsPageRoute
     @ViewBuilder var content: (ScrollViewProxy) -> Content
 
@@ -26,13 +26,14 @@ struct SettingsDeepLinkScrollContainer<Content: View>: View {
         ScrollViewReader { proxy in
             content(proxy)
                 .onAppear { applyPendingNavigation(proxy: proxy) }
-                .onChange(of: router.pendingAnchor) { _, _ in
+                .onChange(of: router?.pendingAnchor) { _, _ in
                     applyPendingNavigation(proxy: proxy)
                 }
         }
     }
 
     private func applyPendingNavigation(proxy: ScrollViewProxy) {
+        guard let router else { return }
         guard let anchor = router.pendingAnchor else { return }
         guard SettingsManifest.anchorIndex[anchor] == route else { return }
 
@@ -52,7 +53,7 @@ struct SettingsDeepLinkScrollContainer<Content: View>: View {
 /// Tags a row with a stable id (so `ScrollViewReader` can find it) and
 /// paints a soft halo when the search router asks for that anchor.
 struct SettingsAnchorModifier: ViewModifier {
-    @Environment(SettingsRouter.self) private var router
+    @Environment(SettingsRouter.self) private var router: SettingsRouter?
     let anchor: String
 
     func body(content: Content) -> some View {
@@ -63,12 +64,12 @@ struct SettingsAnchorModifier: ViewModifier {
                     .fill(highlightFill)
                     .padding(-DesignSystem.Spacing.xs)
                     .animation(.easeInOut(duration: 0.35),
-                               value: router.highlightedAnchor == anchor)
+                               value: router?.highlightedAnchor == anchor)
             )
     }
 
     private var highlightFill: Color {
-        router.highlightedAnchor == anchor
+        router?.highlightedAnchor == anchor
             ? DesignSystem.Colors.amber.opacity(0.18)
             : Color.clear
     }

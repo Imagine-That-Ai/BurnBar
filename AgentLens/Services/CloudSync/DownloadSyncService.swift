@@ -121,9 +121,60 @@ final class DownloadSyncService: CloudSyncDomain {
                     continue
                 }
 
-                try context.dataStore.providerAccountStore.upsert(account)
+                let accountForLocalStore = try appendSafeRemoteAccount(account, localDeviceId: localDeviceId)
+                try context.dataStore.providerAccountStore.upsert(accountForLocalStore)
             }
         } catch { /* non-fatal */ }
+    }
+
+    private func appendSafeRemoteAccount(
+        _ account: ProviderAccountDoc,
+        localDeviceId: String
+    ) throws -> ProviderAccountDoc {
+        guard let existing = try context.dataStore.providerAccountStore.fetch(id: account.id),
+              shouldNamespaceRemoteAccount(account, existing: existing, localDeviceId: localDeviceId) else {
+            return account
+        }
+
+        let sourcePart = sanitizeDocumentIDPart(
+            (account.sourceDeviceID?.isEmpty == false ? account.sourceDeviceID : nil) ?? "remote"
+        )
+        return ProviderAccountDoc(
+            id: "\(account.id)__remote_\(sourcePart)",
+            providerID: account.providerID,
+            label: account.label,
+            identityHint: account.identityHint,
+            status: account.status,
+            credentialKind: account.credentialKind,
+            storageScope: account.storageScope,
+            redactedLabel: account.redactedLabel,
+            sourceDeviceID: account.sourceDeviceID,
+            linkedSwitcherProfileID: account.linkedSwitcherProfileID,
+            isDefault: false,
+            sortKey: account.sortKey,
+            lastValidatedAt: account.lastValidatedAt,
+            lastRefreshAt: account.lastRefreshAt,
+            lastErrorCode: account.lastErrorCode,
+            schemaVersion: account.schemaVersion,
+            createdAt: account.createdAt,
+            updatedAt: account.updatedAt
+        )
+    }
+
+    private func shouldNamespaceRemoteAccount(
+        _ account: ProviderAccountDoc,
+        existing: ProviderAccountDoc,
+        localDeviceId: String
+    ) -> Bool {
+        let localOnlyScopes: Set<ProviderAccountStorageScope> = [.deviceKeychain, .localOnly]
+        guard localOnlyScopes.contains(existing.storageScope),
+              localOnlyScopes.contains(account.storageScope) else {
+            return false
+        }
+        let existingSource = existing.sourceDeviceID ?? localDeviceId
+        guard existingSource == localDeviceId else { return false }
+        guard let remoteSource = account.sourceDeviceID, !remoteSource.isEmpty else { return false }
+        return remoteSource != localDeviceId
     }
 
     private func providerAccount(from data: [String: Any], documentID: String) -> ProviderAccountDoc? {
@@ -169,6 +220,13 @@ final class DownloadSyncService: CloudSyncDomain {
         return value as? Date
     }
 
+    private func sanitizeDocumentIDPart(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: " ", with: "_")
+    }
+
     // MARK: - Usage Download
 
     private func downloadRemoteUsage(uid: String, localDeviceId: String) async {
@@ -192,9 +250,10 @@ final class DownloadSyncService: CloudSyncDomain {
             accountUid: uid,
             collectionKind: .usage
         )
+        var completedDownload = false
 
         defer {
-            if syncTx.processedCount > 0 {
+            if completedDownload, syncTx.processedCount > 0 {
                 do {
                     try syncTx.commit()
                 } catch {
@@ -263,6 +322,7 @@ final class DownloadSyncService: CloudSyncDomain {
                     syncTx.recordProcessedItem(remoteUpdatedAt: updatedAt)
                 }
             }
+            completedDownload = true
         } catch { /* non-fatal */ }
     }
 
@@ -289,9 +349,10 @@ final class DownloadSyncService: CloudSyncDomain {
             accountUid: uid,
             collectionKind: .conversations
         )
+        var completedDownload = false
 
         defer {
-            if syncTx.processedCount > 0 {
+            if completedDownload, syncTx.processedCount > 0 {
                 do {
                     try syncTx.commit()
                 } catch {
@@ -354,6 +415,7 @@ final class DownloadSyncService: CloudSyncDomain {
                     syncTx.recordProcessedItem(remoteUpdatedAt: updatedAt)
                 }
             }
+            completedDownload = true
         } catch { /* non-fatal */ }
         return insertedIds
     }

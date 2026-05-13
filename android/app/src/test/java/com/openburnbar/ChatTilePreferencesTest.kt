@@ -30,12 +30,14 @@ class ChatTilePreferencesTest {
     fun `JSON round-trip preserves enabled sets`() {
         val original = ChatTilePreferences(
             enabledTiles = setOf(AssistantRuntimeID.HERMES, AssistantRuntimeID.CODEX, AssistantRuntimeID.OPEN_CLAW),
-            enabledHermesSubProviders = setOf(HermesSubProvider.CODEX, HermesSubProvider.CLAUDE, HermesSubProvider.OLLAMA)
+            enabledHermesSubProviders = setOf(HermesSubProvider.CODEX, HermesSubProvider.CLAUDE, HermesSubProvider.OLLAMA),
+            selectedHermesModelOverride = "kimi-k2"
         )
         val json = original.toJsonString()
         val decoded = ChatTilePreferences.fromJsonString(json)
         assertEquals(original.enabledTiles, decoded.enabledTiles)
         assertEquals(original.enabledHermesSubProviders, decoded.enabledHermesSubProviders)
+        assertEquals(original.selectedHermesModelOverride, decoded.selectedHermesModelOverride)
     }
 
     @Test
@@ -66,6 +68,15 @@ class ChatTilePreferencesTest {
             prefs = prefs.withTile(runtime, enabled = false)
         }
         assertEquals(setOf(AssistantRuntimeID.HERMES), prefs.enabledTiles)
+    }
+
+    @Test
+    fun `selected Hermes model helper trims and clears`() {
+        val selected = ChatTilePreferences.DEFAULT.setSelectedHermesModel("  glm-4.6  ")
+        assertEquals("glm-4.6", selected.selectedHermesModelOverride)
+
+        val cleared = selected.setSelectedHermesModel(" ")
+        assertEquals(null, cleared.selectedHermesModelOverride)
     }
 
     @Test

@@ -1,6 +1,12 @@
 import Foundation
 import OpenBurnBarCore
 
+struct HermesAdvertisedModel: Identifiable, Equatable, Hashable, Sendable {
+    let id: String
+    let displayName: String
+    let family: HermesModelID
+}
+
 // MARK: - Chat Backend Settings
 
 @Observable

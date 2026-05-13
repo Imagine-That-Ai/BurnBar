@@ -709,3 +709,78 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawHeart(
     }
     drawPath(path = path, brush = brush)
 }
+
+// ── Insights (sparkles/star constellation) ─────────────────────────────────
+
+@Composable
+fun InsightsGlyph(
+    size: Dp,
+    isSelected: Boolean,
+    isPressed: Boolean = false
+) {
+    val reduceMotion = LocalAuroraReduceMotion.current
+    val infiniteTransition = rememberInfiniteTransition(label = "insights")
+
+    val shimmer by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "insightsShimmer"
+    )
+
+    Canvas(modifier = Modifier.size(size)) {
+        val half = size.toPx() / 2f
+        val center = Offset(size.toPx() / 2f, size.toPx() / 2f)
+        val brush = if (isSelected) {
+            Brush.linearGradient(
+                colors = listOf(AuroraColors.purple, AuroraColors.whimsy),
+                start = Offset(center.x - half * 0.5f, center.y - half * 0.5f),
+                end = Offset(center.x + half * 0.5f, center.y + half * 0.5f)
+            )
+        } else {
+            Brush.linearGradient(
+                colors = listOf(AuroraColors.darkTextSecondary, AuroraColors.darkTextSecondary)
+            )
+        }
+
+        // 4-point star (sparkle) — central
+        val starSize = half * 0.7f
+        val sparkPath = Path().apply {
+            // Vertical diamond
+            moveTo(center.x, center.y - starSize)
+            lineTo(center.x + starSize * 0.28f, center.y)
+            lineTo(center.x, center.y + starSize)
+            lineTo(center.x - starSize * 0.28f, center.y)
+            close()
+            // Horizontal diamond
+            moveTo(center.x - starSize, center.y)
+            lineTo(center.x, center.y - starSize * 0.28f)
+            lineTo(center.x + starSize, center.y)
+            lineTo(center.x, center.y + starSize * 0.28f)
+            close()
+        }
+        drawPath(path = sparkPath, brush = brush)
+
+        // Small accent dots around the star
+        val dotRadius = size.toPx() * 0.035f
+        val dotAlpha = if (isSelected && !reduceMotion) {
+            (0.4f + 0.6f * ((shimmer * 4f) % 1f)).coerceIn(0f, 1f)
+        } else 0.5f
+
+        drawCircle(
+            brush = brush,
+            radius = dotRadius,
+            center = Offset(center.x + half * 0.65f, center.y - half * 0.65f),
+            alpha = dotAlpha
+        )
+        drawCircle(
+            brush = brush,
+            radius = dotRadius * 0.8f,
+            center = Offset(center.x - half * 0.55f, center.y + half * 0.55f),
+            alpha = dotAlpha * 0.7f
+        )
+    }
+}

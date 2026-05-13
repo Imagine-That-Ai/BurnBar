@@ -252,7 +252,7 @@ struct HermesSetupWizardView: View {
         }
         .frame(width: 520, height: 540)
         .background(DesignSystem.Colors.background)
-        .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
     }
 
     // MARK: - Step Colors

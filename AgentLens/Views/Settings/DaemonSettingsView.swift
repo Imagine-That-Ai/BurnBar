@@ -214,7 +214,7 @@ struct DaemonLifecycleDetailView: View {
 
 struct HTTPGatewayDetailView: View {
     @Bindable var settingsManager: SettingsManager
-    @Environment(SettingsRouter.self) private var router
+    @Environment(SettingsRouter.self) private var router: SettingsRouter?
 
     private enum Focus: Hashable {
         case host, port, authToken
@@ -318,10 +318,11 @@ struct HTTPGatewayDetailView: View {
             }
         }
         .onAppear { applyPendingFocus() }
-        .onChange(of: router.pendingFocus) { _, _ in applyPendingFocus() }
+        .onChange(of: router?.pendingFocus) { _, _ in applyPendingFocus() }
     }
 
     private func applyPendingFocus() {
+        guard let router else { return }
         guard let pending = router.pendingFocus else { return }
         let target: Focus?
         switch pending {

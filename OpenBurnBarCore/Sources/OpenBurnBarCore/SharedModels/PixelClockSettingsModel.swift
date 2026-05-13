@@ -53,6 +53,7 @@ public final class InMemoryPixelClockOperations: PixelClockOperations {
     public private(set) var prepareCallCount = 0
     public private(set) var flashCallCount = 0
     public private(set) var pushCallCount = 0
+    public private(set) var removeCallCount = 0
 
     public init(probeResult: PixelClockProbeStatus = .unknown) {
         self.probeResult = probeResult
@@ -105,6 +106,7 @@ public final class InMemoryPixelClockOperations: PixelClockOperations {
 
     public func removePixelClockApp(config: PixelClockConfig) async throws {
         lastConfig = config
+        removeCallCount += 1
         if let failureToThrow { throw failureToThrow }
     }
 
@@ -200,6 +202,16 @@ public final class PixelClockSettingsModel {
 
     public func toggleEnabled(_ enabled: Bool) {
         mutate { $0.enabled = enabled }
+    }
+
+    /// User-facing master switch behavior. The on path runs setup/push, while
+    /// the off path immediately persists the disabled state and asks the
+    /// hardware adapter to remove OpenBurnBar from the clock.
+    public func disableAndRemove() async {
+        if config.enabled {
+            toggleEnabled(false)
+        }
+        await remove()
     }
 
     public func updateHost(_ host: String) {

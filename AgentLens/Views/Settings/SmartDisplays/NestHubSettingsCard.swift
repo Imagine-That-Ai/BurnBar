@@ -118,7 +118,9 @@ struct NestHubSettingsCard: View {
                 "",
                 isOn: Binding(
                     get: { model.enabled },
-                    set: { model.toggleEnabled($0) }
+                    set: { newValue in
+                        Task { await model.setEnabledFromToggle(newValue) }
+                    }
                 )
             )
             .toggleStyle(.switch)

@@ -17,3 +17,15 @@
 -keepclasseswithmembers class com.openburnbar.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
+
+# OkHttp SSE (Insights LLM streaming)
+-keep class okhttp3.internal.sse.** { *; }
+-dontwarn okhttp3.internal.sse.**
+
+# Vico charts (Insights renderers)
+-keep class com.patrykandpatrick.vico.** { *; }
+-dontwarn com.patrykandpatrick.vico.**
+
+# Coil image loading (Insights icons)
+-keep class coil.** { *; }
+-dontwarn coil.**
