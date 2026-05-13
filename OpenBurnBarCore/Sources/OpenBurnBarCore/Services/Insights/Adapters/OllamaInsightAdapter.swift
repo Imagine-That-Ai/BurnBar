@@ -19,13 +19,16 @@ public struct OllamaInsightAdapter: InsightModelGateway {
     public let baseURL: URL
     public let urlSession: URLSession
     public let modelCatalog: [InsightCatalogModel]
+    public let numPredict: Int
 
     public init(baseURL: URL = URL(string: "http://127.0.0.1:11434")!,
                 urlSession: URLSession = .shared,
-                modelCatalog: [InsightCatalogModel] = []) {
+                modelCatalog: [InsightCatalogModel] = [],
+                numPredict: Int = 1400) {
         self.baseURL = baseURL
         self.urlSession = urlSession
         self.modelCatalog = modelCatalog
+        self.numPredict = numPredict
     }
 
     public func availableModels() async throws -> [InsightCatalogModel] {
@@ -87,7 +90,12 @@ public struct OllamaInsightAdapter: InsightModelGateway {
                 ["role": "user", "content": userText]
             ],
             "format": "json",
-            "stream": false
+            "stream": false,
+            "think": false,
+            "options": [
+                "temperature": 0.2,
+                "num_predict": numPredict
+            ]
         ]
 
         var url = baseURL
@@ -127,7 +135,12 @@ public struct OllamaInsightAdapter: InsightModelGateway {
                 ["role": "user", "content": userText]
             ],
             "format": "json",
-            "stream": false
+            "stream": false,
+            "think": false,
+            "options": [
+                "temperature": 0.2,
+                "num_predict": numPredict
+            ]
         ]
 
         var url = baseURL

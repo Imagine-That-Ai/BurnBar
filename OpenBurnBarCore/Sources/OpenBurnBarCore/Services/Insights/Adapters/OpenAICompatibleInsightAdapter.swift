@@ -21,6 +21,7 @@ public struct OpenAICompatibleInsightAdapter: InsightModelGateway {
     public let authorizationHeaderName: String
     public let authorizationHeaderValuePrefix: String
     public let chatCompletionsPath: String
+    public let maxTokens: Int
 
     public init(
         providerKey: String,
@@ -31,7 +32,8 @@ public struct OpenAICompatibleInsightAdapter: InsightModelGateway {
         urlSession: URLSession = .shared,
         authorizationHeaderName: String = "Authorization",
         authorizationHeaderValuePrefix: String = "Bearer ",
-        chatCompletionsPath: String = "/v1/chat/completions"
+        chatCompletionsPath: String = "/v1/chat/completions",
+        maxTokens: Int = 1400
     ) {
         self.providerKey = providerKey
         self.displayName = displayName
@@ -42,6 +44,7 @@ public struct OpenAICompatibleInsightAdapter: InsightModelGateway {
         self.authorizationHeaderName = authorizationHeaderName
         self.authorizationHeaderValuePrefix = authorizationHeaderValuePrefix
         self.chatCompletionsPath = chatCompletionsPath
+        self.maxTokens = maxTokens
     }
 
     public func availableModels() async throws -> [InsightCatalogModel] {
@@ -102,6 +105,7 @@ public struct OpenAICompatibleInsightAdapter: InsightModelGateway {
                 ["role": "user", "content": userText]
             ],
             "temperature": 0.2,
+            "max_tokens": maxTokens,
             "response_format": ["type": "json_object"]
         ]
 

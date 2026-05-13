@@ -7,7 +7,7 @@ final class InsightLiveProviderSmokeTests: XCTestCase {
         try XCTSkipUnless(Self.liveRunsEnabled, "Set OPENBURNBAR_RUN_LIVE_INSIGHTS=1 to run live provider smoke tests.")
 
         let session = Self.liveURLSession(timeout: 180)
-        let adapter = OllamaInsightAdapter(urlSession: session)
+        let adapter = OllamaInsightAdapter(urlSession: session, numPredict: 2_200)
         let models = try await adapter.availableModels()
         let modelID = Self.env("OPENBURNBAR_LIVE_OLLAMA_MODEL") ?? models.first?.id
         guard let modelID, !modelID.isEmpty else {
@@ -31,6 +31,7 @@ final class InsightLiveProviderSmokeTests: XCTestCase {
 
     func testLiveZAIInsightAnalysisWhenEnabled() async throws {
         try XCTSkipUnless(Self.liveRunsEnabled, "Set OPENBURNBAR_RUN_LIVE_INSIGHTS=1 to run live provider smoke tests.")
+        try XCTSkipUnless(Self.env("OPENBURNBAR_RUN_LIVE_ZAI") == "1", "Set OPENBURNBAR_RUN_LIVE_ZAI=1 to spend Z.ai credits.")
         guard let apiKey = Self.env("ZAI_API_KEY") ?? Self.env("ZHIPUAI_API_KEY") else {
             throw XCTSkip("ZAI_API_KEY or ZHIPUAI_API_KEY is not set.")
         }
@@ -60,7 +61,8 @@ final class InsightLiveProviderSmokeTests: XCTestCase {
                 )
             ],
             urlSession: Self.liveURLSession(timeout: 90),
-            chatCompletionsPath: "/api/paas/v4/chat/completions"
+            chatCompletionsPath: "/api/paas/v4/chat/completions",
+            maxTokens: 900
         )
         let tag = InsightModelTag(
             providerKey: "zai",
@@ -98,7 +100,87 @@ final class InsightLiveProviderSmokeTests: XCTestCase {
     }
 
     private static func liveRequest(selectedModel: InsightModelTag) throws -> InsightAnalysisRequest {
-        let snapshot = InsightTestFixtures.twoWeeksOfUsage()
+        let now = Date()
+        let start = now.addingTimeInterval(-7 * 24 * 3600)
+        let usages = [
+            InsightUsageRow(
+                sessionID: "live-cost-baseline",
+                provider: "Codex",
+                model: "gpt-5.5",
+                projectName: "/Users/me/app",
+                deviceID: "device-A",
+                deviceName: "Alberto's Mac",
+                startTime: start.addingTimeInterval(3600),
+                endTime: start.addingTimeInterval(4200),
+                inputTokens: 8_000,
+                outputTokens: 2_000,
+                reasoningTokens: 500,
+                cacheReadTokens: 1_000,
+                cacheCreationTokens: 120,
+                totalTokens: 11_620,
+                costUSD: 0.18
+            ),
+            InsightUsageRow(
+                sessionID: "live-cost-spike",
+                provider: "Claude Code",
+                model: "claude-sonnet-4-6",
+                projectName: "/Users/me/app",
+                deviceID: "device-A",
+                deviceName: "Alberto's Mac",
+                startTime: now.addingTimeInterval(-3600),
+                endTime: now.addingTimeInterval(-3000),
+                inputTokens: 42_000,
+                outputTokens: 12_000,
+                reasoningTokens: 3_000,
+                cacheReadTokens: 0,
+                cacheCreationTokens: 4_000,
+                totalTokens: 61_000,
+                costUSD: 2.80
+            )
+        ]
+        let sessions = [
+            InsightSessionRow(
+                sessionID: "live-cost-baseline",
+                provider: "Codex",
+                projectName: "/Users/me/app",
+                startTime: usages[0].startTime,
+                endTime: usages[0].endTime,
+                messageCount: 4,
+                inferredTaskTitle: "Triage small bug",
+                keyTools: ["read", "grep"],
+                keyCommands: ["git diff"],
+                keyFiles: []
+            ),
+            InsightSessionRow(
+                sessionID: "live-cost-spike",
+                provider: "Claude Code",
+                projectName: "/Users/me/app",
+                startTime: usages[1].startTime,
+                endTime: usages[1].endTime,
+                messageCount: 18,
+                inferredTaskTitle: "Deep architecture analysis",
+                keyTools: ["read", "grep", "test"],
+                keyCommands: ["swift test"],
+                keyFiles: []
+            )
+        ]
+        let quota = InsightQuotaBucket(
+            providerKey: "anthropic",
+            providerDisplayName: "Claude Code",
+            bucketName: "5h",
+            used: 0.86,
+            limit: 1.0,
+            resetsAt: now.addingTimeInterval(45 * 60),
+            sourceKind: "officialAPI",
+            confidence: "high"
+        )
+        let snapshot = InsightDataSnapshot(
+            window: DateInterval(start: start, end: now),
+            generatedAt: now,
+            usages: usages,
+            sessions: sessions,
+            quotaBuckets: [quota]
+        )
         let context = try InsightAggregator().buildContext(
             snapshot: snapshot,
             filter: InsightFilter(window: .last7d),
