@@ -6,6 +6,7 @@ import DeviceShowcase from "@components/DeviceShowcase.astro";
 import SurfaceCard from "@components/SurfaceCard.astro";
 import ProviderTable from "@components/ProviderTable.astro";
 import LockedModelRelay from "@components/LockedModelRelay.astro";
+import PlatformShowcase from "@components/platform/PlatformShowcase.astro";
 import { SITE } from "@data/site";
 import { SURFACES } from "@data/surfaces";
 import { PROVIDERS_PRIMARY } from "@data/providers";
@@ -191,6 +192,11 @@ const surfaceShowcase = SURFACES.filter((s) =>
   <DeviceShowcase />
 
   <!-- ────────────────────────────────────────────────
+       SMART DISPLAYS (Nest Hub · Ulanzi TC001) — live mockups
+       ──────────────────────────────────────────────── -->
+  <PlatformShowcase variant="hero" />
+
+  <!-- ────────────────────────────────────────────────
        PROVIDER PREVIEW
        ──────────────────────────────────────────────── -->
   <section class="provshow" aria-labelledby="provshow-h">
@@ -251,8 +257,8 @@ const surfaceShowcase = SURFACES.filter((s) =>
         </p>
         <p class="lead">
           BurnBar's local gateway preserves the exact model you asked for.
-          Your <span class="mono">gpt-5</span> stays
-          <span class="mono">gpt-5</span>; your
+          Your <span class="mono">gpt-5.5</span> stays
+          <span class="mono">gpt-5.5</span>; your
           <span class="mono">claude-opus-4-7</span> stays itself. The router
           picks from accounts in your library that already carry that model —
           and if none survive, it returns a structured 503 instead of a
@@ -277,7 +283,7 @@ const surfaceShowcase = SURFACES.filter((s) =>
       </header>
 
       <div class="hydrantsec__board">
-        <LockedModelRelay variant="big" modelID="gpt-5" modelTag="model id · invariant" />
+        <LockedModelRelay variant="big" modelID="gpt-5.5" modelTag="model id · invariant" />
       </div>
 
       <div class="hydrantsec__cta">
@@ -313,29 +319,37 @@ const surfaceShowcase = SURFACES.filter((s) =>
         </p>
         <ul class="hermes__list">
           <li>
-            <span class="hermes__mark mono">·</span>
-            <strong>Conversation Atoms.</strong>
-            Every entity Hermes mentions becomes a tappable chip — cost,
-            session, provider, model, window — that opens the matching native view.
+            <span class="hermes__mark mono" aria-hidden="true">·</span>
+            <div class="hermes__listbody">
+              <strong>Conversation Atoms.</strong>
+              Every entity Hermes mentions becomes a tappable chip — cost,
+              session, provider, model, window — that opens the matching native view.
+            </div>
           </li>
           <li>
-            <span class="hermes__mark mono">·</span>
-            <strong>Chart Studio.</strong>
-            On iPhone and iPad, Hermes streams JSON envelopes that render to
-            10 native Swift Charts kinds and sandboxed Mermaid diagrams.
+            <span class="hermes__mark mono" aria-hidden="true">·</span>
+            <div class="hermes__listbody">
+              <strong>Chart Studio.</strong>
+              On iPhone and iPad, Hermes streams JSON envelopes that render to
+              10 native Swift Charts kinds and sandboxed Mermaid diagrams.
+            </div>
           </li>
           <li>
-            <span class="hermes__mark mono">·</span>
-            <strong>Two backends.</strong>
-            Local Index for stateless per-turn answers via the CLI, or the
-            local Hermes Gateway for multi-turn, OpenAI-shaped chat with
-            server-side tool calls.
+            <span class="hermes__mark mono" aria-hidden="true">·</span>
+            <div class="hermes__listbody">
+              <strong>Two backends.</strong>
+              Local Index for stateless per-turn answers via the CLI, or the
+              local Hermes Gateway for multi-turn, OpenAI-shaped chat with
+              server-side tool calls.
+            </div>
           </li>
           <li>
-            <span class="hermes__mark mono">·</span>
-            <strong>Hermes Remote Relay.</strong>
-            Reach the Mac's Hermes from anywhere over an end-to-end-encrypted
-            WebSocket. Paid-tier; relay never sees plaintext.
+            <span class="hermes__mark mono" aria-hidden="true">·</span>
+            <div class="hermes__listbody">
+              <strong>Hermes Remote Relay.</strong>
+              Reach the Mac's Hermes from anywhere over an end-to-end-encrypted
+              WebSocket. Paid-tier; relay never sees plaintext.
+            </div>
           </li>
         </ul>
       </div>

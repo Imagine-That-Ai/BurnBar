@@ -1,15 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Artificial Analysis attribution mark">
-  <title>Artificial Analysis</title>
-  <rect x="1" y="1" width="62" height="62" rx="14" fill="#0c0a0f" stroke="#2a2030" stroke-width="1.25"/>
-  <!-- analysis bars rising left to right -->
-  <rect x="11" y="38" width="5" height="14" rx="1" fill="#ffb547" opacity="0.55"/>
-  <rect x="18.5" y="30" width="5" height="22" rx="1" fill="#ffb547" opacity="0.75"/>
-  <rect x="26" y="22" width="5" height="30" rx="1" fill="#ffb547"/>
-  <rect x="33.5" y="16" width="5" height="36" rx="1" fill="#ff6a1a"/>
-  <rect x="41" y="22" width="5" height="30" rx="1" fill="#ffb547"/>
-  <rect x="48.5" y="28" width="5" height="24" rx="1" fill="#ffb547" opacity="0.75"/>
-  <!-- baseline -->
-  <line x1="10" y1="54" x2="55" y2="54" stroke="#3a342c" stroke-width="1"/>
-  <!-- spark dot -->
-  <circle cx="36" cy="13" r="2.6" fill="#f6f1e7"/>
+<svg width="53" height="53" viewBox="0 0 53 53" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_6853_1009)">
+<path d="M46.2194 52.8201H52.8194V39.6101H46.2194H39.6094V52.8201H46.2194Z" fill="#7F4BF3"/>
+<path d="M26.41 0L13.2 13.2H0V26.41H19.81L33.01 13.2H39.61V0H26.41Z" fill="#7F4BF3"/>
+<path d="M26.41 26.4099L13.2 39.6099H0V52.8199H19.81L33.01 39.6099H39.61V26.4099H26.41Z" fill="#7F4BF3"/>
+<path d="M52.8194 26.41V13.2H46.2194H39.6094V26.41H46.2194H52.8194Z" fill="#7F4BF3"/>
+</g>
+<defs>
+<clipPath id="clip0_6853_1009">
+<rect width="52.82" height="52.82" fill="white"/>
+</clipPath>
+</defs>
 </svg>

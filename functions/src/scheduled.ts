@@ -15,7 +15,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { getConfig } from "./config.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
-import { computeUserRollupsFromCounters, writeUserRollups } from "./rollups.js";
+import { computeUserRollups, computeUserRollupsFromCounters, writeUserRollups } from "./rollups.js";
 import {
   refreshUserProviderAccountQuota,
   refreshUserProviderQuota,
@@ -24,7 +24,7 @@ import {
   collectModelLandscapeBenchmarks,
   writeModelLandscapeBenchmarks,
 } from "./modelLandscape.js";
-import type { Provider } from "./types.js";
+import type { Provider, RollupJobDoc } from "./types.js";
 
 const ARTIFICIAL_ANALYSIS_API_KEY = defineSecret("ARTIFICIAL_ANALYSIS_API_KEY");
 
@@ -67,17 +67,22 @@ export const rebuildRollups = onSchedule(
 
     for (const uid of uniqueUids) {
       try {
-        const rollups = await computeUserRollupsFromCounters(db, uid);
+        // If a previous incremental attempt failed, the counters may be
+        // corrupt. Fall back to a full rebuild that re-reads all raw usage
+        // events and reconstructs counters from scratch.
+        const jobSnap = await db.doc(`users/${uid}/rollup_jobs/current`).get();
+        const job = jobSnap.exists ? jobSnap.data() as RollupJobDoc : null;
+        const needsFullRebuild = job?.lastErrorCode != null;
+
+        const rollups = needsFullRebuild
+          ? await computeUserRollups(db, uid)
+          : await computeUserRollupsFromCounters(db, uid);
         await writeUserRollups(db, uid, rollups);
       } catch (err) {
         console.error(`Rollup failed for ${uid}:`, err);
-        // Mark error so we don't infinitely retry every 5 minutes without
-        // backoff.  A simple approach: leave dirty=true but set lastErrorCode.
         const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
         await jobRef.set(
-          {
-            lastErrorCode: (err as Error).message,
-          },
+          { lastErrorCode: (err as Error).message },
           { merge: true }
         );
       }

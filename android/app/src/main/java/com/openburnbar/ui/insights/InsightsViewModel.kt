@@ -180,11 +180,6 @@ class InsightsViewModel(
     ) {
         val filter = _canvas.value?.filter ?: InsightFilter()
         val digest = dataSource.buildDigest(filter)
-        if (digest.isEmpty()) {
-            _analysis.value = null
-            _canvas.value = null
-            return
-        }
         val context = InsightAggregator.buildContext(
             digest = digest,
             includedDataSources = listOf(
@@ -211,11 +206,3 @@ class InsightsViewModel(
         _canvas.value = RuleBasedInsightAnalysisEngine.materializeCanvas(result, prompt)
     }
 }
-
-private fun com.openburnbar.data.insights.InsightDigest.isEmpty(): Boolean =
-    totals.costUSD == 0.0 &&
-        totals.totalTokens == 0L &&
-        totals.sessionCount == 0 &&
-        providers.isEmpty() &&
-        models.isEmpty() &&
-        daily.isEmpty()

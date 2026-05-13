@@ -5,12 +5,13 @@ import RuleVignette from "@components/RuleVignette.astro";
 import ModeComparison from "@components/ModeComparison.astro";
 import TodaysRundown from "@components/TodaysRundown.astro";
 import LifecycleStateMachine from "@components/LifecycleStateMachine.astro";
+import PlatformShowcase from "@components/platform/PlatformShowcase.astro";
 import { SITE } from "@data/site";
 
 const faqEntries = [
   {
     q: "Will failover ever change my model?",
-    a: "No. Failover stays inside the model identity you asked for. If you sent `gpt-5`, the router will only pick from accounts whose catalog also carries `gpt-5`. If no eligible account exists, BurnBar returns a structured 503 — never a silent substitute."
+    a: "No. Failover stays inside the model identity you asked for. If you sent `gpt-5.5`, the router will only pick from accounts whose catalog also carries `gpt-5.5`. If no eligible account exists, BurnBar returns a structured 503 — never a silent substitute."
   },
   {
     q: "What is Provider-Family Failover?",
@@ -50,8 +51,8 @@ const faqEntries = [
       </h1>
       <p class="pagehead__lead">
         BurnBar's local router stretches one model across every account in
-        your library that serves it. Your <code class="mono">gpt-5</code> stays
-        <code class="mono">gpt-5</code>. Your
+        your library that serves it. Your <code class="mono">gpt-5.5</code> stays
+        <code class="mono">gpt-5.5</code>. Your
         <code class="mono">claude-opus-4-7</code> stays
         <code class="mono">claude-opus-4-7</code>. The accounts swap;
         the model never does.
@@ -64,7 +65,7 @@ const faqEntries = [
       </ul>
 
       <div class="pagehead__visual">
-        <LockedModelRelay variant="big" modelID="gpt-5" modelTag="model id · invariant" />
+        <LockedModelRelay variant="big" modelID="gpt-5.5" modelTag="model id · invariant" />
       </div>
 
       <div class="pagehead__ctas">
@@ -91,14 +92,14 @@ const faqEntries = [
         <RuleVignette
           idx={1}
           variant="swap-account"
-          model="gpt-5"
+          model="gpt-5.5"
           title="Primary OpenAI key throttled → backup OpenAI key, same model."
-          eyebrow="01 · gpt-5 · 429"
+          eyebrow="01 · gpt-5.5 · 429"
           client={{ name: "Forge", logo: "/brand/providers/forge.png" }}
           primary={{ name: "OpenAI · personal", logo: "/brand/providers/openai.png", state: "primary" }}
-          fallback={{ name: "Codex · plus", logo: "/brand/providers/codex.png", state: "carries gpt-5" }}
+          fallback={{ name: "Codex · plus", logo: "/brand/providers/codex.png", state: "carries gpt-5.5" }}
           failure="429"
-          swapDetail="account only · gpt-5 → gpt-5"
+          swapDetail="account only · gpt-5.5 → gpt-5.5"
         />
 
         <RuleVignette
@@ -145,6 +146,9 @@ const faqEntries = [
   <div class="container container--wide" id="daily-rundown">
     <TodaysRundown />
   </div>
+
+  {/* ──────────────── 4.5 · SMART DISPLAY MOCKUPS (live re-renders) ──────────────── */}
+  <PlatformShowcase variant="compact" />
 
   {/* ──────────────── 5 · WHAT BURNBAR WILL NOT DO ──────────────── */}
   <section class="wontdo" aria-labelledby="wontdo-h">

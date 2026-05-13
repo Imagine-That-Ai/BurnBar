@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="DeepSeek mark">
+  <title>DeepSeek</title>
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="#0c0a0f" stroke="#2a2030" stroke-width="1.25"/>
+  <!-- whale-style abstract -->
+  <path d="M 14 38 Q 22 22 32 22 Q 44 22 50 32 Q 46 30 42 32 Q 46 36 48 42 Q 36 38 30 42 Q 22 46 14 38 Z" fill="#aeacba"/>
+  <circle cx="38" cy="30" r="2.4" fill="#0c0a0f"/>
+</svg>

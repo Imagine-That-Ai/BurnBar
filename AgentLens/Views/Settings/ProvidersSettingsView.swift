@@ -39,6 +39,8 @@ struct ProvidersSettingsView: View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                 SettingsSectionHeader(title: "Routed Providers")
 
+                routerModeCard
+
                 GlassCard {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                         HStack {
@@ -134,6 +136,59 @@ struct ProvidersSettingsView: View {
         }
         .onAppear { deviceLinksObserver.start() }
         .onDisappear { deviceLinksObserver.stop() }
+    }
+
+    private var routerModeCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
+                    Image(systemName: daemonManager.routerMode.iconName)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.blaze)
+                        .frame(width: 28)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Router mode")
+                            .font(DesignSystem.Typography.body)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text(daemonManager.routerMode.shortDescription)
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: DesignSystem.Spacing.md)
+
+                    Picker("Router mode", selection: Binding(
+                        get: { daemonManager.routerMode },
+                        set: { mode in
+                            Task { @MainActor in
+                                await daemonManager.setRouterMode(mode)
+                                await daemonManager.refreshHealth()
+                            }
+                        }
+                    )) {
+                        ForEach(ProviderRouterMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 380)
+                    .disabled(daemonManager.isBusy)
+                    .accessibilityLabel("Router mode")
+                    .help("Choose whether routed clients stay inside the selected provider family or use the intelligent cross-provider router.")
+                }
+
+                if daemonManager.routerMode == .intelligentModelRouter {
+                    Label("Uses task fit, account health, cost, latency, capability, and benchmark freshness when routing compatible requests.", systemImage: "chart.line.uptrend.xyaxis")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
     }
 
     @ViewBuilder
@@ -1100,6 +1155,35 @@ private struct CLIConnectionCard: View {
             return "Codex supports either OAuth or an OpenAI API key in the local config."
         case .opencode:
             return "OpenCode can use the OpenBurnBar Gateway through the routed client sync in Quota Reporting."
+        }
+    }
+}
+
+private extension ProviderRouterMode {
+    var displayName: String {
+        switch self {
+        case .providerFamilyFailover:
+            return "Provider-Family Failover"
+        case .intelligentModelRouter:
+            return "Intelligent Model Router"
+        }
+    }
+
+    var shortDescription: String {
+        switch self {
+        case .providerFamilyFailover:
+            return "Keeps routed requests inside the selected provider family, then fails over across your accounts."
+        case .intelligentModelRouter:
+            return "Can rank compatible providers by task fit, account health, cost, latency, capability, and benchmark freshness."
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .providerFamilyFailover:
+            return "rectangle.2.swap"
+        case .intelligentModelRouter:
+            return "brain.head.profile"
         }
     }
 }

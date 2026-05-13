@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.RollupSummary
+import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.data.models.UsageDisplayMode
 import com.openburnbar.data.models.UsageRollups
 import com.openburnbar.ui.burn.ProviderAuroraAvatar
@@ -40,32 +41,22 @@ fun PulseHeroBurnCard(
     scope: PulseTimelineScope,
     topProvider: RollupSummary?,
     dailyPoints: Map<String, Double>,
+    recentUsages: List<TokenUsage> = emptyList(),
     onDisplayModeChange: (UsageDisplayMode) -> Unit
 ) {
-    val windowValue = when (scope) {
-        PulseTimelineScope.MINUTE,
-        PulseTimelineScope.HOUR,
-        PulseTimelineScope.DAY -> rollups.today
-        PulseTimelineScope.WEEK -> rollups.sevenDays
-        PulseTimelineScope.MONTH -> rollups.thirtyDays
-    }
-    val trailingValue = when (scope) {
-        PulseTimelineScope.MINUTE,
-        PulseTimelineScope.HOUR -> rollups.today
-        PulseTimelineScope.DAY -> rollups.sevenDays
-        PulseTimelineScope.WEEK -> rollups.thirtyDays
-        PulseTimelineScope.MONTH -> rollups.ninetyDays
-    }
-    val totalTokens = rollups.totals["tokens"] ?: 0.0
-    val totalRequests = rollups.totals["requests"] ?: 0.0
+    val metrics = pulseWindowMetrics(
+        scope = scope,
+        rollups = rollups,
+        recentUsages = recentUsages
+    )
 
     val heroValueText = when (displayMode) {
-        UsageDisplayMode.CURRENCY -> Formatting.formatCurrency(windowValue)
-        UsageDisplayMode.TOKENS -> Formatting.formatTokens(totalTokens.toLong())
+        UsageDisplayMode.CURRENCY -> Formatting.formatCurrency(metrics.value)
+        UsageDisplayMode.TOKENS -> Formatting.formatTokens(metrics.tokenValue)
     }
     val heroSubtitleText = when (displayMode) {
-        UsageDisplayMode.CURRENCY -> "${Formatting.formatTokens(totalTokens.toLong())} tokens · ${totalRequests.toInt()} requests"
-        UsageDisplayMode.TOKENS -> "${Formatting.formatCurrency(windowValue)} · ${totalRequests.toInt()} requests"
+        UsageDisplayMode.CURRENCY -> "${Formatting.formatTokens(metrics.tokenValue)} tokens · ${metrics.requestValue} requests"
+        UsageDisplayMode.TOKENS -> "${Formatting.formatCurrency(metrics.value)} · ${metrics.requestValue} requests"
     }
 
     // Delta calculation
@@ -76,8 +67,8 @@ fun PulseHeroBurnCard(
         PulseTimelineScope.WEEK -> 7.0
         PulseTimelineScope.MONTH -> 30.0
     }
-    val avg = trailingValue / divisor
-    val pct = if (avg > 0) ((windowValue - avg) / avg) * 100 else 0.0
+    val avg = metrics.trailingValue / divisor
+    val pct = if (avg > 0) ((metrics.value - avg) / avg) * 100 else 0.0
     val isAhead = pct >= 0
 
     AuroraGlassCard(
@@ -165,7 +156,7 @@ fun PulseHeroBurnCard(
                 }
 
                 // Delta row
-                if (trailingValue > 0) {
+                if (metrics.trailingValue > 0) {
                     Spacer(modifier = Modifier.height(AuroraSpacing.sm.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(

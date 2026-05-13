@@ -1,0 +1,533 @@
+---
+/**
+ * Nest Hub screen content — faithful HTML/CSS port of
+ * `NestHubMiniPreview.dashboardContent` in
+ * `OpenBurnBarCore/Sources/OpenBurnBarCore/Views/NestHubMiniPreview.swift`.
+ *
+ * Lays out: header (logo + live dot + status + refresh pill + date/clock) +
+ * provider rail (4 cards) + a "today's pick" footer that pulls today's
+ * coding recommendation from the live router rundown (with build-time
+ * fallback). Atmosphere mirrors the Swift radial-gradient washes + dot
+ * grid at 18%.
+ *
+ * Animations:
+ *   - clock ticks every second (hydrator)
+ *   - live dot pulses (CSS keyframe)
+ *   - bucket bars glint on a slow scan
+ */
+import { LATEST_RUNDOWN } from "@data/router-rundown-loader";
+
+interface Props {
+  /** Unique id so the hydrator can target this instance. */
+  id: string;
+}
+
+const { id } = Astro.props;
+
+const codingTask = LATEST_RUNDOWN?.taskRankings.find((t) => t.taskID === "coding")
+  ?? LATEST_RUNDOWN?.taskRankings[0];
+const topPick = codingTask?.recommendations[0];
+const rundownDate = LATEST_RUNDOWN?.date ?? "—";
+const sourceCount = LATEST_RUNDOWN?.sourceStatuses.filter((s) => s.status === "fresh").length ?? 0;
+
+// Mirrors the Swift `placeholder` snapshot — provider rail with 4 cards.
+const providers = [
+  {
+    id: "claude",
+    name: "Claude",
+    monogram: "C",
+    accent: "#E07868",
+    tokens: "5.4B",
+    tokenLabel: "TOKENS · 5H",
+    statusPill: "source 3h ago",
+    statusTone: "ember" as const,
+    freshness: "updated 3h ago",
+    isLive: true,
+    buckets: [
+      { name: "5-hour limit", percent: 8, headline: "8%", sub: "92% left", tone: "ember" as const },
+      { name: "Weekly limit", percent: 18, headline: "18%", sub: "82% left", tone: "ember" as const },
+    ],
+    runs: "1,002 runs",
+    cost: "$5,835.40",
+  },
+  {
+    id: "codex",
+    name: "Codex",
+    monogram: "C",
+    accent: "#A294F0",
+    tokens: "42.0B",
+    tokenLabel: "TOKENS · 7D",
+    statusPill: "reset passed",
+    statusTone: "whimsy" as const,
+    freshness: "updated just now",
+    isLive: true,
+    buckets: [
+      { name: "5-hour window", percent: 33, headline: "33%", sub: "67% left", tone: "whimsy" as const },
+      { name: "7-day window", percent: 45, headline: "45%", sub: "55% left", tone: "whimsy" as const },
+    ],
+    runs: "852 runs",
+    cost: "$52,262.22",
+  },
+  {
+    id: "cursor",
+    name: "Cursor",
+    monogram: "▣",
+    accent: "#C8BFB5",
+    tokens: "113.2M",
+    tokenLabel: "TOKENS · MO",
+    statusPill: "$400 included",
+    statusTone: "mercury" as const,
+    freshness: "updated 4m ago",
+    isLive: true,
+    buckets: [
+      { name: "Auto + Composer", percent: 8, headline: "8%", sub: "92% left", tone: "mercury" as const },
+      { name: "API usage", percent: 78, headline: "78%", sub: "22% left", tone: "warning" as const },
+    ],
+    runs: "216 runs",
+    cost: "$620.13",
+  },
+  {
+    id: "droid",
+    name: "Droid",
+    monogram: "❄︎",
+    accent: "#5F7CD9",
+    tokens: "11.2B",
+    tokenLabel: "TOKENS · 7D",
+    statusPill: "live local",
+    statusTone: "success" as const,
+    freshness: "updated 4m ago",
+    isLive: true,
+    buckets: [
+      { name: "5-hour window", percent: 35, headline: "350.8M", sub: "resets May 8", tone: "whimsy" as const },
+      { name: "7-day window", percent: 39, headline: "3.9B", sub: "resets May 14", tone: "whimsy" as const },
+    ],
+    runs: "2,750 runs",
+    cost: "$12,309.98",
+  },
+];
+
+const TONE_HEX: Record<string, string> = {
+  ember: "#E07868",
+  whimsy: "#A294F0",
+  success: "#38D898",
+  warning: "#F0C040",
+  mercury: "#C8BFB5",
+};
+---
+
+<div
+  class="nesthub-screen"
+  role="img"
+  aria-label={`Nest Hub mock running OpenBurnBar — today's coding pick ${topPick?.modelDisplay ?? "unknown"} as of ${rundownDate}`}
+  data-platform-screen
+  data-screen-id={id}
+>
+  <!-- atmosphere wash (mirrors Swift RadialGradient + DotGrid) -->
+  <div class="nesthub-screen__wash" aria-hidden="true"></div>
+  <div class="nesthub-screen__dotgrid" aria-hidden="true"></div>
+
+  <header class="nesthub-screen__head">
+    <img class="nesthub-screen__brand" src="/brand/logo-64.png" alt="" width="22" height="22" loading="lazy" />
+    <span class="nesthub-screen__livedot" aria-hidden="true"></span>
+    <span class="nesthub-screen__status">live provider pressure</span>
+    <span class="nesthub-screen__refresh">Refresh</span>
+    <div class="nesthub-screen__time">
+      <span class="nesthub-screen__date" data-platform-date>Tue, May 13</span>
+      <span class="nesthub-screen__clock" data-platform-clock data-platform-clock-format="hm">10:43 PM</span>
+    </div>
+  </header>
+
+  <ol class="nesthub-screen__rail" data-platform-provider-rail>
+    {providers.map((p) => (
+      <li class="ncard" style={`--accent:${p.accent};`}>
+        <header class="ncard__head">
+          <div class="ncard__logo" style={`--accent:${p.accent};`}>
+            <span>{p.monogram}</span>
+          </div>
+          <div class="ncard__id">
+            <strong class="ncard__name">{p.name}</strong>
+            <span class="ncard__fresh">{p.freshness}</span>
+          </div>
+          <span class={`ncard__live ${p.isLive ? "ncard__live--on" : ""}`} aria-hidden="true"></span>
+        </header>
+
+        <span class="ncard__pill" style={`--tone:${TONE_HEX[p.statusTone]};`}>{p.statusPill}</span>
+
+        <div class="ncard__total">{p.tokens}</div>
+        <div class="ncard__total-label">{p.tokenLabel}</div>
+        <hr class="ncard__rule" />
+
+        {p.buckets.map((b) => (
+          <div class="bucket">
+            <div class="bucket__row">
+              <span class="bucket__name">{b.name}</span>
+              <span class="bucket__headline">{b.headline}</span>
+            </div>
+            <div class="bucket__track">
+              <div
+                class="bucket__fill"
+                style={`width:${Math.max(2, Math.min(100, b.percent))}%; --tone:${TONE_HEX[b.tone]};`}
+              ></div>
+            </div>
+            <span class="bucket__sub">{b.sub}</span>
+          </div>
+        ))}
+
+        <footer class="ncard__foot">
+          <span class="ncard__runs">{p.runs}</span>
+          <span class="ncard__cost">{p.cost}</span>
+        </footer>
+      </li>
+    ))}
+  </ol>
+
+  <footer class="nesthub-screen__footer" data-platform-rundown-footer>
+    <span class="nesthub-screen__footer-label">Today · Coding</span>
+    <span class="nesthub-screen__footer-model" data-platform-top-pick-model>{topPick?.modelDisplay ?? "no rundown yet"}</span>
+    <span class="nesthub-screen__footer-score" data-platform-top-pick-score>
+      {topPick ? `${Math.round(topPick.score * 100)}/100` : "—"}
+    </span>
+    <span class="nesthub-screen__footer-sources" data-platform-top-pick-sources>
+      {sourceCount} fresh source{sourceCount === 1 ? "" : "s"}
+    </span>
+  </footer>
+</div>
+
+<style>
+  /*
+   * Lifted from `NestHubMiniPreview.dashboardContent`:
+   *   - background: theme gradient (charcoal top → deeper black bottom)
+   *   - top-leading radial wash @ palette.secondary 0.18
+   *   - bottom-trailing radial wash @ palette.primary 0.10
+   *   - dot grid at 18% opacity, ~14px step
+   * Colors picked to match the ember-whimsy palette + dark theme.
+   */
+  .nesthub-screen {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    background:
+      linear-gradient(180deg, #1a1422 0%, #0c0a0f 100%);
+    color: #f6f1e7;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: clamp(4px, 0.7vw, 8px);
+    padding: clamp(8px, 1.4vw, 14px) clamp(10px, 1.6vw, 16px);
+    isolation: isolate;
+    container-type: inline-size;
+  }
+  .nesthub-screen__wash {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(40% 60% at 18% 22%, rgba(214, 211, 223, 0.18), transparent 70%),
+      radial-gradient(50% 70% at 86% 80%, rgba(255, 106, 26, 0.10), transparent 70%);
+  }
+  .nesthub-screen__dotgrid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.18) 0.6px, transparent 1.2px);
+    background-size: 14px 14px;
+    opacity: 0.18;
+  }
+  .nesthub-screen > *:not(.nesthub-screen__wash):not(.nesthub-screen__dotgrid) {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── header ── */
+  .nesthub-screen__head {
+    display: flex;
+    align-items: center;
+    gap: clamp(4px, 0.6vw, 7px);
+    color: rgba(246, 241, 231, 0.85);
+    min-height: 22px;
+  }
+  .nesthub-screen__brand {
+    width: clamp(18px, 1.8vw, 22px);
+    height: clamp(18px, 1.8vw, 22px);
+    border-radius: 5px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 4px rgba(255, 106, 26, 0.25));
+  }
+  .nesthub-screen__livedot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #38D898;
+    box-shadow: 0 0 6px rgba(56, 216, 152, 0.7);
+    animation: nesthub-livedot 2.4s ease-in-out infinite;
+  }
+  @keyframes nesthub-livedot {
+    0%, 100% { opacity: 1; box-shadow: 0 0 6px rgba(56, 216, 152, 0.7); }
+    50% { opacity: 0.55; box-shadow: 0 0 2px rgba(56, 216, 152, 0.3); }
+  }
+  .nesthub-screen__status {
+    font-family: var(--font-mono);
+    font-size: clamp(0.56rem, 0.7vw, 0.7rem);
+    color: rgba(246, 241, 231, 0.65);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .nesthub-screen__refresh {
+    margin-left: auto;
+    border: 0.5px solid rgba(246, 241, 231, 0.2);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-family: var(--font-mono);
+    font-size: clamp(0.54rem, 0.65vw, 0.66rem);
+    color: rgba(246, 241, 231, 0.85);
+    white-space: nowrap;
+  }
+  .nesthub-screen__time {
+    display: grid;
+    justify-items: end;
+    line-height: 1;
+  }
+  .nesthub-screen__date {
+    font-size: clamp(0.5rem, 0.6vw, 0.62rem);
+    color: rgba(246, 241, 231, 0.6);
+  }
+  .nesthub-screen__clock {
+    font-family: var(--font-mono);
+    font-size: clamp(0.62rem, 0.78vw, 0.78rem);
+    color: rgba(246, 241, 231, 0.92);
+    font-variant-numeric: tabular-nums;
+    margin-top: 2px;
+  }
+
+  /* ── provider rail ── */
+  .nesthub-screen__rail {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: clamp(4px, 0.7vw, 8px);
+    align-items: stretch;
+  }
+
+  .ncard {
+    border-radius: 8px;
+    padding: clamp(4px, 0.65vw, 7px) clamp(5px, 0.85vw, 9px);
+    background:
+      linear-gradient(180deg,
+        color-mix(in oklab, var(--accent) 22%, transparent) 0%,
+        color-mix(in oklab, var(--accent) 5%, transparent) 35%,
+        rgba(0, 0, 0, 0.35) 100%);
+    border: 0.75px solid color-mix(in oklab, var(--accent) 55%, transparent);
+    box-shadow: 0 4px 18px color-mix(in oklab, var(--accent) 22%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(2px, 0.4vw, 4px);
+    min-width: 0;
+  }
+  .ncard__head {
+    display: flex;
+    align-items: start;
+    gap: clamp(3px, 0.5vw, 5px);
+    min-width: 0;
+  }
+  .ncard__logo {
+    width: clamp(14px, 1.6vw, 18px);
+    height: clamp(14px, 1.6vw, 18px);
+    border-radius: 4px;
+    background: color-mix(in oklab, var(--accent) 30%, transparent);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    color: #f6f1e7;
+    font-family: var(--font-display);
+    font-size: clamp(0.55rem, 0.7vw, 0.72rem);
+    font-variation-settings: "wght" 800;
+  }
+  .ncard__id { display: grid; min-width: 0; }
+  .ncard__name {
+    color: #f6f1e7;
+    font-family: var(--font-display);
+    font-size: clamp(0.7rem, 0.95vw, 0.95rem);
+    font-variation-settings: "wght" 720, "opsz" 60;
+    line-height: 1.05;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ncard__fresh {
+    color: rgba(246, 241, 231, 0.55);
+    font-size: clamp(0.42rem, 0.55vw, 0.55rem);
+    font-family: var(--font-mono);
+    margin-top: 1px;
+    line-height: 1.05;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ncard__live {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    margin-left: auto;
+    margin-top: 3px;
+    background: rgba(246, 241, 231, 0.2);
+    flex-shrink: 0;
+  }
+  .ncard__live--on { background: #38D898; box-shadow: 0 0 5px rgba(56, 216, 152, 0.6); }
+
+  .ncard__pill {
+    align-self: start;
+    color: var(--tone, #C8BFB5);
+    background: color-mix(in oklab, var(--tone, #C8BFB5) 18%, transparent);
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-family: var(--font-mono);
+    font-size: clamp(0.45rem, 0.55vw, 0.55rem);
+    line-height: 1.4;
+    font-variation-settings: "wght" 580;
+    white-space: nowrap;
+  }
+
+  .ncard__total {
+    color: #f6f1e7;
+    font-family: var(--font-display);
+    font-variation-settings: "wght" 800, "opsz" 144;
+    font-size: clamp(1.05rem, 1.85vw, 1.6rem);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    margin-top: clamp(1px, 0.2vw, 2px);
+  }
+  .ncard__total-label {
+    color: rgba(246, 241, 231, 0.5);
+    font-family: var(--font-mono);
+    font-size: clamp(0.42rem, 0.5vw, 0.55rem);
+    letter-spacing: 0.1em;
+    font-variation-settings: "wght" 700;
+  }
+  .ncard__rule {
+    border: none;
+    border-top: 0.5px solid rgba(246, 241, 231, 0.08);
+    margin: clamp(2px, 0.35vw, 4px) 0;
+  }
+
+  .bucket { display: grid; gap: 1px; }
+  .bucket__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px;
+    min-width: 0;
+  }
+  .bucket__name {
+    color: rgba(246, 241, 231, 0.65);
+    font-size: clamp(0.42rem, 0.55vw, 0.55rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bucket__headline {
+    color: #f6f1e7;
+    font-size: clamp(0.5rem, 0.6vw, 0.62rem);
+    font-variation-settings: "wght" 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .bucket__track {
+    position: relative;
+    height: 2.5px;
+    border-radius: 999px;
+    background: rgba(246, 241, 231, 0.1);
+    overflow: hidden;
+  }
+  .bucket__fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--tone, #ff6a1a);
+    box-shadow: 0 0 6px color-mix(in oklab, var(--tone, #ff6a1a) 60%, transparent);
+    position: relative;
+    overflow: hidden;
+  }
+  .bucket__fill::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%);
+    transform: translateX(-100%);
+    animation: bucket-scan 5.4s linear infinite;
+  }
+  @keyframes bucket-scan {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(220%); }
+  }
+  .bucket__sub {
+    color: rgba(246, 241, 231, 0.45);
+    font-size: clamp(0.38rem, 0.5vw, 0.5rem);
+  }
+
+  .ncard__foot {
+    margin-top: auto;
+    border-top: 0.5px solid rgba(246, 241, 231, 0.08);
+    padding-top: clamp(1px, 0.2vw, 2px);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px;
+    color: rgba(246, 241, 231, 0.6);
+    font-size: clamp(0.45rem, 0.55vw, 0.55rem);
+  }
+  .ncard__cost {
+    color: #f6f1e7;
+    font-family: var(--font-mono);
+    font-variation-settings: "wght" 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── today's-pick footer (hydrated from the live rundown) ── */
+  .nesthub-screen__footer {
+    display: flex;
+    align-items: baseline;
+    gap: clamp(4px, 0.8vw, 8px);
+    padding: clamp(2px, 0.4vw, 4px) clamp(5px, 0.7vw, 8px);
+    border-radius: 6px;
+    border: 0.5px dashed rgba(255, 181, 71, 0.45);
+    background:
+      linear-gradient(90deg, rgba(255, 106, 26, 0.10), transparent 80%);
+    color: rgba(246, 241, 231, 0.7);
+    font-size: clamp(0.5rem, 0.6vw, 0.62rem);
+  }
+  .nesthub-screen__footer-label {
+    font-family: var(--font-mono);
+    color: #ffb547;
+    letter-spacing: 0.1em;
+    font-variation-settings: "wght" 580;
+    text-transform: uppercase;
+  }
+  .nesthub-screen__footer-model {
+    color: #f6f1e7;
+    font-family: var(--font-display);
+    font-variation-settings: "wght" 640, "opsz" 80;
+  }
+  .nesthub-screen__footer-score {
+    margin-left: auto;
+    color: #ffb547;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .nesthub-screen__footer-sources {
+    font-family: var(--font-mono);
+    color: rgba(246, 241, 231, 0.55);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nesthub-screen__livedot,
+    .bucket__fill::after { animation: none !important; }
+  }
+
+  @container (max-width: 460px) {
+    .nesthub-screen__rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+</style>

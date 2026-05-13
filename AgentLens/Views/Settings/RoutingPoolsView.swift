@@ -111,9 +111,19 @@ private final class RoutingPoolsViewModel {
     var copiedSnippetTarget: RoutingClientWiringTarget?
 
     private let wiringFactory: () -> RoutingClientWiring
+    private let routedClientSyncFactory: () -> RoutedClientConfigSyncService
+    private static let defaultOpenAIModels = [
+        "glm-5-turbo",
+        "minimax-m2.7-highspeed",
+        "deepseek-v4-flash:cloud"
+    ]
 
-    init(wiringFactory: @escaping () -> RoutingClientWiring = { RoutingClientWiring() }) {
+    init(
+        wiringFactory: @escaping () -> RoutingClientWiring = { RoutingClientWiring() },
+        routedClientSyncFactory: @escaping () -> RoutedClientConfigSyncService = { RoutedClientConfigSyncService() }
+    ) {
         self.wiringFactory = wiringFactory
+        self.routedClientSyncFactory = routedClientSyncFactory
     }
 
     func isWired(for target: RoutingClientWiringTarget) -> Bool {
@@ -163,6 +173,28 @@ private final class RoutingPoolsViewModel {
 
     func snippet(for target: RoutingClientWiringTarget, gateway: RoutingClientGateway) -> String {
         wiringFactory().shellSnippet(target: target, gateway: gateway)
+    }
+
+    func isDroidSynced() -> Bool {
+        routedClientSyncFactory().isFactoryGatewayConfigPresent()
+    }
+
+    func syncDroidFactoryConfig(gateway: RoutingClientGateway) async {
+        isWiringChanging[.codex] = true
+        defer { isWiringChanging[.codex] = false }
+        do {
+            let config = RoutedClientGatewayConfig(
+                baseURL: "\(gateway.baseURL)/v1",
+                bearerToken: gateway.authToken,
+                models: Self.defaultOpenAIModels
+            )
+            let urls = try routedClientSyncFactory().applyFactoryGatewayConfig(config)
+            let paths = urls.map(\.path).joined(separator: ", ")
+            lastWireSummary[.codex] = "Synced Droid/Factory config: \(paths)"
+            lastWireError[.codex] = nil
+        } catch {
+            lastWireError[.codex] = error.localizedDescription
+        }
     }
 
     /// Copy a snippet to the system clipboard and surface a transient
@@ -216,6 +248,7 @@ struct RoutingPoolsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                 explainerHeader
+                setupChecklistCard
                 routerModeCard
                 poolPicker
                 selectedPoolContent
@@ -239,11 +272,11 @@ struct RoutingPoolsView: View {
                 Image(systemName: "point.3.connected.trianglepath.dotted")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(DesignSystem.Colors.ember)
-                Text("Router control")
+                Text("Router setup")
                     .font(DesignSystem.Typography.headline)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
             }
-            Text("OpenAI-shape requests stay in the OpenAI-compatible pool; Anthropic-shape requests stay in the Anthropic pool. The gateway never translates between the two. Pick whether routing stays provider-family-only or uses intelligent ranking inside the compatible pool.")
+            Text("This works like VibeProxy, but with OpenBurnBar's provider accounts and quota truth underneath: enable the local gateway, add at least two usable accounts in a pool, wire each CLI to the local endpoint, then let the daemon fail over when the active account is exhausted.")
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -257,6 +290,88 @@ struct RoutingPoolsView: View {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .stroke(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
         )
+    }
+
+    private var setupChecklistCard: some View {
+        let gateway = viewModel.gateway(from: settingsManager)
+        let openAIRows = poolAccountRows(for: .openaiCompat)
+        let anthropicRows = poolAccountRows(for: .anthropic)
+        let hasFallbackReady = openAIRows.contains(where: \.isNextFallback)
+            || anthropicRows.contains(where: \.isNextFallback)
+        return VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "checklist")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.success)
+                Text("Setup checklist")
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Spacer()
+                Button {
+                    useLocalGatewayDefaults()
+                } label: {
+                    Label("Use local defaults", systemImage: "bolt.horizontal.circle")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Enable the loopback gateway at 127.0.0.1:8317, matching VibeProxy's local-endpoint setup.")
+            }
+
+            setupStepRow(
+                title: "Gateway",
+                detail: settingsManager.gatewayEnabled
+                    ? "\(gateway.baseURL) · \(gateway.isLoopbackHost && gateway.authToken.isEmpty ? "local auth off" : "bearer auth on")"
+                    : "Off. Turn it on before probing routed clients.",
+                isComplete: settingsManager.gatewayEnabled
+            )
+            setupStepRow(
+                title: "OpenAI-family pool",
+                detail: "\(openAIRows.count) account\(openAIRows.count == 1 ? "" : "s") for Codex, Droid/Factory, Forge, Cursor, and OpenCode.",
+                isComplete: !openAIRows.isEmpty
+            )
+            setupStepRow(
+                title: "Anthropic pool",
+                detail: "\(anthropicRows.count) account\(anthropicRows.count == 1 ? "" : "s") for Claude Code.",
+                isComplete: !anthropicRows.isEmpty
+            )
+            setupStepRow(
+                title: "Failover runway",
+                detail: hasFallbackReady
+                    ? "A next fallback is ready in at least one pool."
+                    : "Add or enable a second healthy account to prove account exhaustion failover.",
+                isComplete: hasFallbackReady
+            )
+        }
+        .padding(DesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.36))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
+        )
+    }
+
+    private func setupStepRow(title: String, detail: String, isComplete: Bool) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+            Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(isComplete ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(detail)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
     }
 
     private var routerModeCard: some View {
@@ -345,7 +460,7 @@ struct RoutingPoolsView: View {
         )
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
             poolHeaderCard(header: header)
-            wiringCard(target: viewModel.selectedPool.wireTarget)
+            clientSetupCards(for: viewModel.selectedPool)
             accountsList(rows: rows, pool: viewModel.selectedPool)
         }
     }
@@ -394,7 +509,31 @@ struct RoutingPoolsView: View {
         )
     }
 
-    // MARK: - Wiring card
+    // MARK: - Client setup cards
+
+    @ViewBuilder
+    private func clientSetupCards(for pool: RoutingPool) -> some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "app.connected.to.app.below.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(pool.accentColor)
+                Text("Client apps")
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Spacer()
+            }
+
+            switch pool {
+            case .openaiCompat:
+                wiringCard(target: .codex)
+                droidFactorySyncCard
+                wiringCard(target: .forge)
+            case .anthropic:
+                wiringCard(target: .claudeCode)
+            }
+        }
+    }
 
     private func wiringCard(target: RoutingClientWiringTarget) -> some View {
         let gateway = viewModel.gateway(from: settingsManager)
@@ -418,58 +557,56 @@ struct RoutingPoolsView: View {
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if gateway.authToken.isEmpty {
-                gatewayUnconfiguredCallout
-            } else {
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    Toggle(isOn: Binding(
-                        get: { isWired },
-                        set: { newValue in
-                            Task { @MainActor in
-                                if newValue {
-                                    await viewModel.wire(target: target, gateway: gateway)
-                                } else {
-                                    await viewModel.unwire(target: target)
-                                }
+            gatewayReadinessCallout(gateway: gateway)
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Toggle(isOn: Binding(
+                    get: { isWired },
+                    set: { newValue in
+                        Task { @MainActor in
+                            if newValue {
+                                await viewModel.wire(target: target, gateway: gateway)
+                            } else {
+                                await viewModel.unwire(target: target)
                             }
                         }
-                    )) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(isWired ? "Wired (config-file mode)" : "Not wired")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            Text(configPathLabel(for: target))
-                                .font(DesignSystem.Typography.tiny.monospaced())
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
-                        }
                     }
-                    .toggleStyle(SwitchToggleStyle(tint: DesignSystem.Colors.blaze))
-                    .disabled(isChanging)
-                    Spacer()
-                    Button {
-                        Task { @MainActor in
-                            await viewModel.probe(target: target, gateway: gateway)
-                        }
-                    } label: {
-                        if isProbing {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Label("Probe", systemImage: "wave.3.right")
-                        }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(isWired ? "Wired (config-file mode)" : "Not wired")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text(configPathLabel(for: target))
+                            .font(DesignSystem.Typography.tiny.monospaced())
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(isProbing || gateway.authToken.isEmpty)
-
-                    Button {
-                        viewModel.snippetTarget = target
-                    } label: {
-                        Label("Copy shell snippet", systemImage: "doc.on.doc")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
                 }
+                .toggleStyle(SwitchToggleStyle(tint: DesignSystem.Colors.blaze))
+                .disabled(isChanging)
+                Spacer()
+                Button {
+                    Task { @MainActor in
+                        await viewModel.probe(target: target, gateway: gateway)
+                    }
+                } label: {
+                    if isProbing {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label("Probe", systemImage: "wave.3.right")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(isProbing || !settingsManager.gatewayEnabled)
+
+                Button {
+                    viewModel.snippetTarget = target
+                } label: {
+                    Label("Copy shell snippet", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
 
             if let probeStatus {
@@ -495,6 +632,95 @@ struct RoutingPoolsView: View {
         .sheet(item: snippetTargetBinding) { boxed in
             snippetSheet(target: boxed.target, gateway: viewModel.gateway(from: settingsManager))
         }
+    }
+
+    private var droidFactorySyncCard: some View {
+        let gateway = viewModel.gateway(from: settingsManager)
+        let isSynced = viewModel.isDroidSynced()
+        let isChanging = viewModel.isWiringChanging[.codex] == true
+        let isProbing = viewModel.isProbing[.codex] == true
+        let probeStatus = viewModel.probeStatus[.codex]
+        return VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: "terminal.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                Text("Sync Droid CLI (Factory)")
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Spacer()
+                wiredPill(isWired: isSynced)
+            }
+            Text("Writes VibeProxy-style Factory custom models into ~/.factory/settings.json and ~/.factory/config.json using provider \"openai\", base_url \(gateway.baseURL)/v1, and a local dummy key when gateway auth is off.")
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            gatewayReadinessCallout(gateway: gateway)
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isSynced ? "Synced" : "Not synced")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("~/.factory/settings.json + ~/.factory/config.json")
+                        .font(DesignSystem.Typography.tiny.monospaced())
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                Spacer()
+                Button {
+                    Task { @MainActor in
+                        await viewModel.syncDroidFactoryConfig(gateway: gateway)
+                    }
+                } label: {
+                    if isChanging {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label("Sync config", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(isChanging)
+
+                Button {
+                    Task { @MainActor in
+                        await viewModel.probe(target: .codex, gateway: gateway)
+                    }
+                } label: {
+                    if isProbing {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label("Probe pool", systemImage: "wave.3.right")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(isProbing || !settingsManager.gatewayEnabled)
+            }
+
+            if let probeStatus {
+                probeStatusRow(probeStatus)
+            }
+            if let summary = viewModel.lastWireSummary[.codex] {
+                statusLine(text: summary, isError: false)
+            }
+            if let error = viewModel.lastWireError[.codex] {
+                statusLine(text: error, isError: true)
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
+        )
     }
 
     private var snippetTargetBinding: Binding<SnippetTargetBox?> {
@@ -552,15 +778,41 @@ struct RoutingPoolsView: View {
         .frame(minWidth: 540, minHeight: 380)
     }
 
-    private var gatewayUnconfiguredCallout: some View {
+    @ViewBuilder
+    private func gatewayReadinessCallout(gateway: RoutingClientGateway) -> some View {
+        if !settingsManager.gatewayEnabled {
+            gatewayCallout(
+                title: "Local gateway is off.",
+                detail: "Use local defaults, then restart the daemon if prompted. Client config can be prepared now, but probes need the gateway running.",
+                icon: "powerplug.fill",
+                tint: DesignSystem.Colors.amber
+            )
+        } else if gateway.authToken.isEmpty && !gateway.isLoopbackHost {
+            gatewayCallout(
+                title: "Non-loopback gateway needs bearer auth.",
+                detail: "Add an auth token under Settings -> Daemon -> HTTP gateway before wiring remote clients.",
+                icon: "lock.trianglebadge.exclamationmark.fill",
+                tint: DesignSystem.Colors.error
+            )
+        } else if gateway.authToken.isEmpty {
+            gatewayCallout(
+                title: "Loopback auth is off.",
+                detail: "This matches VibeProxy's local setup: clients get a dummy key and the daemon accepts local requests without bearer auth.",
+                icon: "checkmark.shield.fill",
+                tint: DesignSystem.Colors.success
+            )
+        }
+    }
+
+    private func gatewayCallout(title: String, detail: String, icon: String, tint: Color) -> some View {
         HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(DesignSystem.Colors.amber)
+            Image(systemName: icon)
+                .foregroundStyle(tint)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Gateway auth token is missing.")
+                Text(title)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("Generate one under Settings → Daemon → HTTP gateway before wiring a client.")
+                Text(detail)
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
@@ -569,8 +821,14 @@ struct RoutingPoolsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                .fill(DesignSystem.Colors.amber.opacity(0.08))
+                .fill(tint.opacity(0.08))
         )
+    }
+
+    private func useLocalGatewayDefaults() {
+        settingsManager.gatewayEnabled = true
+        settingsManager.gatewayHost = "127.0.0.1"
+        settingsManager.gatewayPort = 8317
     }
 
     private func wiredPill(isWired: Bool) -> some View {
@@ -621,7 +879,9 @@ struct RoutingPoolsView: View {
         case .claudeCode:
             return "Writes ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN into ~/.claude/settings.json (and snapshots the previous file). Claude Code now sends every request through the local gateway, which fails over across your Anthropic accounts in the same pool."
         case .codex:
-            return "Drops a sentinel-fenced [model_providers.openburnbar] block plus a [profiles.openburnbar] profile into ~/.codex/config.toml. Run `codex --profile openburnbar` after exporting OPENBURNBAR_GATEWAY_TOKEN — the snippet sheet has the exact command. Codex's ChatGPT-auth mode is not routed — only the API-key path."
+            return "Drops a sentinel-fenced [model_providers.openburnbar] block plus a [profiles.openburnbar] profile into ~/.codex/config.toml. Run `codex --profile openburnbar` after exporting OPENBURNBAR_GATEWAY_TOKEN from the snippet sheet. Codex's ChatGPT-auth mode is not routed; only the API-key path is."
+        case .forge:
+            return "Adds a VibeProxy-style [[providers]] entry named openburnbar to ~/forge/.forge.toml with a chat-completions URL, models URL, and OPENBURNBAR_GATEWAY_TOKEN env var. Your existing Forge session provider is left alone so you can opt in deliberately."
         }
     }
 
@@ -629,6 +889,7 @@ struct RoutingPoolsView: View {
         switch target {
         case .claudeCode: return "~/.claude/settings.json"
         case .codex: return "~/.codex/config.toml"
+        case .forge: return "~/forge/.forge.toml"
         }
     }
 

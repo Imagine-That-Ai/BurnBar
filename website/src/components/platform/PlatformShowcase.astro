@@ -1,0 +1,252 @@
+---
+/**
+ * Section wrapper that renders every entry in `PLATFORM_DEVICES` as a
+ * device frame + screen + capability bullets + CTAs.
+ *
+ *   variant="hero"    — full section with eyebrow / h2 / lede, used on
+ *                       marketing pages
+ *   variant="compact" — strip only (no copy header), used inside /router
+ *                       and /product where the surrounding page provides
+ *                       its own context
+ *
+ * The matrix-only and Nest-only mockups are both fully live. The
+ * hydration script in `/public/platform-mockups.js` ticks the clock,
+ * advances the Ulanzi carousel, and fetches today's pick from
+ * `/api/router-rundown/latest`.
+ */
+import DeviceFrame from "./DeviceFrame.astro";
+import NestHubScreen from "./NestHubScreen.astro";
+import PixelMatrix from "./PixelMatrix.astro";
+import { PLATFORM_DEVICES, surfaceForDevice, type PlatformDevice } from "@data/platform-surfaces";
+
+interface Props {
+  variant?: "hero" | "compact";
+  /** Optional headline override. */
+  heading?: string;
+  eyebrow?: string;
+  lede?: string;
+}
+const { variant = "hero", heading, eyebrow, lede } = Astro.props;
+
+const defaultEyebrow = "Beyond the menu bar · Smart displays";
+const defaultHeading = "Run BurnBar where you can see it.";
+const defaultLede = `Your menu bar is one surface. Your Nest Hub on the kitchen counter and your Ulanzi pixel clock on the desk are two more — already shipping. The mockups below are faithful re-renders of the in-app preview code, hydrated from today's live router rundown.`;
+---
+
+<section
+  class={`platform platform--${variant}`}
+  id="smart-displays"
+  aria-label="OpenBurnBar smart-display platforms"
+>
+  <div class="container container--wide">
+    {variant === "hero" && (
+      <header class="platform__head sec-head">
+        <span class="eyebrow eyebrow--ember">{eyebrow ?? defaultEyebrow}</span>
+        <h2 class="platform__h">{heading ?? defaultHeading}</h2>
+        <p class="lead">{lede ?? defaultLede}</p>
+      </header>
+    )}
+
+    <div class="platform__grid">
+      {PLATFORM_DEVICES.map((device: PlatformDevice) => {
+        const surface = surfaceForDevice(device);
+        return (
+          <article class={`platform__card platform__card--${device.id}`} id={`platform-${device.id}`}>
+            <header class="platform__cardhead">
+              <span class="platform__pill mono">{surface?.statusLabel ?? "shipping"}</span>
+              <h3 class="platform__cardh">{device.name}</h3>
+              <p class="platform__formfactor mono">{device.formFactor}</p>
+            </header>
+
+            <div class="platform__stage">
+              <DeviceFrame kind={device.mockup} label={`${device.name} running OpenBurnBar`}>
+                {device.mockup === "nest-hub" && <NestHubScreen id={`nest-${device.id}`} />}
+                {device.mockup === "ulanzi-tc001" && <PixelMatrix id={`ulanzi-${device.id}`} layout="providerDashboard" />}
+              </DeviceFrame>
+            </div>
+
+            <p class="platform__blurb">{device.blurb}</p>
+
+            <ul class="platform__bullets">
+              {device.marqueeBullets.map((b) => <li>{b}</li>)}
+            </ul>
+
+            <footer class="platform__cardfoot">
+              <a
+                class="platform__cta"
+                href={device.setupHref}
+                target={device.setupHref.startsWith("http") ? "_blank" : undefined}
+                rel={device.setupHref.startsWith("http") ? "noopener noreferrer" : undefined}
+              >
+                {device.setupLabel}
+                <span aria-hidden="true">→</span>
+              </a>
+              {device.caption && <span class="platform__caption mono">{device.caption}</span>}
+            </footer>
+          </article>
+        );
+      })}
+    </div>
+
+    {variant === "compact" && (
+      <p class="platform__deepcta mono">
+        <a href="/platforms">See every BurnBar surface →</a>
+      </p>
+    )}
+  </div>
+</section>
+
+<script src="/platform-mockups.js" defer></script>
+
+<style>
+  .platform {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    position: relative;
+    background:
+      radial-gradient(70% 60% at 50% 0%, rgba(255, 106, 26, 0.06), transparent 60%);
+  }
+  .platform--compact {
+    padding-block: var(--s-7);
+    border-top: 1px dashed var(--ink-line);
+    background: transparent;
+  }
+  .platform__head { max-width: 72ch; margin-bottom: var(--s-7); }
+  .platform__h {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 1.4rem + 2.6vw, 3.4rem);
+    font-variation-settings: "opsz" 144, "wght" 460;
+    letter-spacing: -0.024em;
+    margin-top: var(--s-3);
+    color: var(--text-bright);
+    text-wrap: balance;
+  }
+
+  .platform__grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: var(--s-6);
+    align-items: start;
+  }
+  @media (max-width: 980px) {
+    .platform__grid { grid-template-columns: 1fr; }
+  }
+
+  .platform__card {
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background:
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    padding: var(--s-5);
+    display: grid;
+    gap: var(--s-4);
+    container-type: inline-size;
+  }
+
+  .platform__cardhead { display: grid; gap: var(--s-2); }
+  .platform__pill {
+    align-self: start;
+    color: var(--ember-bright);
+    background: color-mix(in oklab, var(--ember-core) 14%, var(--ink-base));
+    border: 1px solid color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    border-radius: var(--r-pill);
+    padding: 2px 10px;
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-variation-settings: "wght" 540;
+  }
+  .platform__cardh {
+    font-family: var(--font-display);
+    font-size: clamp(1.4rem, 1.1rem + 1vw, 1.85rem);
+    font-variation-settings: "opsz" 80, "wght" 520;
+    color: var(--text-bright);
+    letter-spacing: -0.018em;
+    margin: 0;
+  }
+  .platform__formfactor {
+    color: var(--text-mute);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+  }
+
+  .platform__stage {
+    padding: clamp(var(--s-3), 2vw, var(--s-5)) clamp(var(--s-2), 1.5vw, var(--s-4));
+    background:
+      radial-gradient(60% 80% at 50% 30%, rgba(255, 106, 26, 0.06), transparent 70%),
+      var(--ink-base);
+    border: 1px solid var(--ink-line-soft);
+    border-radius: var(--r-3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .platform__card--ulanzi-tc001 .platform__stage {
+    padding: clamp(var(--s-4), 3vw, var(--s-6));
+  }
+
+  .platform__blurb {
+    color: var(--text-base);
+    line-height: 1.55;
+    font-size: 0.94rem;
+    max-width: 60ch;
+  }
+  .platform__bullets {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 6px;
+    color: var(--text-mute);
+    font-size: 0.86rem;
+  }
+  .platform__bullets li::before {
+    content: "·  ";
+    color: var(--ember-bright);
+  }
+
+  .platform__cardfoot {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--s-3);
+    padding-top: var(--s-3);
+    border-top: 1px dashed var(--ink-line-soft);
+  }
+  .platform__cta {
+    color: var(--ember-bright);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-bottom: 1px solid color-mix(in oklab, var(--ember-core) 40%, transparent);
+    padding-bottom: 1px;
+  }
+  .platform__cta:hover { color: var(--text-bright); border-bottom-color: var(--text-bright); }
+  .platform__caption {
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+  }
+
+  .platform__deepcta {
+    margin-top: var(--s-5);
+    text-align: center;
+  }
+  .platform__deepcta a {
+    color: var(--ember-bright);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+  }
+  .platform__deepcta a:hover { color: var(--text-bright); }
+
+  /* swap order on mobile so the Nest stays on top */
+  @media (max-width: 980px) {
+    .platform__card--nest-hub { order: 1; }
+    .platform__card--ulanzi-tc001 { order: 2; }
+  }
+</style>

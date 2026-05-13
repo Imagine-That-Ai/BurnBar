@@ -223,9 +223,9 @@ Even in trusted workspaces, `apply_patch` and `run_terminal` pause for explicit 
 
 ---
 
-## Routed provider gateway (Cursor, Factory, OpenCode)
+## Routed provider gateway
 
-OpenBurnBar can wire supported models into Cursor, Factory, and OpenCode without you hand-editing ghost JSON or running a sketchy proxy you found at 2am.
+OpenBurnBar can wire supported models into Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code without you hand-editing ghost JSON or running a sketchy proxy you found at 2am.
 
 The play:
 
@@ -233,20 +233,20 @@ The play:
 - You pick which model IDs routed clients should believe in.
 - A local **OpenAI-compatible gateway** wakes up.
 - Cursor gets a **public HTTPS tunnel** because Cursor blocks `localhost` and private IPs for BYOK — not our rule, just our problem to solve.
-- Factory and OpenCode point directly at the local gateway.
-- OpenBurnBar writes the client config for Cursor, Factory, and OpenCode.
+- Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code point directly at the local gateway.
+- OpenBurnBar writes the client config for Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code.
 - OpenBurnBar temporarily swaps Cursor's local BYOK token field to a short-lived OpenBurnBar session token while the connector is active, then restores the saved value on disconnect.
 - Routed provider API keys stay in Keychain; client config only receives the local gateway URL and gateway token.
 - Gateway usage shows up as **`OpenBurnBar Gateway`**, and exhausted upstream plans fail over through the same routing policy instead of stranding the client on a dead account.
 
-**v1 upstream provider scope:** `Z.ai`, `MiniMax`, `Ollama Cloud`. **Client targets:** Cursor, Factory, OpenCode. **Cursor tunnel flavor:** Cloudflare quick tunnel (bring `cloudflared` only for Cursor).
+**v1 upstream provider scope:** `Z.ai`, `MiniMax`, `Ollama Cloud`, `OpenAI`, `Kimi`, and `Anthropic` where configured. **Client targets:** Cursor, Droid/Factory, Forge, OpenCode, Codex CLI, and Claude Code. **Cursor tunnel flavor:** Cloudflare quick tunnel (bring `cloudflared` only for Cursor).
 
 **Checklist:**
 
 1. Install `cloudflared` only if you want routed Cursor models.
-2. OpenBurnBar → **Settings → Providers → Quota Reporting → Cursor**
-3. Paste provider keys and pick routed models.
-4. Use **Connect** for Cursor, or **Sync Factory** / **Sync OpenCode** for local routed clients.
+2. OpenBurnBar -> **Settings -> Routing pools** and use **Use local defaults**.
+3. Add provider keys/accounts in the matching pool.
+4. Wire Codex, Droid/Factory, Forge, or Claude Code from the **Client apps** rows; use the older Cursor/OpenCode connector controls where those clients need them.
 5. Leave OpenBurnBar and the daemon running while clients chat through the gateway — it's doing real work under the hood.
 
 More detail: [`docs/ROUTED_CLIENT_GATEWAY.md`](docs/ROUTED_CLIENT_GATEWAY.md).

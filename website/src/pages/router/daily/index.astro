@@ -322,10 +322,10 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     place-items: center;
     border-radius: 5px;
     border: 1px solid var(--ink-line);
-    background: var(--ink-base);
+    background: #f6f1e7;
     overflow: hidden;
   }
-  .archcard__src img { width: 18px; height: 18px; }
+  .archcard__src img { width: 18px; height: 18px; object-fit: contain; padding: 1px; }
   .archcard__src--fresh { border-color: color-mix(in oklab, var(--status-exact) 40%, var(--ink-line)); }
   .archcard__src--warn { border-color: color-mix(in oklab, var(--status-estimated) 40%, var(--ink-line)); }
   .archcard__src--stale { border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line)); }
@@ -382,7 +382,9 @@ const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
     height: 40px;
     border-radius: 8px;
     border: 1px solid var(--ink-line);
-    background: var(--ink-surface);
+    background: #f6f1e7;
+    padding: 4px;
+    object-fit: contain;
   }
   .archsrc strong { color: var(--text-bright); display: inline-block; margin-right: 0.4rem; }
   .archsrc__short {

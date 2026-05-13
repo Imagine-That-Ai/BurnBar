@@ -96,16 +96,14 @@ class FirestoreRepository {
             ninetyDays.takeIf { it > 0 },
             allTime.takeIf { it > 0 }
         ).firstOrNull()?.toLong() ?: 0L
+        fun UsageRollups.requests(): Int = (totals["requests"] ?: 0.0).toInt()
 
         // Cloud Functions store the window-key fields as token totals. Cost
         // lives under totals.costUsd, so keep currency and token views separate.
         return UsageRollups(
             today = allDocs["today"]?.costUsd() ?: allTimeDoc.costUsd(),
-            
             sevenDays = allDocs["7d"]?.costUsd() ?: allTimeDoc.costUsd(),
-            
             thirtyDays = allDocs["30d"]?.costUsd() ?: allTimeDoc.costUsd(),
-            
             ninetyDays = allDocs["90d"]?.costUsd() ?: allTimeDoc.costUsd(),
             allTime = allTimeDoc.costUsd(),
             todayTokens = allDocs["today"]?.tokens() ?: allTimeDoc.tokens(),
@@ -113,6 +111,11 @@ class FirestoreRepository {
             thirtyDayTokens = allDocs["30d"]?.tokens() ?: allTimeDoc.tokens(),
             ninetyDayTokens = allDocs["90d"]?.tokens() ?: allTimeDoc.tokens(),
             allTimeTokens = allTimeDoc.tokens(),
+            todayRequests = allDocs["today"]?.requests() ?: allTimeDoc.requests(),
+            sevenDayRequests = allDocs["7d"]?.requests() ?: allTimeDoc.requests(),
+            thirtyDayRequests = allDocs["30d"]?.requests() ?: allTimeDoc.requests(),
+            ninetyDayRequests = allDocs["90d"]?.requests() ?: allTimeDoc.requests(),
+            allTimeRequests = allTimeDoc.requests(),
             totals = allTimeDoc.totals,
             providerSummaries = allTimeDoc.providerSummaries,
             accountSummaries = allTimeDoc.accountSummaries,

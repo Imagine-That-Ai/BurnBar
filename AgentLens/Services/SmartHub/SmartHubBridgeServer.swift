@@ -275,6 +275,8 @@ final class SmartHubBridgeServer {
             sendRedirect(to: "/render.html", on: connection)
         case ("GET", "/render.html"):
             sendHTML(SmartHubBridgePage.html, on: connection)
+        case ("GET", "/brand-logo.svg"):
+            sendSVG(SmartHubBridgePage.brandLogoSVG, on: connection)
         case ("GET", "/state.json"):
             // Record the poll BEFORE serving so the watchdog sees the
             // device's heartbeat the moment it arrives, not after the
@@ -513,6 +515,21 @@ final class SmartHubBridgeServer {
         }
         var head = "HTTP/1.1 200 OK\r\n"
         head += "Content-Type: text/html; charset=utf-8\r\n"
+        head += "Cache-Control: no-store\r\n"
+        head += "Content-Length: \(body.count)\r\n"
+        head += "Connection: close\r\n\r\n"
+        var data = head.data(using: .utf8) ?? Data()
+        data.append(body)
+        send(data, on: connection)
+    }
+
+    private func sendSVG(_ svg: String, on connection: NWConnection) {
+        guard let body = svg.data(using: .utf8) else {
+            sendStatus(500, on: connection)
+            return
+        }
+        var head = "HTTP/1.1 200 OK\r\n"
+        head += "Content-Type: image/svg+xml; charset=utf-8\r\n"
         head += "Cache-Control: no-store\r\n"
         head += "Content-Length: \(body.count)\r\n"
         head += "Connection: close\r\n\r\n"

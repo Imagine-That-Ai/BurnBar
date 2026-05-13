@@ -1,0 +1,272 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import PlatformShowcase from "@components/platform/PlatformShowcase.astro";
+import { SURFACES, type Surface } from "@data/surfaces";
+import { SITE } from "@data/site";
+
+const statusTint = (s: Surface["status"]) => {
+  switch (s) {
+    case "shipping": return "exact";
+    case "review": return "estimated";
+    case "beta": return "ember";
+    case "source-only": return "mercury";
+    case "planned": return "planned";
+    default: return "mercury";
+  }
+};
+---
+
+<BaseLayout
+  title="Platforms — every surface OpenBurnBar ships on"
+  description="Live mockups of OpenBurnBar on Google Nest Hub and Ulanzi TC001, plus the complete surface matrix: macOS menu bar, iOS, iPadOS, CLI, daemon, editor, widgets, smart displays, Android."
+>
+  <section class="pagehead pagehead--platforms" aria-labelledby="platforms-h">
+    <div class="container container--wide">
+      <span class="eyebrow eyebrow--ember">Platforms · every surface, one daemon</span>
+      <h1 id="platforms-h" class="pagehead__h">
+        BurnBar runs on the screens
+        <span class="ember">you actually look at</span>.
+      </h1>
+      <p class="lead">
+        One Mac, one daemon, one local journal — surfaced anywhere it matters.
+        The menu bar is the home base; the phone, the tablet, the Nest Hub on
+        the kitchen counter, and the pixel clock on the desk are everywhere
+        else. Below: live re-renders of the in-app preview code on every
+        device. No screenshots.
+      </p>
+      <div class="pagehead__ctas">
+        <a class="btn btn--ember" href="/download">Download for macOS <span aria-hidden="true">→</span></a>
+        <a class="btn btn--ghost" href="#smart-displays">Jump to smart displays</a>
+        <a class="btn btn--ghost" href="#surface-matrix">All surfaces</a>
+      </div>
+    </div>
+  </section>
+
+  <PlatformShowcase variant="hero" eyebrow="The smart-display showcase" heading="Faithful re-renders. Live data. Today's pick." />
+
+  <section class="surfacematrix" aria-labelledby="surfacematrix-h" id="surface-matrix">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--mercury">Surface matrix</span>
+        <h2 id="surfacematrix-h">Every surface BurnBar ships on. Status pill on every one.</h2>
+        <p class="lead">
+          The two devices above have live mockups. Every other surface is
+          listed here with its current shipping status, scope, and CTA.
+          Nothing is hidden, even the planned ones.
+        </p>
+      </header>
+
+      <ul class="surfacematrix__grid">
+        {SURFACES.map((s) => (
+          <li class={`surfacecard surfacecard--${s.status}`}>
+            <header class="surfacecard__head">
+              <span class={`tag tag--${statusTint(s.status)} mono`}>{s.statusLabel}</span>
+              <h3 class="surfacecard__h">{s.name}</h3>
+              <p class="surfacecard__platform mono">{s.platform}</p>
+            </header>
+            <p class="surfacecard__desc">{s.description}</p>
+            <ul class="surfacecard__bullets">
+              {s.bullets.map((b) => <li>{b}</li>)}
+            </ul>
+            {s.cta && (
+              <footer class="surfacecard__foot">
+                <a
+                  class="surfacecard__cta mono"
+                  href={s.cta.href}
+                  target={s.cta.external ? "_blank" : undefined}
+                  rel={s.cta.external ? "noopener noreferrer" : undefined}
+                >
+                  {s.cta.label} <span aria-hidden="true">→</span>
+                </a>
+              </footer>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      <p class="surfacematrix__cap mono">
+        Surface registry · <code>website/src/data/surfaces.ts</code> · Device registry · <code>website/src/data/platform-surfaces.ts</code>
+      </p>
+    </div>
+  </section>
+
+  <section class="extending" aria-labelledby="extending-h">
+    <div class="container container--narrow">
+      <header class="sec-head sec-head--mini">
+        <span class="eyebrow eyebrow--ember">Add a surface</span>
+        <h2 id="extending-h">The next device is one config row away.</h2>
+        <p class="lead">
+          BurnBar's surface system is data-driven. Adding a new platform (Apple
+          TV, Pi-zero pixel screen, smart fridge) is two files of work:
+        </p>
+      </header>
+
+      <ol class="extending__steps">
+        <li>
+          <strong>Declare it.</strong> Add a row to <code>SURFACES</code> in
+          <code>website/src/data/surfaces.ts</code> — name, platform pill, shipping
+          status, bullets, optional CTA. It shows up in the matrix above
+          immediately.
+        </li>
+        <li>
+          <strong>Mock it (optional).</strong> If it has a screen, add a row
+          to <code>PLATFORM_DEVICES</code> in
+          <code>website/src/data/platform-surfaces.ts</code> and drop a new
+          screen component next to <code>NestHubScreen.astro</code>.
+          <code>PlatformShowcase</code> picks it up via the
+          <code>mockup</code> dispatch key.
+        </li>
+        <li>
+          <strong>Ship its claim.</strong> Update the QA matrix at
+          <code>docs/SMART_DISPLAY_DEVICE_QA.md</code> with a probe + acceptance
+          test before flipping the status pill to <code>shipping</code>.
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="endcta endcta--inline">
+    <div class="container container--narrow">
+      <h2>Pick the screen you'll actually look at.</h2>
+      <p class="lead">
+        Free menu-bar app, $400 of hosted quota per month covered by the
+        included plans, every surface optional.
+      </p>
+      <div class="endcta__ctas">
+        <a class="btn btn--ember" href="/download">Download for macOS <span aria-hidden="true">→</span></a>
+        <a class="btn btn--ghost" href={`${SITE.github}/blob/main/docs/SMART_DISPLAY_DEVICE_QA.md`} target="_blank" rel="noopener noreferrer">Smart display QA matrix</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .pagehead--platforms { padding-block: var(--s-9) var(--s-5); }
+  .pagehead--platforms .pagehead__h { max-width: 22ch; }
+  .pagehead--platforms .pagehead__h .ember {
+    color: var(--ember-bright);
+    font-style: italic;
+    font-variation-settings: "opsz" 144, "wght" 360, "ital" 1;
+  }
+
+  .surfacematrix {
+    padding-block: var(--s-8) var(--s-7);
+    border-top: 1px solid var(--ink-line);
+  }
+  .surfacematrix__grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--s-4);
+  }
+  .surfacecard {
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background:
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    padding: var(--s-5);
+    display: grid;
+    gap: var(--s-3);
+  }
+  .surfacecard--shipping { border-color: color-mix(in oklab, var(--status-exact) 30%, var(--ink-line)); }
+  .surfacecard--review,
+  .surfacecard--beta { border-color: color-mix(in oklab, var(--ember-core) 30%, var(--ink-line)); }
+  .surfacecard--planned,
+  .surfacecard--source-only { opacity: 0.85; }
+
+  .surfacecard__head { display: grid; gap: var(--s-2); }
+  .surfacecard__h {
+    font-family: var(--font-display);
+    font-size: 1.18rem;
+    font-variation-settings: "opsz" 80, "wght" 540;
+    color: var(--text-bright);
+    margin: 0;
+    letter-spacing: -0.014em;
+  }
+  .surfacecard__platform { color: var(--text-mute); font-size: 0.78rem; letter-spacing: 0.04em; }
+  .surfacecard__desc { color: var(--text-base); font-size: 0.92rem; line-height: 1.5; }
+  .surfacecard__bullets {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 4px;
+    color: var(--text-mute);
+    font-size: 0.84rem;
+  }
+  .surfacecard__bullets li::before { content: "·  "; color: var(--ember-bright); }
+  .surfacecard__foot {
+    padding-top: var(--s-3);
+    border-top: 1px dashed var(--ink-line-soft);
+  }
+  .surfacecard__cta {
+    color: var(--ember-bright);
+    text-decoration: none;
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
+  }
+  .surfacecard__cta:hover { color: var(--text-bright); }
+  .surfacematrix__cap {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    margin-top: var(--s-5);
+    padding-top: var(--s-3);
+    border-top: 1px dashed var(--ink-line-soft);
+  }
+  .surfacematrix__cap code {
+    color: var(--text-mute);
+    background: var(--ink-base);
+    padding: 1px 6px;
+    border-radius: var(--r-2);
+    border: 1px solid var(--ink-line);
+  }
+
+  .extending {
+    padding-block: var(--s-7) var(--s-7);
+    border-top: 1px solid var(--ink-line);
+  }
+  .extending__steps {
+    counter-reset: step;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: var(--s-4);
+  }
+  .extending__steps li {
+    counter-increment: step;
+    padding-left: var(--s-7);
+    position: relative;
+    color: var(--text-base);
+    font-size: 0.94rem;
+    line-height: 1.55;
+  }
+  .extending__steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    border: 1px solid color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    color: var(--ember-bright);
+    display: grid;
+    place-items: center;
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+  }
+  .extending__steps strong { color: var(--text-bright); }
+  .extending__steps code {
+    font-family: var(--font-mono);
+    font-size: 0.82em;
+    color: var(--ember-bright);
+    background: var(--ink-base);
+    padding: 1px 6px;
+    border-radius: var(--r-2);
+    border: 1px solid var(--ink-line);
+  }
+</style>

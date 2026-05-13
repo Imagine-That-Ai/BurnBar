@@ -300,6 +300,10 @@ function stripUndefined<T>(value: T): T {
     return value.map((item) => stripUndefined(item)) as T;
   }
   if (value && typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      return value;
+    }
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
         .filter(([, entryValue]) => entryValue !== undefined)
@@ -859,10 +863,11 @@ export async function rebuildUserRollupCounters(
       winner: UsageCounterCandidate;
     } => entry.winner != null);
 
-  for (let i = 0; i < winners.length; i += 100) {
+  const repairBatchSize = 50;
+  for (let i = 0; i < winners.length; i += repairBatchSize) {
     const batch = db.batch();
     const now = new Date().toISOString();
-    for (const entry of winners.slice(i, i + 100)) {
+    for (const entry of winners.slice(i, i + repairBatchSize)) {
       addContribution(batch, db, uid, entry.winner, 1, now);
       const keyRef = db.doc(`users/${uid}/usage_counter_keys/${stableCounterKey(entry.logicalKey)}`);
       batch.set(
@@ -894,11 +899,15 @@ export async function writeUserRollups(
   }
 
   const jobRef = db.doc(`users/${uid}/rollup_jobs/current`);
-  const job: RollupJobDoc = {
-    dirty: false,
-    lastComputedAt: new Date().toISOString(),
-  };
-  batch.set(jobRef, job, { merge: true });
+  batch.set(
+    jobRef,
+    {
+      dirty: false,
+      lastComputedAt: new Date().toISOString(),
+      lastErrorCode: FieldValue.delete(),
+    },
+    { merge: true }
+  );
 
   await batch.commit();
 }

@@ -76,6 +76,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bearers (sent via `Authorization: Bearer`) and never logs the secret.
   Codex's ChatGPT-auth mode is honestly documented as
   **track-only, not routed**.
+- **VibeProxy-style routed client setup and failover proof.** Routing pools
+  now starts with a setup checklist, a one-click loopback gateway default
+  (`127.0.0.1:8317`), and explicit client rows for Codex CLI, Droid/Factory,
+  Forge CLI, and Claude Code. Local loopback clients can be wired with the
+  harmless `openburnbar-local` placeholder when gateway auth is intentionally
+  off, matching the VibeProxy local-proxy convention. Droid/Factory sync now
+  writes Factory custom models with `provider: "openai"` and the local
+  `/v1` gateway shape VibeProxy documents, while Forge gets a sentinel-fenced
+  `[[providers]]` block in `~/forge/.forge.toml` with chat-completions and
+  models URLs. Gateway tests now explicitly simulate quota exhaustion for
+  Codex, Droid, Forge, and Claude Code and prove each request retries the
+  backup account/key in the same wire-format pool.
 - **Insights tab (macOS, iPadOS, iOS).** A first-class destination that
   turns OpenBurnBar's local SQLite, JSONL ledgers, and Firestore rollups
   into a beautiful, modular, AI-authored analytics canvas. Pick any

@@ -67,12 +67,13 @@ healthy candidate in the same pool.
 
 ## What routes today
 
-- **OpenAI-family client targets:** Cursor (BYOK tunnel), Factory, OpenCode,
-  Codex CLI in `OPENAI_BASE_URL` mode, any OpenAI-compatible IDE.
+- **OpenAI-family client targets:** Cursor (BYOK tunnel), Droid/Factory,
+  Forge, OpenCode, Codex CLI in `OPENAI_BASE_URL` mode, any
+  OpenAI-compatible IDE.
 - **OpenAI-family upstream providers:** OpenAI, Z.ai, MiniMax, Kimi,
   Ollama Cloud, Ollama Local.
 - **Anthropic-family client targets:** Claude Code via
-  `ANTHROPIC_BASE_URL=http://127.0.0.1:8317` + `ANTHROPIC_AUTH_TOKEN=<gateway-token>`.
+  `ANTHROPIC_BASE_URL=http://127.0.0.1:8317` + `ANTHROPIC_AUTH_TOKEN=<gateway-token-or-openburnbar-local>`.
 - **Anthropic-family upstream providers:** Anthropic Console (`sk-ant-…`
   routed via the `x-api-key` header), Anthropic Pro/Team (OAuth bearer via
   the `Authorization: Bearer` header).
@@ -80,9 +81,9 @@ healthy candidate in the same pool.
   plus Anthropic-compatible `/v1/messages`.
 - **Usage attribution:** proxied local-client calls record as `OpenBurnBar Gateway`.
 
-Factory, OpenCode and Codex are client targets, not new upstream providers.
-Their requests still route through the same upstream accounts and credential
-slots configured in OpenBurnBar.
+Droid/Factory, Forge, OpenCode and Codex are client targets, not new upstream
+providers. Their requests still route through the same upstream accounts and
+credential slots configured in OpenBurnBar.
 
 ## Format-family enforcement
 
@@ -95,6 +96,15 @@ lives in `OpenBurnBarHTTPGatewayServerTests.swift`:
 - `testGatewayProxiesAnthropicMessagesHappyPath` — `/v1/messages` 200 path.
 - `testGatewayFailsOverAnthropicAccountOnQuotaExhausted` — `429` on primary
   Anthropic slot, traffic shifts to backup in the same request.
+- `testCodexOpenAICompatRequestFailsOverWhenPrimaryQuotaExhausted` —
+  Codex-shaped `/v1/chat/completions` request fails over from primary to backup.
+- `testDroidOpenAICompatRequestFailsOverWhenPrimaryQuotaExhausted` —
+  Droid/Factory-shaped `/v1/chat/completions` request fails over from primary
+  to backup.
+- `testForgeOpenAICompatRequestFailsOverWhenPrimaryQuotaExhausted` —
+  Forge-shaped `/v1/chat/completions` request fails over from primary to backup.
+- `testClaudeCodeAnthropicRequestFailsOverWhenPrimaryQuotaExhausted` —
+  Claude Code-shaped `/v1/messages` request fails over from primary to backup.
 - `testGatewayMessagesReturns503WhenOnlyOpenAICompatProvidersConfigured` —
   Anthropic request with no Anthropic accounts → structured 503.
 - `testGatewayChatCompletionsReturns503WhenOnlyAnthropicProvidersConfigured` —
@@ -103,17 +113,23 @@ lives in `OpenBurnBarHTTPGatewayServerTests.swift`:
 ## Setup
 
 1. Open OpenBurnBar on the Mac that will run the client.
-2. Confirm the daemon is installed and the gateway is enabled.
-3. Add Z.ai, MiniMax, and/or Ollama Cloud provider keys in Settings.
-4. Pick the exposed routed models in the Cursor connector settings.
-5. In Settings -> Providers -> Quota Reporting -> Cursor:
-   - use `Connect` for Cursor;
-   - use `Sync Factory` for Factory;
-   - use `Sync OpenCode` for OpenCode.
+2. Open Settings -> Routing pools and use **Use local defaults** if the
+   gateway is not already on. This enables the loopback gateway at
+   `127.0.0.1:8317`, matching the VibeProxy-style local setup.
+3. Add at least one provider account in the matching pool. Add a second
+   account or key in that pool if you want failover to have somewhere to go.
+4. In Settings -> Routing pools -> Client apps:
+   - wire Codex CLI through `~/.codex/config.toml`;
+   - sync Droid/Factory through `~/.factory/settings.json` and
+     `~/.factory/config.json`;
+   - wire Forge through `~/forge/.forge.toml`;
+   - wire Claude Code through `~/.claude/settings.json`.
+5. Use **Probe** / **Probe pool** to send a one-token request through the
+   gateway before trusting the client setup.
 
 Cursor still needs the Cloudflare quick tunnel path because Cursor BYOK rejects
-local/private network URLs. Factory and OpenCode use the local gateway URL
-directly, usually `http://127.0.0.1:8317/v1`.
+local/private network URLs. Droid/Factory, Forge, Codex, Claude Code, and
+OpenCode use the local gateway URL directly.
 
 ## Config Files Written
 
@@ -122,31 +138,39 @@ before replacing prior OpenBurnBar entries.
 
 | Client | File | OpenBurnBar-owned keys |
 |---|---|---|
-| Factory | `~/.factory/settings.json` | `customModels` entries with provider `openburnbar` |
-| Factory | `~/.factory/config.json` | `custom_models` entries with provider `openburnbar` |
+| Droid/Factory | `~/.factory/settings.json` | `customModels` entries with provider `openai`, `id = openburnbar:<model>`, and display names prefixed `OpenBurnBar` |
+| Droid/Factory | `~/.factory/config.json` | `custom_models` entries with provider `openai` and display names prefixed `OpenBurnBar` |
 | OpenCode | `~/.config/opencode/opencode.json` | `provider.openburnbar`; default `model` only when no model is set |
 | Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_AUTH_TOKEN`, plus a marker key `env.OPENBURNBAR_WIRED` so the helper can detect its own previous wiring |
 | Codex CLI | `~/.codex/config.toml` | Sentinel-fenced `[model_providers.openburnbar]` block bounded by `# openburnbar:routing — start` / `# openburnbar:routing — end`. Activate by setting `model_provider = "openburnbar"` in the Codex profile you want routed. |
+| Forge CLI | `~/forge/.forge.toml` | Sentinel-fenced VibeProxy-style `[[providers]]` block named `openburnbar` with `url = http://127.0.0.1:8317/v1/chat/completions`, `models = http://127.0.0.1:8317/v1/models`, `api_key_var = OPENBURNBAR_GATEWAY_TOKEN`, and `response_type = OpenAI` |
 
-The client config receives the local gateway URL and gateway auth token. Raw
-upstream provider API keys stay in OpenBurnBar's Keychain-backed provider store.
+The client config receives the local gateway URL and either the gateway auth
+token or the harmless `openburnbar-local` placeholder when the loopback gateway
+is intentionally authless. Raw upstream provider API keys stay in OpenBurnBar's
+Keychain-backed provider store.
 Every write snapshots the prior file as
 `<filename>.openburnbar-backup-<UTC-YYYYMMDD-HHMMSS>` so the change is
 reversible by hand if the helper is ever uninstalled.
 
 ## Wiring routed CLI clients from the Mac app
 
-`Settings → Routing pools` exposes a per-pool **Wire <client> through the
-Hydrant** card. Two modes:
+`Settings → Routing pools` exposes a setup checklist and VibeProxy-style client
+rows for each pool. Two modes:
 
 1. **Config-file mode (toggle)** — writes the env / TOML block listed above,
    then runs a 1-token probe (`POST /v1/messages` for Claude Code, `POST
-   /v1/chat/completions` for Codex) to confirm the gateway actually serves
-   the wired client before reporting success. Toggle off to remove the
+   /v1/chat/completions` for Codex and Forge) to confirm the gateway actually
+   serves the wired client before reporting success. Toggle off to remove the
    OpenBurnBar block.
 2. **Shell-snippet mode (button)** — opens a copy/pasteable
    `export ANTHROPIC_BASE_URL=…` / `export OPENAI_BASE_URL=…` block for
    users on managed dotfiles or non-standard shells. No file writes.
+
+Droid/Factory uses a sync button instead of a toggle because Factory consumes
+custom model arrays, not a sentinel block. OpenBurnBar writes the same
+`provider: "openai"` local gateway shape VibeProxy documents for Factory, then
+uses the shared OpenAI-family probe to prove the pool responds.
 
 Codex's ChatGPT-auth mode (browser session cookies) cannot be routed through
 a generic proxy; only the API-key path participates in the OpenAI-family pool
@@ -204,12 +228,13 @@ configured plan can still serve the model.
 - `Choose at least one routed model`: select at least one exposed model before
   syncing Factory or OpenCode.
 - `401` from the gateway: confirm the client's written API key matches the
-  gateway auth token in OpenBurnBar settings.
+  gateway auth token in OpenBurnBar settings. If the gateway is loopback-only
+  and auth is off, `openburnbar-local` is expected.
 - Client cannot connect: confirm OpenBurnBar and `OpenBurnBarDaemon` are
   running on the same Mac and that the gateway host/port match the client config.
-- Cursor works but Factory/OpenCode do not: Cursor may be going through the
-  tunnel while local clients use the direct gateway URL; check the local
-  `http://127.0.0.1:8317/v1/models` path.
+- Cursor works but Droid/Factory/Forge/OpenCode do not: Cursor may be going
+  through the tunnel while local clients use the direct gateway URL; check the
+  local `http://127.0.0.1:8317/v1/models` path.
 - Ollama Cloud model returns a model-name error: verify the direct model list at
   `https://ollama.com/api/tags`; local `:cloud` and `-cloud` aliases are only
   gateway-facing conveniences.

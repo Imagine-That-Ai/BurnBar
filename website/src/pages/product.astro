@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
 import RealDashboard from "@components/RealDashboard.astro";
+import PlatformShowcase from "@components/platform/PlatformShowcase.astro";
 import SurfaceCard from "@components/SurfaceCard.astro";
 import { SURFACES } from "@data/surfaces";
 import { FEATURES_BY_CATEGORY } from "@data/features";
@@ -33,6 +34,9 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
       />
     </div>
   </section>
+
+  <!-- SMART DISPLAY MOCKUPS -->
+  <PlatformShowcase variant="compact" />
 
   <!-- TRACKING -->
   <section class="featgroup">

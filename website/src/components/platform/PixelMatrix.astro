@@ -1,0 +1,144 @@
+---
+/**
+ * 32×8 LED matrix — faithful HTML/CSS port of
+ * `OpenBurnBarCore/.../PixelClockPreviewView.swift`.
+ *
+ * SSR-paints an initial frame from the JS port of `PixelClockFramePresenter`.
+ * `/public/platform-mockups.js` swaps the inner cells on a ticker so the
+ * carousel + spinner + percentage actually animate.
+ *
+ * The matrix is a CSS grid (32 cols × 8 rows). Each cell is a tiny circle
+ * via `border-radius: 50%`. Lit pixels get `box-shadow` glow that mirrors
+ * the Swift `Canvas` blur radius (`dotSize * 0.45`). Unlit pixels sit at
+ * `rgba(255,255,255,0.035)`, exactly matching the Swift fallback.
+ */
+// Pure-JS port of PixelClockFramePresenter — Vite resolves the .mjs import.
+import { COLUMNS, ROWS, DEFAULT_ITEMS, buildFrame } from "../../../scripts/lib/pixel-clock-presenter.mjs";
+
+interface PixelItem {
+  providerID: string;
+  providerName?: string;
+  percentUsed: number;
+  usageText?: string;
+  windowLabel?: string;
+}
+interface Props {
+  /** Pre-rendered frame for SSR; if absent we build the default frame. */
+  layout?: "providerDashboard" | "quotaCarousel" | "burnStatus" | "alertsOnly";
+  palette?: "emberWhimsy" | "mercury" | "traffic" | "monochrome";
+  /** Identifies this matrix to the hydrator. */
+  id: string;
+  /** Items to drive the layout; defaults to the canonical mock pool. */
+  items?: PixelItem[];
+}
+
+const {
+  id,
+  layout = "providerDashboard",
+  palette = "emberWhimsy",
+  items,
+} = Astro.props;
+const effectiveItems: PixelItem[] = items ?? (DEFAULT_ITEMS as PixelItem[]);
+
+// Bridge to the untyped .mjs presenter — JSON-safe shape, runtime-validated.
+type PresentedFrame = {
+  grid: Array<Array<{ isLit: boolean; color: string }>>;
+  accessibilityLabel: string;
+};
+const frame = (buildFrame as unknown as (args: unknown) => PresentedFrame)(
+  { layout, items: effectiveItems, tick: 0, palette }
+);
+const cells = frame.grid.flat();
+
+// Serialize the items/config so the hydrator can pick them up without
+// duplicating the catalog.
+const config = JSON.stringify({ layout, palette, items: effectiveItems });
+---
+
+<div
+  class="pixmatrix"
+  role="img"
+  aria-label={frame.accessibilityLabel}
+  data-platform-matrix
+  data-matrix-id={id}
+  data-matrix-config={config}
+  style={`--cols:${COLUMNS}; --rows:${ROWS};`}
+>
+  <div class="pixmatrix__panel" aria-hidden="true">
+    {cells.map((cell, i) => (
+      <span
+        class={cell.isLit ? "px px--on" : "px"}
+        style={cell.isLit ? `--c:${cell.color}` : undefined}
+        data-i={i}
+      ></span>
+    ))}
+  </div>
+</div>
+
+<style>
+  .pixmatrix {
+    position: relative;
+    aspect-ratio: calc(var(--cols) / var(--rows));
+    width: 100%;
+    background: #050207;
+    border: 1px solid #0d0710;
+    border-radius: 6px;
+    padding: 4px;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+      inset 0 0 30px rgba(255, 106, 26, 0.05);
+    overflow: hidden;
+  }
+
+  .pixmatrix__panel {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: grid;
+    grid-template-columns: repeat(var(--cols, 32), 1fr);
+    grid-template-rows: repeat(var(--rows, 8), 1fr);
+    gap: 0;
+  }
+
+  .px {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.035);
+    transform: scale(0.74);
+    transition: background-color 60ms linear,
+                box-shadow 80ms linear,
+                transform 80ms linear;
+  }
+  .px--on {
+    background: var(--c, var(--ember-bright, #ffb547));
+    transform: scale(0.92);
+    box-shadow:
+      0 0 4px var(--c, #ffb547),
+      0 0 9px color-mix(in oklab, var(--c, #ffb547) 70%, transparent),
+      0 0 16px color-mix(in oklab, var(--c, #ffb547) 35%, transparent);
+  }
+
+  /* tiny scanline overlay sells the LED panel look */
+  .pixmatrix::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(
+        180deg,
+        transparent 0,
+        transparent calc(100% / var(--rows, 8) - 0.5px),
+        rgba(0, 0, 0, 0.22) calc(100% / var(--rows, 8) - 0.5px),
+        rgba(0, 0, 0, 0.22) calc(100% / var(--rows, 8))
+      );
+    background-size: 100% calc(100% / var(--rows, 8));
+    mix-blend-mode: multiply;
+    opacity: 0.55;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .px { transition: none; }
+  }
+</style>

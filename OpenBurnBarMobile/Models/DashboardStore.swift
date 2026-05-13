@@ -23,7 +23,10 @@ final class DashboardStore {
     private(set) var isListening = false
 
     private var listener: ListenerRegistration?
-    private var attemptedRollupRebuild = false
+    private var lastRebuildAttempt: Date = .distantPast
+
+    /// Minimum interval between automatic rebuild attempts.
+    private static let rebuildCooldown: TimeInterval = 60
 
     init(
         firestore: FirestoreRepository = FirestoreRepository(),
@@ -40,6 +43,15 @@ final class DashboardStore {
     }
 
     func refresh() async {
+        await refresh(forceRebuild: false)
+    }
+
+    /// Force a full server-side rollup rebuild from raw usage events.
+    func forceRebuild() async {
+        await refresh(forceRebuild: true)
+    }
+
+    private func refresh(forceRebuild: Bool) async {
         if AppStoreScreenshotMode.isEnabled {
             applyRollups(AppStoreScreenshotData.usageRollups)
             error = nil
@@ -52,8 +64,18 @@ final class DashboardStore {
 
         do {
             var rollups = try await firestore.fetchRollups()
-            if rollups.isEmpty && !attemptedRollupRebuild {
-                attemptedRollupRebuild = true
+
+            let shouldRebuild = forceRebuild
+                || rollups.isEmpty
+                || isRollupStale(rollups)
+
+            if shouldRebuild {
+                let now = Date()
+                guard now.timeIntervalSince(lastRebuildAttempt) >= Self.rebuildCooldown else {
+                    applyRollups(rollups)
+                    return
+                }
+                lastRebuildAttempt = now
                 try await functions.rebuildUsageRollups()
                 rollups = try await firestore.fetchRollups()
             }
@@ -61,6 +83,13 @@ final class DashboardStore {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    /// Returns true if the newest rollup's `computedAt` is older than 15 minutes,
+    /// suggesting the scheduled rollup worker may be stalled.
+    private func isRollupStale(_ rollups: [UsageRollupDoc]) -> Bool {
+        let newestComputedAt = rollups.map(\.computedAt).max() ?? .distantPast
+        return Date().timeIntervalSince(newestComputedAt) > 900 // 15 min
     }
 
     func startListening() {
@@ -73,6 +102,10 @@ final class DashboardStore {
                 guard let self else { return }
                 switch result {
                 case .success(let rollups):
+                    if rollups.isEmpty || self.isRollupStale(rollups) {
+                        await self.refresh()
+                        return
+                    }
                     self.applyRollups(rollups)
                     self.error = nil
                 case .failure(let err):

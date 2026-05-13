@@ -62,7 +62,7 @@ export const SOURCE_REGISTRY: Record<SourceID, SourceMeta> = {
     attribution: "Terminal-Bench (via Hugging Face)",
     shortLabel: "TB",
     blurb: "Public Terminal-Bench leaderboard, verified runs weighted higher.",
-    logo: "/brand/sources/terminal-bench.svg",
+    logo: "/brand/sources/terminal-bench.png",
     url: "https://www.tbench.ai/",
   },
   design_arena: {
@@ -70,7 +70,7 @@ export const SOURCE_REGISTRY: Record<SourceID, SourceMeta> = {
     attribution: "Design Arena",
     shortLabel: "DA",
     blurb: "Pairwise design-task evals with Elo + win-rate, by arena and category.",
-    logo: "/brand/sources/design-arena.svg",
+    logo: "/brand/sources/design-arena.png",
     url: "https://www.designarena.ai/",
   },
   huggingface: {
