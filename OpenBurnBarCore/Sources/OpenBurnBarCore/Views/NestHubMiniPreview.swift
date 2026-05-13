@@ -179,14 +179,13 @@ public struct NestHubMiniPreview: View {
 
     private func header(scale: CGFloat) -> some View {
         HStack(alignment: .center, spacing: 6 * scale) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 2 * scale, style: .continuous)
-                    .fill(Color(hex: config.palette.primaryHex))
-                Triangle()
-                    .fill(themeText.opacity(0.95))
-                    .padding(2 * scale)
-            }
-            .frame(width: 10 * scale, height: 10 * scale)
+            Image("AppLogo", bundle: .main)
+                .resizable()
+                .renderingMode(.original)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 11 * scale, height: 11 * scale)
+                .shadow(color: Color(hex: config.palette.primaryHex).opacity(0.25), radius: 2 * scale)
+                .accessibilityHidden(true)
 
             Circle()
                 .fill(Color(hex: "#38D898"))
@@ -448,19 +447,6 @@ public struct NestHubMiniPreview: View {
 
     private var accessibilityLabel: String {
         "Nest Hub preview, \(config.layout.displayName), \(config.palette.displayName) palette, \(config.theme.displayName) theme, \(config.background.displayName) background."
-    }
-}
-
-// MARK: - Triangle Mark
-
-private struct Triangle: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.closeSubpath()
-        return path
     }
 }
 

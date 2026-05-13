@@ -360,18 +360,42 @@ export function normalizeDesignArenaModels(
   });
 }
 
-async function fetchJSON(url: string, headers: Record<string, string> = {}): Promise<unknown> {
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      ...headers,
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+async function fetchJSON(
+  url: string,
+  headers: Record<string, string> = {},
+  options: { retries?: number; backoffMs?: number } = {}
+): Promise<unknown> {
+  // Public-source endpoints occasionally rate-limit (HTTP 429) or transiently
+  // 5xx. Retry with capped exponential backoff so the daily job tolerates
+  // a brief outage instead of writing a noisy `error` status to Firestore.
+  const retries = options.retries ?? 3;
+  const baseBackoff = options.backoffMs ?? 8_000;
+  let lastErr: Error | undefined;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json", ...headers },
+      });
+      if (response.ok) return response.json();
+      if (response.status === 429 || response.status >= 500) {
+        const retryAfter = Number(response.headers.get("retry-after") ?? "");
+        const wait = Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter * 1000
+          : baseBackoff * Math.pow(2, attempt);
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, Math.min(wait, 60_000)));
+          continue;
+        }
+      }
+      throw new Error(`HTTP ${response.status}`);
+    } catch (err) {
+      lastErr = err as Error;
+      if (attempt >= retries) break;
+      await new Promise((r) => setTimeout(r, baseBackoff * Math.pow(2, attempt)));
+    }
   }
-  return response.json();
+  throw lastErr ?? new Error("fetchJSON: unknown failure");
 }
 
 export async function collectModelLandscapeBenchmarks(

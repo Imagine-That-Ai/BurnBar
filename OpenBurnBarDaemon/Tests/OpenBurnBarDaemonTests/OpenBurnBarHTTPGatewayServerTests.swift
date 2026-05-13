@@ -220,6 +220,27 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(usage[0].outputTokens, 7)
     }
 
+    func testCodexOpenAICompatRequestFailsOverWhenPrimaryQuotaExhausted() async throws {
+        try await assertOpenAICompatibleQuotaFailover(
+            clientName: "Codex CLI",
+            extraHeaders: ["X-OpenBurnBar-Client": "codex"]
+        )
+    }
+
+    func testDroidOpenAICompatRequestFailsOverWhenPrimaryQuotaExhausted() async throws {
+        try await assertOpenAICompatibleQuotaFailover(
+            clientName: "Droid CLI",
+            extraHeaders: ["X-OpenBurnBar-Client": "droid"]
+        )
+    }
+
+    func testForgeOpenAICompatRequestFailsOverWhenPrimaryQuotaExhausted() async throws {
+        try await assertOpenAICompatibleQuotaFailover(
+            clientName: "Forge CLI",
+            extraHeaders: ["X-OpenBurnBar-Client": "forge"]
+        )
+    }
+
     func testGatewayRoutesOllamaCloudThroughNativeAPIAndFailsOverSlots() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
@@ -417,6 +438,13 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(usage[0].outputTokens, 5)
     }
 
+    func testClaudeCodeAnthropicRequestFailsOverWhenPrimaryQuotaExhausted() async throws {
+        try await assertAnthropicQuotaFailover(
+            clientName: "Claude Code",
+            extraHeaders: ["X-OpenBurnBar-Client": "claude-code"]
+        )
+    }
+
     func testGatewayMessagesReturns503WhenOnlyOpenAICompatProvidersConfigured() async throws {
         let harness = try GatewayHarness()
         try await harness.configureZAIProviderForGateway()
@@ -511,6 +539,143 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertTrue(upstreamRequests[0].body.contains(#""format":"json""#))
         XCTAssertTrue(upstreamRequests[0].body.contains(#""model":"deepseek-v4-flash""#))
         XCTAssertFalse(upstreamRequests[0].body.contains("chat/completions"))
+    }
+
+    private func assertOpenAICompatibleQuotaFailover(
+        clientName: String,
+        extraHeaders: [String: String]
+    ) async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 429,
+            body: #"{"error":{"message":"quota exhausted"}}"#
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "chatcmpl-\(clientName.replacingOccurrences(of: " ", with: "-").lowercased())",
+              "object": "chat.completion",
+              "model": "glm-5-turbo",
+              "choices": [
+                {"message": {"role": "assistant", "content": "\(clientName) backup answered"}}
+              ],
+              "usage": {
+                "prompt_tokens": 9,
+                "completion_tokens": 3,
+                "total_tokens": 12
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        var headers = [
+            "Content-Type": "application/json",
+            "User-Agent": "\(clientName)/openburnbar-failover-test"
+        ]
+        for (name, value) in extraHeaders {
+            headers[name] = value
+        }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: headers,
+            body: Data(#"{"model":"glm-5-turbo","messages":[{"role":"user","content":"simulate quota exhaustion"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200, clientName)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("\(clientName) backup answered"), clientName)
+
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.count, 2, clientName)
+        XCTAssertEqual(upstreamRequests[0].authorization, "Bearer primary-key", clientName)
+        XCTAssertEqual(upstreamRequests[1].authorization, "Bearer backup-key", clientName)
+
+        let snapshot = try await harness.configStore.snapshot()
+        let slots = try XCTUnwrap(snapshot.providerSettings(id: "zai")?.credentialSlots)
+        XCTAssertEqual(slots.first(where: { $0.slotID == "primary" })?.status, .exhausted, clientName)
+        XCTAssertEqual(slots.first(where: { $0.slotID == "backup" })?.status, .ready, clientName)
+    }
+
+    private func assertAnthropicQuotaFailover(
+        clientName: String,
+        extraHeaders: [String: String]
+    ) async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 429,
+            body: #"{"type":"error","error":{"type":"rate_limit_error","message":"quota exhausted"}}"#
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_claude_code_failover",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-sonnet-4-6",
+              "content": [{"type": "text", "text": "\(clientName) backup answered"}],
+              "stop_reason": "end_turn",
+              "usage": {
+                "input_tokens": 9,
+                "output_tokens": 3,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        try await harness.configureAnthropicProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        var headers = [
+            "Content-Type": "application/json",
+            "User-Agent": "\(clientName)/openburnbar-failover-test"
+        ]
+        for (name, value) in extraHeaders {
+            headers[name] = value
+        }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: headers,
+            body: Data(#"{"model":"claude-sonnet-4-6","max_tokens":64,"messages":[{"role":"user","content":"simulate quota exhaustion"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200, clientName)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("\(clientName) backup answered"), clientName)
+
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.count, 2, clientName)
+        XCTAssertEqual(upstreamRequests[0].xApiKey, "sk-ant-primary-key", clientName)
+        XCTAssertEqual(upstreamRequests[1].xApiKey, "sk-ant-backup-key", clientName)
+
+        let snapshot = try await harness.configStore.snapshot()
+        let slots = try XCTUnwrap(snapshot.providerSettings(id: "anthropic")?.credentialSlots)
+        XCTAssertEqual(slots.first(where: { $0.slotID == "primary" })?.status, .exhausted, clientName)
+        XCTAssertEqual(slots.first(where: { $0.slotID == "backup" })?.status, .ready, clientName)
     }
 
     private func sendGatewayRequest(

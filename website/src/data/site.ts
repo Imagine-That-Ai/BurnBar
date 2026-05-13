@@ -29,6 +29,7 @@ export const SITE = {
 export const NAV_PRIMARY = [
   { href: "/product", label: "Product" },
   { href: "/router", label: "Router" },
+  { href: "/platforms", label: "Platforms" },
   { href: "/providers", label: "Providers" },
   { href: "/pricing", label: "Pricing" },
   { href: "/privacy", label: "Privacy & trust" },
@@ -40,6 +41,7 @@ export const NAV_FOOTER = {
   product: [
     { href: "/product", label: "Overview" },
     { href: "/router", label: "Fire Hydrant — router" },
+    { href: "/platforms", label: "Platforms" },
     { href: "/providers", label: "Provider support" },
     { href: "/benefits", label: "Why it matters" },
     { href: "/download", label: "Download" },

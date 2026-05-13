@@ -116,12 +116,49 @@ function mergeCatalog(rewrittenSnapshots, catalog) {
   return catalog.filter((m) => seen.has(m.modelID));
 }
 
+async function loadSeedSnapshotsForDate(dateISO) {
+  // When live sources are unreachable or rate-limited, fall back to the
+  // operator-curated snapshot fixture in seed/. The Manual OpenBurnBar
+  // fixture source surfaces this as `manual` freshness so the page never
+  // claims "fresh" for cached data.
+  const candidates = [
+    path.join(SEED_DIR, `snapshots-${dateISO}.json`),
+    path.join(SEED_DIR, "snapshots-latest.json"),
+  ];
+  for (const file of candidates) {
+    try {
+      const text = await readFile(file, "utf8");
+      const parsed = JSON.parse(text);
+      const rows = Array.isArray(parsed) ? parsed : (parsed?.snapshots ?? null);
+      if (Array.isArray(rows) && rows.length > 0) {
+        return { file: path.relative(ROOT, file), rows };
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
+}
+
 async function main() {
   console.log("[research] loading compiled landscape adapters from", path.relative(ROOT, FUNCTIONS_LIB));
   const modelLandscape = await import(FUNCTIONS_LIB);
 
   console.log("[research] running live research against public endpoints…");
   const now = new Date();
+
+  // If the operator hasn't bound a manual fixture explicitly, fall back to the
+  // committed seed snapshot for today (or a date-less `snapshots-latest.json`
+  // if present). This means a build with no API keys still produces a richer
+  // rundown than just Terminal-Bench alone — the Manual fixture is the floor.
+  if (!process.env.MODEL_LANDSCAPE_MANUAL_FIXTURES_JSON?.trim()) {
+    const seed = await loadSeedSnapshotsForDate(now.toISOString().slice(0, 10));
+    if (seed) {
+      process.env.MODEL_LANDSCAPE_MANUAL_FIXTURES_JSON = JSON.stringify(seed.rows);
+      console.log(`[research] seed fixture loaded · ${seed.file} (${seed.rows.length} rows) · used as manual fallback`);
+    }
+  }
+
   const result = await modelLandscape.collectModelLandscapeBenchmarks(process.env, now);
 
   console.log("[research] source statuses:");

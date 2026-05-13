@@ -3,7 +3,8 @@ import XCTest
 
 /// End-to-end coverage for `RoutingClientWiring` — the service that drops
 /// the OpenBurnBar gateway entry into Claude Code (`~/.claude/settings.json`)
-/// and Codex (`~/.codex/config.toml`) and offers a shell-snippet alternative.
+/// Codex (`~/.codex/config.toml`), and Forge (`~/forge/.forge.toml`) and
+/// offers a shell-snippet alternative.
 ///
 /// Every test runs against an isolated temporary "home" directory so we never
 /// touch the user's real config files. Round-trip behaviour (wire → unwire)
@@ -30,9 +31,19 @@ final class RoutingClientWiringTests: XCTestCase {
 
     // MARK: - Gateway validation
 
-    func test_wire_rejectsEmptyAuthToken() {
+    func test_wire_allowsLoopbackGatewayWithoutAuthToken() throws {
         let wiring = makeWiring()
         let gateway = RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
+        XCTAssertNoThrow(try wiring.wire(target: .claudeCode, gateway: gateway))
+
+        let root = try loadJSONObject(at: tempHome.appendingPathComponent(".claude/settings.json"))
+        let env = try XCTUnwrap(root["env"] as? [String: Any])
+        XCTAssertEqual(env["ANTHROPIC_AUTH_TOKEN"] as? String, "openburnbar-local")
+    }
+
+    func test_wire_rejectsNonLoopbackGatewayWithoutAuthToken() {
+        let wiring = makeWiring()
+        let gateway = RoutingClientGateway(host: "192.168.0.10", port: 8317, authToken: "")
         XCTAssertThrowsError(try wiring.wire(target: .claudeCode, gateway: gateway)) { error in
             guard case RoutingClientWiringError.gatewayMisconfigured = error else {
                 return XCTFail("expected .gatewayMisconfigured, got \(error)")
@@ -239,6 +250,57 @@ final class RoutingClientWiringTests: XCTestCase {
         )
     }
 
+    // MARK: - Forge (~/forge/.forge.toml)
+
+    func test_wireForge_writesVibeProxyStyleProviderBlock() throws {
+        let wiring = makeWiring()
+        let change = try wiring.wire(target: .forge, gateway: exampleGateway(token: "forge-token"))
+
+        XCTAssertEqual(change.target, .forge)
+        let configURL = tempHome.appendingPathComponent("forge/.forge.toml")
+        XCTAssertEqual(change.configURL, configURL)
+
+        let text = try String(contentsOf: configURL, encoding: .utf8)
+        XCTAssertTrue(text.contains("# openburnbar:routing — start"))
+        XCTAssertTrue(text.contains("[[providers]]"))
+        XCTAssertTrue(text.contains("id = \"openburnbar\""))
+        XCTAssertTrue(text.contains("api_key_var = \"OPENBURNBAR_GATEWAY_TOKEN\""))
+        XCTAssertTrue(text.contains("url = \"http://127.0.0.1:8317/v1/chat/completions\""))
+        XCTAssertTrue(text.contains("models = \"http://127.0.0.1:8317/v1/models\""))
+        XCTAssertTrue(text.contains("response_type = \"OpenAI\""))
+    }
+
+    func test_wireForge_preservesPriorUserTOML_andUnwireStripsOnlyOpenBurnBarBlock() throws {
+        let url = tempHome.appendingPathComponent("forge/.forge.toml")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let priorTOML = """
+        [session]
+        provider_id = "kimi_coding"
+
+        [[providers]]
+        id = "vibeproxy"
+        api_key_var = "VIBEPROXY_API_KEY"
+        url = "http://127.0.0.1:8317/v1/chat/completions"
+        models = "http://127.0.0.1:8317/v1/models"
+        response_type = "OpenAI"
+        """
+        try priorTOML.write(to: url, atomically: true, encoding: .utf8)
+
+        let wiring = makeWiring()
+        _ = try wiring.wire(target: .forge, gateway: exampleGateway(token: "tok"))
+        XCTAssertTrue(wiring.isWired(target: .forge))
+
+        try wiring.unwire(target: .forge)
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertFalse(text.contains("openburnbar:routing"))
+        XCTAssertFalse(text.contains("id = \"openburnbar\""))
+        XCTAssertTrue(text.contains("provider_id = \"kimi_coding\""))
+        XCTAssertTrue(text.contains("id = \"vibeproxy\""))
+    }
+
     // MARK: - Shell snippet escaping
 
     func test_shellSnippet_claudeCode_singleQuotesTokens() {
@@ -264,6 +326,16 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertTrue(snippet.contains("export OPENBURNBAR_GATEWAY_TOKEN='abc123'"))
     }
 
+    func test_shellSnippet_forge_includesProviderEnvVar() {
+        let wiring = makeWiring()
+        let snippet = wiring.shellSnippet(
+            target: .forge,
+            gateway: RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
+        )
+        XCTAssertTrue(snippet.contains("export OPENBURNBAR_GATEWAY_TOKEN='openburnbar-local'"))
+        XCTAssertTrue(snippet.contains("export OPENAI_BASE_URL='http://127.0.0.1:8317/v1'"))
+    }
+
     func test_shellQuote_escapesEmbeddedSingleQuote() {
         XCTAssertEqual(RoutingClientWiring.shellQuote("a'b"), #"'a'\''b'"#)
     }
@@ -283,6 +355,10 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertEqual(
             wiring.configURL(for: .codex),
             tempHome.appendingPathComponent(".codex/config.toml")
+        )
+        XCTAssertEqual(
+            wiring.configURL(for: .forge),
+            tempHome.appendingPathComponent("forge/.forge.toml")
         )
     }
 

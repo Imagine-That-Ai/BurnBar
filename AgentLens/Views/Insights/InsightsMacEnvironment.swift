@@ -264,12 +264,58 @@ final class InsightsMacEnvironment {
     }
 
     private func registerAvailableAnalysisGateways() async {
+        let providerAliases = [
+            "openai",
+            "anthropic",
+            "claude",
+            "minimax",
+            "zai",
+            "z.ai",
+            "kimi",
+            "moonshot"
+        ]
+        var providerKeys: [String: String] = [:]
+        let providerKeyStore = ProviderAPIKeyStore.shared
+        let mirrorKeychain = KeychainStore()
+        for alias in providerAliases {
+            if let value = providerKeyStore.apiKey(for: alias)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !value.isEmpty {
+                providerKeys[alias] = value
+                continue
+            }
+            let mirrorAccount = "provider.\(alias).apiKey"
+            let raw = try? mirrorKeychain.string(for: mirrorAccount, allowUserInteraction: false)
+            if let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !value.isEmpty {
+                providerKeys[alias] = value
+            }
+        }
+        let environment = ProcessInfo.processInfo.environment
+
         await InsightProviderGatewayRegistry.registerDefaultSwiftGateways(
             in: catalog,
             keyProvider: { provider, aliases, envKeys in
-                Self.userKey(provider: provider, aliases: aliases, envKeys: envKeys)
+                let candidates = [provider] + aliases
+                for candidate in candidates {
+                    if let key = providerKeys[candidate] {
+                        return key
+                    }
+                }
+                for key in envKeys {
+                    if let value = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !value.isEmpty {
+                        return value
+                    }
+                }
+                return nil
             },
-            urlProvider: { Self.urlFromEnvironment($0) }
+            urlProvider: { key in
+                guard let raw = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !raw.isEmpty else {
+                    return nil
+                }
+                return URL(string: raw)
+            }
         )
     }
 
@@ -312,35 +358,6 @@ final class InsightsMacEnvironment {
             return .default
         }
         return preference
-    }
-
-    private static func userKey(provider: String, aliases: [String] = [], envKeys: [String]) -> String? {
-        let candidates = [provider] + aliases
-        for candidate in candidates {
-            if let key = ProviderAPIKeyStore.shared.apiKey(for: candidate), !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return key.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            let mirrorAccount = "provider.\(candidate).apiKey"
-            let raw = try? KeychainStore().string(for: mirrorAccount, allowUserInteraction: false)
-            if let key = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty {
-                return key
-            }
-        }
-        let env = ProcessInfo.processInfo.environment
-        for key in envKeys {
-            if let value = env[key]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
-                return value
-            }
-        }
-        return nil
-    }
-
-    private static func urlFromEnvironment(_ key: String) -> URL? {
-        guard let raw = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty else {
-            return nil
-        }
-        return URL(string: raw)
     }
 
     private func recentAnalysisSummaries() async throws -> [String] {

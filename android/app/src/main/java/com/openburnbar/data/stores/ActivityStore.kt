@@ -33,11 +33,11 @@ class ActivityStore(
     private var lastDoc: com.google.firebase.firestore.DocumentSnapshot? = null
     private var listenJob: Job? = null
 
-    fun loadInitial() {
+    fun loadInitial(pageSize: Int = 25) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val (page, last) = repo.fetchUsagePage()
+                val (page, last) = repo.fetchUsagePage(pageSize = pageSize)
                 _usages.value = page
                 lastDoc = last
                 _hasMore.value = last != null

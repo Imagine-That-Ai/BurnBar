@@ -256,11 +256,29 @@ struct RoutedClientConfigSyncService {
             ])
         }
 
-        let settingsURL = homeDirectory.appendingPathComponent(".factory/settings.json")
-        let configURL = homeDirectory.appendingPathComponent(".factory/config.json")
+        let urls = factoryGatewayConfigURLs()
+        let settingsURL = urls.settings
+        let configURL = urls.config
         try updateFactorySettingsJSON(at: settingsURL, config: config, models: models)
         try updateFactoryConfigJSON(at: configURL, config: config, models: models)
         return [settingsURL, configURL]
+    }
+
+    func factoryGatewayConfigURLs() -> (settings: URL, config: URL) {
+        (
+            settings: homeDirectory.appendingPathComponent(".factory/settings.json"),
+            config: homeDirectory.appendingPathComponent(".factory/config.json")
+        )
+    }
+
+    func isFactoryGatewayConfigPresent() -> Bool {
+        let urls = factoryGatewayConfigURLs()
+        let settingsRoot = (try? loadJSONObject(at: urls.settings)) ?? [:]
+        let configRoot = (try? loadJSONObject(at: urls.config)) ?? [:]
+        let settingsModels = settingsRoot["customModels"] as? [[String: Any]] ?? []
+        let configModels = configRoot["custom_models"] as? [[String: Any]] ?? []
+        return settingsModels.contains(where: isOpenBurnBarFactoryEntry)
+            || configModels.contains(where: isOpenBurnBarFactoryEntry)
     }
 
     @discardableResult
@@ -292,11 +310,7 @@ struct RoutedClientConfigSyncService {
     ) throws {
         var root = try loadJSONObject(at: url)
         var customModels = root["customModels"] as? [[String: Any]] ?? []
-        customModels.removeAll { entry in
-            let provider = (entry["provider"] as? String)?.lowercased()
-            let id = (entry["id"] as? String)?.lowercased()
-            return provider == "openburnbar" || id?.hasPrefix("openburnbar:") == true
-        }
+        customModels.removeAll(where: isOpenBurnBarFactoryEntry)
         let startIndex = customModels.count
         customModels.append(contentsOf: models.enumerated().map { offset, model in
             [
@@ -307,7 +321,7 @@ struct RoutedClientConfigSyncService {
                 "apiKey": config.effectiveAPIKey,
                 "displayName": "OpenBurnBar \(model)",
                 "maxOutputTokens": 8192,
-                "provider": "openburnbar"
+                "provider": "openai"
             ] as [String: Any]
         })
         root["customModels"] = customModels
@@ -321,11 +335,7 @@ struct RoutedClientConfigSyncService {
     ) throws {
         var root = try loadJSONObject(at: url)
         var customModels = root["custom_models"] as? [[String: Any]] ?? []
-        customModels.removeAll { entry in
-            let provider = (entry["provider"] as? String)?.lowercased()
-            let model = (entry["model"] as? String)?.lowercased()
-            return provider == "openburnbar" || model?.hasPrefix("openburnbar:") == true
-        }
+        customModels.removeAll(where: isOpenBurnBarFactoryEntry)
         customModels.append(contentsOf: models.map { model in
             [
                 "model_display_name": "OpenBurnBar \(model)",
@@ -333,11 +343,23 @@ struct RoutedClientConfigSyncService {
                 "base_url": config.baseURL,
                 "api_key": config.effectiveAPIKey,
                 "max_output_tokens": 8192,
-                "provider": "openburnbar"
+                "provider": "openai"
             ] as [String: Any]
         })
         root["custom_models"] = customModels
         try writeJSONObject(root, to: url, backupExisting: true)
+    }
+
+    private func isOpenBurnBarFactoryEntry(_ entry: [String: Any]) -> Bool {
+        let provider = (entry["provider"] as? String)?.lowercased()
+        let id = (entry["id"] as? String)?.lowercased()
+        let displayName = ((entry["displayName"] as? String) ?? (entry["model_display_name"] as? String))?
+            .lowercased()
+        let model = (entry["model"] as? String)?.lowercased()
+        return provider == "openburnbar"
+            || id?.hasPrefix("openburnbar:") == true
+            || displayName?.hasPrefix("openburnbar ") == true
+            || model?.hasPrefix("openburnbar:") == true
     }
 
     private func openCodeProviderObject(

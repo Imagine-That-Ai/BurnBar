@@ -51,7 +51,7 @@ fun PulseView(
     val currentUser by userStore.user.collectAsState()
 
     LaunchedEffect(currentUser.isSignedIn) { if (currentUser.isSignedIn) {
-        dashboardStore.load(); quotaStore.load(); activityStore.loadInitial() } }
+        dashboardStore.load(); quotaStore.load(); activityStore.loadInitial(pageSize = 250) } }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Title bar — centered "Pulse" with avatar in the top-right (mirrors iOS).
@@ -140,10 +140,11 @@ private fun Content(
     val snapshots by quotaStore.snapshots.collectAsState()
     val recentUsages by activityStore.usages.collectAsState()
 
-    val window = timelineScope.valueFor(rollups)
-    val trailingWindow = timelineScope.trailingValueFor(rollups)
-    val windowTokens = timelineScope.tokenValueFor(rollups)
-    val trailingTokens = timelineScope.trailingTokenValueFor(rollups)
+    val windowMetrics = pulseWindowMetrics(
+        scope = timelineScope,
+        rollups = rollups,
+        recentUsages = recentUsages
+    )
     val topProvider = rollups.topProviders.firstOrNull()
 
     Column(
@@ -179,10 +180,11 @@ private fun Content(
         StaggeredEntrance(delay = 25) {
             PulseHeroBurnCard(
                 displayMode = displayMode,
-                value = window,
-                trailingValue = trailingWindow,
-                tokenValue = windowTokens,
-                trailingTokenValue = trailingTokens,
+                value = windowMetrics.value,
+                trailingValue = windowMetrics.trailingValue,
+                tokenValue = windowMetrics.tokenValue,
+                trailingTokenValue = windowMetrics.trailingTokenValue,
+                requestValue = windowMetrics.requestValue,
                 totals = rollups.totals,
                 timelineScope = timelineScope,
                 topProvider = topProvider,
@@ -236,14 +238,15 @@ fun PulseHeroBurnCard(
     trailingValue: Double,
     tokenValue: Long,
     trailingTokenValue: Long,
+    requestValue: Int,
     totals: Map<String, Double>,
     timelineScope: PulseTimelineScope,
     topProvider: RollupSummary?,
     onDisplayModeChange: (UsageDisplayMode) -> Unit,
     onTimelineChange: (PulseTimelineScope) -> Unit
 ) {
-    val tokens = if (tokenValue > 0) tokenValue else (totals["tokens"] ?: 0.0).toLong()
-    val requests = (totals["requests"] ?: 0.0).toInt()
+    val tokens = tokenValue
+    val requests = requestValue
     val deltaPct = if (trailingValue > 0) ((value - trailingValue / 7.0) / (trailingValue / 7.0)) * 100.0 else 0.0
     val isBelow = deltaPct < 0
     val absDelta = kotlin.math.abs(deltaPct)
@@ -582,38 +585,4 @@ private fun quotaProviderLabel(snapshot: ProviderQuotaSnapshot): String {
     val label = snapshot.accountLabel?.takeIf { it.isNotBlank() }
     if (label != null) return label
     return AgentProvider.fromKey(snapshot.provider)?.displayName ?: snapshot.provider
-}
-
-// ── PulseTimelineScope extensions for flat UsageRollups ──
-
-private fun PulseTimelineScope.valueFor(rollups: UsageRollups): Double = when (this) {
-    PulseTimelineScope.MINUTE,
-    PulseTimelineScope.HOUR,
-    PulseTimelineScope.DAY -> rollups.today
-    PulseTimelineScope.WEEK -> rollups.sevenDays
-    PulseTimelineScope.MONTH -> rollups.thirtyDays
-}
-
-private fun PulseTimelineScope.trailingValueFor(rollups: UsageRollups): Double = when (this) {
-    PulseTimelineScope.MINUTE,
-    PulseTimelineScope.HOUR -> rollups.today
-    PulseTimelineScope.DAY -> rollups.sevenDays
-    PulseTimelineScope.WEEK -> rollups.thirtyDays
-    PulseTimelineScope.MONTH -> rollups.ninetyDays
-}
-
-private fun PulseTimelineScope.tokenValueFor(rollups: UsageRollups): Long = when (this) {
-    PulseTimelineScope.MINUTE,
-    PulseTimelineScope.HOUR,
-    PulseTimelineScope.DAY -> rollups.todayTokens
-    PulseTimelineScope.WEEK -> rollups.sevenDayTokens
-    PulseTimelineScope.MONTH -> rollups.thirtyDayTokens
-}
-
-private fun PulseTimelineScope.trailingTokenValueFor(rollups: UsageRollups): Long = when (this) {
-    PulseTimelineScope.MINUTE,
-    PulseTimelineScope.HOUR -> rollups.todayTokens
-    PulseTimelineScope.DAY -> rollups.sevenDayTokens
-    PulseTimelineScope.WEEK -> rollups.thirtyDayTokens
-    PulseTimelineScope.MONTH -> rollups.ninetyDayTokens
 }

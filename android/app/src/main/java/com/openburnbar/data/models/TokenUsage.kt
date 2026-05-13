@@ -351,6 +351,11 @@ data class UsageRollups(
     val thirtyDayTokens: Long = 0,
     val ninetyDayTokens: Long = 0,
     val allTimeTokens: Long = 0,
+    val todayRequests: Int = 0,
+    val sevenDayRequests: Int = 0,
+    val thirtyDayRequests: Int = 0,
+    val ninetyDayRequests: Int = 0,
+    val allTimeRequests: Int = 0,
     val totals: Map<String, Double> = emptyMap(),
     val providerSummaries: List<RollupSummary> = emptyList(),
     val accountSummaries: List<RollupSummary> = emptyList(),
@@ -362,6 +367,19 @@ data class UsageRollups(
 ) {
     val topProviders: List<RollupSummary>
         get() = providerSummaries.sortedByDescending { it.totalCost }.take(5)
+
+    fun isEmpty(): Boolean =
+        today == 0.0 &&
+            sevenDays == 0.0 &&
+            thirtyDays == 0.0 &&
+            ninetyDays == 0.0 &&
+            allTime == 0.0 &&
+            todayTokens == 0L &&
+            sevenDayTokens == 0L &&
+            thirtyDayTokens == 0L &&
+            ninetyDayTokens == 0L &&
+            allTimeTokens == 0L &&
+            totals.isEmpty()
 }
 
 enum class UsageDisplayMode(val key: String, val label: String) {

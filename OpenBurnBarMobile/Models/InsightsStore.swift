@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import SwiftUI
 import UIKit
 import OpenBurnBarCore
@@ -306,10 +307,10 @@ final class InsightsStore {
         return preference
     }
 
-    private static func mobileUserKey(provider: String, aliases: [String] = [], envKeys: [String]) -> String? {
+    nonisolated private static func mobileUserKey(provider: String, aliases: [String] = [], envKeys: [String]) -> String? {
         let candidates = [provider] + aliases
         for candidate in candidates {
-            if let key = LiveCloudReader.readCredential(provider: candidate)?.trimmingCharacters(in: .whitespacesAndNewlines),
+            if let key = storedMobileCredential(provider: candidate)?.trimmingCharacters(in: .whitespacesAndNewlines),
                !key.isEmpty {
                 return key
             }
@@ -323,7 +324,26 @@ final class InsightsStore {
         return nil
     }
 
-    private static func urlFromEnvironment(_ key: String) -> URL? {
+    nonisolated private static func storedMobileCredential(provider: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: "escrow_\(provider)",
+            kSecAttrService as String: "com.openburnbar.mobile",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data,
+              let credential = String(data: data, encoding: .utf8)
+        else {
+            return nil
+        }
+        return credential
+    }
+
+    nonisolated private static func urlFromEnvironment(_ key: String) -> URL? {
         guard let raw = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty else {
             return nil

@@ -12,6 +12,13 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         try await super.tearDown()
     }
 
+    func test_renderPageUsesBurnBarLogoInTopLeftBrandSlot() throws {
+        XCTAssertTrue(SmartHubBridgePage.html.contains(#"class="brand-logo" src="/brand-logo.svg" alt="OpenBurnBar""#))
+        XCTAssertFalse(SmartHubBridgePage.html.contains(#"class="mark" aria-hidden="true""#))
+        XCTAssertTrue(SmartHubBridgePage.brandLogoSVG.contains("<svg"))
+        XCTAssertTrue(SmartHubBridgePage.brandLogoSVG.contains("#FEA41C"))
+    }
+
     func test_stateJSONContainsDisplayBlockWithPaletteAndTheme() throws {
         var config = SmartHubDisplayConfig.default
         config.palette = .mercury

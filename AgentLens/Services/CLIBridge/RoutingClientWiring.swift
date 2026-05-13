@@ -14,9 +14,13 @@ import Foundation
 ///   - `.codex` — OpenAI Chat Completions shape (`/v1/chat/completions`).
 ///     Reads `OPENAI_BASE_URL` + `OPENAI_API_KEY` and lives at
 ///     `~/.codex/config.toml` (sentinel-fenced `[model_providers.…]` block).
+///   - `.forge` — OpenAI Chat Completions shape (`/v1/chat/completions`).
+///     Reads a Forge `[[providers]]` entry at `~/forge/.forge.toml`, matching
+///     the VibeProxy provider shape Forge already supports locally.
 enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
     case claudeCode
     case codex
+    case forge
 
     var id: String { rawValue }
 
@@ -24,6 +28,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .claudeCode: return "Claude Code"
         case .codex: return "Codex CLI"
+        case .forge: return "Forge CLI"
         }
     }
 
@@ -31,7 +36,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
     var poolDisplayName: String {
         switch self {
         case .claudeCode: return "Anthropic-family"
-        case .codex: return "OpenAI-family"
+        case .codex, .forge: return "OpenAI-family"
         }
     }
 }
@@ -57,6 +62,23 @@ struct RoutingClientGateway: Sendable {
         let trimmed = authToken
         guard trimmed.count >= 4 else { return trimmed.isEmpty ? "" : "…" }
         return "…\(trimmed.suffix(4))"
+    }
+
+    /// Local loopback gateways may intentionally run without auth. CLI tools
+    /// still expect an API-key string, so we give them the same harmless
+    /// placeholder VibeProxy uses for local custom model wiring.
+    var effectiveClientToken: String {
+        authToken.isEmpty ? "openburnbar-local" : authToken
+    }
+
+    var isLoopbackHost: Bool {
+        let normalizedHost = host
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return normalizedHost.isEmpty
+            || normalizedHost == "127.0.0.1"
+            || normalizedHost == "localhost"
+            || normalizedHost == "::1"
     }
 
     /// URL with **no** trailing slash, suitable for both
@@ -170,6 +192,8 @@ struct RoutingClientWiring {
             return try wireClaudeCode(gateway: gateway)
         case .codex:
             return try wireCodex(gateway: gateway)
+        case .forge:
+            return try wireForge(gateway: gateway)
         }
     }
 
@@ -179,6 +203,8 @@ struct RoutingClientWiring {
             try unwireClaudeCode()
         case .codex:
             try unwireCodex()
+        case .forge:
+            try unwireForge()
         }
     }
 
@@ -190,6 +216,8 @@ struct RoutingClientWiring {
             return home.appendingPathComponent(".claude/settings.json")
         case .codex:
             return home.appendingPathComponent(".codex/config.toml")
+        case .forge:
+            return home.appendingPathComponent("forge/.forge.toml")
         }
     }
 
@@ -206,7 +234,7 @@ struct RoutingClientWiring {
             // Claude Code stores the env block as a JSON object, so we look
             // for our well-known marker key.
             return text.contains("\"OPENBURNBAR_WIRED\"") || text.contains(Self.sentinelStart)
-        case .codex:
+        case .codex, .forge:
             return text.contains(Self.sentinelStart)
         }
     }
@@ -227,7 +255,7 @@ struct RoutingClientWiring {
     ) -> String {
         let baseURL = Self.shellQuote(gateway.baseURL)
         let openAIBaseURL = Self.shellQuote("\(gateway.baseURL)/v1")
-        let token = Self.shellQuote(gateway.authToken)
+        let token = Self.shellQuote(gateway.effectiveClientToken)
         switch target {
         case .claudeCode:
             return """
@@ -246,6 +274,15 @@ struct RoutingClientWiring {
             export OPENAI_BASE_URL=\(openAIBaseURL)
             export OPENAI_API_KEY=\(token)
             export OPENBURNBAR_GATEWAY_TOKEN=\(token)
+            """
+        case .forge:
+            return """
+            # OpenBurnBar — wire Forge CLI through the Hydrant
+            # The config-file toggle adds a Forge provider named `openburnbar`
+            # at ~/forge/.forge.toml. This env var supplies its api_key_var.
+            export OPENBURNBAR_GATEWAY_TOKEN=\(token)
+            export OPENAI_BASE_URL=\(openAIBaseURL)
+            export OPENAI_API_KEY=\(token)
             """
         }
     }
@@ -293,7 +330,7 @@ struct RoutingClientWiring {
                 "max_tokens": 1,
                 "messages": [["role": "user", "content": "ping"]]
             ]
-        case .codex:
+        case .codex, .forge:
             probeModel = "gpt-5.4-nano"
             // OpenAI Chat Completions deprecated `max_tokens` for reasoning-
             // capable models in favor of `max_completion_tokens`. The
@@ -336,9 +373,9 @@ struct RoutingClientWiring {
         if gateway.port <= 0 || gateway.port > 65_535 {
             throw RoutingClientWiringError.gatewayMisconfigured(detail: "Gateway port \(gateway.port) is out of range.")
         }
-        if gateway.authToken.isEmpty {
+        if gateway.authToken.isEmpty && !gateway.isLoopbackHost {
             throw RoutingClientWiringError.gatewayMisconfigured(
-                detail: "The gateway has no auth token set. Generate one under Settings → Daemon → HTTP gateway before wiring a client."
+                detail: "A non-loopback gateway needs an auth token. Generate one under Settings → Daemon → HTTP gateway before wiring a client."
             )
         }
     }
@@ -348,7 +385,7 @@ struct RoutingClientWiring {
         switch target {
         case .claudeCode:
             return base?.appending(path: "v1/messages")
-        case .codex:
+        case .codex, .forge:
             return base?.appending(path: "v1/chat/completions")
         }
     }
@@ -361,7 +398,7 @@ struct RoutingClientWiring {
 
         var env = (root["env"] as? [String: Any]) ?? [:]
         env["ANTHROPIC_BASE_URL"] = gateway.baseURL
-        env["ANTHROPIC_AUTH_TOKEN"] = gateway.authToken
+        env["ANTHROPIC_AUTH_TOKEN"] = gateway.effectiveClientToken
         // Used by `isWired(...)` for round-trip detection. Never read by
         // Claude Code itself.
         env["OPENBURNBAR_WIRED"] = "1"
@@ -458,6 +495,62 @@ struct RoutingClientWiring {
 
         [profiles.openburnbar]
         model_provider = "openburnbar"
+        \(Self.sentinelEnd)
+        """
+    }
+
+    // MARK: - Forge (~/forge/.forge.toml)
+
+    private func wireForge(gateway: RoutingClientGateway) throws -> RoutingClientWiringChange {
+        let url = configURL(for: .forge)
+        let existing = readText(at: url) ?? ""
+        let stripped = stripSentinelBlock(in: existing)
+        let block = forgeTOMLBlock(gateway: gateway)
+        let separator = stripped.isEmpty || stripped.hasSuffix("\n") ? "" : "\n"
+        let next = stripped + separator + block + "\n"
+
+        let backupURL = try backupIfExists(url: url)
+        try writeText(next, to: url)
+        return RoutingClientWiringChange(
+            target: .forge,
+            configURL: url,
+            backupURL: backupURL,
+            appliedAt: now()
+        )
+    }
+
+    private func unwireForge() throws {
+        let url = configURL(for: .forge)
+        guard let existing = readText(at: url) else {
+            throw RoutingClientWiringError.notEnabled
+        }
+        guard existing.contains(Self.sentinelStart) else {
+            throw RoutingClientWiringError.notEnabled
+        }
+        let next = stripSentinelBlock(in: existing)
+        if next.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            try? fileManager.removeItem(at: url)
+        } else {
+            _ = try? backupIfExists(url: url)
+            try writeText(next, to: url)
+        }
+    }
+
+    private func forgeTOMLBlock(gateway: RoutingClientGateway) -> String {
+        // Mirrors the VibeProxy provider entry shape Forge already supports:
+        // a chat-completions URL plus a separate models URL. We do not change
+        // the active `[session]` provider so users can opt in deliberately.
+        """
+        \(Self.sentinelStart)
+        # Managed by OpenBurnBar. Edit Settings → Routing pools to change.
+        # To activate in Forge, select provider `openburnbar` or set it in
+        # your Forge session after exporting OPENBURNBAR_GATEWAY_TOKEN.
+        [[providers]]
+        id = "openburnbar"
+        api_key_var = "OPENBURNBAR_GATEWAY_TOKEN"
+        url = "\(gateway.baseURL)/v1/chat/completions"
+        models = "\(gateway.baseURL)/v1/models"
+        response_type = "OpenAI"
         \(Self.sentinelEnd)
         """
     }

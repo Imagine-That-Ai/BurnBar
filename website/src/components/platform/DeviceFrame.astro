@@ -1,0 +1,257 @@
+---
+/**
+ * Hardware shell for a platform mockup.
+ *
+ * Renders the device chassis in CSS — bezel, body, base, cable — and slots
+ * the screen-content child inside a clipped display area. Two kinds today;
+ * adding a third is one switch arm + a new shell definition.
+ *
+ * Kinds:
+ *   - "nest-hub"     — 7" tilted smart display with chalk fabric base
+ *   - "ulanzi-tc001" — cream desk box with a 32×8 LED panel on the front
+ */
+
+interface Props {
+  kind: "nest-hub" | "ulanzi-tc001";
+  label?: string;
+}
+const { kind, label } = Astro.props;
+---
+
+{kind === "nest-hub" && (
+  <div class="deviceframe deviceframe--nest" role="img" aria-label={label ?? "Google Nest Hub device frame"}>
+    <div class="deviceframe__nest-base" aria-hidden="true">
+      <div class="deviceframe__nest-base-grain"></div>
+      <div class="deviceframe__nest-base-shadow"></div>
+    </div>
+    <div class="deviceframe__nest-display">
+      <div class="deviceframe__nest-bezel">
+        <div class="deviceframe__nest-glass">
+          <slot />
+          <div class="deviceframe__nest-reflection" aria-hidden="true"></div>
+        </div>
+      </div>
+    </div>
+    <div class="deviceframe__nest-floor" aria-hidden="true"></div>
+  </div>
+)}
+
+{kind === "ulanzi-tc001" && (
+  <div class="deviceframe deviceframe--ulanzi" role="img" aria-label={label ?? "Ulanzi TC001 device frame"}>
+    <div class="deviceframe__ulanzi-cable" aria-hidden="true"></div>
+    <div class="deviceframe__ulanzi-body">
+      <div class="deviceframe__ulanzi-top-highlight" aria-hidden="true"></div>
+      <div class="deviceframe__ulanzi-panel">
+        <slot />
+      </div>
+      <div class="deviceframe__ulanzi-feet" aria-hidden="true">
+        <span></span><span></span>
+      </div>
+    </div>
+    <div class="deviceframe__ulanzi-floor" aria-hidden="true"></div>
+  </div>
+)}
+
+<style>
+  .deviceframe {
+    position: relative;
+    width: 100%;
+    container-type: inline-size;
+  }
+
+  /* ─────────────────────── Nest Hub shell ─────────────────────── */
+  .deviceframe--nest {
+    aspect-ratio: 5 / 4;
+    transform-style: preserve-3d;
+    perspective: 1400px;
+    padding: 0 4%;
+  }
+  .deviceframe__nest-display {
+    position: relative;
+    width: 100%;
+    transform: rotateX(6deg);
+    transform-origin: 50% 100%;
+    filter: drop-shadow(0 22px 36px rgba(0, 0, 0, 0.55));
+  }
+  .deviceframe__nest-bezel {
+    width: 100%;
+    background:
+      linear-gradient(180deg, #0d0c10 0%, #0a090d 100%);
+    border-radius: 18px;
+    padding: 3.2% 3% 4%;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+      inset 0 -1px 6px rgba(255, 255, 255, 0.02);
+  }
+  .deviceframe__nest-glass {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #07060a;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+      inset 0 0 18px rgba(0, 0, 0, 0.5);
+  }
+  .deviceframe__nest-reflection {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(115deg,
+        rgba(255, 255, 255, 0.07) 0%,
+        transparent 35%,
+        transparent 65%,
+        rgba(255, 255, 255, 0.04) 95%);
+    mix-blend-mode: screen;
+    opacity: 0.6;
+  }
+  .deviceframe__nest-base {
+    position: absolute;
+    left: 24%;
+    right: 24%;
+    bottom: 0%;
+    height: 18%;
+    border-radius: 50% 50% 22% 22% / 35% 35% 100% 100%;
+    background:
+      linear-gradient(180deg,
+        #efe7d8 0%,
+        #d8cdb8 60%,
+        #b6a98f 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.5),
+      0 8px 16px rgba(0, 0, 0, 0.35),
+      0 1px 0 rgba(255, 255, 255, 0.1);
+    transform-origin: 50% 100%;
+    transform: translateZ(-10px);
+  }
+  .deviceframe__nest-base-grain {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-image:
+      repeating-linear-gradient(
+        88deg,
+        rgba(0, 0, 0, 0.08) 0 1px,
+        transparent 1px 5px),
+      repeating-linear-gradient(
+        2deg,
+        rgba(0, 0, 0, 0.05) 0 1px,
+        transparent 1px 6px);
+    mix-blend-mode: multiply;
+    opacity: 0.55;
+  }
+  .deviceframe__nest-base-shadow {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+      radial-gradient(60% 40% at 50% 100%, rgba(0, 0, 0, 0.25), transparent 70%);
+  }
+  .deviceframe__nest-floor {
+    position: absolute;
+    left: 12%;
+    right: 12%;
+    bottom: -3%;
+    height: 4%;
+    border-radius: 50%;
+    background: radial-gradient(60% 100% at 50% 50%, rgba(0, 0, 0, 0.45), transparent 75%);
+    filter: blur(8px);
+    z-index: -1;
+  }
+
+  /* ─────────────────────── Ulanzi shell ─────────────────────── */
+  .deviceframe--ulanzi {
+    aspect-ratio: 4 / 1.25;
+    padding: 6% 6%;
+  }
+  .deviceframe__ulanzi-cable {
+    position: absolute;
+    right: 8%;
+    top: 32%;
+    width: 14%;
+    height: 8px;
+    border-radius: 4px;
+    background:
+      linear-gradient(90deg, #1a1422 0%, #2a2030 70%, transparent 100%);
+    transform: rotate(-3deg);
+    z-index: 0;
+  }
+  .deviceframe__ulanzi-cable::after {
+    content: "";
+    position: absolute;
+    right: -2px;
+    top: -2px;
+    width: 8px;
+    height: 12px;
+    border-radius: 2px;
+    background: #2a2030;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+  }
+  .deviceframe__ulanzi-body {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 1.05;
+    border-radius: 12px;
+    background:
+      linear-gradient(180deg,
+        #f6efe1 0%,
+        #ebe1ce 35%,
+        #d9ccaf 100%);
+    border: 1px solid rgba(0, 0, 0, 0.18);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.7),
+      inset 0 -2px 4px rgba(0, 0, 0, 0.15),
+      0 14px 26px rgba(0, 0, 0, 0.45),
+      0 2px 0 rgba(255, 255, 255, 0.4);
+    padding: 5% 7%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+  }
+  .deviceframe__ulanzi-top-highlight {
+    position: absolute;
+    top: 0;
+    left: 14%;
+    right: 14%;
+    height: 18%;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.55), transparent 100%);
+    border-radius: 12px 12px 0 0;
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .deviceframe__ulanzi-panel {
+    width: 100%;
+  }
+  .deviceframe__ulanzi-feet {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    bottom: -4%;
+    height: 8%;
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+  }
+  .deviceframe__ulanzi-feet span {
+    width: 8%;
+    height: 100%;
+    background:
+      linear-gradient(180deg, #c6b896 0%, #8c7e5d 100%);
+    border-radius: 0 0 6px 6px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+  }
+  .deviceframe__ulanzi-floor {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    bottom: -6%;
+    height: 4%;
+    border-radius: 50%;
+    background: radial-gradient(60% 100% at 50% 50%, rgba(0, 0, 0, 0.4), transparent 75%);
+    filter: blur(6px);
+    z-index: 0;
+  }
+</style>

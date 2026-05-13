@@ -5,6 +5,7 @@ import RuleVignette from "@components/RuleVignette.astro";
 import ModeComparison from "@components/ModeComparison.astro";
 import TodaysRundown from "@components/TodaysRundown.astro";
 import LifecycleStateMachine from "@components/LifecycleStateMachine.astro";
+import PlatformShowcase from "@components/platform/PlatformShowcase.astro";
 import { SITE } from "@data/site";
 
 const faqEntries = [
@@ -145,6 +146,9 @@ const faqEntries = [
   <div class="container container--wide" id="daily-rundown">
     <TodaysRundown />
   </div>
+
+  {/* ──────────────── 4.5 · SMART DISPLAY MOCKUPS (live re-renders) ──────────────── */}
+  <PlatformShowcase variant="compact" />
 
   {/* ──────────────── 5 · WHAT BURNBAR WILL NOT DO ──────────────── */}
   <section class="wontdo" aria-labelledby="wontdo-h">

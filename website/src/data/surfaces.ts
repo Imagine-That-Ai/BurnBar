@@ -119,7 +119,8 @@ export const SURFACES: Surface[] = [
       "Google Nest Hub via Cast V2 + Home Assistant blueprints",
       "ULANZI TC001 via AWTRIX HTTP or stock-firmware simulator",
       "Per-device QA matrix gates support claims — see docs/SMART_DISPLAY_DEVICE_QA.md"
-    ]
+    ],
+    cta: { href: "/platforms#smart-displays", label: "See the live mockups" }
   },
   {
     id: "android",

@@ -1,6 +1,6 @@
 {
   "date": "2026-05-13",
-  "generatedAt": "2026-05-13T13:00:14.391Z",
+  "generatedAt": "2026-05-13T14:11:54.208Z",
   "schemaVersion": 1,
   "sourceStatuses": [
     {
@@ -9,17 +9,17 @@
       "shortLabel": "AA",
       "logo": "/brand/sources/artificial-analysis.svg",
       "url": "https://artificialanalysis.ai/",
-      "status": "unavailable",
-      "message": "ARTIFICIAL_ANALYSIS_API_KEY is not configured."
+      "status": "error",
+      "message": "Artificial Analysis refresh failed: HTTP 429"
     },
     {
       "source": "terminal_bench",
       "attribution": "Terminal-Bench (via Hugging Face)",
       "shortLabel": "TB",
-      "logo": "/brand/sources/terminal-bench.svg",
+      "logo": "/brand/sources/terminal-bench.png",
       "url": "https://www.tbench.ai/",
       "status": "fresh",
-      "fetchedAt": "2026-05-13T13:00:14.391Z",
+      "fetchedAt": "2026-05-13T14:11:54.208Z",
       "ageHours": 0,
       "message": "Normalized 35 Terminal-Bench leaderboard rows."
     },
@@ -27,13 +27,208 @@
       "source": "design_arena",
       "attribution": "Design Arena",
       "shortLabel": "DA",
-      "logo": "/brand/sources/design-arena.svg",
+      "logo": "/brand/sources/design-arena.png",
       "url": "https://www.designarena.ai/",
       "status": "unavailable",
       "message": "DESIGN_ARENA_API_KEY and DESIGN_ARENA_FIXTURE_JSON are not configured."
+    },
+    {
+      "source": "manual_fixture",
+      "attribution": "Manual OpenBurnBar fixture",
+      "shortLabel": "OBB",
+      "logo": "/brand/sources/manual-fixture.svg",
+      "url": "/router#sources",
+      "status": "fresh",
+      "fetchedAt": "2026-05-13T14:11:54.208Z",
+      "ageHours": 0,
+      "message": "Normalized 34 manual fixture rows."
     }
   ],
   "taskRankings": [
+    {
+      "taskID": "coding",
+      "taskLabel": "Coding",
+      "taskBlurb": "Refactors, multi-file edits, repo-grounded code generation.",
+      "recommendations": [
+        {
+          "rank": 1,
+          "modelID": "claude-opus-4-7",
+          "modelDisplay": "Claude Opus 4.7",
+          "providerID": "anthropic",
+          "providerDisplay": "Anthropic",
+          "providerLogo": "/brand/providers/anthropic.png",
+          "providerFamily": "anthropic",
+          "tier": "flagship",
+          "score": 0.7644492254733221,
+          "rawScore": 0.7644492254733221,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.88,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.55,
+            "cost": 0.18,
+            "contextWindowTokens": 1000000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 88/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Premium-tier per-token cost.",
+            "Context window: 1000k tokens.",
+            "Wire-format family: anthropic."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 1,
+              "score": 0.88,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        },
+        {
+          "rank": 2,
+          "modelID": "glm-5",
+          "modelDisplay": "GLM 5",
+          "providerID": "zai",
+          "providerDisplay": "Z.ai",
+          "providerLogo": "/brand/providers/zai.png",
+          "providerFamily": "openai_compat",
+          "tier": "flagship",
+          "score": 0.7610929432013769,
+          "rawScore": 0.7610929432013769,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.82,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.55,
+            "cost": 0.68,
+            "contextWindowTokens": 256000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 82/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Cost-efficient at typical blended pricing.",
+            "Context window: 256k tokens.",
+            "Wire-format family: openai_compat."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 4,
+              "score": 0.82,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        },
+        {
+          "rank": 3,
+          "modelID": "gpt-5-5",
+          "modelDisplay": "GPT-5.5",
+          "providerID": "openai",
+          "providerDisplay": "OpenAI",
+          "providerLogo": "/brand/providers/openai.png",
+          "providerFamily": "openai_compat",
+          "tier": "flagship",
+          "score": 0.7548278829604129,
+          "rawScore": 0.7548278829604129,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.86,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.55,
+            "cost": 0.22,
+            "contextWindowTokens": 400000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 86/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Premium-tier per-token cost.",
+            "Context window: 400k tokens.",
+            "Wire-format family: openai_compat."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 2,
+              "score": 0.86,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        }
+      ],
+      "rejectedAlternatives": [
+        {
+          "modelID": "gemini-3-1-pro-preview",
+          "modelDisplay": "Gemini 3.1 Pro (preview)",
+          "providerID": "google",
+          "providerDisplay": "Google",
+          "providerLogo": "/brand/providers/google.svg",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 75/100 vs. leader 76/100."
+        },
+        {
+          "modelID": "minimax-m2-7",
+          "modelDisplay": "MiniMax M2.7",
+          "providerID": "minimax",
+          "providerDisplay": "MiniMax",
+          "providerLogo": "/brand/providers/minimax.png",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 74/100 vs. leader 76/100."
+        },
+        {
+          "modelID": "kimi-k2-6",
+          "modelDisplay": "Kimi K2.6",
+          "providerID": "kimi",
+          "providerDisplay": "Moonshot · Kimi",
+          "providerLogo": "/brand/providers/kimi.svg",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 72/100 vs. leader 76/100."
+        },
+        {
+          "modelID": "claude-sonnet-4-6",
+          "modelDisplay": "Claude Sonnet 4.6",
+          "providerID": "anthropic",
+          "providerDisplay": "Anthropic",
+          "providerLogo": "/brand/providers/anthropic.png",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 70/100 vs. leader 76/100."
+        }
+      ],
+      "topPickRationale": "Today's pick: Claude Opus 4.7 — led the benchmark composite at 88/100; evidence is fresh; context window of 1000k clears typical large-context work; runner-up GLM 5 is held in reserve for instant failover."
+    },
     {
       "taskID": "terminal",
       "taskLabel": "Terminal",
@@ -41,105 +236,92 @@
       "recommendations": [
         {
           "rank": 1,
-          "modelID": "deepseek-v4-pro",
-          "modelDisplay": "DeepSeek V4 Pro",
-          "providerID": "deepseek",
-          "providerDisplay": "DeepSeek",
-          "providerLogo": "/brand/providers/deepseek.svg",
+          "modelID": "gpt-5-5",
+          "modelDisplay": "GPT-5.5",
+          "providerID": "openai",
+          "providerDisplay": "OpenAI",
+          "providerLogo": "/brand/providers/openai.png",
           "providerFamily": "openai_compat",
           "tier": "flagship",
-          "score": 0.6970195139911634,
-          "rawScore": 0.6970195139911634,
+          "score": 0.7497934595524957,
+          "rawScore": 0.7497934595524957,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
-          "evidenceCoverage": 0.8571428571428571,
+          "evidenceCoverage": 0.7142857142857143,
           "signals": {
-            "benchmarkScore": 0.679,
+            "benchmarkScore": 0.82,
             "benchmarkFreshness": 1,
-            "sourceConfidence": 0.65,
-            "reliability": 0.65,
-            "cost": 0.72,
-            "contextWindowTokens": 128000,
+            "sourceConfidence": 0.9,
+            "cost": 0.22,
+            "contextWindowTokens": 400000,
             "availability": "unknown",
             "routable": true
           },
-          "freshness": "fresh",
+          "freshness": "manual",
           "explanation": [
-            "Composite benchmark score 68/100 across 1 source.",
+            "Composite benchmark score 82/100 across 1 source.",
             "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
-            "Cost-efficient at typical blended pricing.",
-            "Context window: 128k tokens.",
+            "Premium-tier per-token cost.",
+            "Context window: 400k tokens.",
             "Wire-format family: openai_compat."
           ],
           "citations": [
             {
-              "source": "terminal_bench",
-              "attribution": "Terminal-Bench (via Hugging Face)",
-              "shortLabel": "TB",
-              "logo": "/brand/sources/terminal-bench.svg",
-              "sourceURL": "https://huggingface.co/api/datasets/harborframework/terminal-bench-2.0/leaderboard",
-              "rank": 3,
-              "score": 0.679,
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 2,
+              "score": 0.82,
               "ageHours": 0,
-              "freshness": "fresh"
+              "freshness": "manual"
             }
           ],
           "limitations": []
         },
         {
           "rank": 2,
-          "modelID": "glm-5-1",
-          "modelDisplay": "GLM 5.1",
-          "providerID": "zai",
-          "providerDisplay": "Z.ai",
-          "providerLogo": "/brand/providers/zai.png",
-          "providerFamily": "openai_compat",
+          "modelID": "claude-opus-4-7",
+          "modelDisplay": "Claude Opus 4.7",
+          "providerID": "anthropic",
+          "providerDisplay": "Anthropic",
+          "providerLogo": "/brand/providers/anthropic.png",
+          "providerFamily": "anthropic",
           "tier": "flagship",
-          "score": 0.684419182621502,
-          "rawScore": 0.684419182621502,
+          "score": 0.7258519793459552,
+          "rawScore": 0.7258519793459552,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
-          "evidenceCoverage": 0.8571428571428571,
+          "evidenceCoverage": 0.7142857142857143,
           "signals": {
-            "benchmarkScore": 0.6625,
+            "benchmarkScore": 0.79,
             "benchmarkFreshness": 1,
-            "sourceConfidence": 0.65,
-            "reliability": 0.65,
-            "cost": 0.66,
-            "contextWindowTokens": 256000,
+            "sourceConfidence": 0.85,
+            "cost": 0.18,
+            "contextWindowTokens": 1000000,
             "availability": "unknown",
             "routable": true
           },
-          "freshness": "fresh",
+          "freshness": "manual",
           "explanation": [
-            "Composite benchmark score 66/100 across 2 sources.",
+            "Composite benchmark score 79/100 across 1 source.",
             "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
-            "Mid-tier per-token cost.",
-            "Context window: 256k tokens.",
-            "Wire-format family: openai_compat."
+            "Premium-tier per-token cost.",
+            "Context window: 1000k tokens.",
+            "Wire-format family: anthropic."
           ],
           "citations": [
             {
-              "source": "terminal_bench",
-              "attribution": "Terminal-Bench (via Hugging Face)",
-              "shortLabel": "TB",
-              "logo": "/brand/sources/terminal-bench.svg",
-              "sourceURL": "https://huggingface.co/api/datasets/harborframework/terminal-bench-2.0/leaderboard",
-              "rank": 1,
-              "score": 0.69,
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 2,
+              "score": 0.79,
               "ageHours": 0,
-              "freshness": "fresh"
-            },
-            {
-              "source": "terminal_bench",
-              "attribution": "Terminal-Bench (via Hugging Face)",
-              "shortLabel": "TB",
-              "logo": "/brand/sources/terminal-bench.svg",
-              "sourceURL": "https://huggingface.co/api/datasets/harborframework/terminal-bench-2.0/leaderboard",
-              "rank": 6,
-              "score": 0.635,
-              "ageHours": 0,
-              "freshness": "fresh"
+              "freshness": "manual"
             }
           ],
           "limitations": []
@@ -150,27 +332,27 @@
           "modelDisplay": "Kimi K2.6",
           "providerID": "kimi",
           "providerDisplay": "Moonshot · Kimi",
-          "providerLogo": "/brand/providers/kimi.png",
+          "providerLogo": "/brand/providers/kimi.svg",
           "providerFamily": "openai_compat",
           "tier": "flagship",
-          "score": 0.6833008100147274,
-          "rawScore": 0.6833008100147274,
+          "score": 0.7027604933726067,
+          "rawScore": 0.7027604933726067,
           "tierMultiplier": 1,
           "routableMultiplier": 1,
           "evidenceCoverage": 0.8571428571428571,
           "signals": {
-            "benchmarkScore": 0.667,
+            "benchmarkScore": 0.6935,
             "benchmarkFreshness": 1,
-            "sourceConfidence": 0.65,
+            "sourceConfidence": 0.75,
             "reliability": 0.65,
             "cost": 0.6,
             "contextWindowTokens": 320000,
             "availability": "unknown",
             "routable": true
           },
-          "freshness": "fresh",
+          "freshness": "stale",
           "explanation": [
-            "Composite benchmark score 67/100 across 1 source.",
+            "Composite benchmark score 69/100 across 2 sources.",
             "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
             "Mid-tier per-token cost.",
             "Context window: 320k tokens.",
@@ -181,12 +363,575 @@
               "source": "terminal_bench",
               "attribution": "Terminal-Bench (via Hugging Face)",
               "shortLabel": "TB",
-              "logo": "/brand/sources/terminal-bench.svg",
+              "logo": "/brand/sources/terminal-bench.png",
               "sourceURL": "https://huggingface.co/api/datasets/harborframework/terminal-bench-2.0/leaderboard",
               "rank": 4,
               "score": 0.667,
               "ageHours": 0,
               "freshness": "fresh"
+            },
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 6,
+              "score": 0.72,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        }
+      ],
+      "rejectedAlternatives": [
+        {
+          "modelID": "deepseek-v4-pro",
+          "modelDisplay": "DeepSeek V4 Pro",
+          "providerID": "deepseek",
+          "providerDisplay": "DeepSeek",
+          "providerLogo": "/brand/providers/deepseek.svg",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 70/100 vs. leader 75/100."
+        },
+        {
+          "modelID": "minimax-m2-7",
+          "modelDisplay": "MiniMax M2.7",
+          "providerID": "minimax",
+          "providerDisplay": "MiniMax",
+          "providerLogo": "/brand/providers/minimax.png",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 69/100 vs. leader 75/100."
+        },
+        {
+          "modelID": "glm-5-1",
+          "modelDisplay": "GLM 5.1",
+          "providerID": "zai",
+          "providerDisplay": "Z.ai",
+          "providerLogo": "/brand/providers/zai.png",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 68/100 vs. leader 75/100."
+        },
+        {
+          "modelID": "claude-sonnet-4-6",
+          "modelDisplay": "Claude Sonnet 4.6",
+          "providerID": "anthropic",
+          "providerDisplay": "Anthropic",
+          "providerLogo": "/brand/providers/anthropic.png",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 68/100 vs. leader 75/100."
+        },
+        {
+          "modelID": "glm-5",
+          "modelDisplay": "GLM 5",
+          "providerID": "zai",
+          "providerDisplay": "Z.ai",
+          "providerLogo": "/brand/providers/zai.png",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 68/100 vs. leader 75/100."
+        },
+        {
+          "modelID": "deepseek-v4-flash",
+          "modelDisplay": "DeepSeek V4 Flash",
+          "providerID": "deepseek",
+          "providerDisplay": "DeepSeek",
+          "providerLogo": "/brand/providers/deepseek.svg",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 62/100 vs. leader 75/100."
+        },
+        {
+          "modelID": "kimi-k2-5",
+          "modelDisplay": "Kimi K2.5",
+          "providerID": "kimi",
+          "providerDisplay": "Moonshot · Kimi",
+          "providerLogo": "/brand/providers/kimi.svg",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 56/100 vs. leader 75/100."
+        },
+        {
+          "modelID": "glm-4-7",
+          "modelDisplay": "GLM 4.7",
+          "providerID": "zai",
+          "providerDisplay": "Z.ai",
+          "providerLogo": "/brand/providers/zai.png",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 51/100 vs. leader 75/100."
+        }
+      ],
+      "topPickRationale": "Today's pick: GPT-5.5 — led the benchmark composite at 82/100; evidence is fresh; context window of 400k clears typical large-context work; runner-up Claude Opus 4.7 is held in reserve for instant failover."
+    },
+    {
+      "taskID": "design",
+      "taskLabel": "Design",
+      "taskBlurb": "Website / UI / SVG / slide generation evaluated head-to-head.",
+      "recommendations": [
+        {
+          "rank": 1,
+          "modelID": "claude-opus-4-7",
+          "modelDisplay": "Claude Opus 4.7",
+          "providerID": "anthropic",
+          "providerDisplay": "Anthropic",
+          "providerLogo": "/brand/providers/anthropic.png",
+          "providerFamily": "anthropic",
+          "tier": "flagship",
+          "score": 0.7527022375215148,
+          "rawScore": 0.7527022375215148,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.84,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.78,
+            "cost": 0.18,
+            "contextWindowTokens": 1000000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 84/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Premium-tier per-token cost.",
+            "Context window: 1000k tokens.",
+            "Wire-format family: anthropic."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 1,
+              "score": 0.84,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        },
+        {
+          "rank": 2,
+          "modelID": "gemini-3-1-pro-preview",
+          "modelDisplay": "Gemini 3.1 Pro (preview)",
+          "providerID": "google",
+          "providerDisplay": "Google",
+          "providerLogo": "/brand/providers/google.svg",
+          "providerFamily": "openai_compat",
+          "tier": "flagship",
+          "score": 0.7484509466437178,
+          "rawScore": 0.7484509466437178,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.82,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.78,
+            "cost": 0.3,
+            "contextWindowTokens": 2000000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 82/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Premium-tier per-token cost.",
+            "Context window: 2000k tokens.",
+            "Wire-format family: openai_compat."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 2,
+              "score": 0.82,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        },
+        {
+          "rank": 3,
+          "modelID": "glm-5",
+          "modelDisplay": "GLM 5",
+          "providerID": "zai",
+          "providerDisplay": "Z.ai",
+          "providerLogo": "/brand/providers/zai.png",
+          "providerFamily": "openai_compat",
+          "tier": "flagship",
+          "score": 0.7308864027538726,
+          "rawScore": 0.7308864027538726,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.75,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.78,
+            "cost": 0.68,
+            "contextWindowTokens": 256000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 75/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Cost-efficient at typical blended pricing.",
+            "Context window: 256k tokens.",
+            "Wire-format family: openai_compat."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 5,
+              "score": 0.75,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        }
+      ],
+      "rejectedAlternatives": [
+        {
+          "modelID": "gpt-5-5",
+          "modelDisplay": "GPT-5.5",
+          "providerID": "openai",
+          "providerDisplay": "OpenAI",
+          "providerLogo": "/brand/providers/openai.png",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 73/100 vs. leader 75/100."
+        },
+        {
+          "modelID": "kimi-k2-6",
+          "modelDisplay": "Kimi K2.6",
+          "providerID": "kimi",
+          "providerDisplay": "Moonshot · Kimi",
+          "providerLogo": "/brand/providers/kimi.svg",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 71/100 vs. leader 75/100."
+        },
+        {
+          "modelID": "claude-sonnet-4-6",
+          "modelDisplay": "Claude Sonnet 4.6",
+          "providerID": "anthropic",
+          "providerDisplay": "Anthropic",
+          "providerLogo": "/brand/providers/anthropic.png",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 70/100 vs. leader 75/100."
+        }
+      ],
+      "topPickRationale": "Today's pick: Claude Opus 4.7 — led the benchmark composite at 84/100; evidence is fresh; context window of 1000k clears typical large-context work; runner-up Gemini 3.1 Pro (preview) is held in reserve for instant failover."
+    },
+    {
+      "taskID": "analysis",
+      "taskLabel": "Analysis",
+      "taskBlurb": "Long-context reasoning, summarization, structured extraction.",
+      "recommendations": [
+        {
+          "rank": 1,
+          "modelID": "gemini-3-1-pro-preview",
+          "modelDisplay": "Gemini 3.1 Pro (preview)",
+          "providerID": "google",
+          "providerDisplay": "Google",
+          "providerLogo": "/brand/providers/google.svg",
+          "providerFamily": "openai_compat",
+          "tier": "flagship",
+          "score": 0.7786574870912221,
+          "rawScore": 0.7786574870912221,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.89,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.55,
+            "cost": 0.3,
+            "contextWindowTokens": 2000000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 89/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Premium-tier per-token cost.",
+            "Context window: 2000k tokens.",
+            "Wire-format family: openai_compat."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 1,
+              "score": 0.89,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        },
+        {
+          "rank": 2,
+          "modelID": "claude-opus-4-7",
+          "modelDisplay": "Claude Opus 4.7",
+          "providerID": "anthropic",
+          "providerDisplay": "Anthropic",
+          "providerLogo": "/brand/providers/anthropic.png",
+          "providerFamily": "anthropic",
+          "tier": "flagship",
+          "score": 0.7767555938037866,
+          "rawScore": 0.7767555938037866,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.9,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.55,
+            "cost": 0.18,
+            "contextWindowTokens": 1000000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 90/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Premium-tier per-token cost.",
+            "Context window: 1000k tokens.",
+            "Wire-format family: anthropic."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 1,
+              "score": 0.9,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        },
+        {
+          "rank": 3,
+          "modelID": "gpt-5-5",
+          "modelDisplay": "GPT-5.5",
+          "providerID": "openai",
+          "providerDisplay": "OpenAI",
+          "providerLogo": "/brand/providers/openai.png",
+          "providerFamily": "openai_compat",
+          "tier": "flagship",
+          "score": 0.7671342512908779,
+          "rawScore": 0.7671342512908779,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.88,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.55,
+            "cost": 0.22,
+            "contextWindowTokens": 400000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 88/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Premium-tier per-token cost.",
+            "Context window: 400k tokens.",
+            "Wire-format family: openai_compat."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 2,
+              "score": 0.88,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        }
+      ],
+      "rejectedAlternatives": [
+        {
+          "modelID": "claude-sonnet-4-6",
+          "modelDisplay": "Claude Sonnet 4.6",
+          "providerID": "anthropic",
+          "providerDisplay": "Anthropic",
+          "providerLogo": "/brand/providers/anthropic.png",
+          "reason": "Composite score did not clear the leader's margin for this task.",
+          "evidence": "Composite 72/100 vs. leader 78/100."
+        }
+      ],
+      "topPickRationale": "Today's pick: Gemini 3.1 Pro (preview) — led the benchmark composite at 89/100; evidence is fresh; context window of 2000k clears typical large-context work; runner-up Claude Opus 4.7 is held in reserve for instant failover."
+    },
+    {
+      "taskID": "general",
+      "taskLabel": "General",
+      "taskBlurb": "Mixed-intent chat / one-shot questions / catch-all routing.",
+      "recommendations": [
+        {
+          "rank": 1,
+          "modelID": "gemini-3-1-pro-preview",
+          "modelDisplay": "Gemini 3.1 Pro (preview)",
+          "providerID": "google",
+          "providerDisplay": "Google",
+          "providerLogo": "/brand/providers/google.svg",
+          "providerFamily": "openai_compat",
+          "tier": "flagship",
+          "score": 0.7663511187607573,
+          "rawScore": 0.7663511187607573,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.87,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.55,
+            "cost": 0.3,
+            "contextWindowTokens": 2000000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 87/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Premium-tier per-token cost.",
+            "Context window: 2000k tokens.",
+            "Wire-format family: openai_compat."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 2,
+              "score": 0.87,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        },
+        {
+          "rank": 2,
+          "modelID": "claude-opus-4-7",
+          "modelDisplay": "Claude Opus 4.7",
+          "providerID": "anthropic",
+          "providerDisplay": "Anthropic",
+          "providerLogo": "/brand/providers/anthropic.png",
+          "providerFamily": "anthropic",
+          "tier": "flagship",
+          "score": 0.7644492254733221,
+          "rawScore": 0.7644492254733221,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.88,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.55,
+            "cost": 0.18,
+            "contextWindowTokens": 1000000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 88/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Premium-tier per-token cost.",
+            "Context window: 1000k tokens.",
+            "Wire-format family: anthropic."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 1,
+              "score": 0.88,
+              "ageHours": 0,
+              "freshness": "manual"
+            }
+          ],
+          "limitations": []
+        },
+        {
+          "rank": 3,
+          "modelID": "gpt-5-5",
+          "modelDisplay": "GPT-5.5",
+          "providerID": "openai",
+          "providerDisplay": "OpenAI",
+          "providerLogo": "/brand/providers/openai.png",
+          "providerFamily": "openai_compat",
+          "tier": "flagship",
+          "score": 0.7609810671256455,
+          "rawScore": 0.7609810671256455,
+          "tierMultiplier": 1,
+          "routableMultiplier": 1,
+          "evidenceCoverage": 0.7142857142857143,
+          "signals": {
+            "benchmarkScore": 0.87,
+            "benchmarkFreshness": 1,
+            "sourceConfidence": 0.55,
+            "cost": 0.22,
+            "contextWindowTokens": 400000,
+            "availability": "unknown",
+            "routable": true
+          },
+          "freshness": "manual",
+          "explanation": [
+            "Composite benchmark score 87/100 across 1 source.",
+            "Freshest evidence rated 100/100 — older sources are weighted down, not dropped.",
+            "Premium-tier per-token cost.",
+            "Context window: 400k tokens.",
+            "Wire-format family: openai_compat."
+          ],
+          "citations": [
+            {
+              "source": "manual_fixture",
+              "attribution": "Manual OpenBurnBar fixture",
+              "shortLabel": "OBB",
+              "logo": "/brand/sources/manual-fixture.svg",
+              "sourceURL": "https://docs.designarena.ai/introduction",
+              "rank": 1,
+              "score": 0.87,
+              "ageHours": 0,
+              "freshness": "manual"
             }
           ],
           "limitations": []
@@ -200,46 +945,10 @@
           "providerDisplay": "MiniMax",
           "providerLogo": "/brand/providers/minimax.png",
           "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 63/100 vs. leader 70/100."
-        },
-        {
-          "modelID": "deepseek-v4-flash",
-          "modelDisplay": "DeepSeek V4 Flash",
-          "providerID": "deepseek",
-          "providerDisplay": "DeepSeek",
-          "providerLogo": "/brand/providers/deepseek.svg",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 62/100 vs. leader 70/100."
-        },
-        {
-          "modelID": "glm-5",
-          "modelDisplay": "GLM 5",
-          "providerID": "zai",
-          "providerDisplay": "Z.ai",
-          "providerLogo": "/brand/providers/zai.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 61/100 vs. leader 70/100."
-        },
-        {
-          "modelID": "kimi-k2-5",
-          "modelDisplay": "Kimi K2.5",
-          "providerID": "kimi",
-          "providerDisplay": "Moonshot · Kimi",
-          "providerLogo": "/brand/providers/kimi.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 56/100 vs. leader 70/100."
-        },
-        {
-          "modelID": "glm-4-7",
-          "modelDisplay": "GLM 4.7",
-          "providerID": "zai",
-          "providerDisplay": "Z.ai",
-          "providerLogo": "/brand/providers/zai.png",
-          "reason": "Composite score did not clear the leader's margin for this task.",
-          "evidence": "Composite 51/100 vs. leader 70/100."
+          "evidence": "Composite 75/100 vs. leader 77/100."
         }
       ],
-      "topPickRationale": "Today's pick: DeepSeek V4 Pro — led the benchmark composite at 68/100; evidence is fresh; cost is competitive; runner-up GLM 5.1 is held in reserve for instant failover."
+      "topPickRationale": "Today's pick: Gemini 3.1 Pro (preview) — led the benchmark composite at 87/100; evidence is fresh; context window of 2000k clears typical large-context work; runner-up Claude Opus 4.7 is held in reserve for instant failover."
     }
   ],
   "globalLimitations": [
@@ -250,7 +959,7 @@
   ],
   "notes": [
     "Generated by `node website/scripts/run-research.mjs` against live public benchmark adapters.",
-    "Snapshots from research: 35. Catalog matches: 8.",
+    "Snapshots from research: 69. Catalog matches: 12.",
     "Sources without an API key configured render as 'unavailable' — never guessed at."
   ]
 }

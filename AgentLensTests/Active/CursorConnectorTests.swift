@@ -288,12 +288,15 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertEqual(settings.compactMap { $0["model"] as? String }, ["existing-model", "glm-5", "minimax-m2.7-highspeed"])
         XCTAssertEqual(settings.last?["baseUrl"] as? String, "http://127.0.0.1:8317/v1")
         XCTAssertEqual(settings.last?["apiKey"] as? String, "gateway-token")
+        XCTAssertEqual(settings.last?["provider"] as? String, "openai")
         XCTAssertTrue(FileManager.default.fileExists(atPath: settingsURL.deletingLastPathComponent().appendingPathComponent("settings.json.openburnbar-backup-20231114221320").path))
 
         let factoryConfig = try XCTUnwrap(readJSON(configURL)["custom_models"] as? [[String: Any]])
         XCTAssertEqual(factoryConfig.compactMap { $0["model"] as? String }, ["existing-config-model", "glm-5", "minimax-m2.7-highspeed"])
         XCTAssertEqual(factoryConfig.last?["base_url"] as? String, "http://127.0.0.1:8317/v1")
         XCTAssertEqual(factoryConfig.last?["api_key"] as? String, "gateway-token")
+        XCTAssertEqual(factoryConfig.last?["provider"] as? String, "openai")
+        XCTAssertTrue(service.isFactoryGatewayConfigPresent())
     }
 
     func test_routedClientSync_writesOpenCodeProviderConfig() throws {

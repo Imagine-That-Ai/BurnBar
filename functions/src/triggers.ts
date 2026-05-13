@@ -38,22 +38,35 @@ export const onUsageWritten = onDocumentWritten(
       ? (event.data.after.data() as UsageEventDoc)
       : undefined;
 
-    await applyUsageCounterDelta(db, uid, event.params.usageDoc, before, after);
-
-    // Conditional write: only flip dirty if not already dirty.
-    // This reduces Firestore write volume for burst ingestion.
+    // Mark dirty BEFORE attempting the counter delta so that even if the
+    // transaction fails (contention, quota, etc.), the scheduled
+    // rebuildRollups worker still picks up this user and recomputes from
+    // whatever counter state exists.
+    const now = new Date().toISOString();
     const snap = await jobRef.get();
     const existing = snap.exists ? (snap.data() as RollupJobDoc) : null;
-    if (existing?.dirty) {
-      return; // Already queued.
+    if (!existing?.dirty) {
+      await jobRef.set({ dirty: true, dirtiedAt: now }, { merge: true });
     }
 
-    const now = new Date().toISOString();
-    const update: Partial<RollupJobDoc> = {
-      dirty: true,
-      dirtiedAt: now,
-    };
-
-    await jobRef.set(update, { merge: true });
+    try {
+      await applyUsageCounterDelta(db, uid, event.params.usageDoc, before, after);
+    } catch (err) {
+      console.error(
+        `Counter delta failed for ${uid}/${event.params.usageDoc}:`,
+        err
+      );
+      await jobRef.set(
+        {
+          lastErrorCode: (err as Error).message,
+        },
+        { merge: true }
+      );
+      // Dirty flag is already set — the scheduled worker will pick this up
+      // and fall back to a raw-usage rebuild instead of trusting counters.
+      // We intentionally do NOT re-throw: the trigger has done its job
+      // (queued the rollup job). Letting it throw would cause unnecessary
+      // retries that just re-attempt the same failing transaction.
+    }
   }
 );

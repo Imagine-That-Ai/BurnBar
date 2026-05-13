@@ -6,6 +6,7 @@ import DeviceShowcase from "@components/DeviceShowcase.astro";
 import SurfaceCard from "@components/SurfaceCard.astro";
 import ProviderTable from "@components/ProviderTable.astro";
 import LockedModelRelay from "@components/LockedModelRelay.astro";
+import PlatformShowcase from "@components/platform/PlatformShowcase.astro";
 import { SITE } from "@data/site";
 import { SURFACES } from "@data/surfaces";
 import { PROVIDERS_PRIMARY } from "@data/providers";
@@ -189,6 +190,11 @@ const surfaceShowcase = SURFACES.filter((s) =>
        DEVICES (iPhone · iPad · Android)
        ──────────────────────────────────────────────── -->
   <DeviceShowcase />
+
+  <!-- ────────────────────────────────────────────────
+       SMART DISPLAYS (Nest Hub · Ulanzi TC001) — live mockups
+       ──────────────────────────────────────────────── -->
+  <PlatformShowcase variant="hero" />
 
   <!-- ────────────────────────────────────────────────
        PROVIDER PREVIEW

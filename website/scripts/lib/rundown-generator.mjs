@@ -65,8 +65,8 @@ export const ROUTABLE_MULTIPLIER = Object.freeze({
 
 const SOURCE_LABELS = Object.freeze({
   artificial_analysis: { attribution: "Artificial Analysis", shortLabel: "AA", logo: "/brand/sources/artificial-analysis.svg", url: "https://artificialanalysis.ai/" },
-  terminal_bench: { attribution: "Terminal-Bench (via Hugging Face)", shortLabel: "TB", logo: "/brand/sources/terminal-bench.svg", url: "https://www.tbench.ai/" },
-  design_arena: { attribution: "Design Arena", shortLabel: "DA", logo: "/brand/sources/design-arena.svg", url: "https://www.designarena.ai/" },
+  terminal_bench: { attribution: "Terminal-Bench (via Hugging Face)", shortLabel: "TB", logo: "/brand/sources/terminal-bench.png", url: "https://www.tbench.ai/" },
+  design_arena: { attribution: "Design Arena", shortLabel: "DA", logo: "/brand/sources/design-arena.png", url: "https://www.designarena.ai/" },
   huggingface: { attribution: "Hugging Face", shortLabel: "HF", logo: "/brand/sources/huggingface.svg", url: "https://huggingface.co/" },
   manual_fixture: { attribution: "Manual OpenBurnBar fixture", shortLabel: "OBB", logo: "/brand/sources/manual-fixture.svg", url: "/router#sources" },
   cached_fixture: { attribution: "Cached fixture", shortLabel: "CF", logo: "/brand/sources/manual-fixture.svg", url: "/router#sources" },

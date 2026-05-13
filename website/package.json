@@ -7,9 +7,10 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "research": "node scripts/run-research.mjs",
+    "research": "node --env-file-if-exists=.env scripts/run-research.mjs",
     "research:test": "node scripts/test-rundown.mjs",
-    "build": "node scripts/run-research.mjs || true && astro build && node scripts/build-sitemap.mjs",
+    "test:platform": "node scripts/test-platform-mockups.mjs",
+    "build": "node --env-file-if-exists=.env scripts/run-research.mjs || true && astro build && node scripts/build-sitemap.mjs",
     "build:offline": "astro build && node scripts/build-sitemap.mjs",
     "preview": "astro preview --host 127.0.0.1 --port 4322",
     "check": "astro check",
@@ -17,7 +18,7 @@
     "format": "prettier --write \"src/**/*.{astro,ts,tsx,css,md}\"",
     "format:check": "prettier --check \"src/**/*.{astro,ts,tsx,css,md}\"",
     "links:check": "node scripts/check-links.mjs",
-    "verify": "npm run research:test && npm run check && npm run build && npm run links:check"
+    "verify": "npm run research:test && npm run test:platform && npm run check && npm run build && npm run links:check"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.4",
