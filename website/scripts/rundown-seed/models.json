@@ -1,0 +1,112 @@
+[
+  {
+    "modelID": "anthropic/claude-opus-4-7",
+    "modelDisplay": "Claude Opus 4.7",
+    "providerID": "anthropic",
+    "providerDisplay": "Anthropic",
+    "providerFamily": "anthropic",
+    "providerLogo": "/brand/providers/anthropic.png",
+    "tier": "flagship",
+    "contextWindowTokens": 1000000,
+    "costSignal": 0.18
+  },
+  {
+    "modelID": "anthropic/claude-sonnet-4-6",
+    "modelDisplay": "Claude Sonnet 4.6",
+    "providerID": "anthropic",
+    "providerDisplay": "Anthropic",
+    "providerFamily": "anthropic",
+    "providerLogo": "/brand/providers/anthropic.png",
+    "tier": "mid",
+    "contextWindowTokens": 1000000,
+    "costSignal": 0.42
+  },
+  {
+    "modelID": "anthropic/claude-haiku-4-5",
+    "modelDisplay": "Claude Haiku 4.5",
+    "providerID": "anthropic",
+    "providerDisplay": "Anthropic",
+    "providerFamily": "anthropic",
+    "providerLogo": "/brand/providers/anthropic.png",
+    "tier": "mini",
+    "contextWindowTokens": 200000,
+    "costSignal": 0.78
+  },
+  {
+    "modelID": "openai/gpt-5.5",
+    "modelDisplay": "GPT-5.5",
+    "providerID": "openai",
+    "providerDisplay": "OpenAI",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/openai.png",
+    "tier": "flagship",
+    "contextWindowTokens": 400000,
+    "costSignal": 0.22
+  },
+  {
+    "modelID": "openai/gpt-5.5-codex",
+    "modelDisplay": "GPT-5.5 Codex",
+    "providerID": "openai",
+    "providerDisplay": "OpenAI",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/openai.png",
+    "tier": "flagship",
+    "contextWindowTokens": 400000,
+    "costSignal": 0.24
+  },
+  {
+    "modelID": "openai/gpt-5.5-mini",
+    "modelDisplay": "GPT-5.5 mini",
+    "providerID": "openai",
+    "providerDisplay": "OpenAI",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/openai.png",
+    "tier": "mini",
+    "contextWindowTokens": 400000,
+    "costSignal": 0.74
+  },
+  {
+    "modelID": "google/gemini-3-pro",
+    "modelDisplay": "Gemini 3 Pro",
+    "providerID": "google",
+    "providerDisplay": "Google",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/google.svg",
+    "tier": "flagship",
+    "contextWindowTokens": 2000000,
+    "costSignal": 0.30
+  },
+  {
+    "modelID": "zai/glm-5",
+    "modelDisplay": "GLM 5",
+    "providerID": "zai",
+    "providerDisplay": "Z.ai",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/zai.png",
+    "tier": "flagship",
+    "contextWindowTokens": 256000,
+    "costSignal": 0.66
+  },
+  {
+    "modelID": "minimax/minimax-2.7",
+    "modelDisplay": "MiniMax 2.7",
+    "providerID": "minimax",
+    "providerDisplay": "MiniMax",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/minimax.png",
+    "tier": "flagship",
+    "contextWindowTokens": 320000,
+    "costSignal": 0.62
+  },
+  {
+    "modelID": "moonshot/kimi-2.6",
+    "modelDisplay": "Kimi 2.6",
+    "providerID": "kimi",
+    "providerDisplay": "Moonshot · Kimi",
+    "providerFamily": "openai_compat",
+    "providerLogo": "/brand/providers/kimi.png",
+    "tier": "flagship",
+    "contextWindowTokens": 320000,
+    "costSignal": 0.60
+  }
+]

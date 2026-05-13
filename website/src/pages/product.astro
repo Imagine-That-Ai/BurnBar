@@ -61,13 +61,14 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
     <div class="container container--wide">
       <header class="sec-head">
         <span class="eyebrow eyebrow--ember">Routing</span>
-        <h2>Two routing modes, one local gateway.</h2>
+        <h2>Same model in. Same model out. Two ways to choose it.</h2>
         <p class="lead">
           The same daemon ships two postures. <strong>Provider-Family Failover</strong>
-          protects your intent and extends capacity inside a single provider
-          family. <strong>Intelligent Model Router</strong> scores the task and
-          picks the best fit. Benchmarks are advisory signals, never absolute
-          truth — user choice, auth, quota, and availability win.
+          protects your model identity and extends capacity across every account
+          in your library that carries it. <strong>Intelligent Model Router</strong>
+          researches candidates against Artificial Analysis, Terminal-Bench, and
+          Design Arena, then picks. Benchmarks are advisory signals — pins and
+          live quota always win.
         </p>
       </header>
 
@@ -78,15 +79,15 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
             <h3>Provider-Family Failover</h3>
           </header>
           <p>
-            Pin an account. Add more accounts in the same family. When the
-            primary throttles, the runner-up serves the next request — never
-            crosses into a different family. Codex stays on OpenAI-shape,
-            Claude Code stays on Anthropic-shape.
+            Pin an account. Add more accounts that <em>also carry that
+            model</em>. When the primary throttles, the runner-up serves the
+            next request — never a different model, never across the wire-format
+            family. If no account survives, the gateway returns a structured 503.
           </p>
           <ul class="routing__bullets">
-            <li>Pinned account wins when healthy</li>
-            <li>Runner-up pre-selected — no second policy pass</li>
-            <li>5-minute cool-down on transient failures</li>
+            <li>Model identity is preserved on every failover</li>
+            <li>Pinned account wins when healthy · runner-up pre-selected</li>
+            <li>5-minute cool-down on transient failures · auto-rejoin</li>
             <li>Account-level routing — no quota pool collapse</li>
           </ul>
         </li>
@@ -97,13 +98,14 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
           </header>
           <p>
             Hand the router a task. It scores every candidate model on
-            capability, quota health, cost, latency, context window, reliability,
-            and benchmark freshness — picks the best, holds a runner-up, and
-            streams a <span class="mono">decision_reason</span> with every pick.
+            capability, cost, latency, trust, and policy-fit — with benchmark
+            freshness adjusting capability — picks the best, holds a runner-up,
+            and streams a <span class="mono">decision_reason</span> with every
+            pick. Daily rundowns live at <a href="/router/daily">/router/daily</a>.
           </p>
           <ul class="routing__bullets">
-            <li>9 signals · weighted per task type</li>
-            <li>Benchmarks weighted by recency · never override pins</li>
+            <li>9 surface signals · 5 weighted dimensions in code</li>
+            <li>Sources: Artificial Analysis · Terminal-Bench · Design Arena</li>
             <li>Per-surface opt-in (autopilot, scout, researcher)</li>
             <li>Explainable: every decision logged locally</li>
           </ul>

@@ -1,0 +1,46 @@
+{
+  "notes": [
+    "Yesterday's cached fixture — used to demonstrate the archive renders multiple dates."
+  ],
+  "statuses": [
+    { "source": "artificial_analysis", "status": "unavailable", "message": "ARTIFICIAL_ANALYSIS_API_KEY is not configured for this static build.", "fetchedAt": null },
+    { "source": "terminal_bench", "status": "stale", "message": "Terminal-Bench leaderboard mirrored from public HF read.", "fetchedAt": "2026-05-11T22:00:00.000Z" },
+    { "source": "design_arena", "status": "stale", "message": "Design Arena public ordering mirrored from cached fixture.", "fetchedAt": "2026-05-10T18:00:00.000Z" },
+    { "source": "huggingface", "status": "fresh", "message": "Public dataset endpoint responded normally.", "fetchedAt": "2026-05-12T08:12:00.000Z" },
+    { "source": "manual_fixture", "status": "fresh", "message": "Cached daily fixture in use.", "fetchedAt": "2026-05-12T06:00:00.000Z" }
+  ],
+  "snapshots": [
+    { "source": "artificial_analysis", "modelID": "anthropic/claude-opus-4-7", "taskCategory": "coding", "score": 0.87, "rank": 1, "confidence": 0.55, "freshness": "manual", "reliabilitySignal": 0.88, "latencySignal": 0.46, "fetchedAt": "2026-05-08T12:00:00.000Z" },
+    { "source": "terminal_bench", "modelID": "anthropic/claude-opus-4-7", "taskCategory": "terminal", "score": 0.78, "rank": 2, "confidence": 0.85, "freshness": "manual", "fetchedAt": "2026-05-11T22:00:00.000Z" },
+    { "source": "design_arena", "modelID": "anthropic/claude-opus-4-7", "taskCategory": "design", "score": 0.83, "rank": 1, "confidence": 0.78, "freshness": "manual", "fetchedAt": "2026-05-10T18:00:00.000Z" },
+    { "source": "artificial_analysis", "modelID": "anthropic/claude-opus-4-7", "taskCategory": "analysis", "score": 0.89, "rank": 1, "confidence": 0.55, "freshness": "manual", "fetchedAt": "2026-05-08T12:00:00.000Z" },
+    { "source": "artificial_analysis", "modelID": "anthropic/claude-opus-4-7", "taskCategory": "general", "score": 0.87, "rank": 1, "confidence": 0.55, "freshness": "manual", "fetchedAt": "2026-05-08T12:00:00.000Z" },
+
+    { "source": "artificial_analysis", "modelID": "openai/gpt-5-codex", "taskCategory": "coding", "score": 0.86, "rank": 2, "confidence": 0.55, "freshness": "manual", "fetchedAt": "2026-05-08T12:00:00.000Z" },
+    { "source": "terminal_bench", "modelID": "openai/gpt-5-codex", "taskCategory": "terminal", "score": 0.83, "rank": 1, "confidence": 0.9, "freshness": "manual", "fetchedAt": "2026-05-11T22:00:00.000Z" },
+
+    { "source": "artificial_analysis", "modelID": "openai/gpt-5", "taskCategory": "coding", "score": 0.84, "rank": 3, "confidence": 0.55, "freshness": "manual", "fetchedAt": "2026-05-08T12:00:00.000Z" },
+    { "source": "design_arena", "modelID": "openai/gpt-5", "taskCategory": "design", "score": 0.79, "rank": 2, "confidence": 0.78, "freshness": "manual", "fetchedAt": "2026-05-10T18:00:00.000Z" },
+    { "source": "artificial_analysis", "modelID": "openai/gpt-5", "taskCategory": "general", "score": 0.85, "rank": 2, "confidence": 0.55, "freshness": "manual", "fetchedAt": "2026-05-08T12:00:00.000Z" },
+    { "source": "artificial_analysis", "modelID": "openai/gpt-5", "taskCategory": "analysis", "score": 0.86, "rank": 2, "confidence": 0.55, "freshness": "manual", "fetchedAt": "2026-05-08T12:00:00.000Z" },
+
+    { "source": "artificial_analysis", "modelID": "anthropic/claude-sonnet-4-6", "taskCategory": "coding", "score": 0.79, "rank": 4, "confidence": 0.55, "freshness": "manual", "fetchedAt": "2026-05-08T12:00:00.000Z" },
+    { "source": "terminal_bench", "modelID": "anthropic/claude-sonnet-4-6", "taskCategory": "terminal", "score": 0.73, "rank": 3, "confidence": 0.85, "freshness": "manual", "fetchedAt": "2026-05-11T22:00:00.000Z" },
+
+    { "source": "artificial_analysis", "modelID": "zai/glm-4.6", "taskCategory": "coding", "score": 0.77, "rank": 5, "confidence": 0.55, "freshness": "manual", "fetchedAt": "2026-05-08T12:00:00.000Z" },
+    { "source": "terminal_bench", "modelID": "zai/glm-4.6", "taskCategory": "terminal", "score": 0.72, "rank": 4, "confidence": 0.85, "freshness": "manual", "fetchedAt": "2026-05-11T22:00:00.000Z" },
+
+    { "source": "design_arena", "modelID": "moonshot/kimi-k2", "taskCategory": "design", "score": 0.7, "rank": 4, "confidence": 0.78, "freshness": "manual", "fetchedAt": "2026-05-10T18:00:00.000Z" },
+    { "source": "artificial_analysis", "modelID": "google/gemini-2.5-pro", "taskCategory": "analysis", "score": 0.87, "rank": 2, "confidence": 0.55, "freshness": "manual", "fetchedAt": "2026-05-08T12:00:00.000Z" },
+    { "source": "artificial_analysis", "modelID": "google/gemini-2.5-pro", "taskCategory": "general", "score": 0.86, "rank": 2, "confidence": 0.55, "freshness": "manual", "fetchedAt": "2026-05-08T12:00:00.000Z" }
+  ],
+  "runtime": {
+    "anthropic/claude-opus-4-7": { "availability": "common", "routable": true, "reliability": 0.88 },
+    "anthropic/claude-sonnet-4-6": { "availability": "common", "routable": true, "reliability": 0.86 },
+    "openai/gpt-5": { "availability": "common", "routable": true, "reliability": 0.88 },
+    "openai/gpt-5-codex": { "availability": "common", "routable": true, "reliability": 0.88 },
+    "zai/glm-4.6": { "availability": "common", "routable": true, "reliability": 0.82 },
+    "moonshot/kimi-k2": { "availability": "common", "routable": true, "reliability": 0.78 },
+    "google/gemini-2.5-pro": { "availability": "limited", "routable": false, "reliability": 0.84 }
+  }
+}

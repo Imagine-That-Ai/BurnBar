@@ -9,13 +9,13 @@ export const FAQ: FAQItem[] = [
     id: "router-family-failover",
     question: "What is Provider-Family Failover?",
     answer:
-      "It's the default routing mode in BurnBar. We stretch capacity by failing over across multiple accounts inside the same provider family — never across families.\n\nIf your pinned Z.ai key throttles, BurnBar's local gateway picks up with your MiniMax or Kimi key. Both are OpenAI-shape, so the wire format never changes. Claude Code does the same inside the Anthropic family — your Pro plan as primary, your Console admin key as runner-up.\n\nThe mode is honored before ranking. If every account in the matching family is exhausted, BurnBar returns a structured 503 — it will not silently rewrite your request into a different family."
+      "It's the default routing mode in BurnBar. The router stretches capacity for the model you asked for across multiple accounts inside the same wire-format family — never across families, and never to a different model.\n\nIf your pinned Z.ai key throttles, any other account in your library that ALSO carries that exact model picks up — never a substitute. Claude Code works the same way inside the Anthropic family: your Pro plan as primary, your Console admin key as runner-up, both serving the identical model id.\n\nFilter rule #F in ProviderRoutingPolicy.decide drops every candidate account whose catalog doesn't list the requested model. If no candidate survives, the gateway returns a structured 503 — your IDE sees a clean error, never a silent substitute."
   },
   {
     id: "router-intelligent-mode",
     question: "What is the Intelligent Model Router?",
     answer:
-      "It's the opt-in routing mode. You tell BurnBar what the task is (or let your client surface it) and the router scores every candidate model on nine signals — task intent, model capability, quota health, local availability, cost, latency, context window, reliability, and benchmark freshness.\n\nThe winner serves the request. A runner-up is held in reserve so failover is instant.\n\nBenchmarks are advisory — they help break ties and weigh recency, but they never override your pin or the live quota state. User choice, auth, quota, and availability always win."
+      "It's the opt-in routing mode. You tell BurnBar what the task is (or let your client surface it) and the router scores every candidate model on nine surface signals — task intent, model capability, quota health, local availability, cost, latency, context window, reliability, and benchmark freshness.\n\nIn code, those nine signals fold into five weighted dimensions: capability (0.20), cost (0.25), latency (0.15), trust (0.25), and policy-fit (0.15). Benchmark freshness adjusts the capability dimension — older signals weigh less.\n\nThe winner serves the request and a runner-up is held in reserve so failover is instant. Benchmarks are advisory — they help break ties and weigh recency, but they never override your pin or the live quota state. User choice, auth, quota, and availability always win."
   },
   {
     id: "router-codex-to-claude",
@@ -27,13 +27,13 @@ export const FAQ: FAQItem[] = [
     id: "router-pin-model",
     question: "Can I still pin a model?",
     answer:
-      "Yes. Pinning is the strongest signal in both modes.\n\nIn Provider-Family Failover, you pin an account. The pinned account wins as long as it's healthy; the runner-up is pre-selected for instant failover.\n\nIn Intelligent Mode, you can pin a model, a family, or even a tier (e.g. \"always opus-class for the autopilot surface\"). The router still scores candidates and holds a runner-up, but it will not pick something else when your pin is healthy."
+      "Yes. Pinning is the strongest signal in both modes.\n\nIn Provider-Family Failover, you pin an account that serves your chosen model. The pinned account wins as long as it's healthy; a runner-up account (one that also carries the same model) is pre-selected for instant failover.\n\nIn Intelligent Mode, you pin a model identity, a family, or a tier (e.g. \"always opus-class for the autopilot surface\"). The router still scores candidates and holds a runner-up, but it will not pick something else when your pin is healthy. A healthy pin always wins."
   },
   {
     id: "router-benchmark-sources",
     question: "What benchmark sources does BurnBar use?",
     answer:
-      "A curated set of recently refreshed, well-methodologized coding benchmarks — currently Aider Leaderboard, LMSys Arena coding slice, and SWE-Bench Verified.\n\nEach score carries an age and a confidence label. Older scores are weighted down. The full source list ships with each release as a versioned JSON file you can audit, and the weighting curve is documented in docs/ROUTER_BENCHMARK_POLICY.md.\n\nWe don't synthesize our own benchmarks. We cite, we don't fabricate. And no benchmark ever overrides your pin or beats live quota state — they're advisory signals."
+      "A curated set of recently refreshed, well-methodologized public sources: Artificial Analysis (intelligence + coding indices, plus TPS and pricing), Terminal-Bench via Hugging Face (shell-loop agents, verified-run flag), and Design Arena (pairwise Elo + win-rate by category). Manual cached fixtures cover gaps when a source's API is unavailable.\n\nEach score carries an age and a confidence label; older scores are weighted down, not silently dropped. The daily rundown at /router/daily shows what got cited and why, with logos for every source. The weighting curve is documented in functions/src/modelLandscape.ts.\n\nWe don't synthesize benchmarks. We cite, we don't fabricate. And no benchmark ever overrides your pin or beats live quota state — they're advisory signals."
   },
   {
     id: "router-logs-safe",

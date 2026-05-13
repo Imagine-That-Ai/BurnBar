@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Hugging Face attribution mark">
+  <title>Hugging Face</title>
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="#0c0a0f" stroke="#2a2030" stroke-width="1.25"/>
+  <!-- friendly disc -->
+  <circle cx="32" cy="32" r="18" fill="none" stroke="#ffb547" stroke-width="1.5"/>
+  <!-- eyes -->
+  <circle cx="25.5" cy="29" r="2.4" fill="#ffb547"/>
+  <circle cx="38.5" cy="29" r="2.4" fill="#ffb547"/>
+  <!-- smile arc -->
+  <path d="M 23 38 Q 32 47 41 38" fill="none" stroke="#ff6a1a" stroke-width="2.2" stroke-linecap="round"/>
+  <!-- hands (hug) -->
+  <path d="M 14 36 Q 18 32 22 34" fill="none" stroke="#5c5448" stroke-width="2" stroke-linecap="round"/>
+  <path d="M 50 36 Q 46 32 42 34" fill="none" stroke="#5c5448" stroke-width="2" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,411 @@
+---
+import BaseLayout from "@layouts/BaseLayout.astro";
+import { ALL_RUNDOWNS } from "@data/router-rundown-loader";
+import { sourceMeta, freshnessTone, formatAge } from "@data/router-rundown";
+
+const newestDate = ALL_RUNDOWNS[0]?.date ?? "—";
+const oldestDate = ALL_RUNDOWNS.at(-1)?.date ?? "—";
+
+function pct(x: number | undefined) {
+  if (x == null || !Number.isFinite(x)) return "—";
+  return `${Math.round(x * 100)}`;
+}
+
+const groupedByMonth = new Map<string, typeof ALL_RUNDOWNS>();
+for (const rundown of ALL_RUNDOWNS) {
+  const month = rundown.date.slice(0, 7);
+  const arr = groupedByMonth.get(month) ?? [];
+  arr.push(rundown);
+  groupedByMonth.set(month, arr);
+}
+const months = [...groupedByMonth.keys()].sort((a, b) => (a < b ? 1 : -1));
+---
+
+<BaseLayout
+  title="Daily Router Rundown · archive"
+  description="Every dated OpenBurnBar Intelligent Router Rundown — frozen, source-cited, and inspectable. Benchmark data is advisory; runtime constraints win."
+>
+  <section class="pagehead pagehead--archive">
+    <div class="container container--wide">
+      <nav class="archive-bread mono" aria-label="Breadcrumbs">
+        <a href="/router">Fire Hydrant · the router</a>
+        <span aria-hidden="true">→</span>
+        <span>Daily archive</span>
+      </nav>
+
+      <span class="eyebrow eyebrow--ember">Operator log · the archive</span>
+      <h1 class="pagehead__h">
+        Every day, frozen, cited, and inspectable.
+      </h1>
+      <p class="lead">
+        The Intelligent Router refreshes its model-landscape snapshot once
+        every twenty-four hours. Each refresh produces a dated rundown — what
+        BurnBar would have recommended that day, the sources it cited, the
+        freshness of every signal, and the limitations of every claim.
+        Nothing is overwritten. Future humans can verify what was said.
+      </p>
+
+      <ul class="pagehead__chips mono" aria-label="Archive scope">
+        <li><span class="dot dot--ember"></span> {ALL_RUNDOWNS.length} dated rundown{ALL_RUNDOWNS.length === 1 ? "" : "s"}</li>
+        <li><span class="dot dot--mercury"></span> newest · {newestDate}</li>
+        <li><span class="dot dot--mercury"></span> oldest · {oldestDate}</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="archive">
+    <div class="container container--wide">
+      <p class="archive__advisory">
+        Benchmark signals are <strong>advisory</strong>. Each rundown shows
+        what the daily snapshot said, not what the router actually ran —
+        provider-family mode, user pinning, account auth, quota state, safety
+        policy, and availability all override these recommendations at
+        runtime. Use this archive to inspect <em>why</em> a given
+        recommendation was made, not as proof a given route was executed.
+      </p>
+
+      {months.map((month) => (
+        <article class="month">
+          <header class="month__head">
+            <h2 class="month__h mono">{month}</h2>
+            <span class="month__count mono">{groupedByMonth.get(month)?.length} rundown{(groupedByMonth.get(month)?.length ?? 0) === 1 ? "" : "s"}</span>
+          </header>
+
+          <ul class="archive__list">
+            {groupedByMonth.get(month)?.map((rundown) => {
+              const top = rundown.taskRankings.find((t) => t.taskID === "coding")?.recommendations[0]
+                ?? rundown.taskRankings[0]?.recommendations[0];
+              const freshSources = rundown.sourceStatuses.filter((s) => s.status === "fresh").length;
+              return (
+                <li class="archcard">
+                  <a class="archcard__link" href={`/router/daily/${rundown.date}`}>
+                    <header class="archcard__head">
+                      <span class="archcard__date mono">{rundown.date}</span>
+                      <span class="archcard__time mono">{rundown.generatedAt.slice(11, 16)} UTC</span>
+                    </header>
+
+                    {top ? (
+                      <div class="archcard__top">
+                        <div class="archcard__topmodel">
+                          {top.providerLogo && (
+                            <img class="archcard__topimg" src={top.providerLogo} alt="" width="32" height="32" loading="lazy" />
+                          )}
+                          <div>
+                            <strong class="archcard__name">{top.modelDisplay}</strong>
+                            <span class="archcard__provider mono">{top.providerDisplay}</span>
+                          </div>
+                        </div>
+                        <span class="archcard__score mono">{pct(top.score)} / 100</span>
+                      </div>
+                    ) : (
+                      <p class="archcard__empty">No task rankings — sources were unavailable.</p>
+                    )}
+
+                    <ul class="archcard__sources">
+                      {rundown.sourceStatuses.map((s) => (
+                        <li class={`archcard__src archcard__src--${freshnessTone(s.status)}`} title={`${s.attribution} · ${s.status}${s.ageHours != null ? " · " + formatAge(s.ageHours) : ""}`}>
+                          <img src={s.logo} alt={s.attribution} width="18" height="18" loading="lazy" />
+                        </li>
+                      ))}
+                    </ul>
+
+                    <footer class="archcard__foot mono">
+                      <span>{rundown.taskRankings.length} task{rundown.taskRankings.length === 1 ? "" : "s"}</span>
+                      <span>{freshSources}/{rundown.sourceStatuses.length} sources fresh</span>
+                      <span class="archcard__cta">inspect →</span>
+                    </footer>
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        </article>
+      ))}
+
+      {ALL_RUNDOWNS.length === 0 && (
+        <p class="archive__empty">
+          No dated rundowns are committed in this build. The daily generator
+          (<code>website/scripts/generate-rundown.mjs</code>) emits these from
+          the production benchmark pipeline; run it locally to populate the
+          archive.
+        </p>
+      )}
+
+      <div class="archive__sources">
+        <h2 class="archive__sh mono">Sources we cite</h2>
+        <p class="archive__sd">
+          Each daily rundown attributes its claims back to a documented
+          public source. Citations carry logos so operators can audit
+          provenance at a glance. We <em>never</em> fabricate benchmark
+          numbers, scrape authenticated dashboards, or persist API keys
+          inside snapshots.
+        </p>
+        <ul class="archive__srcgrid">
+          {(["artificial_analysis","terminal_bench","design_arena","huggingface","manual_fixture"] as const).map((id) => {
+            const m = sourceMeta(id);
+            return (
+              <li class="archsrc">
+                <img src={m.logo} alt="" width="36" height="36" loading="lazy" />
+                <div>
+                  <strong>{m.attribution}</strong>
+                  <span class="archsrc__short mono">{m.shortLabel}</span>
+                  <p>{m.blurb}</p>
+                  <a class="archsrc__link mono" href={m.url} target="_blank" rel="noopener noreferrer">{m.url.replace(/^https?:\/\//, "")} →</a>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<style>
+  .pagehead--archive { padding-block: var(--s-8) var(--s-5); }
+  .archive-bread {
+    display: flex;
+    gap: var(--s-2);
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    margin-bottom: var(--s-4);
+  }
+  .archive-bread a { color: var(--text-mute); text-decoration: none; }
+  .archive-bread a:hover { color: var(--ember-bright); }
+
+  .archive { padding-block: var(--s-3) var(--s-9); }
+  .archive__advisory {
+    padding: var(--s-3) var(--s-4);
+    border: 1px dashed color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    border-radius: var(--r-3);
+    background:
+      linear-gradient(90deg, rgba(255, 106, 26, 0.06), transparent);
+    color: var(--text-base);
+    font-size: 0.88rem;
+    margin-bottom: var(--s-6);
+    max-width: 92ch;
+  }
+  .archive__advisory strong { color: var(--ember-bright); }
+
+  .month { margin-bottom: var(--s-7); }
+  .month__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s-3);
+    padding-bottom: var(--s-3);
+    border-bottom: 1px dashed var(--ink-line);
+    margin-bottom: var(--s-4);
+  }
+  .month__h {
+    color: var(--text-bright);
+    font-size: 1.4rem;
+    letter-spacing: 0.04em;
+    font-family: var(--font-mono);
+    font-variation-settings: "wght" 540;
+  }
+  .month__count {
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+  }
+
+  .archive__list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--s-4);
+  }
+
+  .archcard {
+    display: contents;
+  }
+  .archcard__link {
+    display: grid;
+    gap: var(--s-3);
+    padding: var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background:
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    color: var(--text-base);
+    text-decoration: none;
+    transition: border-color var(--dur-fast) var(--ease-out),
+                transform var(--dur-fast) var(--ease-out);
+  }
+  .archcard__link:hover {
+    border-color: color-mix(in oklab, var(--ember-core) 45%, var(--ink-line));
+    transform: translateY(-2px);
+  }
+  .archcard__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s-3);
+  }
+  .archcard__date {
+    color: var(--text-bright);
+    font-size: 1rem;
+    letter-spacing: 0.04em;
+  }
+  .archcard__time {
+    color: var(--text-dim);
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+  }
+
+  .archcard__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-3);
+    padding: var(--s-3);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 28%, var(--ink-line));
+    border-radius: var(--r-3);
+    background: color-mix(in oklab, var(--ember-core) 8%, var(--ink-base));
+  }
+  .archcard__topmodel {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+  }
+  .archcard__topimg {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: #f6f1e7;
+    padding: 3px;
+    border: 1px solid var(--ink-line);
+    object-fit: contain;
+  }
+  .archcard__name {
+    display: block;
+    color: var(--text-bright);
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 60, "wght" 480;
+    font-size: 0.98rem;
+  }
+  .archcard__provider {
+    color: var(--text-mute);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+  }
+  .archcard__score {
+    color: var(--ember-bright);
+    font-size: 0.84rem;
+    letter-spacing: 0.04em;
+    font-variation-settings: "wght" 540;
+  }
+  .archcard__empty {
+    color: var(--text-mute);
+    font-size: 0.84rem;
+    padding: var(--s-3);
+    border: 1px dashed var(--ink-line);
+    border-radius: var(--r-3);
+  }
+
+  .archcard__sources {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+  .archcard__src {
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 5px;
+    border: 1px solid var(--ink-line);
+    background: var(--ink-base);
+    overflow: hidden;
+  }
+  .archcard__src img { width: 18px; height: 18px; }
+  .archcard__src--fresh { border-color: color-mix(in oklab, var(--status-exact) 40%, var(--ink-line)); }
+  .archcard__src--warn { border-color: color-mix(in oklab, var(--status-estimated) 40%, var(--ink-line)); }
+  .archcard__src--stale { border-color: color-mix(in oklab, var(--mercury-deep) 40%, var(--ink-line)); }
+  .archcard__src--off { opacity: 0.55; }
+
+  .archcard__foot {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s-3);
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    border-top: 1px dashed var(--ink-line);
+    padding-top: var(--s-2);
+  }
+  .archcard__cta { color: var(--ember-bright); }
+
+  /* sources block */
+  .archive__sources {
+    margin-top: var(--s-7);
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background: var(--ink-surface);
+  }
+  .archive__sh {
+    color: var(--text-dim);
+    font-size: 0.74rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: var(--s-3);
+  }
+  .archive__sd { color: var(--text-base); max-width: 88ch; margin-bottom: var(--s-4); font-size: 0.92rem; }
+  .archive__srcgrid {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--s-4);
+  }
+  .archsrc {
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    gap: var(--s-3);
+    padding: var(--s-3);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    background: var(--ink-base);
+  }
+  .archsrc img {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    border: 1px solid var(--ink-line);
+    background: var(--ink-surface);
+  }
+  .archsrc strong { color: var(--text-bright); display: inline-block; margin-right: 0.4rem; }
+  .archsrc__short {
+    color: var(--ember-bright);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    padding: 2px 6px;
+    border: 1px solid color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
+    border-radius: var(--r-2);
+  }
+  .archsrc p { color: var(--text-mute); font-size: 0.84rem; margin: 4px 0; }
+  .archsrc__link {
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-decoration: none;
+  }
+  .archsrc__link:hover { color: var(--ember-bright); }
+
+  .archive__empty {
+    padding: var(--s-5);
+    border: 1px dashed var(--ink-line);
+    border-radius: var(--r-3);
+    color: var(--text-mute);
+  }
+</style>

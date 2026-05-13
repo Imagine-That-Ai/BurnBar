@@ -1,0 +1,318 @@
+---
+/**
+ * LifecycleStateMachine — an animated state diagram replacing the old
+ * eight-card lifecycle grid. A glowing avatar walks a typical lifecycle
+ * over a 12-second cycle, visiting every state the router can park a
+ * routed account in. Static legend on the right names each state.
+ *
+ * Pure SVG + <animateMotion>. Reduced-motion users see the diagram with
+ * the avatar parked on the "healthy" hub.
+ */
+---
+
+<section class="lifecycle" aria-labelledby="lifecycle-h">
+  <header class="lifecycle__head">
+    <span class="eyebrow eyebrow--ember">Account lifecycle · animated</span>
+    <h2 id="lifecycle-h" class="lifecycle__h">
+      Every state an account passes through, on one diagram.
+    </h2>
+    <p class="lifecycle__lead">
+      The router keeps an account in one of eight states. <strong>Healthy</strong>
+      accounts serve traffic. <strong>Pressure</strong>, <strong>cooling-down</strong>,
+      and <strong>rate-limited</strong> are temporary; the router lets them
+      heal on a five-minute clock. <strong>Exhausted</strong> and <strong>auth-failed</strong>
+      need you. <strong>Disabled</strong> and <strong>unknown</strong> sit out of
+      rotation by design. Watch a typical day below.
+    </p>
+  </header>
+
+  <div class="lifecycle__panel" data-animate-onview="">
+    <svg class="lcsm" viewBox="0 0 600 420" role="img" aria-label="State diagram of the account lifecycle" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="lcsm-edge" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0%" stop-color="rgba(214, 211, 223, 0.0)"/>
+          <stop offset="50%" stop-color="rgba(214, 211, 223, 0.55)"/>
+          <stop offset="100%" stop-color="rgba(214, 211, 223, 0.0)"/>
+        </linearGradient>
+        <linearGradient id="lcsm-edge-ember" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0%" stop-color="rgba(255, 138, 61, 0)"/>
+          <stop offset="50%" stop-color="rgba(255, 138, 61, 0.7)"/>
+          <stop offset="100%" stop-color="rgba(255, 138, 61, 0)"/>
+        </linearGradient>
+        <radialGradient id="lcsm-hub" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="rgba(111, 209, 137, 0.35)"/>
+          <stop offset="60%" stop-color="rgba(111, 209, 137, 0.08)"/>
+          <stop offset="100%" stop-color="rgba(111, 209, 137, 0)"/>
+        </radialGradient>
+        <filter id="lcsm-blur" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="3"/>
+        </filter>
+      </defs>
+
+      {/* hub halo */}
+      <circle cx="300" cy="210" r="80" fill="url(#lcsm-hub)"/>
+
+      {/* edges — drawn as gentle arcs from hub to satellites */}
+      {/* hub → pressure */}
+      <path d="M 300 210 Q 240 165 145 95" stroke="url(#lcsm-edge-ember)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
+      {/* pressure → cooling-down */}
+      <path d="M 145 95 Q 220 92 295 95" stroke="url(#lcsm-edge)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
+      {/* cooling-down → rate-limited */}
+      <path d="M 295 95 Q 380 92 455 95" stroke="url(#lcsm-edge)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
+      {/* rate-limited → hub */}
+      <path d="M 455 95 Q 370 165 300 210" stroke="url(#lcsm-edge)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
+      {/* hub → exhausted */}
+      <path d="M 300 210 Q 380 215 460 215" stroke="url(#lcsm-edge-ember)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
+      {/* exhausted → swap-keys */}
+      <path d="M 460 215 Q 470 290 460 335" stroke="url(#lcsm-edge)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
+      {/* swap-keys → hub */}
+      <path d="M 460 335 Q 380 290 300 210" stroke="url(#lcsm-edge)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
+      {/* hub → auth-failed */}
+      <path d="M 300 210 Q 280 280 295 335" stroke="url(#lcsm-edge-ember)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
+      {/* auth-failed → swap-keys */}
+      <path d="M 295 335 Q 380 340 460 335" stroke="url(#lcsm-edge)" stroke-width="1.5" fill="none" stroke-dasharray="3 4"/>
+      {/* disabled (sit-out) - no edge to hub, denoting opt-out */}
+      <path d="M 145 335 L 145 285" stroke="rgba(91, 84, 72, 0.4)" stroke-width="1" fill="none" stroke-dasharray="2 3"/>
+      {/* unknown (no data, eligible w/ low rank) */}
+      <path d="M 145 215 Q 200 210 240 210" stroke="rgba(91, 84, 72, 0.4)" stroke-width="1" fill="none" stroke-dasharray="2 3"/>
+
+      {/* nodes */}
+      {/* pressure */}
+      <g class="lcsm__node lcsm__node--press" transform="translate(145 95)">
+        <circle r="28" fill="rgba(255, 200, 97, 0.08)" stroke="rgba(255, 200, 97, 0.5)" stroke-width="1.2"/>
+        <circle r="6" fill="#ffc861"/>
+        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">pressure</text>
+      </g>
+      {/* cooling-down */}
+      <g class="lcsm__node lcsm__node--cool" transform="translate(295 95)">
+        <circle r="28" fill="rgba(214, 211, 223, 0.06)" stroke="rgba(174, 172, 186, 0.55)" stroke-width="1.2"/>
+        <circle r="6" fill="#aeacba"/>
+        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">cooling-down</text>
+        <text x="0" y="62" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">5-min auto</text>
+      </g>
+      {/* rate-limited */}
+      <g class="lcsm__node lcsm__node--rate" transform="translate(455 95)">
+        <circle r="28" fill="rgba(255, 200, 97, 0.06)" stroke="rgba(255, 200, 97, 0.5)" stroke-width="1.2"/>
+        <circle r="6" fill="#ffc861"/>
+        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">rate-limited</text>
+        <text x="0" y="62" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">429 · cool down</text>
+      </g>
+      {/* unknown */}
+      <g class="lcsm__node lcsm__node--unknown" transform="translate(145 210)">
+        <circle r="28" fill="rgba(91, 84, 72, 0.1)" stroke="rgba(91, 84, 72, 0.55)" stroke-width="1.2"/>
+        <circle r="6" fill="#5c5448"/>
+        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">unknown</text>
+      </g>
+      {/* HEALTHY hub */}
+      <g class="lcsm__node lcsm__node--hub" transform="translate(300 210)">
+        <circle r="48" fill="rgba(111, 209, 137, 0.06)" stroke="rgba(111, 209, 137, 0.55)" stroke-width="1.8"/>
+        <circle r="10" fill="#6fd189" filter="url(#lcsm-blur)" opacity="0.7"/>
+        <circle r="6" fill="#6fd189"/>
+        <text x="0" y="32" text-anchor="middle" font-family="Fraunces Variable, serif" font-size="14" fill="#f6f1e7">healthy</text>
+        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">eligible · serving</text>
+      </g>
+      {/* exhausted */}
+      <g class="lcsm__node lcsm__node--exh" transform="translate(460 215)">
+        <circle r="28" fill="rgba(229, 72, 60, 0.08)" stroke="rgba(229, 72, 60, 0.55)" stroke-width="1.2"/>
+        <circle r="6" fill="#e5483c"/>
+        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">exhausted</text>
+        <text x="0" y="62" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">bucket window</text>
+      </g>
+      {/* disabled */}
+      <g class="lcsm__node lcsm__node--off" transform="translate(145 335)">
+        <circle r="28" fill="rgba(91, 84, 72, 0.08)" stroke="rgba(91, 84, 72, 0.55)" stroke-width="1.2"/>
+        <circle r="6" fill="#5c5448"/>
+        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">disabled</text>
+      </g>
+      {/* auth-failed */}
+      <g class="lcsm__node lcsm__node--auth" transform="translate(295 335)">
+        <circle r="28" fill="rgba(229, 72, 60, 0.08)" stroke="rgba(229, 72, 60, 0.55)" stroke-width="1.2"/>
+        <circle r="6" fill="#e5483c"/>
+        <text x="0" y="48" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="11" fill="#d8d0c0">auth-failed</text>
+        <text x="0" y="62" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">re-auth needed</text>
+      </g>
+      {/* swap-keys (user prompt — not a router state but the recovery action) */}
+      <g class="lcsm__node lcsm__node--swap" transform="translate(460 335)">
+        <rect x="-44" y="-22" width="88" height="44" rx="10" fill="rgba(255, 138, 61, 0.08)" stroke="rgba(255, 138, 61, 0.55)" stroke-width="1.2"/>
+        <text x="0" y="-3" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="10" fill="#ff8a3d">swap keys</text>
+        <text x="0" y="11" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#ff8a3d">user action</text>
+        <text x="0" y="42" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">re-auth · re-key</text>
+      </g>
+
+      {/* the walking avatar */}
+      <circle class="lcsm__avatar" r="7" fill="#ff8a3d" filter="url(#lcsm-blur)">
+        <animateMotion
+          dur="12s"
+          repeatCount="indefinite"
+          rotate="0"
+          path="M 300 210 L 145 95 L 295 95 L 455 95 L 300 210 L 460 215 L 460 335 L 300 210 L 295 335 L 460 335 L 300 210 Z"
+        />
+      </circle>
+      <circle class="lcsm__avatarcore" r="3" fill="#ffd07a">
+        <animateMotion
+          dur="12s"
+          repeatCount="indefinite"
+          rotate="0"
+          path="M 300 210 L 145 95 L 295 95 L 455 95 L 300 210 L 460 215 L 460 335 L 300 210 L 295 335 L 460 335 L 300 210 Z"
+        />
+      </circle>
+
+      {/* avatar trail — a thin path showing path direction. Drawn dashed-animated. */}
+      <path
+        class="lcsm__trail"
+        d="M 300 210 L 145 95 L 295 95 L 455 95 L 300 210 L 460 215 L 460 335 L 300 210 L 295 335 L 460 335 L 300 210 Z"
+        fill="none"
+        stroke="rgba(255, 138, 61, 0.18)"
+        stroke-width="1"
+        stroke-dasharray="2 6"
+      />
+    </svg>
+
+    {/* sidebar legend */}
+    <aside class="lcsm__legend" aria-label="Lifecycle legend">
+      <h3 class="lcsm__legendh mono">eight states</h3>
+      <ul class="lcsm__list">
+        <li><span class="lcsm__pill lcsm__pill--hub"></span><strong>healthy</strong><span>eligible to serve · ranked first</span></li>
+        <li><span class="lcsm__pill lcsm__pill--press"></span><strong>pressure</strong><span>&lt; 20% bucket left · still eligible, ranked lower</span></li>
+        <li><span class="lcsm__pill lcsm__pill--cool"></span><strong>cooling-down</strong><span>transient failure · auto-retry in 5 min</span></li>
+        <li><span class="lcsm__pill lcsm__pill--rate"></span><strong>rate-limited</strong><span>429 from provider · cool-down ticking</span></li>
+        <li><span class="lcsm__pill lcsm__pill--exh"></span><strong>exhausted</strong><span>bucket cap hit · waits for window roll</span></li>
+        <li><span class="lcsm__pill lcsm__pill--auth"></span><strong>auth-failed</strong><span>token expired · re-auth surfaces a UI flag</span></li>
+        <li><span class="lcsm__pill lcsm__pill--off"></span><strong>disabled</strong><span>routing off by you · tracked, not used</span></li>
+        <li><span class="lcsm__pill lcsm__pill--unknown"></span><strong>unknown</strong><span>quota probe stale · eligible, ranked low</span></li>
+      </ul>
+      <p class="lcsm__cap mono">avatar walks a typical day · 12 s loop</p>
+    </aside>
+  </div>
+</section>
+
+<style>
+  .lifecycle {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+  }
+  .lifecycle__head {
+    max-width: 64ch;
+    margin: 0 auto var(--s-6);
+    text-align: center;
+    display: grid;
+    gap: var(--s-3);
+  }
+  .lifecycle__h {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 80, "wght" 500;
+    letter-spacing: -0.022em;
+    text-wrap: balance;
+  }
+  .lifecycle__lead { color: var(--text-base); max-width: 64ch; margin: 0 auto; line-height: 1.55; }
+  .lifecycle__lead strong { color: var(--text-bright); }
+
+  .lifecycle__panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: var(--s-5);
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-5);
+    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+  }
+  @media (max-width: 900px) {
+    .lifecycle__panel { grid-template-columns: 1fr; }
+  }
+
+  .lcsm {
+    width: 100%;
+    height: auto;
+    max-height: 460px;
+    display: block;
+  }
+  .lcsm__avatar { mix-blend-mode: screen; opacity: 0.7; }
+  .lcsm__avatarcore { mix-blend-mode: screen; }
+  .lcsm__node circle:first-of-type { transition: stroke-width var(--dur-fast) var(--ease-out); }
+
+  /* the trail subtly migrates */
+  .lcsm__trail {
+    stroke-dashoffset: 0;
+    animation: lcsm-trail 18s linear infinite;
+  }
+  @keyframes lcsm-trail {
+    to { stroke-dashoffset: -160; }
+  }
+
+  /* legend */
+  .lcsm__legend {
+    padding: var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background: var(--ink-base);
+    display: grid;
+    gap: var(--s-3);
+    align-content: start;
+  }
+  .lcsm__legendh {
+    color: var(--text-dim);
+    font-size: 0.66rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+  .lcsm__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--s-2);
+  }
+  .lcsm__list li {
+    display: grid;
+    grid-template-columns: 14px 90px 1fr;
+    gap: var(--s-2);
+    align-items: baseline;
+    color: var(--text-base);
+    font-size: 0.86rem;
+  }
+  .lcsm__list strong { color: var(--text-bright); font-variation-settings: "wght" 540; }
+  .lcsm__list span { color: var(--text-mute); font-size: 0.78rem; }
+  .lcsm__pill {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    border: 1px solid currentColor;
+    opacity: 0.85;
+  }
+  .lcsm__pill--hub { background: var(--status-exact); border-color: var(--status-exact); box-shadow: 0 0 8px var(--status-exact); }
+  .lcsm__pill--press, .lcsm__pill--rate { background: var(--status-estimated); border-color: var(--status-estimated); }
+  .lcsm__pill--cool { background: var(--mercury-base); border-color: var(--mercury-base); }
+  .lcsm__pill--exh, .lcsm__pill--auth { background: var(--status-burn); border-color: var(--status-burn); }
+  .lcsm__pill--off, .lcsm__pill--unknown { background: var(--text-dim); border-color: var(--text-dim); }
+
+  .lcsm__cap {
+    color: var(--text-dim);
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    padding-top: var(--s-2);
+    border-top: 1px dashed var(--ink-line-soft);
+  }
+
+  /* entrance */
+  .lifecycle__panel[data-animate-onview] {
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 700ms var(--ease-out), transform 700ms var(--ease-out);
+  }
+  .lifecycle__panel[data-animate-onview].is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* animateMotion can't be paused via CSS easily, but trail and entrance are managed */
+    .lcsm__trail { animation: none; }
+    .lifecycle__panel[data-animate-onview] {
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>
