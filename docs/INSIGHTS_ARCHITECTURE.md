@@ -179,6 +179,39 @@ round-trips through iOS, iPadOS, Android, and Firestore without translation.
   `analysisResultSchemaV1` validation are rejected at the engine boundary
   and recorded as `status: schemaViolation`; the engine then falls back to
   rule-based output so the UI never shows a partial canvas.
+- **Platform aggregators.** Each platform owns a thin class that bridges
+  its native data sources to the shared `InsightAggregator`:
+  `MacInsightAggregator` (AgentLens) pulls `DataStore` usage/sessions plus
+  prior audit summaries; `MobileInsightAggregator` (OpenBurnBarMobile)
+  pulls Firestore-backed `DashboardStore` rollups; `AndroidInsightAggregator`
+  pulls the production `FirestoreInsightDataSource` (never the demo
+  fixture). All three include the last ~10 audit summaries in
+  `priorRunSummaries` so the model has memory of what it already produced.
+- **Provider-family picker.** `InsightProviderFamilyCatalog` (core Swift
+  helper, mirrored TS / Kotlin types) maps any
+  `InsightCatalogModel` into a normalized
+  `InsightProviderFamilyEntry` keyed by `InsightProviderFamily`
+  (Codex / Claude / MiniMax / Z.ai / Kimi / Ollama / Hermes / OpenAI /
+  Pi / OpenRouter / local-rules / other). Section order is stable and
+  local-first regardless of catalog churn; composers use `grouped(_:)` to
+  render section headers and `entries(from:automaticDefault:)` to mark the
+  Hermes-advertised default.
+
+## UI plane — Intelligence Brief
+
+`IntelligenceBriefView` (Swift, in `OpenBurnBarCore/Views/Insights/`) and
+`IntelligenceBriefScreen` (Compose, in `android/.../ui/insights/`) render an
+`InsightAnalysisResult` identically on every platform. The same arc on each:
+hero card (executive summary + model chip + budget chip + token-usage
+chip), top findings, anomaly chips, recommendation cards, generated
+widgets inline via `InsightWidgetRenderer`, follow-up question chips, and
+an audit footer with the result hash and audit row id. Callers wire the
+five callbacks (`onCitationTap`, `onFollowUpTap`, `onPinWidget`,
+`onConfigureModel`, `onShowAudit`); the view is stateless so it composes
+cleanly into AgentLens's 3-pane workspace, OpenBurnBarMobile's stack/split
+shells, and the Android `InsightsScreen`. The `IntelligenceBriefFormatting`
+helper exposes the same chip/footer text on every surface so audit views
+and previews match the live brief.
 
 ## Adding a new widget kind
 

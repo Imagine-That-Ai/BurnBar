@@ -223,6 +223,120 @@ final class InsightAnalysisTests: XCTestCase {
         XCTAssertNotEqual(a, c)
     }
 
+    func testProviderFamilyCatalogGroupsAndSortsByFamily() {
+        let strict = InsightModelCapabilities(
+            supportsStrictJSONSchema: true,
+            supportsJSONObject: true,
+            supportsThinking: true,
+            supportsToolUse: true,
+            supportsStreaming: true
+        )
+        let basic = InsightModelCapabilities(
+            supportsStrictJSONSchema: false,
+            supportsJSONObject: true,
+            supportsThinking: false,
+            supportsToolUse: false,
+            supportsStreaming: true
+        )
+        let claude = InsightCatalogModel(
+            id: "claude-sonnet-4-6",
+            displayName: "Claude Sonnet 4.6",
+            providerKey: "anthropic",
+            egressTier: .userKey,
+            capabilities: strict
+        )
+        let ollama = InsightCatalogModel(
+            id: "llama3",
+            displayName: "Llama 3",
+            providerKey: "ollama",
+            egressTier: .localOnly,
+            capabilities: basic
+        )
+        let kimi = InsightCatalogModel(
+            id: "kimi-k2",
+            displayName: "Kimi K2",
+            providerKey: "moonshot",
+            egressTier: .userKey,
+            capabilities: basic
+        )
+        let unknown = InsightCatalogModel(
+            id: "mystery-model",
+            displayName: "Mystery",
+            providerKey: "custom",
+            egressTier: .userKey,
+            capabilities: basic
+        )
+
+        let entries = InsightProviderFamilyCatalog.entries(
+            from: [claude, ollama, kimi, unknown],
+            automaticDefault: (providerKey: "anthropic", modelID: "claude-sonnet-4-6")
+        )
+
+        XCTAssertEqual(entries.first?.family, .ollama, "Local-only families sort first.")
+        XCTAssertTrue(entries.contains { $0.family == .claude && $0.isAutomaticDefault })
+        XCTAssertTrue(entries.contains { $0.family == .kimi })
+        XCTAssertTrue(entries.contains { $0.family == .other }, "Unknown provider falls through to .other.")
+
+        let grouped = InsightProviderFamilyCatalog.grouped(entries)
+        XCTAssertEqual(grouped.map { $0.family }, [.ollama, .claude, .kimi, .other])
+    }
+
+    func testProviderFamilyMatcherToleratesPunctuation() {
+        XCTAssertEqual(
+            InsightProviderFamilyCatalog.family(forProviderKey: "Claude-Code", modelID: "claude-sonnet-4-6"),
+            .claude
+        )
+        XCTAssertEqual(
+            InsightProviderFamilyCatalog.family(forProviderKey: "z.ai", modelID: "glm-4.5"),
+            .zai
+        )
+        XCTAssertEqual(
+            InsightProviderFamilyCatalog.family(forProviderKey: "open_ai", modelID: "gpt-5"),
+            .openai
+        )
+        XCTAssertEqual(
+            InsightProviderFamilyCatalog.family(forProviderKey: "ollama", modelID: "phi-3"),
+            .ollama
+        )
+        XCTAssertEqual(
+            InsightProviderFamilyCatalog.family(forProviderKey: "unknown", modelID: "llama-3"),
+            .ollama,
+            "Model id sniffing should win when provider key is unknown."
+        )
+    }
+
+    func testIntelligenceBriefFormattingProducesStableLabels() {
+        XCTAssertEqual(IntelligenceBriefFormatting.windowLabel(.last7d), "Last 7 days")
+        XCTAssertEqual(IntelligenceBriefFormatting.windowLabel(.today), "Today")
+
+        let budget = InsightContextBudgetReport(
+            encodedBytes: 5_120,
+            estimatedPromptTokens: 1_280,
+            includedDataSources: ["firestore_rollups"],
+            truncatedDataSources: ["provider_summaries"],
+            truncationSummary: "trimmed"
+        )
+        let budgetLabel = IntelligenceBriefFormatting.budgetLabel(budget)
+        XCTAssertTrue(budgetLabel.contains("~5 KB"), "Expected '\(budgetLabel)' to include byte estimate.")
+        XCTAssertTrue(budgetLabel.contains("trimmed"))
+
+        let usage = InsightTokenUsage(
+            providerKey: "anthropic",
+            modelID: "claude-sonnet-4-6",
+            inputTokens: 1_200,
+            outputTokens: 400,
+            reasoningTokens: 0,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            estimatedCostUSD: 0.0234,
+            startedAt: Date(timeIntervalSince1970: 0),
+            completedAt: Date(timeIntervalSince1970: 2)
+        )
+        let usageLabel = IntelligenceBriefFormatting.tokenUsageLabel(usage, cost: 0.0234)
+        XCTAssertTrue(usageLabel.contains("1600 tokens"))
+        XCTAssertTrue(usageLabel.contains("$0.0234"))
+    }
+
     func testModelPreferenceDefaultsAreSafe() {
         let pref = InsightModelPreference.default
         XCTAssertEqual(pref.mode, .automatic)
