@@ -98,6 +98,7 @@ import {
   refreshAllProviderQuotas,
   refreshModelLandscapeBenchmarks,
 } from "./scheduled.js";
+import { latestRouterRundown } from "./routerRundown.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 
 // ---------------------------------------------------------------------------
@@ -2273,6 +2274,7 @@ export {
   rebuildRollups,
   refreshAllProviderQuotas,
   refreshModelLandscapeBenchmarks,
+  latestRouterRundown,
 };
 
 // ---------------------------------------------------------------------------

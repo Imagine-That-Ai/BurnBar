@@ -22,6 +22,8 @@ const { kind, label } = Astro.props;
   <div class="deviceframe deviceframe--nest" role="img" aria-label={label ?? "Google Nest Hub device frame"}>
     <div class="deviceframe__nest-base" aria-hidden="true">
       <div class="deviceframe__nest-base-grain"></div>
+      <div class="deviceframe__nest-base-weave" aria-hidden="true"></div>
+      <div class="deviceframe__nest-base-toplight"></div>
       <div class="deviceframe__nest-base-shadow"></div>
     </div>
     <div class="deviceframe__nest-display">
@@ -31,6 +33,7 @@ const { kind, label } = Astro.props;
           <div class="deviceframe__nest-reflection" aria-hidden="true"></div>
         </div>
       </div>
+      <div class="deviceframe__nest-undershadow" aria-hidden="true"></div>
     </div>
     <div class="deviceframe__nest-floor" aria-hidden="true"></div>
   </div>
@@ -60,18 +63,26 @@ const { kind, label } = Astro.props;
   }
 
   /* ─────────────────────── Nest Hub shell ─────────────────────── */
+  /*
+   * Real Nest Hub (2nd gen) proportions: ~7.0 × 4.7 × 2.7 inches viewed
+   * from the front the device reads as a tilted 16:9 screen sitting on a
+   * narrower fabric pillow. Our aspect-ratio reflects that. The base is
+   * positioned to overlap the screen's bottom edge so the silhouette is
+   * one coherent shape, not two floating pieces.
+   */
   .deviceframe--nest {
-    aspect-ratio: 5 / 4;
+    aspect-ratio: 1.55 / 1;
     transform-style: preserve-3d;
     perspective: 1400px;
-    padding: 0 4%;
+    padding: 0 3% 3%;
   }
   .deviceframe__nest-display {
     position: relative;
     width: 100%;
-    transform: rotateX(6deg);
+    transform: rotateX(5deg);
     transform-origin: 50% 100%;
-    filter: drop-shadow(0 22px 36px rgba(0, 0, 0, 0.55));
+    filter: drop-shadow(0 24px 32px rgba(0, 0, 0, 0.55));
+    z-index: 2;
   }
   .deviceframe__nest-bezel {
     width: 100%;
@@ -106,58 +117,101 @@ const { kind, label } = Astro.props;
     mix-blend-mode: screen;
     opacity: 0.6;
   }
+  /* Soft inner shadow where the display meets the fabric. */
+  .deviceframe__nest-undershadow {
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    bottom: -14%;
+    height: 24%;
+    background:
+      radial-gradient(60% 80% at 50% 0%, rgba(0, 0, 0, 0.55), transparent 70%);
+    filter: blur(10px);
+    pointer-events: none;
+    z-index: 1;
+  }
+  /* Fabric pedestal — wider, taller, and pulled UP so its top edge tucks
+     under the screen's bottom bezel. Border-radius is a hand-drawn pebble
+     curve closer to the real device than the previous tall oval. */
   .deviceframe__nest-base {
     position: absolute;
-    left: 24%;
-    right: 24%;
-    bottom: 0%;
-    height: 18%;
-    border-radius: 50% 50% 22% 22% / 35% 35% 100% 100%;
+    left: 14%;
+    right: 14%;
+    bottom: 3%;
+    height: 36%;
+    border-radius: 50% 50% 28% 28% / 60% 60% 100% 100%;
     background:
-      linear-gradient(180deg,
-        #efe7d8 0%,
-        #d8cdb8 60%,
-        #b6a98f 100%);
+      radial-gradient(120% 70% at 50% 0%, #faf3e4 0%, #e8dcc4 40%, #c8b893 100%),
+      linear-gradient(180deg, #efe7d8 0%, #d8cdb8 55%, #aa9d7e 100%);
+    background-blend-mode: multiply;
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.5),
-      0 8px 16px rgba(0, 0, 0, 0.35),
-      0 1px 0 rgba(255, 255, 255, 0.1);
-    transform-origin: 50% 100%;
-    transform: translateZ(-10px);
+      inset 0 2px 0 rgba(255, 255, 255, 0.6),
+      inset 0 -10px 18px rgba(0, 0, 0, 0.18),
+      0 14px 28px -4px rgba(0, 0, 0, 0.5),
+      0 2px 0 rgba(255, 255, 255, 0.08);
+    z-index: 1;
   }
+  /* The dotted fabric grain — visible at marketing zoom. */
   .deviceframe__nest-base-grain {
     position: absolute;
     inset: 0;
     border-radius: inherit;
     background-image:
-      repeating-linear-gradient(
-        88deg,
-        rgba(0, 0, 0, 0.08) 0 1px,
-        transparent 1px 5px),
-      repeating-linear-gradient(
-        2deg,
-        rgba(0, 0, 0, 0.05) 0 1px,
-        transparent 1px 6px);
+      radial-gradient(rgba(0, 0, 0, 0.20) 1px, transparent 1.5px),
+      radial-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1.5px);
+    background-size: 4px 4px, 4px 4px;
+    background-position: 0 0, 2px 2px;
     mix-blend-mode: multiply;
     opacity: 0.55;
   }
-  .deviceframe__nest-base-shadow {
+  /* Diagonal woven texture overlay — gives the fabric direction. */
+  .deviceframe__nest-base-weave {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-image:
+      repeating-linear-gradient(
+        38deg,
+        rgba(0, 0, 0, 0.04) 0 1px,
+        transparent 1px 4px),
+      repeating-linear-gradient(
+        -38deg,
+        rgba(0, 0, 0, 0.04) 0 1px,
+        transparent 1px 4px);
+    mix-blend-mode: multiply;
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  /* Soft highlight along the upper curve. */
+  .deviceframe__nest-base-toplight {
     position: absolute;
     inset: 0;
     border-radius: inherit;
     background:
-      radial-gradient(60% 40% at 50% 100%, rgba(0, 0, 0, 0.25), transparent 70%);
+      radial-gradient(80% 50% at 50% 0%, rgba(255, 255, 255, 0.32), transparent 70%);
+    pointer-events: none;
+  }
+  /* Floor shadow under the base. */
+  .deviceframe__nest-base-shadow {
+    position: absolute;
+    inset: auto 0 -6% 0;
+    height: 30%;
+    border-radius: inherit;
+    background:
+      radial-gradient(55% 30% at 50% 100%, rgba(0, 0, 0, 0.4), transparent 75%);
+    pointer-events: none;
+    z-index: -1;
   }
   .deviceframe__nest-floor {
     position: absolute;
-    left: 12%;
-    right: 12%;
-    bottom: -3%;
+    left: 10%;
+    right: 10%;
+    bottom: -2%;
     height: 4%;
     border-radius: 50%;
     background: radial-gradient(60% 100% at 50% 50%, rgba(0, 0, 0, 0.45), transparent 75%);
-    filter: blur(8px);
-    z-index: -1;
+    filter: blur(10px);
+    z-index: 0;
   }
 
   /* ─────────────────────── Ulanzi shell ─────────────────────── */

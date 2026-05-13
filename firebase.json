@@ -72,6 +72,7 @@
       { "source": "/changelog", "destination": "https://github.com/Imagine-That-Ai/BurnBar/blob/main/CHANGELOG.md", "type": 301 }
     ],
     "rewrites": [
+      { "source": "/api/router-rundown/**", "function": { "functionId": "latestRouterRundown", "region": "us-central1" } },
       { "source": "**", "destination": "/404.html" }
     ]
   }
