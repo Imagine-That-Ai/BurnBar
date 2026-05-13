@@ -56,7 +56,8 @@ data class InsightAnalysisContext(
     val digest: InsightDigest,
     val evidenceIndex: List<InsightEvidence>,
     val budgetReport: InsightContextBudgetReport,
-    val priorRunSummaries: List<String> = emptyList()
+    val priorRunSummaries: List<String> = emptyList(),
+    val evidencePacks: List<InsightEvidencePack> = emptyList()
 )
 
 @Serializable
@@ -67,6 +68,50 @@ data class InsightEvidence(
     val summary: String,
     val numericValue: Double? = null
 )
+
+@Serializable
+data class InsightEvidencePack(
+    val id: String = UUID.randomUUID().toString(),
+    val sourcePlatform: InsightAnalysisPlatform,
+    val generatedAt: String = java.time.Instant.now().toString(),
+    val timeWindow: InsightTimeWindow,
+    val includedDataSources: List<String>,
+    val budgetReport: InsightContextBudgetReport,
+    val evidence: List<InsightEvidence>,
+    val summary: String,
+    val contentHash: String,
+    val deepTranscriptIncluded: Boolean = false
+)
+
+@Serializable
+data class InsightPlatformCapabilityReport(
+    val platform: InsightAnalysisPlatform,
+    val providerFamilies: List<InsightProviderFamily>,
+    val includedDataSources: List<String>,
+    val supportsDeepLocalLogs: Boolean,
+    val supportsSyncedEvidencePacks: Boolean,
+    val supportsModelSelection: Boolean = true,
+    val supportsConversation: Boolean = true,
+    val supportsGeneratedWidgetPinning: Boolean = true,
+    val supportsAuditAndCache: Boolean = true,
+    val gaps: List<String> = emptyList()
+)
+
+@Serializable
+enum class InsightProviderFamily {
+    @SerialName("codex") CODEX,
+    @SerialName("claude") CLAUDE,
+    @SerialName("minimax") MINIMAX,
+    @SerialName("zai") ZAI,
+    @SerialName("kimi") KIMI,
+    @SerialName("ollama") OLLAMA,
+    @SerialName("hermes") HERMES,
+    @SerialName("openai") OPENAI,
+    @SerialName("pi") PI,
+    @SerialName("openrouter") OPENROUTER,
+    @SerialName("local-rules") LOCAL_RULES,
+    @SerialName("other") OTHER
+}
 
 @Serializable
 data class InsightContextBudgetReport(

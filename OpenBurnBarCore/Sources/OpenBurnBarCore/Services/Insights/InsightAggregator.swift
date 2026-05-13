@@ -12,16 +12,18 @@ public struct InsightAggregator: Sendable {
         snapshot: InsightDataSnapshot,
         filter: InsightFilter,
         includedDataSources: [String],
-        priorRunSummaries: [String] = []
+        priorRunSummaries: [String] = [],
+        evidencePacks: [InsightEvidencePack] = []
     ) throws -> InsightAnalysisContext {
         let digest = try digestBuilder.build(from: snapshot, filter: filter)
         let encodedBytes = Self.encodedBytes(digest)
-        let evidence = Self.buildEvidenceIndex(from: digest)
+        let packEvidence = evidencePacks.flatMap(\.evidence)
+        let evidence = Self.buildEvidenceIndex(from: digest) + packEvidence
         let truncated = Self.truncatedSources(digest: digest, sources: includedDataSources)
         let budget = InsightContextBudgetReport(
             encodedBytes: encodedBytes,
             estimatedPromptTokens: max(1, encodedBytes / 4),
-            includedDataSources: includedDataSources,
+            includedDataSources: Array(Set(includedDataSources + evidencePacks.flatMap(\.includedDataSources))).sorted(),
             truncatedDataSources: truncated,
             truncationSummary: truncated.isEmpty
                 ? "No truncation."
@@ -31,7 +33,8 @@ public struct InsightAggregator: Sendable {
             digest: digest,
             evidenceIndex: evidence,
             budgetReport: budget,
-            priorRunSummaries: priorRunSummaries
+            priorRunSummaries: priorRunSummaries,
+            evidencePacks: evidencePacks
         )
     }
 

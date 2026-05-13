@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 import OpenBurnBarCore
 
 /// Observable wrapper around the Insights services for the mobile shell.
@@ -53,7 +54,7 @@ final class InsightsStore {
         let broker = InsightToolBroker(dataSource: dataSource)
         self.toolBroker = broker
         self.analysisEngine = MobileInsightAnalysisEngine(
-            platform: .iOS,
+            platform: Self.currentAnalysisPlatform,
             auditLog: InsightAnalysisAuditLog(fileURL: dir.appendingPathComponent("analysis-audit.jsonl")),
             cache: InsightAnalysisCache(directoryURL: dir.appendingPathComponent("analysis-cache", isDirectory: true)),
             catalog: catalog,
@@ -251,8 +252,13 @@ final class InsightsStore {
     }
 
     private func registerAvailableAnalysisGateways() async {
-        await catalog.register(LocalRuleBasedAdapter())
-        await catalog.register(OllamaInsightAdapter())
+        await InsightProviderGatewayRegistry.registerDefaultSwiftGateways(
+            in: catalog,
+            keyProvider: { provider, aliases, envKeys in
+                Self.mobileUserKey(provider: provider, aliases: aliases, envKeys: envKeys)
+            },
+            urlProvider: { Self.urlFromEnvironment($0) }
+        )
     }
 
     private func applyAutomaticModelSelectionIfNeeded() {
@@ -287,6 +293,10 @@ final class InsightsStore {
 
     private static let modelPreferenceDefaultsKey = "insights.modelPreference.v1"
 
+    private static var currentAnalysisPlatform: InsightAnalysisPlatform {
+        UIDevice.current.userInterfaceIdiom == .pad ? .iPadOS : .iOS
+    }
+
     private static func loadModelPreference(defaults: UserDefaults) -> InsightModelPreference {
         guard let data = defaults.data(forKey: modelPreferenceDefaultsKey),
               let preference = try? JSONDecoder().decode(InsightModelPreference.self, from: data)
@@ -294,6 +304,31 @@ final class InsightsStore {
             return .default
         }
         return preference
+    }
+
+    private static func mobileUserKey(provider: String, aliases: [String] = [], envKeys: [String]) -> String? {
+        let candidates = [provider] + aliases
+        for candidate in candidates {
+            if let key = LiveCloudReader.readCredential(provider: candidate)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !key.isEmpty {
+                return key
+            }
+        }
+        let env = ProcessInfo.processInfo.environment
+        for key in envKeys {
+            if let value = env[key]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private static func urlFromEnvironment(_ key: String) -> URL? {
+        guard let raw = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else {
+            return nil
+        }
+        return URL(string: raw)
     }
 
     private func recentAnalysisSummaries() async throws -> [String] {

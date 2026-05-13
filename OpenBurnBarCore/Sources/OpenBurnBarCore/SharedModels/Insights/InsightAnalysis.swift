@@ -118,17 +118,23 @@ public struct InsightAnalysisContext: Codable, Hashable, Sendable {
     public var evidenceIndex: [InsightEvidence]
     public var budgetReport: InsightContextBudgetReport
     public var priorRunSummaries: [String]
+    /// Sanitized, cross-device evidence exported by a platform with deeper
+    /// local access. Mobile shells use these packs to reach macOS-level
+    /// insight depth without reading Mac disk logs or raw transcripts.
+    public var evidencePacks: [InsightEvidencePack]
 
     public init(
         digest: InsightDigest,
         evidenceIndex: [InsightEvidence],
         budgetReport: InsightContextBudgetReport,
-        priorRunSummaries: [String] = []
+        priorRunSummaries: [String] = [],
+        evidencePacks: [InsightEvidencePack] = []
     ) {
         self.digest = digest
         self.evidenceIndex = evidenceIndex
         self.budgetReport = budgetReport
         self.priorRunSummaries = priorRunSummaries
+        self.evidencePacks = evidencePacks
     }
 }
 
@@ -151,6 +157,80 @@ public struct InsightEvidence: Codable, Hashable, Sendable, Identifiable {
         self.source = source
         self.summary = summary
         self.numericValue = numericValue
+    }
+}
+
+public struct InsightEvidencePack: Codable, Hashable, Sendable, Identifiable {
+    public var id: String
+    public var sourcePlatform: InsightAnalysisPlatform
+    public var generatedAt: Date
+    public var timeWindow: InsightTimeWindow
+    public var includedDataSources: [String]
+    public var budgetReport: InsightContextBudgetReport
+    public var evidence: [InsightEvidence]
+    public var summary: String
+    public var contentHash: String
+    public var deepTranscriptIncluded: Bool
+
+    public init(
+        id: String = UUID().uuidString,
+        sourcePlatform: InsightAnalysisPlatform,
+        generatedAt: Date = Date(),
+        timeWindow: InsightTimeWindow,
+        includedDataSources: [String],
+        budgetReport: InsightContextBudgetReport,
+        evidence: [InsightEvidence],
+        summary: String,
+        contentHash: String,
+        deepTranscriptIncluded: Bool = false
+    ) {
+        self.id = id
+        self.sourcePlatform = sourcePlatform
+        self.generatedAt = generatedAt
+        self.timeWindow = timeWindow
+        self.includedDataSources = includedDataSources
+        self.budgetReport = budgetReport
+        self.evidence = evidence
+        self.summary = summary
+        self.contentHash = contentHash
+        self.deepTranscriptIncluded = deepTranscriptIncluded
+    }
+}
+
+public struct InsightPlatformCapabilityReport: Codable, Hashable, Sendable {
+    public var platform: InsightAnalysisPlatform
+    public var providerFamilies: [InsightProviderFamily]
+    public var includedDataSources: [String]
+    public var supportsDeepLocalLogs: Bool
+    public var supportsSyncedEvidencePacks: Bool
+    public var supportsModelSelection: Bool
+    public var supportsConversation: Bool
+    public var supportsGeneratedWidgetPinning: Bool
+    public var supportsAuditAndCache: Bool
+    public var gaps: [String]
+
+    public init(
+        platform: InsightAnalysisPlatform,
+        providerFamilies: [InsightProviderFamily],
+        includedDataSources: [String],
+        supportsDeepLocalLogs: Bool,
+        supportsSyncedEvidencePacks: Bool,
+        supportsModelSelection: Bool = true,
+        supportsConversation: Bool = true,
+        supportsGeneratedWidgetPinning: Bool = true,
+        supportsAuditAndCache: Bool = true,
+        gaps: [String] = []
+    ) {
+        self.platform = platform
+        self.providerFamilies = providerFamilies
+        self.includedDataSources = includedDataSources
+        self.supportsDeepLocalLogs = supportsDeepLocalLogs
+        self.supportsSyncedEvidencePacks = supportsSyncedEvidencePacks
+        self.supportsModelSelection = supportsModelSelection
+        self.supportsConversation = supportsConversation
+        self.supportsGeneratedWidgetPinning = supportsGeneratedWidgetPinning
+        self.supportsAuditAndCache = supportsAuditAndCache
+        self.gaps = gaps
     }
 }
 
