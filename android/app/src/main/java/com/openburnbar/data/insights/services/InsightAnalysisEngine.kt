@@ -650,10 +650,12 @@ object InsightAggregator {
     fun buildContext(
         digest: InsightDigest,
         includedDataSources: List<String>,
-        priorRunSummaries: List<String> = emptyList()
+        priorRunSummaries: List<String> = emptyList(),
+        evidencePacks: List<com.openburnbar.data.insights.InsightEvidencePack> = emptyList()
     ): InsightAnalysisContext {
         val encoded = kotlinx.serialization.json.Json.encodeToString(InsightDigest.serializer(), digest)
-        val evidence = buildEvidenceIndex(digest)
+        val evidence = buildEvidenceIndex(digest) + evidencePacks.flatMap { it.evidence }
+        val sources = (includedDataSources + evidencePacks.flatMap { it.includedDataSources }).distinct().sorted()
         val truncated = buildList {
             if (digest.providers.size >= 12 && "provider_summaries" in includedDataSources) add("provider_summaries")
             if (digest.models.size >= 16 && "model_summaries" in includedDataSources) add("model_summaries")
@@ -662,7 +664,7 @@ object InsightAggregator {
         val budget = InsightContextBudgetReport(
             encodedBytes = encoded.toByteArray(Charsets.UTF_8).size,
             estimatedPromptTokens = (encoded.length / 4).coerceAtLeast(1),
-            includedDataSources = includedDataSources,
+            includedDataSources = sources,
             truncatedDataSources = truncated,
             truncationSummary = if (truncated.isEmpty()) "No truncation." else "Context was budgeted to ${InsightDigest.MAX_ENCODED_BYTES} bytes; long-tail ${truncated.joinToString()} data was summarized."
         )
@@ -670,7 +672,8 @@ object InsightAggregator {
             digest = digest,
             evidenceIndex = evidence,
             budgetReport = budget,
-            priorRunSummaries = priorRunSummaries
+            priorRunSummaries = priorRunSummaries,
+            evidencePacks = evidencePacks
         )
     }
 
