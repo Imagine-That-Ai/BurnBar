@@ -477,6 +477,34 @@ final class SettingsManager {
         chatBackend.setChatBackendEnabled(id, enabled: enabled)
     }
 
+    // MARK: Hermes model picker
+
+    var enabledHermesModelIDsCSV: String {
+        get { chatBackend.enabledHermesModelIDsCSV }
+        set { chatBackend.enabledHermesModelIDsCSV = newValue }
+    }
+
+    var enabledHermesModels: [HermesModelID] {
+        chatBackend.enabledHermesModels
+    }
+
+    var selectedHermesModel: HermesModelID? {
+        get { chatBackend.selectedHermesModel }
+        set { chatBackend.applyHermesModelSelection(newValue) }
+    }
+
+    func setEnabledHermesModels(_ models: [HermesModelID]) {
+        chatBackend.setEnabledHermesModels(models)
+    }
+
+    func setHermesModelEnabled(_ id: HermesModelID, enabled: Bool) {
+        chatBackend.setHermesModelEnabled(id, enabled: enabled)
+    }
+
+    func applyHermesModelSelection(_ model: HermesModelID?) {
+        chatBackend.applyHermesModelSelection(model)
+    }
+
     // MARK: Summary
     var autoSessionSummariesEnabled: Bool {
         get { summary.autoSessionSummariesEnabled }

@@ -440,6 +440,56 @@ enum OpenAICompatibleModelListParser {
         }
         return nil
     }
+
+    static func hermesAdvertisedModels(from data: Data) -> [HermesAdvertisedModel] {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = obj["data"] as? [[String: Any]] else { return [] }
+        var seen = Set<String>()
+        return models.compactMap { raw in
+            guard let id = raw["id"] as? String, !id.isEmpty else { return nil }
+            guard seen.insert(id).inserted else { return nil }
+            let displayName = (raw["display_name"] as? String)
+                ?? (raw["displayName"] as? String)
+                ?? (raw["name"] as? String)
+                ?? id
+            let providerID = (raw["provider_id"] as? String)
+                ?? (raw["providerID"] as? String)
+                ?? (raw["provider"] as? String)
+                ?? (raw["owned_by"] as? String)
+                ?? ""
+            let providerName = (raw["provider_name"] as? String)
+                ?? (raw["providerName"] as? String)
+                ?? ""
+            guard let family = hermesFamily(
+                modelID: id,
+                displayName: displayName,
+                providerID: providerID,
+                providerName: providerName
+            ) else {
+                return nil
+            }
+            return HermesAdvertisedModel(id: id, displayName: displayName, family: family)
+        }
+    }
+
+    private static func hermesFamily(
+        modelID: String,
+        displayName: String,
+        providerID: String,
+        providerName: String
+    ) -> HermesModelID? {
+        let haystack = [modelID, displayName, providerID, providerName]
+            .joined(separator: " ")
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+        if haystack.contains("claude") || haystack.contains("anthropic") { return .claude }
+        if haystack.contains("codex") || haystack.contains("openai") || haystack.hasPrefix("gpt-") { return .codex }
+        if haystack.contains("zai") || haystack.contains("z.ai") || haystack.contains("glm") { return .zai }
+        if haystack.contains("kimi") || haystack.contains("moonshot") { return .kimi }
+        if haystack.contains("minimax") { return .minimax }
+        if haystack.contains("ollama") || haystack.contains("llama") || haystack.contains("mistral") || haystack.contains("qwen") { return .ollama }
+        return nil
+    }
 }
 
 extension CLIBridge {

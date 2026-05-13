@@ -353,7 +353,13 @@ struct ProvidersSettingsView: View {
             providerAccounts = []
             providerAccountLoadError = error.localizedDescription
         }
-        quotaService.refreshRoutingState(dataStore: dataStore)
+        quotaService.refreshRoutingState(
+            dataStore: dataStore,
+            request: ProviderRoutingRequest(
+                routerMode: OpenBurnBarDaemonManager.shared.routerMode,
+                taskCategory: .coding
+            )
+        )
     }
 
     private func providerDisplayName(_ providerID: ProviderID) -> String {

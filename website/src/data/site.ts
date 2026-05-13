@@ -14,7 +14,7 @@ export const SITE = {
   entity: "Imagine That AI LLC",
   license: "MIT",
   bundleId: "com.openburnbar.app",
-  iapProductId: "com.openburnbar.hostedQuotaSync.monthly",
+  iapProductId: "com.openburnbar.hostedQuotaSync.cloud.monthly",
   iapPriceUSD: "4.99",
   iapPeriod: "month",
   macReleaseLatest: "0.1.2-beta.12", // last published; tree advertises 0.1.3-beta.1
@@ -28,6 +28,7 @@ export const SITE = {
 
 export const NAV_PRIMARY = [
   { href: "/product", label: "Product" },
+  { href: "/router", label: "Router" },
   { href: "/providers", label: "Providers" },
   { href: "/pricing", label: "Pricing" },
   { href: "/privacy", label: "Privacy & trust" },
@@ -38,6 +39,7 @@ export const NAV_PRIMARY = [
 export const NAV_FOOTER = {
   product: [
     { href: "/product", label: "Overview" },
+    { href: "/router", label: "Fire Hydrant — router" },
     { href: "/providers", label: "Provider support" },
     { href: "/benefits", label: "Why it matters" },
     { href: "/download", label: "Download" },

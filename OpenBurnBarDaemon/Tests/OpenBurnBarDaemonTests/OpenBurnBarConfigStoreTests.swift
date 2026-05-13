@@ -15,6 +15,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertTrue(providerIDs.contains("ollama"), "Expected ollama in defaults")
         XCTAssertTrue(providerIDs.contains("anthropic"), "Expected anthropic in defaults")
         XCTAssertTrue(providerIDs.contains("openai"), "Expected openai in defaults")
+        XCTAssertEqual(snapshot.routerMode, .providerFamilyFailover)
         XCTAssertEqual(snapshot.providerSettings(id: "zai")?.preferredModelIDs, ["glm-5-turbo", "glm-5"])
         XCTAssertEqual(snapshot.providerSettings(id: "minimax")?.preferredModelIDs, ["minimax-m2.7-highspeed"])
     }
@@ -90,6 +91,22 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(configuration.credentialSlots.first?.slot.slotID, "default")
         XCTAssertEqual(configuration.credentialSlots.first?.apiKey, "legacy-zai-key")
         XCTAssertEqual(configuration.settings.preferredCredentialSlotID, "default")
+    }
+
+    func testRouterModePersistsAndLegacySnapshotsDefaultSafely() async throws {
+        let harness = try makeHarness(name: "router-mode")
+
+        try await harness.configStore.setRouterMode(.intelligentModelRouter)
+        let updated = try await harness.configStore.snapshot()
+        XCTAssertEqual(updated.routerMode, .intelligentModelRouter)
+
+        let legacyJSON = """
+        {
+          "providers": []
+        }
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(BurnBarProviderConfigurationSnapshot.self, from: legacyJSON)
+        XCTAssertEqual(decoded.routerMode, .providerFamilyFailover)
     }
 
     private func makeHarness(name: String) throws -> BurnBarConfigStoreHarness {

@@ -42,6 +42,13 @@ struct DashboardDetailView: View {
                         onNavigate: onNavigate,
                         onOpenSettings: onOpenSettings
                     )
+                case .insights:
+                    InsightsWorkspaceView(
+                        dataStore: dataStore,
+                        settingsManager: settingsManager,
+                        chatController: chatController
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .database:
                     DatabaseWorkspaceView(
                         dataStore: dataStore,

@@ -44,7 +44,7 @@ struct OnboardingWizardView: View {
         }
         .frame(width: 520, height: 620)
         .background(DesignSystem.Colors.background)
-        .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .onAppear {
             // Pre-select detected providers
             let detection = settingsManager.detectAvailableProviders()

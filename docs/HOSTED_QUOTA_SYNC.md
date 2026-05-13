@@ -178,7 +178,7 @@ iOS/iPadOS/macOS listeners update
 Hosted product id:
 
 ```text
-com.openburnbar.hostedQuotaSync.monthly
+com.openburnbar.hostedQuotaSync.cloud.monthly
 ```
 
 Current intended price:
@@ -283,7 +283,7 @@ legacy `functions.config()`. The deployed callable environment must include:
 ```text
 KMS_KEY_NAME
 HOSTED_QUOTA_RUNNER_URL
-HOSTED_QUOTA_PRODUCT_ID=com.openburnbar.hostedQuotaSync.monthly
+HOSTED_QUOTA_PRODUCT_ID=com.openburnbar.hostedQuotaSync.cloud.monthly
 HOSTED_QUOTA_DAILY_REFRESH_LIMIT=30
 HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT=300
 ENFORCE_APP_CHECK=true
@@ -621,7 +621,7 @@ Codex quota refresh.
 
 The command fails unless the production
 `users/{uid}/entitlements/hosted_quota_sync` document is active, unexpired,
-for `com.openburnbar.hostedQuotaSync.monthly`, backed by a matching
+for `com.openburnbar.hostedQuotaSync.cloud.monthly`, backed by a matching
 `entitlement_events` audit row, and has any requested backup/quota evidence.
 - Mac app refresh remains useful, but it is no longer required for Claude Code
   and Codex mobile quota updates.

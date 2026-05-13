@@ -333,4 +333,369 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertEqual(allUsage.count, 1)
         XCTAssertFalse(allUsage[0].isRemote)
     }
+
+    func test_firestoreOnlyUsageUpload_isAppendSafeAndIdempotent() async throws {
+        let first = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "append-session-1",
+            projectName: "AppendSafe",
+            model: "claude-3-5-sonnet",
+            inputTokens: 100,
+            outputTokens: 20,
+            startTime: Date(timeIntervalSince1970: 1_700_010_000),
+            endTime: Date(timeIntervalSince1970: 1_700_010_010)
+        )
+        let second = TokenUsage(
+            provider: .codex,
+            sessionId: "append-session-2",
+            projectName: "AppendSafe",
+            model: "gpt-5.5",
+            inputTokens: 200,
+            outputTokens: 40,
+            startTime: Date(timeIntervalSince1970: 1_700_010_100),
+            endTime: Date(timeIntervalSince1970: 1_700_010_120)
+        )
+        try dataStore.insert(first)
+        await usageSync.sync()
+        XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/usage").count, 1)
+
+        try dataStore.insert(second)
+        await usageSync.sync()
+        await usageSync.sync()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/usage")
+        XCTAssertEqual(docs.count, 2)
+        XCTAssertNotNil(docs["users/test-uid-1/usage/test-device-1_\(first.id.uuidString)"])
+        XCTAssertNotNil(docs["users/test-uid-1/usage/test-device-1_\(second.id.uuidString)"])
+        XCTAssertEqual(try dataStore.usageStore.fetchAllUsage().count, 2)
+        XCTAssertTrue(try dataStore.fetchUnsynced().isEmpty)
+    }
+
+    func test_firestoreOnlyProviderAccountUpload_mergesAndPreservesExistingDocuments() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_020_000)
+        fakeGateway.setDocumentData([
+            "legacyMarker": "preserve-me"
+        ], at: "users/test-uid-1/provider_accounts/anthropic-main")
+
+        try dataStore.providerAccountStore.upsert(makeProviderAccount(
+            id: "anthropic-main",
+            providerID: .anthropic,
+            label: "Anthropic Main",
+            sourceDeviceID: "test-device-1",
+            createdAt: now
+        ))
+        await providerAccountSync.uploadAccounts()
+
+        try dataStore.providerAccountStore.upsert(makeProviderAccount(
+            id: "codex-main",
+            providerID: .codex,
+            label: "Codex Main",
+            sourceDeviceID: "test-device-1",
+            createdAt: now.addingTimeInterval(1)
+        ))
+        await providerAccountSync.uploadAccounts()
+        await providerAccountSync.uploadAccounts()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/provider_accounts")
+        XCTAssertEqual(docs.count, 2)
+        let anthropic = try XCTUnwrap(docs["users/test-uid-1/provider_accounts/anthropic-main"])
+        XCTAssertEqual(anthropic["legacyMarker"] as? String, "preserve-me")
+        XCTAssertEqual(anthropic["label"] as? String, "Anthropic Main")
+        XCTAssertNotNil(docs["users/test-uid-1/provider_accounts/codex-main"])
+    }
+
+    func test_providerAccountDownload_namespacesRemoteDeviceLocalCollision() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_030_000)
+        try dataStore.providerAccountStore.upsert(makeProviderAccount(
+            id: "shared-local-id",
+            providerID: .openAI,
+            label: "Local Keychain",
+            sourceDeviceID: "test-device-1",
+            createdAt: now
+        ))
+
+        fakeGateway.setDocumentData([
+            "id": "shared-local-id",
+            "providerID": ProviderID.openAI.rawValue,
+            "label": "Remote Keychain",
+            "status": ProviderAccountStatus.connected.rawValue,
+            "credentialKind": CredentialKind.token.rawValue,
+            "storageScope": ProviderAccountStorageScope.deviceKeychain.rawValue,
+            "redactedLabel": "Stored on other Mac",
+            "sourceDeviceID": "remote-device-2",
+            "isDefault": true,
+            "sortKey": 0,
+            "schemaVersion": 1,
+            "createdAt": Timestamp(date: now),
+            "updatedAt": Timestamp(date: now)
+        ], at: "users/test-uid-1/provider_accounts/shared-local-id")
+
+        await downloadSync.sync()
+        await downloadSync.sync()
+
+        let local = try XCTUnwrap(dataStore.providerAccountStore.fetch(id: "shared-local-id"))
+        XCTAssertEqual(local.label, "Local Keychain")
+        XCTAssertEqual(local.sourceDeviceID, "test-device-1")
+
+        let accounts = try dataStore.providerAccountStore.fetchAll(providerID: .openAI)
+        let remote = try XCTUnwrap(accounts.first { $0.sourceDeviceID == "remote-device-2" })
+        XCTAssertEqual(remote.id, "shared-local-id__remote_remote-device-2")
+        XCTAssertEqual(remote.label, "Remote Keychain")
+        XCTAssertFalse(remote.isDefault)
+        XCTAssertEqual(accounts.count, 2)
+    }
+
+    func test_firestoreOnlyQuotaSnapshotUpload_addsAndRetriesWithoutDuplicating() async throws {
+        let first = makeQuotaSnapshot(accountID: "codex-work", sourceId: "codex-work-source", used: 20)
+        let second = makeQuotaSnapshot(accountID: "codex-personal", sourceId: "codex-personal-source", used: 30)
+
+        await quotaSnapshotSync.uploadSnapshots([first])
+        XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/quota_snapshots").count, 1)
+
+        await quotaSnapshotSync.uploadSnapshots([second])
+        await quotaSnapshotSync.uploadSnapshots([first, second])
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/quota_snapshots")
+        XCTAssertEqual(docs.count, 2)
+        XCTAssertNotNil(docs["users/test-uid-1/quota_snapshots/codex_codex-work_codex-work-source"])
+        XCTAssertNotNil(docs["users/test-uid-1/quota_snapshots/codex_codex-personal_codex-personal-source"])
+    }
+
+    func test_usageUploadFailure_preservesLocalHistoryForRetry() async throws {
+        let usage = TokenUsage(
+            provider: .cursor,
+            sessionId: "failed-sync-session",
+            projectName: "FailureSafe",
+            model: "gpt-4",
+            inputTokens: 1,
+            outputTokens: 2,
+            startTime: Date(timeIntervalSince1970: 1_700_040_000),
+            endTime: Date(timeIntervalSince1970: 1_700_040_001)
+        )
+        try dataStore.insert(usage)
+
+        fakeGateway.nextError = NSError(domain: "UnitTest", code: 1)
+        await usageSync.sync()
+        fakeGateway.nextError = nil
+
+        XCTAssertEqual(try dataStore.fetchUnsynced().map(\.id), [usage.id])
+        XCTAssertEqual(try dataStore.usageStore.fetchAllUsage().count, 1)
+        XCTAssertTrue(fakeGateway.documents(under: "users/test-uid-1/usage").isEmpty)
+
+        await usageSync.sync()
+        XCTAssertTrue(try dataStore.fetchUnsynced().isEmpty)
+        XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/usage").count, 1)
+    }
+
+    func test_iCloudOnlyMirrorStateMerge_preservesPriorRecords() {
+        let existing = ICloudSessionMirrorFileRecord(modificationTime: 1, size: 10)
+        let incoming = ICloudSessionMirrorFileRecord(modificationTime: 2, size: 20)
+
+        let merged = ICloudSessionMirrorEngine.appendSafeMergedRecords(
+            previous: ["/local/session-a.jsonl": existing],
+            incoming: ["/local/session-b.jsonl": incoming]
+        )
+
+        XCTAssertEqual(merged["/local/session-a.jsonl"], existing)
+        XCTAssertEqual(merged["/local/session-b.jsonl"], incoming)
+        XCTAssertEqual(merged.count, 2)
+    }
+
+    func test_iCloudOnlyMirrorPerform_preservesPriorMirrorWhenSourceDisappears() async throws {
+        let fm = FileManager.default
+        let tempRoot = fm.temporaryDirectory.appendingPathComponent("OpenBurnBarICloudMirror-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: tempRoot) }
+
+        let sourceRoot = tempRoot.appendingPathComponent("source", isDirectory: true)
+        let containerBase = tempRoot.appendingPathComponent("container", isDirectory: true)
+        let stateURL = tempRoot.appendingPathComponent("state.json")
+        try fm.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+
+        let missingSourcePath = sourceRoot
+            .appendingPathComponent("missing.jsonl")
+            .standardizedFileURL
+            .path
+        let priorRecord = ICloudSessionMirrorFileRecord(modificationTime: 1, size: 3)
+        try writeMirrorState([missingSourcePath: priorRecord], to: stateURL)
+
+        let priorMirror = mirrorURL(base: containerBase, slug: "Codex", relative: "missing.jsonl")
+        try fm.createDirectory(at: priorMirror.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: priorMirror)
+
+        let newSource = sourceRoot.appendingPathComponent("current.jsonl")
+        try Data("new".utf8).write(to: newSource)
+
+        let result = await ICloudSessionMirrorEngine.perform(makeMirrorSnapshot(
+            sourceRoot: sourceRoot,
+            containerBase: containerBase,
+            stateURL: stateURL
+        ))
+
+        XCTAssertNil(result.errorMessage)
+        XCTAssertEqual(result.removedCount, 0)
+        XCTAssertTrue(fm.fileExists(atPath: priorMirror.path))
+        XCTAssertTrue(fm.fileExists(atPath: mirrorURL(base: containerBase, slug: "Codex", relative: "current.jsonl").path))
+
+        let state = try readMirrorState(from: stateURL)
+        XCTAssertEqual(state.files[missingSourcePath], priorRecord)
+        XCTAssertNotNil(state.files[newSource.standardizedFileURL.path])
+        XCTAssertEqual(state.files.count, 2)
+    }
+
+    func test_iCloudOnlyMirrorPerform_recopiesUnchangedSourceWhenMirrorFileIsMissing() async throws {
+        let fm = FileManager.default
+        let tempRoot = fm.temporaryDirectory.appendingPathComponent("OpenBurnBarICloudMirror-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: tempRoot) }
+
+        let sourceRoot = tempRoot.appendingPathComponent("source", isDirectory: true)
+        let containerBase = tempRoot.appendingPathComponent("container", isDirectory: true)
+        let stateURL = tempRoot.appendingPathComponent("state.json")
+        try fm.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+
+        let source = sourceRoot.appendingPathComponent("current.jsonl")
+        try Data("recover me".utf8).write(to: source)
+        let attrs = try source.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        let sourcePath = source.standardizedFileURL.path
+        try writeMirrorState([
+            sourcePath: ICloudSessionMirrorFileRecord(
+                modificationTime: try XCTUnwrap(attrs.contentModificationDate).timeIntervalSinceReferenceDate,
+                size: Int64(attrs.fileSize ?? 0)
+            )
+        ], to: stateURL)
+
+        let mirror = mirrorURL(base: containerBase, slug: "Codex", relative: "current.jsonl")
+        XCTAssertFalse(fm.fileExists(atPath: mirror.path))
+
+        let result = await ICloudSessionMirrorEngine.perform(makeMirrorSnapshot(
+            sourceRoot: sourceRoot,
+            containerBase: containerBase,
+            stateURL: stateURL
+        ))
+
+        XCTAssertNil(result.errorMessage)
+        XCTAssertEqual(result.updatedCount, 1)
+        XCTAssertTrue(fm.fileExists(atPath: mirror.path))
+        XCTAssertEqual(try String(contentsOf: mirror), "recover me")
+        XCTAssertNotNil(try readMirrorState(from: stateURL).files[sourcePath])
+    }
+
+    func test_dualSyncMode_keepsICloudMirrorHistoryIndependentFromFirestoreWrites() async throws {
+        let existingMirrorRecord = ICloudSessionMirrorFileRecord(modificationTime: 1, size: 10)
+        let newMirrorRecord = ICloudSessionMirrorFileRecord(modificationTime: 3, size: 30)
+        let mergedMirrorState = ICloudSessionMirrorEngine.appendSafeMergedRecords(
+            previous: ["/mirror/session-a.jsonl": existingMirrorRecord],
+            incoming: ["/mirror/session-c.jsonl": newMirrorRecord]
+        )
+
+        let usage = TokenUsage(
+            provider: .codex,
+            sessionId: "dual-sync-session",
+            projectName: "DualSafe",
+            model: "gpt-5.5",
+            inputTokens: 12,
+            outputTokens: 24,
+            startTime: Date(timeIntervalSince1970: 1_700_050_000),
+            endTime: Date(timeIntervalSince1970: 1_700_050_010)
+        )
+        try dataStore.insert(usage)
+        await usageSync.sync()
+
+        XCTAssertEqual(mergedMirrorState["/mirror/session-a.jsonl"], existingMirrorRecord)
+        XCTAssertEqual(mergedMirrorState["/mirror/session-c.jsonl"], newMirrorRecord)
+        XCTAssertEqual(fakeGateway.documents(under: "users/test-uid-1/usage").count, 1)
+        XCTAssertEqual(try dataStore.usageStore.fetchAllUsage().count, 1)
+    }
+
+    private func makeProviderAccount(
+        id: String,
+        providerID: ProviderID,
+        label: String,
+        sourceDeviceID: String?,
+        storageScope: ProviderAccountStorageScope = .deviceKeychain,
+        createdAt: Date
+    ) -> ProviderAccountDoc {
+        ProviderAccountDoc(
+            id: id,
+            providerID: providerID,
+            label: label,
+            status: .connected,
+            credentialKind: .token,
+            storageScope: storageScope,
+            redactedLabel: "redacted",
+            sourceDeviceID: sourceDeviceID,
+            isDefault: true,
+            createdAt: createdAt,
+            updatedAt: createdAt
+        )
+    }
+
+    private func makeQuotaSnapshot(accountID: String, sourceId: String, used: Double) -> OpenBurnBar.ProviderQuotaSnapshot {
+        OpenBurnBar.ProviderQuotaSnapshot(
+            provider: .codex,
+            providerID: .codex,
+            accountID: accountID,
+            accountLabel: accountID,
+            accountStorageScope: .deviceKeychain,
+            fetchedAt: Date(timeIntervalSince1970: 1_700_060_000 + used),
+            source: .localSession,
+            sourceId: sourceId,
+            confidence: .exact,
+            managementURL: "https://chatgpt.com/codex",
+            statusMessage: "Codex quota.",
+            buckets: [
+                OpenBurnBar.ProviderQuotaBucket(
+                    key: "quota",
+                    label: "Usage",
+                    windowKind: .rollingHours,
+                    usedValue: used,
+                    limitValue: 100,
+                    remainingValue: 100 - used,
+                    usedPercent: used,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+    }
+
+    private func makeMirrorSnapshot(
+        sourceRoot: URL,
+        containerBase: URL,
+        stateURL: URL
+    ) -> ICloudSessionMirrorSnapshot {
+        ICloudSessionMirrorSnapshot(
+            containerIdentifier: "iCloud.test.openburnbar",
+            mirrorPathComponents: ["Documents", "OpenBurnBar", "SessionMirror"],
+            providers: [
+                ICloudSessionProviderSpec(
+                    slug: "Codex",
+                    rootPath: sourceRoot.path,
+                    filePattern: "*.jsonl"
+                )
+            ],
+            stateFilePath: stateURL.path,
+            containerBaseURL: containerBase
+        )
+    }
+
+    private func mirrorURL(base: URL, slug: String, relative: String) -> URL {
+        base
+            .appendingPathComponent("Documents", isDirectory: true)
+            .appendingPathComponent("OpenBurnBar", isDirectory: true)
+            .appendingPathComponent("SessionMirror", isDirectory: true)
+            .appendingPathComponent(slug, isDirectory: true)
+            .appendingPathComponent(relative, isDirectory: false)
+    }
+
+    private func writeMirrorState(_ files: [String: ICloudSessionMirrorFileRecord], to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let data = try JSONEncoder().encode(ICloudSessionMirrorStateFile(files: files))
+        try data.write(to: url, options: [.atomic])
+    }
+
+    private func readMirrorState(from url: URL) throws -> ICloudSessionMirrorStateFile {
+        let data = try Data(contentsOf: url)
+        return try JSONDecoder().decode(ICloudSessionMirrorStateFile.self, from: data)
+    }
 }

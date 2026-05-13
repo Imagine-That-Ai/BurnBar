@@ -54,7 +54,10 @@ public enum ProviderQuotaUnit: String, Codable, Sendable {
 // MARK: - Provider Quota Window Kind
 
 public enum ProviderQuotaWindowKind: String, Codable, Sendable {
+    case rollingHours
+    case rollingDays
     case daily
+    case weekly
     case monthly
     case lifetime
     case custom
@@ -69,6 +72,7 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable {
     public let remaining: Double
     public let window: String?
     public let meta: [String: String]?
+    public let resetsAt: Date?
 
     public init(
         name: String,
@@ -76,7 +80,8 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable {
         limit: Double,
         remaining: Double,
         window: String? = nil,
-        meta: [String: String]? = nil
+        meta: [String: String]? = nil,
+        resetsAt: Date? = nil
     ) {
         self.name = name
         self.used = used
@@ -84,7 +89,101 @@ public struct ProviderQuotaBucket: Codable, Hashable, Sendable {
         self.remaining = remaining
         self.window = window
         self.meta = meta
+        self.resetsAt = resetsAt
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, used, limit, remaining, window, meta, resetsAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.used = try c.decode(Double.self, forKey: .used)
+        self.limit = try c.decode(Double.self, forKey: .limit)
+        self.remaining = try c.decode(Double.self, forKey: .remaining)
+        self.window = try c.decodeIfPresent(String.self, forKey: .window)
+        let decodedMeta = try c.decodeIfPresent([String: String].self, forKey: .meta)
+        self.meta = decodedMeta
+
+        // Three input shapes are valid for the top-level field:
+        //  1. `Date` (Codable's deferred-to-date Double or whatever strategy
+        //     the decoder is using) — emitted by iOS after `sanitizeForJSON`
+        //     turns Firestore `Timestamp` into `timeIntervalSinceReferenceDate`.
+        //  2. ISO8601 string — emitted by Cloud Functions HTTP responses and
+        //     by older Mac builds before the field was first-class.
+        //  3. Missing → fall back to `meta["resetsAt"]` for docs written
+        //     before the field was promoted.
+        if let direct = try? c.decodeIfPresent(Date.self, forKey: .resetsAt) {
+            self.resetsAt = direct
+        } else if let isoString = try? c.decodeIfPresent(String.self, forKey: .resetsAt),
+                  let parsed = Self.parseResetsAtString(isoString) {
+            self.resetsAt = parsed
+        } else if let legacy = decodedMeta?["resetsAt"],
+                  let parsed = Self.parseResetsAtString(legacy) {
+            self.resetsAt = parsed
+        } else {
+            self.resetsAt = nil
+        }
+    }
+
+    /// Accept ISO8601 with or without fractional seconds. The Mac writer
+    /// historically emits the fraction-less form (default `ISO8601DateFormatter`
+    /// options); Cloud Functions and some other writers include fractional
+    /// seconds. Try both before giving up.
+    private static func parseResetsAtString(_ s: String) -> Date? {
+        if let d = Self.iso8601WithFraction.date(from: s) { return d }
+        if let d = Self.iso8601Basic.date(from: s) { return d }
+        return nil
+    }
+
+    private static let iso8601WithFraction: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let iso8601Basic: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+}
+
+// MARK: - Reset Time Display
+
+public extension ProviderQuotaBucket {
+    /// Pre-formatted reset-time strings used by every quota details surface
+    /// (Mac, iOS, Android via the shared logic, Smart Hub cast). Returns
+    /// `nil` when the bucket has no known reset moment so callers can omit
+    /// the row entirely instead of showing a placeholder.
+    ///
+    /// Example: `(relative: "in 2h 14m", absolute: "May 8, 3:35 AM")`.
+    var resetsAtDisplay: (relative: String, absolute: String)? {
+        guard let resetsAt else { return nil }
+        let relative = Self.relativeResetsFormatter.localizedString(
+            for: resetsAt,
+            relativeTo: Date()
+        )
+        let absolute = resetsAt.formatted(date: .abbreviated, time: .shortened)
+        return (relative: relative, absolute: absolute)
+    }
+
+    /// Single-line combined label ("in 2h 14m · May 8, 3:35 AM") used as the
+    /// default rendering on every surface. Mac micro-badge and iOS/Android
+    /// reset rows both prepend "Resets " themselves so the helper stays free
+    /// of UI copy.
+    var resetsAtCombinedLabel: String? {
+        guard let pair = resetsAtDisplay else { return nil }
+        return "\(pair.relative) · \(pair.absolute)"
+    }
+
+    private static let relativeResetsFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        f.dateTimeStyle = .numeric
+        return f
+    }()
 }
 
 public extension ProviderQuotaBucket {

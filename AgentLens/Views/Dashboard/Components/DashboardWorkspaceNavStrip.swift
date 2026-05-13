@@ -21,6 +21,19 @@ struct DashboardWorkspaceNavStrip: View {
     }
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            navRow(isCompact: false)
+            navRow(isCompact: true)
+            ScrollView(.horizontal, showsIndicators: false) {
+                navRow(isCompact: true)
+            }
+        }
+        .padding(.horizontal, DesignSystem.Spacing.lg)
+        .padding(.vertical, DesignSystem.Spacing.md)
+    }
+
+    @ViewBuilder
+    private func navRow(isCompact: Bool) -> some View {
         HStack(spacing: DesignSystem.Spacing.md) {
             DashboardWorkspaceNavButton(
                 title: "Chat",
@@ -28,6 +41,7 @@ struct DashboardWorkspaceNavStrip: View {
                 systemImage: chatSystemImage,
                 accent: chatAccent,
                 isSelected: currentRoute == .chat,
+                isCompact: isCompact,
                 action: { onNavigate(.chat) }
             )
             DashboardWorkspaceNavButton(
@@ -36,6 +50,7 @@ struct DashboardWorkspaceNavStrip: View {
                 systemImage: "archivebox",
                 accent: DesignSystem.Colors.whimsy,
                 isSelected: currentRoute == .database,
+                isCompact: isCompact,
                 action: { onNavigate(.database) }
             )
             DashboardWorkspaceNavButton(
@@ -44,6 +59,7 @@ struct DashboardWorkspaceNavStrip: View {
                 systemImage: "folder",
                 accent: DesignSystem.Colors.whimsy,
                 isSelected: currentRoute == .projects,
+                isCompact: isCompact,
                 action: { onNavigate(.projects) }
             )
             DashboardWorkspaceNavButton(
@@ -52,6 +68,7 @@ struct DashboardWorkspaceNavStrip: View {
                 systemImage: "flag",
                 accent: DesignSystem.Colors.whimsy,
                 isSelected: currentRoute == .missions,
+                isCompact: isCompact,
                 action: { onNavigate(.missions) }
             )
             DashboardWorkspaceNavButton(
@@ -60,10 +77,9 @@ struct DashboardWorkspaceNavStrip: View {
                 systemImage: "text.bubble",
                 accent: DesignSystem.Colors.whimsy,
                 isSelected: currentRoute == .sessionLogs,
+                isCompact: isCompact,
                 action: { onNavigate(.sessionLogs) }
             )
         }
-        .padding(.horizontal, DesignSystem.Spacing.lg)
-        .padding(.vertical, DesignSystem.Spacing.md)
     }
 }

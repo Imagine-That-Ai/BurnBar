@@ -20,11 +20,10 @@ struct ProviderQuotaAdapterContext {
     let codexRolloutScanCache: CodexRolloutScanCache
     let updateCodexRolloutScanCache: (CodexRolloutScanCache, Bool) -> Void
     let refreshClaudeBridgeStatus: () -> ClaudeQuotaBridgeStatus
-    /// Reads Claude Code's OAuth credentials from the macOS Keychain
-    /// (or `~/.claude/.credentials.json` fallback). Injected so tests
-    /// can drive the OAuth-fetch path with synthetic credentials
-    /// without touching the user's real Keychain.
-    let claudeCredentialsReader: ClaudeCredentialsReading
+    /// Optional explicit Claude OAuth credentials. Production uses
+    /// `NoClaudeCredentialsReader` so OpenBurnBar never reads Claude
+    /// Code's Keychain item or `.credentials.json` fallback.
+    let claudeCredentialsReader: any ClaudeCredentialsReading
 
     /// Pre-resolved API keys (read from ProviderAPIKeyStore on the main actor before dispatch).
     let resolvedAPIKeys: [String: String?]

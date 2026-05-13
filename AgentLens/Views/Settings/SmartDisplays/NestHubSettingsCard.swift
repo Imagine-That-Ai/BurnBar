@@ -118,7 +118,9 @@ struct NestHubSettingsCard: View {
                 "",
                 isOn: Binding(
                     get: { model.enabled },
-                    set: { model.toggleEnabled($0) }
+                    set: { newValue in
+                        Task { await model.setEnabledFromToggle(newValue) }
+                    }
                 )
             )
             .toggleStyle(.switch)
@@ -158,17 +160,29 @@ struct NestHubSettingsCard: View {
             }
             .disabled(model.isBusy)
 
-            if let failure = model.operationState.failureMessage {
+            // Repair's outcome already lives in the bridge-status row
+            // (via `lastRepairStatus.message`), so we suppress the trailing
+            // success/error chip to avoid double-reporting the same fact.
+            // Test/Identify/Refresh/Stop/Open have no equivalent banner,
+            // so they still get the inline confirmation.
+            if let failure = model.operationState.failureMessage,
+               !isRepairOutcomeShownInBridgeRow {
                 Label(failure, systemImage: "xmark.octagon")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.error)
                     .fixedSize(horizontal: false, vertical: true)
-            } else if case .succeeded(let kind, _) = model.operationState {
+            } else if case .succeeded(let kind, _) = model.operationState,
+                      kind != .repair {
                 Text("\(kind.displayName) completed.")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.success)
             }
         }
+    }
+
+    private var isRepairOutcomeShownInBridgeRow: Bool {
+        guard case .failed(let kind, _) = model.operationState else { return false }
+        return kind == .repair && model.lastRepairStatus != nil
     }
 
     private func operationButton(

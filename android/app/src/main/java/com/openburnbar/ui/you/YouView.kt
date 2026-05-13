@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Notifications
@@ -34,6 +35,7 @@ import com.openburnbar.menubar.SuppressionStore
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.components.AuroraSecondaryButton
 import com.openburnbar.ui.components.AuroraSettingsToggle
+import com.openburnbar.ui.settings.SettingsRootScreen
 import com.openburnbar.ui.smartdisplay.SmartDisplayView
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
@@ -41,7 +43,7 @@ import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 import com.openburnbar.ui.theme.AuroraTypography
 
-private enum class YouSubScreen { Root, SmartDisplays, MenuBarPrefs }
+private enum class YouSubScreen { Root, SmartDisplays, MenuBarPrefs, ChatTiles, Settings }
 
 @Composable
 fun YouView(
@@ -62,10 +64,17 @@ fun YouView(
                 syncStore = syncStore,
                 devicesStore = devicesStore,
                 onOpenSmartDisplays = { subScreen = YouSubScreen.SmartDisplays },
-                onOpenMenuBarPrefs = { subScreen = YouSubScreen.MenuBarPrefs }
+                onOpenMenuBarPrefs = { subScreen = YouSubScreen.MenuBarPrefs },
+                onOpenChatTiles = { subScreen = YouSubScreen.ChatTiles },
+                onOpenSettings = { subScreen = YouSubScreen.Settings }
             )
             YouSubScreen.SmartDisplays -> SmartDisplayView(onBack = { subScreen = YouSubScreen.Root })
             YouSubScreen.MenuBarPrefs -> MenuBarPrefsView(onBack = { subScreen = YouSubScreen.Root })
+            YouSubScreen.ChatTiles -> com.openburnbar.ui.hermes.ChatTilesSettingsScreen(onBack = { subScreen = YouSubScreen.Root })
+            YouSubScreen.Settings -> SettingsRootScreen(
+                onBack = { subScreen = YouSubScreen.Root },
+                onMenuBarPrefs = { onBack -> MenuBarPrefsView(onBack = onBack) },
+            )
         }
     }
 }
@@ -76,7 +85,9 @@ private fun YouRoot(
     syncStore: CloudSyncHealthStore,
     devicesStore: DevicesStore,
     onOpenSmartDisplays: () -> Unit,
-    onOpenMenuBarPrefs: () -> Unit
+    onOpenMenuBarPrefs: () -> Unit,
+    onOpenChatTiles: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     val isDark = isSystemInDarkTheme()
     val user by userStore.user.collectAsState()
@@ -125,10 +136,18 @@ private fun YouRoot(
         )
 
         SettingsRow(
+            icon = Icons.Filled.Chat,
+            title = "Chat tiles",
+            subtitle = "Which assistants appear in the Chat tab pill",
+            onClick = onOpenChatTiles
+        )
+
+        SettingsRow(
             icon = Icons.Filled.Settings,
             title = "Settings",
-            subtitle = "Appearance, budget, notifications"
-        ) {}
+            subtitle = "Search across cloud sync, devices, displays, Hermes",
+            onClick = onOpenSettings
+        )
 
         Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
 

@@ -431,7 +431,10 @@ struct ChatPanel: View {
             )
 
             // Mode toggle
-            ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
+            VStack(spacing: 4) {
+                ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
+                HermesModelStrip(controller: controller, settingsManager: settingsManager)
+            }
 
             ChatEngineModelMenu(controller: controller)
 

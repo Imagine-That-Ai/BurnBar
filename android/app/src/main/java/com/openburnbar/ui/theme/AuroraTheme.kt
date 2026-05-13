@@ -32,11 +32,17 @@ object AuroraColors {
     val amber    = Color(0xFFF28C38)
     val blaze    = Color(0xFFE86100)
     val whimsy   = Color(0xFF6A5ACD)
+    val purple   = Color(0xFF9080D8)
+    val teal     = Color(0xFF2CCAC0)
+    val gold     = Color(0xFFE0A030)
 
     // Dark-mode brand accents (mirrors iOS Theme/DesignSystem.swift adaptive colors)
     val emberDark   = Color(0xFFFA5053)
     val amberDark   = Color(0xFFFFA800)
     val whimsyDark  = Color(0xFF8B7FE8)
+    val purpleDark  = Color(0xFFA855F7)
+    val tealDark    = Color(0xFF1A9A8C)
+    val goldDark    = Color(0xFFB8942E)
 
     // Light mode surfaces
     val lightBackground       = Color(0xFFF3E8E6)

@@ -192,6 +192,28 @@ extension ProviderQuotaBucket {
             return usedValue != nil || remainingValue != nil || usedPercent != nil
         }
     }
+
+    /// Same shape as `OpenBurnBarCore.ProviderQuotaBucket.resetsAtDisplay`
+    /// (relative + absolute strings) so every quota details surface — Mac
+    /// micro-badge, iOS / Android rows, Smart Hub cast — speaks one
+    /// formatter. Kept on the AgentLens-local bucket because the rich Mac
+    /// model is what `ProviderQuotaBucketViews` reads.
+    var resetsAtDisplay: (relative: String, absolute: String)? {
+        guard let resetsAt else { return nil }
+        let relative = Self.relativeResetsFormatter.localizedString(
+            for: resetsAt,
+            relativeTo: Date()
+        )
+        let absolute = resetsAt.formatted(date: .abbreviated, time: .shortened)
+        return (relative: relative, absolute: absolute)
+    }
+
+    private static let relativeResetsFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        f.dateTimeStyle = .numeric
+        return f
+    }()
 }
 
 struct ProviderQuotaSnapshot: Codable, Hashable {

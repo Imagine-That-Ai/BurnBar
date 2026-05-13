@@ -1,5 +1,7 @@
 package com.openburnbar.ui.widget
 
+import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
@@ -7,6 +9,8 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Shader
+import android.net.Uri
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
@@ -14,6 +18,9 @@ import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
 import androidx.glance.ImageProvider
+import androidx.glance.LocalContext
+import androidx.glance.action.clickable
+import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.background
 import androidx.glance.color.ColorProvider
@@ -32,6 +39,7 @@ import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
+import com.openburnbar.MainActivity
 import com.openburnbar.R
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.logoRes
@@ -44,6 +52,74 @@ import androidx.glance.unit.ColorProvider as GlanceColorProvider
  * Kept light: each tries to render in <16dp of cumulative padding so even the
  * smallest 2×2 home-screen tile has room for content.
  */
+
+// MARK: - Ask Hermes / Ask Pi chip
+//
+// Rendered by `BurnBarLargeWidget` and `BurnBarMediumWidget` so the user can
+// kick off an assistant conversation directly from the home screen — either
+// with a curated prompt prefilled or just by focusing the composer. The
+// underlying Intent carries:
+//   • A `burnbar://<assistant>?prompt=…` data URI (so adb / external
+//     deep-links work the same way).
+//   • Direct extras (`burnbar.assistant`, `burnbar.prompt`) — the redundant
+//     form is the fast path that `MainActivity.stashPendingPromptFromIntent`
+//     reads first.
+
+const val ASK_CHIP_ASSISTANT_HERMES = "hermes"
+const val ASK_CHIP_ASSISTANT_PI = "pi"
+
+/** Build the launch Intent for an Ask-chip. Public so widgets can compose it. */
+fun askAssistantIntent(context: Context, assistant: String, prompt: String?): Intent {
+    val baseUri = "burnbar://$assistant"
+    val uri = if (prompt.isNullOrBlank()) baseUri else "$baseUri?prompt=${Uri.encode(prompt)}"
+    return Intent(context, MainActivity::class.java).apply {
+        data = Uri.parse(uri)
+        action = Intent.ACTION_VIEW
+        putExtra(MainActivity.EXTRA_ASSISTANT, assistant)
+        if (!prompt.isNullOrBlank()) {
+            putExtra(MainActivity.EXTRA_PROMPT, prompt)
+        }
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    }
+}
+
+/** Prominent variant — used for the lead "Ask Hermes" / "Ask Pi" buttons. */
+@androidx.compose.runtime.Composable
+fun WidgetAskChip(
+    label: String,
+    assistant: String,
+    prompt: String? = null,
+    glyph: String? = null,
+    accent: Color = WidgetTheme.amber,
+    prominent: Boolean = false,
+    modifier: GlanceModifier = GlanceModifier
+) {
+    val context = LocalContext.current
+    val intent = askAssistantIntent(context, assistant, prompt)
+    val displayLabel = if (!glyph.isNullOrEmpty() && prominent) "$glyph  $label" else label
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .background(GlanceColorProvider(accent.copy(alpha = if (prominent) 0.18f else 0.12f)))
+            .cornerRadius(if (prominent) 14.dp else 11.dp)
+            .padding(
+                horizontal = if (prominent) 12.dp else 9.dp,
+                vertical = if (prominent) 7.dp else 5.dp
+            )
+            .clickable(actionStartActivity(intent))
+    ) {
+        Text(
+            text = displayLabel,
+            style = TextStyle(
+                fontSize = if (prominent) 12.sp else 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = GlanceColorProvider(accent)
+            ),
+            maxLines = 1
+        )
+    }
+}
 
 @androidx.compose.runtime.Composable
 fun WidgetProviderPill(

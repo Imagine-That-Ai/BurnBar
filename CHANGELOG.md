@@ -8,6 +8,118 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Router mode toggle + model-landscape benchmark snapshots.** Settings ->
+  Routing pools now persists a router mode in the daemon provider config:
+  **Provider-Family Failover** keeps fallback inside the selected provider
+  family/account set, while **Intelligent Model Router** ranks compatible
+  routes using task, health, quota, cost, latency, capability, and benchmark
+  freshness signals. Routing decisions now carry sanitized explanations,
+  rejected alternatives, mode, selected route identity, and benchmark status.
+  A daily Cloud Function normalizes public or fixture-backed model-landscape
+  data from Artificial Analysis, Terminal-Bench/Hugging Face, Design Arena
+  fixtures, and manual fixtures into read-only benchmark snapshot/status
+  collections without scraping private pages or persisting secrets.
+- **Routing pools surface + Claude Code / Codex wiring helpers (macOS).**
+  Settings now has a top-level **Routing pools** tab that mirrors the Fire
+  Hydrant's two-pool model on the desktop. Each pool tab lists the routed
+  upstream accounts with a live health pill, last-used timestamp, and the
+  current active / next-fallback / cooling-down badges sourced from
+  `ProviderQuotaService.routingStatesByProviderID`. Each pool also exposes
+  a "Wire <client> through the Hydrant" card that ships in two modes: a
+  one-click **config-file toggle** that writes
+  `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` into
+  `~/.claude/settings.json` (or a sentinel-fenced
+  `[model_providers.openburnbar]` block into `~/.codex/config.toml`) with
+  a timestamped `.openburnbar-backup-<UTC>` snapshot of the prior file,
+  and a **shell-snippet sheet** that copies an `export …` block for users
+  on bespoke shell setups. A 1-token probe button hits `/v1/messages` or
+  `/v1/chat/completions` to confirm the wiring before the helper reports
+  "wired". Anthropic credentials added through the existing Add-Account
+  flow get validated by the new `AnthropicCredentialProbe`, which honors
+  both `sk-ant-…` console keys (sent via `x-api-key`) and Pro/Team OAuth
+  bearers (sent via `Authorization: Bearer`) and never logs the secret.
+  Codex's ChatGPT-auth mode is honestly documented as
+  **track-only, not routed**.
+- **Insights tab (macOS, iPadOS, iOS).** A first-class destination that
+  turns OpenBurnBar's local SQLite, JSONL ledgers, and Firestore rollups
+  into a beautiful, modular, AI-authored analytics canvas. Pick any
+  reachable model — Claude, GPT-5, Hermes, Pi, Ollama, or the always-on
+  Local Rules adapter — and the canvas surfaces usage patterns,
+  per-agent and per-model focuses, use-case clusters, anomalies,
+  forecasts, quota health, and crisp recommendations. 26 widget kinds,
+  8 built-in templates (Today, Cost Audit, Agent Focus, Model Focus,
+  Use-Case Library, Quota Health, Quarterly Review, Anomalies), strict
+  JSON-Schema generation with json_object fallback, content-addressed
+  caching, append-only audit log, and an enforced 24 KB privacy ceiling
+  on every digest. Canvases project deterministically from 12 columns
+  (macOS) to 6 (iPad) to 2 (iPhone) — same intent, adapted. iPhone gets
+  a new "Insights" tab between Burn and Streams; iPad joins it to the
+  sidebar; macOS exposes it as a three-pane workspace (library · canvas
+  · inspector). Renderers live in `OpenBurnBarCore/Views/Insights/` so
+  every platform renders identically. See
+  [`docs/INSIGHTS.md`](docs/INSIGHTS.md) and
+  [`docs/INSIGHTS_ARCHITECTURE.md`](docs/INSIGHTS_ARCHITECTURE.md) for
+  the full architecture, schemas, and extension recipe.
+- **Multi-runtime chat tiles + Hermes sub-provider picker (iOS, iPadOS,
+  Android, macOS).** The Assistants pill now exposes up to five top-level
+  chat tiles — Hermes, Pi, Codex, Claude, OpenClaw — and the Hermes model
+  picker surfaces the six routable sub-providers (Codex, Claude, Z.ai,
+  Kimi, MiniMax, Ollama) even when the relay hasn't reported live models
+  yet. Visibility is user-configurable: a new "Chat tiles" screen in
+  Settings on each mobile platform lets users hide tiles they don't want
+  and toggle which Hermes sub-providers appear in the model sheet. Hermes
+  is always retained as a fallback so the chat surface is never empty.
+  Shared `ChatTilePreferences` / `HermesSubProvider` types live in
+  `OpenBurnBarCore` and a Kotlin mirror in `com.openburnbar.data.hermes`;
+  both encode to the same deterministic JSON shape so preferences round-
+  trip cleanly across platforms. `AssistantRuntimeID` is extended from
+  two cases to five with stable persisted raw values
+  (`hermes`/`pi`/`codex`/`claude`/`openclaw`) so existing
+  `UserDefaults`/`SharedPreferences` selections continue to decode.
+  Android now persists the concrete Hermes model override in the same
+  preference blob and shows a resettable selected-model row in Settings,
+  while macOS upgrades its Hermes strip from family-only pills to grouped
+  live gateway-advertised model pills with the same family visibility gates.
+- **Fire Hydrant: two-pool same-format routing.** The local gateway at
+  `127.0.0.1:8317` now exposes two parallel routing pools:
+  `POST /v1/chat/completions` (OpenAI-family) and the new
+  `POST /v1/messages` (Anthropic-family). A request hitting one endpoint
+  can only be served by accounts in that pool — format families never
+  cross, which keeps tool-call schemas, prompt-cache markers, and
+  streaming-event types intact. Within a pool the existing in-flight
+  failover loop continues to mark slots `.exhausted` / `.coolingDown` on
+  upstream `429` / quota / auth failures and retries against the next
+  healthy candidate. `BurnBarProviderFormatFamily` (`openaiCompat` /
+  `anthropic`) is a first-class catalog field on
+  `BurnBarCatalogProvider`, threaded through `BurnBarProviderRoute`, and
+  enforced by `ProviderRoutingPolicy.decide(...)`. New end-to-end tests
+  cover the Anthropic happy path, in-flight Anthropic failover on
+  quota-exceeded, and bidirectional 503 rejection when only the wrong
+  pool is configured.
+- **Anthropic, OpenAI, Kimi as routed upstream providers.** The bundled
+  catalog graduates Anthropic, OpenAI, and Moonshot/Kimi to
+  `capabilities: ["routing", "accounting"]`, exposing one flagship public
+  model per provider (Claude Opus 4.7 / Sonnet 4.6 / Haiku 4.5, GPT-5.4 /
+  GPT-5.3 Codex, Kimi K2.5). Existing accounts auto-classify into the
+  correct pool via `BurnBarCatalogProvider.formatFamily`. Anthropic
+  credentials route through the new `BurnBarAnthropicProviderExecutor`,
+  which sends `sk-ant-…` keys as `x-api-key` and any other shape as
+  `Authorization: Bearer …`, with the `anthropic-version: 2023-06-01`
+  header attached for every request.
+- **Cross-platform Settings search.** macOS, iOS/iPadOS, and Android Settings
+  each gain a hand-authored manifest of every searchable control plus a
+  shared-shape ranking engine (`title` × 3, `keywords` × 2, `subtitle` × 2,
+  `helpText` × 1; AND-semantic tokens; diacritic-folded case-insensitive
+  substring match; capped at 25 results). Tapping a result deep-links into
+  the destination, scrolls the row into view, paints a brief halo, and —
+  where supported — focuses the bound `@FocusState` / `FocusRequester`. macOS
+  drives the existing sidebar tab selection plus a programmatic
+  `NavigationStack(path:)` push; iOS uses `.searchable` over a `Form` with
+  `navigationDestination(for: SettingsPageRoute.self)`; Android adds a
+  `SettingsRootScreen` with a toggle-able top-bar search and routes from the
+  You tab. Behavioral parity is pinned by `SettingsSearchEngineTests` on each
+  platform plus a manifest-coverage test on macOS that fails the build if
+  anchor / id uniqueness ever drifts.
 - **One-click smart-display repair with proof.** Nest Hub and ULANZI Pixel
   Clock settings now share a `Make display work` action across macOS,
   iOS, and iPadOS. The Mac runs the full recovery path, streams typed
@@ -15,97 +127,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   repair healthy when there is display proof: Nest Hub `/state.json`
   polling after cast/recast or Pixel Clock AWTRIX/stock-simulator frame
   acceptance.
-- **Claude Code quota robustness: zero-CLI-launch capture across four
-  cascading sources.** Claude quota used to require the user to run
-  `claude` with the OpenBurnBar status line bridge installed before the
-  popover would show anything beyond "Connect Claude". Fresh installs
-  sat on "Bridge not installed" until the user happened to fire up a
-  prompt — and even bridge repair didn't help because the bridge only
-  fires on the next CLI turn. The new adapter falls back gracefully
-  across four data sources, so a freshly-installed Claude Code with an
-  active subscription always lights up:
-  - **`ClaudeCredentialsReader`** reads Anthropic's
-    `Claude Code-credentials` Keychain item (with `~/.claude/.credentials.json`
-    fallback for Linux/CI and a `CLAUDE_CODE_OAUTH_TOKEN` env override
-    for headless tests). The reader exposes `subscriptionType`,
-    `rateLimitTier`, `organizationUuid`, and a `planDisplayName` helper
-    so we can surface "Plan: Max" or "Plan: Pro" without ever calling
-    Anthropic.
-  - **`ClaudeOAuthUsageFetcher`** calls Anthropic's
-    `https://api.anthropic.com/api/oauth/usage` endpoint directly with
-    the Keychain-derived bearer token, using the required
-    `anthropic-beta: oauth-2025-04-20` header and a Claude-Code-shaped
-    User-Agent. The endpoint is aggressively rate-limited
-    (anthropics/claude-code#31637 — 429 returns no `Retry-After` and
-    bricks the token for the rest of the session if you retry), so the
-    fetcher persists every successful response on disk
-    (`<appPaths>/Claude/oauth-usage-cache.json`), keyed by the
-    `resets_at` window. Subsequent refreshes reuse the cached payload
-    until the soonest reset moment arrives. A sibling
-    `oauth-usage-last-attempt.json` marker enforces a 5-minute live-poll
-    floor across process restarts so the popover refresh cadence can
-    never trigger 429. Stale cache is returned on any live-call failure
-    so transient network blips don't flip the popover to "unavailable".
-  - **Plan-cap-annotated JSONL bucket.** When OAuth is rate-limited but
-    JSONL token counts exist in `~/.claude/projects/**/*.jsonl`, the
-    adapter now annotates the 5-hour and 7-day buckets with the
-    Anthropic-published plan cap inferred from `rateLimitTier`
-    (Pro = 220K / 880K, Max-5x = 880K / 7.7M, Max-20x = 3.52M / 30.8M
-    as of the May 2026 doubling). Users see real percent-of-plan
-    figures even when the network is down and the bridge hasn't fired.
-  - **Plan-only badge fallback.** When even JSONL is empty but Keychain
-    confirms an active Pro/Max subscription, the popover now renders a
-    "Plan: Max" badge bucket with the management URL instead of
-    "unavailable" — Claude is clearly installed and signed in, so the
-    popover reflects that.
-  - **Silent bridge auto-install.** When `~/.claude/settings.json` or
-    `~/.claude/projects/` exists but no bridge command is configured,
-    the adapter quietly installs the OpenBurnBar status line bridge on
-    the next refresh. No prompts, no UI churn — the user just sees
-    exact percentages start flowing as soon as they run their next
-    Claude turn. Existing manual install/remove from Settings still
-    works the same way.
-  - **Transparent OAuth token refresh.** Claude Code OAuth access
-    tokens expire after 8 hours (Anthropic's published TTL). Without
-    refresh, OpenBurnBar would silently go dark every workday morning
-    until the user happened to run `claude` again. The fetcher now
-    detects expired tokens (and tokens within a 60-second leeway),
-    exchanges the persisted refresh token at Anthropic's CLI token
-    endpoint (`https://platform.claude.com/v1/oauth/token`), swaps the
-    bearer mid-call, AND writes the refreshed pair back to
-    `~/.claude/.credentials.json` (with 0600 permissions) so the
-    `claude` CLI picks them up too. The macOS Keychain entry is left
-    untouched to avoid a user-facing keychain prompt; in-memory state
-    is updated via `RateLimitsResult.refreshedCredentials`.
-  - **Auto-install retry guard.** A sibling marker file
-    (`claude-bridge-auto-install-attempted.json`) prevents the silent
-    auto-install from re-firing on every refresh tick when the first
-    install fails (e.g. read-only `~/.claude/`, Time-Machine snapshots,
-    permission glitches). One attempt per app lifetime, then the user
-    can install manually via Settings.
-  - **Strongly-typed rate-limits model (`ClaudeRateLimits`).** Replaces
-    the previous `[String: Any]?` cross-actor shuttle that violated
-    Swift 6 strict-concurrency. The model preserves the raw JSON for
-    cache round-tripping while exposing typed `Window` values to
-    callers. Eliminates three Sendable warnings and unblocks Swift 6
-    migration in this module.
-  - **`canCallUsageEndpoint()` gate.** Replaces the old
-    `!isExpired()` check with a more honest predicate: credentials are
-    usable when either still-fresh OR refresh-token-eligible.
-  - **`CLAUDE_CREDENTIALS_SKIP_KEYCHAIN` test seam.** Lets unit tests
-    on developer machines exercise the file-fallback path without
-    being shadowed by the dev's real Keychain entry. Never set in
-    production.
-  - **Nine new tests** covering OAuth cache-hit (zero network), live
-    OAuth fetch with cache persistence, expired-token refresh +
-    credentials file rewrite + 0600 perms, JSONL + Max-20x plan-cap
-    annotation, plan-only badge fallback, Keychain payload decoding,
-    `canCallUsageEndpoint` semantics, `ClaudeRateLimits` parsing of
-    both wrapped and bare payloads, and auto-install marker loop
-    prevention across two refreshes. All 63
-    `ProviderQuotaServiceTests` pass in under three seconds.
+- **Claude Code quota security posture.** Claude quota refresh no longer
+  reads Claude Code's third-party Keychain item, no longer reads
+  `~/.claude/.credentials.json`, and no longer writes refreshed OAuth
+  tokens back into Claude Code files. The production path is now
+  prompt-free by construction: statusline bridge snapshots first, local
+  JSONL token counts next, and no automatic credential discovery.
+  Internal OAuth usage tests now inject synthetic credentials explicitly,
+  and a regression test scans the Claude quota source for forbidden
+  credential-store access patterns.
 
 ### Fixed
+- **Append-safe persistence across local, iCloud, and Firestore sync paths.**
+  iCloud session mirroring no longer deletes mirrored records just because a
+  local source path disappears; Firestore download watermarks advance only
+  after a full page persists locally; shared-artifact transactions merge
+  heads/revisions instead of replacing documents; remote device-local provider
+  accounts are namespaced on collision; and Insight canvas imports now
+  merge/preserve historical canvases instead of replacing or LRU-evicting
+  them. Local provider routing event trails also persist full history instead
+  of truncating storage to the display window. Regression coverage now
+  exercises Firestore-only, iCloud-only, dual-sync, idempotent retry, failure
+  retry, provider routing history, and insight-history preservation.
 - **Mobile cloud-sync denial classification.** Android and iOS now split
   Firestore rules denials from App Check enforcement failures instead of
   showing every signed-in cloud-read failure as generic "Access denied";

@@ -478,11 +478,11 @@ final class CloudSyncService {
             accountUid: uid,
             collectionKind: .usage
         )
+        var completedDownload = false
 
         defer {
-            // Commit the transaction to advance watermark
-            // This happens even if some items fail, as long as we processed anything
-            if syncTx.processedCount > 0 {
+            // Advance only after the entire remote page is persisted locally.
+            if completedDownload, syncTx.processedCount > 0 {
                 do {
                     try syncTx.commit()
                 } catch {
@@ -546,6 +546,7 @@ final class CloudSyncService {
                     syncTx.recordProcessedItem(remoteUpdatedAt: updatedAt)
                 }
             }
+            completedDownload = true
         } catch { /* non-fatal */ }
     }
 
@@ -574,10 +575,11 @@ final class CloudSyncService {
             accountUid: uid,
             collectionKind: .conversations
         )
+        var completedDownload = false
 
         defer {
-            // Commit the transaction to advance watermark
-            if syncTx.processedCount > 0 {
+            // Advance only after the entire remote page is persisted locally.
+            if completedDownload, syncTx.processedCount > 0 {
                 do {
                     try syncTx.commit()
                 } catch {
@@ -635,6 +637,7 @@ final class CloudSyncService {
                     syncTx.recordProcessedItem(remoteUpdatedAt: updatedAt)
                 }
             }
+            completedDownload = true
         } catch { /* non-fatal */ }
         return insertedIds
     }

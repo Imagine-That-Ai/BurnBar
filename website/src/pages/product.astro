@@ -1,6 +1,6 @@
 ---
 import BaseLayout from "@layouts/BaseLayout.astro";
-import DashboardMockup from "@components/DashboardMockup.astro";
+import RealDashboard from "@components/RealDashboard.astro";
 import SurfaceCard from "@components/SurfaceCard.astro";
 import { SURFACES } from "@data/surfaces";
 import { FEATURES_BY_CATEGORY } from "@data/features";
@@ -26,7 +26,11 @@ import { FEATURES_BY_CATEGORY } from "@data/features";
 
   <section>
     <div class="container container--wide">
-      <DashboardMockup />
+      <RealDashboard
+        src="/screens/ipad-burn.png"
+        alt="OpenBurnBar iPadOS app — Burn tab with Fleet Quota 42% Pressured, per-provider rings, $18.74 today across Today / 7d / 30d / 90d / All-Time"
+        caption="Real iPadOS capture · Burn tab · same SwiftUI design renders on macOS"
+      />
     </div>
   </section>
 

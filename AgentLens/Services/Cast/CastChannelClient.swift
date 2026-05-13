@@ -133,6 +133,19 @@ final class CastChannelClient {
     /// race a transport's CONNECT-ack or land during a Wi-Fi roam;
     /// duplicates are harmless once DashCast has actually loaded the
     /// URL, so this is the cheapest way to make LOAD reliable.
+    ///
+    /// `reloadSeconds: 0` disables DashCast's built-in periodic reload.
+    /// We used to send `reloadSeconds: 60`, which made DashCast
+    /// force-navigate the WebView every minute — the user-visible
+    /// symptom was the Nest Hub showing OpenBurnBar for ~55 s, briefly
+    /// blanking / flashing the DashCast splash, then re-rendering, in
+    /// an endless loop. The page already keeps itself fresh: it polls
+    /// `/state.json` every 5 s and re-renders the DOM on every version
+    /// bump, plus has its own 10-minute stale-poll `location.reload()`
+    /// fallback, and the Mac-side cast watchdog (see
+    /// `SmartHubBridgeController.runCastWatchdogTick`) handles truly
+    /// stuck DashCast sessions. So DashCast's own reload timer was
+    /// pure flicker.
     private func sendDashCastLoadWithRetries(url: URL, transportId: String) async {
         let delays: [UInt64] = [0, 600_000_000, 1_500_000_000]
         for (index, delay) in delays.enumerated() {
@@ -149,7 +162,7 @@ final class CastChannelClient {
                 payload: Self.dashCastLoadPayload(
                     url: url,
                     sessionId: currentSessionId,
-                    reloadSeconds: 60,
+                    reloadSeconds: 0,
                     force: force
                 ),
                 destination: transportId

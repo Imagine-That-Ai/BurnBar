@@ -4,6 +4,26 @@ import OpenBurnBarCore
 // MARK: - AWTRIX HTTP Client
 
 struct AWTRIXClient: @unchecked Sendable {
+    /// AWTRIX names the BurnBar custom app `openburnbar0` (see
+    /// `pushCustomApp`). The sentinel apps are short-lived sibling apps used
+    /// purely for input detection: when the user taps Left/Right on the
+    /// device, AWTRIX rotates the carousel to one of these names, the input
+    /// loop notices the change in `/api/stats.app`, fires the bound action,
+    /// and immediately switches the device back to `openburnbar0`.
+    enum SentinelApp: String, CaseIterable {
+        case left
+        case select
+        case right
+
+        var appName: String {
+            switch self {
+            case .left: return "openburnbar_btn_left"
+            case .select: return "openburnbar_btn_select"
+            case .right: return "openburnbar_btn_right"
+            }
+        }
+    }
+
     struct ProbeResult: Equatable, Sendable {
         let status: PixelClockProbeStatus
         let message: String
@@ -256,13 +276,92 @@ struct AWTRIXClient: @unchecked Sendable {
 
     func removeCustomApp(config: PixelClockConfig) async throws {
         let body = "{}".data(using: .utf8) ?? Data()
-        let names = [PixelClockQuotaRenderer.appName] + (0..<16).map { "\(PixelClockQuotaRenderer.appName)\($0)" }
+        let baseNames = [PixelClockQuotaRenderer.appName] + (0..<16).map { "\(PixelClockQuotaRenderer.appName)\($0)" }
+        let names = baseNames + SentinelApp.allCases.map(\.appName)
         for name in names {
             guard let url = endpoint(config: config, path: "/api/custom", query: "name=\(name)") else {
                 throw ClientError.invalidBaseURL
             }
             try await sendJSON(url: url, method: "POST", body: body)
         }
+    }
+
+    /// Registers small placeholder custom apps so the device's Left/Right
+    /// arrow keys have a unique app name to land on. These pages are dim
+    /// arrow glyphs with `lifetime: 1` so AWTRIX evicts them shortly after
+    /// the press is registered — the visual is a brief "tap registered"
+    /// flash before the input controller switches the device back to
+    /// `openburnbar0`.
+    func pushSentinelApps(config: PixelClockConfig) async throws {
+        for sentinel in SentinelApp.allCases {
+            let body = try JSONSerialization.data(
+                withJSONObject: sentinelPayload(for: sentinel, config: config),
+                options: []
+            )
+            guard let url = endpoint(config: config, path: "/api/custom", query: "name=\(sentinel.appName)") else {
+                throw ClientError.invalidBaseURL
+            }
+            try await sendJSON(url: url, method: "POST", body: body)
+        }
+    }
+
+    /// Switches the device to the named custom app via `/api/switch` (AWTRIX
+    /// 3 ≥ v0.96). Some firmware forks return 404 on `/api/switch`; in that
+    /// case we fall back to `/api/nextapp` until the requested app is the
+    /// active one. The fallback path is bounded by `maxSteps` so a missing
+    /// app cannot loop forever.
+    func switchToApp(name: String, config: PixelClockConfig) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["name": name], options: [])
+        if let url = endpoint(config: config, path: "/api/switch") {
+            do {
+                try await sendJSON(url: url, method: "POST", body: body)
+                return
+            } catch ClientError.httpStatus(404) {
+                // Fall through to the carousel-step fallback.
+            }
+        }
+        guard let nextURL = endpoint(config: config, path: "/api/nextapp") else {
+            throw ClientError.invalidBaseURL
+        }
+        let stepBody = "{}".data(using: .utf8) ?? Data()
+        let maxSteps = 24
+        for _ in 0..<maxSteps {
+            if await currentAppName(config: config) == name { return }
+            try await sendJSON(url: nextURL, method: "POST", body: stepBody)
+            try? await Task.sleep(nanoseconds: 80_000_000)
+        }
+    }
+
+    private func sentinelPayload(for sentinel: SentinelApp, config: PixelClockConfig) -> [String: Any] {
+        let color = "#404040"
+        let arrow: [PixelClockDrawInstruction]
+        switch sentinel {
+        case .left:
+            arrow = [
+                .fillRect(x: 14, y: 3, width: 4, height: 1, color: color),
+                .fillRect(x: 13, y: 4, width: 1, height: 1, color: color),
+                .fillRect(x: 14, y: 5, width: 1, height: 1, color: color)
+            ]
+        case .right:
+            arrow = [
+                .fillRect(x: 14, y: 3, width: 4, height: 1, color: color),
+                .fillRect(x: 18, y: 4, width: 1, height: 1, color: color),
+                .fillRect(x: 17, y: 5, width: 1, height: 1, color: color)
+            ]
+        case .select:
+            arrow = [
+                .fillRect(x: 15, y: 3, width: 2, height: 2, color: color)
+            ]
+        }
+        return [
+            "text": "",
+            "color": color,
+            "duration": 1,
+            "lifetime": 1,
+            "save": false,
+            "noScroll": true,
+            "draw": arrow.map(\.awtrixObject)
+        ]
     }
 
     func applyBrightnessIfNeeded(config: PixelClockConfig) async throws {

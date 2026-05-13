@@ -1,6 +1,6 @@
 # OpenBurnBar Privacy Policy
 
-**Last updated: May 8, 2026**
+**Last updated: May 13, 2026**
 
 ## Summary
 
@@ -13,6 +13,8 @@ OpenBurnBar is local-first software. It reads files your AI coding agents leave 
 OpenBurnBar reads session log files that AI coding agents (Claude Code, Codex, Factory Droid, Cursor, Kimi, Windsurf, and others) write to your local disk. It uses this data to estimate token consumption and API spend, and displays that information to you inside the app.
 
 **OpenBurnBar does not read your API keys by default.** Local usage tracking reads usage logs, not credentials. If you choose hosted quota refresh, you explicitly provide provider credentials for that feature; OpenBurnBar stores only redacted account labels in Firestore and stores the secret material in Google Cloud Secret Manager.
+
+For Claude Code specifically, local quota tracking does **not** read Claude Code's macOS Keychain credential item and does **not** read or rewrite `~/.claude/.credentials.json`. OpenBurnBar uses Claude's statusline payloads and local JSONL usage logs for the default Claude path, so it should not ask for your login keychain password to access Claude credentials.
 
 ---
 

@@ -380,6 +380,8 @@ OpenBurnBar is a happy offline hermit by default. Cloud sync is for people who u
 
 **Current cloud behavior:** when cloud sync is enabled, OpenBurnBar uploads usage rows and OpenBurnBar chat-thread metadata for cross-device resume. Chat titles, previews, and message bodies are uploaded only after enabling **Settings → Privacy & Indexing → Back Up Chat Message Content** and only when Firestore rules see an active Apple-verified `hosted_quota_sync` entitlement. The current source release also syncs shared-artifact heads/revisions through an owner-scoped Firestore path for local-first collaboration metadata. Conversation metadata and session-log manifests/search metadata remain separately gated by their own settings and the same hosted-cloud entitlement; large session-log bodies stay local or in the user's iCloud mirror.
 
+**Append-safe sync contract:** local SQLite/JSON insight stores remain authoritative and each enabled cloud target is treated as an append/merge replica. Firestore writes use stable document IDs plus merge semantics for usage, provider accounts, quota snapshots, sync status, and shared-artifact heads/revisions; retrying a sync is idempotent and adding new records does not delete sibling records. Local provider routing event trails persist full history even when callers request a limited display window. Remote device-local provider-account collisions are namespaced locally instead of overwriting the current Mac's Keychain-backed account, and remote download watermarks advance only after the full page has been durably persisted locally.
+
 **Setup:**
 
 1. Create a [Firebase](https://console.firebase.google.com) project and add a **macOS** app with bundle ID `com.openburnbar.app`.
@@ -405,6 +407,7 @@ OpenBurnBar is a happy offline hermit by default. Cloud sync is for people who u
 Use this when you want session logs in **your** Apple ID’s iCloud storage instead of (or in addition to) Firestore metadata.
 
 - **Where:** After each successful refresh, OpenBurnBar incrementally copies files from each supported provider’s configured log path into the app’s iCloud container: `Documents/OpenBurnBar/SessionMirror/<provider>/…` (same layout as on disk under that root).
+- **Append safety:** mirroring never treats a missing local source path as an implicit delete. New or changed files are copied into the mirror and prior mirrored records remain until the user explicitly removes them from iCloud or a future explicit delete operation does so.
 - **UI:** **Settings → Account → iCloud session files** — toggle, status, **Set up guide** (iCloud sign-in check, privacy notes, size estimate, **Reveal in Finder**, **Mirror now**, and advanced Terminal examples for symlink-based relocation).
 - **Apple Developer:** Enable **iCloud** for the macOS app ID `com.openburnbar.app` with **iCloud Documents** and container `iCloud.com.openburnbar.app`, matching [AgentLens/Resources/OpenBurnBar.entitlements](AgentLens/Resources/OpenBurnBar.entitlements).
 - **Privacy:** mirrored files can contain paths, prompts, and code snippets. They are **not** uploaded to OpenBurnBar-operated Firebase storage by this feature (they sync through Apple’s iCloud like any other document).

@@ -37,7 +37,7 @@ android {
         applicationId = "com.openburnbar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
+        versionCode = 8
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -103,13 +103,15 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-functions-ktx")
     implementation("com.google.firebase:firebase-crashlytics-ktx")
-    implementation("com.google.firebase:firebase-analytics-ktx")
     // Auth
     implementation("com.google.android.gms:play-services-auth:21.3.0")
 
 
     // OkHttp + WebSocket for Hermes
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Vico 2.x — Compose-first chart library for Insights
+    implementation("com.patrykandpatrick.vico:compose-m3:2.1.2")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

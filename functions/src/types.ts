@@ -498,6 +498,14 @@ export interface QuotaBucket {
   /** Window descriptor (e.g. "daily", "monthly", "lifetime"). */
   window?: string;
 
+  /**
+   * When this bucket refills. Mac writes a Firestore `Timestamp`; legacy
+   * docs may still carry an ISO 8601 string at `meta.resetsAt` (handled by
+   * each client's compat path). Server-side adapters that don't compute a
+   * reset moment leave this undefined.
+   */
+  resetsAt?: import("firebase-admin/firestore").Timestamp | string;
+
   /** Bucket-specific metadata from the provider. */
   meta?: Record<string, unknown>;
 }
@@ -546,6 +554,66 @@ export interface QuotaSnapshotDoc {
   schemaVersion: number;
 
   /** ISO 8601 timestamp of last document update. */
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: model_benchmark_snapshots/{source_model_task_timestamp}
+// Firestore: model_benchmark_source_status/{source}
+// ---------------------------------------------------------------------------
+
+export type ModelBenchmarkSource =
+  | "artificial_analysis"
+  | "terminal_bench"
+  | "design_arena"
+  | "huggingface"
+  | "manual_fixture"
+  | "cached_fixture";
+
+export type ModelBenchmarkTaskCategory =
+  | "general"
+  | "coding"
+  | "terminal"
+  | "design"
+  | "agent"
+  | "analysis"
+  | "unknown";
+
+export type ModelBenchmarkFreshness =
+  | "fresh"
+  | "stale"
+  | "unavailable"
+  | "cached"
+  | "manual";
+
+export interface ModelBenchmarkSnapshotDoc {
+  id: string;
+  source: ModelBenchmarkSource;
+  sourceURL?: string;
+  attribution?: string;
+  fetchedAt: string;
+  modelID: string;
+  providerID?: ProviderID;
+  taskCategory: ModelBenchmarkTaskCategory;
+  score?: number;
+  rank?: number;
+  costSignal?: number;
+  latencySignal?: number;
+  contextWindowTokens?: number;
+  reliabilitySignal?: number;
+  confidence?: number;
+  freshness: ModelBenchmarkFreshness;
+  schemaVersion: number;
+  updatedAt: string;
+}
+
+export interface ModelBenchmarkSourceStatusDoc {
+  source: ModelBenchmarkSource;
+  status: "fresh" | "stale" | "unavailable" | "error";
+  fetchedAt?: string;
+  message: string;
+  attribution?: string;
+  schemaVersion: number;
   updatedAt: string;
 }
 
@@ -929,4 +997,786 @@ export interface EntitlementEventDoc {
   expireAt?: import("firebase-admin/firestore").Timestamp;
   decoded: Record<string, unknown>;
   schemaVersion: number;
+}
+
+// ---------------------------------------------------------------------------
+// Firestore: insight_canvases/{id}
+// Canonical schema for the Insights tab. The same shape is consumed by
+// iOS (Swift Codable) and Android (Kotlin @Serializable). When making
+// changes, update the schema version and run the android-firestore-worker
+// skill to keep Kotlin data classes aligned.
+// ---------------------------------------------------------------------------
+
+export interface InsightCanvasDoc {
+  id: string;
+  title: string;
+  summary?: string;
+  symbolName: string;
+  theme: InsightTheme;
+  widgets: InsightWidgetDoc[];
+  layout: InsightLayoutDoc;
+  filter: InsightFilterDoc;
+  modelTag?: InsightModelTagDoc;
+  schemaVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  lastRefreshedAt?: string;
+  origin: InsightCanvasOrigin;
+  sortIndex: number;
+}
+
+export type InsightCanvasOrigin =
+  | "userCreated"
+  | { template: { id: string } }
+  | { composed: { prompt: string } }
+  | { imported: { filename: string } };
+
+export type InsightTheme =
+  | "aurora"
+  | "ember"
+  | "mercury"
+  | "whimsy"
+  | "mono"
+  | "print";
+
+export type InsightWidgetKind =
+  | "kpiTile"
+  | "timeSeriesLine"
+  | "timeSeriesArea"
+  | "streamGraph"
+  | "barRanking"
+  | "donut"
+  | "treemap"
+  | "heatmap"
+  | "scatter"
+  | "sankey"
+  | "radar"
+  | "cohort"
+  | "funnel"
+  | "quotaPulse"
+  | "forecast"
+  | "anomalyTable"
+  | "narrative"
+  | "recommendation"
+  | "useCaseCluster"
+  | "agentFocusMatrix"
+  | "modelFocusMatrix"
+  | "drilldownList"
+  | "mermaid"
+  | "ascii"
+  | "composed"
+  | "error";
+
+export type InsightFreshness =
+  | "fresh"
+  | "stale"
+  | "computing"
+  | "error"
+  | "locked";
+
+export type InsightEgressTier =
+  | "localOnly"
+  | "userKey"
+  | "userRelay"
+  | "hosted";
+
+export interface InsightWidgetDoc {
+  id: string;
+  kind: InsightWidgetKind;
+  title: string;
+  subtitle?: string;
+  spec: InsightWidgetSpecDoc;
+  dataBinding: InsightDataBindingDoc;
+  data?: InsightWidgetDataDoc;
+  filter?: InsightFilterDoc;
+  freshness: InsightFreshness;
+  modelTag?: InsightModelTagDoc;
+  lockedAt?: string;
+  lastComputedAt?: string;
+  schemaVersion: number;
+  rationale?: string;
+}
+
+export type InsightWidgetSpecDoc =
+  | { kpiTile: InsightKPITileSpecDoc }
+  | { timeSeries: InsightTimeSeriesSpecDoc }
+  | { ranking: InsightRankingSpecDoc }
+  | { distribution: InsightDistributionSpecDoc }
+  | { heatmap: InsightHeatmapSpecDoc }
+  | { scatter: InsightScatterSpecDoc }
+  | { sankey: InsightSankeySpecDoc }
+  | { radar: InsightRadarSpecDoc }
+  | { cohort: InsightCohortSpecDoc }
+  | { funnel: InsightFunnelSpecDoc }
+  | { quotaPulse: InsightQuotaPulseSpecDoc }
+  | { forecast: InsightForecastSpecDoc }
+  | { anomalyTable: InsightAnomalyTableSpecDoc }
+  | { narrative: InsightNarrativeSpecDoc }
+  | { recommendation: InsightRecommendationSpecDoc }
+  | { useCaseCluster: InsightUseCaseClusterSpecDoc }
+  | { agentFocusMatrix: InsightFocusMatrixSpecDoc }
+  | { modelFocusMatrix: InsightFocusMatrixSpecDoc }
+  | { drilldownList: InsightDrilldownSpecDoc }
+  | { mermaid: InsightMermaidSpecDoc }
+  | { ascii: InsightASCIISpecDoc }
+  | { composed: InsightComposedSpecDoc }
+  | { error: InsightErrorSpecDoc };
+
+export interface InsightKPITileSpecDoc {
+  metricLabel: string;
+  compareWindow: "none" | "previousPeriod" | "weekOverWeek" | "monthOverMonth" | "yearOverYear";
+  emphasizeDelta: boolean;
+}
+
+export interface InsightTimeSeriesSpecDoc {
+  style: "line" | "area" | "stackedArea" | "stream" | "bar" | "stackedBar";
+  smoothing: "none" | "monotone" | "rolling7";
+  showAnnotations: boolean;
+}
+
+export interface InsightRankingSpecDoc {
+  orientation: "horizontal" | "vertical";
+  showValues: boolean;
+}
+
+export interface InsightDistributionSpecDoc {
+  style: "donut" | "pie" | "treemap";
+  showLegend: boolean;
+}
+
+export interface InsightHeatmapSpecDoc {
+  palette: "ember" | "mercury" | "whimsy" | "mono";
+}
+
+export interface InsightScatterSpecDoc {
+  logX: boolean;
+  logY: boolean;
+  bubble: boolean;
+}
+
+export interface InsightSankeySpecDoc {}
+export interface InsightRadarSpecDoc {
+  fill: boolean;
+}
+
+export interface InsightCohortSpecDoc {}
+export interface InsightFunnelSpecDoc {}
+
+export interface InsightQuotaPulseSpecDoc {
+  compact: boolean;
+}
+
+export interface InsightForecastSpecDoc {
+  showBands: boolean;
+}
+
+export interface InsightAnomalyTableSpecDoc {
+  minScore: number;
+}
+
+export interface InsightNarrativeSpecDoc {
+  emphasize: "headlineOnly" | "balanced" | "deepDive";
+}
+
+export interface InsightRecommendationSpecDoc {
+  category: "efficiency" | "quality" | "cost" | "quota" | "risk" | "learning";
+}
+
+export interface InsightUseCaseClusterSpecDoc {
+  maxClusters: number;
+}
+
+export interface InsightFocusMatrixSpecDoc {
+  palette: "ember" | "mercury" | "whimsy" | "mono";
+}
+
+export interface InsightDrilldownSpecDoc {
+  groupBy?: InsightDataBindingDimension;
+}
+
+export interface InsightMermaidSpecDoc {}
+export interface InsightASCIISpecDoc {}
+
+export interface InsightComposedSpecDoc {
+  children: InsightWidgetSpecDoc[];
+}
+
+export interface InsightErrorSpecDoc {
+  message: string;
+}
+
+export type InsightDataBindingDoc =
+  | { kpi: { metric: string; window: InsightTimeWindowDoc } }
+  | { timeSeries: { metric: string; dimension?: InsightDataBindingDimension; window: InsightTimeWindowDoc } }
+  | { ranking: { metric: string; dimension: InsightDataBindingDimension; limit: number; window: InsightTimeWindowDoc } }
+  | { distribution: { metric: string; dimension: InsightDataBindingDimension; window: InsightTimeWindowDoc } }
+  | { heatmap: { metric: string; window: InsightTimeWindowDoc } }
+  | { scatter: { xMetric: string; yMetric: string; dimension: InsightDataBindingDimension; window: InsightTimeWindowDoc } }
+  | { sankey: { source: InsightDataBindingDimension; mid?: InsightDataBindingDimension; target: InsightDataBindingDimension; window: InsightTimeWindowDoc } }
+  | { radar: { target: InsightRadarTargetDoc; window: InsightTimeWindowDoc } }
+  | { cohort: { window: InsightTimeWindowDoc } }
+  | { funnel: { stages: string[]; window: InsightTimeWindowDoc } }
+  | { quota: { providerKey?: string } }
+  | { forecast: { metric: string; horizonDays: number } }
+  | { anomaly: { window: InsightTimeWindowDoc } }
+  | { useCaseClusters: { window: InsightTimeWindowDoc } }
+  | { agentFocusMatrix: { window: InsightTimeWindowDoc } }
+  | { modelFocusMatrix: { window: InsightTimeWindowDoc } }
+  | { drilldown: { limit: number } }
+  | { narrative: InsightWidgetDataNarrativeDoc }
+  | { recommendation: InsightWidgetDataRecommendationDoc }
+  | { mermaid: { source: string } }
+  | { ascii: InsightWidgetDataASCIICardDoc }
+  | { composed: InsightDataBindingDoc[] };
+
+export type InsightDataBindingDimension =
+  | "provider"
+  | "model"
+  | "project"
+  | "device"
+  | "session"
+  | "file"
+  | "day"
+  | "hourOfDay"
+  | "dayOfWeek"
+  | "focus"
+  | "useCase";
+
+export type InsightRadarTargetDoc =
+  | { agent: string }
+  | { model: string }
+  | "allAgents"
+  | "allModels";
+
+export type InsightTimeWindowDoc =
+  | "today"
+  | "last24h"
+  | "last7d"
+  | "last30d"
+  | "last90d"
+  | "last365d"
+  | "allTime"
+  | { custom: { start: string; end: string } };
+
+export interface InsightLayoutDoc {
+  columnCount: number;
+  rowHeight: number;
+  gap: number;
+  placements: Record<string, InsightCellPlacementDoc>;
+  revision: number;
+}
+
+export interface InsightCellPlacementDoc {
+  column: number;
+  row: number;
+  colSpan: number;
+  rowSpan: number;
+}
+
+export interface InsightFilterDoc {
+  window: InsightTimeWindowDoc;
+  providers: string[];
+  models: string[];
+  projects: string[];
+  focuses: string[];
+  useCases: string[];
+  minCostUSD?: number;
+  maxCostUSD?: number;
+}
+
+export interface InsightModelTagDoc {
+  providerKey: string;
+  modelID: string;
+  displayName: string;
+  egressTier: InsightEgressTier;
+  stampedAt: string;
+}
+
+export interface InsightCitationDoc {
+  id: string;
+  kind: InsightCitationKindDoc;
+  label: string;
+}
+
+export type InsightCitationKindDoc =
+  | { session: { id: string; provider?: string } }
+  | { model: { id: string } }
+  | { agent: { provider: string } }
+  | { project: { name: string } }
+  | { day: { date: string } }
+  | { anomaly: { id: string } }
+  | { query: { text: string } }
+  | { quota: { provider: string; bucket: string } };
+
+export interface InsightTaxonomyDoc {
+  focuses: string[];
+  useCases: string[];
+}
+
+export type InsightValueFormat =
+  | "currency"
+  | "tokens"
+  | "percent"
+  | "duration"
+  | "count"
+  | "raw";
+
+// InsightWidgetDataDoc — the full union of widget data shapes.
+// Each variant matches InsightWidgetKind one-to-one.
+export type InsightWidgetDataDoc =
+  | { kpi: InsightWidgetDataKPIDoc }
+  | { timeSeries: InsightWidgetDataTimeSeriesDoc }
+  | { ranking: InsightWidgetDataRankingDoc }
+  | { distribution: InsightWidgetDataDistributionDoc }
+  | { heatmap: InsightWidgetDataHeatmapDoc }
+  | { scatter: InsightWidgetDataScatterDoc }
+  | { sankey: InsightWidgetDataSankeyDoc }
+  | { radar: InsightWidgetDataRadarDoc }
+  | { cohort: InsightWidgetDataCohortDoc }
+  | { funnel: InsightWidgetDataFunnelDoc }
+  | { quota: InsightWidgetDataQuotaStateDoc }
+  | { forecast: InsightWidgetDataForecastDoc }
+  | { anomaly: InsightWidgetDataAnomalyTableDoc }
+  | { narrative: InsightWidgetDataNarrativeDoc }
+  | { recommendation: InsightWidgetDataRecommendationDoc }
+  | { useCaseCluster: InsightWidgetDataUseCaseClusterDoc }
+  | { focusMatrix: InsightWidgetDataFocusMatrixDoc }
+  | { drilldown: InsightWidgetDataDrilldownDoc }
+  | { mermaid: string }
+  | { ascii: InsightWidgetDataASCIICardDoc }
+  | { composed: InsightWidgetDataDoc[] }
+  | { empty: { reason: string } }
+  | { error: { message: string } };
+
+export interface InsightWidgetDataKPIDoc {
+  metricLabel: string;
+  value: number;
+  valueFormat: InsightValueFormat;
+  delta?: number;
+  deltaIsPercent: boolean;
+  sparkline: number[];
+  contextLabel?: string;
+}
+
+export interface InsightWidgetDataTimeSeriesDoc {
+  series: InsightTimeSeriesSeriesDoc[];
+  xAxisLabel: string;
+  yAxisLabel: string;
+  yFormat: InsightValueFormat;
+  annotations: InsightTimeSeriesAnnotationDoc[];
+}
+
+export interface InsightTimeSeriesSeriesDoc {
+  id: string;
+  name: string;
+  colorHex?: string;
+  points: InsightTimeSeriesPointDoc[];
+}
+
+export interface InsightTimeSeriesPointDoc {
+  date: string;
+  value: number;
+}
+
+export interface InsightTimeSeriesAnnotationDoc {
+  date: string;
+  label: string;
+  tone: "positive" | "neutral" | "warning" | "negative";
+}
+
+export interface InsightWidgetDataRankingDoc {
+  rows: InsightRankingRowDoc[];
+  valueFormat: InsightValueFormat;
+  dimensionLabel: string;
+}
+
+export interface InsightRankingRowDoc {
+  id: string;
+  label: string;
+  value: number;
+  secondaryLabel?: string;
+  colorHex?: string;
+}
+
+export interface InsightWidgetDataDistributionDoc {
+  slices: InsightDistributionSliceDoc[];
+  valueFormat: InsightValueFormat;
+  total: number;
+}
+
+export interface InsightDistributionSliceDoc {
+  id: string;
+  label: string;
+  value: number;
+  colorHex?: string;
+}
+
+export interface InsightWidgetDataHeatmapDoc {
+  rowLabels: string[];
+  columnLabels: string[];
+  cells: number[][];
+  valueFormat: InsightValueFormat;
+}
+
+export interface InsightWidgetDataScatterDoc {
+  points: InsightScatterPointDoc[];
+  xAxisLabel: string;
+  yAxisLabel: string;
+  xFormat: InsightValueFormat;
+  yFormat: InsightValueFormat;
+}
+
+export interface InsightScatterPointDoc {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  size: number;
+  colorHex?: string;
+}
+
+export interface InsightWidgetDataSankeyDoc {
+  nodes: InsightSankeyNodeDoc[];
+  links: InsightSankeyLinkDoc[];
+}
+
+export interface InsightSankeyNodeDoc {
+  id: string;
+  label: string;
+  colorHex?: string;
+}
+
+export interface InsightSankeyLinkDoc {
+  source: string;
+  target: string;
+  value: number;
+}
+
+export interface InsightWidgetDataRadarDoc {
+  axes: string[];
+  series: InsightRadarSeriesDoc[];
+}
+
+export interface InsightRadarSeriesDoc {
+  id: string;
+  name: string;
+  values: number[];
+  colorHex?: string;
+}
+
+export interface InsightWidgetDataCohortDoc {
+  cohortLabels: string[];
+  periodLabels: string[];
+  cells: (number | null)[][];
+}
+
+export interface InsightWidgetDataFunnelDoc {
+  steps: InsightFunnelStepDoc[];
+}
+
+export interface InsightFunnelStepDoc {
+  id: string;
+  label: string;
+  count: number;
+}
+
+export interface InsightWidgetDataQuotaStateDoc {
+  buckets: InsightQuotaBucketDoc[];
+}
+
+export interface InsightQuotaBucketDoc {
+  id: string;
+  providerLabel: string;
+  bucketName: string;
+  used: number;
+  limit?: number;
+  resetsAt?: string;
+  symbolName: string;
+  colorHex?: string;
+}
+
+export interface InsightWidgetDataForecastDoc {
+  actual: InsightTimeSeriesPointDoc[];
+  forecast: InsightTimeSeriesPointDoc[];
+  lowerBound: InsightTimeSeriesPointDoc[];
+  upperBound: InsightTimeSeriesPointDoc[];
+  xAxisLabel: string;
+  yAxisLabel: string;
+  yFormat: InsightValueFormat;
+  summary?: string;
+}
+
+export interface InsightWidgetDataAnomalyTableDoc {
+  rows: InsightAnomalyRowDoc[];
+}
+
+export interface InsightAnomalyRowDoc {
+  id: string;
+  occurredAt: string;
+  label: string;
+  detail?: string;
+  score: number;
+  citations: InsightCitationDoc[];
+}
+
+export interface InsightWidgetDataNarrativeDoc {
+  headline: string;
+  body: string;
+  bullets: string[];
+  tone: "positive" | "neutral" | "warning" | "negative";
+  citations: InsightCitationDoc[];
+  sparkline: number[];
+}
+
+export interface InsightWidgetDataRecommendationDoc {
+  headline: string;
+  rationale: string;
+  action: string;
+  estimatedImpact?: string;
+  confidence: "low" | "medium" | "high";
+  citations: InsightCitationDoc[];
+}
+
+export interface InsightWidgetDataUseCaseClusterDoc {
+  clusters: InsightUseCaseClusterDoc[];
+}
+
+export interface InsightUseCaseClusterDoc {
+  id: string;
+  label: string;
+  size: number;
+  exampleSessionIDs: string[];
+  colorHex?: string;
+}
+
+export interface InsightWidgetDataFocusMatrixDoc {
+  rowLabels: string[];
+  columnLabels: string[];
+  cells: number[][];
+}
+
+export interface InsightWidgetDataDrilldownDoc {
+  rows: InsightDrilldownRowDoc[];
+}
+
+export interface InsightDrilldownRowDoc {
+  id: string;
+  title: string;
+  subtitle?: string;
+  occurredAt: string;
+  costUSD?: number;
+  tokens?: number;
+  citation: InsightCitationDoc;
+}
+
+export interface InsightWidgetDataASCIICardDoc {
+  headline: string;
+  monoBody: string;
+  caption?: string;
+}
+
+export interface InsightDigestDoc {
+  contentHash: string;
+  generatedAt: string;
+  windowStart: string;
+  windowEnd: string;
+  rowCount: number;
+  totals: InsightDigestTotalsDoc;
+  providers: InsightDigestProviderSnapshotDoc[];
+  models: InsightDigestModelSnapshotDoc[];
+  projects: InsightDigestProjectSnapshotDoc[];
+  devices: InsightDigestDeviceSnapshotDoc[];
+  daily: InsightDigestDailyPointDoc[];
+  hourly: number[];
+  useCaseHistogram: InsightDigestUseCaseBinDoc[];
+  agentFocusSignals: InsightDigestAgentFocusSignalDoc[];
+  modelFocusSignals: InsightDigestModelFocusSignalDoc[];
+  quotaSnapshots: InsightDigestQuotaSnapshotDoc[];
+  operatingActions: InsightDigestActionDoc[];
+  summaryRunsLog: InsightDigestSummaryRunDoc[];
+  anomalies: InsightDigestAnomalyDoc[];
+  glossary: InsightTaxonomyDoc;
+}
+
+export interface InsightDigestTotalsDoc {
+  costUSD: number;
+  totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  sessionCount: number;
+}
+
+export interface InsightDigestProviderSnapshotDoc {
+  id: string;
+  displayName: string;
+  costUSD: number;
+  totalTokens: number;
+  sessionCount: number;
+  topModels: string[];
+  topInferredTaskTitles: string[];
+  topKeyTools: string[];
+}
+
+export interface InsightDigestModelSnapshotDoc {
+  id: string;
+  providerID: string;
+  costUSD: number;
+  totalTokens: number;
+  sessionCount: number;
+  avgCostPerSession: number;
+  cacheHitRate: number;
+  topInferredTaskTitles: string[];
+  topProjects: string[];
+}
+
+export interface InsightDigestProjectSnapshotDoc {
+  id: string;
+  displayName: string;
+  costUSD: number;
+  totalTokens: number;
+  sessionCount: number;
+}
+
+export interface InsightDigestDeviceSnapshotDoc {
+  id: string;
+  displayName: string;
+  costUSD: number;
+  sessionCount: number;
+}
+
+export interface InsightDigestDailyPointDoc {
+  day: string;
+  costUSD: number;
+  totalTokens: number;
+  sessionCount: number;
+  perProvider: Record<string, number>;
+}
+
+export interface InsightDigestUseCaseBinDoc {
+  id: string;
+  count: number;
+  costUSD: number;
+}
+
+export interface InsightDigestAgentFocusSignalDoc {
+  agentID: string;
+  focus: string;
+  weight: number;
+}
+
+export interface InsightDigestModelFocusSignalDoc {
+  modelID: string;
+  focus: string;
+  weight: number;
+}
+
+export interface InsightDigestQuotaSnapshotDoc {
+  id: string;
+  providerID: string;
+  bucketName: string;
+  used: number;
+  limit?: number;
+  resetsAt?: string;
+}
+
+export interface InsightDigestActionDoc {
+  id: string;
+  kind: string;
+  projectID?: string;
+  occurredAt: string;
+  summary: string;
+}
+
+export interface InsightDigestSummaryRunDoc {
+  id: string;
+  providerID: string;
+  modelID: string;
+  costUSD: number;
+  ranAt: string;
+}
+
+export interface InsightDigestAnomalyDoc {
+  id: string;
+  occurredAt: string;
+  label: string;
+  score: number;
+  detail?: string;
+}
+
+export interface InsightTokenUsageDoc {
+  providerKey: string;
+  modelID: string;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  estimatedCostUSD: number;
+  startedAt: string;
+  completedAt: string;
+}
+
+export interface InsightInvestigateRequestDoc {
+  prompt: string;
+  digest: InsightDigestDoc;
+  canvas?: InsightCanvasDoc;
+  widget?: InsightWidgetDoc;
+  modelTag: InsightModelTagDoc;
+  capabilityTier: "tier1" | "tier2" | "tier3";
+  maxNewWidgets: number;
+  allowToolCalls: boolean;
+  instruction: "composeCanvas" | "refineCanvas" | "refreshNarratives" | "refineWidget" | "explainBriefly";
+}
+
+export type InsightInvestigateEventDoc =
+  | { thinkingDelta: string }
+  | { partialCanvas: InsightCanvasDoc }
+  | { widgetReady: InsightWidgetDoc }
+  | { toolCall: InsightToolCallDoc }
+  | { toolResult: InsightToolResultDoc }
+  | { usage: InsightTokenUsageDoc }
+  | { finalCanvas: InsightCanvasDoc };
+
+export interface InsightToolCallDoc {
+  id: string;
+  name: string;
+  arguments: InsightToolArgumentsDoc;
+}
+
+export interface InsightToolResultDoc {
+  id: string;
+  toolName: string;
+  isError: boolean;
+  summary: string;
+  payload: InsightToolResultPayloadDoc;
+}
+
+export type InsightToolArgumentsDoc =
+  | { drilldownSearch: { query: string; filter?: InsightFilterDoc } }
+  | { drilldownSession: { sessionID: string } }
+  | { agentUsage: { agent: string; window: InsightTimeWindowDoc } }
+  | { modelUsage: { modelID: string; window: InsightTimeWindowDoc } }
+  | { operatingActions: { window: InsightTimeWindowDoc } }
+  | { quotaSnapshot: { providerKey?: string } }
+  | { anomalyDetail: { anomalyID: string } }
+  | "listFocuses"
+  | "listUseCases";
+
+export type InsightToolResultPayloadDoc =
+  | { sessions: InsightDrilldownRowDoc[] }
+  | { timeSeries: InsightWidgetDataTimeSeriesDoc }
+  | { ranking: InsightWidgetDataRankingDoc }
+  | { actions: InsightDigestActionDoc[] }
+  | { quota: InsightWidgetDataQuotaStateDoc }
+  | { anomaly: InsightAnomalyRowDoc }
+  | { vocabulary: string[] }
+  | { error: string };
+
+export interface InsightCapabilityTierDoc {
+  tier: number;
+  structuredOutput: boolean;
+  maxTokens: number;
 }

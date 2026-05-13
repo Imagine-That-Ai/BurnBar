@@ -34,6 +34,7 @@ import com.openburnbar.ui.hermes.HermesView
 import com.openburnbar.ui.pulse.PulseView
 import com.openburnbar.ui.streams.StreamsView
 import com.openburnbar.ui.theme.AuroraSpacing
+import com.openburnbar.ui.insights.InsightsScreen
 import com.openburnbar.ui.you.YouView
 
 /**
@@ -44,17 +45,18 @@ sealed class BurnBarTab(
     val label: String,
     val destination: AuroraNavDestination
 ) {
-    object PULSE   : BurnBarTab("pulse",   "Pulse",   AuroraNavDestination.PULSE)
-    object BURN    : BurnBarTab("burn",    "Burn",    AuroraNavDestination.BURN)
-    object STREAMS : BurnBarTab("streams", "Streams", AuroraNavDestination.STREAMS)
+    object PULSE    : BurnBarTab("pulse",    "Pulse",    AuroraNavDestination.PULSE)
+    object BURN     : BurnBarTab("burn",     "Burn",     AuroraNavDestination.BURN)
+    object INSIGHTS : BurnBarTab("insights", "Insights", AuroraNavDestination.INSIGHTS)
+    object STREAMS  : BurnBarTab("streams",  "Streams",  AuroraNavDestination.STREAMS)
     // Plan 2: tab renamed to "Assistants" — the route stays `hermes` so deep
     // links (`burnbar://hermes`, `burnbar://chat`) and bookmarks continue to
     // resolve to the same destination.
-    object HERMES  : BurnBarTab("hermes",  "Assistants",  AuroraNavDestination.HERMES)
-    object YOU     : BurnBarTab("you",     "You",     AuroraNavDestination.YOU)
+    object HERMES   : BurnBarTab("hermes",   "Assistants",  AuroraNavDestination.HERMES)
+    object YOU      : BurnBarTab("you",      "You",      AuroraNavDestination.YOU)
 
     companion object {
-        val all: List<BurnBarTab> = listOf(PULSE, BURN, STREAMS, HERMES, YOU)
+        val all: List<BurnBarTab> = listOf(PULSE, BURN, INSIGHTS, STREAMS, HERMES, YOU)
         fun fromRoute(route: String?): BurnBarTab? = all.firstOrNull { it.route == route }
     }
 }
@@ -231,6 +233,10 @@ private fun BurnBarContent(
             BurnBarTab.BURN.route,
             deepLinks = listOf(navDeepLink { uriPattern = "burnbar://burn" })
         ) { BurnView() }
+        composable(
+            BurnBarTab.INSIGHTS.route,
+            deepLinks = listOf(navDeepLink { uriPattern = "burnbar://insights" })
+        ) { InsightsScreen() }
         composable(
             BurnBarTab.STREAMS.route,
             deepLinks = listOf(

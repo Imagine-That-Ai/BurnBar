@@ -72,7 +72,7 @@ function buildConfig(): EnvConfig {
     hostedQuotaProductID:
       process.env.HOSTED_QUOTA_PRODUCT_ID ??
       cfg.openburnbar?.hosted_quota_product_id ??
-      "com.openburnbar.hostedQuotaSync.monthly",
+      "com.openburnbar.hostedQuotaSync.cloud.monthly",
     hostedQuotaRunnerURL:
       process.env.HOSTED_QUOTA_RUNNER_URL ??
       cfg.openburnbar?.hosted_quota_runner_url ??

@@ -58,7 +58,7 @@ typealias HostedQuotaAppStoreSync = @MainActor () async throws -> Void
 @Observable
 @MainActor
 final class HostedQuotaSubscriptionStore {
-    static let productID = "com.openburnbar.hostedQuotaSync.monthly"
+    static let productID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
 
     private let functions: any HostedQuotaEntitlementServicing
     private let purchaseProduct: HostedQuotaProductPurchaseExecutor

@@ -2,10 +2,15 @@ import SwiftUI
 import StoreKit
 import OpenBurnBarCore
 
+private enum CloudStoreLegalURLs {
+    static let privacy = URL(string: "https://openburnbar.com/legal/privacy-policy")!
+    static let terms = URL(string: "https://openburnbar.com/legal/terms")!
+}
+
 // MARK: - Cloud Store View
 //
 // Premium paywall + member home for the OpenBurnBar Cloud subscription
-// (Apple-verified `com.openburnbar.hostedQuotaSync.monthly`). Branded as
+// (Apple-verified `com.openburnbar.hostedQuotaSync.cloud.monthly`). Branded as
 // "OpenBurnBar Cloud" in the chrome with the literal StoreKit product name
 // shown small near the plan tiles for receipt parity.
 //
@@ -185,6 +190,9 @@ private struct CloudStorePlanPicker: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, MobileTheme.Spacing.sm)
                 .fixedSize(horizontal: false, vertical: true)
+
+            CloudStoreLegalLinks()
+                .padding(.top, 2)
         }
     }
 }
@@ -651,8 +659,8 @@ private struct CloudStoreTrustCard: View {
                 }
             }
 
-            if let url = URL(string: "https://openburnbar.com/cloud") {
-                Link(destination: url) {
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
+                Link(destination: URL(string: "https://openburnbar.com/cloud")!) {
                     HStack(spacing: 6) {
                         Text("Read the Hosted Quota Sync technical doc")
                         Image(systemName: "arrow.up.right.square.fill")
@@ -660,7 +668,7 @@ private struct CloudStoreTrustCard: View {
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.accent)
                 }
-                .padding(.top, 2)
+                CloudStoreLegalLinks(alignment: .leading)
             }
         }
         .padding(MobileTheme.Spacing.lg)
@@ -683,6 +691,7 @@ private struct CloudStoreActionBar: View {
 
     var body: some View {
         VStack(spacing: MobileTheme.Spacing.sm) {
+            CloudStoreLegalLinks()
             subscribeButton
             Button {
                 Task { await store.restorePurchases() }
@@ -742,6 +751,30 @@ private struct CloudStoreActionBar: View {
         }
         .buttonStyle(.plain)
         .disabled(store.isLoading || store.product == nil)
+    }
+}
+
+private struct CloudStoreLegalLinks: View {
+    enum AlignmentMode: Equatable {
+        case center
+        case leading
+    }
+
+    var alignment: AlignmentMode = .center
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Link("Privacy Policy", destination: CloudStoreLegalURLs.privacy)
+                .accessibilityIdentifier("cloudStore.privacyPolicyLink")
+            Text("•")
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+            Link("Terms of Use", destination: CloudStoreLegalURLs.terms)
+                .accessibilityIdentifier("cloudStore.termsOfUseLink")
+        }
+        .font(MobileTheme.Typography.tiny)
+        .foregroundStyle(MobileTheme.Colors.accent)
+        .frame(maxWidth: .infinity, alignment: alignment == .center ? .center : .leading)
+        .accessibilityElement(children: .contain)
     }
 }
 

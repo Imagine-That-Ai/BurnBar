@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import os
 import OpenBurnBarCore
@@ -579,6 +580,7 @@ final class SmartHubBridgeController {
                 percent: percent,
                 headlineValue: bridgeBucketHeadline(bucket),
                 subLabel: bridgeBucketSubLabel(bucket),
+                resetsLabel: bridgeBucketResetsLabel(bucket),
                 tone: tone(percent)
             )
         }
@@ -611,15 +613,12 @@ final class SmartHubBridgeController {
         return ""
     }
 
-    /// Sub-label rendered under each bar (e.g. "67% left",
-    /// "resets May 8, 3:35 AM"). Prefers the reset timestamp because that's
-    /// the actionable detail; falls back to remaining headroom.
+    /// Sub-label rendered under each bar — now always the headroom
+    /// summary ("67% left", "$0.00 left"). The reset moment got promoted
+    /// to its own dedicated row (see `bridgeBucketResetsLabel`) because
+    /// folding it into the sub-label cost too much glance-readability on
+    /// the Nest Hub.
     private static func bridgeBucketSubLabel(_ bucket: ProviderQuotaBucket) -> String {
-        if let resetsAt = bucket.resetsAt {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "MMM d, h:mm a"
-            return "resets \(formatter.string(from: resetsAt))"
-        }
         if let remaining = bucket.remainingPercent {
             return "\(Int(remaining.rounded()))% left"
         }
@@ -627,6 +626,15 @@ final class SmartHubBridgeController {
             return "$\(String(format: "%.2f", remainingValue)) left"
         }
         return ""
+    }
+
+    /// Combined relative+absolute reset string ("in 2h 14m · May 8, 3:35
+    /// AM") rendered as its own row beneath each bucket bar on the Nest
+    /// Hub. Empty string when the bucket has no `resetsAt` so the page
+    /// can drop the row entirely.
+    private static func bridgeBucketResetsLabel(_ bucket: ProviderQuotaBucket) -> String {
+        guard let pair = bucket.resetsAtDisplay else { return "" }
+        return "Resets \(pair.relative) · \(pair.absolute)"
     }
 
     /// Abbreviated number formatter that matches the visual style of the
@@ -809,18 +817,84 @@ final class SmartHubBridgeController {
         }
     }
 
-    /// Inline SVG monogram used as the provider logo on the Hub. We embed
-    /// it directly in the JSON (vs serving an asset endpoint) so the page
-    /// renders without extra HTTP round-trips — the Nest Hub's DashCast
-    /// surface caches the dashboard aggressively but not provider assets.
-    /// The monogram is the provider's initial in a rounded square; not as
-    /// pretty as full brand marks, but legal-safe and instantly placeable.
+    /// Inline HTML used as the provider logo on the Hub. We embed the
+    /// bytes directly in the JSON (vs serving an asset endpoint) so the
+    /// page renders without extra HTTP round-trips — the Nest Hub's
+    /// DashCast surface caches the dashboard aggressively but not provider
+    /// assets, so any external `<img src=…>` round-trip can fail silently.
+    ///
+    /// Preferred path: load the brand logo `*.imageset` already bundled
+    /// with the app (e.g. `ClaudeCodeLogo`), render it to a 2x PNG, and
+    /// inline as a `data:` URI. Falls back to the colored-monogram SVG
+    /// for any provider that has no bundled asset.
     private static func logoSVG(for provider: AgentProvider) -> String {
+        if let assetName = logoAssetName(for: provider),
+           let dataURI = bundledLogoDataURI(named: assetName) {
+            return "<img src='\(dataURI)' alt='' draggable='false' style='width:100%;height:100%;object-fit:contain;'/>"
+        }
+        return monogramSVG(for: provider)
+    }
+
+    private static func monogramSVG(for provider: AgentProvider) -> String {
         let initial = provider.displayName.first.map(String.init)?.uppercased() ?? "?"
         let hex = "#\(accentHex(for: provider))"
         return """
         <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40' aria-hidden='true'><rect width='40' height='40' rx='10' fill='\(hex)'/><text x='50%' y='54%' text-anchor='middle' font-family='-apple-system,SF Pro Rounded,system-ui,sans-serif' font-size='22' font-weight='700' fill='white' dominant-baseline='middle'>\(initial)</text></svg>
         """
+    }
+
+    /// Map an `AgentProvider` to the imageset name already shipped in
+    /// `AgentLens/Resources/Assets.xcassets/`. Returns `nil` for
+    /// providers that have no bundled brand asset so the caller falls
+    /// back to the monogram.
+    private static func logoAssetName(for provider: AgentProvider) -> String? {
+        switch provider {
+        case .factory:    return "FactoryLogo"
+        case .claudeCode: return "ClaudeCodeLogo"
+        case .copilot:    return "CopilotLogo"
+        case .aider:      return "AiderLogo"
+        case .cursor:     return "CursorLogo"
+        case .openAI:     return "OpenAILogo"
+        case .codex:      return "CodexLogo"
+        case .zai:        return "ZaiLogo"
+        case .minimax:    return "MiniMaxLogo"
+        case .kimi:       return "KimiLogo"
+        case .cline:      return "ClineLogo"
+        case .kiloCode:   return "KiloCodeLogo"
+        case .rooCode:    return "RooCodeLogo"
+        case .forgeDev:   return "ForgeLogo"
+        case .augment:    return "AugmentLogo"
+        case .hermes:     return "HermesLogo"
+        case .piAgent:    return nil
+        case .geminiCLI:  return "GeminiCLILogo"
+        case .goose:      return "GooseLogo"
+        case .openClaw:   return "OpenClawLogo"
+        case .ollama:     return "OllamaLogo"
+        case .windsurf:   return "WindsurfLogo"
+        case .warp:       return "WarpLogo"
+        }
+    }
+
+    /// One-per-process cache so we only rasterize each bundled logo once.
+    private static let logoDataURICache: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 64
+        return cache
+    }()
+
+    private static func bundledLogoDataURI(named name: String) -> String? {
+        let key = name as NSString
+        if let cached = logoDataURICache.object(forKey: key) {
+            return cached as String
+        }
+        guard let image = NSImage(named: NSImage.Name(name)),
+              let pngData = image.pngData(targetSize: NSSize(width: 80, height: 80))
+        else {
+            return nil
+        }
+        let dataURI = "data:image/png;base64," + pngData.base64EncodedString()
+        logoDataURICache.setObject(dataURI as NSString, forKey: key)
+        return dataURI
     }
 
     /// Pick the bucket whose rolling window most closely matches the
@@ -1036,5 +1110,41 @@ final class SmartHubBridgeController {
             }
         }
         return resolved
+    }
+}
+
+private extension NSImage {
+    /// Rasterize this image into PNG bytes at the requested pixel size.
+    /// Used by the SmartHub bridge to inline brand logos as `data:` URIs.
+    func pngData(targetSize: NSSize) -> Data? {
+        let width = Int(targetSize.width)
+        let height = Int(targetSize.height)
+        guard width > 0, height > 0 else { return nil }
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: width,
+            pixelsHigh: height,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bitmapFormat: [],
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return nil }
+        rep.size = targetSize
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        guard let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        NSGraphicsContext.current = ctx
+        ctx.imageInterpolation = .high
+        draw(
+            in: NSRect(origin: .zero, size: targetSize),
+            from: .zero,
+            operation: .copy,
+            fraction: 1.0
+        )
+        return rep.representation(using: .png, properties: [:])
     }
 }

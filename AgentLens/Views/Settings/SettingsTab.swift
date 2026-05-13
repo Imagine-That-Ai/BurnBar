@@ -8,6 +8,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case daemon
     case account
     case providers
+    case routingPools
     case alerts
     case notifications
     case devicesAndSync
@@ -22,6 +23,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .daemon: return "Daemon"
         case .account: return "Account"
         case .providers: return "Providers"
+        case .routingPools: return "Routing pools"
         case .alerts: return "Alerts"
         case .notifications: return "Notifications"
         case .devicesAndSync: return MacCopy.devicesAndSyncTitle
@@ -42,6 +44,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "Sign-in, subscription, account actions"
         case .providers:
             return "Routed plans, accounts, CLI auth, log sources"
+        case .routingPools:
+            return "Fire Hydrant pools, Claude Code + Codex wiring"
         case .alerts:
             return "Spend thresholds, daily digest"
         case .notifications:
@@ -61,6 +65,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .daemon: return "cpu.fill"
         case .account: return "person.crop.circle.fill"
         case .providers: return "externaldrive.connected.to.line.below"
+        case .routingPools: return "point.3.connected.trianglepath.dotted"
         case .alerts: return "bell.fill"
         case .notifications: return "bell.badge.fill"
         case .devicesAndSync: return "macbook.and.iphone"
@@ -75,6 +80,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .daemon: return DesignSystem.Colors.teal
         case .account: return DesignSystem.Colors.whimsy
         case .providers: return DesignSystem.Colors.ember
+        case .routingPools: return DesignSystem.Colors.hermesMercury
         case .alerts: return DesignSystem.Colors.blaze
         case .notifications: return DesignSystem.Colors.whimsy
         case .devicesAndSync: return DesignSystem.Colors.teal

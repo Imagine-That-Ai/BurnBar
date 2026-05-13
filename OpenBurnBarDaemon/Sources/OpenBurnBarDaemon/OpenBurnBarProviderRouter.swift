@@ -99,14 +99,61 @@ public struct BurnBarRankedRoute: Hashable, Sendable {
 public struct BurnBarRouteRankingResult: Hashable, Sendable {
     /// All candidate routes ranked by composite score (highest first).
     public let rankedRoutes: [BurnBarRankedRoute]
+    public let routerMode: ProviderRouterMode
+    public let taskCategory: ProviderRoutingTaskCategory
+    public let benchmarkStatus: ProviderModelBenchmarkStatus?
 
     /// The winning route (same as rankedRoutes.first?.route).
     public var winner: BurnBarProviderRoute? {
         rankedRoutes.first?.route
     }
 
-    public init(rankedRoutes: [BurnBarRankedRoute]) {
+    public init(
+        rankedRoutes: [BurnBarRankedRoute],
+        routerMode: ProviderRouterMode = .providerFamilyFailover,
+        taskCategory: ProviderRoutingTaskCategory = .unknown,
+        benchmarkStatus: ProviderModelBenchmarkStatus? = nil
+    ) {
         self.rankedRoutes = rankedRoutes
+        self.routerMode = routerMode
+        self.taskCategory = taskCategory
+        self.benchmarkStatus = benchmarkStatus
+    }
+}
+
+public actor BurnBarProviderRoutingDecisionEventStore {
+    private let fileURL: URL
+    private let encoder: JSONEncoder
+
+    public init(fileURL: URL = BurnBarDaemonPaths.defaultRoutingDecisionEventsURL) {
+        self.fileURL = fileURL
+        self.encoder = JSONEncoder()
+        self.encoder.dateEncodingStrategy = .iso8601
+        self.encoder.outputFormatting = [.sortedKeys]
+    }
+
+    public func append(_ event: ProviderRoutingDecisionEvent) {
+        do {
+            let directoryURL = fileURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(
+                at: directoryURL,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            let data = try encoder.encode(event)
+            let line = data + Data([0x0A])
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                let handle = try FileHandle(forWritingTo: fileURL)
+                try handle.seekToEnd()
+                try handle.write(contentsOf: line)
+                try handle.close()
+            } else {
+                try line.write(to: fileURL, options: .atomic)
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+            }
+        } catch {
+            // Routing must never fail because audit persistence failed.
+        }
     }
 }
 
@@ -122,6 +169,12 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
     public let resolvedModelID: String
     public let apiKey: String
     public let pricing: BurnBarModelPricing
+    /// Wire-format family this route serves. Determined by the upstream
+    /// provider's catalog declaration. The gateway enforces that an incoming
+    /// request only matches routes in the same family — Anthropic-shape
+    /// requests never get routed to OpenAI-compatible upstreams and vice
+    /// versa.
+    public let formatFamily: BurnBarProviderFormatFamily
 
     public init(
         providerID: String,
@@ -132,7 +185,8 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
         requestedModel: String,
         resolvedModelID: String,
         apiKey: String,
-        pricing: BurnBarModelPricing
+        pricing: BurnBarModelPricing,
+        formatFamily: BurnBarProviderFormatFamily = .openaiCompat
     ) {
         self.providerID = providerID
         self.providerDisplayName = providerDisplayName
@@ -143,6 +197,7 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
         self.resolvedModelID = resolvedModelID
         self.apiKey = apiKey
         self.pricing = pricing
+        self.formatFamily = formatFamily
     }
 }
 
@@ -172,19 +227,27 @@ public enum BurnBarProviderRouterError: Error, LocalizedError {
 public struct BurnBarProviderRouter: Sendable {
     private let configStore: BurnBarConfigStore
     private let logger: BurnBarDaemonLogger
+    private let routingEventStore: BurnBarProviderRoutingDecisionEventStore?
 
     public init(
         configStore: BurnBarConfigStore,
-        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "provider-router")
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "provider-router"),
+        routingEventStore: BurnBarProviderRoutingDecisionEventStore? = nil
     ) {
         self.configStore = configStore
         self.logger = logger
+        self.routingEventStore = routingEventStore
     }
 
     public func route(
         modelName: String,
         preferredProviderID: String? = nil,
-        excludedRouteKeys: Set<String> = []
+        excludedRouteKeys: Set<String> = [],
+        requestedFormatFamily: BurnBarProviderFormatFamily? = nil,
+        routerMode: ProviderRouterMode? = nil,
+        taskCategory: ProviderRoutingTaskCategory = .unknown,
+        benchmarkSnapshots: [ProviderModelBenchmarkSnapshot] = [],
+        benchmarkStatus: ProviderModelBenchmarkStatus? = nil
     ) async throws -> BurnBarProviderRoute {
         // Use scoreAndRankRoutes() to select the best route based on five-dimensional scoring:
         // capability, cost, latency, trust, and policy-fit. This ensures routing decisions
@@ -192,12 +255,19 @@ public struct BurnBarProviderRouter: Sendable {
         let ranking = try await scoreAndRankRoutes(
             modelName: modelName,
             preferredProviderID: preferredProviderID,
-            excludedRouteKeys: excludedRouteKeys
+            excludedRouteKeys: excludedRouteKeys,
+            requestedFormatFamily: requestedFormatFamily,
+            routerMode: routerMode,
+            taskCategory: taskCategory,
+            benchmarkSnapshots: benchmarkSnapshots,
+            benchmarkStatus: benchmarkStatus
         )
 
         guard let route = ranking.winner else {
             throw BurnBarProviderRouterError.unsupportedModel(modelName.trimmingCharacters(in: .whitespacesAndNewlines))
         }
+
+        await persistDecisionIfNeeded(ranking: ranking, modelName: modelName)
 
         if let slotID = route.credentialSlotID {
             do {
@@ -212,13 +282,21 @@ public struct BurnBarProviderRouter: Sendable {
     public func candidateRoutes(
         modelName: String,
         preferredProviderID: String? = nil,
-        excludedRouteKeys: Set<String> = []
+        excludedRouteKeys: Set<String> = [],
+        requestedFormatFamily: BurnBarProviderFormatFamily? = nil,
+        routerMode: ProviderRouterMode? = nil
     ) async throws -> [BurnBarProviderRoute] {
         let configurations = try await configStore.resolvedConfigurations()
+        let effectiveRouterMode = try await resolvedRouterMode(routerMode)
+        let effectivePreferredProviderID = preferredProviderID ?? preferredProviderForProviderFamilyMode(
+            modelName: modelName,
+            routerMode: effectiveRouterMode
+        )
         return try candidateRoutes(
             modelName: modelName,
-            preferredProviderID: preferredProviderID,
+            preferredProviderID: effectivePreferredProviderID,
             excludedRouteKeys: excludedRouteKeys,
+            requestedFormatFamily: requestedFormatFamily,
             configurations: configurations
         )
     }
@@ -227,6 +305,7 @@ public struct BurnBarProviderRouter: Sendable {
         modelName: String,
         preferredProviderID: String?,
         excludedRouteKeys: Set<String>,
+        requestedFormatFamily: BurnBarProviderFormatFamily?,
         configurations: [BurnBarResolvedProviderConfiguration]
     ) throws -> [BurnBarProviderRoute] {
         let trimmedModelName = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -256,11 +335,22 @@ public struct BurnBarProviderRouter: Sendable {
             scopedConfigurations = enabledConfigurations
         }
 
-        let routes = selectRoutes(
+        let allRoutes = selectRoutes(
             for: trimmedModelName,
             configurations: scopedConfigurations
         ).filter { route in
             !excludedRouteKeys.contains(routeKey(providerID: route.providerID, slotID: route.credentialSlotID))
+        }
+
+        // Format-family isolation: when the gateway request comes from an
+        // Anthropic-shape endpoint (/v1/messages) we only consider Anthropic
+        // family upstreams, and vice versa. This is the heart of "two
+        // highways" routing — same-format failover, never cross-format.
+        let routes: [BurnBarProviderRoute]
+        if let requestedFormatFamily {
+            routes = allRoutes.filter { $0.formatFamily == requestedFormatFamily }
+        } else {
+            routes = allRoutes
         }
 
         if let route = routes.first {
@@ -360,6 +450,8 @@ public struct BurnBarProviderRouter: Sendable {
                 continue
             }
 
+            let formatFamily = configuration.provider.formatFamily
+
             let now = Date()
             let activeSlots = configuration.credentialSlots.filter { resolvedSlot in
                 guard resolvedSlot.slot.isEnabled else { return false }
@@ -398,7 +490,8 @@ public struct BurnBarProviderRouter: Sendable {
                             requestedModel: modelName,
                             resolvedModelID: resolvedModel.id,
                             apiKey: key,
-                            pricing: resolvedModel.pricing
+                            pricing: resolvedModel.pricing,
+                            formatFamily: formatFamily
                         )
                     )
                 }
@@ -414,7 +507,8 @@ public struct BurnBarProviderRouter: Sendable {
                         requestedModel: modelName,
                         resolvedModelID: resolvedModel.id,
                         apiKey: apiKey,
-                        pricing: resolvedModel.pricing
+                        pricing: resolvedModel.pricing,
+                        formatFamily: formatFamily
                     )
                 )
             }
@@ -488,6 +582,101 @@ public struct BurnBarProviderRouter: Sendable {
         }
         return nil
     }
+
+    private func resolvedRouterMode(_ requested: ProviderRouterMode?) async throws -> ProviderRouterMode {
+        if let requested { return requested }
+        return try await configStore.snapshot().routerMode
+    }
+
+    private func preferredProviderForProviderFamilyMode(
+        modelName: String,
+        routerMode: ProviderRouterMode
+    ) -> String? {
+        guard routerMode == .providerFamilyFailover else { return nil }
+        return configStore.catalogSupport.catalog.vendorForModel(named: modelName)?.id
+    }
+
+    public func persistDecisionIfNeeded(
+        ranking: BurnBarRouteRankingResult,
+        modelName: String
+    ) async {
+        guard let routingEventStore else { return }
+        let event = routingDecisionEvent(ranking: ranking, modelName: modelName)
+        await routingEventStore.append(event)
+    }
+
+    public func routingDecisionEvent(
+        ranking: BurnBarRouteRankingResult,
+        modelName: String,
+        now: Date = Date()
+    ) -> ProviderRoutingDecisionEvent {
+        let selected = ranking.rankedRoutes.first.map { candidate(from: $0.route) }
+        let nextFallback = ranking.rankedRoutes.dropFirst().first.map { candidate(from: $0.route) }
+        let rejected = ranking.rankedRoutes.dropFirst().map { rankedRoute in
+            ProviderRoutingRejectedAlternative(
+                providerID: ProviderID(rawValue: rankedRoute.route.providerID),
+                accountID: rankedRoute.route.credentialSlotID ?? "legacy",
+                accountLabel: rankedRoute.route.credentialSlotLabel ?? rankedRoute.route.providerDisplayName,
+                reason: "Lower score than selected route"
+            )
+        }
+        let reason: String
+        switch (selected, nextFallback) {
+        case (.some(let selected), .some(let next)):
+            reason = "\(selected.accountLabel) is active; \(next.accountLabel) is next fallback."
+        case (.some(let selected), .none):
+            reason = "\(selected.accountLabel) is active."
+        case (.none, _):
+            reason = "No eligible route is available."
+        }
+        return ProviderRoutingDecisionEvent(
+            occurredAt: now,
+            modelID: modelName,
+            routerMode: ranking.routerMode,
+            selected: selected,
+            nextFallback: nextFallback,
+            reason: reason,
+            explanation: routingExplanation(ranking: ranking, modelName: modelName),
+            rejectedAlternatives: rejected,
+            benchmarkStatus: ranking.benchmarkStatus,
+            skipped: []
+        )
+    }
+
+    private func candidate(from route: BurnBarProviderRoute) -> ProviderRoutingCandidate {
+        ProviderRoutingCandidate(
+            providerID: ProviderID(rawValue: route.providerID),
+            accountID: route.credentialSlotID ?? "legacy",
+            accountLabel: route.credentialSlotLabel ?? route.providerDisplayName,
+            credentialHandle: "daemon-provider-slot",
+            storageScope: .deviceKeychain,
+            modelCompatibility: .compatible,
+            quotaState: .healthy,
+            localCredentialAvailable: true
+        )
+    }
+
+    private func routingExplanation(
+        ranking: BurnBarRouteRankingResult,
+        modelName: String
+    ) -> String {
+        guard let winner = ranking.rankedRoutes.first else {
+            return "No eligible route for \(modelName)."
+        }
+        switch ranking.routerMode {
+        case .providerFamilyFailover:
+            return "Provider-Family Failover selected \(winner.route.providerDisplayName) \(winner.route.credentialSlotLabel ?? "legacy") for \(modelName); cross-provider alternatives were not eligible."
+        case .intelligentModelRouter:
+            var parts = [
+                "Intelligent Model Router selected \(winner.route.providerDisplayName) \(winner.route.credentialSlotLabel ?? "legacy") for \(modelName)",
+                "signals: capability \(String(format: "%.2f", winner.breakdown.score.capability)), cost \(String(format: "%.2f", winner.breakdown.score.cost)), latency \(String(format: "%.2f", winner.breakdown.score.latency)), trust \(String(format: "%.2f", winner.breakdown.score.trust))"
+            ]
+            if let status = ranking.benchmarkStatus {
+                parts.append("benchmark \(status.freshness.rawValue)")
+            }
+            return parts.joined(separator: "; ") + "."
+        }
+    }
 }
 
 // MARK: - Router Scorecard
@@ -503,18 +692,34 @@ extension BurnBarProviderRouter {
     public func scoreAndRankRoutes(
         modelName: String,
         preferredProviderID: String? = nil,
-        excludedRouteKeys: Set<String> = []
+        excludedRouteKeys: Set<String> = [],
+        requestedFormatFamily: BurnBarProviderFormatFamily? = nil,
+        routerMode: ProviderRouterMode? = nil,
+        taskCategory: ProviderRoutingTaskCategory = .unknown,
+        benchmarkSnapshots: [ProviderModelBenchmarkSnapshot] = [],
+        benchmarkStatus: ProviderModelBenchmarkStatus? = nil
     ) async throws -> BurnBarRouteRankingResult {
         let configurations = try await configStore.resolvedConfigurations()
+        let effectiveRouterMode = try await resolvedRouterMode(routerMode)
+        let effectivePreferredProviderID = preferredProviderID ?? preferredProviderForProviderFamilyMode(
+            modelName: modelName,
+            routerMode: effectiveRouterMode
+        )
         let candidates = try candidateRoutes(
             modelName: modelName,
-            preferredProviderID: preferredProviderID,
+            preferredProviderID: effectivePreferredProviderID,
             excludedRouteKeys: excludedRouteKeys,
+            requestedFormatFamily: requestedFormatFamily,
             configurations: configurations
         )
 
         guard !candidates.isEmpty else {
-            return BurnBarRouteRankingResult(rankedRoutes: [])
+            return BurnBarRouteRankingResult(
+                rankedRoutes: [],
+                routerMode: effectiveRouterMode,
+                taskCategory: taskCategory,
+                benchmarkStatus: benchmarkStatus
+            )
         }
 
         // Build slot-info map for trust/latency scoring
@@ -529,17 +734,29 @@ extension BurnBarProviderRouter {
                 for: route,
                 slotInfoMap: slotInfoMap,
                 costRange: costRange,
-                preferredProviderID: preferredProviderID
+                preferredProviderID: effectivePreferredProviderID
             )
             return BurnBarRankedRoute(route: route, breakdown: breakdown)
         }
+
+        let benchmarkIndex = benchmarkSnapshotsByModelAndTask(benchmarkSnapshots)
 
         // Sort by composite score (desc), then deterministic tie-breaks.
         // When scores tie inside one provider, prefer the least-recently selected
         // slot so unpinned provider plans rotate instead of sticking to one key.
         rankedRoutes.sort { lhs, rhs in
-            let lhsScore = lhs.breakdown.score.composite
-            let rhsScore = rhs.breakdown.score.composite
+            let lhsScore = rankedCompositeScore(
+                lhs,
+                routerMode: effectiveRouterMode,
+                taskCategory: taskCategory,
+                benchmarkIndex: benchmarkIndex
+            )
+            let rhsScore = rankedCompositeScore(
+                rhs,
+                routerMode: effectiveRouterMode,
+                taskCategory: taskCategory,
+                benchmarkIndex: benchmarkIndex
+            )
             if lhsScore != rhsScore {
                 return lhsScore > rhsScore
             }
@@ -559,19 +776,26 @@ extension BurnBarProviderRouter {
             return lhsSlot < rhsSlot
         }
 
-        return BurnBarRouteRankingResult(rankedRoutes: rankedRoutes)
+        return BurnBarRouteRankingResult(
+            rankedRoutes: rankedRoutes,
+            routerMode: effectiveRouterMode,
+            taskCategory: taskCategory,
+            benchmarkStatus: benchmarkStatus
+        )
     }
 
     /// Returns score breakdowns for all candidate routes without filtering or selection.
     public func scoreBreakdowns(
         modelName: String,
-        preferredProviderID: String? = nil
+        preferredProviderID: String? = nil,
+        requestedFormatFamily: BurnBarProviderFormatFamily? = nil
     ) async throws -> [BurnBarRouteScoreBreakdown] {
         let configurations = try await configStore.resolvedConfigurations()
         let candidates = try candidateRoutes(
             modelName: modelName,
             preferredProviderID: preferredProviderID,
             excludedRouteKeys: [],
+            requestedFormatFamily: requestedFormatFamily,
             configurations: configurations
         )
 
@@ -782,5 +1006,144 @@ extension BurnBarProviderRouter {
         }
 
         return (status.rawValue, score)
+    }
+
+    private func benchmarkSnapshotsByModelAndTask(
+        _ snapshots: [ProviderModelBenchmarkSnapshot]
+    ) -> [String: [ProviderModelBenchmarkSnapshot]] {
+        Dictionary(grouping: snapshots) { snapshot in
+            "\(snapshot.modelID.lowercased())#\(snapshot.taskCategory.rawValue)"
+        }
+    }
+
+    private func rankedCompositeScore(
+        _ rankedRoute: BurnBarRankedRoute,
+        routerMode: ProviderRouterMode,
+        taskCategory: ProviderRoutingTaskCategory,
+        benchmarkIndex: [String: [ProviderModelBenchmarkSnapshot]]
+    ) -> Double {
+        let base = rankedRoute.breakdown.score.composite
+        guard routerMode == .intelligentModelRouter else {
+            return base
+        }
+
+        let route = rankedRoute.route
+        let taskFit = taskFitScore(modelID: route.resolvedModelID, taskCategory: taskCategory)
+        let benchmark = benchmarkScore(
+            modelID: route.resolvedModelID,
+            taskCategory: taskCategory,
+            benchmarkIndex: benchmarkIndex
+        )
+        let context = contextSignal(
+            modelID: route.resolvedModelID,
+            taskCategory: taskCategory,
+            benchmarkIndex: benchmarkIndex
+        )
+        let reliability = reliabilitySignal(
+            modelID: route.resolvedModelID,
+            taskCategory: taskCategory,
+            benchmarkIndex: benchmarkIndex
+        )
+        return base * 0.55
+            + taskFit * 0.15
+            + benchmark * 0.15
+            + context * 0.05
+            + reliability * 0.10
+    }
+
+    private func taskFitScore(
+        modelID: String,
+        taskCategory: ProviderRoutingTaskCategory
+    ) -> Double {
+        let lower = modelID.lowercased()
+        switch taskCategory {
+        case .coding, .terminal, .agent:
+            if lower.contains("code") || lower.contains("codex") || lower.contains("glm") || lower.contains("claude") {
+                return 1.0
+            }
+            return 0.65
+        case .design:
+            if lower.contains("image") || lower.contains("design") || lower.contains("gpt") {
+                return 0.9
+            }
+            return 0.6
+        case .analysis, .general, .unknown:
+            return 0.75
+        }
+    }
+
+    private func benchmarkScore(
+        modelID: String,
+        taskCategory: ProviderRoutingTaskCategory,
+        benchmarkIndex: [String: [ProviderModelBenchmarkSnapshot]]
+    ) -> Double {
+        let snapshots = benchmarkSnapshots(
+            modelID: modelID,
+            taskCategory: taskCategory,
+            benchmarkIndex: benchmarkIndex
+        )
+        guard !snapshots.isEmpty else { return 0.5 }
+        let normalized = snapshots.compactMap { snapshot -> Double? in
+            if let score = snapshot.score {
+                return max(0.0, min(1.0, score > 1.0 ? score / 100.0 : score))
+            }
+            if let rank = snapshot.rank, rank > 0 {
+                return max(0.0, 1.0 - Double(rank - 1) / 100.0)
+            }
+            return nil
+        }
+        guard !normalized.isEmpty else { return 0.5 }
+        return normalized.reduce(0, +) / Double(normalized.count)
+    }
+
+    private func contextSignal(
+        modelID: String,
+        taskCategory: ProviderRoutingTaskCategory,
+        benchmarkIndex: [String: [ProviderModelBenchmarkSnapshot]]
+    ) -> Double {
+        let contexts = benchmarkSnapshots(
+            modelID: modelID,
+            taskCategory: taskCategory,
+            benchmarkIndex: benchmarkIndex
+        ).compactMap(\.contextWindowTokens)
+        guard let maxContext = contexts.max() else { return 0.5 }
+        if maxContext >= 1_000_000 { return 1.0 }
+        if maxContext >= 200_000 { return 0.85 }
+        if maxContext >= 128_000 { return 0.7 }
+        if maxContext >= 32_000 { return 0.55 }
+        return 0.4
+    }
+
+    private func reliabilitySignal(
+        modelID: String,
+        taskCategory: ProviderRoutingTaskCategory,
+        benchmarkIndex: [String: [ProviderModelBenchmarkSnapshot]]
+    ) -> Double {
+        let snapshots = benchmarkSnapshots(
+            modelID: modelID,
+            taskCategory: taskCategory,
+            benchmarkIndex: benchmarkIndex
+        )
+        let reliability = snapshots.compactMap(\.reliabilitySignal)
+        if !reliability.isEmpty {
+            return reliability.reduce(0, +) / Double(reliability.count)
+        }
+        let confidence = snapshots.compactMap(\.confidence)
+        guard !confidence.isEmpty else { return 0.5 }
+        return confidence.reduce(0, +) / Double(confidence.count)
+    }
+
+    private func benchmarkSnapshots(
+        modelID: String,
+        taskCategory: ProviderRoutingTaskCategory,
+        benchmarkIndex: [String: [ProviderModelBenchmarkSnapshot]]
+    ) -> [ProviderModelBenchmarkSnapshot] {
+        let normalizedModelID = modelID.lowercased()
+        let exactKey = "\(normalizedModelID)#\(taskCategory.rawValue)"
+        if let exact = benchmarkIndex[exactKey], !exact.isEmpty {
+            return exact
+        }
+        let generalKey = "\(normalizedModelID)#\(ProviderRoutingTaskCategory.general.rawValue)"
+        return benchmarkIndex[generalKey] ?? []
     }
 }

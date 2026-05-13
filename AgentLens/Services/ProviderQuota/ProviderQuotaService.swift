@@ -22,6 +22,7 @@ final class ProviderQuotaService {
     private let homeDirectoryURL: URL
     private let miniMaxModeProvider: () -> MiniMaxQuotaMode
     private let factoryPlanProvider: () -> FactoryQuotaPlanTier
+    private let claudeCredentialsReader: any ClaudeCredentialsReading
     private let refreshProviders: [AgentProvider]
 
     private let snapshotStore: ProviderQuotaSnapshotStore
@@ -58,6 +59,7 @@ final class ProviderQuotaService {
         homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser,
         miniMaxModeProvider: (() -> MiniMaxQuotaMode)? = nil,
         factoryPlanProvider: (() -> FactoryQuotaPlanTier)? = nil,
+        claudeCredentialsReader: any ClaudeCredentialsReading = NoClaudeCredentialsReader(),
         refreshProviders: [AgentProvider] = ProviderQuotaService.supportedProviders
     ) {
         self.keyStore = keyStore
@@ -69,6 +71,7 @@ final class ProviderQuotaService {
         self.homeDirectoryURL = homeDirectoryURL
         self.miniMaxModeProvider = miniMaxModeProvider ?? { settingsManager.miniMaxQuotaMode }
         self.factoryPlanProvider = factoryPlanProvider ?? { settingsManager.factoryQuotaPlanTier }
+        self.claudeCredentialsReader = claudeCredentialsReader
         self.refreshProviders = refreshProviders.filter(\.isQuotaSignalProvider)
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
@@ -91,6 +94,7 @@ final class ProviderQuotaService {
             homeDirectoryURL: homeDirectoryURL,
             miniMaxModeProvider: self.miniMaxModeProvider,
             factoryPlanProvider: self.factoryPlanProvider,
+            claudeCredentialsReader: claudeCredentialsReader,
             refreshProviders: self.refreshProviders
         )
 
@@ -249,7 +253,12 @@ final class ProviderQuotaService {
             let scopedRequest = ProviderRoutingRequest(
                 modelID: request.modelID,
                 preferredProviderIDs: request.preferredProviderIDs.isEmpty ? [providerID] : request.preferredProviderIDs,
-                allowProviderFallback: request.allowProviderFallback
+                allowProviderFallback: request.allowProviderFallback,
+                routerMode: request.routerMode,
+                selectedProviderID: request.selectedProviderID ?? providerID,
+                selectedAccountID: request.selectedAccountID,
+                taskCategory: request.taskCategory,
+                benchmarkStatus: request.benchmarkStatus
             )
             let candidates = routingCandidates(
                 providerID: providerID,
@@ -263,11 +272,22 @@ final class ProviderQuotaService {
             )
             appendRoutingEvent(decision.event)
             updatedStates[providerID] = ProviderRoutingStateSnapshot(
+                routerMode: decision.routerMode,
+                selectedProviderID: scopedRequest.selectedProviderID,
+                selectedAccountID: scopedRequest.selectedAccountID,
+                selectedModelID: scopedRequest.modelID,
                 activeAccount: decision.selected,
                 nextFallback: decision.nextFallback,
                 exhaustedOrCoolingDownAccounts: decision.exhaustedOrCoolingDown,
                 lastSwitchReason: decision.lastSwitchReason,
-                recentEvents: routingEvents.filter { $0.selectedProviderID == providerID || $0.nextFallbackProviderID == providerID }
+                latestExplanation: decision.event.explanation,
+                rejectedAlternatives: decision.rejectedAlternatives,
+                benchmarkStatus: decision.benchmarkStatus,
+                recentEvents: Array(
+                    routingEvents
+                        .filter { $0.selectedProviderID == providerID || $0.nextFallbackProviderID == providerID }
+                        .suffix(100)
+                )
             )
         }
 
@@ -281,7 +301,7 @@ final class ProviderQuotaService {
 
     func refreshIfNeeded(dataStore: DataStore, maxAge: TimeInterval = 5 * 60) async {
         if let lastFetch, Date().timeIntervalSince(lastFetch) < maxAge {
-            refreshRoutingState(dataStore: dataStore)
+            refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
             return
         }
         await refreshAll(dataStore: dataStore)
@@ -304,7 +324,7 @@ final class ProviderQuotaService {
         }
         upsertAccountSnapshots(batch.accountSnapshots)
         persistDaemonCredentialSlotAccounts(dataStore: dataStore)
-        refreshRoutingState(dataStore: dataStore)
+        refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
 
         lastFetch = Date()
         persistSnapshots()
@@ -323,7 +343,7 @@ final class ProviderQuotaService {
             let accountSnapshots = await quotaRefreshActor.fetchAccountSnapshots(for: provider, dataStoreActor: dataStore.actor)
             upsertAccountSnapshots(accountSnapshots)
             persistDaemonCredentialSlotAccounts(dataStore: dataStore, providers: [provider])
-            refreshRoutingState(dataStore: dataStore, request: ProviderRoutingRequest(preferredProviderIDs: [provider.providerID]))
+            refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest(provider: provider))
             errors.removeValue(forKey: provider)
             lastFetch = Date()
             persistSnapshots()
@@ -348,6 +368,24 @@ final class ProviderQuotaService {
                 ), for: provider)
             }
         }
+    }
+
+    private func currentRoutingRequest(provider: AgentProvider? = nil) -> ProviderRoutingRequest {
+        let mode = OpenBurnBarDaemonManager.shared.routerMode
+        return ProviderRoutingRequest(
+            preferredProviderIDs: provider.map { [$0.providerID] } ?? [],
+            routerMode: mode,
+            selectedProviderID: provider?.providerID,
+            taskCategory: .coding,
+            benchmarkStatus: mode == .intelligentModelRouter
+                ? ProviderModelBenchmarkStatus(
+                    source: .cachedFixture,
+                    freshness: .unavailable,
+                    message: "No local benchmark snapshot is available yet.",
+                    attribution: "OpenBurnBar model landscape adapters"
+                )
+                : nil
+        )
     }
 
     func fetchSnapshot(
@@ -396,9 +434,6 @@ final class ProviderQuotaService {
         }
         routingEvents.append(event)
         routingEventsDirty = true
-        if routingEvents.count > 100 {
-            routingEvents.removeFirst(routingEvents.count - 100)
-        }
         if !suppressRoutingEventPersistence {
             routingEventsDirty = false
             persistRoutingEvents()
@@ -597,11 +632,7 @@ final class ProviderQuotaService {
                     lastPayloadAt: nil
                 )
             },
-            claudeCredentialsReader: ClaudeCredentialsReader(
-                homeDirectoryURL: homeDirectoryURL,
-                environment: environment,
-                fileManager: fileManager
-            ),
+            claudeCredentialsReader: claudeCredentialsReader,
             resolvedAPIKeys: resolvedKeys
         )
     }

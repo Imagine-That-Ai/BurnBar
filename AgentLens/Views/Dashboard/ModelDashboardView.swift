@@ -58,6 +58,9 @@ struct ModelCard: View {
                                 Text(settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens))
                                     .font(UnifiedDesignSystem.Typography.monoLarge)
                                     .foregroundStyle(theme.gradient)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.72)
+                                    .allowsTightening(true)
 
                                 Text(settingsManager.usageDisplayMode == .currency ? "total spend" : "total tokens")
                                     .font(UnifiedDesignSystem.Typography.tiny)

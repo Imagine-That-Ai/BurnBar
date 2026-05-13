@@ -322,6 +322,121 @@ final class ProviderAccountContractTests: XCTestCase {
         XCTAssertEqual(decision.selected?.accountID, "default")
     }
 
+    func test_providerFamilyMode_keepsCodexFailoverInsideCodexAccounts() {
+        let decision = ProviderRoutingPolicy.decide(
+            request: ProviderRoutingRequest(
+                modelID: "codex-pro",
+                preferredProviderIDs: [.codex],
+                routerMode: .providerFamilyFailover,
+                selectedProviderID: .codex,
+                selectedAccountID: "codex_work",
+                taskCategory: .coding
+            ),
+            candidates: [
+                routingCandidate("codex_work", providerID: .codex, label: "Codex Work", quotaState: .exhausted),
+                routingCandidate("codex_personal", providerID: .codex, label: "Codex Personal"),
+                routingCandidate("claude_team", providerID: .claudeCode, label: "Claude Team"),
+                routingCandidate("zai_team", providerID: ProviderID(rawValue: "zai"), label: "Z.ai Team")
+            ]
+        )
+
+        XCTAssertEqual(decision.selected?.providerID, .codex)
+        XCTAssertEqual(decision.selected?.accountID, "codex_personal")
+        XCTAssertEqual(
+            Set(decision.skipped.filter { $0.reason == .providerNotPreferred }.map(\.providerID)),
+            Set([.claudeCode, ProviderID(rawValue: "zai")])
+        )
+    }
+
+    func test_providerFamilyMode_keepsClaudeFailoverInsideClaudeAccounts() {
+        let decision = ProviderRoutingPolicy.decide(
+            request: ProviderRoutingRequest(
+                modelID: "claude-opus-4.7",
+                preferredProviderIDs: [.claudeCode],
+                routerMode: .providerFamilyFailover,
+                selectedProviderID: .claudeCode,
+                selectedAccountID: "claude_pro"
+            ),
+            candidates: [
+                routingCandidate("claude_pro", providerID: .claudeCode, label: "Claude Pro", quotaState: .rateLimited),
+                routingCandidate("claude_team", providerID: .claudeCode, label: "Claude Team"),
+                routingCandidate("zai_team", providerID: ProviderID(rawValue: "zai"), label: "Z.ai Team")
+            ]
+        )
+
+        XCTAssertEqual(decision.selected?.providerID, .claudeCode)
+        XCTAssertEqual(decision.selected?.accountID, "claude_team")
+        XCTAssertTrue(decision.skipped.contains { $0.providerID == ProviderID(rawValue: "zai") && $0.reason == .providerNotPreferred })
+    }
+
+    func test_providerFamilyMode_keepsZAIFailoverInsideZAIAccounts() {
+        let zai = ProviderID(rawValue: "zai")
+        let decision = ProviderRoutingPolicy.decide(
+            request: ProviderRoutingRequest(
+                modelID: "glm-5",
+                preferredProviderIDs: [zai],
+                routerMode: .providerFamilyFailover,
+                selectedProviderID: zai,
+                selectedAccountID: "zai_a"
+            ),
+            candidates: [
+                routingCandidate("zai_a", providerID: zai, label: "Z.ai A", quotaState: .authFailed),
+                routingCandidate("zai_b", providerID: zai, label: "Z.ai B"),
+                routingCandidate("codex_work", providerID: .codex, label: "Codex Work")
+            ]
+        )
+
+        XCTAssertEqual(decision.selected?.providerID, zai)
+        XCTAssertEqual(decision.selected?.accountID, "zai_b")
+        XCTAssertTrue(decision.skipped.contains { $0.providerID == .codex && $0.reason == .providerNotPreferred })
+    }
+
+    func test_providerFamilyMode_selectedHealthyRouteStaysActive() {
+        let decision = ProviderRoutingPolicy.decide(
+            request: ProviderRoutingRequest(
+                modelID: "codex-pro",
+                preferredProviderIDs: [.codex],
+                routerMode: .providerFamilyFailover,
+                selectedProviderID: .codex,
+                selectedAccountID: "codex_work"
+            ),
+            candidates: [
+                routingCandidate("codex_personal", providerID: .codex, label: "Codex Personal", lastUsedAt: .distantPast),
+                routingCandidate("codex_work", providerID: .codex, label: "Codex Work", lastUsedAt: Date())
+            ]
+        )
+
+        XCTAssertEqual(decision.selected?.accountID, "codex_work")
+    }
+
+    func test_intelligentModeCanUseCrossProviderCandidatesAfterHardConstraints() {
+        let zai = ProviderID(rawValue: "zai")
+        let decision = ProviderRoutingPolicy.decide(
+            request: ProviderRoutingRequest(
+                modelID: "glm-5",
+                preferredProviderIDs: [zai, .codex],
+                routerMode: .intelligentModelRouter,
+                selectedProviderID: zai,
+                selectedAccountID: "zai_a",
+                taskCategory: .coding,
+                benchmarkStatus: ProviderModelBenchmarkStatus(
+                    source: .terminalBench,
+                    freshness: .fresh,
+                    message: "Fresh terminal benchmark data."
+                )
+            ),
+            candidates: [
+                routingCandidate("zai_a", providerID: zai, label: "Z.ai A", quotaState: .exhausted),
+                routingCandidate("codex_work", providerID: .codex, label: "Codex Work")
+            ]
+        )
+
+        XCTAssertEqual(decision.routerMode, .intelligentModelRouter)
+        XCTAssertEqual(decision.selected?.providerID, .codex)
+        XCTAssertEqual(decision.event.benchmarkStatus?.freshness, .fresh)
+        XCTAssertTrue(decision.event.explanation.contains("Intelligent Model Router"))
+    }
+
     func test_routingEventsNeverIncludeCredentialsOrSecretRefs() throws {
         let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
         // The sanitiser must scrub these plaintext-shaped credential
@@ -403,6 +518,7 @@ final class ProviderAccountContractTests: XCTestCase {
 
     private func routingCandidate(
         _ accountID: String,
+        providerID: ProviderID = .openAI,
         label: String,
         credentialHandle: String = "keychain-slot",
         quotaState: ProviderRoutingQuotaState = .healthy,
@@ -413,7 +529,7 @@ final class ProviderAccountContractTests: XCTestCase {
         localCredentialAvailable: Bool = true
     ) -> ProviderRoutingCandidate {
         ProviderRoutingCandidate(
-            providerID: .openAI,
+            providerID: providerID,
             accountID: accountID,
             accountLabel: label,
             credentialHandle: credentialHandle,

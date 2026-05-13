@@ -4,6 +4,7 @@ import SwiftUI
 
 enum DashboardMainRoute: Hashable {
     case overview
+    case insights
     case database
     case projects
     case missions
@@ -50,6 +51,7 @@ final class DashboardNavigationModel {
     func routeTitle(_ route: DashboardMainRoute) -> String {
         switch route {
         case .overview: return "Overview"
+        case .insights: return "Insights"
         case .database: return "Database"
         case .projects: return "Projects"
         case .missions: return "Missions"
@@ -68,7 +70,7 @@ final class DashboardNavigationModel {
     }
 
     func sidebarRouteOrder(providerSummaries: [ProviderSummary], modelSummaries: [ModelSummary]) -> [DashboardMainRoute] {
-        var routes: [DashboardMainRoute] = [.overview, .chat]
+        var routes: [DashboardMainRoute] = [.overview, .insights, .chat]
         if viewMode == .agents {
             routes.append(contentsOf: providerSummaries.map { .provider($0.provider) })
         } else {

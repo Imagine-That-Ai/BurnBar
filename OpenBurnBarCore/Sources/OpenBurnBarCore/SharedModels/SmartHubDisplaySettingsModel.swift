@@ -7,6 +7,22 @@ import Foundation
 // to `SmartHubBridgeServer` + `SmartHubBridgeController`; iOS forwards
 // through `SmartHubStore` Firestore actions the Mac picks up.
 
+/// Surfaces a `repairDisplay()` result whose terminal phase is not
+/// `.working` (e.g. `.needsUserAction`, `.failed`) as a thrown error so
+/// the surrounding `runOperation(...)` wrapper records a `.failed`
+/// operation state instead of a misleading `.succeeded`. Without this,
+/// the UI shows both "Make display work completed." (green) and the
+/// orange user-action banner at once.
+public struct SmartHubRepairError: Error, LocalizedError, Sendable {
+    public let message: String
+
+    public init(message: String) {
+        self.message = message
+    }
+
+    public var errorDescription: String? { message }
+}
+
 @MainActor
 public protocol SmartHubDisplayOperations: AnyObject {
     /// Persist the new display config so the bridge picks it up on its
@@ -61,9 +77,14 @@ public final class InMemorySmartHubDisplayOperations: SmartHubDisplayOperations 
     public var stopCount = 0
     public var openCount = 0
     public var copyCount = 0
+    public var repairOverride: SmartDisplayDeviceRepairStatus?
 
-    public init(probeResult: SmartHubBridgeProbeStatus = .unknown) {
+    public init(
+        probeResult: SmartHubBridgeProbeStatus = .unknown,
+        repairOverride: SmartDisplayDeviceRepairStatus? = nil
+    ) {
         self.probeResult = probeResult
+        self.repairOverride = repairOverride
     }
 
     public func updateDisplayConfig(_ config: SmartHubDisplayConfig) async {
@@ -80,6 +101,7 @@ public final class InMemorySmartHubDisplayOperations: SmartHubDisplayOperations 
 
     public func repairDisplay() async -> SmartDisplayDeviceRepairStatus {
         refreshCount += 1
+        if let repairOverride { return repairOverride }
         return SmartDisplayDeviceRepairStatus(
             kind: .nestHub,
             phase: probeResult == .bound ? .working : .failed,
@@ -249,6 +271,21 @@ public final class SmartHubDisplaySettingsModel {
         onEnabledChange?(newValue)
     }
 
+    /// User-facing master switch behavior. Turning the Nest Hub on should
+    /// actually start/recover the Cast display, and turning it off should stop
+    /// the local bridge instead of only changing persisted preference state.
+    public func setEnabledFromToggle(_ newValue: Bool) async {
+        if newValue {
+            if !enabled {
+                enabled = true
+                onEnabledChange?(true)
+            }
+            await repair()
+        } else {
+            await stop()
+        }
+    }
+
     // MARK: - Display config bindings
 
     public func updateLayout(_ layout: SmartHubDisplayLayout) {
@@ -346,6 +383,7 @@ public final class SmartHubDisplaySettingsModel {
                 self.bridgeStatus = .bound
             case .needsUserAction, .failed:
                 self.bridgeStatus = .unreachable
+                throw SmartHubRepairError(message: result.message)
             case .waitingForProof, .repairing, .detecting:
                 self.bridgeStatus = .waitingForData
             case .idle, .skipped:
@@ -358,6 +396,7 @@ public final class SmartHubDisplaySettingsModel {
         await runOperation(.stop) {
             await self.operations.stopBridge()
             self.enabled = false
+            self.onEnabledChange?(false)
         }
     }
 

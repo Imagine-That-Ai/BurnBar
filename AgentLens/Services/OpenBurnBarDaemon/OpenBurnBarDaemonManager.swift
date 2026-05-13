@@ -210,6 +210,7 @@ final class OpenBurnBarDaemonManager {
     var status: OpenBurnBarDaemonStatus = .checking
     var lastError: String?
     var isBusy = false
+    var routerMode: ProviderRouterMode = .providerFamilyFailover
     var providerConfigurations: [OpenBurnBarDaemonProviderConfiguration] = []
     var recentUsage: [OpenBurnBarDaemonRecentUsage] = []
     var recentEvents: [String] = []
@@ -339,6 +340,7 @@ final class OpenBurnBarDaemonManager {
                     }
                 )
 
+                routerMode = configSnapshot.routerMode
                 providerConfigurations = snapshot.providerConfigurations
                 recentUsage = snapshot.recentUsage
                 usageLedgerCount = snapshot.ledgerRecordCount
@@ -362,6 +364,7 @@ final class OpenBurnBarDaemonManager {
             }
         )
 
+        routerMode = .providerFamilyFailover
         providerConfigurations = snapshot.providerConfigurations
         recentUsage = snapshot.recentUsage
         usageLedgerCount = snapshot.ledgerRecordCount

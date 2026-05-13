@@ -5,14 +5,15 @@
       "id": "anthropic",
       "displayName": "Anthropic",
       "baseURL": "https://api.anthropic.com/v1",
-      "visibility": "hidden",
+      "visibility": "public",
       "logoKey": "AnthropicLogo",
-      "capabilities": ["accounting"],
+      "capabilities": ["routing", "accounting"],
+      "formatFamily": "anthropic",
       "models": [
         {
           "id": "claude-opus-4-7-family",
-          "displayName": "Claude Opus 4.7 Family",
-          "visibility": "hidden",
+          "displayName": "Claude Opus 4.7",
+          "visibility": "public",
           "aliases": ["claude-opus-4-7"],
           "matchers": [
             { "all": ["claude", "opus", "4.7"], "any": [], "none": [] },
@@ -102,8 +103,8 @@
         },
         {
           "id": "claude-sonnet-4-6-family",
-          "displayName": "Claude Sonnet 4.6 Family",
-          "visibility": "hidden",
+          "displayName": "Claude Sonnet 4.6",
+          "visibility": "public",
           "aliases": ["claude-sonnet-4-6"],
           "matchers": [
             { "all": ["claude", "sonnet", "4.6"], "any": [], "none": [] },
@@ -179,8 +180,8 @@
         },
         {
           "id": "claude-haiku-4-5-family",
-          "displayName": "Claude Haiku 4.5 Family",
-          "visibility": "hidden",
+          "displayName": "Claude Haiku 4.5",
+          "visibility": "public",
           "aliases": ["claude-haiku-4-5"],
           "matchers": [
             { "all": ["claude", "haiku", "4.5"], "any": [], "none": [] },
@@ -242,14 +243,15 @@
       "id": "openai",
       "displayName": "OpenAI",
       "baseURL": "https://api.openai.com/v1",
-      "visibility": "hidden",
+      "visibility": "public",
       "logoKey": "OpenAILogo",
-      "capabilities": ["accounting"],
+      "capabilities": ["routing", "accounting"],
+      "formatFamily": "openai_compat",
       "models": [
         {
           "id": "gpt-5.4",
           "displayName": "GPT-5.4",
-          "visibility": "hidden",
+          "visibility": "public",
           "aliases": [],
           "matchers": [
             { "all": ["gpt-5.4"], "any": [], "none": ["mini", "nano", "pro"] }
@@ -305,7 +307,7 @@
         {
           "id": "gpt-5.3-codex",
           "displayName": "GPT-5.3 Codex",
-          "visibility": "hidden",
+          "visibility": "public",
           "aliases": ["gpt-5.3-chat-latest", "gpt-5.3-chat"],
           "matchers": [
             { "all": ["gpt-5.3"], "any": ["codex", "chat"], "none": [] },
@@ -1714,15 +1716,17 @@
     },
     {
       "id": "moonshot",
-      "displayName": "Moonshot",
-      "baseURL": "https://api.moonshot.cn/v1",
-      "visibility": "hidden",
-      "capabilities": ["accounting"],
+      "displayName": "Kimi (Moonshot)",
+      "baseURL": "https://api.moonshot.ai/v1",
+      "visibility": "public",
+      "logoKey": "KimiLogo",
+      "capabilities": ["routing", "accounting"],
+      "formatFamily": "openai_compat",
       "models": [
         {
           "id": "kimi-k2.5",
           "displayName": "Kimi K2.5",
-          "visibility": "hidden",
+          "visibility": "public",
           "aliases": ["kimi-k2.5"],
           "matchers": [
             { "all": ["kimi", "k2.5"], "any": [], "none": [] }

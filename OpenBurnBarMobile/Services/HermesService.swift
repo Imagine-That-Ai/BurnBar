@@ -312,10 +312,38 @@ struct HermesChatMessage: Identifiable, Equatable {
     }
 }
 
+/// One tool the model decided to invoke in the current assistant turn.
+///
+/// `name` lands first (the OpenAI streaming protocol sends it on the *first*
+/// tool-call delta). `arguments` is accumulated across subsequent deltas — each
+/// streamed fragment is appended in order, since they are partial JSON strings
+/// that only parse correctly once concatenated. `detail` is a human-readable
+/// preview derived from `arguments` (e.g. the file path passed to `read_file`)
+/// so the mobile pill can show *what the model is doing*, not just *that it is
+/// using a tool*.
 struct HermesToolCall: Identifiable, Equatable {
     let id: String
     var name: String
     var status: String
+    /// Raw concatenated JSON arguments string. Streamed incrementally.
+    var arguments: String
+    /// Short human-readable preview of the arguments (path, command, query…).
+    /// Computed once the model emits enough fragments to parse usefully.
+    var detail: String?
+
+    init(
+        id: String,
+        name: String,
+        status: String,
+        arguments: String = "",
+        detail: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.status = status
+        self.arguments = arguments
+        self.detail = detail
+    }
 }
 
 enum HermesChatRole: String, Equatable, Sendable {
@@ -455,6 +483,7 @@ final class HermesService {
     private let secretStore: HermesConnectionSecretStoring
     private let relayTransport: HermesRelayTransporting
     private let defaults: UserDefaults
+    private let history: MobileChatHistoryStore
     private var runtimeGeneration = 0
     private var runtimeRefreshTask: Task<Void, Never>?
     private let selectedConnectionDefaultsKey = "hermes.selectedConnectionID"
@@ -489,7 +518,8 @@ final class HermesService {
         connectionRepository: HermesConnectionListing = FirestoreHermesConnectionRepository.shared,
         secretStore: HermesConnectionSecretStoring = HermesConnectionSecretStore.shared,
         relayTransport: HermesRelayTransporting = HermesCompositeRelayTransport.shared,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        history: MobileChatHistoryStore = .shared
     ) {
         self.baseURL = baseURL
         self.urlSession = urlSession
@@ -498,8 +528,10 @@ final class HermesService {
         self.secretStore = secretStore
         self.relayTransport = relayTransport
         self.defaults = defaults
+        self.history = history
         self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
         self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
+        history.loadFromDiskIfNeeded()
     }
 
     func loadHistory() {
@@ -754,6 +786,199 @@ final class HermesService {
         currentConversationTokenBurn = 0
     }
 
+    // MARK: - Mobile chat history bridge
+
+    /// Restores a chat thread previously saved by the mobile history store.
+    /// Used when the user taps an on-device row in the conversation list.
+    func loadMobileThread(id: String) {
+        guard let thread = history.thread(id: id),
+              thread.runtime == AssistantRuntimeID.hermes.rawValue else { return }
+        currentTask?.cancel()
+        currentTask = nil
+        isStreaming = false
+        lastError = nil
+        selectedSessionID = thread.id
+        messages = thread.messages.map { Self.convertFromStore($0) }
+    }
+
+    /// Deletes a thread from the mobile history store. Clears the active chat
+    /// when the deleted thread was the one currently open.
+    func deleteMobileThread(id: String) {
+        history.delete(threadID: id)
+        if selectedSessionID == id {
+            startNewSession()
+        }
+    }
+
+    private func persistCurrentThread() {
+        guard let id = selectedSessionID, !messages.isEmpty else { return }
+        let now = Date()
+        let createdAt = history.thread(id: id)?.createdAt ?? messages.first?.timestamp ?? now
+        let title = Self.derivedTitle(from: messages)
+        let preview = Self.derivedPreview(from: messages)
+        let storedMessages = messages.compactMap(Self.convertToStore)
+        guard !storedMessages.isEmpty else { return }
+        let thread = MobileChatThread(
+            id: id,
+            runtime: AssistantRuntimeID.hermes.rawValue,
+            title: title,
+            preview: preview,
+            modelName: activeModelName ?? selectedModelID,
+            createdAt: createdAt,
+            updatedAt: now,
+            messages: storedMessages
+        )
+        history.upsert(thread)
+    }
+
+    private static func convertToStore(_ message: HermesChatMessage) -> MobileChatMessage? {
+        // Skip streaming-only placeholders that have no content yet AND no
+        // attachments — attachment-only sends are intentional and must persist.
+        let trimmed = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty || !message.toolCalls.isEmpty || !message.attachments.isEmpty else { return nil }
+        let role: String
+        switch message.role {
+        case .user: role = "user"
+        case .assistant: role = "assistant"
+        case .system: role = "system"
+        }
+        let storedAttachments = message.attachments.map { attachment in
+            MobileChatAttachment(
+                id: attachment.id,
+                kind: attachment.kind.rawValue,
+                displayName: attachment.displayName,
+                mimeType: attachment.mimeType,
+                byteSize: attachment.byteSize,
+                workspaceRelativePath: attachment.workspaceRelativePath,
+                thumbnailPNG: attachment.thumbnailPNG,
+                extractedTextPreview: attachment.extractedTextPreview
+            )
+        }
+        let storedToolCalls = message.toolCalls.map {
+            MobileChatToolCall(
+                id: $0.id,
+                name: $0.name,
+                status: $0.status,
+                detail: $0.detail
+            )
+        }
+        let usage: MobileChatTokenUsage? = {
+            let hasUsageSignal = message.outputTokenCount != nil
+                || message.totalTokenCount != nil
+                || message.providerGenerationDurationSeconds != nil
+                || message.providerTotalDurationSeconds != nil
+                || message.responseStartedAt != nil
+                || message.firstResponseChunkAt != nil
+                || message.responseCompletedAt != nil
+            guard hasUsageSignal else { return nil }
+            return MobileChatTokenUsage(
+                outputTokens: message.outputTokenCount,
+                totalTokens: message.totalTokenCount,
+                source: message.tokenCountSource?.rawValue,
+                providerGenerationDurationSeconds: message.providerGenerationDurationSeconds,
+                providerTotalDurationSeconds: message.providerTotalDurationSeconds,
+                responseStartedAt: message.responseStartedAt,
+                firstResponseChunkAt: message.firstResponseChunkAt,
+                responseCompletedAt: message.responseCompletedAt
+            )
+        }()
+        let hasHermesMetadata = message.requestedModelID != nil
+            || message.responseModelID != nil
+            || !storedToolCalls.isEmpty
+            || usage != nil
+        let metadata = hasHermesMetadata ? MobileChatHermesMetadata(
+            requestedModelID: message.requestedModelID,
+            responseModelID: message.responseModelID,
+            toolCalls: storedToolCalls,
+            usage: usage
+        ) : nil
+        return MobileChatMessage(
+            id: message.id,
+            role: role,
+            text: message.text,
+            timestamp: message.timestamp,
+            modelName: message.modelName,
+            isError: message.isError,
+            attachments: storedAttachments,
+            toolCalls: storedToolCalls,
+            hermes: metadata
+        )
+    }
+
+    private static func convertFromStore(_ message: MobileChatMessage) -> HermesChatMessage {
+        let role: HermesChatRole
+        switch message.role {
+        case "user": role = .user
+        case "system": role = .system
+        default: role = .assistant
+        }
+        let restoredAttachments: [HermesAttachment] = message.attachments.compactMap { stored in
+            guard let kind = HermesAttachmentKind(rawValue: stored.kind) else { return nil }
+            return HermesAttachment(
+                id: stored.id,
+                kind: kind,
+                displayName: stored.displayName,
+                mimeType: stored.mimeType,
+                byteSize: stored.byteSize,
+                workspaceRelativePath: stored.workspaceRelativePath,
+                thumbnailPNG: stored.thumbnailPNG,
+                extractedTextPreview: stored.extractedTextPreview
+            )
+        }
+        // Prefer the top-level toolCalls list; fall back to the legacy
+        // hermes.toolCalls block for threads written by older builds.
+        let storedToolCalls = message.toolCalls.isEmpty
+            ? (message.hermes?.toolCalls ?? [])
+            : message.toolCalls
+        let restoredToolCalls = storedToolCalls.map {
+            HermesToolCall(
+                id: $0.id,
+                name: $0.name,
+                status: $0.status,
+                arguments: "",
+                detail: $0.detail
+            )
+        }
+        let usage = message.hermes?.usage
+        return HermesChatMessage(
+            id: message.id,
+            role: role,
+            text: message.text,
+            toolCalls: restoredToolCalls,
+            attachments: restoredAttachments,
+            requestedModelID: message.hermes?.requestedModelID,
+            responseModelID: message.hermes?.responseModelID,
+            modelName: message.modelName,
+            timestamp: message.timestamp,
+            isStreaming: false,
+            isError: message.isError,
+            responseStartedAt: usage?.responseStartedAt,
+            firstResponseChunkAt: usage?.firstResponseChunkAt,
+            responseCompletedAt: usage?.responseCompletedAt,
+            outputTokenCount: usage?.outputTokens,
+            totalTokenCount: usage?.totalTokens,
+            tokenCountSource: usage?.source.flatMap { HermesTokenCountSource(rawValue: $0) },
+            providerGenerationDurationSeconds: usage?.providerGenerationDurationSeconds,
+            providerTotalDurationSeconds: usage?.providerTotalDurationSeconds
+        )
+    }
+
+    private static func derivedTitle(from messages: [HermesChatMessage]) -> String {
+        if let firstUser = messages.first(where: { $0.role == .user })?.text.trimmingCharacters(in: .whitespacesAndNewlines),
+           !firstUser.isEmpty {
+            return String(firstUser.prefix(64))
+        }
+        return "Hermes conversation"
+    }
+
+    private static func derivedPreview(from messages: [HermesChatMessage]) -> String {
+        if let last = messages.last(where: { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
+            .text.trimmingCharacters(in: .whitespacesAndNewlines), !last.isEmpty {
+            return String(last.prefix(140))
+        }
+        return ""
+    }
+
     func selectModel(_ option: HermesRuntimeModelOption) {
         selectedModelID = option.modelID
         defaults.set(option.modelID, forKey: selectedModelDefaultsKey)
@@ -787,6 +1012,12 @@ final class HermesService {
 
         preferSuggestedRelayWhenLocalHostIsOffline()
 
+        // Mint a local session id for brand-new chats so we can mirror the
+        // transcript even when the host or relay never assigns one.
+        if selectedSessionID == nil {
+            selectedSessionID = UUID().uuidString
+        }
+
         let userMessage = HermesChatMessage(
             role: .user,
             text: trimmed,
@@ -795,6 +1026,7 @@ final class HermesService {
         messages.append(userMessage)
         isStreaming = true
         lastError = nil
+        persistCurrentThread()
 
         currentTask?.cancel()
         currentTask = Task { @MainActor in
@@ -807,6 +1039,7 @@ final class HermesService {
                     isStreaming = false
                 }
             }
+            persistCurrentThread()
         }
     }
 
@@ -863,7 +1096,13 @@ final class HermesService {
 
         assistantMessage.isStreaming = false
         assistantMessage.toolCalls = assistantMessage.toolCalls.map {
-            HermesToolCall(id: $0.id, name: $0.name, status: "done")
+            HermesToolCall(
+                id: $0.id,
+                name: $0.name,
+                status: "done",
+                arguments: $0.arguments,
+                detail: $0.detail ?? Self.summarizeToolArguments($0.arguments)
+            )
         }
         if assistantMessage.text.isEmpty && assistantMessage.toolCalls.isEmpty {
             assistantMessage.text = "Hermes finished without returning text. Try again or switch models."
@@ -978,7 +1217,13 @@ final class HermesService {
 
         assistantMessage.isStreaming = false
         assistantMessage.toolCalls = assistantMessage.toolCalls.map {
-            HermesToolCall(id: $0.id, name: $0.name, status: "done")
+            HermesToolCall(
+                id: $0.id,
+                name: $0.name,
+                status: "done",
+                arguments: $0.arguments,
+                detail: $0.detail ?? Self.summarizeToolArguments($0.arguments)
+            )
         }
         if assistantMessage.text.isEmpty && assistantMessage.toolCalls.isEmpty {
             assistantMessage.text = "Hermes finished without returning text. Try again or switch models."
@@ -1617,24 +1862,112 @@ final class HermesService {
         return baseURL.appendingPathComponent(path)
     }
 
+    /// Folds an OpenAI-compatible `tool_calls` delta into the assistant message.
+    ///
+    /// The streaming protocol gives us one slice per chunk — the first chunk
+    /// for a given `index` usually contains `function.name`, then subsequent
+    /// chunks for the same `index` carry partial `function.arguments` strings
+    /// that must be concatenated in order. Once we have enough of the argument
+    /// JSON to parse, we extract a short `detail` preview (path, command,
+    /// query, etc.) so the mobile pill can show *what* the model is doing.
     private func mergeToolCalls(_ rawToolCalls: [[String: Any]], into message: inout HermesChatMessage) {
         if !rawToolCalls.isEmpty {
             message.markFirstResponseChunk()
         }
         for raw in rawToolCalls {
-            let id = stringValue(raw["id"]) ?? "tool-\(message.toolCalls.count + 1)"
             let function = raw["function"] as? [String: Any]
-            let name = stringValue(function?["name"]) ?? stringValue(raw["name"]) ?? "Hermes tool"
-            if let index = message.toolCalls.firstIndex(where: { $0.id == id }) {
-                message.toolCalls[index].name = name
-                message.toolCalls[index].status = "running"
+            let nameFragment = stringValue(function?["name"]) ?? stringValue(raw["name"])
+            let argsFragment = stringValue(function?["arguments"]) ?? stringValue(raw["arguments"])
+
+            // Prefer the OpenAI-style `index` for stable accumulation across
+            // chunks. Fall back to the provider-supplied id when present.
+            // As a last resort, synthesize a stable id from the current call
+            // count so the pill still appears even with broken protocol.
+            let indexHint: Int? = intValue(raw["index"])
+            let idFromPayload = stringValue(raw["id"])
+            let resolvedID: String
+            if let indexHint, indexHint >= 0, indexHint < message.toolCalls.count {
+                resolvedID = message.toolCalls[indexHint].id
+            } else if let id = idFromPayload {
+                resolvedID = id
+            } else if let index = indexHint {
+                resolvedID = "tool-index-\(index)"
             } else {
-                message.toolCalls.append(HermesToolCall(id: id, name: name, status: "running"))
+                resolvedID = "tool-\(message.toolCalls.count + 1)"
+            }
+
+            if let index = message.toolCalls.firstIndex(where: { $0.id == resolvedID }) {
+                if let nameFragment, !nameFragment.isEmpty {
+                    message.toolCalls[index].name = nameFragment
+                }
+                if let argsFragment, !argsFragment.isEmpty {
+                    message.toolCalls[index].arguments += argsFragment
+                }
+                message.toolCalls[index].status = "running"
+                message.toolCalls[index].detail = Self.summarizeToolArguments(
+                    message.toolCalls[index].arguments
+                ) ?? message.toolCalls[index].detail
+            } else {
+                let name = nameFragment?.isEmpty == false ? nameFragment! : "Hermes tool"
+                let arguments = argsFragment ?? ""
+                message.toolCalls.append(
+                    HermesToolCall(
+                        id: resolvedID,
+                        name: name,
+                        status: "running",
+                        arguments: arguments,
+                        detail: Self.summarizeToolArguments(arguments)
+                    )
+                )
             }
         }
         if let index = messages.firstIndex(where: { $0.id == message.id }) {
             messages[index] = message
         }
+    }
+
+    /// Extracts a one-line human-readable summary from a (possibly partial)
+    /// JSON arguments string. Recognises the keys we see most often in tool
+    /// invocations (file paths, shell commands, search queries, URLs).
+    ///
+    /// Returns `nil` when nothing meaningful can be extracted — the caller
+    /// should keep any prior detail in that case so a partial chunk doesn't
+    /// wipe out a previously-resolved label.
+    static func summarizeToolArguments(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let data = trimmed.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["path", "file_path", "command", "pattern", "query", "url", "prompt"] {
+                if let value = obj[key] as? String, !value.isEmpty {
+                    return String(value.prefix(200))
+                }
+            }
+            for (_, value) in obj.sorted(by: { $0.key < $1.key }) {
+                if let str = value as? String, !str.isEmpty {
+                    return String(str.prefix(200))
+                }
+            }
+        }
+
+        // Mid-stream: arguments may still be partial JSON. Try a permissive
+        // regex-ish pull on the keys the user cares about, before giving up.
+        for key in ["path", "file_path", "command", "pattern", "query", "url", "prompt"] {
+            let pattern = "\"\(key)\"\\s*:\\s*\"([^\"]+)\""
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               let match = regex.firstMatch(
+                in: trimmed,
+                range: NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+               ),
+               match.numberOfRanges >= 2,
+               let range = Range(match.range(at: 1), in: trimmed) {
+                let value = String(trimmed[range])
+                if !value.isEmpty { return String(value.prefix(200)) }
+            }
+        }
+
+        return nil
     }
 
     private func parseSessions(from data: Data) -> [HermesSessionSummary] {

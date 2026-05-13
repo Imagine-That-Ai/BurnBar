@@ -85,8 +85,10 @@ export class HermesRealtimeRelaySession {
     await this.quota.checkFrameBytes(this.deps.uid, frameByteLength);
     const frame = parseFrame(data, this.deps.maxFrameBytes);
     const runtime = this.frameRuntime(frame);
-    await this.bindRuntime(runtime);
-    await this.quota.checkFrameBytes(this.deps.uid, frameByteLength, runtime);
+    if (shouldBindRuntime(frame)) {
+      await this.bindRuntime(runtime);
+      await this.quota.checkFrameBytes(this.deps.uid, frameByteLength, runtime);
+    }
     assertFrameForUid(frame, this.deps.uid);
     assertRoleCanSend(frame, this.deps.role);
 
@@ -318,4 +320,12 @@ function truncateUtf8(value: string, maxBytes: number): string {
 
 function runtimeDisplayName(runtime: HermesRelayRuntime): string {
   return runtime === "pi" ? "Pi" : "Hermes";
+}
+
+function shouldBindRuntime(frame: HermesRealtimeFrame): boolean {
+  return frame.runtime !== undefined || (
+    frame.type !== "ping" &&
+    frame.type !== "pong" &&
+    frame.type !== "host.ready"
+  );
 }

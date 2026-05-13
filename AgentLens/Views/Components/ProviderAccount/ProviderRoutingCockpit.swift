@@ -72,8 +72,10 @@ struct ProviderRoutingCockpit: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             headerRow
+            selectedRouteRow
             lanesRow
             switchReasonRow
+            benchmarkFreshnessRow
             historyDisclosure
         }
         .padding(DesignSystem.Spacing.md)
@@ -103,9 +105,35 @@ struct ProviderRoutingCockpit: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
 
+            routingPill(
+                state.routerMode == .intelligentModelRouter ? "Intelligent" : "Provider family",
+                tint: state.routerMode == .intelligentModelRouter ? DesignSystem.Colors.blaze : DesignSystem.Colors.primary(for: provider),
+                icon: state.routerMode == .intelligentModelRouter ? "brain.head.profile" : "rectangle.2.swap",
+                help: state.routerMode == .intelligentModelRouter
+                    ? "Compatible routes are ranked using advisory task, health, cost, latency, and benchmark signals."
+                    : "Fallback is limited to accounts in the selected provider family."
+            )
+
             Spacer(minLength: DesignSystem.Spacing.sm)
 
             routerStatusPill
+        }
+    }
+
+    @ViewBuilder
+    private var selectedRouteRow: some View {
+        if state.selectedModelID != nil || state.selectedProviderID != nil || state.selectedAccountID != nil {
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+                Image(systemName: "scope")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Text(selectedRouteSummary)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
         }
     }
 
@@ -377,12 +405,29 @@ struct ProviderRoutingCockpit: View {
 
     @ViewBuilder
     private var switchReasonRow: some View {
-        if let reason = sanitizedReason(state.lastSwitchReason) {
+        if let reason = sanitizedReason(state.latestExplanation ?? state.lastSwitchReason) {
             HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
                 Image(systemName: "text.bubble")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                 Text(reason)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var benchmarkFreshnessRow: some View {
+        if state.routerMode == .intelligentModelRouter, let status = state.benchmarkStatus {
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                Text(benchmarkSummary(status))
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .lineLimit(2)
@@ -494,6 +539,26 @@ struct ProviderRoutingCockpit: View {
         return parts.joined(separator: " · ")
     }
 
+    private var selectedRouteSummary: String {
+        var parts: [String] = []
+        if let providerID = state.selectedProviderID {
+            parts.append("provider \(providerID.rawValue)")
+        }
+        if let accountID = state.selectedAccountID {
+            parts.append("account \(accountID)")
+        }
+        if let modelID = state.selectedModelID {
+            parts.append("model \(modelID)")
+        }
+        return "Selected route: " + (parts.isEmpty ? "automatic" : parts.joined(separator: " · "))
+    }
+
+    private func benchmarkSummary(_ status: ProviderModelBenchmarkStatus) -> String {
+        let source = status.source.rawValue.replacingOccurrences(of: "_", with: " ")
+        let fetched = status.fetchedAt.map { " · \($0.formatted(.relative(presentation: .named)))" } ?? ""
+        return "Benchmark freshness: \(status.freshness.rawValue) from \(source)\(fetched). \(status.message)"
+    }
+
     /// Defense-in-depth: routing reasons are sanitized server-side, but the UI
     /// never renders them without a final sweep so a stray credential string
     /// can't slip through into the rendered text.
@@ -513,7 +578,7 @@ struct ProviderRoutingCockpit: View {
             ? "none"
             : blockedAccounts.map { "\($0.accountLabel) is \(ProviderRoutingVisual.label($0.quotaState).lowercased())" }
                 .joined(separator: ", ")
-        let reason = sanitizedReason(state.lastSwitchReason).map { ". \($0)" } ?? ""
-        return "Provider router for \(provider.displayName). Active account \(active). Next fallback \(fallback). Blocked accounts: \(blocked)\(reason)"
+        let reason = sanitizedReason(state.latestExplanation ?? state.lastSwitchReason).map { ". \($0)" } ?? ""
+        return "Provider router for \(provider.displayName). Mode \(state.routerMode.rawValue). Active account \(active). Next fallback \(fallback). Blocked accounts: \(blocked)\(reason)"
     }
 }

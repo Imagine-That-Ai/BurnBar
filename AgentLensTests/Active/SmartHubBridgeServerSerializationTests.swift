@@ -106,8 +106,8 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
             freshnessLabel: "updated 3h ago",
             fetchedAtLabel: "May 7, 6:58 PM",
             buckets: [
-                .init(name: "5-hour limit", percent: 8, headlineValue: "8%", subLabel: "92% left", tone: .success),
-                .init(name: "Weekly limit", percent: 18, headlineValue: "18%", subLabel: "82% left", tone: .success)
+                .init(name: "5-hour limit", percent: 8, headlineValue: "8%", subLabel: "92% left", resetsLabel: "Resets in 2h 14m · May 8, 3:35 AM", tone: .success),
+                .init(name: "Weekly limit", percent: 18, headlineValue: "18%", subLabel: "82% left", resetsLabel: "Resets in 5d 6h · May 12, 12:00 AM", tone: .success)
             ],
             accounts: [
                 .init(label: "Work", badge: "MAIN", tone: .whimsy, isActive: false),
@@ -143,6 +143,33 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         XCTAssertTrue(json.contains("\"badge\":\"MAIN\""))
         XCTAssertTrue(json.contains("\"badge\":\"ACTIVE\""))
         XCTAssertTrue(json.contains("\"isActive\":true"))
+        // Both buckets must surface their `resetsLabel` to the page so the
+        // Nest Hub can render the reset row beneath each bucket bar.
+        XCTAssertTrue(json.contains("\"resetsLabel\":\"Resets in 2h 14m · May 8, 3:35 AM\""))
+        XCTAssertTrue(json.contains("\"resetsLabel\":\"Resets in 5d 6h · May 12, 12:00 AM\""))
+    }
+
+    func test_stateJSONEmitsEmptyResetsLabelForBucketsWithoutResetTime() throws {
+        // KiloCode-style buckets carry `resetsAt: nil`. The pipeline must
+        // emit an empty `resetsLabel` (the page hides the row when empty)
+        // rather than dropping the field, so the JSON shape stays stable
+        // for the page's renderBucket() to switch on.
+        let provider = SmartHubBridgeSnapshot.Provider(
+            name: "KiloCode",
+            percent: 0, label: "", tone: .mercury,
+            buckets: [
+                .init(name: "Daily", percent: 0, headlineValue: "", subLabel: "", resetsLabel: "", tone: .mercury)
+            ]
+        )
+        SmartHubBridgeServer.shared.updateSnapshot(
+            SmartHubBridgeSnapshot(
+                totalSpend: "$0", headline: "", subheadline: "",
+                providers: [provider]
+            )
+        )
+
+        let json = SmartHubBridgeServer.shared.renderStateJSONForTesting()
+        XCTAssertTrue(json.contains("\"resetsLabel\":\"\""))
     }
 
     func test_stateJSONLeavesRichFieldsOutWhenSnapshotIsLegacyShape() throws {

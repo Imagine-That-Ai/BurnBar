@@ -32,9 +32,28 @@ final class SmartHubStore {
         "mobile-\(MobileDeviceIdentity.loadOrCreateDeviceId())"
     }
 
+    /// Firestore snapshot listener for `users/{uid}/smart_hub_config/*`.
+    /// Without an active listener the in-memory `config.publishedAt`
+    /// goes stale 60 s after the initial `load()` even though the Mac
+    /// re-publishes a heartbeat every 10 s, which flips
+    /// `hasLiveMacBridge` to false and disables every Smart Display
+    /// action button (the "Make display work" no-op symptom). We keep
+    /// the listener alive while the view that owns the store is in
+    /// scope.
+    private var configListener: ListenerRegistration?
+    private var configListenerUID: String?
+
     init(db: Firestore? = nil) {
         self.injectedDB = db
     }
+
+    // We intentionally don't tear down the Firestore listener in
+    // `deinit` — `@MainActor` isolation prevents reading the property
+    // from a `nonisolated` deinit, and SwiftUI keeps the owning
+    // `@State` value alive for the screen's lifetime anyway. Callers
+    // that explicitly want to detach (tests, future view-model
+    // teardown paths) use `stopListening()`. This matches the
+    // Mac-side `CastActionsListener` pattern.
 
     /// `true` when a Mac in the user's account has published an enabled
     /// smart-hub config with at least a refresh URL we can hit.
@@ -70,11 +89,17 @@ final class SmartHubStore {
     /// Loads the freshest published smart-hub config across all Macs the
     /// user has signed into. We pick the most-recently-`publishedAt` doc
     /// so that only one Cast button shows even if two Macs are paired.
+    ///
+    /// Also (idempotently) starts a Firestore snapshot listener so the
+    /// in-memory `publishedAt` stays in lockstep with the Mac's 10-second
+    /// heartbeat — without that listener every Smart Display action
+    /// button flips to disabled 60 s after this method returns.
     func load() async {
         guard FirebaseApp.app() != nil else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
         isLoading = true
         defer { isLoading = false }
+        startListening(uid: uid)
         do {
             let snapshot = try await db.collection("users").document(uid)
                 .collection("smart_hub_config").getDocuments()
@@ -83,10 +108,56 @@ final class SmartHubStore {
                 .compactMap { Self.decode(doc: $0.data()) }
                 .max(by: { $0.publishedAt < $1.publishedAt })
 
-            self.config = freshest
+            // Don't clobber a fresher value the listener may have
+            // already published while this one-shot fetch was in flight.
+            if let freshest, freshest.publishedAt > (self.config?.publishedAt ?? .distantPast) {
+                self.config = freshest
+            } else if self.config == nil {
+                self.config = freshest
+            }
         } catch {
             // Firestore offline / not signed in — leave previous value.
         }
+    }
+
+    /// Idempotently attach a Firestore snapshot listener that mirrors
+    /// the freshest `smart_hub_config` doc into `self.config` whenever
+    /// it changes server-side. The Mac re-writes the doc every 10 s,
+    /// so the listener keeps `hasLiveMacBridge` honest without us
+    /// having to poll.
+    func startListening() {
+        guard FirebaseApp.app() != nil else { return }
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        startListening(uid: uid)
+    }
+
+    private func startListening(uid: String) {
+        if configListenerUID == uid, configListener != nil { return }
+        configListener?.remove()
+        configListenerUID = uid
+        configListener = db.collection("users").document(uid)
+            .collection("smart_hub_config")
+            .addSnapshotListener { [weak self] snapshot, _ in
+                guard let self, let documents = snapshot?.documents else { return }
+                let freshest = documents
+                    .compactMap { Self.decode(doc: $0.data()) }
+                    .max(by: { $0.publishedAt < $1.publishedAt })
+                Task { @MainActor in
+                    // Listener fires for every server update; replace
+                    // `config` so `publishedAt` always reflects the
+                    // most recent heartbeat the Mac wrote.
+                    self.config = freshest ?? self.config
+                }
+            }
+    }
+
+    /// Detach the listener. Safe to call when none is attached. Callers
+    /// don't currently need to invoke this — `deinit` handles cleanup
+    /// — but it's exposed for tests and explicit teardown paths.
+    func stopListening() {
+        configListener?.remove()
+        configListener = nil
+        configListenerUID = nil
     }
 
     /// POST the configured refresh URL. The Mac-side DashCast bridge

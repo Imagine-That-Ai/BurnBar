@@ -29,11 +29,11 @@ class FakeFirestore {
 test("accepts active paid entitlement and caches the read", async () => {
   const db = new FakeFirestore({
     active: true,
-    productID: "com.openburnbar.hostedQuotaSync.monthly",
+    productID: "com.openburnbar.hostedQuotaSync.cloud.monthly",
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
   });
   const verifier = new FirestoreEntitlementVerifier({
-    productIDs: ["com.openburnbar.hostedQuotaSync.monthly"],
+    productIDs: ["com.openburnbar.hostedQuotaSync.cloud.monthly"],
     cacheTTLSeconds: 60,
     negativeCacheTTLSeconds: 1,
     firestore: db as never,
@@ -48,10 +48,10 @@ test("rejects missing, wrong-product, and expired entitlement", async () => {
   for (const data of [
     undefined,
     { active: true, productID: "wrong", expiresAt: new Date(Date.now() + 60_000).toISOString() },
-    { active: true, productID: "com.openburnbar.hostedQuotaSync.monthly", expiresAt: new Date(Date.now() - 1_000).toISOString() },
+    { active: true, productID: "com.openburnbar.hostedQuotaSync.cloud.monthly", expiresAt: new Date(Date.now() - 1_000).toISOString() },
   ]) {
     const verifier = new FirestoreEntitlementVerifier({
-      productIDs: ["com.openburnbar.hostedQuotaSync.monthly"],
+      productIDs: ["com.openburnbar.hostedQuotaSync.cloud.monthly"],
       cacheTTLSeconds: 60,
       negativeCacheTTLSeconds: 1,
       firestore: new FakeFirestore(data) as never,

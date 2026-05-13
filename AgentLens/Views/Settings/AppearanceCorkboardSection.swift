@@ -24,6 +24,7 @@ struct AppearanceCorkboardSection: View {
                     .pickerStyle(.segmented)
                     .frame(width: 220)
                 }
+                .settingsAnchor(SettingsAnchor.appearanceTheme)
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -33,6 +34,7 @@ struct AppearanceCorkboardSection: View {
                     icon: "menubar.rectangle",
                     isOn: $settingsManager.showInMenuBar
                 )
+                .settingsAnchor(SettingsAnchor.appearanceMenuBar)
 
                 Divider().background(DesignSystem.Colors.border)
 
@@ -42,6 +44,7 @@ struct AppearanceCorkboardSection: View {
                     icon: "person.crop.circle.badge.checkmark",
                     isOn: $settingsManager.launchAtLogin
                 )
+                .settingsAnchor(SettingsAnchor.appearanceLaunchAtLogin)
             }
             .padding(DesignSystem.Spacing.lg)
         }

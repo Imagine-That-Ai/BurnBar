@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import SwiftUI
 import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBar
@@ -180,6 +182,25 @@ final class SettingsManagerTests: XCTestCase {
 
         settings.appearanceMode = .dark
         XCTAssertEqual(settings.preferredSwiftUIColorScheme, .dark)
+    }
+
+    func test_appearanceMode_systemRemovesForcedSchemeWithoutNavigationLayoutCrash() {
+        let defaults = makeIsolatedDefaults()
+        let settings = makeSettingsManager(defaults: defaults)
+        settings.appearanceMode = .dark
+
+        let hostingView = NSHostingView(
+            rootView: AppearanceModeNavigationSmokeView(settingsManager: settings)
+        )
+        hostingView.frame = CGRect(origin: .zero, size: CGSize(width: 720, height: 480))
+        hostingView.layoutSubtreeIfNeeded()
+
+        settings.appearanceMode = .system
+        hostingView.needsLayout = true
+        hostingView.layoutSubtreeIfNeeded()
+
+        XCTAssertNil(settings.preferredSwiftUIColorScheme)
+        XCTAssertEqual(defaults.string(forKey: "appearanceMode"), "system")
     }
 
     func test_defaultTimeRange_defaultValue_isToday() {
@@ -1484,5 +1505,29 @@ final class SettingsManagerTests: XCTestCase {
         let result = ChatBackendID.decodeEnabledList(fromCSV: csv)
         XCTAssertTrue(result.contains(.codex))
         XCTAssertTrue(result.contains(.hermes))
+    }
+}
+
+private struct AppearanceModeNavigationSmokeView: View {
+    @Bindable var settingsManager: SettingsManager
+    @State private var router = SettingsRouter()
+    @State private var path = ["appearance"]
+
+    var body: some View {
+        NavigationSplitView {
+            List(["General"], id: \.self) { value in
+                Text(value)
+            }
+        } detail: {
+            NavigationStack(path: $path) {
+                AppearanceSettingsDetailView(settingsManager: settingsManager)
+                    .navigationDestination(for: String.self) { value in
+                        Text(value)
+                    }
+            }
+        }
+        .frame(width: 720, height: 480)
+        .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .environment(router)
     }
 }

@@ -21,9 +21,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.util.Formatting
+import com.openburnbar.util.QuotaResetFormatter
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.QuotaBucket
+import com.openburnbar.data.models.effectiveResetsAt
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.theme.*
 
@@ -240,10 +242,14 @@ fun UnifiedQuotaSignalView(
         label = "quota_signal"
     )
 
+    val resetsAt = bucket.effectiveResetsAt
+    val resetParts = resetsAt?.let { QuotaResetFormatter.format(it) }
+
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = bucket.name,
@@ -251,11 +257,24 @@ fun UnifiedQuotaSignalView(
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Text(
-                text = "${Formatting.formatTokens(bucket.used.toInt())} / ${Formatting.formatTokens(bucket.limit.toInt())}",
-                fontSize = if (compact) AuroraTypography.tiny.sp else AuroraTypography.caption.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Compact mode: tuck the relative-only half next to the
+                // used/limit text so the card still answers "when does this
+                // refill" without growing a new row.
+                if (compact && resetParts != null) {
+                    Text(
+                        text = resetParts.relative,
+                        fontSize = AuroraTypography.tiny.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(
+                    text = "${Formatting.formatTokens(bucket.used.toInt())} / ${Formatting.formatTokens(bucket.limit.toInt())}",
+                    fontSize = if (compact) AuroraTypography.tiny.sp else AuroraTypography.caption.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
         Spacer(modifier = Modifier.height(4.dp))
         LinearProgressIndicator(
@@ -272,6 +291,21 @@ fun UnifiedQuotaSignalView(
                 text = "Window: ${bucket.window}",
                 fontSize = AuroraTypography.tiny.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        // Non-compact reset row: lifts `resetsAt` into its own line, same
+        // shape as the iOS UnifiedQuotaSignalView reset row and the Mac
+        // ProviderQuotaBucketRow micro-badge. Empty when the bucket has no
+        // known reset moment.
+        if (!compact && resetParts != null) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "Resets ${resetParts.relative} · ${resetParts.absolute}",
+                fontSize = AuroraTypography.tiny.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         }
     }

@@ -106,7 +106,50 @@ struct DashboardLargeView: View {
                 .padding(.vertical, 10)
             }
 
-            Spacer(minLength: 6)
+            Spacer(minLength: 4)
+
+            // Ask-assistant chips — primary 2-button row + 3 quick-prompt chips.
+            // Available iOS 17+ via `Button(intent:)`; matches widget target.
+            VStack(spacing: 5) {
+                HStack(spacing: 6) {
+                    Button(intent: AskAssistantIntent(assistant: .hermes, prompt: nil)) {
+                        AskChipLabel(
+                            icon: "sparkle",
+                            title: "Ask Hermes",
+                            color: WidgetDesignSystem.Colors.amber,
+                            prominent: true
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    Button(intent: AskAssistantIntent(assistant: .pi, prompt: nil)) {
+                        AskChipLabel(
+                            icon: "cpu",
+                            title: "Ask Pi",
+                            color: WidgetDesignSystem.Colors.whimsy,
+                            prominent: true
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+                HStack(spacing: 5) {
+                    ForEach(AssistantQuickPromptCatalog.hermesShortlist.prefix(3), id: \.id) { prompt in
+                        Button(intent: AskAssistantIntent(
+                            assistant: AssistantRuntimeOption(rawValue: prompt.preferredAssistant.rawValue) ?? .hermes,
+                            prompt: prompt.fullPrompt
+                        )) {
+                            AskChipLabel(
+                                icon: nil,
+                                title: prompt.chipLabel,
+                                color: WidgetDesignSystem.Colors.amber,
+                                prominent: false
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 4)
 
             // Footer
             HStack {
@@ -209,6 +252,47 @@ struct ProviderRow: View {
 extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+// MARK: - Ask Chip Label
+//
+// Shared between `DashboardLargeView` and `DashboardExtraLargeView`. Two
+// flavors:
+//   • `prominent: true`  — used for the "Ask Hermes" / "Ask Pi" lead buttons.
+//   • `prominent: false` — used for narrow quick-prompt chips ("Burn?",
+//     "Forecast", "Cache") that need to fit 3 across a 4×4 widget row.
+
+struct AskChipLabel: View {
+    let icon: String?
+    let title: String
+    let color: Color
+    let prominent: Bool
+
+    var body: some View {
+        HStack(spacing: prominent ? 4 : 0) {
+            if let icon, prominent {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+            Text(title)
+                .font(.system(size: prominent ? 11 : 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .frame(maxWidth: prominent ? .infinity : nil)
+        .padding(.horizontal, prominent ? 10 : 8)
+        .padding(.vertical, prominent ? 6 : 4)
+        .background(
+            Capsule(style: .continuous)
+                .fill(color.opacity(prominent ? 0.18 : 0.12))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(color.opacity(prominent ? 0.40 : 0.28), lineWidth: 0.5)
+        )
     }
 }
 

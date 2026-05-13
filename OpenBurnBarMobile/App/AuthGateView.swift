@@ -24,7 +24,7 @@ struct AuthGateView: View {
                     FirebaseUnavailableScene()
                 case .signedOut, .signingIn, .firestoreUnavailable:
                     SignInScene(authStore: authStore)
-                case .signedIn:
+                case .signedIn, .deletingAccount:
                     mainSignedInView
                         .fullScreenCover(isPresented: Binding(
                             get: { !hasCompletedOnboarding },

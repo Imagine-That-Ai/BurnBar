@@ -1,7 +1,6 @@
 import { initializeApp } from "firebase-admin/app";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { Redis } from "ioredis";
 import { WebSocket, WebSocketServer } from "ws";
 import { authenticateRequest } from "./auth.js";
 import { loadRelayConfig } from "./config.js";
@@ -9,27 +8,15 @@ import { FirestoreEntitlementVerifier } from "./entitlements.js";
 import { RelayHttpError, RelayLimitError } from "./errors.js";
 import { logError, logEvent, logWarning, uidHash } from "./logging.js";
 import { RedisRelayQuotaStore } from "./quota.js";
+import { createRedisClient } from "./redisClient.js";
 import { RedisRelayHub } from "./redisHub.js";
 import { HermesRealtimeRelaySession } from "./relay.js";
 
 initializeApp();
 
 const config = loadRelayConfig();
-
-function createRedisClient(role: string): Redis {
-  const client = new Redis(config.redisURL, {
-    enableReadyCheck: true,
-    maxRetriesPerRequest: 3,
-    lazyConnect: false,
-  });
-  client.on("error", (error) => {
-    logError("redis_error", error, { role });
-  });
-  return client;
-}
-
-const publisher = createRedisClient("publisher");
-const subscriber = createRedisClient("subscriber");
+const publisher = createRedisClient(config, "publisher");
+const subscriber = createRedisClient(config, "subscriber");
 const relayHub = new RedisRelayHub(publisher, subscriber);
 const quota = new RedisRelayQuotaStore(publisher, config.limits);
 const entitlementVerifier = new FirestoreEntitlementVerifier({

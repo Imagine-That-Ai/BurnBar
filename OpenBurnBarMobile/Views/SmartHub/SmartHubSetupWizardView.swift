@@ -143,8 +143,59 @@ struct SmartHubSetupWizardView: View {
                         }
                         .buttonStyle(.plain)
                     }
+
+                    missingDeviceHelper
                 }
             }
+        }
+    }
+
+    /// Shown beneath the device list when the scan returned no
+    /// display-capable devices (only speakers / nothing). Mac-side
+    /// mDNS can miss a Nest Hub if the Hub is asleep, on a different
+    /// SSID/VLAN, or if macOS's Local Network permission has been
+    /// denied — none of those are visible to the user, so spell out
+    /// the most common causes and offer a one-tap rescan.
+    @ViewBuilder
+    private var missingDeviceHelper: some View {
+        let displayCapable = devices.filter(\.supportsDisplay)
+        if displayCapable.count < max(1, devices.count) || devices.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Label(
+                    displayCapable.isEmpty
+                        ? "Don't see your Nest Hub?"
+                        : "Missing a Nest Hub?",
+                    systemImage: "questionmark.circle"
+                )
+                .font(.subheadline.bold())
+                .foregroundStyle(.primary)
+
+                Text(
+                    """
+                    Check these on the Mac running BurnBar:
+                    • The Hub is awake and on the same Wi‑Fi as your Mac (not a guest network).
+                    • System Settings → Privacy & Security → Local Network → BurnBar is **on**.
+                    • Wi‑Fi router doesn't isolate client devices ("AP Isolation" / "Client Isolation" off).
+                    """
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+                Button {
+                    Task { await runDiscovery() }
+                } label: {
+                    Label("Scan again", systemImage: "arrow.clockwise")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.bordered)
+                .padding(.top, 2)
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+            .padding(.top, 4)
         }
     }
 

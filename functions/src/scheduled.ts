@@ -19,6 +19,10 @@ import {
   refreshUserProviderAccountQuota,
   refreshUserProviderQuota,
 } from "./quota.js";
+import {
+  collectModelLandscapeBenchmarks,
+  writeModelLandscapeBenchmarks,
+} from "./modelLandscape.js";
 import type { Provider } from "./types.js";
 
 /**
@@ -193,5 +197,24 @@ export const refreshAllProviderQuotas = onSchedule(
         });
       }
     }
+  }
+);
+
+/**
+ * Scheduled worker: refresh public model-landscape benchmark snapshots.
+ *
+ * The source adapters use documented/public APIs or cached/manual fixtures.
+ * Failures write source-status docs but do not block routing; benchmark data is
+ * advisory and never overrides user pinning, auth, quota, safety, or availability.
+ */
+export const refreshModelLandscapeBenchmarks = onSchedule(
+  {
+    schedule: "every 24 hours",
+    region: "us-central1",
+  },
+  async (_event) => {
+    const db = getFirestore();
+    const result = await collectModelLandscapeBenchmarks(process.env, new Date());
+    await writeModelLandscapeBenchmarks(db, result);
   }
 );

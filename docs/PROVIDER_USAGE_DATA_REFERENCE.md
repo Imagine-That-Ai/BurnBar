@@ -91,6 +91,13 @@
 - `tddworks/ClaudeBar` (1,089 ⭐) — Swift, ClaudeUsageProbe via CLI PTY
 - `Dicklesworthstone/coding_agent_usage_tracker` — Rust, multi-provider
 
+**OpenBurnBar posture:** This is tracked as prior art, not the default
+implementation. OpenBurnBar does not read Claude Code's Keychain item,
+does not read `~/.claude/.credentials.json`, and does not refresh or
+rewrite Claude OAuth tokens. Claude quota uses the statusline hook and
+local JSONL logs unless a test or self-hosted integration explicitly
+injects credentials.
+
 ### 1.4 Web API (cookies)
 
 **Endpoints:**

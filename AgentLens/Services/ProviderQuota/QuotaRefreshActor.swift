@@ -33,6 +33,7 @@ actor QuotaRefreshActor {
     let homeDirectoryURL: URL
     let miniMaxModeProvider: () -> MiniMaxQuotaMode
     let factoryPlanProvider: () -> FactoryQuotaPlanTier
+    let claudeCredentialsReader: any ClaudeCredentialsReading
     let adapters: [AgentProvider: any ProviderQuotaAdapter]
     let refreshProviders: [AgentProvider]
 
@@ -49,6 +50,7 @@ actor QuotaRefreshActor {
         homeDirectoryURL: URL,
         miniMaxModeProvider: @escaping () -> MiniMaxQuotaMode,
         factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier,
+        claudeCredentialsReader: any ClaudeCredentialsReading,
         refreshProviders: [AgentProvider]
     ) {
         self.keyStore = keyStore
@@ -60,6 +62,7 @@ actor QuotaRefreshActor {
         self.homeDirectoryURL = homeDirectoryURL
         self.miniMaxModeProvider = miniMaxModeProvider
         self.factoryPlanProvider = factoryPlanProvider
+        self.claudeCredentialsReader = claudeCredentialsReader
         self.refreshProviders = refreshProviders
 
         self.adapters = [
@@ -165,11 +168,7 @@ actor QuotaRefreshActor {
                 }
             },
             refreshClaudeBridgeStatus: { claudeBridgeStatus },
-            claudeCredentialsReader: ClaudeCredentialsReader(
-                homeDirectoryURL: homeDirectoryURL,
-                environment: environment,
-                fileManager: fileManager
-            ),
+            claudeCredentialsReader: claudeCredentialsReader,
             resolvedAPIKeys: resolvedKeys
         )
         return context

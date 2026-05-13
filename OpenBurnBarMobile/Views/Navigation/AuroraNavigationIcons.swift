@@ -25,6 +25,7 @@ import SwiftUI
 enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
     case pulse
     case burn
+    case insights
     case streams
     case hermes
     case you
@@ -33,24 +34,26 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
 
     var label: String {
         switch self {
-        case .pulse:   return "Pulse"
-        case .burn:    return "Burn"
-        case .streams: return "Streams"
+        case .pulse:    return "Pulse"
+        case .burn:     return "Burn"
+        case .insights: return "Insights"
+        case .streams:  return "Streams"
         // Plan 2: tab label flips to "Assistants" but the enum case stays
         // `.hermes` so existing route strings, deep links, and persisted
         // selection values keep working.
-        case .hermes:  return "Assistants"
-        case .you:     return "You"
+        case .hermes:   return "Assistants"
+        case .you:      return "You"
         }
     }
 
     var accent: Color {
         switch self {
-        case .pulse:   return MobileTheme.ember
-        case .burn:    return MobileTheme.amber
-        case .streams: return MobileTheme.whimsy
-        case .hermes:  return MobileTheme.hermesAureate
-        case .you:     return MobileTheme.blaze
+        case .pulse:    return MobileTheme.ember
+        case .burn:     return MobileTheme.amber
+        case .insights: return MobileTheme.whimsy
+        case .streams:  return MobileTheme.whimsy
+        case .hermes:   return MobileTheme.hermesAureate
+        case .you:      return MobileTheme.blaze
         }
     }
 
@@ -67,6 +70,12 @@ enum AuroraNavDestination: Hashable, Identifiable, CaseIterable {
                 colors: [MobileTheme.amber, MobileTheme.blaze],
                 startPoint: .bottom,
                 endPoint: .top
+            )
+        case .insights:
+            return LinearGradient(
+                colors: [MobileTheme.whimsy, MobileTheme.ember],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
         case .streams:
             return LinearGradient(
@@ -1271,6 +1280,9 @@ struct AuroraNavIcon: View {
         case .burn:
             IgnisOutlineShape()
                 .fill(destination.accent.opacity(0.45))
+        case .insights:
+            Circle()
+                .fill(destination.accent.opacity(0.45))
         case .streams:
             StreamsGlyphShape()
                 .fill(destination.accent.opacity(0.45))
@@ -1288,12 +1300,25 @@ struct AuroraNavIcon: View {
     @ViewBuilder
     private var iconContent: some View {
         switch destination {
-        case .pulse:   pulseIcon
-        case .burn:    burnIcon
-        case .streams: streamsIcon
-        case .hermes:  hermesIcon
-        case .you:     youIcon
+        case .pulse:    pulseIcon
+        case .burn:     burnIcon
+        case .insights: insightsIcon
+        case .streams:  streamsIcon
+        case .hermes:   hermesIcon
+        case .you:      youIcon
         }
+    }
+
+    private var insightsIcon: some View {
+        Image(systemName: "sparkles.tv.fill")
+            .font(.system(size: size * 0.55, weight: .semibold))
+            .foregroundStyle(
+                isSelected ? destination.gradient : LinearGradient(
+                    colors: [Color.secondary, Color.secondary.opacity(0.7)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
     }
 
     // MARK: 1. Pulse — heartbeat curve with a premium brand-gradient fill

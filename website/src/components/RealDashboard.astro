@@ -1,0 +1,115 @@
+---
+// Real OpenBurnBar dashboard — pulled from the actual iPadOS app
+// (App Store screenshot, captured 2026-05-12). The iPadOS app and the
+// macOS app share the same SwiftUI design system so this is the closest
+// thing to a "Mac dashboard hero" we can ship until the macOS bundle
+// gets its own App Store-style capture.
+//
+// Two layout modes:
+//   variant="device"  — framed in an iPad bezel (default, used on home)
+//   variant="bare"    — clean rounded crop without bezel
+interface Props {
+  src?: string;
+  alt?: string;
+  variant?: "device" | "bare";
+  caption?: string;
+}
+const {
+  src = "/screens/ipad-burn.png",
+  alt = "OpenBurnBar iPadOS Burn screen — Fleet Quota 42% Pressured, $18.74 today, $126.40 over 7 days, per-provider rings",
+  variant = "device",
+  caption = "Real iPadOS capture · Burn tab · same SwiftUI design as the macOS app"
+} = Astro.props;
+---
+
+<figure class={`realdash realdash--${variant}`}>
+  {variant === "device" ? (
+    <div class="realdash__bezel">
+      <span class="realdash__camera" aria-hidden="true"></span>
+      <div class="realdash__screen">
+        <img
+          src={src}
+          alt={alt}
+          width="1032"
+          height="1376"
+          decoding="async"
+          loading="lazy"
+        />
+      </div>
+    </div>
+  ) : (
+    <img
+      class="realdash__bare"
+      src={src}
+      alt={alt}
+      width="1032"
+      height="1376"
+      decoding="async"
+      loading="lazy"
+    />
+  )}
+  {caption && <figcaption class="realdash__cap mono">{caption}</figcaption>}
+</figure>
+
+<style>
+  .realdash {
+    display: grid;
+    gap: var(--s-3);
+    margin: 0;
+    width: 100%;
+    place-items: center;
+  }
+  .realdash__bezel {
+    position: relative;
+    padding: 18px;
+    background: linear-gradient(180deg, #1a1822 0%, #0f0c15 100%);
+    border-radius: 38px;
+    border: 1px solid var(--ink-line);
+    box-shadow:
+      0 40px 100px -50px rgba(0, 0, 0, 0.95),
+      0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+      0 0 80px -10px rgba(255, 106, 26, 0.18);
+    width: min(720px, 100%);
+    aspect-ratio: 4 / 5.34;
+  }
+  .realdash__camera {
+    position: absolute;
+    top: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #050505;
+    border: 1px solid #20202a;
+    z-index: 2;
+  }
+  .realdash__screen {
+    width: 100%;
+    height: 100%;
+    border-radius: 24px;
+    overflow: hidden;
+    background: #f6f1e7;
+  }
+  .realdash__screen img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    display: block;
+  }
+  .realdash__bare {
+    width: min(960px, 100%);
+    height: auto;
+    border-radius: var(--r-4);
+    border: 1px solid var(--ink-line);
+    box-shadow: 0 28px 80px -36px rgba(0, 0, 0, 0.95);
+    display: block;
+  }
+  .realdash__cap {
+    font-size: var(--t-caption);
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+    text-align: center;
+  }
+</style>

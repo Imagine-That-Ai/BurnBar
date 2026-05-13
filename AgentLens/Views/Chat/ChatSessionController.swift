@@ -165,6 +165,7 @@ final class ChatSessionController {
 
     /// The model currently loaded in Hermes (e.g. "NousResearch/Hermes-3-Llama-3.1-8B").
     var hermesModelName: String? { cliBridge.hermesModelName }
+    var hermesAdvertisedModels: [HermesAdvertisedModel] { cliBridge.hermesAdvertisedModels }
 
     func chatModelSelection(for backend: ChatBackendID) -> String {
         switch backend {

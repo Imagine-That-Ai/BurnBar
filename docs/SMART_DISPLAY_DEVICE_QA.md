@@ -28,7 +28,9 @@ Test at least one device from each receiver class before calling DashCast suppor
 7. Use `Refresh Hub`. Verify the dashboard updates instead of returning to the DashCast splash.
 8. Interrupt the display with ambient mode or another Cast app, then run `Make display work` again. Verify OpenBurnBar recovers without manual URL edits.
 
-The DashCast payload contract is covered by `CastChannelClientTests`. In particular, `force=true` must disable DashCast reload mode; combining `force=true` with `reload=true` is a known way to strand receivers on the DashCast splash.
+The DashCast payload contract is covered by `CastChannelClientTests`. In particular, `force=true` must disable DashCast reload mode; combining `force=true` with `reload=true` is a known way to strand receivers on the DashCast splash. The runtime LOAD path also sends `reloadSeconds: 0`, which keeps DashCast's built-in periodic reload disabled — the page polls `/state.json` every 5 s on its own, has a 10-minute stale-poll `location.reload()` safety, and the Mac-side cast watchdog handles truly stuck sessions. A non-zero `reload_time` would force the Nest Hub to flash the DashCast splash on every reload, producing a continuous "displays OpenBurnBar briefly → blanks → re-displays" reset cycle.
+
+The iOS-side bridge freshness gate (`SmartHubStore.hasLiveMacBridge`) requires a live Firestore snapshot listener on `users/{uid}/smart_hub_config/*`. A one-shot `getDocuments()` is **not** enough: the Mac re-publishes its heartbeat doc every 10 s, so without a listener the in-memory `publishedAt` goes stale 60 s after the first fetch and every Smart Display action button (including `Make display work`) flips to disabled. The companion symptom in the iPhone settings card is "Bridge offline on \<mac\>"; the fix lives in `SmartHubStore.startListening()` and runs idempotently from `load()`.
 
 ## Pixel Clock Smoke Test
 

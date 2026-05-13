@@ -11,12 +11,14 @@
  *     - onUsageWritten       (Firestore trigger)
  *     - rebuildRollups       (scheduled, every 5 min)
  *     - refreshAllProviderQuotas (scheduled, every 15 min)
+ *     - refreshModelLandscapeBenchmarks (scheduled, every 24h)
  *
  * Before deploying, ensure Firebase Admin is initialized (no args needed in
  * GCP because ADC is automatic; for local emulation set GOOGLE_APPLICATION_CREDENTIALS).
  */
 
 import { initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
@@ -35,7 +37,7 @@ import {
   refreshUserProviderQuota,
 } from "./quota.js";
 import { computeUserRollups, writeUserRollups } from "./rollups.js";
-import { eraseUserCloudData } from "./accountDeletion.js";
+import { eraseUserAccount } from "./accountDeletion.js";
 import {
   adoptDeviceLink,
   backfillUserDeviceLinks,
@@ -91,7 +93,11 @@ import type {
 } from "./types.js";
 
 import { onUsageWritten } from "./triggers.js";
-import { rebuildRollups, refreshAllProviderQuotas } from "./scheduled.js";
+import {
+  rebuildRollups,
+  refreshAllProviderQuotas,
+  refreshModelLandscapeBenchmarks,
+} from "./scheduled.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 
 // ---------------------------------------------------------------------------
@@ -99,6 +105,7 @@ import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 // ---------------------------------------------------------------------------
 initializeApp();
 const db = getFirestore();
+const auth = getAuth();
 // Allow optional fields (e.g. identityHint, sourceDeviceID) to be set to
 // `undefined` directly on writes without crashing the transaction. Firestore
 // otherwise rejects the entire document, which surfaces as a generic INTERNAL
@@ -1254,7 +1261,12 @@ export const deleteUserCloudData = onCall(
     }
     enforceAuthAndAppCheck(request, uid);
 
-    const summary = await eraseUserCloudData(db, uid, { destroyCredential });
+    const summary = await eraseUserAccount(db, uid, {
+      destroyCredential,
+      deleteAuthUser: async (targetUID) => {
+        await auth.deleteUser(targetUID);
+      },
+    });
     if (summary.failedSecretDestroys > 0) {
       throw new HttpsError(
         "internal",
@@ -2256,7 +2268,12 @@ export const rebuildUsageRollups = onCall(
 // Re-export background functions so `firebase deploy --only functions` picks
 // them up from a single entry point.
 // ---------------------------------------------------------------------------
-export { onUsageWritten, rebuildRollups, refreshAllProviderQuotas };
+export {
+  onUsageWritten,
+  rebuildRollups,
+  refreshAllProviderQuotas,
+  refreshModelLandscapeBenchmarks,
+};
 
 // ---------------------------------------------------------------------------
 // Apple App Store JWS verification surface.
