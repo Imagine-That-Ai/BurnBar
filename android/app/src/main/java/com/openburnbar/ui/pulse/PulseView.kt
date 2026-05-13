@@ -3,7 +3,6 @@ package com.openburnbar.ui.pulse
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyRow
@@ -50,14 +49,11 @@ fun PulseView(
     var timelineScope by remember { mutableStateOf(PulseTimelineScope.DAY) }
     var displayMode by remember { mutableStateOf(UsageDisplayMode.CURRENCY) }
     val currentUser by userStore.user.collectAsState()
-    val isDark = isSystemInDarkTheme()
 
     LaunchedEffect(currentUser.isSignedIn) { if (currentUser.isSignedIn) {
         dashboardStore.load(); quotaStore.load(); activityStore.loadInitial() } }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        AuroraBackdrop(isDark = isDark)
-
         // Title bar — centered "Pulse" with avatar in the top-right (mirrors iOS).
         if (currentUser.isSignedIn) {
             Row(
