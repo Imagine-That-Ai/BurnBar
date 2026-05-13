@@ -134,11 +134,9 @@ fun ConversationListView(
                 Icon(Icons.Filled.Add, contentDescription = "New Chat", tint = Color.White)
             }
         },
-        containerColor = if (isDark) AuroraColors.darkBackground else AuroraColors.lightBackground
+        containerColor = Color.Transparent
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            AuroraBackdrop(isDark = isDark)
-
             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
