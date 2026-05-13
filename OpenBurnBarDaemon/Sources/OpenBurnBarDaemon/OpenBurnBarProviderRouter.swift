@@ -122,6 +122,12 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
     public let resolvedModelID: String
     public let apiKey: String
     public let pricing: BurnBarModelPricing
+    /// Wire-format family this route serves. Determined by the upstream
+    /// provider's catalog declaration. The gateway enforces that an incoming
+    /// request only matches routes in the same family — Anthropic-shape
+    /// requests never get routed to OpenAI-compatible upstreams and vice
+    /// versa.
+    public let formatFamily: BurnBarProviderFormatFamily
 
     public init(
         providerID: String,
@@ -132,7 +138,8 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
         requestedModel: String,
         resolvedModelID: String,
         apiKey: String,
-        pricing: BurnBarModelPricing
+        pricing: BurnBarModelPricing,
+        formatFamily: BurnBarProviderFormatFamily = .openaiCompat
     ) {
         self.providerID = providerID
         self.providerDisplayName = providerDisplayName
@@ -143,6 +150,7 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
         self.resolvedModelID = resolvedModelID
         self.apiKey = apiKey
         self.pricing = pricing
+        self.formatFamily = formatFamily
     }
 }
 
@@ -184,7 +192,8 @@ public struct BurnBarProviderRouter: Sendable {
     public func route(
         modelName: String,
         preferredProviderID: String? = nil,
-        excludedRouteKeys: Set<String> = []
+        excludedRouteKeys: Set<String> = [],
+        requestedFormatFamily: BurnBarProviderFormatFamily? = nil
     ) async throws -> BurnBarProviderRoute {
         // Use scoreAndRankRoutes() to select the best route based on five-dimensional scoring:
         // capability, cost, latency, trust, and policy-fit. This ensures routing decisions
@@ -192,7 +201,8 @@ public struct BurnBarProviderRouter: Sendable {
         let ranking = try await scoreAndRankRoutes(
             modelName: modelName,
             preferredProviderID: preferredProviderID,
-            excludedRouteKeys: excludedRouteKeys
+            excludedRouteKeys: excludedRouteKeys,
+            requestedFormatFamily: requestedFormatFamily
         )
 
         guard let route = ranking.winner else {
@@ -212,13 +222,15 @@ public struct BurnBarProviderRouter: Sendable {
     public func candidateRoutes(
         modelName: String,
         preferredProviderID: String? = nil,
-        excludedRouteKeys: Set<String> = []
+        excludedRouteKeys: Set<String> = [],
+        requestedFormatFamily: BurnBarProviderFormatFamily? = nil
     ) async throws -> [BurnBarProviderRoute] {
         let configurations = try await configStore.resolvedConfigurations()
         return try candidateRoutes(
             modelName: modelName,
             preferredProviderID: preferredProviderID,
             excludedRouteKeys: excludedRouteKeys,
+            requestedFormatFamily: requestedFormatFamily,
             configurations: configurations
         )
     }
@@ -227,6 +239,7 @@ public struct BurnBarProviderRouter: Sendable {
         modelName: String,
         preferredProviderID: String?,
         excludedRouteKeys: Set<String>,
+        requestedFormatFamily: BurnBarProviderFormatFamily?,
         configurations: [BurnBarResolvedProviderConfiguration]
     ) throws -> [BurnBarProviderRoute] {
         let trimmedModelName = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -256,11 +269,22 @@ public struct BurnBarProviderRouter: Sendable {
             scopedConfigurations = enabledConfigurations
         }
 
-        let routes = selectRoutes(
+        let allRoutes = selectRoutes(
             for: trimmedModelName,
             configurations: scopedConfigurations
         ).filter { route in
             !excludedRouteKeys.contains(routeKey(providerID: route.providerID, slotID: route.credentialSlotID))
+        }
+
+        // Format-family isolation: when the gateway request comes from an
+        // Anthropic-shape endpoint (/v1/messages) we only consider Anthropic
+        // family upstreams, and vice versa. This is the heart of "two
+        // highways" routing — same-format failover, never cross-format.
+        let routes: [BurnBarProviderRoute]
+        if let requestedFormatFamily {
+            routes = allRoutes.filter { $0.formatFamily == requestedFormatFamily }
+        } else {
+            routes = allRoutes
         }
 
         if let route = routes.first {
@@ -360,6 +384,8 @@ public struct BurnBarProviderRouter: Sendable {
                 continue
             }
 
+            let formatFamily = configuration.provider.formatFamily
+
             let now = Date()
             let activeSlots = configuration.credentialSlots.filter { resolvedSlot in
                 guard resolvedSlot.slot.isEnabled else { return false }
@@ -398,7 +424,8 @@ public struct BurnBarProviderRouter: Sendable {
                             requestedModel: modelName,
                             resolvedModelID: resolvedModel.id,
                             apiKey: key,
-                            pricing: resolvedModel.pricing
+                            pricing: resolvedModel.pricing,
+                            formatFamily: formatFamily
                         )
                     )
                 }
@@ -414,7 +441,8 @@ public struct BurnBarProviderRouter: Sendable {
                         requestedModel: modelName,
                         resolvedModelID: resolvedModel.id,
                         apiKey: apiKey,
-                        pricing: resolvedModel.pricing
+                        pricing: resolvedModel.pricing,
+                        formatFamily: formatFamily
                     )
                 )
             }
@@ -503,13 +531,15 @@ extension BurnBarProviderRouter {
     public func scoreAndRankRoutes(
         modelName: String,
         preferredProviderID: String? = nil,
-        excludedRouteKeys: Set<String> = []
+        excludedRouteKeys: Set<String> = [],
+        requestedFormatFamily: BurnBarProviderFormatFamily? = nil
     ) async throws -> BurnBarRouteRankingResult {
         let configurations = try await configStore.resolvedConfigurations()
         let candidates = try candidateRoutes(
             modelName: modelName,
             preferredProviderID: preferredProviderID,
             excludedRouteKeys: excludedRouteKeys,
+            requestedFormatFamily: requestedFormatFamily,
             configurations: configurations
         )
 
@@ -565,13 +595,15 @@ extension BurnBarProviderRouter {
     /// Returns score breakdowns for all candidate routes without filtering or selection.
     public func scoreBreakdowns(
         modelName: String,
-        preferredProviderID: String? = nil
+        preferredProviderID: String? = nil,
+        requestedFormatFamily: BurnBarProviderFormatFamily? = nil
     ) async throws -> [BurnBarRouteScoreBreakdown] {
         let configurations = try await configStore.resolvedConfigurations()
         let candidates = try candidateRoutes(
             modelName: modelName,
             preferredProviderID: preferredProviderID,
             excludedRouteKeys: [],
+            requestedFormatFamily: requestedFormatFamily,
             configurations: configurations
         )
 

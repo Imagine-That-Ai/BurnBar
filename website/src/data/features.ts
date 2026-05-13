@@ -84,11 +84,11 @@ export const FEATURES: Feature[] = [
   },
   {
     id: "router",
-    title: "Fire Hydrant — multi-provider router with automatic failover",
+    title: "Fire Hydrant — same-format routing across every account",
     blurb:
-      "Cursor, Factory and OpenCode point at one local gateway. When a Z.ai or MiniMax account hits its quota — or a token expires — the router shifts traffic to the next healthy account, ranking by health then least-recently-used. No manual swaps. No failed calls landing in your IDE.",
+      "Two on-device pools: OpenAI-family (Cursor, Factory, Forge, OpenCode, Codex CLI → Z.ai, MiniMax, Kimi, OpenAI, Ollama) and Anthropic-family (Claude Code → Anthropic Console + Anthropic Pro/Team). When one account exhausts, rate-limits, or fails auth, the router shifts traffic to the next healthy account in the same pool — no cross-format translation, no vendor lock-in, no 429s in your IDE.",
     evidence:
-      "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/ProviderAccountTypes.swift:403-599; docs/ROUTED_CLIENT_GATEWAY.md",
+      "OpenBurnBarCore/.../ProviderAccountTypes.swift:403-599; OpenBurnBarDaemon/.../OpenBurnBarHTTPGatewayServer.swift; docs/ROUTED_CLIENT_GATEWAY.md",
     category: "control"
   },
   {

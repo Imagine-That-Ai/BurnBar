@@ -19,15 +19,17 @@ struct RootNavigationView: View {
     @State private var router = PulseRouter()
     @State private var hermesService = HermesService()
     @State private var motionStore = MotionStore()
+    @State private var insightsDashboardStore = DashboardStore()
     @State private var showHermesSheet = false
 
     enum SidebarDestination: Hashable, Identifiable {
-        case pulse, burn, streams, hermes, you, settings, devices, providers
+        case pulse, burn, insights, streams, hermes, you, settings, devices, providers
         var id: String { String(describing: self) }
         var label: String {
             switch self {
             case .pulse:    return "Pulse"
             case .burn:     return "Burn"
+            case .insights: return "Insights"
             case .streams:  return "Streams"
             case .hermes:   return "Hermes"
             case .you:      return "You"
@@ -40,6 +42,7 @@ struct RootNavigationView: View {
             switch self {
             case .pulse:    return MobileTheme.ember
             case .burn:     return MobileTheme.amber
+            case .insights: return MobileTheme.whimsy
             case .streams:  return MobileTheme.whimsy
             case .hermes:   return MobileTheme.hermesAureate
             case .you:      return MobileTheme.blaze
@@ -51,17 +54,19 @@ struct RootNavigationView: View {
 
         var asAuroraDestination: AuroraNavDestination? {
             switch self {
-            case .pulse:   return .pulse
-            case .burn:    return .burn
-            case .streams: return .streams
-            case .hermes:  return .hermes
-            case .you:     return .you
-            default:       return nil
+            case .pulse:    return .pulse
+            case .burn:     return .burn
+            case .insights: return .insights
+            case .streams:  return .streams
+            case .hermes:   return .hermes
+            case .you:      return .you
+            default:        return nil
             }
         }
 
         var fallbackIcon: String {
             switch self {
+            case .insights:  return "sparkles.tv.fill"
             case .settings:  return "gearshape.fill"
             case .devices:   return "macbook.and.iphone"
             case .providers: return "externaldrive.connected.to.line.below"
@@ -93,7 +98,7 @@ struct RootNavigationView: View {
             AuroraBackdrop(density: .subtle)
             List {
                 Section {
-                    ForEach([SidebarDestination.pulse, .burn, .streams, .hermes], id: \.self) { destination in
+                    ForEach([SidebarDestination.pulse, .burn, .insights, .streams, .hermes], id: \.self) { destination in
                         sidebarItem(destination)
                     }
                 }
@@ -250,6 +255,7 @@ struct RootNavigationView: View {
                 switch selection {
                 case .pulse:    PulseView(router: router)
                 case .burn:     BurnView()
+                case .insights: InsightsRootView(dashboardStore: insightsDashboardStore)
                 case .streams:  StreamsView()
                 case .hermes:   HermesConversationListView(service: hermesService)
                 case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)

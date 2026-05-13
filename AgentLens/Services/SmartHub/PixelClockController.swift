@@ -218,6 +218,8 @@ final class PixelClockController {
     private let stockSimulator: PixelClockStockSimulatorServer
 
     private var heartbeatTask: Task<Void, Never>?
+    private var inputTask: Task<Void, Never>?
+    private var inputController: PixelClockInputController?
     private var statusObserver: NSObjectProtocol?
     private var lastPushedConfig: PixelClockConfig?
     private var lastPushedPayloadSignature: String?
@@ -225,6 +227,11 @@ final class PixelClockController {
     private var lastAppliedDeviceSettingsSignature: String?
     private var lastAppliedDeviceSettingsAt: Date = .distantPast
     private var lastBackgroundDiscoverySweepAt: Date = .distantPast
+    /// Tracks the host/port we last published the input sentinel apps to so a
+    /// host change (DHCP shuffle, manual reconfig) re-publishes them; otherwise
+    /// the device would still answer Left/Right with stale openburnbar_btn_*
+    /// pages from a previous run.
+    private var lastSentinelHostSignature: String?
     /// Bumped each time a heartbeat push throws so diagnostics can distinguish
     /// a single reboot miss from a persistent connectivity failure.
     private var consecutivePushFailures: Int = 0
@@ -246,10 +253,28 @@ final class PixelClockController {
     func start() {
         stockSimulator.start()
         heartbeatTask?.cancel()
+        inputTask?.cancel()
         Self.logger.info("Pixel Clock controller started; enabled=\(self.settingsManager.pixelClockConfig.enabled, privacy: .public) host=\(self.settingsManager.pixelClockConfig.host, privacy: .public)")
         lastPushedConfig = nil
         lastPushedPayloadSignature = nil
         lastPushAt = .distantPast
+        lastSentinelHostSignature = nil
+
+        let client = self.client
+        let pushNow: @MainActor () async -> Void = { [weak self] in
+            self?.lastPushedPayloadSignature = nil
+            await self?.pushIfNeeded(force: true)
+        }
+        let returnToBurnBar: @MainActor (PixelClockConfig) async -> Void = { config in
+            try? await client.switchToApp(name: "\(PixelClockQuotaRenderer.appName)0", config: config)
+        }
+        inputController = PixelClockInputController(
+            settingsManager: settingsManager,
+            quotaService: quotaService,
+            client: client,
+            pushPixelClockNow: pushNow,
+            returnToBurnBar: returnToBurnBar
+        )
 
         heartbeatTask = Task { [weak self] in
             var forceNextPush = true
@@ -271,6 +296,25 @@ final class PixelClockController {
             }
         }
 
+        // Input poll runs at 400 ms cadence so a hardware-button press feels
+        // immediate. We only poll when AWTRIX is reachable; on stock Ulanzi
+        // firmware (which lacks /api/stats.app semantics) and when the clock
+        // is unreachable, the loop sleeps a full second to avoid pegging the
+        // network on a device that can't answer.
+        inputTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let config = self.settingsManager.pixelClockConfig
+                guard config.enabled, config.lastProbeStatus == .awtrixReady else {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    continue
+                }
+                let appName = await self.client.currentAppName(config: config, timeout: 1.0)
+                await self.inputController?.ingest(currentAppName: appName, config: config)
+                try? await Task.sleep(nanoseconds: 400_000_000)
+            }
+        }
+
         statusObserver = NotificationCenter.default.addObserver(
             forName: PixelClockAgentStatusStore.didChangeNotification,
             object: nil,
@@ -286,6 +330,9 @@ final class PixelClockController {
     func stop() {
         heartbeatTask?.cancel()
         heartbeatTask = nil
+        inputTask?.cancel()
+        inputTask = nil
+        inputController = nil
         if let statusObserver {
             NotificationCenter.default.removeObserver(statusObserver)
             self.statusObserver = nil
@@ -507,12 +554,28 @@ final class PixelClockController {
             quotaService: quotaService,
             statuses: statuses
         )
-        let pages = PixelClockQuotaRenderer.renderPages(
-            items: items,
-            config: config,
-            now: now,
-            isWorking: hasRunningActivity
-        )
+        let pages: [PixelClockRenderedPage]
+        if config.isMuted(at: now) {
+            // Snooze gesture from the device's Select button — show a single
+            // dim "muted" pixel until mutedUntil expires so the device is
+            // visibly silenced without us pushing fresh quota frames.
+            pages = [
+                PixelClockRenderedPage(
+                    text: "",
+                    color: "#202020",
+                    durationSeconds: max(3, config.clampedPageDuration),
+                    scrollSpeed: config.clampedScrollSpeed,
+                    draw: [.fillRect(x: 15, y: 3, width: 2, height: 2, color: "#202020")]
+                )
+            ]
+        } else {
+            pages = PixelClockQuotaRenderer.renderPages(
+                items: items,
+                config: config,
+                now: now,
+                isWorking: hasRunningActivity
+            )
+        }
         let payload = PixelClockQuotaRenderer.awtrixPayload(pages: pages, config: config)
         let activePageIndex = Self.activePageIndex(
             pageCount: payload.count,
@@ -590,6 +653,7 @@ final class PixelClockController {
         lastPushAt = now
         lastPushedConfig = config
         lastPushedPayloadSignature = payloadSignature
+        await publishSentinelAppsIfNeeded(config: config)
         let runningProviderTokens = statuses
             .filter { $0.value == .running }
             .keys
@@ -597,6 +661,17 @@ final class PixelClockController {
             .joined(separator: ",")
         Self.logger.info("Pixel Clock pushed openburnbar0 page=\(activePageIndex, privacy: .public) count=\(payload.count, privacy: .public) working=\(hasRunningActivity, privacy: .public) running=[\(runningProviderTokens, privacy: .public)] layout=\(config.layout.rawValue, privacy: .public)")
         updateProbeStatus(.awtrixReady)
+    }
+
+    private func publishSentinelAppsIfNeeded(config: PixelClockConfig) async {
+        let signature = "\(config.host.lowercased()):\(config.clampedPort)"
+        guard signature != lastSentinelHostSignature else { return }
+        do {
+            try await client.pushSentinelApps(config: config)
+            lastSentinelHostSignature = signature
+        } catch {
+            Self.logger.error("Failed to publish Pixel Clock sentinel apps: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func removePixelClockApp() async throws {

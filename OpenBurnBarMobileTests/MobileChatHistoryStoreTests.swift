@@ -496,6 +496,68 @@ final class PiServicePersistenceTests: XCTestCase {
         XCTAssertNil(service.currentThreadID)
     }
 
+    func testPiServiceMergeToolCallsAccumulatesArgumentsAcrossDeltas() {
+        // OpenAI-compatible streaming sends a single tool call as a sequence
+        // of `tool_calls` chunks — name first, then partial argument strings
+        // tagged with the same `index`. Concatenate them and surface the
+        // path/command/query/etc. as the pill's `detail`.
+        var msg = PiChatMessage(role: .assistant, text: "")
+        PiService.mergeToolCalls([
+            ["index": 0, "id": "tc_1", "function": ["name": "read_file", "arguments": "{\"path\":\""]]
+        ], into: &msg)
+        PiService.mergeToolCalls([
+            ["index": 0, "function": ["arguments": "docs/README.md\"}"]]
+        ], into: &msg)
+
+        XCTAssertEqual(msg.toolCalls.count, 1)
+        XCTAssertEqual(msg.toolCalls.first?.id, "tc_1")
+        XCTAssertEqual(msg.toolCalls.first?.name, "read_file")
+        XCTAssertEqual(msg.toolCalls.first?.arguments, "{\"path\":\"docs/README.md\"}")
+        XCTAssertEqual(msg.toolCalls.first?.status, "running")
+        XCTAssertEqual(msg.toolCalls.first?.detail, "docs/README.md")
+    }
+
+    func testPiServiceSummarizeToolArgumentsPullsKnownKeys() {
+        XCTAssertEqual(PiService.summarizeToolArguments(#"{"path":"/etc/hosts"}"#), "/etc/hosts")
+        XCTAssertEqual(PiService.summarizeToolArguments(#"{"command":"ls -al"}"#), "ls -al")
+        XCTAssertEqual(PiService.summarizeToolArguments(#"{"query":"timezone"}"#), "timezone")
+        // Partial JSON fragment (mid-stream) — regex fallback should still
+        // pull the path even before the JSON closes.
+        XCTAssertEqual(
+            PiService.summarizeToolArguments(#"{"path":"docs/README.md""#),
+            "docs/README.md"
+        )
+        XCTAssertNil(PiService.summarizeToolArguments(""))
+    }
+
+    func testPiToolCallsRoundTripThroughChatHistory() throws {
+        // Build a PiChatMessage with a tool call, persist via MobileChatMessage,
+        // decode it back, and confirm the detail label survives.
+        let original = PiChatMessage(
+            role: .assistant,
+            text: "Done.",
+            toolCalls: [
+                PiToolCall(
+                    id: "tc_1",
+                    name: "read_file",
+                    status: "done",
+                    arguments: #"{"path":"a.txt"}"#,
+                    detail: "a.txt"
+                )
+            ]
+        )
+        let store = PiService.testHook_convertToStore(original)
+        XCTAssertEqual(store.toolCalls.count, 1)
+        XCTAssertEqual(store.toolCalls.first?.id, "tc_1")
+        XCTAssertEqual(store.toolCalls.first?.name, "read_file")
+        XCTAssertEqual(store.toolCalls.first?.detail, "a.txt")
+
+        let restored = PiService.testHook_convertFromStore(store)
+        XCTAssertEqual(restored.toolCalls.count, 1)
+        XCTAssertEqual(restored.toolCalls.first?.detail, "a.txt")
+        XCTAssertEqual(restored.toolCalls.first?.status, "done")
+    }
+
     private func makeDefaults() -> UserDefaults {
         let suite = UserDefaults(suiteName: "pi.persistence.\(UUID().uuidString)")!
         return suite

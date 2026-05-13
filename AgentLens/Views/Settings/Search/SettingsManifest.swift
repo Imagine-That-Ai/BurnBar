@@ -264,6 +264,18 @@ enum SettingsManifest {
             keywords: ["logs", "sources", "scan", "claude code", "factory droid", "codex"]
         ),
 
+        // MARK: Routing pools
+
+        SettingsItem(
+            id: "routingPools.overview",
+            tab: .routingPools,
+            pageRoute: .routingPoolsRoot,
+            anchorID: SettingsAnchor.routingPoolsOverview,
+            title: "Routing Pools",
+            subtitle: "Wire Claude Code and OpenAI-compatible clients through routed provider pools",
+            keywords: ["routing", "fire hydrant", "pools", "failover", "claude code", "codex", "gateway"]
+        ),
+
         // MARK: Alerts
 
         SettingsItem(

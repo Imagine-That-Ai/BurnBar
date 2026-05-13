@@ -71,7 +71,7 @@ public enum PixelClockQuotaRenderer {
         config: PixelClockConfig,
         now: Date = Date()
     ) -> [PixelClockRenderedPage] {
-        let selectedItems = filteredItems(items, providerIDs: config.providerIDs)
+        let selectedItems = selectedItems(items: items, config: config)
         guard !selectedItems.isEmpty else {
             return [
                 PixelClockRenderedPage(
@@ -275,7 +275,7 @@ public enum PixelClockQuotaRenderer {
         now: Date,
         isWorking: Bool
     ) -> [PixelClockRenderedPage] {
-        let selectedItems = filteredItems(items, providerIDs: config.providerIDs)
+        let selectedItems = selectedItems(items: items, config: config)
         guard !selectedItems.isEmpty else {
             let waiting = PixelClockQuotaItem(
                 providerID: "openburnbar",
@@ -515,6 +515,22 @@ public enum PixelClockQuotaRenderer {
         return items.filter { item in
             normalized.contains(item.providerID.lowercased())
         }
+    }
+
+    /// Returns the provider items in display order: filtered to the selected
+    /// `providerIDs`, then rotated so `selectedProviderIndex` is the first
+    /// page. The rotation lets hardware-button input on the device move the
+    /// active page without changing the underlying provider list.
+    public static func selectedItems(
+        items: [PixelClockQuotaItem],
+        config: PixelClockConfig
+    ) -> [PixelClockQuotaItem] {
+        let filtered = filteredItems(items, providerIDs: config.providerIDs)
+        guard filtered.count > 1 else { return filtered }
+        let count = filtered.count
+        let offset = positiveModulo(config.selectedProviderIndex, count)
+        guard offset != 0 else { return filtered }
+        return Array(filtered[offset..<count]) + Array(filtered[0..<offset])
     }
 
     private static func compactText(for item: PixelClockQuotaItem) -> String {

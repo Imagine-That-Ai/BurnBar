@@ -17,13 +17,25 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -43,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import com.openburnbar.data.assistants.PiPendingPrompt
 import com.openburnbar.data.hermes.PiChatMessage
 import com.openburnbar.data.hermes.PiService
+import com.openburnbar.data.hermes.PiToolCall
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
 import kotlinx.coroutines.delay
@@ -117,37 +130,122 @@ fun PiAssistantView(piService: PiService) {
 @Composable
 private fun PiMessageBubble(message: PiChatMessage) {
     val isUser = message.role == "user"
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
     ) {
-        Column(
-            modifier = Modifier
-                .background(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    shape = RoundedCornerShape(14.dp)
-                )
-                .border(
-                    width = 0.7.dp,
-                    brush = Brush.linearGradient(AuroraGradients.piGradient),
-                    shape = RoundedCornerShape(14.dp)
-                )
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
         ) {
-            if (!isUser) {
+            Column(
+                modifier = Modifier
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    .border(
+                        width = 0.7.dp,
+                        brush = Brush.linearGradient(AuroraGradients.piGradient),
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                if (!isUser) {
+                    Text(
+                        text = "π via Pi",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AuroraColors.whimsy
+                    )
+                }
+                val shouldShowText =
+                    message.content.isNotEmpty() || message.toolCalls.isEmpty() || message.isStreaming
+                if (shouldShowText) {
+                    Text(
+                        text = if (message.content.isEmpty() && message.isStreaming) "…" else message.content,
+                        color = if (message.isError) AuroraColors.error else MaterialTheme.colorScheme.onSurface,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
+        if (!isUser && message.toolCalls.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            PiToolCallStrip(message.toolCalls)
+        }
+    }
+}
+
+@Composable
+private fun PiToolCallStrip(toolCalls: List<PiToolCall>) {
+    // Most-recent on the left, matching the iOS pill row.
+    val reversed = remember(toolCalls) { toolCalls.reversed() }
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        items(reversed, key = { it.id }) { tool -> PiToolCallPill(tool) }
+    }
+}
+
+@Composable
+private fun PiToolCallPill(tool: PiToolCall) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .widthIn(max = 240.dp)
+            .border(
+                width = 0.75.dp,
+                brush = Brush.linearGradient(AuroraGradients.piGradient),
+                shape = RoundedCornerShape(12.dp)
+            )
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = piToolIcon(tool.name),
+                    contentDescription = null,
+                    modifier = Modifier.size(12.dp),
+                    tint = AuroraColors.whimsy
+                )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "π via Pi",
+                    text = tool.name,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = AuroraColors.whimsy
                 )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = tool.status,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            Text(
-                text = if (message.content.isEmpty() && message.isStreaming) "…" else message.content,
-                color = if (message.isError) AuroraColors.error else MaterialTheme.colorScheme.onSurface,
-                fontSize = 14.sp
-            )
+            val detail = tool.detail?.trim().orEmpty()
+            if (detail.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = detail,
+                    fontSize = 10.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
+    }
+}
+
+private fun piToolIcon(name: String): ImageVector {
+    val n = name.lowercase()
+    return when {
+        n.contains("search") || n.contains("grep") || n.contains("find") -> Icons.Filled.Search
+        n.contains("terminal") || n.contains("bash") || n.contains("exec") || n.contains("run") -> Icons.Filled.Terminal
+        n.contains("edit") || n.contains("write") || n.contains("patch") -> Icons.Filled.Edit
+        else -> Icons.Filled.Code
     }
 }
 

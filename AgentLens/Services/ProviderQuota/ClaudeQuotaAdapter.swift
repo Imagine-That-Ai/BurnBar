@@ -1,27 +1,23 @@
 import Foundation
 
 /// Multi-source Claude quota adapter. Tries the cheapest, most current
-/// data first and falls back gracefully — designed so users never have
-/// to launch the Claude CLI just to see a percentage in OpenBurnBar.
+/// data first and falls back gracefully while respecting the user's
+/// credential boundary.
 ///
 /// ## Collection cascade (May 2026)
 ///
 /// 1. **Statusline bridge snapshot** — written by Claude's CLI on every
 ///    turn. Most current data when present; only works after the user
 ///    runs `claude` with the bridge installed.
-/// 2. **OAuth `/api/oauth/usage`** — direct call to Anthropic's
-///    endpoint using credentials read from the macOS Keychain. Works
-///    on fresh installs with zero user action. Aggressively cached on
-///    disk keyed by `resets_at` to avoid the 429 rate-limit wall
-///    documented in anthropics/claude-code#31637.
+/// 2. **Explicit OAuth `/api/oauth/usage`** — used only when a caller
+///    injects Claude OAuth credentials. The production default reader
+///    returns `nil`, so OpenBurnBar never reads Claude Code's Keychain
+///    item or credentials file and cannot trigger a Keychain prompt.
 /// 3. **JSONL token counting + plan cap** — sums real assistant-turn
-///    tokens from `~/.claude/projects/**/*.jsonl`. When OAuth surfaced
-///    a plan tier (Pro/Max), we annotate the JSONL buckets with the
-///    Anthropic-published cap so users see "% of plan" even when the
-///    OAuth endpoint is rate-limited and the bridge hasn't fired.
-/// 4. **Plan-only snapshot** — when even JSONL is empty but the
-///    Keychain says the user is on Pro/Max, render a snapshot with
-///    just the plan badge so the popover doesn't show "unavailable".
+///    tokens from `~/.claude/projects/**/*.jsonl`. If explicit OAuth
+///    credentials were injected by tests/self-hosted integrations, their
+///    plan tier can annotate JSONL buckets with plan caps.
+/// 4. **Plan-only snapshot** — only for explicitly injected credentials.
 struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     private enum ScannerPolicy {
         static let maxLineBytes = 2 * 1024 * 1024
@@ -109,11 +105,11 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             )
         }
 
-        // 2. OAuth `/api/oauth/usage` — works without the bridge.
-        //    Credentials come from the macOS Keychain (the
-        //    `Claude Code-credentials` item Anthropic writes on
-        //    every OAuth refresh) so users don't have to launch
-        //    the CLI before OpenBurnBar shows a percentage.
+        // 2. Explicit OAuth `/api/oauth/usage`. Production injects
+        //    `NoClaudeCredentialsReader`, so this never reads Claude
+        //    Code's third-party Keychain item or credentials file. That
+        //    keeps refresh prompt-free and avoids surprise credential
+        //    access.
         let workingCredentials = context.claudeCredentialsReader.load()
         if let credentials = workingCredentials, credentials.canCallUsageEndpoint(now: Date()) {
             let fetcher = ClaudeOAuthUsageFetcher(
@@ -121,13 +117,8 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                 cacheURL: context.appPaths.claudeOAuthUsageCacheURL,
                 fileManager: context.fileManager
             )
-            // Reader doubles as a writer for the `.credentials.json`
-            // fallback, so refreshed tokens flow back to disk and
-            // the next `claude` invocation picks them up.
-            let writer = context.claudeCredentialsReader as? ClaudeCredentialsPersisting
             let result = await fetcher.fetchRateLimits(
-                credentials: credentials,
-                credentialsWriter: writer
+                credentials: credentials
             )
             if let rateLimits = result.rateLimits, !rateLimits.isEmpty {
                 let buckets = claudeQuotaBuckets(from: rateLimits)
@@ -152,10 +143,9 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
 
         // 3. JSONL-based token counting from local Claude project
         //    files. Real per-message tokens from
-        //    `~/.claude/projects/**/*.jsonl`. When we know the plan
-        //    tier (from Keychain), annotate the buckets with the
-        //    published cap so users get a percent-of-plan figure
-        //    even when the OAuth endpoint is rate-limited.
+        //    `~/.claude/projects/**/*.jsonl`. When an explicit
+        //    credential injection knows the plan tier, annotate the
+        //    buckets with the published cap.
         let jsonlWindows = (try? Self.scanJSONLTokenWindows(
             homeDirectoryURL: context.homeDirectoryURL,
             fileManager: context.fileManager
@@ -169,10 +159,9 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             )
         }
 
-        // 4. Plan-only snapshot — even when JSONL is empty, surface
-        //    the Keychain-derived plan badge so the popover doesn't
-        //    sit on "unavailable" when Claude Code is clearly
-        //    installed and signed in.
+        // 4. Plan-only snapshot for explicit credentials. This is not
+        //    reached in production default mode because OpenBurnBar no
+        //    longer discovers Claude credentials on its own.
         if let credentials = workingCredentials {
             let badgeBucket = ProviderQuotaBucket(
                 key: "claude-plan-badge",
@@ -192,7 +181,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                 source: .localCLI,
                 confidence: .estimated,
                 managementURL: "https://claude.ai/settings/usage",
-                statusMessage: "Claude \(credentials.planDisplayName) detected via Keychain. Run any Claude Code prompt to capture rate-limit percentages.",
+                statusMessage: "Claude \(credentials.planDisplayName) detected from explicitly supplied credentials. Run any Claude Code prompt to capture local rate-limit percentages.",
                 buckets: [badgeBucket]
             )
         }
@@ -205,7 +194,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         case .disabledByHooks:
             fallbackMessage = postInstallStatus.detailText
         case .awaitingFirstPayload:
-            fallbackMessage = "Bridge installed but no payload yet. Send any Claude Code prompt to capture rate limits, or wait for OpenBurnBar's next OAuth poll."
+            fallbackMessage = "Bridge installed but no payload yet. Send any Claude Code prompt to capture local rate limits."
         case .ready:
             fallbackMessage = "Bridge installed but no rate-limit payload captured yet."
         }
@@ -214,7 +203,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             return unavailableSnapshot(
                 for: .claudeCode,
                 source: .localSession,
-                message: "\(jsonlWindows.filesScanned) JSONL file(s) scanned but no recent token activity found. Sign in to Claude Code so OpenBurnBar can read your plan from Keychain."
+                message: "\(jsonlWindows.filesScanned) JSONL file(s) scanned but no recent token activity found. Run any Claude Code prompt to refresh local usage data."
             )
         }
 
@@ -348,12 +337,12 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         )
     }
 
-    /// Best-effort plan cap inference. The `rateLimitTier` Claude Code
-    /// emits in Keychain (`default_claude_max_20x`, `default_claude_pro_5x`,
-    /// etc.) tells us the multiplier; we map it to the Anthropic-published
-    /// allowance. Returns `nil` when we can't recognize the tier — in
-    /// that case the JSONL buckets render token counts only (still
-    /// useful, just without percentages).
+    /// Best-effort plan cap inference. Explicit OAuth payloads can carry
+    /// `rateLimitTier` values (`default_claude_max_20x`,
+    /// `default_claude_pro_5x`, etc.) that identify the multiplier; we
+    /// map them to the Anthropic-published allowance. Returns `nil` when
+    /// we can't recognize the tier — in that case the JSONL buckets
+    /// render token counts only (still useful, just without percentages).
     private func inferredCaps(from credentials: ClaudeOAuthCredentials?) -> ClaudePlanCaps? {
         guard let credentials else { return nil }
         let tier = credentials.rateLimitTier.lowercased()

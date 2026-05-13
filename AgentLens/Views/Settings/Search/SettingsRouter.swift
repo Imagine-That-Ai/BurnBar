@@ -112,6 +112,7 @@ final class SettingsRouter {
         // Tabs whose root view *is* the destination.
         case .accountRoot,
              .providersRoot,
+             .routingPoolsRoot,
              .alertsRoot,
              .notificationsRoot,
              .devicesAndSyncRoot,

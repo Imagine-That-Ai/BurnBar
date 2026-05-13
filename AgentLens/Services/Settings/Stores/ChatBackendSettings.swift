@@ -123,6 +123,33 @@ final class ChatBackendSettings {
         ChatBackendID.decodeEnabledList(fromCSV: enabledChatBackendIDsCSV)
     }
 
+    // MARK: - Hermes Model Picker (second-level row beneath the surface strip)
+    //
+    // The chat surface picker (above) decides which app drives the
+    // conversation (Codex / Claude / Hermes / OpenClaw / Pi). When the
+    // selected surface is `.hermes`, this second list decides which
+    // underlying model Hermes routes to. Stored as the same CSV pattern
+    // so it sync-replicates cleanly through the existing persistence
+    // coordinator.
+
+    var enabledHermesModelIDsCSV: String = "" {
+        didSet { persistence.set(enabledHermesModelIDsCSV, forKey: "enabledHermesModelIDsCSV") }
+    }
+
+    var selectedHermesModelIDRaw: String = "" {
+        didSet { persistence.set(selectedHermesModelIDRaw, forKey: "selectedHermesModelIDRaw") }
+    }
+
+    var enabledHermesModels: [HermesModelID] {
+        let list = HermesModelID.decodeEnabledList(fromCSV: enabledHermesModelIDsCSV)
+        return list.isEmpty ? HermesModelID.defaultEnabled : list
+    }
+
+    var selectedHermesModel: HermesModelID? {
+        get { HermesModelID(rawValue: selectedHermesModelIDRaw) }
+        set { selectedHermesModelIDRaw = newValue?.rawValue ?? "" }
+    }
+
     var selectedOnboardingProviders: Set<AgentProvider> {
         get {
             let csv = selectedOnboardingProvidersCSV
@@ -190,6 +217,8 @@ final class ChatBackendSettings {
                 self.enabledChatBackendIDsCSV = ""
             }
         }
+        self.enabledHermesModelIDsCSV = persistence.string(forKey: "enabledHermesModelIDsCSV")
+        self.selectedHermesModelIDRaw = persistence.string(forKey: "selectedHermesModelIDRaw")
     }
 
     func setEnabledChatBackends(_ backends: [ChatBackendID]) {
@@ -204,6 +233,34 @@ final class ChatBackendSettings {
             list.removeAll { $0 == id }
         }
         setEnabledChatBackends(list)
+    }
+
+    func setEnabledHermesModels(_ models: [HermesModelID]) {
+        enabledHermesModelIDsCSV = HermesModelID.encodeEnabledList(models)
+    }
+
+    func setHermesModelEnabled(_ id: HermesModelID, enabled: Bool) {
+        var list = enabledHermesModels
+        if enabled {
+            if !list.contains(id) { list.append(id) }
+        } else {
+            list.removeAll { $0 == id }
+        }
+        setEnabledHermesModels(list)
+    }
+
+    /// Apply a Hermes model selection: stores the typed enum and mirrors
+    /// it into `hermesChatModelOverride` so the existing chat resolution
+    /// path picks it up without a parallel routing branch.
+    func applyHermesModelSelection(_ model: HermesModelID?) {
+        selectedHermesModel = model
+        if let model {
+            hermesChatModelOverride = model.hermesModelOverride
+        } else {
+            // Cleared selection — let the gateway-advertised default win
+            // (`resolvedHermesChatModel` falls through to "hermes").
+            hermesChatModelOverride = ""
+        }
     }
 
     static func resolvedHermesChatModel(override: String, gatewayAdvertisedModel: String?) -> String {

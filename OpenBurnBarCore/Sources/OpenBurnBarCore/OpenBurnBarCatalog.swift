@@ -42,6 +42,22 @@ public enum BurnBarProviderCapability: String, Codable, Hashable, Sendable {
     case cursorConnector = "cursor_connector"
 }
 
+/// Wire-format family a provider speaks at the OpenBurnBar local gateway.
+///
+/// The router enforces that an incoming request is only served by accounts in
+/// the same format family. OpenAI-compatible (`/v1/chat/completions`) traffic
+/// never crosses into Anthropic-compatible (`/v1/messages`) accounts and
+/// vice-versa. This is "two highways" routing — not cross-format translation.
+public enum BurnBarProviderFormatFamily: String, Codable, Hashable, Sendable {
+    /// OpenAI-shape Chat Completions API. Covers OpenAI, Z.ai, MiniMax, Kimi,
+    /// Ollama Cloud, Ollama Local, xAI, DeepSeek, Mistral, Meta, Cohere,
+    /// Alibaba, MLX, and other OpenAI-compatible upstreams.
+    case openaiCompat = "openai_compat"
+    /// Anthropic Messages API. Covers Anthropic Console API keys and
+    /// Anthropic Pro/Team OAuth bearers — anything that speaks `/v1/messages`.
+    case anthropic
+}
+
 public struct BurnBarModelMatcher: Codable, Hashable, Sendable {
     public let all: [String]
     public let any: [String]
@@ -105,6 +121,10 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
     public let capabilities: [BurnBarProviderCapability]
     public let logoKey: String?
     public let models: [BurnBarCatalogModel]
+    /// Which wire-format pool this provider participates in when routed through
+    /// the local gateway. Defaults to `.openaiCompat` for backward compatibility
+    /// with catalogs that predate the two-pool routing model.
+    public let formatFamily: BurnBarProviderFormatFamily
 
     public init(
         id: String,
@@ -113,7 +133,8 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
         visibility: BurnBarCatalogVisibility,
         capabilities: [BurnBarProviderCapability],
         logoKey: String? = nil,
-        models: [BurnBarCatalogModel]
+        models: [BurnBarCatalogModel],
+        formatFamily: BurnBarProviderFormatFamily = .openaiCompat
     ) {
         self.id = id
         self.displayName = displayName
@@ -122,6 +143,33 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
         self.capabilities = capabilities
         self.logoKey = logoKey
         self.models = models
+        self.formatFamily = formatFamily
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case displayName
+        case baseURL
+        case visibility
+        case capabilities
+        case logoKey
+        case models
+        case formatFamily
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.displayName = try container.decode(String.self, forKey: .displayName)
+        self.baseURL = try container.decode(String.self, forKey: .baseURL)
+        self.visibility = try container.decode(BurnBarCatalogVisibility.self, forKey: .visibility)
+        self.capabilities = try container.decode([BurnBarProviderCapability].self, forKey: .capabilities)
+        self.logoKey = try container.decodeIfPresent(String.self, forKey: .logoKey)
+        self.models = try container.decode([BurnBarCatalogModel].self, forKey: .models)
+        self.formatFamily = try container.decodeIfPresent(
+            BurnBarProviderFormatFamily.self,
+            forKey: .formatFamily
+        ) ?? .openaiCompat
     }
 
     /// Asset catalog image name for this provider's bundled logo.

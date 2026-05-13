@@ -173,6 +173,7 @@ struct SettingsView: View {
         case .controllerRuntime:
             ControllerRuntimeDetailView(settingsManager: settingsManager)
         case .generalRoot, .daemonRoot, .accountRoot, .providersRoot,
+             .routingPoolsRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,
              .switcherRoot, .hermesRoot:
             // Roots are reachable via the sidebar tab selection — the path
@@ -246,6 +247,12 @@ struct SettingsView: View {
                 accountManager: accountManager
             )
                 .navigationTitle("Providers")
+        case .routingPools:
+            RoutingPoolsView(
+                settingsManager: settingsManager,
+                dataStore: dataStore
+            )
+                .navigationTitle("Routing pools")
         case .alerts:
             AlertsSettingsView(settingsManager: settingsManager)
                 .navigationTitle("Alerts")

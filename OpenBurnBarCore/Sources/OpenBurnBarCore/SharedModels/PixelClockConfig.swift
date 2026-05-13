@@ -23,6 +23,9 @@ public struct PixelClockConfig: Codable, Sendable, Equatable {
     public var scrollSpeedPercent: Int
     public var brightness: Int?
     public var providerIDs: [String]
+    public var selectedProviderIndex: Int
+    public var buttonBindings: PixelClockButtonBindings
+    public var mutedUntil: Date?
     public var updatedAt: Date
     public var updatedByDeviceId: String?
     public var lastProbeStatus: PixelClockProbeStatus
@@ -44,6 +47,9 @@ public struct PixelClockConfig: Codable, Sendable, Equatable {
         scrollSpeedPercent: Int = 100,
         brightness: Int? = Self.safeDefaultBrightness,
         providerIDs: [String] = [],
+        selectedProviderIndex: Int = 0,
+        buttonBindings: PixelClockButtonBindings = .default,
+        mutedUntil: Date? = nil,
         updatedAt: Date = Date(),
         updatedByDeviceId: String? = nil,
         lastProbeStatus: PixelClockProbeStatus = .unknown
@@ -64,6 +70,9 @@ public struct PixelClockConfig: Codable, Sendable, Equatable {
         self.scrollSpeedPercent = scrollSpeedPercent
         self.brightness = brightness
         self.providerIDs = providerIDs
+        self.selectedProviderIndex = selectedProviderIndex
+        self.buttonBindings = buttonBindings
+        self.mutedUntil = mutedUntil
         self.updatedAt = updatedAt
         self.updatedByDeviceId = updatedByDeviceId
         self.lastProbeStatus = lastProbeStatus
@@ -88,6 +97,9 @@ public struct PixelClockConfig: Codable, Sendable, Equatable {
         case scrollSpeedPercent
         case brightness
         case providerIDs
+        case selectedProviderIndex
+        case buttonBindings
+        case mutedUntil
         case updatedAt
         case updatedByDeviceId
         case lastProbeStatus
@@ -112,6 +124,9 @@ public struct PixelClockConfig: Codable, Sendable, Equatable {
             scrollSpeedPercent: try c.decodeIfPresent(Int.self, forKey: .scrollSpeedPercent) ?? 100,
             brightness: try c.decodeIfPresent(Int.self, forKey: .brightness) ?? Self.safeDefaultBrightness,
             providerIDs: try c.decodeIfPresent([String].self, forKey: .providerIDs) ?? [],
+            selectedProviderIndex: try c.decodeIfPresent(Int.self, forKey: .selectedProviderIndex) ?? 0,
+            buttonBindings: try c.decodeIfPresent(PixelClockButtonBindings.self, forKey: .buttonBindings) ?? .default,
+            mutedUntil: try c.decodeIfPresent(Date.self, forKey: .mutedUntil),
             updatedAt: try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date(),
             updatedByDeviceId: try c.decodeIfPresent(String.self, forKey: .updatedByDeviceId),
             lastProbeStatus: try c.decodeIfPresent(PixelClockProbeStatus.self, forKey: .lastProbeStatus) ?? .unknown
@@ -136,6 +151,9 @@ public struct PixelClockConfig: Codable, Sendable, Equatable {
         try c.encode(scrollSpeedPercent, forKey: .scrollSpeedPercent)
         try c.encodeIfPresent(brightness, forKey: .brightness)
         try c.encode(providerIDs, forKey: .providerIDs)
+        try c.encode(selectedProviderIndex, forKey: .selectedProviderIndex)
+        try c.encode(buttonBindings, forKey: .buttonBindings)
+        try c.encodeIfPresent(mutedUntil, forKey: .mutedUntil)
         try c.encode(updatedAt, forKey: .updatedAt)
         try c.encodeIfPresent(updatedByDeviceId, forKey: .updatedByDeviceId)
         try c.encode(lastProbeStatus, forKey: .lastProbeStatus)
@@ -165,6 +183,11 @@ public struct PixelClockConfig: Codable, Sendable, Equatable {
             )
         }
     }
+
+    public func isMuted(at date: Date = Date()) -> Bool {
+        guard let mutedUntil else { return false }
+        return mutedUntil > date
+    }
 }
 
 public enum PixelClockSpinnerStyle: String, Codable, Sendable, CaseIterable, Equatable {
@@ -172,6 +195,68 @@ public enum PixelClockSpinnerStyle: String, Codable, Sendable, CaseIterable, Equ
     case chase
     case pulse
     case scan
+}
+
+public enum PixelClockButtonAction: String, Codable, Sendable, CaseIterable, Equatable {
+    case none
+    case nextProvider
+    case previousProvider
+    case openHermes
+    case snoozeAlert
+    case cycleLayout
+    case cycleTimePeriod
+
+    public var displayName: String {
+        switch self {
+        case .none: return "Nothing"
+        case .nextProvider: return "Next provider"
+        case .previousProvider: return "Previous provider"
+        case .openHermes: return "Open Hermes"
+        case .snoozeAlert: return "Snooze alert"
+        case .cycleLayout: return "Cycle layout"
+        case .cycleTimePeriod: return "Cycle time window"
+        }
+    }
+}
+
+public struct PixelClockButtonBindings: Codable, Sendable, Equatable {
+    public var left: PixelClockButtonAction
+    public var select: PixelClockButtonAction
+    public var right: PixelClockButtonAction
+
+    public init(
+        left: PixelClockButtonAction = .previousProvider,
+        select: PixelClockButtonAction = .openHermes,
+        right: PixelClockButtonAction = .nextProvider
+    ) {
+        self.left = left
+        self.select = select
+        self.right = right
+    }
+
+    public static let `default` = PixelClockButtonBindings()
+
+    private enum CodingKeys: String, CodingKey {
+        case left
+        case select
+        case right
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            left: try c.decodeIfPresent(PixelClockButtonAction.self, forKey: .left) ?? .previousProvider,
+            select: try c.decodeIfPresent(PixelClockButtonAction.self, forKey: .select) ?? .openHermes,
+            right: try c.decodeIfPresent(PixelClockButtonAction.self, forKey: .right) ?? .nextProvider
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(left, forKey: .left)
+        try c.encode(select, forKey: .select)
+        try c.encode(right, forKey: .right)
+    }
 }
 
 public enum PixelClockLayout: String, Codable, Sendable, CaseIterable {

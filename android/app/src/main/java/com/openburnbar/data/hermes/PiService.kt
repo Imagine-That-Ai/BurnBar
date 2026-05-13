@@ -21,6 +21,16 @@ import java.util.concurrent.TimeUnit
 // shared `AssistantsScreen` composable can drive either runtime through a
 // single `AssistantRuntimeID` selection.
 
+/// One tool the Pi-served model decided to invoke during this turn. Mirrors
+/// the iOS `PiToolCall` shape so the SwiftUI and Compose pills stay in sync.
+data class PiToolCall(
+    val id: String,
+    val name: String,
+    val status: String,
+    val arguments: String,
+    val detail: String?
+)
+
 data class PiChatMessage(
     val id: String = UUID.randomUUID().toString(),
     val role: String = "assistant",
@@ -28,7 +38,8 @@ data class PiChatMessage(
     val modelName: String? = null,
     val isStreaming: Boolean = false,
     val isError: Boolean = false,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val toolCalls: List<PiToolCall> = emptyList()
 )
 
 class PiService {
@@ -187,7 +198,17 @@ class PiService {
                 applyError(assistantId, e.message ?: "Pi stream failed.")
             } finally {
                 _isStreaming.value = false
-                appendToAssistant(assistantId, "") { msg -> msg.copy(isStreaming = false) }
+                appendToAssistant(assistantId, "") { msg ->
+                    msg.copy(
+                        isStreaming = false,
+                        toolCalls = msg.toolCalls.map { tc ->
+                            tc.copy(
+                                status = "done",
+                                detail = tc.detail ?: summarizeToolArguments(tc.arguments)
+                            )
+                        }
+                    )
+                }
             }
         }
     }
@@ -241,14 +262,130 @@ class PiService {
                     val json = JSONObject(payloadText)
                     val choices = json.optJSONArray("choices") ?: return@runCatching
                     if (choices.length() == 0) return@runCatching
-                    val delta = choices.getJSONObject(0).optJSONObject("delta") ?: return@runCatching
-                    val content = delta.optString("content")
-                    if (content.isNotEmpty()) {
+                    val first = choices.getJSONObject(0)
+                    val delta = first.optJSONObject("delta")
+                    val finalMessage = first.optJSONObject("message")
+
+                    val content = extractContent(delta) ?: extractContent(finalMessage)
+                    if (!content.isNullOrEmpty()) {
                         appendToAssistant(assistantId, content)
+                    }
+                    val toolCallsArr = extractToolCalls(delta) ?: extractToolCalls(finalMessage)
+                    if (toolCallsArr != null && toolCallsArr.length() > 0) {
+                        mergeToolCallsForAssistant(assistantId, toolCallsArr)
                     }
                 }
             }
         }
+    }
+
+    private fun extractContent(item: JSONObject?): String? {
+        if (item == null) return null
+        val direct = item.optString("content")
+        if (!direct.isNullOrEmpty()) return direct
+        val arr = item.optJSONArray("content") ?: return null
+        val buf = StringBuilder()
+        for (i in 0 until arr.length()) {
+            when (val piece = arr.get(i)) {
+                is String -> buf.append(piece)
+                is JSONObject -> {
+                    piece.optString("text").takeIf { it.isNotEmpty() }?.let { buf.append(it) }
+                        ?: piece.optString("value").takeIf { it.isNotEmpty() }?.let { buf.append(it) }
+                }
+            }
+        }
+        return buf.toString().ifEmpty { null }
+    }
+
+    private fun extractToolCalls(item: JSONObject?): JSONArray? {
+        if (item == null) return null
+        item.optJSONArray("tool_calls")?.takeIf { it.length() > 0 }?.let { return it }
+        item.optJSONArray("toolCalls")?.takeIf { it.length() > 0 }?.let { return it }
+        item.optJSONObject("function_call")?.let { return JSONArray().put(it) }
+        item.optJSONObject("functionCall")?.let { return JSONArray().put(it) }
+        return null
+    }
+
+    /// Folds an OpenAI-compatible `tool_calls` delta array into the live
+    /// assistant message identified by [assistantId]. Mirrors the iOS Pi
+    /// implementation: the streaming protocol splits a single tool call across
+    /// many chunks (name first, then partial `arguments` strings), so we
+    /// accumulate by index or id and recompute the human-readable preview as
+    /// more fragments arrive.
+    private fun mergeToolCallsForAssistant(assistantId: String, calls: JSONArray) {
+        _messages.value = _messages.value.map { existing ->
+            if (existing.id != assistantId) return@map existing
+            val current = existing.toolCalls.toMutableList()
+            for (i in 0 until calls.length()) {
+                val raw = calls.optJSONObject(i) ?: continue
+                val function = raw.optJSONObject("function")
+                val nameFragment = (function?.optString("name") ?: raw.optString("name"))?.ifEmpty { null }
+                val argsFragment = (function?.optString("arguments") ?: raw.optString("arguments"))?.ifEmpty { null }
+                val indexHint = if (raw.has("index")) raw.optInt("index", -1).takeIf { it >= 0 } else null
+                val idFromPayload = raw.optString("id").ifEmpty { null }
+
+                val resolvedID: String = when {
+                    indexHint != null && indexHint < current.size -> current[indexHint].id
+                    idFromPayload != null -> idFromPayload
+                    indexHint != null -> "pi-tool-index-$indexHint"
+                    else -> "pi-tool-${current.size + 1}"
+                }
+                val existingIdx = current.indexOfFirst { it.id == resolvedID }
+                if (existingIdx >= 0) {
+                    val tc = current[existingIdx]
+                    val newName = if (!nameFragment.isNullOrEmpty()) nameFragment else tc.name
+                    val newArgs = tc.arguments + (argsFragment ?: "")
+                    current[existingIdx] = tc.copy(
+                        name = newName,
+                        arguments = newArgs,
+                        status = "running",
+                        detail = summarizeToolArguments(newArgs) ?: tc.detail
+                    )
+                } else {
+                    val newName = if (!nameFragment.isNullOrEmpty()) nameFragment else "Pi tool"
+                    val newArgs = argsFragment ?: ""
+                    current += PiToolCall(
+                        id = resolvedID,
+                        name = newName,
+                        status = "running",
+                        arguments = newArgs,
+                        detail = summarizeToolArguments(newArgs)
+                    )
+                }
+            }
+            existing.copy(toolCalls = current)
+        }
+    }
+
+    /// Short human-readable preview pulled out of a (possibly partial) JSON
+    /// arguments string. Mirrors `PiService.summarizeToolArguments` on iOS so
+    /// the SwiftUI and Compose pills stay in sync.
+    internal fun summarizeToolArguments(raw: String): String? {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return null
+        runCatching {
+            val obj = JSONObject(trimmed)
+            for (key in listOf("path", "file_path", "command", "pattern", "query", "url", "prompt")) {
+                val value = obj.optString(key)
+                if (!value.isNullOrEmpty()) return value.take(200)
+            }
+            val keys = obj.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                val value = obj.optString(k)
+                if (!value.isNullOrEmpty()) return value.take(200)
+            }
+        }
+        // Mid-stream: arguments may still be a partial JSON fragment.
+        for (key in listOf("path", "file_path", "command", "pattern", "query", "url", "prompt")) {
+            val pattern = "\"$key\"\\s*:\\s*\"([^\"]+)\"".toRegex()
+            val match = pattern.find(trimmed)
+            if (match != null && match.groupValues.size >= 2) {
+                val value = match.groupValues[1]
+                if (value.isNotEmpty()) return value.take(200)
+            }
+        }
+        return null
     }
 
     private fun appendToAssistant(

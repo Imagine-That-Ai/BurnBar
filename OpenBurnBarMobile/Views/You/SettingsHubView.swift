@@ -15,6 +15,7 @@ struct SettingsHubView: View {
     @State private var didLoadLocalSubscription = false
     @State private var showDeleteAccountConfirmation = false
     @State private var accountDeletionError: String?
+    @State private var router = SettingsRouter()
 
     @AppStorage("preferredAppearance") private var preferredAppearance: String = "system"
     @AppStorage("usageDisplayMode") private var usageDisplayMode: String = "currency"
@@ -29,8 +30,93 @@ struct SettingsHubView: View {
     @AppStorage("costAlertThreshold") private var costAlertThreshold: Double = 10.0
 
     var body: some View {
+        NavigationStack(path: $router.path) {
+            hubContent
+                .navigationDestination(for: SettingsPageRoute.self) { route in
+                    destination(for: route)
+                        .environment(router)
+                }
+                .environment(router)
+        }
+    }
+
+    @ViewBuilder
+    private var hubContent: some View {
         ZStack {
             AuroraBackdrop(density: .subtle)
+            if router.isSearching {
+                SettingsSearchResultsView(router: router)
+                    .environment(router)
+            } else {
+                hubForm
+            }
+        }
+        .searchable(
+            text: $router.query,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search settings"
+        )
+        .navigationTitle("Settings")
+        .confirmationDialog(
+            "Delete OpenBurnBar account?",
+            isPresented: $showDeleteAccountConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete account", role: .destructive) {
+                Task { await deleteAccount() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your OpenBurnBar cloud data, provider account records, devices, usage history, and sign-in. This cannot be undone.")
+        }
+        .alert("Account deletion failed", isPresented: deletionErrorBinding) {
+            Button("OK", role: .cancel) {
+                accountDeletionError = nil
+            }
+        } message: {
+            Text(accountDeletionError ?? "Try signing in again, then delete the account from Settings.")
+        }
+        .task {
+            if sharedSubscriptionStore == nil, !didLoadLocalSubscription {
+                didLoadLocalSubscription = true
+                await localSubscriptionStore.load()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func destination(for route: SettingsPageRoute) -> some View {
+        switch route {
+        case .hubRoot:
+            hubContent
+        case .cloud:
+            SettingsDeepLinkScrollContainer(route: .cloud) { _ in
+                CloudStoreView()
+            }
+        case .providerConnections:
+            SettingsDeepLinkScrollContainer(route: .providerConnections) { _ in
+                ProviderConnectionsView(showsDoneButton: false)
+            }
+        case .hermes:
+            SettingsDeepLinkScrollContainer(route: .hermes) { _ in
+                HermesSettingsView(
+                    service: HermesService(),
+                    authStore: authStore
+                )
+            }
+        case .pi:
+            SettingsDeepLinkScrollContainer(route: .pi) { _ in
+                PiSettingsView(service: PiService(), authStore: authStore)
+            }
+        case .chatTiles:
+            SettingsDeepLinkScrollContainer(route: .chatTiles) { _ in
+                ChatTilesSettingsView()
+            }
+        }
+    }
+
+    private var hubForm: some View {
+        SettingsDeepLinkScrollContainer(route: .hubRoot) { _ in
             Form {
                 Section {
                     Picker(selection: $preferredAppearance) {
@@ -40,18 +126,21 @@ struct SettingsHubView: View {
                     } label: {
                         SettingsLabel(icon: "paintpalette.fill", color: MobileTheme.amber, title: "Theme")
                     }
+                    .settingsAnchor(SettingsAnchor.theme)
                     Picker(selection: $usageDisplayMode) {
                         Text("Currency").tag("currency")
                         Text("Tokens").tag("tokens")
                     } label: {
                         SettingsLabel(icon: "number.square.fill", color: MobileTheme.ember, title: "Default display")
                     }
+                    .settingsAnchor(SettingsAnchor.usageDisplay)
                 } header: { groupHeader("Appearance") }
 
                 Section {
                     UIModePicker(selection: $uiMode)
                         .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                         .listRowBackground(Color.clear)
+                        .settingsAnchor(SettingsAnchor.uiMode)
                 } header: { groupHeader("UI Mode") }
 
                 Section {
@@ -62,6 +151,7 @@ struct SettingsHubView: View {
                             .font(MobileTheme.Typography.caption)
                             .foregroundStyle(MobileTheme.Colors.textSecondary)
                     }
+                    .settingsAnchor(SettingsAnchor.dailyBudget)
                     Slider(value: $dailyBudget, in: 1...500, step: 5) {
                         Text("Daily budget")
                     } minimumValueLabel: {
@@ -74,6 +164,7 @@ struct SettingsHubView: View {
                         SettingsLabel(icon: "bell.badge.fill", color: MobileTheme.warning, title: "Cost alerts")
                     }
                     .tint(MobileTheme.ember)
+                    .settingsAnchor(SettingsAnchor.costAlerts)
                     if costAlertEnabled {
                         Stepper("Threshold: $\(costAlertThreshold, specifier: "%.2f")", value: $costAlertThreshold, step: 1)
                     }
@@ -81,6 +172,7 @@ struct SettingsHubView: View {
                         SettingsLabel(icon: "number.circle.fill", color: MobileTheme.amber, title: "Token alerts")
                     }
                     .tint(MobileTheme.ember)
+                    .settingsAnchor(SettingsAnchor.tokenAlerts)
                     if tokenAlertEnabled {
                         Stepper("Threshold: \(tokenAlertThreshold.formatted()) tokens", value: $tokenAlertThreshold, step: 10_000)
                     }
@@ -91,6 +183,7 @@ struct SettingsHubView: View {
                         SettingsLabel(icon: "envelope.badge.fill", color: MobileTheme.whimsy, title: "Daily digest")
                     }
                     .tint(MobileTheme.ember)
+                    .settingsAnchor(SettingsAnchor.dailyDigest)
                     if dailyDigestEnabled {
                         Picker("Delivery time", selection: $dailyDigestHour) {
                             ForEach(6..<24, id: \.self) { hour in Text("\(hour):00").tag(hour) }
@@ -100,6 +193,7 @@ struct SettingsHubView: View {
                         SettingsLabel(icon: "bell.fill", color: MobileTheme.amber, title: "Session pings")
                     }
                     .tint(MobileTheme.ember)
+                    .settingsAnchor(SettingsAnchor.sessionPings)
                     Button {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
                             UIApplication.shared.open(url)
@@ -108,19 +202,20 @@ struct SettingsHubView: View {
                         SettingsLabel(icon: "gear", color: MobileTheme.Colors.textSecondary, title: "Open system Notifications…")
                     }
                     .foregroundStyle(MobileTheme.ember)
+                    .settingsAnchor(SettingsAnchor.openSystemNotifications)
                 } header: { groupHeader("Notifications") }
 
                 Section {
-                    NavigationLink {
-                        CloudStoreView()
-                    } label: {
+                    NavigationLink(value: SettingsPageRoute.cloud) {
                         cloudSettingsRow
                     }
+                    .settingsAnchor(SettingsAnchor.cloudRow)
                 } header: { groupHeader("Cloud") }
 
                 Section {
                     if let identity = authStore.currentIdentity {
                         LabeledContent("Signed in", value: identity.email ?? identity.displayName ?? "OpenBurnBar account")
+                            .settingsAnchor(SettingsAnchor.accountRow)
                     }
                     Button(role: .destructive) {
                         showDeleteAccountConfirmation = true
@@ -145,81 +240,59 @@ struct SettingsHubView: View {
                     .disabled(!authStore.state.isSignedIn || authStore.isDeletingAccount)
                     .accessibilityIdentifier("settings.deleteAccount")
                     .accessibilityHint("Permanently deletes your OpenBurnBar account and cloud data.")
+                    .settingsAnchor(SettingsAnchor.deleteAccount)
                 } header: { groupHeader("Account") }
 
                 Section {
-                    NavigationLink {
-                        ProviderConnectionsView(showsDoneButton: false)
-                    } label: {
+                    NavigationLink(value: SettingsPageRoute.providerConnections) {
                         SettingsLabel(icon: "externaldrive.connected.to.line.below", color: MobileTheme.ember, title: "Provider connections")
                     }
+                    .settingsAnchor(SettingsAnchor.providersRow)
                 } header: { groupHeader("Providers") }
 
                 Section {
-                    NavigationLink {
-                        HermesSettingsView(
-                            service: HermesService(),
-                            authStore: authStore
+                    NavigationLink(value: SettingsPageRoute.chatTiles) {
+                        SettingsLabel(
+                            icon: "bubble.left.and.bubble.right.fill",
+                            color: MobileTheme.amber,
+                            title: "Chat tiles"
                         )
-                    } label: {
+                    }
+
+                    NavigationLink(value: SettingsPageRoute.hermes) {
                         SettingsLabel(
                             icon: "antenna.radiowaves.left.and.right",
                             color: MobileTheme.hermesAureate,
                             title: "Hermes"
                         )
                     }
+                    .settingsAnchor(SettingsAnchor.hermesRow)
 
-                    NavigationLink {
-                        PiSettingsView(service: PiService(), authStore: authStore)
-                    } label: {
+                    NavigationLink(value: SettingsPageRoute.pi) {
                         SettingsLabel(
                             icon: "circle.hexagongrid.fill",
                             color: MobileTheme.whimsy,
                             title: "Pi"
                         )
                     }
+                    .settingsAnchor(SettingsAnchor.piRow)
                 } header: { groupHeader("AI Environments") }
 
                 Section {
                     LabeledContent("Version", value: marketingVersion)
+                        .settingsAnchor(SettingsAnchor.aboutVersion)
                     LabeledContent("Build", value: buildVersion)
                     Link(destination: URL(string: "https://openburnbar.com/legal/privacy-policy")!) {
                         SettingsLabel(icon: "hand.raised.fill", color: MobileTheme.whimsy, title: "Privacy policy")
                     }
+                    .settingsAnchor(SettingsAnchor.aboutPrivacy)
                     Link(destination: URL(string: "https://openburnbar.com/legal/terms")!) {
                         SettingsLabel(icon: "doc.text.fill", color: MobileTheme.amber, title: "Terms of service")
                     }
+                    .settingsAnchor(SettingsAnchor.aboutTerms)
                 } header: { groupHeader("About") }
             }
             .scrollContentBackground(.hidden)
-        }
-        .navigationTitle("Settings")
-        .confirmationDialog(
-            "Delete OpenBurnBar account?",
-            isPresented: $showDeleteAccountConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete account", role: .destructive) {
-                Task { await deleteAccount() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This permanently deletes your OpenBurnBar cloud data, provider account records, devices, usage history, and sign-in. This cannot be undone.")
-        }
-        .alert("Account deletion failed", isPresented: deletionErrorBinding) {
-            Button("OK", role: .cancel) {
-                accountDeletionError = nil
-            }
-        } message: {
-            Text(accountDeletionError ?? "Try signing in again, then delete the account from Settings.")
-        }
-        .task {
-            // Load only when no shared store is available (e.g. preview, deep
-            // link to settings before root injection).
-            if sharedSubscriptionStore == nil, !didLoadLocalSubscription {
-                didLoadLocalSubscription = true
-                await localSubscriptionStore.load()
-            }
         }
     }
 

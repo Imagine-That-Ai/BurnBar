@@ -192,10 +192,41 @@ enum class PiAgentRelayChunkKind(val token: String) {
 
 enum class AssistantRuntimeID(val token: String, val displayName: String, val glyph: String) {
     HERMES("hermes", "Hermes", "\u263F"),
-    PI("pi", "Pi", "\u03C0");
+    PI("pi", "Pi", "\u03C0"),
+    CODEX("codex", "Codex", "\u21BB"),
+    CLAUDE("claude", "Claude", "\u2726"),
+    OPEN_CLAW("openclaw", "OpenClaw", "\u26A1");
+
+    /** True for runtimes that have a first-class Android chat surface today. */
+    val hasMobileChatSurface: Boolean get() = this == HERMES || this == PI
 
     companion object {
         fun fromToken(value: String?): AssistantRuntimeID =
             values().firstOrNull { it.token == value } ?: HERMES
+
+        /** Default-visible tiles for a fresh install (parity with the prior 2-case pill). */
+        val defaultEnabledTiles: Set<AssistantRuntimeID> = setOf(HERMES, PI)
+    }
+}
+
+/**
+ * The six Hermes sub-providers surfaced inside the Hermes model picker.
+ * Matches the Swift `HermesSubProvider` enum in `OpenBurnBarCore`.
+ */
+enum class HermesSubProvider(val token: String, val displayName: String, val defaultModelHint: String, val glyph: String) {
+    CODEX("codex", "Codex", "codex", "\u21BB"),
+    CLAUDE("claude", "Claude", "claude", "\u2726"),
+    ZAI("zai", "Z.ai", "glm-4.6", "Z"),
+    KIMI("kimi", "Kimi", "kimi-k2", "K"),
+    MINIMAX("minimax", "MiniMax", "minimax-m1", "M"),
+    OLLAMA("ollama", "Ollama", "llama3", "\u2299");
+
+    companion object {
+        fun fromToken(value: String?): HermesSubProvider? {
+            val normalized = value?.lowercase()?.replace(" ", "") ?: return null
+            return values().firstOrNull { it.token == normalized }
+        }
+
+        val defaultVisible: Set<HermesSubProvider> = values().toSet()
     }
 }

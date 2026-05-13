@@ -120,6 +120,7 @@ struct DashboardView: View {
     func routeTitle(_ route: DashboardMainRoute) -> String {
         switch route {
         case .overview: return "Overview"
+        case .insights: return "Insights"
         case .database: return "Database"
         case .projects: return "Projects"
         case .missions: return "Missions"
@@ -319,6 +320,13 @@ struct DashboardView: View {
                 switch mainRoute {
                 case .overview:
                     overviewView
+                case .insights:
+                    InsightsWorkspaceView(
+                        dataStore: dataStore,
+                        settingsManager: settingsManager,
+                        chatController: chatController
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .database:
                     DatabaseWorkspaceView(
                         dataStore: dataStore,

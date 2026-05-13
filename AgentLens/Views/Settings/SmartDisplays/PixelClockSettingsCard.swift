@@ -200,6 +200,7 @@ struct PixelClockSettingsCard: View {
                 timePeriodAndCadenceRow
                 brightnessAndScrollRow
                 providerFilterRow
+                buttonsRow
             }
             .padding(.top, DesignSystem.Spacing.sm)
         } label: {
@@ -399,6 +400,55 @@ struct PixelClockSettingsCard: View {
                 .pickerStyle(.menu)
                 .labelsHidden()
             }
+        }
+    }
+
+    private var buttonsRow: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            Text("Hardware buttons")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                buttonPicker(
+                    label: "Left",
+                    selection: Binding(
+                        get: { model.config.buttonBindings.left },
+                        set: { model.updateLeftButton($0) }
+                    )
+                )
+                buttonPicker(
+                    label: "Select",
+                    selection: Binding(
+                        get: { model.config.buttonBindings.select },
+                        set: { model.updateSelectButton($0) }
+                    )
+                )
+                buttonPicker(
+                    label: "Right",
+                    selection: Binding(
+                        get: { model.config.buttonBindings.right },
+                        set: { model.updateRightButton($0) }
+                    )
+                )
+            }
+        }
+    }
+
+    private func buttonPicker(
+        label: String,
+        selection: Binding<PixelClockButtonAction>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            Text(label)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            Picker(label, selection: selection) {
+                ForEach(PixelClockButtonAction.allCases, id: \.self) { action in
+                    Text(action.displayName).tag(action)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
         }
     }
 

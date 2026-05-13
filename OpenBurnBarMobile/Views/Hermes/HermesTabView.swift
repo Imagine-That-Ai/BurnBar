@@ -1982,15 +1982,51 @@ private struct HermesRuntimeSheet: View {
 struct HermesModelPickerSheet: View {
     @Bindable var service: HermesService
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(ChatTilePreferencesStorage.userDefaultsKey) private var tilePreferencesJSON: String = ""
+
+    /// Visible Hermes sub-providers per user preference. Empty set means
+    /// "no filter" — every advertised model passes through.
+    private var visibleSubProviders: Set<HermesSubProvider> {
+        let prefs = ChatTilePreferences.from(jsonString: tilePreferencesJSON)
+        return prefs.enabledHermesSubProviders
+    }
+
+    /// Live `HermesRuntimeModelOption` list filtered by the user's enabled
+    /// sub-providers. When the relay hasn't advertised any models we render
+    /// the static six-row fallback below.
+    private var filteredModelOptions: [HermesRuntimeModelOption] {
+        let raw = service.modelOptions
+        guard !visibleSubProviders.isEmpty else { return raw }
+        return raw.filter { option in
+            // Drop the option only when its provider tag maps to a sub-provider
+            // that the user has explicitly hidden. Unknown provider tags pass
+            // through so we never silently drop advertised models.
+            if let sub = HermesSubProvider.fromProviderToken(option.providerID) {
+                return visibleSubProviders.contains(sub)
+            }
+            if let sub = HermesSubProvider.fromProviderToken(option.providerName) {
+                return visibleSubProviders.contains(sub)
+            }
+            return true
+        }
+    }
 
     private var groupedModels: [(provider: String, options: [HermesRuntimeModelOption])] {
-        Dictionary(grouping: service.modelOptions, by: \.providerName)
+        Dictionary(grouping: filteredModelOptions, by: \.providerName)
             .map { (provider: $0.key, options: $0.value.sorted { $0.displayName < $1.displayName }) }
             .sorted { $0.provider < $1.provider }
     }
 
     private var favoriteModels: [HermesRuntimeModelOption] {
-        service.favoriteModelOptions
+        let visible = Set(filteredModelOptions.map(\.id))
+        return service.favoriteModelOptions.filter { visible.contains($0.id) }
+    }
+
+    /// Sub-providers shown as static fallback rows when the relay hasn't
+    /// advertised concrete models yet. Always honors the user's visibility set.
+    private var staticFallbackSubProviders: [HermesSubProvider] {
+        let prefs = ChatTilePreferences.from(jsonString: tilePreferencesJSON)
+        return prefs.orderedVisibleHermesSubProviders
     }
 
     var body: some View {
@@ -2000,7 +2036,8 @@ struct HermesModelPickerSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         currentModelCard
-                        if service.modelOptions.isEmpty {
+                        if filteredModelOptions.isEmpty {
+                            staticFallbackGroup
                             emptyModelsCard
                         } else {
                             if !favoriteModels.isEmpty {
@@ -2067,14 +2104,56 @@ struct HermesModelPickerSheet: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(MobileTheme.warning)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("No models discovered")
+                    Text("No live models yet")
                         .font(MobileTheme.Typography.body)
                         .fontWeight(.semibold)
                         .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    Text("Refresh after Hermes is online. The selected relay can still use its advertised default model.")
+                    Text("Pick a sub-provider above to route Hermes through it. The relay will fill in concrete model names once it reports them.")
                         .font(MobileTheme.Typography.caption)
                         .foregroundStyle(MobileTheme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    /// Static six-row fallback rendered when the relay hasn't advertised any
+    /// concrete models. Tapping a row selects the sub-provider's default
+    /// model hint so Hermes routes through that sub-provider until the relay
+    /// reports something more specific.
+    private var staticFallbackGroup: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(MobileTheme.hermesAureate)
+                Text("Hermes sub-providers")
+                    .font(MobileTheme.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                Spacer()
+                Text("\(staticFallbackSubProviders.count)")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+            ForEach(staticFallbackSubProviders) { sub in
+                let option = HermesRuntimeModelOption(
+                    providerID: sub.providerToken,
+                    providerName: sub.displayName,
+                    modelID: sub.defaultModelHint,
+                    displayName: sub.displayName
+                )
+                HermesModelPickerRow(
+                    option: option,
+                    isSelected: service.selectedModelID == option.modelID,
+                    isFavorite: service.isFavoriteModel(option)
+                ) {
+                    service.selectModel(option)
+                    HapticBus.primaryAction()
+                    dismiss()
+                } onToggleFavorite: {
+                    service.toggleFavoriteModel(option)
+                    HapticBus.toggle()
                 }
             }
         }
@@ -2333,18 +2412,31 @@ struct HermesMessageBubble: View {
 
     @ViewBuilder
     private func toolCallPill(_ tool: HermesToolCall) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: toolCallIcon(for: tool.name))
-                .font(.system(size: 11, weight: .bold))
-            Text(tool.name)
-                .font(MobileTheme.Typography.tiny)
-                .fontWeight(.semibold)
-            Spacer(minLength: 8)
-            Text(tool.status)
-                .font(MobileTheme.Typography.tiny)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: toolCallIcon(for: tool.name))
+                    .font(.system(size: 11, weight: .bold))
+                Text(tool.name)
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                Spacer(minLength: 8)
+                Text(tool.status)
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+            if let detail = tool.detail?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !detail.isEmpty {
+                Text(detail)
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .truncationMode(.middle)
+                    .accessibilityLabel("Tool detail: \(detail)")
+            }
         }
         .foregroundStyle(MobileTheme.hermesAureate)
+        .frame(maxWidth: 240, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(

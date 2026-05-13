@@ -362,7 +362,7 @@ struct PiChatThreadView: View {
         let isUser = msg.role == .user
         HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
             if isUser { Spacer(minLength: 32) }
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 if !isUser {
                     HStack(spacing: 4) {
                         Text(AssistantRuntimeID.pi.glyph)
@@ -373,27 +373,97 @@ struct PiChatThreadView: View {
                     }
                     .foregroundStyle(MobileTheme.whimsy)
                 }
-                Text(msg.text.isEmpty ? (msg.isStreaming ? "…" : "") : msg.text)
-                    .font(MobileTheme.Typography.body)
-                    .foregroundStyle(msg.isError ? MobileTheme.Colors.error : MobileTheme.Colors.textPrimary)
-                    .padding(.horizontal, MobileTheme.Spacing.md)
-                    .padding(.vertical, MobileTheme.Spacing.sm)
-                    .background(
-                        RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                            .fill(MobileTheme.Colors.surfaceElevated)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                                    .strokeBorder(
-                                        isUser
-                                            ? AnyShapeStyle(MobileTheme.Colors.chatUserStroke.opacity(0.55))
-                                            : AnyShapeStyle(MobileTheme.piGradient),
-                                        lineWidth: 0.7
-                                    )
-                            )
-                    )
+                if !msg.text.isEmpty || msg.toolCalls.isEmpty || msg.isStreaming {
+                    Text(msg.text.isEmpty ? (msg.isStreaming ? "…" : "") : msg.text)
+                        .font(MobileTheme.Typography.body)
+                        .foregroundStyle(msg.isError ? MobileTheme.Colors.error : MobileTheme.Colors.textPrimary)
+                        .padding(.horizontal, MobileTheme.Spacing.md)
+                        .padding(.vertical, MobileTheme.Spacing.sm)
+                        .background(
+                            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                                .fill(MobileTheme.Colors.surfaceElevated)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                                        .strokeBorder(
+                                            isUser
+                                                ? AnyShapeStyle(MobileTheme.Colors.chatUserStroke.opacity(0.55))
+                                                : AnyShapeStyle(MobileTheme.piGradient),
+                                            lineWidth: 0.7
+                                        )
+                                )
+                        )
+                }
+                if !isUser, !msg.toolCalls.isEmpty {
+                    piToolCallStrip(msg.toolCalls)
+                }
             }
             if !isUser { Spacer(minLength: 32) }
         }
+    }
+
+    /// Horizontally scrollable strip of tool pills, most-recent on the left.
+    @ViewBuilder
+    private func piToolCallStrip(_ toolCalls: [PiToolCall]) -> some View {
+        let reversed = Array(toolCalls.reversed())
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(reversed) { tool in
+                    piToolCallPill(tool)
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func piToolCallPill(_ tool: PiToolCall) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: PiChatThreadView.toolIcon(for: tool.name))
+                    .font(.system(size: 11, weight: .bold))
+                Text(tool.name)
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                Spacer(minLength: 8)
+                Text(tool.status)
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+            if let detail = tool.detail?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !detail.isEmpty {
+                Text(detail)
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .truncationMode(.middle)
+                    .accessibilityLabel("Tool detail: \(detail)")
+            }
+        }
+        .foregroundStyle(MobileTheme.whimsy)
+        .frame(maxWidth: 240, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.75))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(MobileTheme.piGradient, lineWidth: 0.75)
+        )
+    }
+
+    static func toolIcon(for name: String) -> String {
+        let n = name.lowercased()
+        if n.contains("read") || n.contains("file") || n.contains("write") { return "doc.text" }
+        if n.contains("bash") || n.contains("exec") || n.contains("run") || n.contains("terminal") { return "terminal" }
+        if n.contains("search") || n.contains("grep") || n.contains("glob") || n.contains("find") { return "magnifyingglass" }
+        if n.contains("web") || n.contains("browser") || n.contains("fetch") || n.contains("http") { return "globe" }
+        if n.contains("edit") || n.contains("patch") || n.contains("replace") { return "pencil.and.outline" }
+        if n.contains("memory") || n.contains("skill") || n.contains("learn") { return "brain" }
+        if n.contains("image") || n.contains("vision") || n.contains("screenshot") { return "photo" }
+        return "wrench.and.screwdriver.fill"
     }
 
     private var composer: some View {

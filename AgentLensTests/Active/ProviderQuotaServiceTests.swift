@@ -545,11 +545,14 @@ final class ProviderQuotaServiceTests: XCTestCase {
             home: home,
             appSupportRoot: appSupport,
             session: session,
-            environment: [
-                "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-fake",
-                "CLAUDE_CODE_SUBSCRIPTION": "max",
-                "CLAUDE_CODE_RATE_LIMIT_TIER": "default_claude_max_20x"
-            ]
+            claudeCredentialsReader: StaticClaudeCredentialsReader(credentials: ClaudeOAuthCredentials(
+                accessToken: "sk-ant-oat-fake",
+                refreshToken: nil,
+                expiresAt: nil,
+                subscriptionType: "max",
+                rateLimitTier: "default_claude_max_20x",
+                organizationUuid: nil
+            ))
         )
 
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
@@ -596,10 +599,14 @@ final class ProviderQuotaServiceTests: XCTestCase {
             home: home,
             appSupportRoot: appSupport,
             session: session,
-            environment: [
-                "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-live",
-                "CLAUDE_CODE_SUBSCRIPTION": "pro"
-            ]
+            claudeCredentialsReader: StaticClaudeCredentialsReader(credentials: ClaudeOAuthCredentials(
+                accessToken: "sk-ant-oat-live",
+                refreshToken: nil,
+                expiresAt: nil,
+                subscriptionType: "pro",
+                rateLimitTier: "",
+                organizationUuid: nil
+            ))
         )
 
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
@@ -643,11 +650,14 @@ final class ProviderQuotaServiceTests: XCTestCase {
             home: home,
             appSupportRoot: appSupport,
             session: session,
-            environment: [
-                "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-fake",
-                "CLAUDE_CODE_SUBSCRIPTION": "max",
-                "CLAUDE_CODE_RATE_LIMIT_TIER": "default_claude_max_20x"
-            ]
+            claudeCredentialsReader: StaticClaudeCredentialsReader(credentials: ClaudeOAuthCredentials(
+                accessToken: "sk-ant-oat-fake",
+                refreshToken: nil,
+                expiresAt: nil,
+                subscriptionType: "max",
+                rateLimitTier: "default_claude_max_20x",
+                organizationUuid: nil
+            ))
         )
 
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
@@ -675,10 +685,14 @@ final class ProviderQuotaServiceTests: XCTestCase {
             home: home,
             appSupportRoot: appSupport,
             session: session,
-            environment: [
-                "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-fake",
-                "CLAUDE_CODE_SUBSCRIPTION": "pro"
-            ]
+            claudeCredentialsReader: StaticClaudeCredentialsReader(credentials: ClaudeOAuthCredentials(
+                accessToken: "sk-ant-oat-fake",
+                refreshToken: nil,
+                expiresAt: nil,
+                subscriptionType: "pro",
+                rateLimitTier: "",
+                organizationUuid: nil
+            ))
         )
 
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
@@ -689,10 +703,10 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.statusMessage.contains("Pro"))
     }
 
-    func test_claudeCredentialsReader_decodesKeychainPayloadShape() throws {
-        // Fixture matches the real `Claude Code-credentials` JSON
-        // Anthropic ships (claudeAiOauth wrapper, ms-precision expiresAt,
-        // organizationUuid sibling).
+    func test_claudeCredentialsReader_decodesOAuthPayloadShape() throws {
+        // Fixture matches Anthropic's OAuth payload shape
+        // (claudeAiOauth wrapper, ms-precision expiresAt,
+        // organizationUuid sibling) without touching user stores.
         let fixture = """
         {
           "claudeAiOauth": {
@@ -717,6 +731,39 @@ final class ProviderQuotaServiceTests: XCTestCase {
         // 1778310120051 ms ≈ 2026-04-26 — well in the future from
         // today's session date but exercise the parser regardless.
         XCTAssertNotNil(creds.expiresAt)
+    }
+
+    func test_claudeQuotaSourceDoesNotReadClaudeCredentialStores() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourceFiles = [
+            "AgentLens/Services/ProviderQuota/ClaudeCredentialsReader.swift",
+            "AgentLens/Services/ProviderQuota/ClaudeQuotaAdapter.swift",
+            "AgentLens/Services/ProviderQuota/ProviderQuotaService.swift",
+            "AgentLens/Services/ProviderQuota/QuotaRefreshActor.swift"
+        ]
+        let forbidden = [
+            "Claude Code-credentials",
+            "SecItemCopyMatching",
+            "SecKeychain",
+            "kSecAttrService",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_CREDENTIALS_SKIP_KEYCHAIN",
+            "Data(contentsOf: credentialsFileURL"
+        ]
+
+        for relativePath in sourceFiles {
+            let url = repoRoot.appendingPathComponent(relativePath)
+            let contents = try String(contentsOf: url, encoding: .utf8)
+            for needle in forbidden {
+                XCTAssertFalse(
+                    contents.contains(needle),
+                    "\(relativePath) must not contain \(needle); Claude quota must not read third-party credential stores."
+                )
+            }
+        }
     }
 
     func test_claudeCredentials_canCallUsageEndpoint_acceptsExpiredAccessWithRefreshToken() {
@@ -784,38 +831,20 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(bare.window(named: "five_hour")?.usedPercentage, 10)
     }
 
-    func test_claudeRefresh_oauthExpiredAccessToken_refreshesAndPersistsBeforeUsageCall() async throws {
+    func test_claudeRefresh_oauthExpiredAccessToken_refreshesBeforeUsageCallWithoutPersistingThirdPartyCredentials() async throws {
         // Expired access token + refresh token → fetcher must hit the
         // token endpoint first, then the usage endpoint with the new
-        // token, then persist the refreshed credentials JSON to disk.
+        // token. The refreshed credential stays in memory only; the
+        // app must not mutate Claude Code's credential files.
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
         let formatter = ISO8601DateFormatter()
         let now = Date()
         let futureReset = formatter.string(from: now.addingTimeInterval(4 * 60 * 60))
 
-        // Seed `~/.claude/.credentials.json` with an expired access
-        // token so the reader returns refresh-eligible credentials.
-        let claudeDir = home.appendingPathComponent(".claude", isDirectory: true)
-        try FileManager.default.createDirectory(at: claudeDir, withIntermediateDirectories: true)
-        let credentialsURL = claudeDir.appendingPathComponent(".credentials.json")
-        let expiredCredentialsJSON = """
-        {
-          "claudeAiOauth": {
-            "accessToken": "sk-ant-oat-old",
-            "refreshToken": "sk-ant-ort-good",
-            "expiresAt": \(Int(now.addingTimeInterval(-3600).timeIntervalSince1970 * 1000)),
-            "subscriptionType": "pro",
-            "rateLimitTier": "default_claude_pro_5x"
-          }
-        }
-        """
-        try Data(expiredCredentialsJSON.utf8).write(to: credentialsURL)
-
         // `@Sendable` stub session closures cannot mutate captured
-        // vars, so the proof that the refresh+usage chain ran lives
-        // on disk (credentials file rewritten with NEW tokens) and
-        // in the snapshot (bucket reflects the canned usage payload).
+        // vars, so the proof that the refresh+usage chain ran lives in
+        // the usage request assertion and the returned snapshot.
         let session = makeStubSession { request in
             let url = try XCTUnwrap(request.url)
             if url.absoluteString == "https://platform.claude.com/v1/oauth/token" {
@@ -882,7 +911,14 @@ final class ProviderQuotaServiceTests: XCTestCase {
             home: home,
             appSupportRoot: appSupport,
             session: session,
-            environment: ["CLAUDE_CREDENTIALS_SKIP_KEYCHAIN": "1"]
+            claudeCredentialsReader: StaticClaudeCredentialsReader(credentials: ClaudeOAuthCredentials(
+                accessToken: "sk-ant-oat-old",
+                refreshToken: "sk-ant-ort-good",
+                expiresAt: now.addingTimeInterval(-3600),
+                subscriptionType: "pro",
+                rateLimitTier: "default_claude_pro_5x",
+                organizationUuid: nil
+            ))
         )
 
         await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
@@ -891,18 +927,13 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(snapshot.source, .officialAPI)
         XCTAssertTrue(snapshot.buckets.contains { $0.usedPercent?.rounded() == 12 })
 
-        // The refreshed credentials must be written back to the file
-        // (with 0600 perms) so Claude Code's CLI also picks them up.
-        let written = try Data(contentsOf: credentialsURL)
-        let writtenCreds = try XCTUnwrap(ClaudeCredentialsReader.decode(written))
-        XCTAssertEqual(writtenCreds.accessToken, "sk-ant-oat-NEW")
-        XCTAssertEqual(writtenCreds.refreshToken, "sk-ant-ort-NEW")
-        XCTAssertEqual(writtenCreds.subscriptionType, "pro")
-        // File permissions must be 0600 (owner-only read/write) so the
-        // refresh token isn't world-readable.
-        let attrs = try FileManager.default.attributesOfItem(atPath: credentialsURL.path)
-        let perms = (attrs[.posixPermissions] as? NSNumber)?.uint16Value ?? 0
-        XCTAssertEqual(perms & 0o777, 0o600)
+        let credentialsURL = home
+            .appendingPathComponent(".claude", isDirectory: true)
+            .appendingPathComponent(".credentials.json")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: credentialsURL.path),
+            "OpenBurnBar must not create or rewrite Claude Code credential files."
+        )
     }
 
     func test_claudeRefresh_autoInstall_marksAttemptedAndSkipsOnSecondRefresh() async throws {
@@ -2726,6 +2757,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         environment: [String: String] = [:],
         miniMaxModeProvider: @escaping () -> MiniMaxQuotaMode = { .payAsYouGo },
         factoryPlanProvider: @escaping () -> FactoryQuotaPlanTier = { .unknown },
+        claudeCredentialsReader: any ClaudeCredentialsReading = NoClaudeCredentialsReader(),
         refreshProviders: [AgentProvider] = ProviderQuotaService.supportedProviders
     ) -> ProviderQuotaService {
         ProviderQuotaService(
@@ -2738,6 +2770,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
             homeDirectoryURL: home,
             miniMaxModeProvider: miniMaxModeProvider,
             factoryPlanProvider: factoryPlanProvider,
+            claudeCredentialsReader: claudeCredentialsReader,
             refreshProviders: refreshProviders
         )
     }

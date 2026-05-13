@@ -258,6 +258,22 @@ public final class PixelClockSettingsModel {
         mutate { $0.pageDurationSeconds = seconds }
     }
 
+    public func updateButtonBindings(_ bindings: PixelClockButtonBindings) {
+        mutate { $0.buttonBindings = bindings }
+    }
+
+    public func updateLeftButton(_ action: PixelClockButtonAction) {
+        mutate { $0.buttonBindings.left = action }
+    }
+
+    public func updateSelectButton(_ action: PixelClockButtonAction) {
+        mutate { $0.buttonBindings.select = action }
+    }
+
+    public func updateRightButton(_ action: PixelClockButtonAction) {
+        mutate { $0.buttonBindings.right = action }
+    }
+
     public func toggleProvider(_ provider: AgentProvider) {
         let token = provider.persistedToken
         var next = config

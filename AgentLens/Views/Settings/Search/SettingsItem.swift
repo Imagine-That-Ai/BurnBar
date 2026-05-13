@@ -96,6 +96,9 @@ enum SettingsPageRoute: Hashable, Codable {
     // Providers
     case providersRoot
 
+    // Routing pools
+    case routingPoolsRoot
+
     // Alerts
     case alertsRoot
 
@@ -161,6 +164,9 @@ enum SettingsAnchor {
     static let providersAdd = "providers.add"
     static let providersCLI = "providers.cliAuth"
     static let providersLogSources = "providers.logSources"
+
+    // Routing pools
+    static let routingPoolsOverview = "routingPools.overview"
 
     // Alerts
     static let alertsDailySpend = "alerts.dailySpend"

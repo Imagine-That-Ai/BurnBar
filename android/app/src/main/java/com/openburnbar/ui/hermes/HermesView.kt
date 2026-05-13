@@ -35,6 +35,7 @@ import com.openburnbar.ui.navigation.HermesPendingPrompt
 import com.openburnbar.ui.theme.*
 import com.openburnbar.util.Formatting
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 @Composable
 fun HermesView(
@@ -490,23 +491,39 @@ fun ChatBubble(message: HermesMessage) {
                             color = AuroraColors.hermesMercury.copy(alpha = 0.1f),
                             shape = RoundedCornerShape(AuroraRadius.sm.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = AuroraSpacing.sm.dp, vertical = AuroraSpacing.xxs.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            Column(
+                                modifier = Modifier.padding(horizontal = AuroraSpacing.sm.dp, vertical = AuroraSpacing.xxs.dp)
                             ) {
-                                Icon(
-                                    imageVector = when {
-                                        tc.name.contains("search") -> Icons.Filled.Search
-                                        tc.name.contains("terminal") || tc.name.contains("bash") -> Icons.Filled.Terminal
-                                        tc.name.contains("edit") || tc.name.contains("write") -> Icons.Filled.Edit
-                                        else -> Icons.Filled.Code
-                                    },
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
-                                    tint = AuroraColors.hermesMercury
-                                )
-                                Spacer(modifier = Modifier.width(AuroraSpacing.xxs.dp))
-                                Text(tc.name, fontSize = AuroraTypography.tiny.sp, color = AuroraColors.hermesMercury)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = when {
+                                            tc.name.contains("search") -> Icons.Filled.Search
+                                            tc.name.contains("terminal") || tc.name.contains("bash") -> Icons.Filled.Terminal
+                                            tc.name.contains("edit") || tc.name.contains("write") -> Icons.Filled.Edit
+                                            else -> Icons.Filled.Code
+                                        },
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = AuroraColors.hermesMercury
+                                    )
+                                    Spacer(modifier = Modifier.width(AuroraSpacing.xxs.dp))
+                                    Text(tc.name, fontSize = AuroraTypography.tiny.sp, color = AuroraColors.hermesMercury)
+                                }
+                                // Surface the tool's argument summary or
+                                // result snippet so the bubble shows *what*
+                                // the model is doing, not just *that* a tool
+                                // was invoked.
+                                val detail = summarizeHermesToolDetail(tc)
+                                if (!detail.isNullOrEmpty()) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = detail,
+                                        fontSize = AuroraTypography.tiny.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }
@@ -525,4 +542,40 @@ fun ChatBubble(message: HermesMessage) {
 
         Spacer(modifier = Modifier.height(if (isUser) AuroraSpacing.xxs.dp else AuroraSpacing.sm.dp))
     }
+}
+
+/// Builds a short human-readable preview for a Hermes tool call: prefer the
+/// result snippet when the daemon has already run the tool, else extract one
+/// of the well-known argument keys (path / command / query / etc.) from the
+/// (possibly partial) JSON arguments string. Returns `null` when there's
+/// nothing useful to show — the bubble keeps the name-only pill in that case.
+fun summarizeHermesToolDetail(tc: ToolCall): String? {
+    val result = tc.result?.trim().orEmpty()
+    if (result.isNotEmpty()) {
+        return result.take(200)
+    }
+    val args = tc.arguments.trim()
+    if (args.isEmpty()) return null
+    runCatching {
+        val obj = JSONObject(args)
+        for (key in listOf("path", "file_path", "command", "pattern", "query", "url", "prompt")) {
+            val value = obj.optString(key)
+            if (!value.isNullOrEmpty()) return value.take(200)
+        }
+        val keys = obj.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            val value = obj.optString(k)
+            if (!value.isNullOrEmpty()) return value.take(200)
+        }
+    }
+    for (key in listOf("path", "file_path", "command", "pattern", "query", "url", "prompt")) {
+        val pattern = "\"$key\"\\s*:\\s*\"([^\"]+)\"".toRegex()
+        val match = pattern.find(args)
+        if (match != null && match.groupValues.size >= 2) {
+            val value = match.groupValues[1]
+            if (value.isNotEmpty()) return value.take(200)
+        }
+    }
+    return null
 }

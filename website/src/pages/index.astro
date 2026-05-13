@@ -102,8 +102,8 @@ const surfaceShowcase = SURFACES.filter((s) =>
       </div>
       <div class="band__sep" aria-hidden="true"></div>
       <div class="band__stat">
-        <div class="band__num mono">5<span class="band__num-unit">min</span></div>
-        <div class="band__lbl">Auto-cool-down the Fire Hydrant applies when an account exhausts or fails</div>
+        <div class="band__num mono">7<span class="band__num-unit">·2</span></div>
+        <div class="band__lbl">Upstream providers routed across two same-format pools (OpenAI · Anthropic)</div>
       </div>
     </div>
   </section>
@@ -246,14 +246,20 @@ const surfaceShowcase = SURFACES.filter((s) =>
           When one account runs dry,
           <span class="hydrantsec__hb">the next picks up.</span>
         </h2>
+        <p class="hydrantsec__sub mono">
+          Two pools · same-format failover · zero cross-format hacks
+        </p>
         <p class="lead">
-          Cursor, Factory, Forge, and OpenCode speak OpenAI-shaped JSON to a
-          single local gateway — the OpenBurnBar <strong>Fire Hydrant</strong> at
-          <span class="mono">127.0.0.1:8317</span>. It ranks every provider account
-          you've added by live quota health and least-recently-used, swaps to a
-          healthy peer the moment one rate-limits or runs out, and parks failed
-          accounts in a five-minute cool-down so they recover on their own.
-          No vendor lock-in. No 429s landing in your IDE.
+          Cursor, Factory, Forge, OpenCode and Codex speak OpenAI-shape JSON to one
+          local gateway. Claude Code speaks Anthropic-shape Messages to the same
+          gateway. The OpenBurnBar <strong>Fire Hydrant</strong> at
+          <span class="mono">127.0.0.1:8317</span> keeps the two highways
+          independent — and inside each one it ranks every account you've
+          added by live quota health and least-recently-used, swaps to a
+          healthy peer the moment one rate-limits or runs out, and parks
+          failed accounts in a five-minute cool-down so they recover on their
+          own. No vendor lock-in. No cross-format translation. No 429s landing
+          in your IDE.
         </p>
       </header>
 
@@ -274,6 +280,13 @@ const surfaceShowcase = SURFACES.filter((s) =>
           <h3 class="hydrantsec__h3">Four rules. No model marketing.</h3>
         </header>
         <ol class="hydrantsec__rulesl">
+          <li class="hydrantsec__rule hydrantsec__rule--pool">
+            <span class="hydrantsec__num mono">00</span>
+            <div>
+              <strong>Format pool first.</strong>
+              <span>An Anthropic-shape request can only be served by Anthropic accounts. An OpenAI-shape request only by OpenAI-family accounts. The remaining rules apply inside the chosen pool.</span>
+            </div>
+          </li>
           <li>
             <span class="hydrantsec__num mono">01</span>
             <div>
@@ -769,6 +782,27 @@ const surfaceShowcase = SURFACES.filter((s) =>
     font-style: italic;
     font-variation-settings: "opsz" 144, "wght" 360, "ital" 1;
     display: block;
+  }
+  .hydrantsec__sub {
+    color: var(--mercury-bright);
+    font-size: var(--t-caption);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-top: var(--s-3);
+  }
+  .hydrantsec__rule--pool {
+    grid-column: 1 / -1;
+    background:
+      linear-gradient(180deg, rgba(214, 211, 223, 0.06) 0%, transparent 100%);
+    border-top: 1px solid color-mix(in oklab, var(--mercury-bright) 25%, var(--ink-line)) !important;
+    border-bottom: 1px dashed var(--ink-line);
+    padding-bottom: var(--s-4);
+  }
+  .hydrantsec__rule--pool .hydrantsec__num {
+    color: var(--mercury-bright);
+  }
+  .hydrantsec__rule--pool strong {
+    color: var(--mercury-bright) !important;
   }
   .hydrantsec__board {
     margin-block: var(--s-6) var(--s-8);

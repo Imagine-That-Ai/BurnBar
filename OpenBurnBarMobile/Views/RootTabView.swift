@@ -95,11 +95,20 @@ struct RootTabView: View {
     @ViewBuilder
     private var contentForSelection: some View {
         switch selection {
-        case .pulse:   pulseStack
-        case .burn:    burnStack
-        case .streams: streamsStack
-        case .hermes:  hermesStack
-        case .you:     youStack
+        case .pulse:    pulseStack
+        case .burn:     burnStack
+        case .insights: insightsStack
+        case .streams:  streamsStack
+        case .hermes:   hermesStack
+        case .you:      youStack
+        }
+    }
+
+    @State private var insightsDashboardStore = DashboardStore()
+
+    private var insightsStack: some View {
+        NavigationStack {
+            InsightsRootView(dashboardStore: insightsDashboardStore)
         }
     }
 

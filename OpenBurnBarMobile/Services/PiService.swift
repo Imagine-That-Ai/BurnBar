@@ -12,6 +12,32 @@ enum PiChatRole: String, Codable, Equatable {
     case user, assistant, system
 }
 
+/// One tool the Pi-served model decided to invoke during this turn. Pi proxies
+/// OpenAI-compatible chat completions, so the streaming protocol matches
+/// `HermesToolCall` — `name` arrives first, `arguments` is concatenated across
+/// chunks, and `detail` is a short human-readable preview suitable for a pill.
+struct PiToolCall: Identifiable, Equatable {
+    let id: String
+    var name: String
+    var status: String
+    var arguments: String
+    var detail: String?
+
+    init(
+        id: String,
+        name: String,
+        status: String,
+        arguments: String = "",
+        detail: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.status = status
+        self.arguments = arguments
+        self.detail = detail
+    }
+}
+
 struct PiChatMessage: Identifiable, Equatable {
     let id: String
     let role: PiChatRole
@@ -20,6 +46,7 @@ struct PiChatMessage: Identifiable, Equatable {
     let timestamp: Date
     var isStreaming: Bool
     var isError: Bool
+    var toolCalls: [PiToolCall]
 
     init(
         id: String = UUID().uuidString,
@@ -28,7 +55,8 @@ struct PiChatMessage: Identifiable, Equatable {
         modelName: String? = nil,
         timestamp: Date = Date(),
         isStreaming: Bool = false,
-        isError: Bool = false
+        isError: Bool = false,
+        toolCalls: [PiToolCall] = []
     ) {
         self.id = id
         self.role = role
@@ -37,6 +65,7 @@ struct PiChatMessage: Identifiable, Equatable {
         self.timestamp = timestamp
         self.isStreaming = isStreaming
         self.isError = isError
+        self.toolCalls = toolCalls
     }
 }
 
@@ -193,7 +222,7 @@ final class PiService {
         if currentThreadID == nil { currentThreadID = UUID().uuidString }
 
         messages.append(PiChatMessage(role: .user, text: trimmed))
-        var assistant = PiChatMessage(role: .assistant, text: "", modelName: selectedModelID, isStreaming: true)
+        let assistant = PiChatMessage(role: .assistant, text: "", modelName: selectedModelID, isStreaming: true)
         messages.append(assistant)
         let assistantID = assistant.id
         isStreaming = true
@@ -209,7 +238,20 @@ final class PiService {
             defer {
                 self.isStreaming = false
                 if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
-                    self.messages[idx].isStreaming = false
+                    var msg = self.messages[idx]
+                    msg.isStreaming = false
+                    // Promote any still-running tool calls to "done" and make
+                    // sure each one has a usable detail label.
+                    msg.toolCalls = msg.toolCalls.map { tc in
+                        PiToolCall(
+                            id: tc.id,
+                            name: tc.name,
+                            status: "done",
+                            arguments: tc.arguments,
+                            detail: tc.detail ?? PiService.summarizeToolArguments(tc.arguments)
+                        )
+                    }
+                    self.messages[idx] = msg
                 }
                 self.persistCurrentThread()
             }
@@ -218,14 +260,22 @@ final class PiService {
                     baseURL: baseURL,
                     bearerToken: bearer,
                     model: model,
-                    prompt: trimmed
-                ) { delta in
-                    if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
-                        var msg = self.messages[idx]
-                        msg.text += delta
-                        self.messages[idx] = msg
+                    prompt: trimmed,
+                    onTextDelta: { delta in
+                        if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
+                            var msg = self.messages[idx]
+                            msg.text += delta
+                            self.messages[idx] = msg
+                        }
+                    },
+                    onToolCallDelta: { calls in
+                        if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
+                            var msg = self.messages[idx]
+                            PiService.mergeToolCalls(calls, into: &msg)
+                            self.messages[idx] = msg
+                        }
                     }
-                }
+                )
             } catch {
                 if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
                     var msg = self.messages[idx]
@@ -235,7 +285,6 @@ final class PiService {
                 }
                 self.lastError = error.localizedDescription
             }
-            _ = assistant
         }
     }
 
@@ -297,26 +346,59 @@ final class PiService {
         history.upsert(thread)
     }
 
+    /// Test-only entry point into the persistence converter so unit tests can
+    /// verify the tool-call roundtrip without standing up a full service. Kept
+    /// `internal` so production callers continue to route through the
+    /// private converter.
+    static func testHook_convertToStore(_ message: PiChatMessage) -> MobileChatMessage {
+        convertToStore(message)
+    }
+
+    /// Test-only entry point into the persistence converter. See
+    /// `testHook_convertToStore` for the contract.
+    static func testHook_convertFromStore(_ message: MobileChatMessage) -> PiChatMessage {
+        convertFromStore(message)
+    }
+
     private static func convertToStore(_ message: PiChatMessage) -> MobileChatMessage {
-        MobileChatMessage(
+        let storedToolCalls = message.toolCalls.map {
+            MobileChatToolCall(
+                id: $0.id,
+                name: $0.name,
+                status: $0.status,
+                detail: $0.detail
+            )
+        }
+        return MobileChatMessage(
             id: message.id,
             role: message.role.rawValue,
             text: message.text,
             timestamp: message.timestamp,
             modelName: message.modelName,
-            isError: message.isError
+            isError: message.isError,
+            toolCalls: storedToolCalls
         )
     }
 
     private static func convertFromStore(_ message: MobileChatMessage) -> PiChatMessage {
-        PiChatMessage(
+        let restoredToolCalls = message.toolCalls.map {
+            PiToolCall(
+                id: $0.id,
+                name: $0.name,
+                status: $0.status,
+                arguments: "",
+                detail: $0.detail
+            )
+        }
+        return PiChatMessage(
             id: message.id,
             role: PiChatRole(rawValue: message.role) ?? .assistant,
             text: message.text,
             modelName: message.modelName,
             timestamp: message.timestamp,
             isStreaming: false,
-            isError: message.isError
+            isError: message.isError,
+            toolCalls: restoredToolCalls
         )
     }
 
@@ -387,7 +469,8 @@ final class PiService {
         bearerToken: String?,
         model: String?,
         prompt: String,
-        onDelta: @escaping (String) -> Void
+        onTextDelta: @escaping (String) -> Void,
+        onToolCallDelta: @escaping ([[String: Any]]) -> Void
     ) async throws {
         guard let endpoint = URL(string: "v1/chat/completions", relativeTo: baseURL) else {
             throw NSError(domain: "PiService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid base URL"])
@@ -421,12 +504,151 @@ final class PiService {
             guard let data = payload.data(using: .utf8),
                   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let choices = json["choices"] as? [[String: Any]],
-                  let first = choices.first,
-                  let delta = first["delta"] as? [String: Any],
-                  let content = delta["content"] as? String,
-                  !content.isEmpty else { continue }
-            await MainActor.run { onDelta(content) }
+                  let first = choices.first else { continue }
+
+            // Some Pi backends only ever send the final assistant turn as a
+            // `message` object (no streaming `delta` chain). Handle both.
+            let delta = first["delta"] as? [String: Any]
+            let finalMessage = first["message"] as? [String: Any]
+
+            if let content = Self.contentString(from: delta)
+                ?? Self.contentString(from: finalMessage) {
+                if !content.isEmpty {
+                    await MainActor.run { onTextDelta(content) }
+                }
+            }
+
+            if let calls = Self.toolCallsArray(from: delta)
+                ?? Self.toolCallsArray(from: finalMessage) {
+                await MainActor.run { onToolCallDelta(calls) }
+            }
         }
+    }
+
+    private static func contentString(from item: [String: Any]?) -> String? {
+        guard let item else { return nil }
+        if let value = item["content"] as? String, !value.isEmpty { return value }
+        if let parts = item["content"] as? [Any] {
+            let joined = parts.compactMap { part -> String? in
+                if let text = part as? String { return text }
+                guard let obj = part as? [String: Any] else { return nil }
+                return obj["text"] as? String ?? obj["value"] as? String
+            }
+            .joined()
+            return joined.isEmpty ? nil : joined
+        }
+        return nil
+    }
+
+    private static func toolCallsArray(from item: [String: Any]?) -> [[String: Any]]? {
+        guard let item else { return nil }
+        if let calls = item["tool_calls"] as? [[String: Any]], !calls.isEmpty { return calls }
+        if let calls = item["toolCalls"] as? [[String: Any]], !calls.isEmpty { return calls }
+        if let call = item["function_call"] as? [String: Any] { return [call] }
+        if let call = item["functionCall"] as? [String: Any] { return [call] }
+        return nil
+    }
+
+    /// Folds an OpenAI-compatible `tool_calls` delta into the assistant
+    /// message. Mirrors `HermesService.mergeToolCalls` — the streaming protocol
+    /// splits a single tool call across many chunks (name first, then
+    /// successive partial `arguments` strings), so we accumulate by index/id
+    /// and recompute the `detail` preview as more JSON arrives.
+    static func mergeToolCalls(_ rawToolCalls: [[String: Any]], into message: inout PiChatMessage) {
+        for raw in rawToolCalls {
+            let function = raw["function"] as? [String: Any]
+            let nameFragment = stringValue(function?["name"]) ?? stringValue(raw["name"])
+            let argsFragment = stringValue(function?["arguments"]) ?? stringValue(raw["arguments"])
+            let indexHint = intValue(raw["index"])
+            let idFromPayload = stringValue(raw["id"])
+
+            let resolvedID: String
+            if let indexHint, indexHint >= 0, indexHint < message.toolCalls.count {
+                resolvedID = message.toolCalls[indexHint].id
+            } else if let id = idFromPayload {
+                resolvedID = id
+            } else if let index = indexHint {
+                resolvedID = "pi-tool-index-\(index)"
+            } else {
+                resolvedID = "pi-tool-\(message.toolCalls.count + 1)"
+            }
+
+            if let idx = message.toolCalls.firstIndex(where: { $0.id == resolvedID }) {
+                if let nameFragment, !nameFragment.isEmpty {
+                    message.toolCalls[idx].name = nameFragment
+                }
+                if let argsFragment, !argsFragment.isEmpty {
+                    message.toolCalls[idx].arguments += argsFragment
+                }
+                message.toolCalls[idx].status = "running"
+                if let summary = summarizeToolArguments(message.toolCalls[idx].arguments) {
+                    message.toolCalls[idx].detail = summary
+                }
+            } else {
+                let name = nameFragment?.isEmpty == false ? nameFragment! : "Pi tool"
+                let arguments = argsFragment ?? ""
+                message.toolCalls.append(
+                    PiToolCall(
+                        id: resolvedID,
+                        name: name,
+                        status: "running",
+                        arguments: arguments,
+                        detail: summarizeToolArguments(arguments)
+                    )
+                )
+            }
+        }
+    }
+
+    /// Short human-readable preview pulled out of a (possibly partial) JSON
+    /// arguments string. Mirrors the Hermes summarizer so the two assistant
+    /// runtimes render identical pills.
+    static func summarizeToolArguments(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let data = trimmed.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["path", "file_path", "command", "pattern", "query", "url", "prompt"] {
+                if let value = obj[key] as? String, !value.isEmpty {
+                    return String(value.prefix(200))
+                }
+            }
+            for (_, value) in obj.sorted(by: { $0.key < $1.key }) {
+                if let str = value as? String, !str.isEmpty {
+                    return String(str.prefix(200))
+                }
+            }
+        }
+
+        for key in ["path", "file_path", "command", "pattern", "query", "url", "prompt"] {
+            let pattern = "\"\(key)\"\\s*:\\s*\"([^\"]+)\""
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               let match = regex.firstMatch(
+                in: trimmed,
+                range: NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+               ),
+               match.numberOfRanges >= 2,
+               let range = Range(match.range(at: 1), in: trimmed) {
+                let value = String(trimmed[range])
+                if !value.isEmpty { return String(value.prefix(200)) }
+            }
+        }
+
+        return nil
+    }
+
+    private static func stringValue(_ raw: Any?) -> String? {
+        if let s = raw as? String { return s }
+        if let n = raw as? NSNumber { return n.stringValue }
+        return nil
+    }
+
+    private static func intValue(_ raw: Any?) -> Int? {
+        if let n = raw as? Int { return n }
+        if let n = raw as? NSNumber { return n.intValue }
+        if let s = raw as? String { return Int(s) }
+        return nil
     }
 
     // MARK: - Helpers

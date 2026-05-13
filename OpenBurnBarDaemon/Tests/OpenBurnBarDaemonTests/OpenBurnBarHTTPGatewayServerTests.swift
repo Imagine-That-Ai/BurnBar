@@ -290,6 +290,179 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(usage[0].outputTokens, 5)
     }
 
+    // MARK: - Anthropic-family pool (/v1/messages)
+
+    func testGatewayProxiesAnthropicMessagesHappyPath() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_test_1",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-sonnet-4-6",
+              "content": [{"type": "text", "text": "hello from claude"}],
+              "stop_reason": "end_turn",
+              "usage": {
+                "input_tokens": 17,
+                "output_tokens": 4,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        try await harness.configureAnthropicProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"claude-sonnet-4-6","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("hello from claude"))
+
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.count, 1)
+        XCTAssertEqual(upstreamRequests[0].path, "/anthropic/v1/messages")
+        // sk-ant-… credentials must travel as x-api-key, not Authorization.
+        XCTAssertNil(upstreamRequests[0].authorization)
+        XCTAssertEqual(upstreamRequests[0].xApiKey, "sk-ant-primary-key")
+        XCTAssertEqual(upstreamRequests[0].anthropicVersion, "2023-06-01")
+        XCTAssertTrue(upstreamRequests[0].body.contains(#""model":"claude-sonnet-4-6-family""#))
+
+        let usage = try await harness.usageRecorder.recentUsage(limit: 5)
+        XCTAssertEqual(usage.count, 1)
+        XCTAssertEqual(usage[0].providerID, "anthropic")
+        XCTAssertEqual(usage[0].inputTokens, 17)
+        XCTAssertEqual(usage[0].outputTokens, 4)
+    }
+
+    func testGatewayFailsOverAnthropicAccountOnQuotaExhausted() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 429,
+            body: #"{"type":"error","error":{"type":"rate_limit_error","message":"quota exhausted"}}"#
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_test_2",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-sonnet-4-6",
+              "content": [{"type": "text", "text": "backup plan answered"}],
+              "stop_reason": "end_turn",
+              "usage": {
+                "input_tokens": 11,
+                "output_tokens": 5,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        try await harness.configureAnthropicProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"claude-sonnet-4-6","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("backup plan answered"))
+
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.count, 2)
+        XCTAssertEqual(upstreamRequests[0].xApiKey, "sk-ant-primary-key")
+        XCTAssertEqual(upstreamRequests[1].xApiKey, "sk-ant-backup-key")
+
+        let snapshot = try await harness.configStore.snapshot()
+        let slots = try XCTUnwrap(snapshot.providerSettings(id: "anthropic")?.credentialSlots)
+        // 429 with "quota" / "rate" in body should mark primary as exhausted
+        // and leave backup ready. Cooldown is asserted in router-level tests.
+        XCTAssertEqual(slots.first(where: { $0.slotID == "primary" })?.status, .exhausted)
+        XCTAssertEqual(slots.first(where: { $0.slotID == "backup" })?.status, .ready)
+
+        let usage = try await harness.usageRecorder.recentUsage(limit: 5)
+        XCTAssertEqual(usage.count, 1)
+        XCTAssertEqual(usage[0].providerID, "anthropic")
+        XCTAssertEqual(usage[0].inputTokens, 11)
+        XCTAssertEqual(usage[0].outputTokens, 5)
+    }
+
+    func testGatewayMessagesReturns503WhenOnlyOpenAICompatProvidersConfigured() async throws {
+        let harness = try GatewayHarness()
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"claude-sonnet-4-6","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 503)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("Anthropic"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("v1") && bodyText.contains("messages"), "body was: \(bodyText)")
+
+        // No upstream calls should have happened — pool isolation rejects
+        // the request before it ever leaves the daemon.
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().count, 0)
+    }
+
+    func testGatewayChatCompletionsReturns503WhenOnlyAnthropicProvidersConfigured() async throws {
+        let harness = try GatewayHarness()
+        try await harness.configureAnthropicProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"glm-5-turbo","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 503)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("OpenAI-compatible"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("chat") && bodyText.contains("completions"), "body was: \(bodyText)")
+
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().count, 0)
+    }
+
     func testStructuredExecutorRoutesOllamaCloudThroughNativeAPI() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
@@ -451,7 +624,8 @@ private final class GatewayHarness {
     init(
         authToken: String? = nil,
         rateLimit: BurnBarRateLimitConfiguration? = nil,
-        providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor()
+        providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
+        anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor()
     ) throws {
         self.port = try Self.reservePort()
 
@@ -481,6 +655,7 @@ private final class GatewayHarness {
             configStore: configStore,
             usageRecorder: usageRecorder,
             providerExecutor: providerExecutor,
+            anthropicExecutor: anthropicExecutor,
             logger: BurnBarDaemonLogger(category: "gateway-tests")
         )
     }
@@ -506,6 +681,30 @@ private final class GatewayHarness {
             slotID: "backup",
             label: "Backup",
             apiKey: "backup-key"
+        )
+    }
+
+    func configureAnthropicProviderForGateway() async throws {
+        _ = try await configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/anthropic/v1",
+                preferredModelIDs: ["claude-sonnet-4-6-family"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: "primary",
+            label: "Primary",
+            apiKey: "sk-ant-primary-key"
+        )
+        _ = try await configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: "backup",
+            label: "Backup",
+            apiKey: "sk-ant-backup-key"
         )
     }
 
@@ -582,6 +781,8 @@ private struct GatewayUpstreamRequest: Hashable {
     let authorization: String?
     let path: String
     let body: String
+    let xApiKey: String?
+    let anthropicVersion: String?
 }
 
 private final class GatewayUpstreamURLProtocol: URLProtocol {
@@ -630,7 +831,9 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
             GatewayUpstreamRequest(
                 authorization: request.value(forHTTPHeaderField: "Authorization"),
                 path: request.url?.path ?? "",
-                body: Self.bodyString(from: request)
+                body: Self.bodyString(from: request),
+                xApiKey: request.value(forHTTPHeaderField: "x-api-key"),
+                anthropicVersion: request.value(forHTTPHeaderField: "anthropic-version")
             )
         )
         Self.lock.unlock()

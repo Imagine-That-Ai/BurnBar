@@ -37,6 +37,12 @@ struct MobileChatMessage: Identifiable, Codable, Equatable {
     /// re-render, or shown as a generic glyph for the kind if the source
     /// file is no longer present).
     var attachments: [MobileChatAttachment]
+    /// Runtime-agnostic record of the tools the model invoked while producing
+    /// this message. Populated by both Hermes and Pi. Pre-existing Hermes
+    /// records that stored tool calls under `hermes.toolCalls` are merged into
+    /// this list on decode, so reloaded threads always render through a single
+    /// path.
+    var toolCalls: [MobileChatToolCall]
     /// Hermes-specific telemetry: token usage, tool calls, model IDs,
     /// generation timestamps. `nil` for runtimes that don't produce stats
     /// (currently Pi).
@@ -50,6 +56,7 @@ struct MobileChatMessage: Identifiable, Codable, Equatable {
         modelName: String? = nil,
         isError: Bool = false,
         attachments: [MobileChatAttachment] = [],
+        toolCalls: [MobileChatToolCall] = [],
         hermes: MobileChatHermesMetadata? = nil
     ) {
         self.id = id
@@ -59,6 +66,7 @@ struct MobileChatMessage: Identifiable, Codable, Equatable {
         self.modelName = modelName
         self.isError = isError
         self.attachments = attachments
+        self.toolCalls = toolCalls
         self.hermes = hermes
     }
 
@@ -72,11 +80,22 @@ struct MobileChatMessage: Identifiable, Codable, Equatable {
         self.modelName = try container.decodeIfPresent(String.self, forKey: .modelName)
         self.isError = try container.decodeIfPresent(Bool.self, forKey: .isError) ?? false
         self.attachments = try container.decodeIfPresent([MobileChatAttachment].self, forKey: .attachments) ?? []
-        self.hermes = try container.decodeIfPresent(MobileChatHermesMetadata.self, forKey: .hermes)
+        let topLevelToolCalls = try container.decodeIfPresent([MobileChatToolCall].self, forKey: .toolCalls) ?? []
+        let hermes = try container.decodeIfPresent(MobileChatHermesMetadata.self, forKey: .hermes)
+        // Legacy threads stored tool calls only under `hermes.toolCalls`. Merge
+        // them into the top-level list so callers don't need to look in two
+        // places. Dedup by id so a thread written by a new build (which writes
+        // to both fields for forward-compat) doesn't double-up.
+        if topLevelToolCalls.isEmpty, let legacyToolCalls = hermes?.toolCalls, !legacyToolCalls.isEmpty {
+            self.toolCalls = legacyToolCalls
+        } else {
+            self.toolCalls = topLevelToolCalls
+        }
+        self.hermes = hermes
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, role, text, timestamp, modelName, isError, attachments, hermes
+        case id, role, text, timestamp, modelName, isError, attachments, toolCalls, hermes
     }
 }
 
@@ -139,10 +158,34 @@ struct MobileChatHermesMetadata: Codable, Equatable {
     }
 }
 
+/// Persisted record of a single tool the model decided to invoke. `detail` is
+/// a short human-readable preview of the arguments (path, command, query) so
+/// the pill in a reloaded thread still shows *what* the tool was working on,
+/// not just *that* a tool ran.
 struct MobileChatToolCall: Codable, Equatable, Identifiable {
     var id: String
     var name: String
     var status: String
+    var detail: String?
+
+    init(id: String, name: String, status: String, detail: String? = nil) {
+        self.id = id
+        self.name = name
+        self.status = status
+        self.detail = detail
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.status = try container.decode(String.self, forKey: .status)
+        self.detail = try container.decodeIfPresent(String.self, forKey: .detail)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, status, detail
+    }
 }
 
 /// Token-usage + duration telemetry. Mirrors the trustworthy-rate model from
@@ -335,10 +378,25 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         if !message.attachments.isEmpty {
             payload["attachments"] = message.attachments.map(encodeAttachmentForCloud)
         }
+        if !message.toolCalls.isEmpty {
+            payload["toolCalls"] = message.toolCalls.map(encodeToolCallForCloud)
+        }
         if let hermes = message.hermes {
             payload["hermes"] = encodeHermesMetadataForCloud(hermes)
         }
         return payload
+    }
+
+    static func encodeToolCallForCloud(_ tc: MobileChatToolCall) -> [String: Any] {
+        var entry: [String: Any] = [
+            "id": tc.id,
+            "name": tc.name,
+            "status": tc.status
+        ]
+        if let detail = tc.detail, !detail.isEmpty {
+            entry["detail"] = detail
+        }
+        return entry
     }
 
     /// Strips the (possibly large) PNG thumbnail before sending to Firestore.
@@ -364,7 +422,17 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         if let requested = metadata.requestedModelID { dict["requestedModelID"] = requested }
         if let response = metadata.responseModelID { dict["responseModelID"] = response }
         if !metadata.toolCalls.isEmpty {
-            dict["toolCalls"] = metadata.toolCalls.map { ["id": $0.id, "name": $0.name, "status": $0.status] }
+            dict["toolCalls"] = metadata.toolCalls.map { tc -> [String: Any] in
+                var entry: [String: Any] = [
+                    "id": tc.id,
+                    "name": tc.name,
+                    "status": tc.status
+                ]
+                if let detail = tc.detail, !detail.isEmpty {
+                    entry["detail"] = detail
+                }
+                return entry
+            }
         }
         if let usage = metadata.usage {
             var usageDict: [String: Any] = [:]
@@ -433,7 +501,14 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
         let modelName = raw["modelName"] as? String
         let isError = (raw["isError"] as? Bool) ?? false
         let attachments = (raw["attachments"] as? [[String: Any]] ?? []).compactMap(decodeAttachment)
+        let topLevelToolCalls = decodeToolCalls(raw["toolCalls"] as? [[String: Any]])
         let hermes = (raw["hermes"] as? [String: Any]).flatMap(decodeHermesMetadata)
+        // Prefer the top-level toolCalls list; fall back to hermes.toolCalls
+        // for threads written by older builds that only knew about the Hermes
+        // metadata block.
+        let mergedToolCalls = !topLevelToolCalls.isEmpty
+            ? topLevelToolCalls
+            : (hermes?.toolCalls ?? [])
         return MobileChatMessage(
             id: id,
             role: role,
@@ -442,8 +517,23 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             modelName: modelName,
             isError: isError,
             attachments: attachments,
+            toolCalls: mergedToolCalls,
             hermes: hermes
         )
+    }
+
+    private static func decodeToolCalls(_ raw: [[String: Any]]?) -> [MobileChatToolCall] {
+        (raw ?? []).compactMap { dict -> MobileChatToolCall? in
+            guard let id = dict["id"] as? String,
+                  let name = dict["name"] as? String,
+                  let status = dict["status"] as? String else { return nil }
+            return MobileChatToolCall(
+                id: id,
+                name: name,
+                status: status,
+                detail: dict["detail"] as? String
+            )
+        }
     }
 
     static func decodeAttachment(_ raw: [String: Any]) -> MobileChatAttachment? {
@@ -474,7 +564,12 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
             guard let id = dict["id"] as? String,
                   let name = dict["name"] as? String,
                   let status = dict["status"] as? String else { return nil }
-            return MobileChatToolCall(id: id, name: name, status: status)
+            return MobileChatToolCall(
+                id: id,
+                name: name,
+                status: status,
+                detail: dict["detail"] as? String
+            )
         }
         var usage: MobileChatTokenUsage?
         if let usageDict = raw["usage"] as? [String: Any] {

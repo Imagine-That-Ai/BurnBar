@@ -95,6 +95,7 @@ struct SettingsSearchResultsView: View {
     private func pageDisplayName(_ route: SettingsPageRoute) -> String {
         switch route {
         case .generalRoot, .daemonRoot, .accountRoot, .providersRoot,
+             .routingPoolsRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,
              .switcherRoot, .hermesRoot:
             return ""

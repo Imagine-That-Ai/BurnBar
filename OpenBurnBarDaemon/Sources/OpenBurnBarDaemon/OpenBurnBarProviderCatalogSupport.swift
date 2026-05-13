@@ -43,6 +43,12 @@ public struct BurnBarProviderCatalogSupport: Sendable {
         return provider.capabilities.contains(.routing)
     }
 
+    /// Wire-format family a provider speaks at the local gateway. Defaults to
+    /// `.openaiCompat` when the provider isn't in the catalog (defensive).
+    public func formatFamily(providerID: String) -> BurnBarProviderFormatFamily {
+        catalog.provider(id: providerID)?.formatFamily ?? .openaiCompat
+    }
+
     /// All catalog providers eligible for account management.
     public var supportedProviders: [BurnBarCatalogProvider] {
         catalog.providers

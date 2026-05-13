@@ -13,22 +13,77 @@ import { SITE } from "@data/site";
     <div class="container">
       <span class="eyebrow eyebrow--ember">Fire Hydrant · the router</span>
       <h1 class="pagehead__h">
-        One local gateway. Every provider account you've added.
-        <span class="ember">No vendor lock-in.</span>
+        One local gateway. Two format pools.
+        <span class="ember">No cross-format hacks.</span>
       </h1>
       <p class="lead">
         The Fire Hydrant — OpenBurnBar's <strong>routed client gateway</strong> at
-        <span class="mono">127.0.0.1:8317</span> — receives OpenAI-shaped requests
-        from Cursor, Factory, Forge, and OpenCode, and forwards them to the
-        healthiest provider account you've configured. When an account hits its
+        <span class="mono">127.0.0.1:8317</span> — receives OpenAI-shape requests
+        on <span class="mono">/v1/chat/completions</span> from Cursor, Factory,
+        Forge, OpenCode and Codex, and Anthropic-shape requests on
+        <span class="mono">/v1/messages</span> from Claude Code. Each request is
+        only ever served by accounts in the same format pool, then ranked by
+        live quota health and least-recently-used. When an account hits its
         quota, rate-limits, or sees an auth failure, the router shifts traffic
-        before your IDE notices. Routing is deterministic, auditable, and
-        entirely on-device.
+        within the same pool — before your IDE notices. Routing is
+        deterministic, auditable, and entirely on-device.
       </p>
       <div class="pagehead__ctas">
         <a class="btn btn--ember" href="/download">Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a>
         <a class="btn btn--ghost" href={`${SITE.github}/blob/main/docs/ROUTED_CLIENT_GATEWAY.md`} target="_blank" rel="noopener noreferrer">Read the gateway doc</a>
       </div>
+    </div>
+  </section>
+
+  <!-- ──────────── two pools ──────────── -->
+  <section class="poolsec">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Two pools, same-format failover</span>
+        <h2>Two highways, never crossed.</h2>
+        <p class="lead">
+          Tool-call schemas, prompt-cache markers, and streaming-event types
+          differ enough between OpenAI Chat Completions and Anthropic Messages
+          that "translating" between them quietly breaks things — citations
+          go missing, tool calls misfire, cache markers drop. The Hydrant
+          refuses that game. A request on one endpoint can only be served by
+          accounts in that pool. Same-format failover. Provable in tests.
+        </p>
+      </header>
+
+      <div class="poolsec__grid">
+        <article class="poolcard poolcard--openai">
+          <header>
+            <span class="tag tag--ember tag--plain mono">OpenAI-family pool</span>
+            <h3 class="poolcard__h">/v1/chat/completions</h3>
+            <p class="poolcard__sub mono">OpenAI Chat Completions · SSE stream pass-through</p>
+          </header>
+          <ul class="poolcard__list">
+            <li><strong>Clients:</strong> Cursor (BYOK tunnel), Factory, Forge, OpenCode, Codex CLI in API-key mode.</li>
+            <li><strong>Upstream accounts:</strong> OpenAI, Z.ai, MiniMax, Kimi, Ollama Cloud, Ollama Local.</li>
+            <li><strong>Failover trigger:</strong> 429, 401, 402, 403, "quota" / "rate" / "exhaust" in response body.</li>
+            <li><strong>Empty-pool behaviour:</strong> 503 with a structured message naming the missing pool.</li>
+          </ul>
+        </article>
+
+        <article class="poolcard poolcard--anthropic">
+          <header>
+            <span class="tag tag--mercury tag--plain mono">Anthropic-family pool</span>
+            <h3 class="poolcard__h">/v1/messages</h3>
+            <p class="poolcard__sub mono">Anthropic Messages · sk-ant via x-api-key · Bearer for OAuth</p>
+          </header>
+          <ul class="poolcard__list">
+            <li><strong>Clients:</strong> Claude Code with <code class="poolcard__code">ANTHROPIC_BASE_URL</code> + <code class="poolcard__code">ANTHROPIC_AUTH_TOKEN</code>.</li>
+            <li><strong>Upstream accounts:</strong> Anthropic Console (sk-ant-… admin key), Anthropic Pro/Team (OAuth bearer).</li>
+            <li><strong>Auth-header dispatch:</strong> sk-ant-… → <code class="poolcard__code">x-api-key</code>; OAuth bearer → <code class="poolcard__code">Authorization</code>.</li>
+            <li><strong>Anthropic version:</strong> pinned to <code class="poolcard__code">2023-06-01</code> on every request.</li>
+          </ul>
+        </article>
+      </div>
+
+      <p class="poolsec__cap mono">
+        Source · <code>OpenBurnBarDaemon/.../OpenBurnBarHTTPGatewayServer.swift</code> · <code>OpenBurnBarAnthropicProviderExecutor.swift</code>
+      </p>
     </div>
   </section>
 
@@ -68,53 +123,61 @@ import { SITE } from "@data/site";
       <div class="scope__grid">
         <article class="scopecard scopecard--routed">
           <header>
-            <span class="tag tag--exact tag--plain mono">Routed today</span>
+            <span class="tag tag--exact tag--plain mono">Routed today — 7 upstreams</span>
             <h3>Inference goes through the Hydrant.</h3>
           </header>
           <ul class="scope__list">
             <li>
+              <img src="/brand/providers/openai.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>OpenAI</strong><span>API-key routing; OpenAI-family pool. Pay-as-you-go fallback for Codex.</span></div>
+            </li>
+            <li>
               <img src="/brand/providers/zai.png" alt="" width="28" height="28" loading="lazy" />
-              <div><strong>Z.ai (GLM)</strong><span>Coding-plan keys, token + MCP limits, live quota.</span></div>
+              <div><strong>Z.ai (GLM)</strong><span>Coding Plan keys; OpenAI-family pool. Token + MCP quota live.</span></div>
             </li>
             <li>
               <img src="/brand/providers/minimax.png" alt="" width="28" height="28" loading="lazy" />
-              <div><strong>MiniMax</strong><span>Coding-plan keys (sk-cp-…); per-model remaining-quota signal.</span></div>
+              <div><strong>MiniMax</strong><span>Coding-plan keys (sk-cp-…); OpenAI-family pool. Per-model remaining quota.</span></div>
+            </li>
+            <li>
+              <img src="/brand/providers/kimi.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>Kimi (Moonshot)</strong><span>OpenAI-compatible endpoint; OpenAI-family pool. Weekly token window.</span></div>
             </li>
             <li>
               <img src="/brand/providers/ollama.png" alt="" width="28" height="28" loading="lazy" />
-              <div><strong>Ollama Cloud</strong><span>API-keyed cloud routing; quota visible after sign-in.</span></div>
+              <div><strong>Ollama Cloud + Local</strong><span>Both routed in the OpenAI-family pool. Local cloud-suffix aliases rewritten before upstream.</span></div>
             </li>
             <li>
-              <img src="/brand/providers/ollama.png" alt="" width="28" height="28" loading="lazy" />
-              <div><strong>Ollama Local</strong><span>localhost:11434; per-response prompt_eval / eval counts.</span></div>
+              <img src="/brand/providers/anthropic.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>Anthropic Console + Pro/Team</strong><span>Anthropic-family pool. sk-ant-… via x-api-key, OAuth bearer via Authorization.</span></div>
             </li>
           </ul>
           <p class="scope__cap mono">
-            Source · <code>OpenBurnBarCore/.../ProviderAccountTypes.swift</code>
+            Source · <code>catalog.json</code> · <code>ProviderAccountTypes.swift:403-599</code>
           </p>
         </article>
 
         <article class="scopecard scopecard--tracked">
           <header>
-            <span class="tag tag--estimated tag--plain mono">Tracked today — not routed</span>
+            <span class="tag tag--estimated tag--plain mono">Tracked-only today</span>
             <h3>We read the dashboard, not the wire.</h3>
           </header>
           <ul class="scope__list">
             <li>
-              <img src="/brand/providers/openai.png" alt="" width="28" height="28" loading="lazy" />
-              <div><strong>OpenAI</strong><span>Org-wide usage from the admin API; quota inferred from runtime 429s.</span></div>
-            </li>
-            <li>
-              <img src="/brand/providers/anthropic.png" alt="" width="28" height="28" loading="lazy" />
-              <div><strong>Anthropic Console</strong><span>Org-wide messages usage report (admin key, daily granularity).</span></div>
-            </li>
-            <li>
-              <img src="/brand/providers/codex.png" alt="" width="28" height="28" loading="lazy" />
-              <div><strong>Codex</strong><span>Local rollout JSONL; primary 5h + secondary 7d quota windows.</span></div>
-            </li>
-            <li>
               <img src="/brand/providers/copilot.png" alt="" width="28" height="28" loading="lazy" />
-              <div><strong>GitHub Copilot · Kimi · Warp</strong><span>Per-seat or weekly-window limits read from each vendor's own API.</span></div>
+              <div><strong>GitHub Copilot</strong><span>Per-seat premium-interaction caps via GitHub's own API.</span></div>
+            </li>
+            <li>
+              <img src="/brand/providers/cursor.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>Cursor (plan usage)</strong><span>USD plan-usage from cursor.com. Inference flows through BYOK tunnel into the Hydrant.</span></div>
+            </li>
+            <li>
+              <img src="/brand/providers/warp.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>Warp</strong><span>Request credits + refresh windows from app.warp.dev GraphQL.</span></div>
+            </li>
+            <li>
+              <img src="/brand/providers/aider.png" alt="" width="28" height="28" loading="lazy" />
+              <div><strong>Aider · Forge cost · agent CLIs</strong><span>Local analytics files only — no vendor quota to call against.</span></div>
             </li>
           </ul>
           <p class="scope__cap mono">
@@ -124,9 +187,9 @@ import { SITE } from "@data/site";
       </div>
 
       <p class="scope__note mono">
-        The Hydrant fallback target for a Cursor BYOK route can be <em>any</em> account
-        you've pinned a credential for — including OpenAI or Anthropic with your own keys.
-        That's how a routed flow can still reach a tracked-only provider.
+        Codex CLI in ChatGPT-auth mode stays tracked-only. In OPENAI_BASE_URL
+        / API-key mode it flows through the Hydrant like any OpenAI-family
+        client.
       </p>
     </div>
   </section>
@@ -155,6 +218,12 @@ import { SITE } from "@data/site";
           </tr>
         </thead>
         <tbody>
+          <tr class="ranking__row--pool">
+            <td class="mono">0</td>
+            <td><strong>Format pool</strong></td>
+            <td>Drop every candidate whose <code>formatFamily</code> doesn't match the inbound endpoint. <code>/v1/chat/completions</code> keeps only <code>openai_compat</code> accounts; <code>/v1/messages</code> keeps only <code>anthropic</code> accounts. If the pool is empty: 503 with a structured "missing pool" error.</td>
+            <td>—</td>
+          </tr>
           <tr>
             <td class="mono">F</td>
             <td><strong>Filter</strong></td>
@@ -320,6 +389,21 @@ import { SITE } from "@data/site";
       </header>
 
       <dl class="qa__list">
+        <div>
+          <dt>Why not translate between OpenAI and Anthropic formats?</dt>
+          <dd>
+            Because the differences aren't superficial. Tool-call schemas,
+            prompt-cache markers, citation blocks, streaming-event shapes,
+            and the way assistant turns are encoded all differ between OpenAI
+            Chat Completions and Anthropic Messages. A translator would have
+            to be perfect on every release of either API — and any drift
+            corrupts your inference in ways that are subtle and hard to
+            debug. Same-format pass-through is a cleaner contract: your
+            Claude request lands on a Claude account, your OpenAI-shape
+            request lands on an OpenAI-shape account. Failover happens
+            inside that contract, never across it.
+          </dd>
+        </div>
         <div>
           <dt>Is this a load balancer?</dt>
           <dd>
@@ -528,8 +612,92 @@ import { SITE } from "@data/site";
     border-radius: var(--r-2);
   }
   .ranking__cap { margin-top: var(--s-4); }
+  .ranking__row--pool {
+    background:
+      linear-gradient(90deg, rgba(214, 211, 223, 0.06), transparent);
+  }
+  .ranking__row--pool td:first-child {
+    color: var(--mercury-bright);
+  }
+  .ranking__row--pool strong {
+    color: var(--mercury-bright);
+  }
+
+  /* ===== pool section ===== */
+  .poolsec {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    background:
+      radial-gradient(70% 60% at 50% 0%, rgba(214, 211, 223, 0.04), transparent 60%);
+  }
+  .poolsec__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-5);
+  }
+  .poolcard {
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    padding: var(--s-5);
+    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    display: grid;
+    gap: var(--s-4);
+  }
+  .poolcard--openai {
+    border-color: color-mix(in oklab, var(--ember-core) 30%, var(--ink-line));
+  }
+  .poolcard--anthropic {
+    border-color: color-mix(in oklab, var(--mercury-bright) 30%, var(--ink-line));
+  }
+  .poolcard header { display: grid; gap: var(--s-2); }
+  .poolcard__h {
+    font-family: var(--font-mono);
+    font-size: 1.05rem;
+    color: var(--text-bright);
+    letter-spacing: 0.04em;
+  }
+  .poolcard__sub {
+    font-size: 0.78rem;
+    color: var(--text-mute);
+    letter-spacing: 0.04em;
+  }
+  .poolcard__list {
+    display: grid;
+    gap: var(--s-3);
+    color: var(--text-base);
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+  .poolcard__list strong { color: var(--text-bright); }
+  .poolcard__code {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    color: var(--ember-bright);
+    background: var(--ink-surface);
+    padding: 1px 6px;
+    border-radius: var(--r-2);
+  }
+  .poolcard--anthropic .poolcard__code {
+    color: var(--mercury-bright);
+  }
+  .poolsec__cap {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    margin-top: var(--s-5);
+    padding-top: var(--s-3);
+    border-top: 1px dashed var(--ink-line-soft);
+  }
+  .poolsec__cap code {
+    color: var(--text-mute);
+    background: var(--ink-base);
+    padding: 1px 6px;
+    border-radius: var(--r-2);
+    border: 1px solid var(--ink-line);
+  }
   @media (max-width: 880px) {
     .ranking__table { display: block; overflow-x: auto; }
+    .poolsec__grid { grid-template-columns: 1fr; }
   }
 
   /* lifecycle */
