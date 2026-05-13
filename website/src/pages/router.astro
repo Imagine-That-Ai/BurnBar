@@ -10,7 +10,7 @@ import { SITE } from "@data/site";
 const faqEntries = [
   {
     q: "Will failover ever change my model?",
-    a: "No. Failover stays inside the model identity you asked for. If you sent `gpt-4.1`, the router will only pick from accounts whose catalog also carries `gpt-4.1`. If no eligible account exists, BurnBar returns a structured 503 — never a silent substitute."
+    a: "No. Failover stays inside the model identity you asked for. If you sent `gpt-5`, the router will only pick from accounts whose catalog also carries `gpt-5`. If no eligible account exists, BurnBar returns a structured 503 — never a silent substitute."
   },
   {
     q: "What is Provider-Family Failover?",
@@ -50,8 +50,8 @@ const faqEntries = [
       </h1>
       <p class="pagehead__lead">
         BurnBar's local router stretches one model across every account in
-        your library that serves it. Your <code class="mono">gpt-4.1</code> stays
-        <code class="mono">gpt-4.1</code>. Your
+        your library that serves it. Your <code class="mono">gpt-5</code> stays
+        <code class="mono">gpt-5</code>. Your
         <code class="mono">claude-opus-4-7</code> stays
         <code class="mono">claude-opus-4-7</code>. The accounts swap;
         the model never does.
@@ -64,7 +64,7 @@ const faqEntries = [
       </ul>
 
       <div class="pagehead__visual">
-        <LockedModelRelay variant="big" modelID="gpt-4.1" modelTag="model id · invariant" />
+        <LockedModelRelay variant="big" modelID="gpt-5" modelTag="model id · invariant" />
       </div>
 
       <div class="pagehead__ctas">
@@ -91,22 +91,22 @@ const faqEntries = [
         <RuleVignette
           idx={1}
           variant="swap-account"
-          model="gpt-4.1"
-          title="Primary rate-limited → different account, same model."
-          eyebrow="01 · gpt-4.1 · 429"
-          client={{ name: "Codex CLI", logo: "/brand/providers/codex.png" }}
-          primary={{ name: "OpenAI", logo: "/brand/providers/openai.png", state: "primary" }}
-          fallback={{ name: "Z.ai", logo: "/brand/providers/zai.png", state: "carries gpt-4.1" }}
+          model="gpt-5"
+          title="Primary OpenAI key throttled → backup OpenAI key, same model."
+          eyebrow="01 · gpt-5 · 429"
+          client={{ name: "Forge", logo: "/brand/providers/forge.png" }}
+          primary={{ name: "OpenAI · personal", logo: "/brand/providers/openai.png", state: "primary" }}
+          fallback={{ name: "Codex · plus", logo: "/brand/providers/codex.png", state: "carries gpt-5" }}
           failure="429"
-          swapDetail="account only · gpt-4.1 → gpt-4.1"
+          swapDetail="account only · gpt-5 → gpt-5"
         />
 
         <RuleVignette
           idx={2}
           variant="swap-auth"
-          model="claude-opus-4-5"
+          model="claude-opus-4-7"
           title="Pro plan capped → Console admin key, same model."
-          eyebrow="02 · claude-opus-4-5"
+          eyebrow="02 · claude-opus-4-7"
           client={{ name: "Claude Code", logo: "/brand/providers/claude-code.png" }}
           primary={{ name: "Anthropic Pro", logo: "/brand/providers/anthropic.png", state: "5h cap hit", auth: "OAuth bearer" }}
           fallback={{ name: "Console admin", logo: "/brand/providers/anthropic.png", state: "healthy", auth: "x-api-key" }}
