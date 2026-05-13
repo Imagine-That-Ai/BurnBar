@@ -98,6 +98,7 @@ import {
   refreshAllProviderQuotas,
   refreshModelLandscapeBenchmarks,
 } from "./scheduled.js";
+import { seedAndroidDemoAccount as seedAndroidDemoAccountForUser } from "./demoSeed.js";
 import { latestRouterRundown } from "./routerRundown.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 
@@ -2262,6 +2263,27 @@ export const rebuildUsageRollups = onCall(
       computedAt: rollups.all_time.computedAt,
       windows: ["today", "7d", "30d", "90d", "all_time"] as const,
     };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Callable: seedAndroidDemoAccount
+// ---------------------------------------------------------------------------
+
+export const seedAndroidDemoAccount = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 20,
+  },
+  async (request: CallableRequest<Record<string, never>>) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError("unauthenticated", "Sign in before loading demo data.");
+    }
+    enforceAuthAndAppCheck(request, uid);
+
+    return seedAndroidDemoAccountForUser(db, uid);
   }
 );
 
