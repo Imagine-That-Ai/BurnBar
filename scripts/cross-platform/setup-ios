@@ -32,14 +32,26 @@ fi
 
 # GoogleService-Info.plist (for Firebase)
 PLIST_FOUND=0
+APP_CHECK_TOKEN_FOUND=0
 for dir in OpenBurnBarMobile/Resources AgentLens/Resources; do
-    if [ -f "$dir/GoogleService-Info.plist" ]; then
-        echo "   ✓ $dir/GoogleService-Info.plist exists"
+    plist="$dir/GoogleService-Info.plist"
+    if [ -f "$plist" ]; then
+        echo "   ✓ $plist exists"
         PLIST_FOUND=$((PLIST_FOUND + 1))
+        if /usr/libexec/PlistBuddy -c "Print :FirebaseAppCheckDebugToken" "$plist" >/dev/null 2>&1 ||
+           /usr/libexec/PlistBuddy -c "Print :FIRAAppCheckDebugToken" "$plist" >/dev/null 2>&1; then
+            echo "   ✓ $plist includes an App Check debug token for Debug builds"
+            APP_CHECK_TOKEN_FOUND=$((APP_CHECK_TOKEN_FOUND + 1))
+        else
+            echo "   ⚠ $plist has no App Check debug token; Debug Firestore reads can be denied when App Check enforcement is on."
+        fi
     fi
 done
 if [ $PLIST_FOUND -eq 0 ]; then
     echo "   ⚠ No GoogleService-Info.plist found. Download from Firebase Console → Project burnbar."
+fi
+if [ $PLIST_FOUND -gt 0 ] && [ $APP_CHECK_TOKEN_FOUND -eq 0 ]; then
+    echo "   ⚠ Add FirebaseAppCheckDebugToken or FIRAAppCheckDebugToken to the local gitignored plist for simulator/physical Debug runs."
 fi
 
 echo "✅ iOS environment ready."

@@ -219,6 +219,15 @@ struct PiChatThreadView: View {
 
     @State private var input: String = ""
     @State private var showConnectionSheet = false
+    @State private var atomRouter = HermesAtomRouter()
+
+    /// `.tool` messages exist purely as context for the upstream model
+    /// — they're hidden from the visible chat list. The tool pill on
+    /// the assistant turn that produced the call already conveys that
+    /// the model used a tool.
+    private var visibleMessages: [PiChatMessage] {
+        service.messages.filter { $0.role != .tool }
+    }
 
     var body: some View {
         ZStack {
@@ -232,7 +241,7 @@ struct PiChatThreadView: View {
                     showConnectionSheet = true
                 }
 
-                if service.messages.isEmpty {
+                if visibleMessages.isEmpty {
                     emptyState
                 } else {
                     messageList
@@ -271,8 +280,25 @@ struct PiChatThreadView: View {
                 focusedRuntime: .pi
             )
         }
+        .environment(\.hermesAtomNavigator, atomRouter)
+        .sheet(item: Binding(
+            get: { atomRouter.pending },
+            set: { atomRouter.pending = $0 }
+        )) { pending in
+            HermesAtomDetailSheet(
+                atom: pending.atom,
+                label: pending.label,
+                onOpen: { atomRouter.confirm(pending) }
+            )
+        }
         .onAppear {
             applyRouteOnAppear()
+            // Plug the atom router into the Pi service so the
+            // `burnbar_atom_open` tool can drive in-app navigation.
+            service.setToolAtomNavigator(atomRouter)
+        }
+        .onDisappear {
+            service.setToolAtomNavigator(nil)
         }
         // Pending-prompt consumer — picks up prompts stashed by the
         // "Ask Pi" widget chip AppIntent or a `burnbar://pi?prompt=…`
@@ -342,14 +368,14 @@ struct PiChatThreadView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-                    ForEach(service.messages) { msg in
+                    ForEach(visibleMessages) { msg in
                         messageBubble(msg)
                             .id(msg.id)
                     }
                 }
                 .padding(MobileTheme.Spacing.lg)
             }
-            .onChange(of: service.messages.last?.id) { _, lastID in
+            .onChange(of: visibleMessages.last?.id) { _, lastID in
                 if let lastID {
                     withAnimation { proxy.scrollTo(lastID, anchor: .bottom) }
                 }

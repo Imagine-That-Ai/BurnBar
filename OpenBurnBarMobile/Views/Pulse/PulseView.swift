@@ -82,7 +82,7 @@ struct PulseView: View {
                         providerSummaries: dashboard.topProviders,
                         modelSummaries: dashboard.topModels,
                         deviceSummaries: dashboard.topDevices,
-                        recentUsages: sessionsStore.usages,
+                        recentUsages: sessionsStore.rawUsages.isEmpty ? sessionsStore.usages : sessionsStore.rawUsages,
                         hermesService: hermesService
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)

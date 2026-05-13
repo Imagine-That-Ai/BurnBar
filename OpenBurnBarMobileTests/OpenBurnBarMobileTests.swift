@@ -34,6 +34,80 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertEqual(decoded.cost, 0.01)
     }
 
+    // MARK: - Stream Session Projection
+
+    func testActivityStoreSummarizesRawUsageRowsBySession() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 10_000)
+        let kimiRows = (0..<40).map { index in
+            makeUsage(
+                provider: .kimi,
+                sessionId: "kimi-flood",
+                model: index < 30 ? "kimi-for-coding" : "kimi-auditor",
+                inputTokens: 100 + index,
+                outputTokens: 50,
+                costUSD: 1,
+                startTime: now.addingTimeInterval(Double(index) * 30),
+                endTime: now.addingTimeInterval(Double(index) * 30 + 20)
+            )
+        }
+        let codex = makeUsage(
+            provider: .codex,
+            sessionId: "codex-visible",
+            model: "gpt-5.4-codex",
+            inputTokens: 500,
+            outputTokens: 250,
+            costUSD: 2.5,
+            startTime: now.addingTimeInterval(2_000),
+            endTime: now.addingTimeInterval(2_200)
+        )
+
+        let summaries = ActivityStore.summarizeSessions(kimiRows + [codex])
+
+        XCTAssertEqual(summaries.map(\.sessionId), ["codex-visible", "kimi-flood"])
+        let kimi = try XCTUnwrap(summaries.first { $0.sessionId == "kimi-flood" })
+        XCTAssertEqual(kimi.cost, 40, accuracy: 0.0001)
+        XCTAssertEqual(kimi.inputTokens, kimiRows.reduce(0) { $0 + $1.inputTokens })
+        XCTAssertEqual(kimi.outputTokens, 2_000)
+        XCTAssertEqual(kimi.totalTokens, kimi.inputTokens + kimi.outputTokens)
+        XCTAssertEqual(kimi.model, "kimi-for-coding")
+        XCTAssertEqual(kimi.startTime, kimiRows.first?.startTime)
+        XCTAssertEqual(kimi.endTime, kimiRows.last?.endTime)
+    }
+
+    func testActivityStoreDoesNotCollapseBlankSessionIds() {
+        let now = Date(timeIntervalSinceReferenceDate: 20_000)
+        let rows = [
+            makeUsage(provider: .factory, sessionId: "", model: "factory-a", startTime: now, endTime: now),
+            makeUsage(provider: .factory, sessionId: "  ", model: "factory-b", startTime: now, endTime: now)
+        ]
+
+        let summaries = ActivityStore.summarizeSessions(rows)
+
+        XCTAssertEqual(summaries.count, 2)
+    }
+
+    func testActivityStoreSortsSummariesByLatestActivity() {
+        let now = Date(timeIntervalSinceReferenceDate: 30_000)
+        let older = makeUsage(
+            provider: .claudeCode,
+            sessionId: "older",
+            model: "claude",
+            startTime: now,
+            endTime: now.addingTimeInterval(10)
+        )
+        let newer = makeUsage(
+            provider: .factory,
+            sessionId: "newer",
+            model: "factory",
+            startTime: now.addingTimeInterval(100),
+            endTime: now.addingTimeInterval(120)
+        )
+
+        let summaries = ActivityStore.summarizeSessions([older, newer])
+
+        XCTAssertEqual(summaries.map(\.sessionId), ["newer", "older"])
+    }
+
     func testProviderQuotaBucketProgress() {
         let bucket = ProviderQuotaBucket(
             name: "Tokens",
@@ -146,5 +220,28 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("http://192.168.1.1"))
         XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL(""))
         XCTAssertNil(SelfHostedQuotaRunnerStore.validatedRunnerURL("not-a-url"))
+    }
+
+    private func makeUsage(
+        provider: AgentProvider,
+        sessionId: String,
+        model: String,
+        inputTokens: Int = 100,
+        outputTokens: Int = 50,
+        costUSD: Double = 1,
+        startTime: Date,
+        endTime: Date
+    ) -> TokenUsage {
+        TokenUsage(
+            provider: provider,
+            sessionId: sessionId,
+            projectName: "Project",
+            model: model,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            costUSD: costUSD,
+            startTime: startTime,
+            endTime: endTime
+        )
     }
 }

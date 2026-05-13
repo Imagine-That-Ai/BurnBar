@@ -823,7 +823,69 @@ final class FirestoreRepository {
             return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
         }
     }
+
+    // MARK: - Hosted quota entitlement direct read
+
+    /// Read the canonical entitlement doc at
+    /// `users/{uid}/entitlements/hosted_quota_sync` directly. The same doc is
+    /// consulted by Firestore security rules to gate the Hermes relay, so if
+    /// it's active the iOS UI should treat the user as a paid subscriber even
+    /// when the App Store Server API roundtrip in
+    /// `restoreHostedQuotaEntitlement` cannot replay the transaction (e.g.
+    /// owner-seeded test entitlements that predate StoreKit).
+    func fetchHostedQuotaEntitlement() async throws -> HostedQuotaEntitlementResponse? {
+        let uid = try uid()
+        let snapshot = try await db
+            .document("users/\(uid)/entitlements/hosted_quota_sync")
+            .getDocument()
+        guard let data = snapshot.data() else { return nil }
+        let active = data["active"] as? Bool ?? false
+        let productID = (data["productID"] as? String) ?? ""
+        let transactionID = data["transactionID"] as? String
+        let originalTransactionID = data["originalTransactionID"] as? String
+        let environment = data["environment"] as? String
+        let expiresAt = Self.dateFromEntitlementField(data["expireAt"])
+            ?? Self.dateFromEntitlementField(data["expiresAt"])
+        let revokedAt = Self.dateFromEntitlementField(data["revokedAt"])
+        let revocationReason = data["revocationReason"] as? Int
+        return HostedQuotaEntitlementResponse(
+            active: active,
+            productID: productID,
+            transactionID: transactionID,
+            originalTransactionID: originalTransactionID,
+            environment: environment,
+            expiresAt: expiresAt,
+            revokedAt: revokedAt,
+            revocationReason: revocationReason
+        )
+    }
+
+    private static let entitlementIsoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let entitlementIsoFallbackFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func dateFromEntitlementField(_ raw: Any?) -> Date? {
+        if let ts = raw as? Timestamp { return ts.dateValue() }
+        if let date = raw as? Date { return date }
+        if let str = raw as? String {
+            if let d = entitlementIsoFormatter.date(from: str) { return d }
+            return entitlementIsoFallbackFormatter.date(from: str)
+        }
+        return nil
+    }
 }
+
+// MARK: - Direct-read hook for HostedQuotaSubscriptionStore
+
+extension FirestoreRepository: HostedQuotaEntitlementDirectReading {}
 
 // MARK: - Firestore Error
 

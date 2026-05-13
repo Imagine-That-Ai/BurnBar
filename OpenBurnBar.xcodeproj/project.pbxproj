@@ -980,6 +980,20 @@
 		FF1D30F01FE7203306CBF757 /* OpenAICompatibleChatGatewayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE6FFBC700D218430E47C7C2 /* OpenAICompatibleChatGatewayClient.swift */; };
 		FF2193EC287F315EF5B4959B /* DataStoreCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C1332856DEA3C1BE127FCBC /* DataStoreCoordinator.swift */; };
 		FFA7903A67AE17FD933C644C /* CursorLoginHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54A6AD6AE1CB3C1474E6099D /* CursorLoginHelper.swift */; };
+		55A380DC9538F0E0883D0C2D /* MobileToolCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 902D0BB5BF6F5F42354CA89C /* MobileToolCatalog.swift */; };
+		F3F0CE026EDA34B830379EED /* BurnBarAtomOpenTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F0E00517B0D59772E6AED40 /* BurnBarAtomOpenTool.swift */; };
+		B5D8C776A6E5158D279C7274 /* BurnBarHermesSessionsTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 897660A8AB8933750FF17A96 /* BurnBarHermesSessionsTool.swift */; };
+		63CA90BB1DBCBAA526C39960 /* BurnBarRuntimeStatusTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC90494C17577BE220F39B76 /* BurnBarRuntimeStatusTool.swift */; };
+		424A2FC01479AC89D5508A1A /* MobileToolCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9DCFAD213A7EBA928F342F3 /* MobileToolCatalogTests.swift */; };
+		0A34BC55DC7965E8849A6D04 /* BurnBarAtomOpenToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF64FA4BB99E9E9AA7FE1A33 /* BurnBarAtomOpenToolTests.swift */; };
+		C8FAB6510925B9E7BE17C874 /* HermesServiceToolUseLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F64B9448E71599BBF23F4BC /* HermesServiceToolUseLoopTests.swift */; };
+		EA536A729437F2589F6272EA /* CLIAgentSessionMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D448AEC8D4240F4BE310E52 /* CLIAgentSessionMirror.swift */; };
+		C44BC487DB24BD61310A1627 /* CLIAgentChatReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 446303785D92C0E6DF1488B4 /* CLIAgentChatReader.swift */; };
+		EE007170FAFACB3F21341860 /* CLIAgentConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF95C5A0DAEC987FF974B973 /* CLIAgentConversationListView.swift */; };
+		E32244C22DE2C28A0EED059C /* CLIAgentTranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05BE795CD627FA145B2D2BD5 /* CLIAgentTranscriptView.swift */; };
+		014B80378EEA21A9A1159CFA /* CLIAgentSessionCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 402D467A4321377C90CF5061 /* CLIAgentSessionCodecTests.swift */; };
+		E60B31D9859C7F35E3748632 /* CLIAgentChatReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55640BDE8E8F651EFCC6D34B /* CLIAgentChatReaderTests.swift */; };
+		6F47FCC72268D4D3D6158BB1 /* CLIAgentSessionMirrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF06DA07B554AE1A19C95DE7 /* CLIAgentSessionMirrorTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2023,6 +2037,20 @@
 		FF0BC832DD4F6C22F0FC801C /* SearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchService.swift; sourceTree = "<group>"; };
 		FFB4C714340AB5C7EF8AB2BE /* MobileInsightAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileInsightAggregator.swift; sourceTree = "<group>"; };
 		FFFDD98A3EE525028068947D /* HermesLiveGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesLiveGlyph.swift; sourceTree = "<group>"; };
+		902D0BB5BF6F5F42354CA89C /* MobileToolCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileToolCatalog.swift; sourceTree = "<group>"; };
+		9F0E00517B0D59772E6AED40 /* BurnBarAtomOpenTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarAtomOpenTool.swift; sourceTree = "<group>"; };
+		897660A8AB8933750FF17A96 /* BurnBarHermesSessionsTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarHermesSessionsTool.swift; sourceTree = "<group>"; };
+		EC90494C17577BE220F39B76 /* BurnBarRuntimeStatusTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarRuntimeStatusTool.swift; sourceTree = "<group>"; };
+		A9DCFAD213A7EBA928F342F3 /* MobileToolCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileToolCatalogTests.swift; sourceTree = "<group>"; };
+		DF64FA4BB99E9E9AA7FE1A33 /* BurnBarAtomOpenToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarAtomOpenToolTests.swift; sourceTree = "<group>"; };
+		7F64B9448E71599BBF23F4BC /* HermesServiceToolUseLoopTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesServiceToolUseLoopTests.swift; sourceTree = "<group>"; };
+		7D448AEC8D4240F4BE310E52 /* CLIAgentSessionMirror.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAgentSessionMirror.swift; sourceTree = "<group>"; };
+		446303785D92C0E6DF1488B4 /* CLIAgentChatReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAgentChatReader.swift; sourceTree = "<group>"; };
+		BF95C5A0DAEC987FF974B973 /* CLIAgentConversationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAgentConversationListView.swift; sourceTree = "<group>"; };
+		05BE795CD627FA145B2D2BD5 /* CLIAgentTranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAgentTranscriptView.swift; sourceTree = "<group>"; };
+		402D467A4321377C90CF5061 /* CLIAgentSessionCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAgentSessionCodecTests.swift; sourceTree = "<group>"; };
+		55640BDE8E8F651EFCC6D34B /* CLIAgentChatReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAgentChatReaderTests.swift; sourceTree = "<group>"; };
+		CF06DA07B554AE1A19C95DE7 /* CLIAgentSessionMirrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAgentSessionMirrorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -2232,6 +2260,7 @@
 		0D31461C29457F6236DD9095 /* CloudSync */ = {
 			isa = PBXGroup;
 			children = (
+				7D448AEC8D4240F4BE310E52 /* CLIAgentSessionMirror.swift */,
 				CF7909BD7FB94FE82E0FD9D4 /* ChatThreadSyncService.swift */,
 				1AB7B5A668243AC85100CF54 /* CloudSyncCircuitBreaker.swift */,
 				8D3FFC9F881B3A0FAA85546F /* CloudSyncCoordinator.swift */,
@@ -2755,6 +2784,7 @@
 		490C5E5EBA80C569AD3A42E9 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				4A3EFF2A2BA6F71760312B23 /* CLIAgents */,
 				64FB796FE718DAEBF0D81EEB /* Aurora */,
 				FFEB2D256EE6DE496F0C47D5 /* Auth */,
 				7F5A547F10C7AD4DD1284F1B /* Burn */,
@@ -3163,6 +3193,7 @@
 		91C83F5D0742CEBA8BFE87BC /* Active */ = {
 			isa = PBXGroup;
 			children = (
+				CF06DA07B554AE1A19C95DE7 /* CLIAgentSessionMirrorTests.swift */,
 				7877059342DB6EB1B8C685E7 /* Insights */,
 				419CD69078B639EEE016AA21 /* Parsers */,
 				D777DC9D326D51608625F1BB /* ProviderQuota */,
@@ -3366,6 +3397,8 @@
 		A1F07B613D17D4ACDE2921A3 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				446303785D92C0E6DF1488B4 /* CLIAgentChatReader.swift */,
+				DE358F82D39B60BD78372641 /* Tools */,
 				EEDC4E5D1945B2E1780B144D /* ChartStudio */,
 				59C349B8025C649DF6E9114B /* Insights */,
 				1C714CC045D405C1DC97F89B /* AuthRepository.swift */,
@@ -3401,6 +3434,8 @@
 		ADEFB03BCBA21A308A3E93DE /* OpenBurnBarMobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				382279A23E20B42216D574B0 /* CLIAgents */,
+				619A6B2B2DD848FA6B0CC8A3 /* Tools */,
 				8583BB134D8CA68A820B1FC9 /* Fakes */,
 				4D8739245128D91A87C59084 /* Insights */,
 				17895FFB95487DB4BA2E3A6D /* Resources */,
@@ -3990,6 +4025,45 @@
 			path = Auth;
 			sourceTree = "<group>";
 		};
+		DE358F82D39B60BD78372641 /* Tools */ = {
+			isa = PBXGroup;
+			children = (
+				902D0BB5BF6F5F42354CA89C /* MobileToolCatalog.swift */,
+				9F0E00517B0D59772E6AED40 /* BurnBarAtomOpenTool.swift */,
+				897660A8AB8933750FF17A96 /* BurnBarHermesSessionsTool.swift */,
+				EC90494C17577BE220F39B76 /* BurnBarRuntimeStatusTool.swift */,
+			);
+			path = Tools;
+			sourceTree = "<group>";
+		};
+		619A6B2B2DD848FA6B0CC8A3 /* Tools */ = {
+			isa = PBXGroup;
+			children = (
+				A9DCFAD213A7EBA928F342F3 /* MobileToolCatalogTests.swift */,
+				DF64FA4BB99E9E9AA7FE1A33 /* BurnBarAtomOpenToolTests.swift */,
+				7F64B9448E71599BBF23F4BC /* HermesServiceToolUseLoopTests.swift */,
+			);
+			path = Tools;
+			sourceTree = "<group>";
+		};
+		4A3EFF2A2BA6F71760312B23 /* CLIAgents */ = {
+			isa = PBXGroup;
+			children = (
+				BF95C5A0DAEC987FF974B973 /* CLIAgentConversationListView.swift */,
+				05BE795CD627FA145B2D2BD5 /* CLIAgentTranscriptView.swift */,
+			);
+			path = CLIAgents;
+			sourceTree = "<group>";
+		};
+		382279A23E20B42216D574B0 /* CLIAgents */ = {
+			isa = PBXGroup;
+			children = (
+				402D467A4321377C90CF5061 /* CLIAgentSessionCodecTests.swift */,
+				55640BDE8E8F651EFCC6D34B /* CLIAgentChatReaderTests.swift */,
+			);
+			path = CLIAgents;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -4488,6 +4562,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E60B31D9859C7F35E3748632 /* CLIAgentChatReaderTests.swift in Sources */,
+				014B80378EEA21A9A1159CFA /* CLIAgentSessionCodecTests.swift in Sources */,
+				C8FAB6510925B9E7BE17C874 /* HermesServiceToolUseLoopTests.swift in Sources */,
+				0A34BC55DC7965E8849A6D04 /* BurnBarAtomOpenToolTests.swift in Sources */,
+				424A2FC01479AC89D5508A1A /* MobileToolCatalogTests.swift in Sources */,
 				DB86E8BEEF1AFA280434EF78 /* AuthStoreTests.swift in Sources */,
 				75D4E6DEF55EADE24D20948E /* ChartSpecRendererTests.swift in Sources */,
 				5B8C314FEDBAE420A79F3612 /* ChartStudioPromptEngineTests.swift in Sources */,
@@ -4552,6 +4631,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E32244C22DE2C28A0EED059C /* CLIAgentTranscriptView.swift in Sources */,
+				EE007170FAFACB3F21341860 /* CLIAgentConversationListView.swift in Sources */,
+				C44BC487DB24BD61310A1627 /* CLIAgentChatReader.swift in Sources */,
+				63CA90BB1DBCBAA526C39960 /* BurnBarRuntimeStatusTool.swift in Sources */,
+				B5D8C776A6E5158D279C7274 /* BurnBarHermesSessionsTool.swift in Sources */,
+				F3F0CE026EDA34B830379EED /* BurnBarAtomOpenTool.swift in Sources */,
+				55A380DC9538F0E0883D0C2D /* MobileToolCatalog.swift in Sources */,
 				77D9DF00BE965A0EF20C4586 /* AccountStore.swift in Sources */,
 				BFB9D0E0666D87F93AFD3FB8 /* AccountView.swift in Sources */,
 				FD7271FD2F5BE8BB89ED32DA /* ActivityStore.swift in Sources */,
@@ -4746,6 +4832,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6F47FCC72268D4D3D6158BB1 /* CLIAgentSessionMirrorTests.swift in Sources */,
 				BA605669D40615DE735A79BB /* AWTRIXClientTests.swift in Sources */,
 				C41B55BF646A664F19724F18 /* AdaptiveColorSnapshotTests.swift in Sources */,
 				8E21AB20085586CC74D1B799 /* AnthropicCredentialProbeTests.swift in Sources */,
@@ -4916,6 +5003,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EA536A729437F2589F6272EA /* CLIAgentSessionMirror.swift in Sources */,
 				509EDFA3664A191D40F8EB14 /* AWTRIXClient.swift in Sources */,
 				4BC3CDA09633D2855C5BFE12 /* AccountManager.swift in Sources */,
 				2C3A15990F091F454C6627B5 /* AccountManagerProtocol.swift in Sources */,

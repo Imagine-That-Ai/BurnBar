@@ -17,6 +17,24 @@ public enum HermesAttachmentEncoder {
             case system
             case user
             case assistant
+            /// OpenAI `role: "tool"` reply produced after a local tool call.
+            /// Tool messages always carry a non-nil `toolCallID` referencing
+            /// the upstream `tool_calls[].id` they answer.
+            case tool
+        }
+
+        /// One tool the assistant emitted on a prior turn, replayed verbatim
+        /// to the model so it can see its own call history when we continue
+        /// a tool-use loop. Always paired with an assistant-role message.
+        public struct ReplayToolCall: Sendable, Equatable {
+            public let id: String
+            public let name: String
+            public let arguments: String
+            public init(id: String, name: String, arguments: String) {
+                self.id = id
+                self.name = name
+                self.arguments = arguments
+            }
         }
 
         public let role: Role
@@ -26,17 +44,30 @@ public enum HermesAttachmentEncoder {
         /// attachment is missing here (file unreadable) the encoder falls back
         /// to the metadata in the attachment itself.
         public let attachmentBytes: [String: Data]
+        /// For `role: .assistant` turns that called tools, the
+        /// `tool_calls[]` array we must replay back so the model can
+        /// "see" the call it previously made before consuming the
+        /// matching tool result.
+        public let assistantToolCalls: [ReplayToolCall]
+        /// For `role: .tool` reply messages, the matching upstream
+        /// `tool_call.id`. Required when role is `.tool`; ignored
+        /// otherwise.
+        public let toolCallID: String?
 
         public init(
             role: Role,
             text: String,
             attachments: [HermesAttachment] = [],
-            attachmentBytes: [String: Data] = [:]
+            attachmentBytes: [String: Data] = [:],
+            assistantToolCalls: [ReplayToolCall] = [],
+            toolCallID: String? = nil
         ) {
             self.role = role
             self.text = text
             self.attachments = attachments
             self.attachmentBytes = attachmentBytes
+            self.assistantToolCalls = assistantToolCalls
+            self.toolCallID = toolCallID
         }
     }
 
@@ -65,6 +96,49 @@ public enum HermesAttachmentEncoder {
 
         for message in messages {
             let trimmed = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Tool result replies are sent verbatim — they never carry
+            // attachments. Skip empty ones; the upstream API requires
+            // tool_call_id and content. Tool messages must always be the
+            // reply to a prior assistant tool call, never a standalone.
+            if message.role == .tool {
+                guard let toolCallID = message.toolCallID,
+                      !toolCallID.isEmpty,
+                      !trimmed.isEmpty else { continue }
+                output.append([
+                    "role": "tool",
+                    "tool_call_id": toolCallID,
+                    "content": message.text
+                ])
+                continue
+            }
+
+            // Assistant turns that called tools must replay both their
+            // pre-call text (often empty) and the `tool_calls` array, so
+            // the model can pair its prior call with the upcoming tool
+            // result. Empty content is encoded as `NSNull` because most
+            // OpenAI-compatible relays reject an empty string for an
+            // assistant message that carries `tool_calls`.
+            if message.role == .assistant, !message.assistantToolCalls.isEmpty {
+                let toolCalls: [[String: Any]] = message.assistantToolCalls.map { call in
+                    [
+                        "id": call.id,
+                        "type": "function",
+                        "function": [
+                            "name": call.name,
+                            "arguments": call.arguments
+                        ] as [String: Any]
+                    ] as [String: Any]
+                }
+                var entry: [String: Any] = [
+                    "role": "assistant",
+                    "tool_calls": toolCalls
+                ]
+                entry["content"] = trimmed.isEmpty ? (NSNull() as Any) : message.text
+                output.append(entry)
+                continue
+            }
+
             if trimmed.isEmpty && message.attachments.isEmpty { continue }
 
             if !needsMultimodal {

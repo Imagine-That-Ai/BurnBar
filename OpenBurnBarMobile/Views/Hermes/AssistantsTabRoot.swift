@@ -45,8 +45,16 @@ struct AssistantsTabRoot: View {
             case .pi:
                 PiConversationListView(service: piService)
             case .codex, .claude, .openClaw:
-                AssistantTileBridgeView(runtime: runtime) {
-                    showConnectionSheet = true
+                if let cliRuntime = CLIAgentRuntime(assistant: runtime) {
+                    CLIAgentConversationListView(runtime: cliRuntime)
+                } else {
+                    // Shouldn't happen — kept as a fallback so a future
+                    // runtime added to AssistantRuntimeID without a
+                    // matching CLI counterpart still has a sensible
+                    // placeholder.
+                    AssistantTileBridgeView(runtime: runtime) {
+                        showConnectionSheet = true
+                    }
                 }
             }
         }

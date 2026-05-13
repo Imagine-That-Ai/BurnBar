@@ -49,10 +49,75 @@ final class MobileInsightsStoreTests: XCTestCase {
         // Brand-new DashboardStore is empty; the data source must return
         // an empty (but non-throwing) snapshot rather than crashing.
         let dashboard = DashboardStore()
-        let source = MobileInsightDataSource(dashboardStore: dashboard)
+        let source = MobileInsightDataSource(dashboardStore: dashboard, usagePageLoader: { _ in [] })
         let snapshot = try await source.snapshot(window: InsightTimeWindow.last7d.interval())
         XCTAssertTrue(snapshot.usages.isEmpty)
         XCTAssertTrue(snapshot.sessions.isEmpty)
+    }
+
+    func testMobileInsightDataSourceUsesRequestedWindowRollup() async throws {
+        let dashboard = DashboardStore(initialRollups: [
+            makeRollup(window: .today, requests: 0, tokens: 0, cost: 0),
+            makeRollup(window: .sevenDays, requests: 3, tokens: 900, cost: 4.2)
+        ])
+        dashboard.setWindow(.today)
+
+        let source = MobileInsightDataSource(dashboardStore: dashboard, usagePageLoader: { _ in [] })
+        let today = try await source.snapshot(for: .today)
+        let week = try await source.snapshot(for: .last7d)
+
+        XCTAssertTrue(today.usages.isEmpty)
+        XCTAssertFalse(week.usages.isEmpty)
+        XCTAssertEqual(Set(week.usages.map(\.provider)), ["claude"])
+        XCTAssertEqual(Set(week.usages.map(\.model)), ["claude-sonnet"])
+        XCTAssertEqual(week.usages.reduce(0) { $0 + $1.totalTokens }, 900)
+        XCTAssertEqual(week.usages.reduce(0) { $0 + $1.costUSD }, 4.2, accuracy: 0.0001)
+    }
+
+    func testMobileInsightDataSourceFallsBackToRollupTotalsWhenSummariesAreMissing() async throws {
+        let dashboard = DashboardStore(initialRollups: [
+            UsageRollupDoc(
+                windowKey: .thirtyDays,
+                totals: RollupTotals(requests: 2, tokens: 240, costUsd: 0),
+                providerSummaries: [],
+                modelSummaries: [],
+                deviceSummaries: [],
+                dailyPoints: [],
+                computedAt: Date(),
+                schemaVersion: 3
+            )
+        ])
+
+        let source = MobileInsightDataSource(dashboardStore: dashboard, usagePageLoader: { _ in [] })
+        let snapshot = try await source.snapshot(for: .last30d)
+
+        XCTAssertFalse(snapshot.usages.isEmpty)
+        XCTAssertEqual(Set(snapshot.usages.map(\.provider)), ["All providers"])
+        XCTAssertEqual(snapshot.usages.reduce(0) { $0 + $1.totalTokens }, 240)
+    }
+
+    func testMobileInsightDataSourceFallsBackToRawUsageWhenRollupIsEmpty() async throws {
+        let dashboard = DashboardStore(initialRollups: [
+            makeRollup(window: .sevenDays, requests: 0, tokens: 0, cost: 0)
+        ])
+        let source = MobileInsightDataSource(dashboardStore: dashboard) { interval in
+            [
+                self.makeUsage(
+                    sessionId: "raw-week",
+                    startTime: interval.start.addingTimeInterval(3600),
+                    endTime: interval.start.addingTimeInterval(5400)
+                )
+            ]
+        }
+
+        let snapshot = try await source.snapshot(for: .last7d)
+
+        XCTAssertEqual(snapshot.usages.count, 1)
+        XCTAssertEqual(snapshot.usages.first?.sessionID, "raw-week")
+        XCTAssertEqual(snapshot.usages.first?.provider, AgentProvider.codex.rawValue)
+        XCTAssertEqual(snapshot.usages.first?.projectName, "BurnBar")
+        XCTAssertEqual(snapshot.usages.first?.totalTokens, 175)
+        XCTAssertEqual(snapshot.usages.first?.costUSD ?? 0, 0.42, accuracy: 0.0001)
     }
 
     private func makeIsolatedSupportDir() -> URL {
@@ -60,5 +125,67 @@ final class MobileInsightsStoreTests: XCTestCase {
             .appendingPathComponent("MobileInsightsStoreTests-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    private func makeRollup(
+        window: RollupWindowKey,
+        requests: Int,
+        tokens: Int,
+        cost: Double
+    ) -> UsageRollupDoc {
+        UsageRollupDoc(
+            windowKey: window,
+            totals: RollupTotals(requests: requests, tokens: tokens, costUsd: cost),
+            providerSummaries: requests == 0 && tokens == 0 && cost == 0
+                ? []
+                : [
+                    RollupProviderSummary(
+                        provider: "claude",
+                        totalRequests: requests,
+                        totalTokens: tokens,
+                        totalCost: cost
+                    )
+                ],
+            modelSummaries: requests == 0 && tokens == 0 && cost == 0
+                ? []
+                : [
+                    RollupModelSummary(
+                        model: "claude-sonnet",
+                        provider: "claude",
+                        requests: requests,
+                        tokens: tokens,
+                        cost: cost
+                    )
+                ],
+            deviceSummaries: [],
+            dailyPoints: requests == 0 && tokens == 0 && cost == 0
+                ? []
+                : [RollupDailyPoint(date: Date(), value: max(cost, Double(tokens), Double(requests)))],
+            computedAt: Date(),
+            schemaVersion: 3
+        )
+    }
+
+    private func makeUsage(
+        sessionId: String,
+        startTime: Date,
+        endTime: Date
+    ) -> TokenUsage {
+        TokenUsage(
+            provider: .codex,
+            sessionId: sessionId,
+            projectName: "BurnBar",
+            model: "gpt-5",
+            inputTokens: 100,
+            outputTokens: 50,
+            cacheCreationTokens: 10,
+            cacheReadTokens: 5,
+            reasoningTokens: 10,
+            costUSD: 0.42,
+            startTime: startTime,
+            endTime: endTime,
+            sourceDeviceId: "iphone",
+            sourceDeviceName: "iPhone"
+        )
     }
 }

@@ -11,11 +11,14 @@ final class ActivityStore {
     private(set) var isLoading = false
     private(set) var isSearching = false
     private(set) var error: String?
+    private(set) var rawUsages: [TokenUsage] = []
     private(set) var usages: [TokenUsage] = []
     private(set) var searchHits: [StreamSearchHit] = []
     private(set) var hasMore = true
     private var lastDoc: DocumentSnapshot?
-    private let pageSize = 25
+    private let targetSessionPageSize = 25
+    private let rawPageSize = 100
+    private let maxRawPagesPerBatch = 6
     private var lastSearchQuery = ""
 
     /// Optional provider filter applied to the next fetch. The view binds
@@ -46,7 +49,8 @@ final class ActivityStore {
         if AppStoreScreenshotMode.isEnabled {
             isLoading = false
             error = nil
-            usages = AppStoreScreenshotData.recentUsage
+            rawUsages = AppStoreScreenshotData.recentUsage
+            usages = Self.summarizeSessions(rawUsages)
             lastDoc = nil
             hasMore = false
             return
@@ -56,18 +60,11 @@ final class ActivityStore {
         defer { isLoading = false }
 
         do {
-            let (page, last) = try await firestore.fetchUsagePage(
-                pageSize: pageSize,
-                after: nil,
-                provider: filterProvider?.rawValue,
-                model: nil,
-                device: nil,
-                startDate: filterStartDate,
-                endDate: filterEndDate
-            )
-            usages = page
-            lastDoc = last
-            hasMore = page.count == pageSize
+            let batch = try await fetchRawBatch(after: nil, existingSessionKeys: [])
+            rawUsages = batch.rows
+            usages = Self.summarizeSessions(rawUsages)
+            lastDoc = batch.last
+            hasMore = batch.hasMore
         } catch {
             self.error = error.localizedDescription
         }
@@ -80,18 +77,14 @@ final class ActivityStore {
         defer { isLoading = false }
 
         do {
-            let (page, last) = try await firestore.fetchUsagePage(
-                pageSize: pageSize,
+            let batch = try await fetchRawBatch(
                 after: lastDoc,
-                provider: filterProvider?.rawValue,
-                model: nil,
-                device: nil,
-                startDate: filterStartDate,
-                endDate: filterEndDate
+                existingSessionKeys: Set(rawUsages.map(Self.sessionKey))
             )
-            usages.append(contentsOf: page)
-            lastDoc = last
-            hasMore = page.count == pageSize
+            rawUsages.append(contentsOf: batch.rows)
+            usages = Self.summarizeSessions(rawUsages)
+            lastDoc = batch.last
+            hasMore = batch.hasMore
         } catch {
             self.error = error.localizedDescription
         }
@@ -103,6 +96,7 @@ final class ActivityStore {
             return
         }
         lastDoc = nil
+        rawUsages = []
         usages = []
         hasMore = true
         await load()
@@ -135,5 +129,164 @@ final class ActivityStore {
             searchHits = []
         }
         isSearching = false
+    }
+
+    private func fetchRawBatch(
+        after: DocumentSnapshot?,
+        existingSessionKeys: Set<String>
+    ) async throws -> (rows: [TokenUsage], last: DocumentSnapshot?, hasMore: Bool) {
+        var rows: [TokenUsage] = []
+        var cursor = after
+        var last = after
+        var hitEnd = false
+        var sessionKeys = existingSessionKeys
+        let startingSessionCount = sessionKeys.count
+
+        for _ in 0..<maxRawPagesPerBatch {
+            let (page, pageLast) = try await firestore.fetchUsagePage(
+                pageSize: rawPageSize,
+                after: cursor,
+                provider: filterProvider?.rawValue,
+                model: nil,
+                device: nil,
+                startDate: filterStartDate,
+                endDate: filterEndDate
+            )
+
+            if page.isEmpty {
+                hitEnd = true
+                last = pageLast ?? cursor
+                break
+            }
+
+            rows.append(contentsOf: page)
+            page.forEach { sessionKeys.insert(Self.sessionKey(for: $0)) }
+            cursor = pageLast
+            last = pageLast
+
+            if page.count < rawPageSize {
+                hitEnd = true
+                break
+            }
+            if sessionKeys.count - startingSessionCount >= targetSessionPageSize {
+                break
+            }
+        }
+
+        return (rows, last, !hitEnd && last != nil)
+    }
+
+    nonisolated static func summarizeSessions(_ rows: [TokenUsage]) -> [TokenUsage] {
+        var groups: [String: [TokenUsage]] = [:]
+        for row in rows {
+            groups[sessionKey(for: row), default: []].append(row)
+        }
+
+        return groups.values
+            .compactMap(sessionSummary)
+            .sorted { activityDate(for: $0) > activityDate(for: $1) }
+    }
+
+    nonisolated static func sessionKey(for usage: TokenUsage) -> String {
+        let sessionID = usage.sessionId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard sessionID.isEmpty == false else {
+            return "\(usage.provider.rawValue)|row|\(usage.id.uuidString)"
+        }
+        return "\(usage.provider.rawValue)|\(sessionID)"
+    }
+
+    nonisolated static func activityDate(for usage: TokenUsage) -> Date {
+        max(usage.startTime, usage.endTime)
+    }
+
+    nonisolated private static func sessionSummary(from rows: [TokenUsage]) -> TokenUsage? {
+        guard let latest = rows.max(by: { activityDate(for: $0) < activityDate(for: $1) }) else {
+            return nil
+        }
+        let earliestStart = rows.map { min($0.startTime, $0.endTime) }.min() ?? latest.startTime
+        let latestEnd = rows.map { max($0.startTime, $0.endTime) }.max() ?? latest.endTime
+        let inputTokens = rows.reduce(0) { $0 + $1.inputTokens }
+        let outputTokens = rows.reduce(0) { $0 + $1.outputTokens }
+        let cacheCreationTokens = rows.reduce(0) { $0 + $1.cacheCreationTokens }
+        let cacheReadTokens = rows.reduce(0) { $0 + $1.cacheReadTokens }
+        let reasoningTokens = rows.reduce(0) { $0 + $1.reasoningTokens }
+        let totalCost = rows.reduce(0) { $0 + $1.cost }
+        let createdAt = rows.map(\.createdAt).max() ?? latest.createdAt
+
+        return TokenUsage(
+            id: latest.id,
+            provider: latest.provider,
+            sessionId: latest.sessionId,
+            projectName: latestNonBlank(rows, \.projectName) ?? latest.projectName,
+            model: dominantModel(in: rows, fallback: latest.model),
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens,
+            reasoningTokens: reasoningTokens,
+            costUSD: totalCost,
+            startTime: earliestStart,
+            endTime: latestEnd,
+            createdAt: createdAt,
+            usageSource: latest.usageSource,
+            sourceDeviceId: latestNonBlank(rows, \.sourceDeviceId) ?? latest.sourceDeviceId,
+            sourceDeviceName: latestNonBlank(rows, \.sourceDeviceName) ?? latest.sourceDeviceName,
+            isRemote: rows.contains(where: \.isRemote),
+            providerID: latest.providerID,
+            providerAccountID: latestNonBlank(rows, \.providerAccountID) ?? latest.providerAccountID,
+            providerAccountLabel: latestNonBlank(rows, \.providerAccountLabel) ?? latest.providerAccountLabel,
+            providerAccountSource: latest.providerAccountSource,
+            provenanceMethod: rows.map(\.provenanceMethod).max() ?? latest.provenanceMethod,
+            provenanceConfidence: rows.map(\.provenanceConfidence).max() ?? latest.provenanceConfidence,
+            estimatorVersion: latestNonBlank(rows, \.estimatorVersion) ?? latest.estimatorVersion
+        )
+    }
+
+    nonisolated private static func dominantModel(in rows: [TokenUsage], fallback: String) -> String {
+        struct ModelStats {
+            var tokens = 0
+            var cost = 0.0
+            var lastSeen = Date.distantPast
+        }
+
+        let stats = rows.reduce(into: [String: ModelStats]()) { result, row in
+            let model = row.model.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard model.isEmpty == false else { return }
+            var current = result[model] ?? ModelStats()
+            current.tokens += row.totalTokens
+            current.cost += row.cost
+            current.lastSeen = max(current.lastSeen, activityDate(for: row))
+            result[model] = current
+        }
+
+        return stats.sorted { lhs, rhs in
+            if lhs.value.tokens != rhs.value.tokens { return lhs.value.tokens > rhs.value.tokens }
+            if lhs.value.cost != rhs.value.cost { return lhs.value.cost > rhs.value.cost }
+            return lhs.value.lastSeen > rhs.value.lastSeen
+        }.first?.key ?? fallback
+    }
+
+    nonisolated private static func latestNonBlank(
+        _ rows: [TokenUsage],
+        _ keyPath: KeyPath<TokenUsage, String>
+    ) -> String? {
+        latestNonBlank(rows) { $0[keyPath: keyPath] }
+    }
+
+    nonisolated private static func latestNonBlank(
+        _ rows: [TokenUsage],
+        _ keyPath: KeyPath<TokenUsage, String?>
+    ) -> String? {
+        latestNonBlank(rows) { $0[keyPath: keyPath] }
+    }
+
+    nonisolated private static func latestNonBlank(
+        _ rows: [TokenUsage],
+        value: (TokenUsage) -> String?
+    ) -> String? {
+        rows
+            .sorted { activityDate(for: $0) > activityDate(for: $1) }
+            .compactMap { value($0)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { $0.isEmpty == false }
     }
 }

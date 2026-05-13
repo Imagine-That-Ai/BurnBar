@@ -359,7 +359,7 @@ ls -lt ~/Library/Application\ Support/OpenBurnBar/StartupRecovery/ 2>/dev/null |
 ### Remediation
 - Same Firebase project, same account: cross-check the email shown in mobile Account profile vs. Mac Account settings. Different accounts can never share data.
 - If the Mac publishes successfully but mobile still reads nothing, sign out on mobile and sign in again. The auth listener resubscribes and rebuilds Firestore listeners.
-- If `Sync diagnostics` shows `Permission denied`: the user is signed in to a different Firebase project or rules were changed. Reinstall the app (which fetches a fresh `GoogleService-Info.plist` tied to the correct project) and confirm the same `bundleId` from `project.yml`.
+- If `Sync diagnostics` shows `Permission denied`: the user is signed in to a different Firebase project, rules were changed, or App Check enforcement rejected a local Debug build before rules evaluation produced a more specific app-check message. Reinstall the app (which fetches a fresh `GoogleService-Info.plist` tied to the correct project), confirm the same `bundleId` from `project.yml`, and run `scripts/cross-platform/setup-ios` to confirm the local gitignored plist includes an App Check debug token.
 
 ---
 
@@ -372,11 +372,13 @@ ls -lt ~/Library/Application\ Support/OpenBurnBar/StartupRecovery/ 2>/dev/null |
 ### Diagnosis
 1. Confirm App Check enforcement is enabled in Firebase Console (see `docs/FIREBASE_APP_CHECK_ENFORCEMENT.md`).
 2. Confirm the build is signed with the team registered for App Check.
-3. On a development build, set the App Check debug provider and register the debug token in the Firebase Console.
+3. On a development build, run `scripts/cross-platform/setup-ios` and confirm the target's local gitignored `GoogleService-Info.plist` has `FirebaseAppCheckDebugToken` or `FIRAAppCheckDebugToken`.
+4. Confirm that token is registered in Firebase Console → App Check for the matching iOS app.
 
 ### Remediation
 - Reinstall the app from the official channel (TestFlight/App Store) — sideloaded builds may not present a valid attestation token.
 - Re-issue a debug token if developing locally.
+- If the macOS plist already has the registered debug token but the mobile plist does not, copy the token into `OpenBurnBarMobile/Resources/GoogleService-Info.plist`; do not commit the real plist.
 
 ---
 

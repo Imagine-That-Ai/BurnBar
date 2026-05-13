@@ -40,6 +40,7 @@ private struct AdaptiveInsightsLayout: View {
     @State private var showCanvasList: Bool = false
     @State private var showInspector: Bool = false
     @State private var showTemplateGallery: Bool = false
+    private static let iPhoneNavigationTrayClearance: CGFloat = 96
 
     var body: some View {
         if sizeClass == .regular {
@@ -82,6 +83,7 @@ private struct AdaptiveInsightsLayout: View {
                 canvasContent
                     .frame(maxHeight: .infinity)
                 composerBar
+                    .padding(.bottom, Self.iPhoneNavigationTrayClearance)
             }
             .background(UnifiedDesignSystem.Colors.background)
             .navigationTitle(store.currentCanvas?.title ?? "Insights")
@@ -150,6 +152,7 @@ private struct AdaptiveInsightsLayout: View {
                 }
                 .padding(UnifiedDesignSystem.Spacing.md)
             }
+            .scrollDismissesKeyboard(.interactively)
         } else {
             InsightsMobileEmptyState(store: store, showTemplates: $showTemplateGallery)
         }
@@ -240,7 +243,7 @@ private struct InsightsMobileCanvasList: View {
                 ForEach(store.canvases) { canvas in
                     Button {
                         store.selectedCanvasID = canvas.id
-                        Task { await store.refreshSelectedCanvas() }
+                        Task { await store.refreshSelectedCanvas(autoSwitchEmptyDefaultCanvas: false) }
                     } label: {
                         HStack {
                             Image(systemName: canvas.symbolName)
@@ -280,6 +283,7 @@ private struct InsightsMobileCanvasList: View {
 private struct InsightsMobileComposerBar: View {
     @Bindable var store: InsightsStore
     @State private var prompt: String = ""
+    @FocusState private var promptFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
@@ -297,16 +301,24 @@ private struct InsightsMobileComposerBar: View {
             HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                 TextField("Ask anything…", text: $prompt, axis: .horizontal)
                     .textFieldStyle(.plain)
+                    .focused($promptFocused)
+                    .submitLabel(.send)
+                    .onSubmit(send)
                     .padding(.vertical, 6)
                     .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
                     .background(
                         RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md)
                             .fill(UnifiedDesignSystem.Colors.surface)
                     )
+                    .toolbar {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Done") { promptFocused = false }
+                                .font(UnifiedDesignSystem.Typography.caption)
+                        }
+                    }
                 Button {
-                    let p = prompt
-                    prompt = ""
-                    Task { await store.compose(prompt: p) }
+                    send()
                 } label: {
                     if store.isComposing {
                         ProgressView().controlSize(.small)
@@ -324,6 +336,14 @@ private struct InsightsMobileComposerBar: View {
                     .foregroundStyle(UnifiedDesignSystem.Colors.error)
             }
         }
+    }
+
+    private func send() {
+        let p = prompt
+        guard !p.isEmpty, !store.isComposing else { return }
+        prompt = ""
+        promptFocused = false
+        Task { await store.compose(prompt: p) }
     }
 
     private var modelMenu: some View {
@@ -373,7 +393,7 @@ private struct InsightsMobileInspectorView: View {
                                     var updated = canvas
                                     updated.filter.window = newWindow
                                     await store.updateCanvas(updated)
-                                    await store.refreshSelectedCanvas()
+                                    await store.refreshSelectedCanvas(autoSwitchEmptyDefaultCanvas: false)
                                 }
                             }
                         )) {

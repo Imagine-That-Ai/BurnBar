@@ -20,6 +20,7 @@ final class DashboardStore {
     private(set) var dailyPoints: [RollupDailyPoint] = []
     private(set) var displayMode: UsageDisplayMode = .currency
     private(set) var selectedWindow: RollupWindowKey = .today
+    private(set) var rollupsByWindow: [RollupWindowKey: UsageRollupDoc] = [:]
     private(set) var isListening = false
 
     private var listener: ListenerRegistration?
@@ -30,10 +31,14 @@ final class DashboardStore {
 
     init(
         firestore: FirestoreRepository = FirestoreRepository(),
-        functions: FunctionsRepository = FunctionsRepository()
+        functions: FunctionsRepository = FunctionsRepository(),
+        initialRollups: [UsageRollupDoc] = []
     ) {
         self.firestore = firestore
         self.functions = functions
+        if !initialRollups.isEmpty {
+            applyRollups(initialRollups, publishSideEffects: false)
+        }
     }
 
     /// Initial load called on first view appear.
@@ -132,16 +137,27 @@ final class DashboardStore {
         selectedWindow = window
     }
 
+    func rollup(for window: RollupWindowKey) -> UsageRollupDoc? {
+        rollupsByWindow[window]
+    }
+
     // MARK: - Private
 
-    private func applyRollups(_ rollups: [UsageRollupDoc]) {
+    private func applyRollups(_ rollups: [UsageRollupDoc], publishSideEffects: Bool = true) {
         let byKey = Dictionary(uniqueKeysWithValues: rollups.map { ($0.windowKey, $0) })
+        rollupsByWindow = byKey
         if let selected = byKey[selectedWindow] {
             heroTotal = displayMode == .currency ? selected.totals.costUsd : Double(selected.totals.tokens)
             topProviders = selected.providerSummaries.sorted { $0.totalTokens > $1.totalTokens }
             topModels = selected.modelSummaries.sorted { $0.tokens > $1.tokens }
             topDevices = selected.deviceSummaries.sorted { $0.tokens > $1.tokens }
             dailyPoints = selected.dailyPoints
+        } else {
+            heroTotal = 0
+            topProviders = []
+            topModels = []
+            topDevices = []
+            dailyPoints = []
         }
         for key in RollupWindowKey.allCases {
             if let r = byKey[key] {
@@ -149,10 +165,10 @@ final class DashboardStore {
             }
         }
 
+        guard publishSideEffects else { return }
+
         // Persist a lightweight snapshot for the widget extension and trigger reload.
         writeWidgetSnapshot(from: byKey)
-
-        // Update Live Activity with latest data.
         updateLiveActivity(from: byKey)
     }
 

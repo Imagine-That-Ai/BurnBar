@@ -13,6 +13,9 @@ struct StreamsView: View {
     @State private var segment: Segment = .sessions
     @State private var searchText = ""
     @State private var showFilters = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private static let iPhoneNavigationTrayClearance: CGFloat = 112
 
     enum Segment: String, CaseIterable, Identifiable, Hashable {
         case sessions, projects, activity
@@ -98,6 +101,19 @@ struct StreamsView: View {
         }
     }
 
+    private var filteredRawActivity: [TokenUsage] {
+        let source = activity.rawUsages.isEmpty ? activity.usages : activity.rawUsages
+        guard !searchText.isEmpty else { return source }
+        let q = searchText.lowercased()
+        return source.filter {
+            $0.model.lowercased().contains(q) ||
+            $0.projectName.lowercased().contains(q) ||
+            $0.provider.rawValue.lowercased().contains(q) ||
+            $0.sessionId.lowercased().contains(q) ||
+            ($0.sourceDeviceName?.lowercased().contains(q) ?? false)
+        }
+    }
+
     private var filteredProjects: [ProjectSummary] {
         guard !searchText.isEmpty else { return projects.summaries }
         let q = searchText.lowercased()
@@ -159,14 +175,26 @@ struct StreamsView: View {
                 }
             }
             .padding(.horizontal, AuroraDesign.Layout.cardInset)
-            .padding(.bottom, MobileTheme.Spacing.xxl)
+            .padding(.bottom, listBottomPadding)
         }
     }
 
     private var groupedByDay: [(day: Date, usages: [TokenUsage])] {
         let calendar = Calendar.current
-        let grouped = Dictionary(grouping: filteredUsages) { calendar.startOfDay(for: $0.startTime) }
+        let grouped = Dictionary(grouping: filteredUsages) { calendar.startOfDay(for: ActivityStore.activityDate(for: $0)) }
         return grouped.sorted { $0.key > $1.key }.map { (day: $0.key, usages: $0.value) }
+    }
+
+    private var groupedRawActivityByDay: [(day: Date, usages: [TokenUsage])] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: filteredRawActivity) { calendar.startOfDay(for: ActivityStore.activityDate(for: $0)) }
+        return grouped.sorted { $0.key > $1.key }.map { (day: $0.key, usages: $0.value) }
+    }
+
+    private var listBottomPadding: CGFloat {
+        horizontalSizeClass == .compact
+            ? Self.iPhoneNavigationTrayClearance
+            : MobileTheme.Spacing.xxl
     }
 
     private var shouldShowCloudSearchResults: Bool {
@@ -208,7 +236,7 @@ struct StreamsView: View {
                 }
             }
             .padding(.horizontal, AuroraDesign.Layout.cardInset)
-            .padding(.bottom, MobileTheme.Spacing.xxl)
+            .padding(.bottom, listBottomPadding)
         }
     }
 
@@ -217,9 +245,9 @@ struct StreamsView: View {
     private var activityList: some View {
         ScrollView {
             LazyVStack(spacing: 8) {
-                if activity.isLoading && activity.usages.isEmpty {
+                if activity.isLoading && activity.rawUsages.isEmpty && activity.usages.isEmpty {
                     sessionSkeleton
-                } else if filteredUsages.isEmpty {
+                } else if filteredRawActivity.isEmpty {
                     AuroraStatePane(
                         kind: .empty,
                         icon: "list.bullet.rectangle",
@@ -228,21 +256,29 @@ struct StreamsView: View {
                     )
                     .frame(minHeight: 280)
                 } else {
-                    ForEach(filteredUsages) { usage in
-                        NavigationLink(value: usage) {
-                            ActivityCompactRow(usage: usage)
-                        }
-                        .buttonStyle(.plain)
-                        .onAppear {
-                            if usage.id == activity.usages.last?.id {
-                                Task { await activity.loadNext() }
+                    ForEach(groupedRawActivityByDay, id: \.day) { group in
+                        Section {
+                            VStack(spacing: 8) {
+                                ForEach(group.usages) { usage in
+                                    NavigationLink(value: usage) {
+                                        ActivityCompactRow(usage: usage)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .onAppear {
+                                        if usage.id == activity.rawUsages.last?.id {
+                                            Task { await activity.loadNext() }
+                                        }
+                                    }
+                                }
                             }
+                        } header: {
+                            DayHeader(date: group.day)
                         }
                     }
                 }
             }
             .padding(.horizontal, AuroraDesign.Layout.cardInset)
-            .padding(.bottom, MobileTheme.Spacing.xxl)
+            .padding(.bottom, listBottomPadding)
         }
     }
 }
@@ -299,7 +335,7 @@ private struct AuroraSessionRow: View {
                             .lineLimit(1)
                         Text("·")
                             .foregroundStyle(MobileTheme.Colors.textMuted)
-                        Text(usage.startTime, style: .relative)
+                        Text(ActivityStore.activityDate(for: usage), style: .relative)
                             .font(MobileTheme.Typography.tiny)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                             .lineLimit(1)
@@ -367,7 +403,7 @@ private struct ActivityCompactRow: View {
                     .fill(MobileTheme.Colors.primary(for: providerEnum))
                     .frame(width: 8, height: 8)
             }
-            Text(usage.startTime, format: .dateTime.hour().minute())
+            Text(ActivityStore.activityDate(for: usage), format: .dateTime.hour().minute())
                 .font(MobileTheme.Typography.monoTiny)
                 .foregroundStyle(MobileTheme.Colors.textMuted)
                 .frame(width: 56, alignment: .leading)

@@ -85,6 +85,11 @@ struct HermesChatMessage: Identifiable, Equatable {
     /// Provider-reported total wall-clock duration in seconds, surfaced for
     /// diagnostics and accessibility text.
     var providerTotalDurationSeconds: TimeInterval?
+    /// For `role == .tool` messages, the upstream `tool_calls[].id` this
+    /// reply answers. Always non-nil for tool messages, always nil for
+    /// other roles. The encoder uses this to emit
+    /// `{role: "tool", tool_call_id: "..."}` on the wire.
+    var toolCallID: String?
 
     init(
         id: String = UUID().uuidString,
@@ -105,7 +110,8 @@ struct HermesChatMessage: Identifiable, Equatable {
         totalTokenCount: Int? = nil,
         tokenCountSource: HermesTokenCountSource? = nil,
         providerGenerationDurationSeconds: TimeInterval? = nil,
-        providerTotalDurationSeconds: TimeInterval? = nil
+        providerTotalDurationSeconds: TimeInterval? = nil,
+        toolCallID: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -126,6 +132,7 @@ struct HermesChatMessage: Identifiable, Equatable {
         self.tokenCountSource = tokenCountSource
         self.providerGenerationDurationSeconds = providerGenerationDurationSeconds
         self.providerTotalDurationSeconds = providerTotalDurationSeconds
+        self.toolCallID = toolCallID
     }
 
     /// Wall-clock generation duration: time from the first received chunk to
@@ -311,7 +318,6 @@ struct HermesChatMessage: Identifiable, Equatable {
         return max(1, max(characterEstimate, wordEstimate))
     }
 }
-
 /// One tool the model decided to invoke in the current assistant turn.
 ///
 /// `name` lands first (the OpenAI streaming protocol sends it on the *first*
@@ -350,6 +356,13 @@ enum HermesChatRole: String, Equatable, Sendable {
     case user
     case assistant
     case system
+    /// Reply produced by a local `MobileTool` execution. Always paired
+    /// with a `toolCallID` referencing the assistant's prior
+    /// `tool_calls[].id` so the upstream API can stitch the call and
+    /// reply together. Tool messages are sent to the upstream model
+    /// in the next turn's `messages` array but are *hidden* from the
+    /// visible chat UI (they're context, not conversation).
+    case tool
 }
 
 struct HermesRelayPayload: Sendable {
@@ -489,6 +502,27 @@ final class HermesService {
     private let selectedConnectionDefaultsKey = "hermes.selectedConnectionID"
     private let selectedModelDefaultsKey = "hermes.selectedModelID"
     private let favoriteModelsDefaultsKey = "hermes.favoriteModelIDs"
+    /// Catalog of `MobileTool` implementations the chat surface advertises to
+    /// the upstream LLM. Defaults to the canonical production set; tests
+    /// inject custom catalogs (empty for "no tools" runs, fakes for
+    /// deterministic execution coverage).
+    let toolCatalog: MobileToolCatalog
+    /// Hard cap on how many tool-execution → re-stream loops a single user
+    /// turn can drive. Each iteration is one upstream call; we stop here
+    /// even if the model keeps requesting more tools so the user never
+    /// sees an unbounded chat hang.
+    private let maxToolUseIterations: Int = 5
+    /// Atom navigator installed by the chat surface so the
+    /// `burnbar_atom_open` tool can drive in-app navigation. Optional —
+    /// previews / tests can run without one. Held weakly via an
+    /// `AnyObject` proxy so the service never extends the view's
+    /// lifetime.
+    private weak var toolAtomNavigatorReference: AnyObject?
+    /// Closure form of the navigator hook. Lets us forward
+    /// `MobileToolContext.atomNavigator` to whatever the chat surface
+    /// installed without smuggling protocols through Swift's weak
+    /// machinery.
+    fileprivate var atomNavigatorAccessor: (() -> HermesAtomNavigator?)? = nil
 
     var relayConnections: [HermesConnectionRecord] {
         connections.filter { connection in
@@ -519,7 +553,8 @@ final class HermesService {
         secretStore: HermesConnectionSecretStoring = HermesConnectionSecretStore.shared,
         relayTransport: HermesRelayTransporting = HermesCompositeRelayTransport.shared,
         defaults: UserDefaults = .standard,
-        history: MobileChatHistoryStore = .shared
+        history: MobileChatHistoryStore = .shared,
+        toolCatalog: MobileToolCatalog = .default
     ) {
         self.baseURL = baseURL
         self.urlSession = urlSession
@@ -529,6 +564,7 @@ final class HermesService {
         self.relayTransport = relayTransport
         self.defaults = defaults
         self.history = history
+        self.toolCatalog = toolCatalog
         self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
         self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
         history.loadFromDiskIfNeeded()
@@ -836,11 +872,18 @@ final class HermesService {
         // attachments — attachment-only sends are intentional and must persist.
         let trimmed = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !message.toolCalls.isEmpty || !message.attachments.isEmpty else { return nil }
+        // Tool reply messages are ephemeral context — they exist only to
+        // bridge a single assistant tool-call turn to its follow-up
+        // natural-language turn. Once the conversation is reloaded the
+        // user expects to start a new prompt, so persisting tool
+        // results would only clutter the visible transcript.
+        if message.role == .tool { return nil }
         let role: String
         switch message.role {
         case .user: role = "user"
         case .assistant: role = "assistant"
         case .system: role = "system"
+        case .tool: return nil
         }
         let storedAttachments = message.attachments.map { attachment in
             MobileChatAttachment(
@@ -910,6 +953,7 @@ final class HermesService {
         switch message.role {
         case "user": role = .user
         case "system": role = .system
+        case "tool": role = .tool
         default: role = .assistant
         }
         let restoredAttachments: [HermesAttachment] = message.attachments.compactMap { stored in
@@ -1052,9 +1096,9 @@ final class HermesService {
         _ = selectConnection(relay, refresh: false)
     }
 
-    private func streamCompletion(context: String?) async throws {
+    private func streamCompletion(context: String?, iteration: Int = 0) async throws {
         if selectedConnection.mode == .relayLink {
-            try await streamRelayCompletion(context: context)
+            try await streamRelayCompletion(context: context, iteration: iteration)
             return
         }
 
@@ -1112,7 +1156,7 @@ final class HermesService {
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
             messages[index] = assistantMessage
         }
-        isStreaming = false
+        try await runToolUseIterationIfNeeded(after: assistantMessage, context: context, iteration: iteration)
     }
 
     private func completionRequestBody(context: String?) throws -> Data {
@@ -1124,7 +1168,17 @@ final class HermesService {
         let workspaceURL = HermesAttachmentWorkspace.attachmentsRootIfReady
         let encoderMessages: [HermesAttachmentEncoder.Message] = messages.compactMap { message in
             let content = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !message.isError, !(content.isEmpty && message.attachments.isEmpty) else {
+            // Tool replies have an empty `text` only when something went
+            // wrong upstream; keep them out of the wire payload. Assistant
+            // turns with tool_calls but no text are valid and must be
+            // replayed so the model sees its own prior calls.
+            let hasReplayableToolCalls = message.role == .assistant
+                && !message.toolCalls.isEmpty
+            guard !message.isError,
+                  message.role != .system,
+                  hasReplayableToolCalls
+                    || message.role == .tool
+                    || !(content.isEmpty && message.attachments.isEmpty) else {
                 return nil
             }
             let role: HermesAttachmentEncoder.Message.Role
@@ -1132,6 +1186,7 @@ final class HermesService {
             case .user: role = .user
             case .assistant: role = .assistant
             case .system: return nil
+            case .tool: role = .tool
             }
             var bytesByID: [String: Data] = [:]
             if message.role == .user, !message.attachments.isEmpty, let workspaceURL {
@@ -1144,11 +1199,25 @@ final class HermesService {
                     }
                 }
             }
+            let replayCalls: [HermesAttachmentEncoder.Message.ReplayToolCall]
+            if hasReplayableToolCalls {
+                replayCalls = message.toolCalls.map { call in
+                    HermesAttachmentEncoder.Message.ReplayToolCall(
+                        id: call.id,
+                        name: call.name,
+                        arguments: call.arguments
+                    )
+                }
+            } else {
+                replayCalls = []
+            }
             return HermesAttachmentEncoder.Message(
                 role: role,
                 text: message.text,
                 attachments: message.attachments,
-                attachmentBytes: bytesByID
+                attachmentBytes: bytesByID,
+                assistantToolCalls: replayCalls,
+                toolCallID: message.toolCallID
             )
         }
 
@@ -1182,6 +1251,17 @@ final class HermesService {
         payload["stream_options"] = [
             "include_usage": true
         ]
+        // Advertise on-device tools so the model can navigate the app, read
+        // session metadata, and answer "are you online?" honestly. Empty
+        // arrays are deliberately omitted — some upstream gateways
+        // reject `tools: []` as malformed.
+        let toolsArray = toolCatalog.toolsWireArray()
+        if !toolsArray.isEmpty {
+            payload["tools"] = toolsArray
+            // Default tool choice; left as a string for max compatibility
+            // (a `{type, function}` object trips up some older relays).
+            payload["tool_choice"] = "auto"
+        }
         if let selectedSessionID {
             payload["session_id"] = selectedSessionID
         }
@@ -1194,7 +1274,7 @@ final class HermesService {
         HermesBackendCapabilities.default
     }
 
-    private func streamRelayCompletion(context: String?) async throws {
+    private func streamRelayCompletion(context: String?, iteration: Int = 0) async throws {
         let body = try completionRequestBody(context: context)
         isReachable = true
 
@@ -1233,7 +1313,40 @@ final class HermesService {
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
             messages[index] = assistantMessage
         }
-        isStreaming = false
+        try await runToolUseIterationIfNeeded(after: assistantMessage, context: context, iteration: iteration)
+    }
+
+    /// Shared post-stream step: if the assistant turn produced tool
+    /// calls that the on-device catalog can execute, run them, append
+    /// the matching `role: .tool` reply messages, and re-stream so the
+    /// model can produce a final natural-language reply incorporating
+    /// the results. Iteration cap protects against infinite tool loops.
+    private func runToolUseIterationIfNeeded(
+        after message: HermesChatMessage,
+        context: String?,
+        iteration: Int
+    ) async throws {
+        guard shouldRunToolUseIteration(for: message) else {
+            isStreaming = false
+            return
+        }
+        guard iteration < maxToolUseIterations else {
+            // Cap exceeded — leave the pills as "done" but stop looping.
+            isStreaming = false
+            return
+        }
+
+        var mutableMessage = message
+        await executeToolCalls(for: &mutableMessage)
+        // `executeToolCalls` already appended the tool reply messages
+        // and rewrote `messages` with updated call statuses. Persist
+        // the running thread so iOS history reflects the in-flight
+        // tool exchange (useful when the app is backgrounded mid-loop).
+        persistCurrentThread()
+
+        // Re-enter — the next iteration sees the tool replies via the
+        // `completionRequestBody` encoder and emits a follow-up turn.
+        try await streamCompletion(context: context, iteration: iteration + 1)
     }
 
     private func processSSEPayload(_ payload: String, into message: inout HermesChatMessage) {
@@ -2949,5 +3062,132 @@ private extension String {
     var nilIfBlank: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+// MARK: - Tool Use Loop Support
+//
+// Surfaces the `MobileToolCatalog` to the chat view + executes any tool
+// calls a streamed assistant turn produced. After execution we append
+// `role: .tool` reply messages to `messages` so the next
+// `streamCompletion(...)` iteration replays both the prior assistant call
+// and the tool result up to the upstream model.
+
+extension HermesService: MobileToolContext {
+    /// Install / replace the navigator the `burnbar_atom_open` tool uses
+    /// to drive in-app navigation. Pass `nil` to disconnect (useful when
+    /// the host view disappears). Held weakly so the service never
+    /// extends the navigator's lifetime.
+    public func setToolAtomNavigator(_ navigator: HermesAtomNavigator?) {
+        if let navigator {
+            // Capture as `AnyObject` so the weak slot accepts existential
+            // protocol types (the protocol is `AnyObject`-constrained).
+            let weakRef = navigator as AnyObject
+            self.toolAtomNavigatorReference = weakRef
+            self.atomNavigatorAccessor = { [weak weakRef] in
+                weakRef as? HermesAtomNavigator
+            }
+        } else {
+            self.toolAtomNavigatorReference = nil
+            self.atomNavigatorAccessor = nil
+        }
+    }
+
+    public var atomNavigator: HermesAtomNavigator? {
+        atomNavigatorAccessor?()
+    }
+
+    public var availableSessions: [MobileToolSessionSummary] {
+        sessions.map { session in
+            MobileToolSessionSummary(
+                id: session.id,
+                title: session.title,
+                preview: session.preview,
+                model: session.model,
+                messageCount: session.messageCount,
+                toolCallCount: session.toolCallCount,
+                inputTokens: session.inputTokens,
+                outputTokens: session.outputTokens,
+                lastActiveAt: session.lastActiveAt ?? session.startedAt
+            )
+        }
+    }
+
+    public var runtimeStatusSnapshot: MobileToolRuntimeStatus {
+        MobileToolRuntimeStatus(
+            runtime: "hermes",
+            isReachable: isReachable,
+            connectionName: selectedConnection.displayName.nilIfBlank,
+            connectionMode: selectedConnection.mode.rawValue,
+            selectedModelID: selectedModelID?.nilIfBlank,
+            advertisedModel: selectedConnection.advertisedModel?.nilIfBlank,
+            lastError: lastError?.nilIfBlank
+        )
+    }
+}
+
+extension HermesService {
+    /// `true` when the assistant turn produced tool calls we should
+    /// execute. Iteration cap is enforced by the caller via
+    /// `maxToolUseIterations`.
+    func shouldRunToolUseIteration(for message: HermesChatMessage) -> Bool {
+        guard !toolCatalog.tools.isEmpty,
+              !message.toolCalls.isEmpty,
+              !message.isError else {
+            return false
+        }
+        return true
+    }
+
+    /// Public cap. Test injection point; in production we always use the
+    /// instance value.
+    var toolUseIterationCap: Int { maxToolUseIterations }
+
+    /// Execute every tool call on `message`, append a matching tool-role
+    /// reply message to `messages` for each, and stamp the call's
+    /// `status` so the pill reflects success / failure. Returns the list
+    /// of results in input order (mainly for tests).
+    @discardableResult
+    func executeToolCalls(
+        for message: inout HermesChatMessage
+    ) async -> [MobileToolExecutionResult] {
+        guard !message.toolCalls.isEmpty else { return [] }
+        let pending = message.toolCalls.map { call in
+            PendingToolCall(id: call.id, name: call.name, arguments: call.arguments)
+        }
+        let executor = MobileToolExecutor(catalog: toolCatalog)
+        let results = await executor.execute(pending, context: self)
+
+        var updated = message
+        var statusByID: [String: String] = [:]
+        for result in results {
+            statusByID[result.toolCallID] = result.isError ? "failed" : "done"
+        }
+        updated.toolCalls = updated.toolCalls.map { call in
+            HermesToolCall(
+                id: call.id,
+                name: call.name,
+                status: statusByID[call.id] ?? call.status,
+                arguments: call.arguments,
+                detail: call.detail ?? Self.summarizeToolArguments(call.arguments)
+            )
+        }
+        message = updated
+
+        if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            messages[index] = message
+        }
+
+        for result in results {
+            let reply = HermesChatMessage(
+                role: .tool,
+                text: result.content,
+                isError: result.isError,
+                toolCallID: result.toolCallID
+            )
+            messages.append(reply)
+        }
+
+        return results
     }
 }

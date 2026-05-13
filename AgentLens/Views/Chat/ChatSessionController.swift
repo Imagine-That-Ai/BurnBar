@@ -1107,6 +1107,27 @@ final class ChatSessionController {
                             AppLogger.chat.silentFailure("saveChatMessage (streaming final)", error: error)
                         }
                         self.refreshHistory()
+                        // Mirror the full transcript (text + tool pills) to
+                        // Firestore so the iOS Assistants tab can render
+                        // this Codex/Claude/OpenClaw session inline. No-op
+                        // for hermes / piAgent — those have their own
+                        // existing mirror path.
+                        let mirrorMessages = self.messages
+                        let mirrorThreadID = self.activeThreadID
+                        let mirrorBackend = self.chatBackend
+                        let mirrorModel = requestModel
+                        let mirrorWorkspace = self.chatWorkspaceURL.lastPathComponent
+                        let mirrorUsage = usageSnapshot
+                        Task { @MainActor in
+                            await CLIAgentSessionMirror.shared.mirror(
+                                threadID: mirrorThreadID,
+                                backend: mirrorBackend,
+                                modelName: mirrorModel,
+                                workspaceLabel: mirrorWorkspace,
+                                messages: mirrorMessages,
+                                usage: mirrorUsage
+                            )
+                        }
                     }
                     self.selectedContext = nil
                 }.value

@@ -100,13 +100,13 @@ final class InsightsStore {
         }
         canvases = await store.allCanvases()
         if selectedCanvasID == nil { selectedCanvasID = canvases.first?.id }
-        await refreshSelectedCanvas()
+        await refreshSelectedCanvas(autoSwitchEmptyDefaultCanvas: true)
     }
 
     private func seedInitialAnalysisCanvas() async {
         let filter = InsightFilter(window: .last7d)
         do {
-            let snapshot = try await dataSource.snapshot(window: filter.window.interval())
+            let snapshot = try await makeSnapshot(for: filter.window)
             let result = try await runAnalysis(
                 prompt: "Generate the default mobile Insights intelligence brief.",
                 snapshot: snapshot,
@@ -129,11 +129,15 @@ final class InsightsStore {
         }
     }
 
-    func refreshSelectedCanvas() async {
+    func refreshSelectedCanvas(autoSwitchEmptyDefaultCanvas: Bool = true) async {
         guard var canvas = currentCanvas else { return }
+        if autoSwitchEmptyDefaultCanvas,
+           let replacement = await dataBackedReplacement(for: canvas) {
+            canvas = replacement
+        }
         let snapshot: InsightDataSnapshot
         do {
-            snapshot = try await dataSource.snapshot(window: canvas.filter.window.interval())
+            snapshot = try await makeSnapshot(for: canvas.filter.window)
         } catch {
             composerError = error.localizedDescription
             return
@@ -173,9 +177,7 @@ final class InsightsStore {
         defer { isComposing = false }
         let snapshot: InsightDataSnapshot
         do {
-            snapshot = try await dataSource.snapshot(
-                window: (currentCanvas?.filter.window ?? .last7d).interval()
-            )
+            snapshot = try await makeSnapshot(for: currentCanvas?.filter.window ?? .last7d)
         } catch {
             composerError = error.localizedDescription
             return
@@ -194,7 +196,7 @@ final class InsightsStore {
             try? await store.upsert(canvas)
             selectedCanvasID = canvas.id
             canvases = await self.store.allCanvases()
-            await refreshSelectedCanvas()
+            await refreshSelectedCanvas(autoSwitchEmptyDefaultCanvas: false)
         } catch {
             composerError = error.localizedDescription
         }
@@ -362,7 +364,7 @@ final class InsightsStore {
         try? await store.upsert(canvas)
         canvases = await store.allCanvases()
         selectedCanvasID = canvas.id
-        await refreshSelectedCanvas()
+        await refreshSelectedCanvas(autoSwitchEmptyDefaultCanvas: false)
     }
 
     func updateCanvas(_ canvas: InsightCanvas) async {
@@ -376,6 +378,79 @@ final class InsightsStore {
         canvases = await store.allCanvases()
         selectedCanvasID = canvases.first?.id
     }
+
+    private func makeSnapshot(for window: InsightTimeWindow) async throws -> InsightDataSnapshot {
+        if let mobileDataSource = dataSource as? MobileInsightDataSource {
+            return try await mobileDataSource.snapshot(for: window)
+        }
+        return try await dataSource.snapshot(window: window.interval())
+    }
+
+    private func dataBackedReplacement(for canvas: InsightCanvas) async -> InsightCanvas? {
+        guard shouldAutoSwitchEmptyDefaultCanvas(canvas) else { return nil }
+        guard let currentSnapshot = try? await makeSnapshot(for: canvas.filter.window),
+              !currentSnapshot.hasUsableInsightRows
+        else {
+            return nil
+        }
+        guard let bestWindow = await firstWindowWithRows(excluding: canvas.filter.window) else {
+            return nil
+        }
+        if let existing = canvases.first(where: { $0.id != canvas.id && $0.filter.window == bestWindow }) {
+            selectedCanvasID = existing.id
+            return existing
+        }
+
+        var replacement = (MobileInsightsTemplates.template(for: bestWindow) ?? MobileInsightsTemplates.weekReview).instantiate()
+        replacement.modelTag = selectedModelTag
+        try? await store.upsert(replacement)
+        canvases = await store.allCanvases()
+        selectedCanvasID = replacement.id
+        return replacement
+    }
+
+    private func shouldAutoSwitchEmptyDefaultCanvas(_ canvas: InsightCanvas) -> Bool {
+        switch canvas.origin {
+        case .template(let id):
+            return id.hasPrefix("mobile-")
+        case .composed(let prompt):
+            return prompt == "Default intelligence brief"
+        case .userCreated, .imported:
+            return isLegacyDefaultMobileCanvas(canvas)
+        }
+    }
+
+    private func isLegacyDefaultMobileCanvas(_ canvas: InsightCanvas) -> Bool {
+        guard canvas.title == MobileInsightsTemplates.today.title,
+              canvas.filter.window == .today
+        else {
+            return false
+        }
+        let defaultTitles = Set(MobileInsightsTemplates.today.instantiate().widgets.map(\.title))
+        let canvasTitles = Set(canvas.widgets.map(\.title))
+        return defaultTitles.isSubset(of: canvasTitles)
+    }
+
+    private func firstWindowWithRows(excluding current: InsightTimeWindow) async -> InsightTimeWindow? {
+        for window in Self.dataRecoveryWindowOrder where window != current {
+            guard let snapshot = try? await makeSnapshot(for: window),
+                  snapshot.hasUsableInsightRows
+            else {
+                continue
+            }
+            return window
+        }
+        return nil
+    }
+
+    private static let dataRecoveryWindowOrder: [InsightTimeWindow] = [
+        .last7d,
+        .last30d,
+        .last90d,
+        .allTime,
+        .today,
+        .last24h
+    ]
 
     private static func applicationSupportDirectory() throws -> URL {
         let manager = FileManager.default
@@ -396,6 +471,19 @@ enum MobileInsightsTemplates {
 
     static var all: [InsightCanvasTemplate] {
         [today, weekReview, modelFocus, useCases, quotaHealth]
+    }
+
+    static func template(for window: InsightTimeWindow) -> InsightCanvasTemplate? {
+        switch window {
+        case .today, .last24h:
+            return today
+        case .last7d:
+            return weekReview
+        case .last30d:
+            return modelFocus
+        case .last90d, .last365d, .allTime, .custom:
+            return useCases
+        }
     }
 
     static var today: InsightCanvasTemplate {
@@ -517,5 +605,15 @@ enum MobileInsightsTemplates {
             spec: resolvedSpec,
             dataBinding: binding
         )
+    }
+}
+
+private extension InsightDataSnapshot {
+    var hasUsableInsightRows: Bool {
+        !usages.isEmpty
+            || !sessions.isEmpty
+            || !quotaBuckets.isEmpty
+            || !operatingActions.isEmpty
+            || !summaryRuns.isEmpty
     }
 }

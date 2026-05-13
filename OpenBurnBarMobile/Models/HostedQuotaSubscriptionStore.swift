@@ -25,6 +25,16 @@ protocol HostedQuotaEntitlementServicing: AnyObject {
 
 extension FunctionsRepository: HostedQuotaEntitlementServicing {}
 
+/// Reads the canonical Firestore entitlement doc directly. Used as a fallback
+/// when the App Store Server API roundtrip in `restoreHostedQuotaEntitlement`
+/// cannot replay the transaction — the doc is still the same authority the
+/// Firestore security rules consult to gate the relay, so trusting it here
+/// keeps the UI aligned with what the server already permits.
+@MainActor
+protocol HostedQuotaEntitlementDirectReading: AnyObject {
+    func fetchHostedQuotaEntitlement() async throws -> HostedQuotaEntitlementResponse?
+}
+
 enum HostedQuotaPurchaseOutcome {
     case success(signedTransactionJWS: String, finish: @MainActor () async -> Void)
     case pending
@@ -61,6 +71,7 @@ final class HostedQuotaSubscriptionStore {
     static let productID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
 
     private let functions: any HostedQuotaEntitlementServicing
+    private let directReader: (any HostedQuotaEntitlementDirectReading)?
     private let purchaseProduct: HostedQuotaProductPurchaseExecutor
     private let syncAppStore: HostedQuotaAppStoreSync
 
@@ -91,10 +102,12 @@ final class HostedQuotaSubscriptionStore {
 
     init(
         functions: any HostedQuotaEntitlementServicing = FunctionsRepository.shared,
+        directReader: (any HostedQuotaEntitlementDirectReading)? = FirestoreRepository.shared,
         purchaseProduct: @escaping HostedQuotaProductPurchaseExecutor = HostedQuotaSubscriptionStore.purchaseProduct,
         syncAppStore: @escaping HostedQuotaAppStoreSync = HostedQuotaSubscriptionStore.syncAppStore
     ) {
         self.functions = functions
+        self.directReader = directReader
         self.purchaseProduct = purchaseProduct
         self.syncAppStore = syncAppStore
     }
@@ -202,6 +215,9 @@ final class HostedQuotaSubscriptionStore {
     func refreshEntitlement() async throws {
         if let matchedJWS = await findCurrentEntitlementJWS() {
             try await verifyOnServer(jws: matchedJWS)
+            if !isActive {
+                await applyDirectReadIfActive()
+            }
         } else {
             // No local entitlement to surface. Try the server-side
             // restore path so users who previously paid (and have a
@@ -212,10 +228,41 @@ final class HostedQuotaSubscriptionStore {
                     signedTransactionJWS: nil
                 )
                 apply(response: response)
+                if !isActive {
+                    await applyDirectReadIfActive()
+                }
             } catch {
-                isActive = false
-                expirationDate = nil
+                // ASC roundtrip failed (e.g. owner-seeded test entitlement
+                // with no real Apple transaction). Fall back to the same
+                // entitlement doc the Firestore rules use to gate the relay.
+                if !(await applyDirectReadIfActive()) {
+                    isActive = false
+                    expirationDate = nil
+                }
             }
+        }
+    }
+
+    /// Read the Firestore entitlement doc directly and apply it when it
+    /// represents an active, unexpired entitlement for the configured product.
+    /// Returns `true` when the direct read flipped state to active.
+    @discardableResult
+    private func applyDirectReadIfActive() async -> Bool {
+        guard let directReader else { return false }
+        do {
+            guard let response = try await directReader.fetchHostedQuotaEntitlement() else {
+                return false
+            }
+            guard response.active,
+                  response.productID == Self.productID,
+                  let expires = response.expiresAt,
+                  expires > Date() else {
+                return false
+            }
+            apply(response: response)
+            return isActive
+        } catch {
+            return false
         }
     }
 

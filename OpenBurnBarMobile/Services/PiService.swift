@@ -10,6 +10,11 @@ import OpenBurnBarCore
 
 enum PiChatRole: String, Codable, Equatable {
     case user, assistant, system
+    /// On-device tool reply. Same semantics as `HermesChatRole.tool` —
+    /// the body is the JSON returned by a `MobileTool`, the `toolCallID`
+    /// references the assistant's prior `tool_calls[].id`, and the
+    /// reply is filtered from the visible chat list.
+    case tool
 }
 
 /// One tool the Pi-served model decided to invoke during this turn. Pi proxies
@@ -47,6 +52,9 @@ struct PiChatMessage: Identifiable, Equatable {
     var isStreaming: Bool
     var isError: Bool
     var toolCalls: [PiToolCall]
+    /// For `role == .tool`, the upstream `tool_calls[].id` this reply
+    /// answers. Required when role is `.tool`; always nil otherwise.
+    var toolCallID: String?
 
     init(
         id: String = UUID().uuidString,
@@ -56,7 +64,8 @@ struct PiChatMessage: Identifiable, Equatable {
         timestamp: Date = Date(),
         isStreaming: Bool = false,
         isError: Bool = false,
-        toolCalls: [PiToolCall] = []
+        toolCalls: [PiToolCall] = [],
+        toolCallID: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -66,6 +75,7 @@ struct PiChatMessage: Identifiable, Equatable {
         self.isStreaming = isStreaming
         self.isError = isError
         self.toolCalls = toolCalls
+        self.toolCallID = toolCallID
     }
 }
 
@@ -100,14 +110,30 @@ final class PiService {
     private let favoriteModelsDefaultsKey = "pi.favoriteModelIDs"
     private let savedConnectionsDefaultsKey = "pi.savedConnections"
 
+    /// Catalog the service advertises to the upstream Pi runtime. Same
+    /// catalog Hermes uses; injectable for tests.
+    let toolCatalog: MobileToolCatalog
+    /// Hard cap on tool-execution loops per user turn. Matches Hermes.
+    private let maxToolUseIterations: Int = 5
+    /// Closure that resolves the currently-installed `HermesAtomNavigator`,
+    /// or `nil` when no chat surface is mounted. Set via
+    /// `setToolAtomNavigator(_:)`.
+    fileprivate var atomNavigatorAccessor: (() -> HermesAtomNavigator?)? = nil
+    /// Weak storage backing `atomNavigatorAccessor`. Kept out of the
+    /// public surface to discourage callers from reaching past the
+    /// accessor.
+    private weak var toolAtomNavigatorReference: AnyObject?
+
     init(
         urlSession: URLSession = .shared,
         defaults: UserDefaults = .standard,
-        history: MobileChatHistoryStore = .shared
+        history: MobileChatHistoryStore = .shared,
+        toolCatalog: MobileToolCatalog = .default
     ) {
         self.urlSession = urlSession
         self.defaults = defaults
         self.history = history
+        self.toolCatalog = toolCatalog
         self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
         self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
         // Restore previously-added direct URLs.
@@ -222,9 +248,6 @@ final class PiService {
         if currentThreadID == nil { currentThreadID = UUID().uuidString }
 
         messages.append(PiChatMessage(role: .user, text: trimmed))
-        let assistant = PiChatMessage(role: .assistant, text: "", modelName: selectedModelID, isStreaming: true)
-        messages.append(assistant)
-        let assistantID = assistant.id
         isStreaming = true
         persistCurrentThread()
 
@@ -235,57 +258,125 @@ final class PiService {
         currentTask?.cancel()
         currentTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer {
-                self.isStreaming = false
-                if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
-                    var msg = self.messages[idx]
-                    msg.isStreaming = false
-                    // Promote any still-running tool calls to "done" and make
-                    // sure each one has a usable detail label.
-                    msg.toolCalls = msg.toolCalls.map { tc in
-                        PiToolCall(
-                            id: tc.id,
-                            name: tc.name,
-                            status: "done",
-                            arguments: tc.arguments,
-                            detail: tc.detail ?? PiService.summarizeToolArguments(tc.arguments)
-                        )
-                    }
-                    self.messages[idx] = msg
-                }
-                self.persistCurrentThread()
-            }
+            defer { self.isStreaming = false; self.persistCurrentThread() }
             do {
-                try await self.streamChat(
+                try await self.runStreamingLoop(
                     baseURL: baseURL,
                     bearerToken: bearer,
                     model: model,
-                    prompt: trimmed,
-                    onTextDelta: { delta in
-                        if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
-                            var msg = self.messages[idx]
-                            msg.text += delta
-                            self.messages[idx] = msg
-                        }
-                    },
-                    onToolCallDelta: { calls in
-                        if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
-                            var msg = self.messages[idx]
-                            PiService.mergeToolCalls(calls, into: &msg)
-                            self.messages[idx] = msg
-                        }
-                    }
+                    iteration: 0
                 )
             } catch {
-                if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
+                self.lastError = error.localizedDescription
+                // Replace the most recent streaming assistant turn (if any)
+                // with an error placeholder so the user sees the failure
+                // rather than a silent empty bubble.
+                if let idx = self.messages.lastIndex(where: { $0.role == .assistant && $0.isStreaming }) {
                     var msg = self.messages[idx]
+                    msg.isStreaming = false
                     msg.isError = true
                     msg.text = "Pi error: \(error.localizedDescription)"
                     self.messages[idx] = msg
+                } else {
+                    self.messages.append(
+                        PiChatMessage(
+                            role: .assistant,
+                            text: "Pi error: \(error.localizedDescription)",
+                            isError: true
+                        )
+                    )
                 }
-                self.lastError = error.localizedDescription
             }
         }
+    }
+
+    /// One iteration of the streaming + tool-execution loop. Appends a
+    /// fresh streaming assistant placeholder, drives `streamChat` against
+    /// it, then either executes the tool calls and recurses or completes
+    /// the user turn.
+    @MainActor
+    private func runStreamingLoop(
+        baseURL: URL,
+        bearerToken: String?,
+        model: String?,
+        iteration: Int
+    ) async throws {
+        let assistant = PiChatMessage(
+            role: .assistant,
+            text: "",
+            modelName: selectedModelID,
+            isStreaming: true
+        )
+        messages.append(assistant)
+        let assistantID = assistant.id
+
+        do {
+            try await self.streamChat(
+                baseURL: baseURL,
+                bearerToken: bearerToken,
+                model: model,
+                onTextDelta: { [weak self] delta in
+                    guard let self else { return }
+                    if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
+                        var msg = self.messages[idx]
+                        msg.text += delta
+                        self.messages[idx] = msg
+                    }
+                },
+                onToolCallDelta: { [weak self] calls in
+                    guard let self else { return }
+                    if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
+                        var msg = self.messages[idx]
+                        PiService.mergeToolCalls(calls, into: &msg)
+                        self.messages[idx] = msg
+                    }
+                }
+            )
+        } catch {
+            if let idx = messages.firstIndex(where: { $0.id == assistantID }) {
+                var msg = messages[idx]
+                msg.isStreaming = false
+                messages[idx] = msg
+            }
+            throw error
+        }
+
+        // Promote the streaming placeholder to its final state.
+        var finalMessage: PiChatMessage?
+        if let idx = messages.firstIndex(where: { $0.id == assistantID }) {
+            var msg = messages[idx]
+            msg.isStreaming = false
+            msg.toolCalls = msg.toolCalls.map { tc in
+                PiToolCall(
+                    id: tc.id,
+                    name: tc.name,
+                    status: "done",
+                    arguments: tc.arguments,
+                    detail: tc.detail ?? PiService.summarizeToolArguments(tc.arguments)
+                )
+            }
+            messages[idx] = msg
+            finalMessage = msg
+        }
+
+        guard let assistantMessage = finalMessage,
+              !toolCatalog.tools.isEmpty,
+              !assistantMessage.toolCalls.isEmpty,
+              !assistantMessage.isError,
+              iteration < maxToolUseIterations else {
+            return
+        }
+
+        var mutableMessage = assistantMessage
+        await executeToolCalls(for: &mutableMessage)
+        persistCurrentThread()
+
+        try await runStreamingLoop(
+            baseURL: baseURL,
+            bearerToken: bearerToken,
+            model: model,
+            iteration: iteration + 1
+        )
     }
 
     func cancel() {
@@ -326,13 +417,21 @@ final class PiService {
 
     // MARK: - Persistence bridge
 
+    /// Subset of `messages` that should round-trip through persistence.
+    /// Tool reply messages are ephemeral context — once the model
+    /// produced its final natural-language turn the tool results no
+    /// longer help the user when they resume the thread.
+    private var persistableMessages: [PiChatMessage] {
+        messages.filter { $0.role != .tool }
+    }
+
     private func persistCurrentThread() {
-        guard let id = currentThreadID, !messages.isEmpty else { return }
+        guard let id = currentThreadID, !persistableMessages.isEmpty else { return }
         let now = Date()
         let createdAt = history.thread(id: id)?.createdAt ?? now
-        let title = Self.derivedTitle(from: messages)
-        let preview = Self.derivedPreview(from: messages)
-        let storedMessages = messages.map(Self.convertToStore)
+        let title = Self.derivedTitle(from: persistableMessages)
+        let preview = Self.derivedPreview(from: persistableMessages)
+        let storedMessages = persistableMessages.map(Self.convertToStore)
         let thread = MobileChatThread(
             id: id,
             runtime: AssistantRuntimeID.pi.rawValue,
@@ -468,7 +567,6 @@ final class PiService {
         baseURL: URL,
         bearerToken: String?,
         model: String?,
-        prompt: String,
         onTextDelta: @escaping (String) -> Void,
         onToolCallDelta: @escaping ([[String: Any]]) -> Void
     ) async throws {
@@ -480,14 +578,16 @@ final class PiService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         if let bearerToken { request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization") }
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model ?? "pi",
             "stream": true,
-            "messages": messages.compactMap { msg -> [String: Any]? in
-                guard !msg.isError else { return nil }
-                return ["role": msg.role.rawValue, "content": msg.text]
-            } + [["role": "user", "content": prompt]]
+            "messages": Self.wireMessages(from: messages)
         ]
+        let toolsArray = toolCatalog.toolsWireArray()
+        if !toolsArray.isEmpty {
+            body["tools"] = toolsArray
+            body["tool_choice"] = "auto"
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
 
         let (stream, response) = try await urlSession.bytes(for: request)
@@ -707,5 +807,151 @@ final class PiService {
 
     private static func encodeStringArray(_ arr: [String]) -> String {
         (try? JSONEncoder().encode(arr)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+    }
+
+    /// Build the OpenAI-compatible `messages` wire array from the local
+    /// `PiChatMessage` history. Skips error placeholders and the
+    /// streaming-in-flight assistant turn (it has no committed body
+    /// yet). Tool replies and assistant turns with `tool_calls` get the
+    /// extended shape required by the Chat Completions API.
+    static func wireMessages(from messages: [PiChatMessage]) -> [[String: Any]] {
+        var out: [[String: Any]] = []
+        for msg in messages where !msg.isError {
+            if msg.isStreaming { continue }
+            switch msg.role {
+            case .system:
+                if !msg.text.isEmpty {
+                    out.append(["role": "system", "content": msg.text])
+                }
+            case .user:
+                if !msg.text.isEmpty {
+                    out.append(["role": "user", "content": msg.text])
+                }
+            case .assistant:
+                if !msg.toolCalls.isEmpty {
+                    let toolCalls: [[String: Any]] = msg.toolCalls.map { call in
+                        [
+                            "id": call.id,
+                            "type": "function",
+                            "function": [
+                                "name": call.name,
+                                "arguments": call.arguments
+                            ] as [String: Any]
+                        ] as [String: Any]
+                    }
+                    var entry: [String: Any] = [
+                        "role": "assistant",
+                        "tool_calls": toolCalls
+                    ]
+                    entry["content"] = msg.text.isEmpty ? (NSNull() as Any) : msg.text
+                    out.append(entry)
+                } else if !msg.text.isEmpty {
+                    out.append(["role": "assistant", "content": msg.text])
+                }
+            case .tool:
+                guard let id = msg.toolCallID, !id.isEmpty, !msg.text.isEmpty else { continue }
+                out.append([
+                    "role": "tool",
+                    "tool_call_id": id,
+                    "content": msg.text
+                ])
+            }
+        }
+        return out
+    }
+}
+
+// MARK: - Tool Use Loop
+
+extension PiService: MobileToolContext {
+    /// Install / replace the navigator the `burnbar_atom_open` tool uses.
+    /// Same contract as `HermesService.setToolAtomNavigator`.
+    public func setToolAtomNavigator(_ navigator: HermesAtomNavigator?) {
+        if let navigator {
+            let weakRef = navigator as AnyObject
+            self.toolAtomNavigatorReference = weakRef
+            self.atomNavigatorAccessor = { [weak weakRef] in
+                weakRef as? HermesAtomNavigator
+            }
+        } else {
+            self.toolAtomNavigatorReference = nil
+            self.atomNavigatorAccessor = nil
+        }
+    }
+
+    public var atomNavigator: HermesAtomNavigator? {
+        atomNavigatorAccessor?()
+    }
+
+    public var availableSessions: [MobileToolSessionSummary] {
+        // Pi doesn't (yet) maintain a session list mirror — keep the
+        // surface honest by returning empty. The tool reports
+        // `total_available: 0` and the model recovers gracefully.
+        []
+    }
+
+    public var runtimeStatusSnapshot: MobileToolRuntimeStatus {
+        MobileToolRuntimeStatus(
+            runtime: "pi",
+            isReachable: isReachable,
+            connectionName: selectedConnection.displayName.nilIfBlank,
+            connectionMode: selectedConnection.mode.rawValue,
+            selectedModelID: selectedModelID?.nilIfBlank,
+            advertisedModel: selectedConnection.advertisedModel?.nilIfBlank,
+            lastError: lastError?.nilIfBlank
+        )
+    }
+
+    /// Execute the streamed tool calls on `message`, append matching
+    /// `role: .tool` replies to `messages`, and stamp the call statuses
+    /// for the pill UI.
+    @discardableResult
+    func executeToolCalls(
+        for message: inout PiChatMessage
+    ) async -> [MobileToolExecutionResult] {
+        guard !message.toolCalls.isEmpty else { return [] }
+        let pending = message.toolCalls.map { call in
+            PendingToolCall(id: call.id, name: call.name, arguments: call.arguments)
+        }
+        let executor = MobileToolExecutor(catalog: toolCatalog)
+        let results = await executor.execute(pending, context: self)
+
+        var updated = message
+        var statusByID: [String: String] = [:]
+        for r in results {
+            statusByID[r.toolCallID] = r.isError ? "failed" : "done"
+        }
+        updated.toolCalls = updated.toolCalls.map { call in
+            PiToolCall(
+                id: call.id,
+                name: call.name,
+                status: statusByID[call.id] ?? call.status,
+                arguments: call.arguments,
+                detail: call.detail ?? PiService.summarizeToolArguments(call.arguments)
+            )
+        }
+        message = updated
+
+        if let idx = messages.firstIndex(where: { $0.id == message.id }) {
+            messages[idx] = message
+        }
+
+        for r in results {
+            let reply = PiChatMessage(
+                role: .tool,
+                text: r.content,
+                isError: r.isError,
+                toolCallID: r.toolCallID
+            )
+            messages.append(reply)
+        }
+        return results
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let t = trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
     }
 }

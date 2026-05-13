@@ -10,6 +10,9 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -42,6 +45,7 @@ data class HermesConnection(
 enum class ConnectionType { LOCAL, LAN, REMOTE_RELAY }
 
 class HermesService {
+    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -119,32 +123,9 @@ class HermesService {
 
     fun connect(connection: HermesConnection = HermesConnection()) {
         this.connection = connection
-        val url = when (connection.type) {
-            ConnectionType.LOCAL -> "ws://${connection.host}:${connection.port}/ws"
-            ConnectionType.LAN -> "ws://${connection.host}:${connection.port}/ws"
-            ConnectionType.REMOTE_RELAY -> connection.relayUrl ?: return
+        scope.launch {
+            probeSelectedRuntime(legacyEndpointURL(connection))
         }
-
-        val request = Request.Builder().url(url).build()
-        webSocket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                _isConnected.value = true
-                fetchRuntimeInfo()
-            }
-
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                handleMessage(text)
-            }
-
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                _isConnected.value = false
-                webSocket.close(1000, null)
-            }
-
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                _isConnected.value = false
-            }
-        })
     }
 
     fun disconnect() {
@@ -157,18 +138,12 @@ class HermesService {
         val resolvedModelName = chatTilePreferences.selectedHermesModelOverride
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
+            ?: _selectedModelID.value?.trim()?.takeIf { it.isNotEmpty() }
             ?: modelName.trim().takeIf { it.isNotEmpty() }
             ?: "hermes"
         if (_currentThreadID.value == null) {
             _currentThreadID.value = UUID.randomUUID().toString()
         }
-        val json = JSONObject().apply {
-            put("type", "chat")
-            put("content", content)
-            put("model", resolvedModelName)
-            conversationId?.let { put("conversation_id", it) }
-        }
-        webSocket?.send(json.toString())
 
         _messages.value = _messages.value + HermesMessage(
             role = "user",
@@ -177,6 +152,16 @@ class HermesService {
             timestamp = System.currentTimeMillis()
         )
         persistCurrentThread()
+
+        val endpoint = selectedEndpointURL() ?: legacyEndpointURL(connection)
+        if (endpoint == null) {
+            appendAssistantError("No HTTP Hermes endpoint is configured.", resolvedModelName)
+            return
+        }
+
+        scope.launch {
+            streamChatCompletion(endpoint, content, resolvedModelName, conversationId)
+        }
     }
 
     fun clearMessages() {
@@ -270,91 +255,302 @@ class HermesService {
     }
 
     suspend fun refreshRuntime() {
-        fetchRuntimeInfo()
+        probeSelectedRuntime()
     }
 
-    private fun fetchRuntimeInfo() {
-        scope.launch {
-            try {
-                val url = when (connection.type) {
-                    ConnectionType.REMOTE_RELAY -> "${connection.relayUrl?.replace("ws", "http")}/info"
-                    else -> "http://${connection.host}:${connection.port}/info"
+    private suspend fun probeSelectedRuntime(endpointOverride: String? = null) {
+        val selected = _selectedConnection.value
+        val endpoint = endpointOverride ?: selectedEndpointURL()
+        if (endpoint == null) {
+            val error = "Android does not have an HTTP Hermes endpoint for ${selected.displayName}."
+            _runtimeErrorText.value = error
+            _isReachable.value = false
+            _isConnected.value = false
+            updateConnectionStatus(selected, HermesConnectionStatus.OFFLINE, error = error)
+            return
+        }
+
+        _isLoadingRuntime.value = true
+        _runtimeErrorText.value = null
+        updateConnectionStatus(selected, HermesConnectionStatus.PENDING)
+        try {
+            val healthInfo = fetchHealth(endpoint)
+            val models = fetchModels(endpoint)
+            val modelIDs = models.map { it.modelID }.ifEmpty {
+                healthInfo["model"]?.let { listOf(it) }.orEmpty()
+            }
+            _runtimeInfo.value = healthInfo + mapOf("endpoint" to endpoint)
+            _availableModels.value = modelIDs
+            _modelOptions.value = models.ifEmpty {
+                modelIDs.map { id ->
+                    HermesRuntimeModelOption(
+                        providerID = "hermes",
+                        providerName = "Hermes",
+                        modelID = id,
+                        displayName = id
+                    )
                 }
-                val request = Request.Builder().url(url).build()
-                val response = client.newCall(request).execute()
-                val body = response.body?.string()
-                if (body != null) {
-                    val json = JSONObject(body)
-                    val info = mutableMapOf<String, String>()
-                    json.keys().forEach { key ->
-                        info[key] = json.optString(key)
-                    }
-                    _runtimeInfo.value = info
-                    json.optJSONArray("models")?.let { arr ->
-                        _availableModels.value = (0 until arr.length()).map { arr.getString(it) }
-                    }
-                }
-            } catch (_: Exception) { }
+            }
+            if (_selectedModelID.value == null) {
+                _selectedModelID.value = modelIDs.firstOrNull()
+            }
+            _isReachable.value = true
+            _isConnected.value = true
+            updateConnectionStatus(
+                selected,
+                HermesConnectionStatus.ONLINE,
+                advertisedModel = modelIDs.firstOrNull(),
+                capabilities = listOf("health", "models", "chat_completions")
+            )
+        } catch (e: Exception) {
+            val error = e.message ?: e.javaClass.simpleName
+            _runtimeErrorText.value = error
+            _isReachable.value = false
+            _isConnected.value = false
+            updateConnectionStatus(selected, HermesConnectionStatus.OFFLINE, error = error)
+        } finally {
+            _isLoadingRuntime.value = false
         }
     }
 
-    private fun handleMessage(text: String) {
+    private fun fetchHealth(endpoint: String): Map<String, String> {
+        val request = Request.Builder().url("$endpoint/health").get().build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return emptyMap()
+            val body = response.body?.string()?.takeIf { it.isNotBlank() } ?: return emptyMap()
+            val json = JSONObject(body)
+            val info = mutableMapOf<String, String>()
+            json.keys().forEach { key ->
+                val value = json.opt(key)
+                if (value != null) info[key] = value.toString()
+            }
+            return info
+        }
+    }
+
+    private fun fetchModels(endpoint: String): List<HermesRuntimeModelOption> {
+        val request = Request.Builder().url("$endpoint/v1/models").get().build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Hermes models probe failed: HTTP ${response.code}")
+            }
+            val body = response.body?.string()?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("Hermes models probe returned an empty body.")
+            val json = JSONObject(body)
+            val data = json.optJSONArray("data") ?: JSONArray()
+            return (0 until data.length()).mapNotNull { index ->
+                val item = data.optJSONObject(index) ?: return@mapNotNull null
+                val id = item.optString("id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val owner = item.optString("owned_by", "hermes").takeIf { it.isNotBlank() } ?: "hermes"
+                HermesRuntimeModelOption(
+                    providerID = owner,
+                    providerName = owner.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
+                    modelID = id,
+                    displayName = id
+                )
+            }
+        }
+    }
+
+    private fun streamChatCompletion(
+        endpoint: String,
+        content: String,
+        modelName: String,
+        conversationId: String?
+    ) {
+        val assistantID = UUID.randomUUID().toString()
+        var accumulated = ""
+        val body = JSONObject().apply {
+            put("model", modelName)
+            put("stream", true)
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", content)
+                })
+            })
+            conversationId?.let { put("conversation_id", it) }
+        }.toString().toRequestBody(jsonMediaType)
+
+        val request = Request.Builder()
+            .url("$endpoint/v1/chat/completions")
+            .post(body)
+            .build()
+
         try {
-            val json = JSONObject(text)
-            val type = json.optString("type", "")
-            when (type) {
-                "token" -> {
-                    val msg = HermesMessage(
-                        id = json.optString("id"),
-                        role = "assistant",
-                        content = json.optString("content", ""),
-                        modelName = json.optString("model", "hermes"),
-                        isStreaming = true,
-                        timestamp = System.currentTimeMillis()
-                    )
-                    _messages.value = _messages.value.dropLastWhile { it.isStreaming } + msg
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Hermes chat failed: HTTP ${response.code}")
                 }
-                "done" -> {
-                    val msg = HermesMessage(
-                        id = json.optString("id"),
-                        role = "assistant",
-                        content = json.optString("content", ""),
-                        modelName = json.optString("model", "hermes"),
-                        tokensPerSecond = json.optDouble("tokens_per_second", 0.0).takeIf { it > 0 },
-                        isStreaming = false,
-                        timestamp = System.currentTimeMillis()
-                    )
-                    _messages.value = _messages.value.dropLastWhile { it.isStreaming } + msg
-                    persistCurrentThread()
-                }
-                "error" -> {
-                    val msg = HermesMessage(
-                        id = json.optString("id"),
-                        role = "assistant",
-                        content = "Error: ${json.optString("message", "Unknown error")}",
-                        modelName = json.optString("model", "hermes"),
-                        timestamp = System.currentTimeMillis()
-                    )
-                    _messages.value = _messages.value + msg
-                    persistCurrentThread()
-                }
-                "tool_call" -> {
-                    val toolCall = ToolCall(
-                        id = json.optString("call_id"),
-                        name = json.optString("tool_name", ""),
-                        arguments = json.optString("arguments", ""),
-                        result = json.optString("result").takeIf { it.isNotEmpty() }
-                    )
-                    _messages.value = _messages.value.map { msg ->
-                        if (msg.isStreaming) msg.copy(toolCalls = msg.toolCalls + toolCall) else msg
+                val source = response.body?.source()
+                    ?: throw IllegalStateException("Hermes chat returned an empty body.")
+                while (!source.exhausted()) {
+                    val line = source.readUtf8Line() ?: break
+                    val payload = line.removePrefix("data:").trim()
+                    if (!line.startsWith("data:") || payload.isEmpty()) continue
+                    if (payload == "[DONE]") break
+                    val delta = parseCompletionText(JSONObject(payload))
+                    if (delta.isNotEmpty()) {
+                        accumulated += delta
+                        upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = true)
                     }
                 }
             }
-        } catch (_: Exception) { }
+            if (accumulated.isBlank()) {
+                accumulated = "Hermes finished without returning text."
+            }
+            upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = false)
+            persistCurrentThread()
+            _isConnected.value = true
+            _isReachable.value = true
+            _runtimeErrorText.value = null
+        } catch (e: Exception) {
+            val error = e.message ?: e.javaClass.simpleName
+            appendAssistantError(error, modelName)
+            _runtimeErrorText.value = error
+            _isConnected.value = false
+            _isReachable.value = false
+        }
+    }
+
+    private fun parseCompletionText(json: JSONObject): String {
+        val choices = json.optJSONArray("choices")
+        if (choices != null && choices.length() > 0) {
+            val choice = choices.optJSONObject(0)
+            val parsedDelta = parseContentValue(choice?.optJSONObject("delta")?.opt("content"))
+            if (parsedDelta.isNotEmpty()) return parsedDelta
+
+            val messageContent = parseContentValue(choice?.optJSONObject("message")?.opt("content"))
+            if (messageContent.isNotEmpty()) return messageContent
+
+            val text = choice?.optString("text").orEmpty()
+            if (text.isNotEmpty()) return text
+        }
+
+        return parseContentValue(json.opt("content")).ifEmpty {
+            json.optString("output_text").takeIf { it.isNotEmpty() }
+                ?: json.optString("text").takeIf { it.isNotEmpty() }
+                ?: ""
+        }
+    }
+
+    private fun parseContentValue(value: Any?): String {
+        return when (value) {
+            is String -> value
+            is JSONArray -> (0 until value.length()).joinToString("") { index ->
+                val item = value.opt(index)
+                when (item) {
+                    is String -> item
+                    is JSONObject -> item.optString("text")
+                        .takeIf { it.isNotEmpty() }
+                        ?: item.optString("content")
+                    else -> ""
+                }
+            }
+            is JSONObject -> value.optString("text")
+                .takeIf { it.isNotEmpty() }
+                ?: value.optString("content")
+            else -> ""
+        }
+    }
+
+    private fun upsertStreamingAssistant(id: String, content: String, modelName: String, isStreaming: Boolean) {
+        val message = HermesMessage(
+            id = id,
+            role = "assistant",
+            content = content,
+            modelName = modelName,
+            isStreaming = isStreaming,
+            timestamp = System.currentTimeMillis()
+        )
+        _messages.value = _messages.value.filterNot { it.id == id || it.isStreaming } + message
+    }
+
+    private fun appendAssistantError(error: String, modelName: String) {
+        _messages.value = _messages.value + HermesMessage(
+            id = UUID.randomUUID().toString(),
+            role = "assistant",
+            content = "Error: $error",
+            modelName = modelName,
+            timestamp = System.currentTimeMillis()
+        )
+        persistCurrentThread()
+    }
+
+    private fun selectedEndpointURL(): String? {
+        val selected = _selectedConnection.value
+        return when (selected.mode) {
+            HermesConnectionMode.LOCAL, HermesConnectionMode.DIRECT_URL -> selected.endpointURL
+            HermesConnectionMode.RELAY_LINK -> selected.endpointURL
+        }?.let(::normalizeHTTPBaseURL)
+    }
+
+    private fun legacyEndpointURL(connection: HermesConnection): String? {
+        return when (connection.type) {
+            ConnectionType.LOCAL, ConnectionType.LAN -> "http://${connection.host}:${connection.port}"
+            ConnectionType.REMOTE_RELAY -> connection.relayUrl
+        }?.let(::normalizeHTTPBaseURL)
+    }
+
+    private fun normalizeHTTPBaseURL(raw: String): String? {
+        val trimmed = raw.trim().trimEnd('/')
+        if (trimmed.isBlank()) return null
+        val httpURL = when {
+            trimmed.startsWith("ws://") -> "http://" + trimmed.removePrefix("ws://")
+            trimmed.startsWith("wss://") -> "https://" + trimmed.removePrefix("wss://")
+            trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
+            else -> "http://$trimmed"
+        }
+        return httpURL
+            .substringBefore("/v1/chat/completions")
+            .substringBefore("/v1/models")
+            .substringBefore("/health")
+            .trimEnd('/')
+    }
+
+    private fun updateConnectionStatus(
+        connection: HermesConnectionRecord,
+        status: HermesConnectionStatus,
+        advertisedModel: String? = null,
+        capabilities: List<String>? = null,
+        error: String? = null
+    ) {
+        val now = System.currentTimeMillis()
+        val updated = connection.copy(
+            status = status,
+            advertisedModel = advertisedModel ?: connection.advertisedModel,
+            capabilities = capabilities ?: connection.capabilities,
+            updatedAt = now,
+            lastSeenAt = if (status == HermesConnectionStatus.ONLINE) now else connection.lastSeenAt
+        )
+        _connections.value = _connections.value.map { if (it.id == updated.id) updated else it }
+        if (_selectedConnection.value.id == updated.id) {
+            _selectedConnection.value = updated
+        }
+        if (error != null) {
+            _runtimeInfo.value = _runtimeInfo.value + ("last_error" to error)
+        }
     }
 
     fun selectConnection(connection: HermesConnectionRecord) {
         _selectedConnection.value = connection
+        scope.launch {
+            probeSelectedRuntime()
+        }
+    }
+
+    fun addDirectConnection(name: String, url: String): HermesConnectionRecord? {
+        val endpoint = normalizeHTTPBaseURL(url) ?: return null
+        val connection = HermesConnectionRecord(
+            id = "android-${UUID.randomUUID()}",
+            displayName = name.trim(),
+            mode = HermesConnectionMode.DIRECT_URL,
+            endpointURL = endpoint,
+            status = HermesConnectionStatus.PENDING
+        )
+        _connections.value = _connections.value + connection
+        selectConnection(connection)
+        return connection
     }
 
     fun selectModel(option: HermesRuntimeModelOption) {

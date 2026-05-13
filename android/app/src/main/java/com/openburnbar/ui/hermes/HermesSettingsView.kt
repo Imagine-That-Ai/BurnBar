@@ -257,15 +257,7 @@ fun HermesSettingsView(
                 TextButton(
                     onClick = {
                         if (newDirectName.isNotBlank() && newDirectURL.isNotBlank()) {
-                            val newConn = HermesConnectionRecord(
-                                id = "android-${java.util.UUID.randomUUID()}",
-                                displayName = newDirectName,
-                                mode = HermesConnectionMode.DIRECT_URL,
-                                endpointURL = newDirectURL
-                            )
-                            service.connections.value.let { current ->
-                                // In a real app, persist this. For now, update in-memory.
-                            }
+                            service.addDirectConnection(newDirectName, newDirectURL)
                             showAddDirect = false
                             newDirectName = ""
                             newDirectURL = ""

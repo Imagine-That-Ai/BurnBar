@@ -78,6 +78,11 @@ enum HermesMobileChatPreferences {
     static let usePretextRenderingKey = "hermesUsePretextRendering"
 }
 
+private enum HermesChatLayout {
+    static let hiddenNavigationTrayReserve: CGFloat = 70
+    static let composerBottomPadding: CGFloat = 8
+}
+
 extension Notification.Name {
     /// Posted by `HermesChatView` when its text input focus changes so that
     /// `RootTabView` can hide the floating `AuroraNavigationTray` while the
@@ -984,6 +989,16 @@ struct HermesChatView: View {
         self.route = route
     }
 
+    /// User-visible subset of `service.messages`. `.tool` role messages
+    /// are context for the upstream model — they hold the JSON body the
+    /// `MobileTool` returned so the next assistant turn can read it.
+    /// We do *not* render them as chat bubbles; their presence is
+    /// already conveyed by the tool pill on the assistant turn that
+    /// produced the call.
+    private var visibleMessages: [HermesChatMessage] {
+        service.messages.filter { $0.role != .tool }
+    }
+
     var body: some View {
         ZStack {
             AuroraBackdrop()
@@ -1002,10 +1017,10 @@ struct HermesChatView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 16) {
-                            if service.messages.isEmpty {
+                            if visibleMessages.isEmpty {
                                 welcomeBlock
                             } else {
-                                ForEach(service.messages) { message in
+                                ForEach(visibleMessages) { message in
                                     HermesMessageBubble(
                                         message: message,
                                         showTPS: showMessageTPS,
@@ -1026,7 +1041,10 @@ struct HermesChatView: View {
                         .padding(.horizontal, AuroraDesign.Layout.cardInset)
                         .padding(.bottom, 12)
                     }
+                    .scrollBounceBehavior(.basedOnSize)
                     .scrollDismissesKeyboard(.interactively)
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(TapGesture().onEnded { dismissKeyboard() })
                     .onChange(of: service.messages.count) { _, _ in
                         if let last = service.messages.last {
                             withAnimation(AuroraDesign.Motion.auroraSpring) {
@@ -1064,13 +1082,19 @@ struct HermesChatView: View {
 
                 inputBar
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
-                    .padding(.bottom, inputFocused ? 0 : 8)
+                    .padding(.bottom, HermesChatLayout.composerBottomPadding)
             }
-            // Reserve bottom space so the floating AuroraNavigationTray
-            // never overlaps content. The tray is pillHeight(50) + bottomInset(14)
-            // = 64pt; we add a comfortable 70pt so content lands above it.
-            // Collapse to zero when the keyboard is up since the tray is hidden.
-            .padding(.bottom, inputFocused ? 0 : 70)
+            // Keep the visible prompt/composer stack stable. The floating
+            // AuroraNavigationTray needs a reserve only while the keyboard is
+            // hidden; using a safe-area spacer avoids shifting the whole chat
+            // stack during UIKit's keyboard animation.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear
+                    .frame(height: inputFocused ? 0 : HermesChatLayout.hiddenNavigationTrayReserve)
+                    .transaction { transaction in
+                        transaction.disablesAnimations = true
+                    }
+            }
         }
         .onChange(of: inputFocused) { _, focused in
             NotificationCenter.default.post(
@@ -1128,6 +1152,10 @@ struct HermesChatView: View {
                     Image(systemName: "ellipsis.circle")
                         .foregroundStyle(MobileTheme.hermesAureate)
                 }
+            }
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done", action: dismissKeyboard)
             }
         }
         .alert("Clear chat?", isPresented: $showClearConfirm) {
@@ -1210,6 +1238,18 @@ struct HermesChatView: View {
             // notifications still fire from `confirm(_:)` for ambient
             // listeners (e.g. RootTabView).
             atomRouter.onPerform = { _ in }
+            // Plug the navigator into the chat service so the
+            // `burnbar_atom_open` tool can drive in-app navigation when
+            // the model decides to call it. Held weakly inside the
+            // service — disconnected automatically when this view goes
+            // away.
+            service.setToolAtomNavigator(atomRouter)
+        }
+        .onDisappear {
+            // Be explicit so the service drops its reference promptly
+            // even if `atomRouter` doesn't deallocate immediately (the
+            // chat list view stays in the navigation stack).
+            service.setToolAtomNavigator(nil)
         }
         .onAppear {
             presentSetupWizardIfNeeded()
@@ -1485,6 +1525,7 @@ struct HermesChatView: View {
             }
             .padding(.horizontal, AuroraDesign.Layout.cardInset)
         }
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .opacity(service.isStreaming ? 0.45 : 1)
     }
 
@@ -1619,6 +1660,10 @@ struct HermesChatView: View {
         pendingAttachments = []
         inputFocused = false
         service.sendMessage(trimmed, context: dashboardContextPrompt, attachments: attachments)
+    }
+
+    private func dismissKeyboard() {
+        inputFocused = false
     }
 
     private var chatFileImporterTypes: [UTType] {
