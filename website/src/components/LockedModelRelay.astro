@@ -25,7 +25,7 @@
 interface Props {
   /** Visual scale: 'big' for the /router hero, 'mini' for in-card use. */
   variant?: "big" | "mini";
-  /** Model token to display. Defaults to gpt-4.1 — the hero story. */
+  /** Model token to display. Defaults to gpt-5 — the hero story. */
   modelID?: string;
   /** Sub-label under the model name. Defaults to a routing-status hint. */
   modelTag?: string;
@@ -35,25 +35,25 @@ interface Props {
 
 const {
   variant = "big",
-  modelID = "gpt-4.1",
+  modelID = "gpt-5",
   modelTag = "model identity · invariant",
   animateOnView = true,
 } = Astro.props;
 
 const STATIONS = [
-  { id: "openai",  name: "OpenAI",  logo: "/brand/providers/openai.png",  role: "primary"  },
-  { id: "zai",     name: "Z.ai",    logo: "/brand/providers/zai.png",     role: "active"   },
-  { id: "kimi",    name: "Kimi",    logo: "/brand/providers/kimi.png",    role: "healthy"  },
-  { id: "minimax", name: "MiniMax", logo: "/brand/providers/minimax.png", role: "healthy"  },
-  { id: "ollama",  name: "Ollama",  logo: "/brand/providers/ollama.png",  role: "healthy"  },
+  { id: "openai-a", name: "OpenAI · personal", logo: "/brand/providers/openai.png", role: "primary" },
+  { id: "openai-b", name: "OpenAI · team",     logo: "/brand/providers/openai.png", role: "active"  },
+  { id: "codex",    name: "Codex · plus",      logo: "/brand/providers/codex.png",  role: "healthy" },
+  { id: "openai-c", name: "OpenAI · agency",   logo: "/brand/providers/openai.png", role: "healthy" },
+  { id: "openai-d", name: "OpenAI · backup",   logo: "/brand/providers/openai.png", role: "healthy" },
 ] as const;
 
 const STEPS = [
-  { idx: 1, label: `OpenAI · 429 rate-limit`,                detail: `model ${modelID} unchanged` },
-  { idx: 2, label: `Z.ai · healthy · active route`,           detail: `serving ${modelID}` },
-  { idx: 3, label: `Z.ai · 14% remaining · pressure`,         detail: `pre-selecting next fallback` },
-  { idx: 4, label: `MiniMax · healthy · active route`,        detail: `serving ${modelID}` },
-  { idx: 5, label: `Kimi · healthy · active route`,           detail: `serving ${modelID}` },
+  { idx: 1, label: `OpenAI · personal · 429 rate-limit`,        detail: `model ${modelID} unchanged` },
+  { idx: 2, label: `OpenAI · team · healthy · active route`,    detail: `serving ${modelID}` },
+  { idx: 3, label: `OpenAI · team · 14% remaining · pressure`,   detail: `pre-selecting next fallback` },
+  { idx: 4, label: `OpenAI · agency · healthy · active route`,   detail: `serving ${modelID}` },
+  { idx: 5, label: `Codex · plus · healthy · active route`,      detail: `serving ${modelID}` },
 ] as const;
 ---
 
@@ -64,10 +64,13 @@ const STEPS = [
 >
   <figcaption id="relay-title" class="sr-only">
     Locked-Model Relay — a model token labelled <strong>{modelID}</strong> stays
-    anchored at the top while five account stations (OpenAI, Z.ai, Kimi,
-    MiniMax, Ollama) cycle their availability below. The active routing pillar
-    slides between healthy stations every 2.4 seconds, demonstrating that
-    failover swaps accounts without ever changing the model identity.
+    anchored at the top while five OpenAI-family accounts (OpenAI · personal,
+    OpenAI · team, Codex · plus, OpenAI · agency, OpenAI · backup) cycle their
+    availability below. The active routing pillar slides between healthy
+    accounts every 2.4 seconds, demonstrating that failover swaps accounts
+    without ever changing the model identity. Only accounts that carry the
+    requested model are eligible — Z.ai, MiniMax, Kimi and Ollama would be
+    filtered out for a {modelID} request.
   </figcaption>
 
   {/* model token: anchored, breathing, never changes */}
@@ -118,7 +121,7 @@ const STEPS = [
     {/* spacer to fix height — uses the longest caption */}
     <span class="relay__capspacer" aria-hidden="true">
       <span class="relay__capidx">0X</span>
-      <span class="relay__caplab">MiniMax · healthy · active route</span>
+      <span class="relay__caplab">OpenAI · team · 14% remaining · pressure</span>
       <span class="relay__capdet">serving {modelID}</span>
     </span>
   </div>
@@ -306,10 +309,12 @@ const STEPS = [
     100% { transform: translateX(110%); opacity: 0; }
   }
 
-  /* the active pillar — vertical glowing line */
+  /* the active pillar — vertical glowing wire connecting the model chip to
+     whichever account is currently active. extends UPWARD above the board
+     so the link "model id → serving account" is one drawn line. */
   .relay__pillar {
     position: absolute;
-    top: 0;
+    top: -90px;        /* reaches up into the chip area */
     bottom: 0;
     left: var(--col-1);
     width: 2px;
@@ -318,9 +323,11 @@ const STEPS = [
     animation: relay-pillar-slide var(--cycle) var(--ease-in-out) infinite;
     will-change: left;
   }
+  .relay--mini .relay__pillar { top: -56px; }
   .relay__pillarhead {
+    /* the bright dot that visually "anchors" to the chip's bottom edge */
     position: absolute;
-    top: -6px;
+    top: -7px;
     left: 50%;
     transform: translateX(-50%);
     width: 14px;
@@ -331,15 +338,17 @@ const STEPS = [
       0 0 0 3px color-mix(in oklab, var(--ember-core) 28%, transparent),
       0 0 22px var(--ember-glow);
     animation: relay-pillar-pulse 2s var(--ease-in-out) infinite alternate;
+    z-index: 2;
   }
   .relay__pillarbeam {
     position: absolute;
     inset: 0;
     background: linear-gradient(
       180deg,
-      var(--ember-bright) 0%,
-      var(--ember-core) 40%,
-      color-mix(in oklab, var(--ember-core) 35%, transparent) 80%,
+      color-mix(in oklab, var(--ember-bright) 40%, transparent) 0%,
+      var(--ember-bright) 20%,
+      var(--ember-core) 50%,
+      color-mix(in oklab, var(--ember-core) 35%, transparent) 85%,
       transparent 100%
     );
     border-radius: var(--r-pill);
