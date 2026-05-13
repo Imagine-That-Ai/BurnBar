@@ -969,11 +969,22 @@ const surfaceShowcase = SURFACES.filter((s) =>
   }
   .hermes__list li {
     display: grid;
-    grid-template-columns: 1.5em 1fr;
-    gap: var(--s-2);
+    grid-template-columns: 1.5em minmax(0, 1fr);
+    gap: var(--s-3);
+    align-items: baseline;
     color: var(--text-base);
+    line-height: 1.55;
   }
-  .hermes__mark { color: var(--ember-bright); }
+  .hermes__listbody { min-width: 0; }
+  .hermes__listbody strong {
+    color: var(--text-bright);
+    font-variation-settings: "wght" 540;
+    margin-right: 0.35em;
+  }
+  .hermes__mark {
+    color: var(--ember-bright);
+    line-height: 1.55;
+  }
   .hermes__visual {
     border: 1px solid var(--ink-line);
     background:
