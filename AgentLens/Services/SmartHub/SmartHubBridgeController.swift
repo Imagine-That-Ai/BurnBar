@@ -284,7 +284,7 @@ final class SmartHubBridgeController {
         let recastBaseline = SmartHubBridgeServer.shared.lastClientPollAt
         let recastClient = CastChannelClient(device: device)
         let recast = await recastClient.forceRecast(url: url)
-        await recastClient.stop()
+        recastClient.disconnect()
         switch recast {
         case .success:
             if await waitForClientPoll(after: recastBaseline, timeout: 24) {
@@ -338,7 +338,7 @@ final class SmartHubBridgeController {
         if let cached = cachedCastDevice() {
             let client = CastChannelClient(device: cached)
             let state = await client.queryReceiverState()
-            await client.stop()
+            client.disconnect()
             if state != nil {
                 return cached
             }
@@ -349,10 +349,35 @@ final class SmartHubBridgeController {
         if let selected = devices.first(where: { matchesCachedCastDevice($0) }) {
             return selected
         }
-        if devices.count == 1 {
-            return devices[0]
+        return Self.preferredRepairCastDevice(from: devices)
+    }
+
+    static func preferredRepairCastDevice(from devices: [CastDevice]) -> CastDevice? {
+        devices
+            .filter(\.supportsDisplay)
+            .sorted { lhs, rhs in
+                let lhsScore = repairDeviceScore(lhs)
+                let rhsScore = repairDeviceScore(rhs)
+                if lhsScore != rhsScore { return lhsScore > rhsScore }
+                return lhs.friendlyName.localizedCaseInsensitiveCompare(rhs.friendlyName) == .orderedAscending
+            }
+            .first
+    }
+
+    private static func repairDeviceScore(_ device: CastDevice) -> Int {
+        let combined = "\(device.model) \(device.friendlyName) \(device.serviceName)".lowercased()
+        var score = 0
+        if combined.contains("nest hub max") {
+            score += 90
+        } else if combined.contains("nest hub") {
+            score += 120
         }
-        return nil
+        if combined.contains("display") { score += 20 }
+        if combined.contains("chromecast") { score += 10 }
+        if combined.contains("mini") || combined.contains("audio") || combined.contains("speaker") {
+            score -= 100
+        }
+        return score
     }
 
     private func collectCastDevicesOnce(duration: TimeInterval) async -> [CastDevice] {
@@ -975,7 +1000,7 @@ final class SmartHubBridgeController {
         let probeClient = CastChannelClient(device: device)
         guard let state = await probeClient.queryReceiverState() else {
             Self.log.error("watchdog: probe could not reach \(device.host, privacy: .public)")
-            await probeClient.stop()
+            probeClient.disconnect()
             return
         }
         Self.log.info("watchdog state appId=\(state.appId, privacy: .public) isDashCast=\(state.isDashCast)")
@@ -986,7 +1011,7 @@ final class SmartHubBridgeController {
         // the existing DashCast session as stale and do a STOP -> LAUNCH
         // -> LOAD recovery on the watchdog cadence.
         if state.isDashCast {
-            await probeClient.stop()
+            probeClient.disconnect()
 
             // Proof-of-life: if the Nest Hub's embedded page has polled
             // `/state.json` recently, DashCast is not stuck — it's
@@ -1018,7 +1043,7 @@ final class SmartHubBridgeController {
             if case .failure(let reason) = outcome {
                 Self.log.error("watchdog: DashCast hard refresh failed: \(reason, privacy: .public)")
             }
-            await refreshClient.stop()
+            refreshClient.disconnect()
             return
         }
 
@@ -1026,7 +1051,7 @@ final class SmartHubBridgeController {
         // shortcut, etc.) or nothing is running. Either way the Hub
         // isn't showing us — do a hard kick: STOP whatever's there and
         // launch DashCast fresh with force:true.
-        await probeClient.stop()
+        probeClient.disconnect()
         lastCastReassertedAt = Date()
 
         Self.log.info("watchdog: hard kick (forceRecast) — current app is not DashCast")
@@ -1036,11 +1061,11 @@ final class SmartHubBridgeController {
             Self.log.error("watchdog: forceRecast failed: \(reason, privacy: .public). Falling back to reconnect strategy.")
             // If STOP→LAUNCH itself failed, fall through to the full
             // recovery strategy (4-attempt backoff + Home Assistant).
-            await kickClient.stop()
+            kickClient.disconnect()
             _ = await CastReconnectStrategy(device: device).castWithRecovery(url: url)
         } else {
             Self.log.info("watchdog: forceRecast ok")
-            await kickClient.stop()
+            kickClient.disconnect()
         }
     }
 

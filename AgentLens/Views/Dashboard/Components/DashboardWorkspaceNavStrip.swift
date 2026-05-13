@@ -21,12 +21,8 @@ struct DashboardWorkspaceNavStrip: View {
     }
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
+        ScrollView(.horizontal, showsIndicators: false) {
             navRow(isCompact: false)
-            navRow(isCompact: true)
-            ScrollView(.horizontal, showsIndicators: false) {
-                navRow(isCompact: true)
-            }
         }
         .padding(.horizontal, DesignSystem.Spacing.lg)
         .padding(.vertical, DesignSystem.Spacing.md)

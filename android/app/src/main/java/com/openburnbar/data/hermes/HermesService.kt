@@ -1,10 +1,17 @@
 package com.openburnbar.data.hermes
 
+import com.openburnbar.data.assistants.AssistantChatHermesMetadata
+import com.openburnbar.data.assistants.AssistantChatHistoryStore
+import com.openburnbar.data.assistants.AssistantChatMessage
+import com.openburnbar.data.assistants.AssistantChatThread
+import com.openburnbar.data.assistants.AssistantChatTokenUsage
+import com.openburnbar.data.assistants.AssistantChatToolCall
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import okhttp3.*
 import org.json.JSONObject
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 data class HermesMessage(
@@ -88,6 +95,24 @@ class HermesService {
     private var chatTilePreferences = ChatTilePreferences.DEFAULT
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    /**
+     * Identifies the conversation currently in [_messages]. Minted on the first
+     * send of a fresh thread so chat history can survive app relaunches.
+     */
+    private val _currentThreadID = MutableStateFlow<String?>(null)
+    val currentThreadID: StateFlow<String?> = _currentThreadID
+
+    /**
+     * Persistence bridge. Wired by [bindHistoryStore]; null while running in
+     * the test target without an Android Context.
+     */
+    private var historyStore: AssistantChatHistoryStore? = null
+
+    /** Wire the service to the per-app persistence singleton. */
+    fun bindHistoryStore(store: AssistantChatHistoryStore) {
+        this.historyStore = store
+    }
+
     fun setChatTilePreferences(preferences: ChatTilePreferences) {
         chatTilePreferences = preferences.sanitized()
     }
@@ -134,6 +159,9 @@ class HermesService {
             ?.takeIf { it.isNotEmpty() }
             ?: modelName.trim().takeIf { it.isNotEmpty() }
             ?: "hermes"
+        if (_currentThreadID.value == null) {
+            _currentThreadID.value = UUID.randomUUID().toString()
+        }
         val json = JSONObject().apply {
             put("type", "chat")
             put("content", content)
@@ -142,17 +170,103 @@ class HermesService {
         }
         webSocket?.send(json.toString())
 
-        // Add user message immediately
         _messages.value = _messages.value + HermesMessage(
             role = "user",
             content = content,
             modelName = resolvedModelName,
             timestamp = System.currentTimeMillis()
         )
+        persistCurrentThread()
     }
 
     fun clearMessages() {
         _messages.value = emptyList()
+        _currentThreadID.value = null
+    }
+
+    /** Starts a brand-new conversation. The previous thread remains in history. */
+    fun startNewThread() {
+        _messages.value = emptyList()
+        _currentThreadID.value = null
+    }
+
+    /** Restores messages from a persisted thread. */
+    fun loadThread(id: String) {
+        val store = historyStore ?: return
+        val thread = store.thread(id) ?: return
+        if (thread.runtime != "hermes") return
+        _currentThreadID.value = thread.id
+        _messages.value = thread.messages.map { stored ->
+            val hermes = stored.hermes
+            val usage = hermes?.usage
+            HermesMessage(
+                id = stored.id,
+                role = stored.role,
+                content = stored.text,
+                modelName = stored.modelName ?: "hermes",
+                tokensPerSecond = usage?.outputTokens?.let { tokens ->
+                    val seconds = usage.providerGenerationDurationSeconds
+                    if (seconds != null && seconds > 0) tokens.toDouble() / seconds else null
+                },
+                toolCalls = hermes?.toolCalls.orEmpty().map { tc ->
+                    ToolCall(id = tc.id, name = tc.name)
+                },
+                isStreaming = false,
+                timestamp = stored.timestampMillis
+            )
+        }
+    }
+
+    /** Removes a thread from chat history. Clears the active chat if it matches. */
+    fun deleteThread(id: String) {
+        historyStore?.delete(id)
+        if (_currentThreadID.value == id) startNewThread()
+    }
+
+    internal fun persistCurrentThread() {
+        val store = historyStore ?: return
+        val threadID = _currentThreadID.value ?: return
+        val msgs = _messages.value
+        if (msgs.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val existing = store.thread(threadID)
+        val createdAt = existing?.createdAtMillis ?: msgs.firstOrNull()?.timestamp ?: now
+        val storedMessages = msgs.mapNotNull { msg ->
+            val trimmed = msg.content.trim()
+            if (trimmed.isEmpty() && msg.toolCalls.isEmpty()) return@mapNotNull null
+            val toolCalls = msg.toolCalls.map { AssistantChatToolCall(id = it.id, name = it.name, status = "done") }
+            val usage = if (msg.tokensPerSecond != null) {
+                AssistantChatTokenUsage(source = "providerUsage")
+            } else null
+            val hermes = if (toolCalls.isNotEmpty() || usage != null) {
+                AssistantChatHermesMetadata(toolCalls = toolCalls, usage = usage)
+            } else null
+            AssistantChatMessage(
+                id = msg.id.ifEmpty { UUID.randomUUID().toString() },
+                role = msg.role,
+                text = msg.content,
+                timestampMillis = msg.timestamp,
+                modelName = msg.modelName,
+                isError = false,
+                attachments = emptyList(),
+                hermes = hermes
+            )
+        }
+        if (storedMessages.isEmpty()) return
+
+        val firstUser = msgs.firstOrNull { it.role == "user" }?.content?.trim().orEmpty()
+        val lastNonEmpty = msgs.lastOrNull { it.content.trim().isNotEmpty() }?.content?.trim().orEmpty()
+        val thread = AssistantChatThread(
+            id = threadID,
+            runtime = "hermes",
+            title = if (firstUser.isNotEmpty()) firstUser.take(64) else "Hermes conversation",
+            preview = lastNonEmpty.take(140),
+            modelName = selectedModelID.value,
+            createdAtMillis = createdAt,
+            updatedAtMillis = now,
+            messages = storedMessages
+        )
+        store.upsert(thread)
     }
 
     suspend fun refreshRuntime() {
@@ -211,6 +325,7 @@ class HermesService {
                         timestamp = System.currentTimeMillis()
                     )
                     _messages.value = _messages.value.dropLastWhile { it.isStreaming } + msg
+                    persistCurrentThread()
                 }
                 "error" -> {
                     val msg = HermesMessage(
@@ -221,6 +336,7 @@ class HermesService {
                         timestamp = System.currentTimeMillis()
                     )
                     _messages.value = _messages.value + msg
+                    persistCurrentThread()
                 }
                 "tool_call" -> {
                     val toolCall = ToolCall(

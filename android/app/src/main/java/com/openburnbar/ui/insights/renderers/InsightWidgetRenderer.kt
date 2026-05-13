@@ -1,5 +1,12 @@
 package com.openburnbar.ui.insights.renderers
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,8 +28,12 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProgressIndicatorDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.openburnbar.data.insights.InsightCitation
 import com.openburnbar.data.insights.InsightFreshness
 import com.openburnbar.data.insights.InsightTheme
@@ -47,12 +59,13 @@ import com.openburnbar.data.insights.InsightWidgetKind
 import com.openburnbar.data.insights.ValueFormat
 import com.openburnbar.ui.insights.InsightsColors
 import com.openburnbar.ui.insights.InsightsSpacing
+import com.openburnbar.ui.insights.InsightsViewModel
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 
 // ─── Formatting helpers ─────────────────────────────────────────────────────
 
-private fun formatValue(value: Double, format: ValueFormat?): String = when (format) {
+internal fun formatValue(value: Double, format: ValueFormat?): String = when (format) {
     ValueFormat.CURRENCY -> String.format("$%,.2f", value)
     ValueFormat.PERCENT -> String.format("%.1f%%", value * 100)
     ValueFormat.DURATION -> {
@@ -62,20 +75,22 @@ private fun formatValue(value: Double, format: ValueFormat?): String = when (for
         when { hours > 0 -> "${hours}h ${mins}m"; mins > 0 -> "${mins}m ${secs}s"; else -> "${secs}s" }
     }
     ValueFormat.TOKENS -> when {
+        value >= 1_000_000_000 -> String.format("%.1fB", value / 1_000_000_000)
         value >= 1_000_000 -> String.format("%.1fM", value / 1_000_000)
-        value >= 1_000 -> String.format("%.1fk", value / 1_000)
+        value >= 1_000 -> String.format("%.1fK", value / 1_000)
         else -> String.format("%.0f", value)
     }
     ValueFormat.COUNT -> when {
+        value >= 1_000_000_000 -> String.format("%.1fB", value / 1_000_000_000)
         value >= 1_000_000 -> String.format("%.1fM", value / 1_000_000)
-        value >= 1_000 -> String.format("%.1fk", value / 1_000)
+        value >= 1_000 -> String.format("%.1fK", value / 1_000)
         else -> String.format("%.0f", value)
     }
     ValueFormat.RAW -> String.format("%.2f", value)
     null -> String.format("%.1f", value)
 }
 
-private fun parseColor(hex: String): Color = try {
+internal fun parseColor(hex: String): Color = try {
     Color(hex.lowercase().removePrefix("#").toLong(16) or 0xFF000000)
 } catch (_: Exception) {
     Color.Gray
@@ -133,16 +148,9 @@ fun InsightWidgetRenderer(
 private fun WidgetHeader(widget: InsightWidget, theme: InsightTheme) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = widget.kind.displayName,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = InsightsColors.accentsFor(theme).first()
-        )
-        Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
-        Text(
             text = widget.title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Medium,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -155,7 +163,19 @@ private fun WidgetHeader(widget: InsightWidget, theme: InsightTheme) {
             InsightFreshness.ERROR     -> InsightsColors.freshnessError to "error"
             InsightFreshness.LOCKED    -> InsightsColors.freshnessLocked to "locked"
         }
-        Text(text = freshLabel, style = MaterialTheme.typography.labelSmall, color = freshColor)
+        Surface(
+            shape = RoundedCornerShape(4.dp),
+            color = Color.Transparent,
+            modifier = Modifier.padding(start = 8.dp)
+        ) {
+            Text(
+                text = freshLabel.replaceFirstChar { it.uppercase() },
+                style = MaterialTheme.typography.labelSmall,
+                color = freshColor,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
+        }
     }
 }
 
@@ -165,28 +185,37 @@ private fun WidgetHeader(widget: InsightWidget, theme: InsightTheme) {
 private fun KpiTileRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
     val data = (w.data as? InsightWidgetData.KPI) ?: return EmptyWidget()
     val accent = InsightsColors.accentsFor(theme).first()
-    Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.weight(1f)) {
             Text(text = data.metricLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 text = formatValue(data.value, data.valueFormat),
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
-                color = if (data.value >= 0) accent else InsightsColors.kpiNegative
+                color = if (data.value >= 0) accent else InsightsColors.kpiNegative,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             if (data.delta != null) {
                 val sign = if (data.delta >= 0) "+" else ""
                 val deltaText = if (data.deltaIsPercent) "$sign${String.format("%.1f", data.delta * 100)}%"
                     else "$sign${formatValue(data.delta, data.valueFormat)}"
                 Text(text = deltaText, style = MaterialTheme.typography.bodySmall,
-                    color = if (data.delta >= 0) InsightsColors.kpiPositive else InsightsColors.kpiNegative)
+                    color = if (data.delta >= 0) InsightsColors.kpiPositive else InsightsColors.kpiNegative,
+                    maxLines = 1)
             }
             if (data.contextLabel != null) {
-                Text(text = data.contextLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = data.contextLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
         if (data.sparkline.isNotEmpty()) {
-            MiniSparkline(data.sparkline, color = accent, modifier = Modifier.size(64.dp, 28.dp))
+            MiniSparkline(data.sparkline, color = accent, modifier = Modifier.size(72.dp, InsightsSpacing.sparklineHeight.dp))
         }
     }
 }
@@ -199,8 +228,11 @@ private fun TimeSeriesRenderer(w: InsightWidget, theme: InsightTheme, onCite: (I
     Column {
         Text(text = data.yAxisLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (data.series.isNotEmpty() && data.series.first().points.isNotEmpty()) {
-            SparklineChart(series = data.series, yFormat = data.yFormat,
-                modifier = Modifier.fillMaxWidth().height(InsightsSpacing.chartHeight.dp))
+            SparklineChart(
+                series = data.series,
+                yFormat = data.yFormat,
+                modifier = Modifier.fillMaxWidth().height(InsightsSpacing.chartHeight.dp)
+            )
         } else {
             Text("No data", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -230,14 +262,14 @@ private fun RankingRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insi
     }
 }
 
-// ─── Donut ────────────────────────────────────────────────────────────────────
+// ─── Donut (ring chart via Canvas) ────────────────────────────────────────────
 
 @Composable
 private fun DonutRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
     val data = (w.data as? InsightWidgetData.Distribution) ?: return EmptyWidget()
     val colors = InsightsColors.accentsFor(theme)
     Column {
-        DonutChart(slices = data.slices, total = data.total, colors = colors, modifier = Modifier.size(120.dp))
+        DonutChart(slices = data.slices, total = data.total, colors = colors, modifier = Modifier.size(96.dp).align(Alignment.CenterHorizontally))
         Spacer(modifier = Modifier.height(8.dp))
         data.slices.forEachIndexed { idx, slice ->
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -261,7 +293,7 @@ private fun QuotaPulseRenderer(w: InsightWidget, theme: InsightTheme, onCite: (I
         data.buckets.forEach { bucket ->
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(text = bucket.providerLabel, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(text = "${String.format("%.1f", bucket.used)} / ${bucket.limit?.let { String.format("%.1f", it) } ?: "∞"}", style = MaterialTheme.typography.bodySmall)
+                Text(text = "${String.format("%.1f", bucket.used)} / ${bucket.limit?.let { String.format("%.1f", it) } ?: "inf"}", style = MaterialTheme.typography.bodySmall)
             }
             LinearProgressIndicator(
                 progress = { bucket.fraction.toFloat().coerceIn(0f, 1f) },
@@ -301,7 +333,8 @@ private fun NarrativeRenderer(w: InsightWidget, theme: InsightTheme, onCite: (In
 @Composable
 private fun RecommendationRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
     val data = (w.data as? InsightWidgetData.Recommendation) ?: return EmptyWidget()
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         shape = RoundedCornerShape(InsightsSpacing.cardRadius.dp)
     ) {
@@ -310,7 +343,7 @@ private fun RecommendationRenderer(w: InsightWidget, theme: InsightTheme, onCite
             Spacer(modifier = Modifier.height(2.dp))
             Text(text = data.rationale, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(6.dp))
-            AssistChip(onClick = { /* TODO */ }, label = { Text(data.action) })
+            AssistChip(onClick = {}, label = { Text(data.action) })
         }
     }
 }
@@ -397,10 +430,10 @@ private fun SankeyRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insig
     }
 }
 
-// ─── Radar ────────────────────────────────────────────────────────────────────
+// ─── Radar (Canvas) ────────────────────────────────────────────────────────────
 
-@Composable
 @OptIn(ExperimentalLayoutApi::class)
+@Composable
 private fun RadarRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
     val data = (w.data as? InsightWidgetData.Radar) ?: return EmptyWidget()
     if (data.axes.isEmpty() || data.series.isEmpty()) return EmptyWidget()
@@ -472,9 +505,10 @@ private fun FunnelRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insig
     val colors = InsightsColors.accentsFor(theme)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         data.steps.forEachIndexed { idx, step ->
+            val fraction = (step.count / maxCount).toFloat().coerceIn(0f, 1f)
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(text = step.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                LinearProgressIndicator(progress = { (step.count / maxCount).toFloat().coerceIn(0f, 1f) },
+                LinearProgressIndicator(progress = { fraction },
                     modifier = Modifier.width(100.dp).height(12.dp),
                     color = colors.getOrElse(idx % colors.size) { colors[0] }, trackColor = MaterialTheme.colorScheme.surfaceVariant)
                 Text(text = String.format("%.0f", step.count), style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(40.dp), textAlign = TextAlign.End)
@@ -490,7 +524,8 @@ private fun ForecastRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Ins
     val data = (w.data as? InsightWidgetData.Forecast) ?: return EmptyWidget()
     Column {
         if (data.actual.isNotEmpty()) {
-            SparklineChart(series = listOf(InsightWidgetData.TimeSeries.Series(id = "actual", name = "Actual", points = data.actual, colorHex = null)),
+            SparklineChart(
+                series = listOf(InsightWidgetData.TimeSeries.Series(id = "actual", name = "Actual", points = data.actual, colorHex = null)),
                 yFormat = data.yFormat, modifier = Modifier.fillMaxWidth().height(InsightsSpacing.chartHeight.dp))
         }
         if (data.summary != null) Text(text = data.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -505,7 +540,28 @@ private fun UseCaseClusterRenderer(w: InsightWidget, theme: InsightTheme, onCite
     val data = (w.data as? InsightWidgetData.UseCaseCluster) ?: return EmptyWidget()
     FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         data.clusters.forEach { cluster ->
-            AssistChip(onClick = { /* TODO */ }, label = { Text("${cluster.label} (${cluster.size})") })
+            AssistChip(onClick = {}, label = { Text("${cluster.label} (${cluster.size})") })
+        }
+    }
+}
+
+// ─── Scatter (data-visible list until Vico integration) ────────────────────────
+
+@Composable
+private fun ScatterRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
+    val data = (w.data as? InsightWidgetData.Scatter) ?: return PlaceholderWidget(w)
+    val colors = InsightsColors.accentsFor(theme)
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(text = "${data.xAxisLabel} vs ${data.yAxisLabel}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        data.points.take(10).forEachIndexed { idx, point ->
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(6.dp).clip(CircleShape).coloredCircle(point.colorHex?.let { parseColor(it) } ?: colors.getOrElse(idx % colors.size) { colors[0] }))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = point.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(text = formatValue(point.x, data.xFormat), style = MaterialTheme.typography.labelSmall)
+                Text(text = " \u00d7 ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = formatValue(point.y, data.yFormat), style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 }
@@ -546,33 +602,11 @@ private fun HeatmapRenderer(w: InsightWidget, theme: InsightTheme, onCite: (Insi
 @Composable
 private fun MermaidRenderer(w: InsightWidget, onCite: (InsightCitation) -> Unit) {
     val data = (w.data as? InsightWidgetData.MermaidDiagram) ?: return EmptyWidget()
-    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = w.kind.displayName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
         Spacer(modifier = Modifier.height(4.dp))
         Text(text = data.source.take(200) + if (data.source.length > 200) "..." else "",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)
-    }
-}
-
-// ─── ASCII Card ────────────────────────────────────────────────────────────────
-
-@Composable
-private fun ScatterRenderer(w: InsightWidget, theme: InsightTheme, onCite: (InsightCitation) -> Unit) {
-    val data = (w.data as? InsightWidgetData.Scatter) ?: return PlaceholderWidget(w)
-    val colors = InsightsColors.accentsFor(theme)
-    // Simplified scatter: render points as a labeled list until Vico integration
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(text = "${data.xAxisLabel} vs ${data.yAxisLabel}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        data.points.take(10).forEachIndexed { idx, point ->
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(6.dp).clip(CircleShape).coloredCircle(point.colorHex?.let { parseColor(it) } ?: colors.getOrElse(idx % colors.size) { colors[0] }))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(text = point.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(text = formatValue(point.x, data.xFormat), style = MaterialTheme.typography.labelSmall)
-                Text(text = " × ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(text = formatValue(point.y, data.yFormat), style = MaterialTheme.typography.labelSmall)
-            }
-        }
     }
 }
 

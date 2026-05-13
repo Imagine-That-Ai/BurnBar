@@ -210,6 +210,7 @@ private actor PixelClockExternalAgentActivityScanCache {
 final class PixelClockController {
     static let awtrixLightFlasherURL = "https://blueforcer.github.io/awtrix3/#/flasher"
     private static let logger = Logger(subsystem: "com.openburnbar.app", category: "PixelClock")
+    private static let sentinelRepublishInterval: TimeInterval = 5 * 60
 
     private let settingsManager: SettingsManager
     private let quotaService: ProviderQuotaService?
@@ -232,6 +233,7 @@ final class PixelClockController {
     /// the device would still answer Left/Right with stale openburnbar_btn_*
     /// pages from a previous run.
     private var lastSentinelHostSignature: String?
+    private var lastSentinelPublishedAt: Date = .distantPast
     /// Bumped each time a heartbeat push throws so diagnostics can distinguish
     /// a single reboot miss from a persistent connectivity failure.
     private var consecutivePushFailures: Int = 0
@@ -259,6 +261,7 @@ final class PixelClockController {
         lastPushedPayloadSignature = nil
         lastPushAt = .distantPast
         lastSentinelHostSignature = nil
+        lastSentinelPublishedAt = .distantPast
 
         let client = self.client
         let pushNow: @MainActor () async -> Void = { [weak self] in
@@ -296,22 +299,29 @@ final class PixelClockController {
             }
         }
 
-        // Input poll runs at 400 ms cadence so a hardware-button press feels
-        // immediate. We only poll when AWTRIX is reachable; on stock Ulanzi
-        // firmware (which lacks /api/stats.app semantics) and when the clock
-        // is unreachable, the loop sleeps a full second to avoid pegging the
-        // network on a device that can't answer.
+        // Input poll runs at 400 ms cadence when /api/stats returns an AWTRIX
+        // app name, so hardware-button sentinels are consumed immediately even
+        // if a stale probe status still says unreachable. Nil app names back
+        // off to one second, which keeps stock Ulanzi firmware and offline
+        // clocks from pegging the network.
         inputTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
                 let config = self.settingsManager.pixelClockConfig
-                guard config.enabled, config.lastProbeStatus == .awtrixReady else {
+                guard config.enabled else {
                     try? await Task.sleep(nanoseconds: 1_000_000_000)
                     continue
                 }
-                let appName = await self.client.currentAppName(config: config, timeout: 1.0)
+                let appName = await self.client.currentAppName(
+                    config: config,
+                    timeout: config.lastProbeStatus == .awtrixReady ? 1.0 : 2.0
+                )
+                if appName != nil, config.lastProbeStatus != .awtrixReady {
+                    self.updateProbeStatus(.awtrixReady)
+                }
                 await self.inputController?.ingest(currentAppName: appName, config: config)
-                try? await Task.sleep(nanoseconds: 400_000_000)
+                let sleep = appName == nil ? 1_000_000_000 : 400_000_000
+                try? await Task.sleep(nanoseconds: UInt64(sleep))
             }
         }
 
@@ -446,7 +456,9 @@ final class PixelClockController {
             return PixelClockSetupResult(
                 mode: .unreachable,
                 probeStatus: result.status,
-                message: "No Pixel Clock found at \(config.host). \(serialDiagnostics.setupGuidance)",
+                message: result.message == AWTRIXClient.localNetworkBlockedMessage
+                    ? result.message
+                    : "No Pixel Clock found at \(config.host). \(serialDiagnostics.setupGuidance)",
                 clockHost: config.host
             )
         case .unsupported, .error:
@@ -653,7 +665,8 @@ final class PixelClockController {
         lastPushAt = now
         lastPushedConfig = config
         lastPushedPayloadSignature = payloadSignature
-        await publishSentinelAppsIfNeeded(config: config)
+        await publishSentinelAppsIfNeeded(config: config, now: now)
+        try? await client.switchToApp(name: "\(PixelClockQuotaRenderer.appName)0", config: config)
         let runningProviderTokens = statuses
             .filter { $0.value == .running }
             .keys
@@ -663,12 +676,14 @@ final class PixelClockController {
         updateProbeStatus(.awtrixReady)
     }
 
-    private func publishSentinelAppsIfNeeded(config: PixelClockConfig) async {
+    private func publishSentinelAppsIfNeeded(config: PixelClockConfig, now: Date = Date()) async {
         let signature = "\(config.host.lowercased()):\(config.clampedPort)"
-        guard signature != lastSentinelHostSignature else { return }
+        let stale = now.timeIntervalSince(lastSentinelPublishedAt) >= Self.sentinelRepublishInterval
+        guard signature != lastSentinelHostSignature || stale else { return }
         do {
             try await client.pushSentinelApps(config: config)
             lastSentinelHostSignature = signature
+            lastSentinelPublishedAt = now
         } catch {
             Self.logger.error("Failed to publish Pixel Clock sentinel apps: \(error.localizedDescription, privacy: .public)")
         }

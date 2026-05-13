@@ -22,6 +22,10 @@
 	-->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
 	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
 	<!-- Firebase Auth (and other Firebase SDKs) use kSecUseDataProtectionKeychain on macOS; Keychain Sharing is required so the app can use that access group. https://firebase.google.com/docs/ios/troubleshooting-faq -->

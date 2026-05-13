@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 const {
   normalizeArtificialAnalysisModels,
   normalizeDesignArenaFixture,
+  normalizeDesignArenaModels,
   normalizeHuggingFaceLeaderboard,
 } = await import("../lib/modelLandscape.js");
 
@@ -49,7 +50,7 @@ const design = normalizeDesignArenaFixture({
     modelID: "claude-opus-4.7",
     provider: "Anthropic",
     taskCategory: "design",
-    score: 91,
+    elo: 1420,
     rank: 2,
   }],
 }, fetchedAt);
@@ -57,8 +58,47 @@ assert.equal(design.length, 1);
 assert.equal(design[0].source, "design_arena");
 assert.equal(design[0].providerID, "anthropic");
 assert.equal(design[0].freshness, "manual");
+assert.ok(design[0].score > 0 && design[0].score < 1);
 
-const encoded = JSON.stringify([...aa, ...terminal, ...design]);
+const designApi = normalizeDesignArenaModels({
+  data: [{
+    id: "gpt-5.4",
+    displayName: "GPT-5.4",
+    provider: "OpenAI",
+    openRouterId: "openai/gpt-5.4",
+    rankings: {
+      builders: {
+        website: {
+          elo: 1510,
+          rank: 1,
+          winRate: 73,
+          confidence: 94,
+          avgGenerationTimeMs: 26000,
+        },
+      },
+      text: {
+        conversation: {
+          elo: 1320,
+          rank: 8,
+          winRate: 61,
+          confidence: 88,
+          avgGenerationTimeMs: 14000,
+        },
+      },
+    },
+  }],
+}, fetchedAt);
+assert.equal(designApi.length, 2);
+assert.ok(designApi.every((row) => row.source === "design_arena"));
+assert.equal(designApi[0].modelID, "openai/gpt-5.4");
+assert.equal(designApi[0].providerID, "openai");
+assert.ok(designApi.some((row) => row.taskCategory === "coding"));
+assert.ok(designApi.some((row) => row.taskCategory === "general"));
+assert.ok(designApi.every((row) => row.score > 0 && row.score < 1));
+assert.ok(designApi.every((row) => row.latencySignal > 0 && row.latencySignal <= 1));
+assert.ok(designApi.every((row) => row.reliabilitySignal > 0 && row.reliabilitySignal <= 1));
+
+const encoded = JSON.stringify([...aa, ...terminal, ...design, ...designApi]);
 assert.equal(/api[_-]?key|bearer|cookie|secretVersionName/i.test(encoded), false);
 
 console.log("model landscape normalization ok");

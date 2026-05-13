@@ -76,6 +76,61 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         }
     }
 
+    public func analyze(
+        request: InsightAnalysisRequest,
+        platform: InsightAnalysisPlatform,
+        tools: InsightToolBroker?
+    ) async throws -> InsightAnalysisResult {
+        let startedAt = Date()
+        let prompt = InsightAnalysisModelPrompt()
+        let systemPrompt = prompt.systemPrompt(
+            for: request,
+            platform: platform,
+            strictSchema: false
+        )
+        let userPayload = try prompt.userPayload(for: request)
+        let userText = String(data: userPayload, encoding: .utf8) ?? ""
+
+        let body: [String: Any] = [
+            "model": request.selectedModel.modelID,
+            "max_tokens": 4096,
+            "system": systemPrompt + "\n\nSchema:\n" + InsightJSONSchema.analysisResultSchemaV1,
+            "messages": [
+                ["role": "user", "content": userText]
+            ],
+            "temperature": 0.2
+        ]
+
+        var url = baseURL
+        url.appendPathComponent("/v1/messages")
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.addValue(apiKey, forHTTPHeaderField: "x-api-key")
+        urlRequest.addValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        urlRequest.addValue("application/json", forHTTPHeaderField: "content-type")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await urlSession.data(for: urlRequest)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw InsightGatewayError.requestRejected(
+                modelID: request.selectedModel.modelID,
+                reason: "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)"
+            )
+        }
+        let usage = tokenUsage(
+            from: data,
+            request: request,
+            startedAt: startedAt,
+            completedAt: Date()
+        )
+        return try InsightAnalysisModelDecoder.decode(
+            from: data,
+            request: request,
+            platform: platform,
+            tokenUsage: usage
+        )
+    }
+
     private func runInvestigation(
         request: InsightInvestigateRequest,
         tools: InsightToolBroker?
@@ -216,6 +271,32 @@ public struct AnthropicInsightAdapter: InsightModelGateway {
         return .init(kind: kind, title: title, subtitle: subtitle,
                      spec: spec, dataBinding: binding,
                      rationale: rationale)
+    }
+
+    private func tokenUsage(
+        from data: Data,
+        request: InsightAnalysisRequest,
+        startedAt: Date,
+        completedAt: Date
+    ) -> InsightTokenUsage? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let usage = json["usage"] as? [String: Any] else {
+            return nil
+        }
+        let input = usage["input_tokens"] as? Int ?? 0
+        let output = usage["output_tokens"] as? Int ?? 0
+        let price = modelCatalog.first { $0.id == request.selectedModel.modelID }
+        let estimated = (Double(input) / 1_000_000.0) * (price?.inputCostPerMtoken ?? 0)
+            + (Double(output) / 1_000_000.0) * (price?.outputCostPerMtoken ?? 0)
+        return InsightTokenUsage(
+            providerKey: providerKey,
+            modelID: request.selectedModel.modelID,
+            inputTokens: input,
+            outputTokens: output,
+            estimatedCostUSD: estimated,
+            startedAt: startedAt,
+            completedAt: completedAt
+        )
     }
 
     public static func defaultBinding(for kind: InsightWidgetKind) -> InsightDataBinding {

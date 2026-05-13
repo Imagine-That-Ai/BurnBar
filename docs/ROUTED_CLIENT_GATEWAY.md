@@ -29,7 +29,9 @@ Current adapters:
 
 - Artificial Analysis API when `ARTIFICIAL_ANALYSIS_API_KEY` is configured.
 - Terminal-Bench via Hugging Face leaderboard data where available.
-- Design Arena via approved API/fixture support; no private dashboard scraping.
+- Design Arena via its documented `/api/v1/models` endpoint when
+  `DESIGN_ARENA_API_KEY` is configured, with `DESIGN_ARENA_FIXTURE_JSON` as
+  the cached/manual fallback; no private dashboard scraping.
 - Manual cached fixtures through `MODEL_LANDSCAPE_MANUAL_FIXTURES_JSON`.
 
 If a source has no configured key, stable public endpoint, or fixture, the job
@@ -37,6 +39,12 @@ writes an `unavailable` source status instead of scraping brittle pages.
 Attribution is stored with each normalized source. No raw provider keys, cookies,
 bearer tokens, or auth material are written to benchmark snapshots or routing
 decision events.
+
+Production deploys bind `ARTIFICIAL_ANALYSIS_API_KEY` through Firebase Secret
+Manager on the scheduled function. Operators can set optional non-bound source
+inputs such as `DESIGN_ARENA_API_KEY`, `DESIGN_ARENA_FIXTURE_JSON`, and
+`MODEL_LANDSCAPE_MANUAL_FIXTURES_JSON` through the normal Cloud Functions
+runtime environment when those sources are approved for the project.
 
 ## Two routing pools (wire-format boundary)
 

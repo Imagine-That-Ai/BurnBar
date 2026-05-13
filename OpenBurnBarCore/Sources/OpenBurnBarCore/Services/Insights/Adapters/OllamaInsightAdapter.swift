@@ -19,13 +19,16 @@ public struct OllamaInsightAdapter: InsightModelGateway {
     public let baseURL: URL
     public let urlSession: URLSession
     public let modelCatalog: [InsightCatalogModel]
+    public let numPredict: Int
 
     public init(baseURL: URL = URL(string: "http://127.0.0.1:11434")!,
                 urlSession: URLSession = .shared,
-                modelCatalog: [InsightCatalogModel] = []) {
+                modelCatalog: [InsightCatalogModel] = [],
+                numPredict: Int = 1400) {
         self.baseURL = baseURL
         self.urlSession = urlSession
         self.modelCatalog = modelCatalog
+        self.numPredict = numPredict
     }
 
     public func availableModels() async throws -> [InsightCatalogModel] {
@@ -69,6 +72,55 @@ public struct OllamaInsightAdapter: InsightModelGateway {
         }
     }
 
+    public func analyze(
+        request: InsightAnalysisRequest,
+        platform: InsightAnalysisPlatform,
+        tools: InsightToolBroker?
+    ) async throws -> InsightAnalysisResult {
+        let startedAt = Date()
+        let prompt = InsightAnalysisModelPrompt()
+        let system = prompt.systemPrompt(for: request, platform: platform, strictSchema: false)
+        let payload = try prompt.userPayload(for: request)
+        let userText = String(data: payload, encoding: .utf8) ?? ""
+
+        let body: [String: Any] = [
+            "model": request.selectedModel.modelID,
+            "messages": [
+                ["role": "system", "content": system + "\n\nSchema:\n" + InsightJSONSchema.analysisResultSchemaV1],
+                ["role": "user", "content": userText]
+            ],
+            "format": "json",
+            "stream": false,
+            "think": false,
+            "options": [
+                "temperature": 0.2,
+                "num_predict": numPredict
+            ]
+        ]
+
+        var url = baseURL
+        url.appendPathComponent("/api/chat")
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await urlSession.data(for: urlRequest)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw InsightGatewayError.requestRejected(
+                modelID: request.selectedModel.modelID,
+                reason: "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)"
+            )
+        }
+        let usage = tokenUsage(from: data, request: request, startedAt: startedAt, completedAt: Date())
+        return try InsightAnalysisModelDecoder.decode(
+            from: data,
+            request: request,
+            platform: platform,
+            tokenUsage: usage
+        )
+    }
+
     private func runInvestigation(request: InsightInvestigateRequest) async throws -> InsightCanvas {
         let promptEngine = InsightPromptEngine()
         let tier = capabilities.bestTier(requested: request.capabilityTier)
@@ -83,7 +135,12 @@ public struct OllamaInsightAdapter: InsightModelGateway {
                 ["role": "user", "content": userText]
             ],
             "format": "json",
-            "stream": false
+            "stream": false,
+            "think": false,
+            "options": [
+                "temperature": 0.2,
+                "num_predict": numPredict
+            ]
         ]
 
         var url = baseURL
@@ -111,5 +168,27 @@ public struct OllamaInsightAdapter: InsightModelGateway {
         return try AnthropicInsightAdapter.decodeCanvas(from: data,
                                                         fallbackTitle: "Ollama canvas",
                                                         modelTag: request.modelTag)
+    }
+
+    private func tokenUsage(
+        from data: Data,
+        request: InsightAnalysisRequest,
+        startedAt: Date,
+        completedAt: Date
+    ) -> InsightTokenUsage? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        let input = json["prompt_eval_count"] as? Int ?? 0
+        let output = json["eval_count"] as? Int ?? 0
+        return InsightTokenUsage(
+            providerKey: providerKey,
+            modelID: request.selectedModel.modelID,
+            inputTokens: input,
+            outputTokens: output,
+            estimatedCostUSD: 0,
+            startedAt: startedAt,
+            completedAt: completedAt
+        )
     }
 }

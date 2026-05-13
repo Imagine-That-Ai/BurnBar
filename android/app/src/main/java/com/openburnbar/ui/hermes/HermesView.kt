@@ -52,7 +52,13 @@ fun HermesView(
     val availableModels by hermesService.availableModels.collectAsState()
     val runtimeInfo by hermesService.runtimeInfo.collectAsState()
 
+    val historyStore = remember(context) {
+        com.openburnbar.data.assistants.AssistantChatHistoryStore.shared(context.applicationContext)
+    }
+
     LaunchedEffect(Unit) {
+        hermesService.bindHistoryStore(historyStore)
+        historyStore.bootstrap()
         hermesService.setChatTilePreferences(tilePrefs)
         hermesService.connect()
     }

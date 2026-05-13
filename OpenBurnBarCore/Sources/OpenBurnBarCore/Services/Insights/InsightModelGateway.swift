@@ -53,6 +53,17 @@ public protocol InsightModelGateway: Sendable {
         request: InsightInvestigateRequest,
         tools: InsightToolBroker?
     ) -> AsyncThrowingStream<InsightInvestigateEvent, Error>
+
+    /// Produce a structured analysis result. Gateways that support JSON mode
+    /// should override this and ask the provider for
+    /// `InsightJSONSchema.analysisResultSchemaV1`. The default bridge keeps
+    /// older canvas-only adapters usable by converting the generated canvas
+    /// into the shared analysis contract.
+    func analyze(
+        request: InsightAnalysisRequest,
+        platform: InsightAnalysisPlatform,
+        tools: InsightToolBroker?
+    ) async throws -> InsightAnalysisResult
 }
 
 /// One model in the picker catalog.
@@ -79,5 +90,61 @@ public struct InsightCatalogModel: Codable, Hashable, Sendable, Identifiable {
         self.inputCostPerMtoken = inputCostPerMtoken
         self.outputCostPerMtoken = outputCostPerMtoken
         self.symbolName = symbolName
+    }
+}
+
+public extension InsightModelGateway {
+    func analyze(
+        request: InsightAnalysisRequest,
+        platform: InsightAnalysisPlatform,
+        tools: InsightToolBroker?
+    ) async throws -> InsightAnalysisResult {
+        let canvasRequest = InsightInvestigateRequest(
+            prompt: request.prompt,
+            digest: request.context.digest,
+            canvas: request.currentCanvas,
+            modelTag: request.selectedModel,
+            capabilityTier: capabilities.supportsStrictJSONSchema ? .strictJSONSchema : .jsonObject,
+            maxNewWidgets: request.maxGeneratedWidgets,
+            allowToolCalls: false,
+            instruction: request.instruction.asInvestigationInstruction
+        )
+        var finalCanvas: InsightCanvas?
+        var tokenUsage: InsightTokenUsage?
+        for try await event in investigate(request: canvasRequest, tools: tools) {
+            switch event {
+            case .finalCanvas(let canvas):
+                finalCanvas = canvas
+            case .partialCanvas(let canvas):
+                finalCanvas = canvas
+            case .usage(let usage):
+                tokenUsage = usage
+            default:
+                break
+            }
+        }
+        guard let finalCanvas else {
+            throw InsightGatewayError.malformedResponse(
+                modelID: request.selectedModel.modelID,
+                detail: "gateway did not return a canvas or analysis result"
+            )
+        }
+        return InsightAnalysisModelDecoder.resultFromCanvas(
+            finalCanvas,
+            request: request,
+            platform: platform,
+            tokenUsage: tokenUsage
+        )
+    }
+}
+
+private extension InsightAnalysisRequest.Instruction {
+    var asInvestigationInstruction: InsightInvestigateRequest.Instruction {
+        switch self {
+        case .defaultBrief: return .composeCanvas
+        case .answerFollowUp: return .explainBriefly
+        case .generateReport: return .composeCanvas
+        case .updateCanvas: return .refineCanvas
+        }
     }
 }

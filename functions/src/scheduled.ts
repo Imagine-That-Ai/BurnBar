@@ -12,6 +12,7 @@
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getFirestore } from "firebase-admin/firestore";
+import { defineSecret } from "firebase-functions/params";
 import { getConfig } from "./config.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 import { computeUserRollupsFromCounters, writeUserRollups } from "./rollups.js";
@@ -24,6 +25,8 @@ import {
   writeModelLandscapeBenchmarks,
 } from "./modelLandscape.js";
 import type { Provider } from "./types.js";
+
+const ARTIFICIAL_ANALYSIS_API_KEY = defineSecret("ARTIFICIAL_ANALYSIS_API_KEY");
 
 /**
  * Scheduled worker: rebuild dirty usage rollups.
@@ -211,10 +214,18 @@ export const refreshModelLandscapeBenchmarks = onSchedule(
   {
     schedule: "every 24 hours",
     region: "us-central1",
+    secrets: [ARTIFICIAL_ANALYSIS_API_KEY],
   },
   async (_event) => {
     const db = getFirestore();
-    const result = await collectModelLandscapeBenchmarks(process.env, new Date());
+    const result = await collectModelLandscapeBenchmarks(
+      {
+        ...process.env,
+        ARTIFICIAL_ANALYSIS_API_KEY: ARTIFICIAL_ANALYSIS_API_KEY.value()
+          || process.env.ARTIFICIAL_ANALYSIS_API_KEY,
+      },
+      new Date()
+    );
     await writeModelLandscapeBenchmarks(db, result);
   }
 );

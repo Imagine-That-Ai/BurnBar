@@ -6,10 +6,12 @@
 
 ## What it is
 
-Insights is OpenBurnBar's analytics workbench. You pick a model — Claude,
-GPT-5, Hermes, Pi, Ollama, or the always-available local rule engine — and
-it investigates, summarizes, and recommends across your AI-coding-agent
-activity.
+Insights is OpenBurnBar's analytics workbench. It now starts with an
+**Intelligence Brief**: a structured analysis of what changed, why it
+matters, which evidence supports it, and what to do next. You pick a model
+family — Codex, Claude, MiniMax, Z.ai, Kimi, Hermes, Ollama/local, or the
+always-available local rule engine — and Insights investigates, summarizes,
+and recommends across your AI-coding-agent activity.
 
 Each "canvas" is a persistent dashboard composed of typed widgets. The
 canvas lives on disk (with optional cloud sync), survives app restarts, merges
@@ -22,9 +24,11 @@ Markdown.
 
 1. Open OpenBurnBar and click the new **Insights** entry in the dashboard
    sidebar.
-2. The first-run gallery is the **Today** template — a daily snapshot
-   composed entirely from on-device data. Nothing has been sent anywhere.
-3. To investigate, type a prompt in the composer at the bottom of the
+2. The first screen is an **Intelligence Brief**, not a telemetry dashboard.
+   It shows the top findings, biggest spend driver, quota/provider risk,
+   evidence citations, follow-up questions, and one generated supporting
+   chart.
+3. To investigate further, type a prompt in the composer at the bottom of the
    canvas and hit ⌘ Return. The model dropdown above the composer lets you
    pick which model authors the canvas.
 
@@ -36,8 +40,38 @@ macOS, projected to fit.
 
 ### iPhone
 
-The Insights tab lives between Burn and Streams. Widgets stack
-single-column. Long-press a canvas in the bottom-sheet library to reorder.
+The Insights tab lives between Burn and Streams. Widgets stack single-column.
+Long-press a canvas in the bottom-sheet library to reorder.
+
+### Android
+
+The Android Insights screen reads Firestore rollups/quota snapshots directly
+and uses the same structured `InsightAnalysisResult` contract as iOS and
+macOS; demo fixture data is no longer the production path. Its composer shows
+the selected analysis model, persists that selection, and can run local-only
+through the rule engine or Ollama where available.
+
+## Intelligence contract
+
+Every analysis run is structured JSON, not freeform prose. The shared
+contract is:
+
+- `InsightAnalysisRequest`
+- `InsightAnalysisContext`
+- `InsightAnalysisResult`
+- `InsightFinding`
+- `InsightAnomaly`
+- `InsightRecommendation`
+- `InsightCitation`
+- `InsightGeneratedWidget`
+- `InsightFollowUpQuestion`
+- `InsightAnalysisAuditEntry`
+
+Each platform builds a compact, LLM-safe context plus a richer local
+evidence index. The context includes a budget report with encoded bytes,
+estimated prompt tokens, included sources, and truncation notes. Findings
+must carry evidence, confidence, severity, and a recommended action; generated
+widgets keep citations back to source data.
 
 ## Widget catalog
 
@@ -88,18 +122,31 @@ Eight ready-to-go canvases ship with the app:
 
 ## Model picker
 
-Available adapters:
+Available families:
 
 - **Local rules** (default, on-device, $0)
+- **Codex** (user credentials or Hermes-advertised route)
 - **Anthropic** (Claude Opus 4.7 / Sonnet 4.6 / Haiku 4.5; user's API key)
+- **MiniMax**
+- **Z.ai**
+- **Kimi**
 - **OpenAI** (GPT-5, GPT-5 mini; user's API key)
 - **OpenRouter** (any model; user's API key)
 - **Hermes** (your existing relay)
 - **Pi** (local Pi runtime)
 - **Ollama** (local)
 
-The picker is sorted with `localOnly` first. Each chip shows an egress
-tier badge so you always know where data is going.
+The picker is sorted with `localOnly` first. Each chip shows an egress tier
+badge so you always know where data is going. Insights uses the user's
+configured provider credentials or local runtime; it does not route analysis
+through OpenBurnBar-owned model accounts. The composer shows the selected
+model before analysis and records that model in the audit log.
+
+On macOS, OpenBurnBar registers user-key gateways for OpenAI/Codex, Claude,
+MiniMax, Z.ai, and Kimi when those credentials are already configured in the
+app/keychain or exported in the local environment, plus Ollama/local. iOS,
+iPadOS, and Android use the same preference and audit contract while staying
+inside their mobile-safe data and credential surfaces.
 
 ## Privacy
 
@@ -117,9 +164,10 @@ non-local model:
 Toggle **Privacy mode** in the composer or in Settings → Insights to
 restrict the model picker to `localOnly` adapters.
 
-Every investigation writes to a local audit log
+Every investigation and analysis run writes to a local audit log
 (`~/Library/Application Support/OpenBurnBar/Insights/audit.jsonl`) with
-prompt, model, egress tier, byte count, and cost.
+prompt, model, egress tier, byte count, source budget, truncation summary,
+result hash, and cost where available.
 
 ## Workspace controls (macOS)
 

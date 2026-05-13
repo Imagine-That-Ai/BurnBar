@@ -18,8 +18,13 @@ final class InsightsStore {
     var composerPrompt: String = ""
     var composerError: String?
     var modelCatalog: [InsightCatalogModel] = []
-    var selectedModelTag: InsightModelTag
-    var privacyMode: Bool = false
+    var selectedModelTag: InsightModelTag {
+        didSet { persistModelPreference() }
+    }
+    var privacyMode: Bool = false {
+        didSet { persistModelPreference() }
+    }
+    var currentAnalysis: InsightAnalysisResult?
 
     let dataSource: InsightDataSource
     let store: InsightCanvasStore
@@ -30,6 +35,8 @@ final class InsightsStore {
     let toolBroker: InsightToolBroker
     let executor: InsightExecutor
     let digestBuilder: InsightDigestBuilder
+    let aggregator: InsightAggregator
+    let analysisEngine: MobileInsightAnalysisEngine
 
     init(dataSource: InsightDataSource) throws {
         self.dataSource = dataSource
@@ -42,21 +49,33 @@ final class InsightsStore {
         self.catalog = catalog
         self.executor = InsightExecutor()
         self.digestBuilder = InsightDigestBuilder()
-        self.toolBroker = InsightToolBroker(dataSource: dataSource)
+        self.aggregator = InsightAggregator(digestBuilder: digestBuilder)
+        let broker = InsightToolBroker(dataSource: dataSource)
+        self.toolBroker = broker
+        self.analysisEngine = MobileInsightAnalysisEngine(
+            platform: .iOS,
+            auditLog: InsightAnalysisAuditLog(fileURL: dir.appendingPathComponent("analysis-audit.jsonl")),
+            cache: InsightAnalysisCache(directoryURL: dir.appendingPathComponent("analysis-cache", isDirectory: true)),
+            catalog: catalog,
+            toolBroker: broker
+        )
         self.investigation = InsightInvestigation(
             catalog: catalog,
             cache: cache,
             auditLog: auditLog,
             toolBroker: toolBroker
         )
-        self.selectedModelTag = .init(
+        let fallbackModel = InsightModelTag(
             providerKey: "local-rules",
             modelID: "local-rules-v1",
             displayName: "Local rules",
             egressTier: .localOnly
         )
+        let saved = Self.loadModelPreference(defaults: .standard)
+        self.selectedModelTag = saved.explicitModel ?? fallbackModel
+        self.privacyMode = saved.restrictToLocalOnly
         Task {
-            await catalog.register(LocalRuleBasedAdapter())
+            await registerAvailableAnalysisGateways()
             await refreshCatalog()
             await loadInitial()
         }
@@ -69,18 +88,43 @@ final class InsightsStore {
 
     func refreshCatalog() async {
         modelCatalog = await catalog.allModels(refresh: true)
+        applyAutomaticModelSelectionIfNeeded()
     }
 
     func loadInitial() async {
         let existing = await store.allCanvases()
         if existing.isEmpty {
-            let template = MobileInsightsTemplates.today
-            let canvas = template.instantiate()
-            try? await store.upsert(canvas)
+            await seedInitialAnalysisCanvas()
         }
         canvases = await store.allCanvases()
         if selectedCanvasID == nil { selectedCanvasID = canvases.first?.id }
         await refreshSelectedCanvas()
+    }
+
+    private func seedInitialAnalysisCanvas() async {
+        let filter = InsightFilter(window: .last7d)
+        do {
+            let snapshot = try await dataSource.snapshot(window: filter.window.interval())
+            let result = try await runAnalysis(
+                prompt: "Generate the default mobile Insights intelligence brief.",
+                snapshot: snapshot,
+                filter: filter,
+                canvas: nil,
+                instruction: .defaultBrief
+            )
+            currentAnalysis = result
+            let canvas = RuleBasedInsightAnalysisEngine.materializeCanvas(
+                from: result,
+                prompt: "Default intelligence brief"
+            )
+            try? await store.upsert(canvas)
+            selectedCanvasID = canvas.id
+        } catch {
+            let template = MobileInsightsTemplates.today
+            var canvas = template.instantiate()
+            canvas.modelTag = selectedModelTag
+            try? await store.upsert(canvas)
+        }
     }
 
     func refreshSelectedCanvas() async {
@@ -106,6 +150,18 @@ final class InsightsStore {
         canvas.lastRefreshedAt = Date()
         try? await store.upsert(canvas)
         canvases = await store.allCanvases()
+
+        do {
+            currentAnalysis = try await runAnalysis(
+                prompt: "Refresh the mobile Insights intelligence brief.",
+                snapshot: snapshot,
+                filter: canvas.filter,
+                canvas: canvas,
+                instruction: .defaultBrief
+            )
+        } catch {
+            composerError = error.localizedDescription
+        }
     }
 
     func compose(prompt: String) async {
@@ -122,58 +178,128 @@ final class InsightsStore {
             composerError = error.localizedDescription
             return
         }
-        let digest: InsightDigest
         do {
-            digest = try digestBuilder.build(
-                from: snapshot,
-                filter: currentCanvas?.filter ?? InsightFilter(window: .last7d)
+            let filter = currentCanvas?.filter ?? InsightFilter(window: .last7d)
+            let result = try await runAnalysis(
+                prompt: prompt,
+                snapshot: snapshot,
+                filter: filter,
+                canvas: currentCanvas,
+                instruction: .answerFollowUp
             )
-        } catch {
-            composerError = error.localizedDescription
-            return
-        }
-        let request = InsightInvestigateRequest(
-            prompt: prompt,
-            digest: digest,
-            canvas: currentCanvas,
-            modelTag: selectedModelTag,
-            capabilityTier: .strictJSONSchema,
-            instruction: currentCanvas == nil ? .composeCanvas : .refineCanvas
-        )
-        await investigation.updateConfiguration(.init(privacyModeRestrictsToLocal: privacyMode))
-        do {
-            for try await event in await investigation.run(request) {
-                switch event {
-                case .partialCanvas(let partial):
-                    var updated = partial
-                    updated.modelTag = selectedModelTag
-                    try? await store.upsert(updated)
-                    selectedCanvasID = updated.id
-                    canvases = await self.store.allCanvases()
-                case .widgetReady(let widget):
-                    if var canvas = currentCanvas {
-                        if canvas.widgets.contains(where: { $0.id == widget.id }) {
-                            canvas.replace(widget)
-                        } else {
-                            canvas.add(widget)
-                        }
-                        try? await self.store.upsert(canvas)
-                        canvases = await self.store.allCanvases()
-                    }
-                case .finalCanvas(let final):
-                    var updated = final
-                    updated.modelTag = selectedModelTag
-                    try? await self.store.upsert(updated)
-                    selectedCanvasID = updated.id
-                default:
-                    break
-                }
-            }
+            currentAnalysis = result
+            let canvas = RuleBasedInsightAnalysisEngine.materializeCanvas(from: result, prompt: prompt)
+            try? await store.upsert(canvas)
+            selectedCanvasID = canvas.id
             canvases = await self.store.allCanvases()
             await refreshSelectedCanvas()
         } catch {
             composerError = error.localizedDescription
         }
+    }
+
+    private func runAnalysis(
+        prompt: String,
+        snapshot: InsightDataSnapshot,
+        filter: InsightFilter,
+        canvas: InsightCanvas?,
+        instruction: InsightAnalysisRequest.Instruction
+    ) async throws -> InsightAnalysisResult {
+        let context = try aggregator.buildContext(
+            snapshot: snapshot,
+            filter: filter,
+            includedDataSources: [
+                "firestore_rollups",
+                "mobile_rollups",
+                "quota_snapshots",
+                "provider_summaries",
+                "model_summaries",
+                "chart_studio_refs",
+                "prior_insight_runs",
+                "audit_history"
+            ],
+            priorRunSummaries: try await recentAnalysisSummaries()
+        )
+        let request = InsightAnalysisRequest(
+            prompt: prompt,
+            context: context,
+            currentCanvas: canvas,
+            selectedModel: selectedModelTag,
+            instruction: instruction,
+            allowDeepTranscriptAnalysis: false,
+            maxGeneratedWidgets: 6
+        )
+        await analysisEngine.updateConfiguration(.init(
+            privacyModeRestrictsToLocal: privacyMode,
+            failWhenSelectedGatewayUnavailable: true
+        ))
+        let result = try await analysisEngine.analyze(request)
+        try? await auditLog.append(.init(
+            id: result.auditID ?? UUID(),
+            canvasID: canvas?.id,
+            prompt: prompt,
+            modelTag: selectedModelTag,
+            egressTier: selectedModelTag.egressTier,
+            digestBytes: context.budgetReport.encodedBytes,
+            digestContentHash: context.digest.contentHash,
+            instruction: "analysis.\(instruction.rawValue)",
+            tokenUsage: result.tokenUsage,
+            completedAt: result.generatedAt,
+            status: .succeeded
+        ))
+        return result
+    }
+
+    private func registerAvailableAnalysisGateways() async {
+        await catalog.register(LocalRuleBasedAdapter())
+        await catalog.register(OllamaInsightAdapter())
+    }
+
+    private func applyAutomaticModelSelectionIfNeeded() {
+        let preference = Self.loadModelPreference(defaults: .standard)
+        guard preference.mode == .automatic else { return }
+        let available = privacyMode
+            ? modelCatalog.filter { $0.egressTier == .localOnly }
+            : modelCatalog
+        let preferred = available.first { $0.providerKey == "hermes" }
+            ?? available.first { $0.providerKey == "ollama" }
+            ?? available.first { $0.providerKey == "local-rules" }
+        guard let preferred else { return }
+        selectedModelTag = .init(
+            providerKey: preferred.providerKey,
+            modelID: preferred.id,
+            displayName: preferred.displayName,
+            egressTier: preferred.egressTier
+        )
+    }
+
+    private func persistModelPreference() {
+        let preference = InsightModelPreference(
+            mode: selectedModelTag.providerKey == "local-rules" ? .automatic : .explicit,
+            explicitModel: selectedModelTag,
+            restrictToLocalOnly: privacyMode,
+            maxEgressTier: privacyMode ? .localOnly : nil,
+            deepTranscriptOptIn: false
+        )
+        guard let data = try? JSONEncoder().encode(preference) else { return }
+        UserDefaults.standard.set(data, forKey: Self.modelPreferenceDefaultsKey)
+    }
+
+    private static let modelPreferenceDefaultsKey = "insights.modelPreference.v1"
+
+    private static func loadModelPreference(defaults: UserDefaults) -> InsightModelPreference {
+        guard let data = defaults.data(forKey: modelPreferenceDefaultsKey),
+              let preference = try? JSONDecoder().decode(InsightModelPreference.self, from: data)
+        else {
+            return .default
+        }
+        return preference
+    }
+
+    private func recentAnalysisSummaries() async throws -> [String] {
+        try await auditLog.readAll(limit: 10)
+            .filter { $0.instruction.hasPrefix("analysis.") }
+            .map { "\($0.startedAt.formatted(date: .abbreviated, time: .shortened)): \($0.instruction) via \($0.modelTag.displayName)" }
     }
 
     func createCanvas(from template: InsightCanvasTemplate) async {

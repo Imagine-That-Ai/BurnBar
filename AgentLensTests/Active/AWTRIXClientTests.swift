@@ -35,6 +35,46 @@ final class AWTRIXClientTests: XCTestCase {
         XCTAssertEqual(result.message, "AWTRIX HTTP API is ready at 192.168.68.92.")
     }
 
+    func testProbeExplainsMacOSLocalNetworkBlock() async {
+        AWTRIXStubURLProtocol.handler = { _ in
+            throw NSError(
+                domain: NSURLErrorDomain,
+                code: NSURLErrorNotConnectedToInternet,
+                userInfo: ["_NSURLErrorNWPathKey": "unsatisfied (Local network prohibited)"]
+            )
+        }
+
+        let result = await AWTRIXClient(session: session).probe(config: .enabledTestClock)
+
+        XCTAssertEqual(result.status, .unreachable)
+        XCTAssertEqual(result.message, AWTRIXClient.localNetworkBlockedMessage)
+    }
+
+    func testPushCustomAppThrowsFriendlyMacOSLocalNetworkBlock() async throws {
+        AWTRIXStubURLProtocol.handler = { _ in
+            throw NSError(
+                domain: NSURLErrorDomain,
+                code: NSURLErrorNotConnectedToInternet,
+                userInfo: ["_NSURLErrorNWPathKey": "unsatisfied (Local network prohibited)"]
+            )
+        }
+
+        do {
+            try await AWTRIXClient(session: session).pushCustomApp(
+                pages: [["text": "test"]],
+                config: .enabledTestClock
+            )
+            XCTFail("Expected local network blocked error")
+        } catch AWTRIXClient.ClientError.localNetworkBlocked {
+            XCTAssertEqual(
+                AWTRIXClient.ClientError.localNetworkBlocked.localizedDescription,
+                AWTRIXClient.localNetworkBlockedMessage
+            )
+        } catch {
+            XCTFail("Expected local network blocked error, got \(error)")
+        }
+    }
+
     func testProbeDoesNotTreatGenericStatsJSONAsAWTRIX() async {
         AWTRIXStubURLProtocol.handler = { request in
             if request.url?.path == "/api/stats" {
@@ -188,6 +228,37 @@ final class AWTRIXClientTests: XCTestCase {
         ])
     }
 
+    func testPushSentinelAppsKeepsHardwareButtonTargetsAlive() async throws {
+        var seenRequests: [(url: String, body: Data)] = []
+        AWTRIXStubURLProtocol.handler = { request in
+            XCTAssertEqual(request.httpMethod, "POST")
+            seenRequests.append((
+                request.url?.absoluteString ?? "",
+                request.httpBody ?? request.bodyStreamData() ?? Data()
+            ))
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                Data()
+            )
+        }
+
+        try await AWTRIXClient(session: session).pushSentinelApps(config: .enabledTestClock)
+
+        XCTAssertEqual(seenRequests.map(\.url), [
+            "http://192.168.68.92/api/custom?name=openburnbar_btn_right",
+            "http://192.168.68.92/api/custom?name=openburnbar_btn_select",
+            "http://192.168.68.92/api/custom?name=openburnbar_btn_left"
+        ])
+        for request in seenRequests {
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: request.body) as? [String: Any])
+            XCTAssertEqual(json["duration"] as? Int, 1)
+            XCTAssertGreaterThanOrEqual(try XCTUnwrap(json["lifetime"] as? Int), 900)
+            XCTAssertEqual(json["save"] as? Bool, false)
+            XCTAssertEqual(json["noScroll"] as? Bool, true)
+            XCTAssertNotNil(json["draw"])
+        }
+    }
+
     func testTestNotifyIncludesCompletionSoundWhenProvided() async throws {
         AWTRIXStubURLProtocol.handler = { request in
             XCTAssertEqual(request.url?.absoluteString, "http://192.168.68.92/api/notify")
@@ -319,7 +390,7 @@ final class AWTRIXClientTests: XCTestCase {
         )
     }
 
-    func testDisableAwtrixNativeAppsPostsAllStockAppFlagsOff() async throws {
+    func testDisableAwtrixNativeAppsPostsAllStockAppFlagsOffAndKeepsButtonNavigationManual() async throws {
         AWTRIXStubURLProtocol.handler = { request in
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.url?.absoluteString, "http://192.168.68.92/api/settings")
@@ -332,6 +403,8 @@ final class AWTRIXClientTests: XCTestCase {
             XCTAssertEqual(json?["HUM"], false)
             XCTAssertEqual(json?["TEMP"], false)
             XCTAssertEqual(json?["BAT"], false)
+            XCTAssertEqual(json?["ATRANS"], false)
+            XCTAssertEqual(json?["BLOCKN"], false)
             return (
                 HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
                 Data()

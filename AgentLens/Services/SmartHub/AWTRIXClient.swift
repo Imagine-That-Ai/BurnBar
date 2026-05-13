@@ -4,12 +4,17 @@ import OpenBurnBarCore
 // MARK: - AWTRIX HTTP Client
 
 struct AWTRIXClient: @unchecked Sendable {
+    private static let minimumCustomAppLifetimeSeconds = 900
+    private static let sentinelPublishOrder: [SentinelApp] = [.right, .select, .left]
+
     /// AWTRIX names the BurnBar custom app `openburnbar0` (see
-    /// `pushCustomApp`). The sentinel apps are short-lived sibling apps used
+    /// `pushCustomApp`). The sentinel apps are durable sibling apps used
     /// purely for input detection: when the user taps Left/Right on the
-    /// device, AWTRIX rotates the carousel to one of these names, the input
-    /// loop notices the change in `/api/stats.app`, fires the bound action,
-    /// and immediately switches the device back to `openburnbar0`.
+    /// device, AWTRIX navigates to one of these names, the input loop notices
+    /// the change in `/api/stats.app`, fires the bound action, and immediately
+    /// switches the device back to `openburnbar0`. OpenBurnBar disables
+    /// AWTRIX auto-rotation while leaving physical navigation unblocked so
+    /// sentinels are reached by button presses, not by idle carousel cycling.
     enum SentinelApp: String, CaseIterable {
         case left
         case select
@@ -38,6 +43,7 @@ struct AWTRIXClient: @unchecked Sendable {
         case invalidBaseURL
         case invalidResponse
         case httpStatus(Int)
+        case localNetworkBlocked
 
         var errorDescription: String? {
             switch self {
@@ -47,9 +53,13 @@ struct AWTRIXClient: @unchecked Sendable {
                 return "Pixel Clock returned an invalid response."
             case .httpStatus(let status):
                 return "Pixel Clock returned HTTP \(status)."
+            case .localNetworkBlocked:
+                return AWTRIXClient.localNetworkBlockedMessage
             }
         }
     }
+
+    static let localNetworkBlockedMessage = "macOS is blocking OpenBurnBar from local devices. Open System Settings, go to Privacy & Security > Local Network, and turn on OpenBurnBar."
 
     private let session: URLSession
 
@@ -236,6 +246,9 @@ struct AWTRIXClient: @unchecked Sendable {
                 let message = await stockUlanziMessage(config: config, timeout: timeout)
                 return ProbeResult(status: .stockUlanziFirmware, message: message)
             }
+            if Self.isLocalNetworkBlocked(error) {
+                return ProbeResult(status: .unreachable, message: Self.localNetworkBlockedMessage)
+            }
             return ProbeResult(status: .unreachable, message: error.localizedDescription)
         }
     }
@@ -288,12 +301,16 @@ struct AWTRIXClient: @unchecked Sendable {
 
     /// Registers small placeholder custom apps so the device's Left/Right
     /// arrow keys have a unique app name to land on. These pages are dim
-    /// arrow glyphs with `lifetime: 1` so AWTRIX evicts them shortly after
-    /// the press is registered — the visual is a brief "tap registered"
-    /// flash before the input controller switches the device back to
-    /// `openburnbar0`.
+    /// arrow glyphs with a short display duration but a long custom-app
+    /// lifetime: the app must still exist when the user presses a hardware
+    /// button minutes later, otherwise AWTRIX just reloads/cycles the
+    /// `openburnbar0` page and the input controller never sees the sentinel.
     func pushSentinelApps(config: PixelClockConfig) async throws {
-        for sentinel in SentinelApp.allCases {
+        // AWTRIX app navigation commonly follows creation order. Publishing
+        // right/select/left after `openburnbar0` makes the physical Right key
+        // land on the right sentinel and the physical Left key wrap to the
+        // left sentinel.
+        for sentinel in Self.sentinelPublishOrder {
             let body = try JSONSerialization.data(
                 withJSONObject: sentinelPayload(for: sentinel, config: config),
                 options: []
@@ -357,11 +374,15 @@ struct AWTRIXClient: @unchecked Sendable {
             "text": "",
             "color": color,
             "duration": 1,
-            "lifetime": 1,
+            "lifetime": sentinelLifetimeSeconds(config: config),
             "save": false,
             "noScroll": true,
             "draw": arrow.map(\.awtrixObject)
         ]
+    }
+
+    private func sentinelLifetimeSeconds(config: PixelClockConfig) -> Int {
+        max(Self.minimumCustomAppLifetimeSeconds, config.clampedUpdateInterval * 4, 60)
     }
 
     func applyBrightnessIfNeeded(config: PixelClockConfig) async throws {
@@ -397,14 +418,19 @@ struct AWTRIXClient: @unchecked Sendable {
     }
 
     /// AWTRIX Light's built-in TIME/DATE/HUM/TEMP/BAT apps cycle
-    /// alongside whatever custom apps you push. Disable them via
-    /// `/api/settings` so only `openburnbar` shows on the clock.
+    /// alongside whatever custom apps you push. Disable them and stop
+    /// automatic app rotation via `/api/settings` so only OpenBurnBar drives
+    /// the visible frame cadence. Keep physical navigation unblocked because
+    /// the Left/Select/Right bindings depend on the device navigating to the
+    /// sentinel apps.
     func disableAwtrixNativeApps(config: PixelClockConfig) async throws {
         guard let url = endpoint(config: config, path: "/api/settings") else {
             throw ClientError.invalidBaseURL
         }
         let body = try JSONSerialization.data(
             withJSONObject: [
+                "ATRANS": false,
+                "BLOCKN": false,
                 "TIM": false,
                 "DAT": false,
                 "HUM": false,
@@ -417,7 +443,16 @@ struct AWTRIXClient: @unchecked Sendable {
     }
 
     private func sendJSON(url: URL, method: String, body: Data) async throws {
-        let (data, response) = try await session.data(for: request(url: url, method: method, body: body))
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request(url: url, method: method, body: body))
+        } catch {
+            if Self.isLocalNetworkBlocked(error) {
+                throw ClientError.localNetworkBlocked
+            }
+            throw error
+        }
         _ = data
         guard let http = response as? HTTPURLResponse else {
             throw ClientError.invalidResponse
@@ -430,7 +465,16 @@ struct AWTRIXClient: @unchecked Sendable {
     private func sendForm(url: URL, method: String, body: Data) async throws {
         var request = request(url: url, method: method, body: body)
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            if Self.isLocalNetworkBlocked(error) {
+                throw ClientError.localNetworkBlocked
+            }
+            throw error
+        }
         _ = data
         guard let http = response as? HTTPURLResponse else {
             throw ClientError.invalidResponse
@@ -449,6 +493,23 @@ struct AWTRIXClient: @unchecked Sendable {
         }
         let encodedForm: String = pairs.joined(separator: "&")
         return Data(encodedForm.utf8)
+    }
+
+    static func isLocalNetworkBlocked(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain,
+              nsError.code == NSURLErrorNotConnectedToInternet else {
+            return false
+        }
+        let values = nsError.userInfo.values.map { "\($0)" }
+        if values.contains(where: { $0.localizedCaseInsensitiveContains("local network prohibited") }) {
+            return true
+        }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+            let underlyingValues = underlying.userInfo.values.map { "\($0)" }
+            return underlyingValues.contains(where: { $0.localizedCaseInsensitiveContains("local network prohibited") })
+        }
+        return false
     }
 
     private func looksLikeStockUlanzi(config: PixelClockConfig, timeout: TimeInterval = 3) async -> Bool {

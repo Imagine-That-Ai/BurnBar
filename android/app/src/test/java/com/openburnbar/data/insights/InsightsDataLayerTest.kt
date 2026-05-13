@@ -1,8 +1,10 @@
 package com.openburnbar.data.insights
 
 import com.openburnbar.data.insights.services.InMemoryInsightDataSource
+import com.openburnbar.data.insights.services.InsightAggregator
 import com.openburnbar.data.insights.services.adapters.LocalRuleBasedAdapter
 import com.openburnbar.data.insights.services.InsightExecutor
+import com.openburnbar.data.insights.services.RuleBasedInsightAnalysisEngine
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -154,5 +156,48 @@ class InsightsDataLayerTest {
     @Test
     fun `digest has 24 KB max encoded bytes constant`() {
         assertEquals(24 * 1024, InsightDigest.MAX_ENCODED_BYTES)
+    }
+
+    @Test
+    fun `InsightAggregator builds budget and evidence index`() {
+        val context = InsightAggregator.buildContext(
+            digest = testDigest,
+            includedDataSources = listOf("firestore_rollups", "quota_snapshots", "provider_summaries")
+        )
+
+        assertTrue(context.budgetReport.encodedBytes > 0)
+        assertTrue(context.budgetReport.estimatedPromptTokens > 0)
+        assertTrue(context.evidenceIndex.any { it.source == "provider_summaries" })
+    }
+
+    @Test
+    fun `RuleBasedInsightAnalysisEngine returns structured result and canvas`() = runBlocking {
+        val context = InsightAggregator.buildContext(
+            digest = testDigest,
+            includedDataSources = listOf("firestore_rollups", "quota_snapshots", "provider_summaries")
+        )
+        val model = InsightModelTag(
+            providerKey = "local-rules",
+            modelID = "local-rules-v1",
+            displayName = "Local rules"
+        )
+        val request = InsightAnalysisRequest(
+            prompt = "Why did cost spike this week?",
+            context = context,
+            selectedModel = model,
+            instruction = InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP
+        )
+
+        val result = RuleBasedInsightAnalysisEngine(InsightAnalysisPlatform.ANDROID).analyze(request)
+        val canvas = RuleBasedInsightAnalysisEngine.materializeCanvas(result, request.prompt)
+
+        assertTrue(result.executiveSummary.isNotBlank())
+        assertTrue(result.findings.isNotEmpty())
+        assertTrue(result.findings.flatMap { it.evidence }.isNotEmpty())
+        assertTrue(result.generatedWidgets.isNotEmpty())
+        assertTrue(result.followUpQuestions.isNotEmpty())
+        assertTrue(result.resultHash.isNotBlank())
+        assertEquals(result.generatedWidgets.size, canvas.widgets.size)
+        assertEquals(model, canvas.modelTag)
     }
 }

@@ -15,6 +15,7 @@ import SwiftUI
 ///    `ScrollViewReader` proxy and focuses the bound `@FocusState` if a
 ///    focus id was supplied.
 @Observable
+@MainActor
 final class SettingsRouter {
 
     /// Free-form search query.
@@ -84,7 +85,8 @@ final class SettingsRouter {
 
     private func scheduleHighlightClear(for anchor: String, after seconds: TimeInterval) {
         let target = anchor
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             guard let self else { return }
             if self.highlightedAnchor == target { self.highlightedAnchor = nil }
         }

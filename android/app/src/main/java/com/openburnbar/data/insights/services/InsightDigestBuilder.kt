@@ -34,40 +34,83 @@ object InsightDigestBuilder {
     ): InsightDigest {
         val window = filter.window
         val windowInterval = window.toInterval()
-        val digest = InsightDigest(
+        val baseDigest = InsightDigest(
             contentHash = "",
             generatedAt = java.time.Instant.now().toString(),
             windowStart = windowInterval.first,
             windowEnd = windowInterval.second,
             rowCount = totals.sessionCount,
             totals = totals,
-            providers = providers,
-            models = models,
+            providers = providers.sortedByDescending { it.costUSD }.take(12),
+            models = models.sortedByDescending { it.costUSD }.take(16),
             projects = projects,
             devices = emptyList(), // Android doesn't sync device data
-            daily = daily,
+            daily = daily.takeLast(90),
             hourly = computeHourly(daily),
             useCaseHistogram = emptyList(), // Requires local macOS session data
             agentFocusSignals = emptyList(), // Requires local macOS session data
             modelFocusSignals = emptyList(), // Requires local macOS session data
-            quotaSnapshots = quotaSnapshots,
+            quotaSnapshots = quotaSnapshots.take(16),
             operatingActions = emptyList(), // macOS-only
             summaryRunsLog = emptyList(), // macOS-only
             anomalies = anomalies,
             glossary = InsightTaxonomy.DEFAULT
         )
 
-        val encodedSize = kotlinx.serialization.json.Json.encodeToString(
-            kotlinx.serialization.serializer<InsightDigest>(), digest
-        ).toByteArray(Charsets.UTF_8).size
-
-        check(encodedSize <= MAX_ENCODED_BYTES) {
-            "InsightDigest ($encodedSize bytes) exceeds the $MAX_ENCODED_BYTES byte ceiling"
-        }
+        val digest = shrinkToBudget(baseDigest)
 
         return digest.copy(contentHash = sha256Hex(kotlinx.serialization.json.Json.encodeToString(
             kotlinx.serialization.serializer<InsightDigest>(), digest
         )))
+    }
+
+    private fun shrinkToBudget(digest: InsightDigest): InsightDigest {
+        fun encodedSize(value: InsightDigest): Int = kotlinx.serialization.json.Json.encodeToString(
+            kotlinx.serialization.serializer<InsightDigest>(), value
+        ).toByteArray(Charsets.UTF_8).size
+
+        var candidate = digest
+        if (encodedSize(candidate) <= MAX_ENCODED_BYTES) return candidate
+
+        val dailyLimits = listOf(60, 45, 30, 14, 7)
+        val providerLimits = listOf(10, 8, 6, 4)
+        val modelLimits = listOf(12, 10, 8, 6, 4)
+        val quotaLimits = listOf(12, 8, 4, 0)
+
+        for (dailyLimit in dailyLimits) {
+            for (providerLimit in providerLimits) {
+                for (modelLimit in modelLimits) {
+                    for (quotaLimit in quotaLimits) {
+                        candidate = digest.copy(
+                            providers = digest.providers.take(providerLimit),
+                            models = digest.models.take(modelLimit),
+                            daily = digest.daily.takeLast(dailyLimit),
+                            hourly = computeHourly(digest.daily.takeLast(dailyLimit)),
+                            quotaSnapshots = digest.quotaSnapshots.take(quotaLimit),
+                            anomalies = digest.anomalies.take(6)
+                        )
+                        if (encodedSize(candidate) <= MAX_ENCODED_BYTES) return candidate
+                    }
+                }
+            }
+        }
+
+        candidate = digest.copy(
+            providers = digest.providers.take(3),
+            models = digest.models.take(3),
+            projects = emptyList(),
+            devices = emptyList(),
+            daily = digest.daily.takeLast(7),
+            hourly = computeHourly(digest.daily.takeLast(7)),
+            quotaSnapshots = emptyList(),
+            anomalies = emptyList(),
+            glossary = InsightTaxonomy()
+        )
+
+        check(encodedSize(candidate) <= MAX_ENCODED_BYTES) {
+            "InsightDigest could not be reduced below the $MAX_ENCODED_BYTES byte ceiling"
+        }
+        return candidate
     }
 
     private fun computeHourly(daily: List<InsightDigest.DailyPoint>): List<Int> {

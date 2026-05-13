@@ -7,44 +7,13 @@ extension DashboardView {
 
     @ToolbarContentBuilder
     var toolbarContent: some ToolbarContent {
-        // Leading: flat brand mark (not grouped with trailing controls in the system glass capsule).
         ToolbarItemGroup(placement: .navigation) {
-            Button {
-                guard canGoBack else { return }
-                withAnimation(DesignSystem.Animation.standard) {
-                    goBack()
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.backward")
-                        .font(.system(size: 13, weight: .semibold))
-
-                    Text("Back")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                }
-                .foregroundStyle(canGoBack ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textMuted)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule()
-                        .fill(DesignSystem.Colors.surfaceElevated.opacity(canGoBack ? 0.62 : 0.34))
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(DesignSystem.Colors.borderSubtle.opacity(canGoBack ? 0.70 : 0.30), lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(!canGoBack)
-            .keyboardShortcut("[", modifiers: [.command])
-            .help(canGoBack ? backButtonHelpText : "Back")
-            .accessibilityLabel(canGoBack ? backButtonHelpText : "Back")
-
-            Text("OpenBurnBar")
-                .font(.system(size: 13, weight: .semibold, design: .default))
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("OpenBurnBar")
+            ProjectNavigationPill(
+                canGoBack: canGoBack,
+                projectName: "OpenBurnBar",
+                backHelp: backButtonHelpText,
+                onBack: { goBack() }
+            )
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
@@ -88,52 +57,57 @@ extension DashboardView {
 
             GlassPicker(
                 selection: $selectedTimeRange,
-                options: TimeRange.allCases
+                options: TimeRange.allCases,
+                leadingSymbol: "calendar"
             )
 
             UsageModeToolbarPicker(selection: $settingsManager.usageDisplayMode)
 
-            GlassBadge {
-                Text(settingsManager.formatUsageMetric(cost: totalCostForTimeRange, tokens: totalTokensForTimeRange))
-                    .font(DesignSystem.Typography.mono)
-                    .foregroundStyle(DesignSystem.Colors.primaryGradient)
-            }
+            ToolbarMetricBadge(
+                value: settingsManager.formatUsageMetric(cost: totalCostForTimeRange, tokens: totalTokensForTimeRange)
+            )
 
-            Button(action: runScan) {
-                Group {
+            ToolbarActionCluster {
+                ToolbarPillButton(
+                    action: runScan,
+                    help: "Import new and updated sessions from your agent log folders.",
+                    accessibilityLabel: "Import from logs",
+                    isDisabled: isScanning
+                ) {
                     if isScanning {
                         AnimatedMiningPickView()
-                            .frame(width: 17, height: 17)
+                            .frame(width: 14, height: 14)
                             .clipShape(.circle)
                     } else {
-                        DashboardActionGlyph(kind: .importFromLogs, size: 15)
+                        DashboardActionGlyph(kind: .importFromLogs, size: 13)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
                     }
                 }
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-            }
-            .buttonStyle(.plain)
-            .disabled(isScanning)
-            .accessibilityLabel("Import from logs")
-            .help("Import new and updated sessions from your agent log folders.")
 
-            Button(action: runRecount) {
-                DashboardActionGlyph(kind: .sweepRecount, size: 15)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-            }
-            .buttonStyle(.plain)
-            .disabled(isScanning || aggregator == nil)
-            .accessibilityLabel("Recount totals")
-            .help("Rebuild usage totals from saved sessions (clears derived numbers, then tallies again).")
+                ToolbarActionDivider()
 
-            Button {
-                showingSettings = true
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                ToolbarPillButton(
+                    action: runRecount,
+                    help: "Rebuild usage totals from saved sessions (clears derived numbers, then tallies again).",
+                    accessibilityLabel: "Recount totals",
+                    isDisabled: isScanning || aggregator == nil
+                ) {
+                    DashboardActionGlyph(kind: .sweepRecount, size: 13)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+
+                ToolbarActionDivider()
+
+                ToolbarPillButton(
+                    action: { showingSettings = true },
+                    help: "Settings",
+                    accessibilityLabel: "Settings"
+                ) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
             }
-            .buttonStyle(.plain)
-            .help("Settings")
         }
     }
 }

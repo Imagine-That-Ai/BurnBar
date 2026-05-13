@@ -81,7 +81,7 @@ final class CastReconnectStrategy {
     func probe() async -> Bool {
         let client = CastChannelClient(device: device)
         let result = await client.ping()
-        await client.stop()
+        client.disconnect()
         return result
     }
 }

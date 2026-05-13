@@ -72,19 +72,60 @@ struct InsightsWorkspaceView: View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
             canvasHeader(canvas: canvas, environment: environment)
             ScrollView {
-                InsightsCanvasGridView(
-                    canvas: canvas,
-                    selectedWidgetID: environment.selectedWidgetID,
-                    onSelectWidget: { id in environment.selectedWidgetID = id },
-                    onConfigureWidget: { id in environment.selectedWidgetID = id },
-                    onCitationTapped: { _ in /* shell-level handler hooks into routing later */ },
-                    onMoveWidget: { id, column, row in
-                        Task { await environment.moveWidget(id: id, column: column, row: row) }
+                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+                    if let analysis = environment.currentAnalysis {
+                        analysisBrief(analysis)
                     }
-                )
+                    InsightsCanvasGridView(
+                        canvas: canvas,
+                        selectedWidgetID: environment.selectedWidgetID,
+                        onSelectWidget: { id in environment.selectedWidgetID = id },
+                        onConfigureWidget: { id in environment.selectedWidgetID = id },
+                        onCitationTapped: { _ in /* shell-level handler hooks into routing later */ },
+                        onMoveWidget: { id, column, row in
+                            Task { await environment.moveWidget(id: id, column: column, row: row) }
+                        }
+                    )
+                }
                 .padding(UnifiedDesignSystem.Spacing.md)
             }
         }
+    }
+
+    private func analysisBrief(_ analysis: InsightAnalysisResult) -> some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                Label("Intelligence Brief", systemImage: "sparkles")
+                    .font(UnifiedDesignSystem.Typography.headline)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                Spacer()
+                Label(analysis.modelTag.displayName, systemImage: analysis.modelTag.egressTier.symbolName)
+                    .font(UnifiedDesignSystem.Typography.caption)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+            }
+            Text(analysis.executiveSummary)
+                .font(UnifiedDesignSystem.Typography.body)
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+            ForEach(analysis.findings.prefix(3)) { finding in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(finding.title)
+                        .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                    Text(finding.recommendedAction)
+                        .font(UnifiedDesignSystem.Typography.caption)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                }
+            }
+        }
+        .padding(UnifiedDesignSystem.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
+                .fill(UnifiedDesignSystem.Colors.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
+                        .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+                )
+        )
     }
 
     private func canvasHeader(canvas: InsightCanvas, environment: InsightsMacEnvironment) -> some View {

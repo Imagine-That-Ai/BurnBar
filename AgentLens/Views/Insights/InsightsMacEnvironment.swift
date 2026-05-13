@@ -19,9 +19,14 @@ final class InsightsMacEnvironment {
     var composerError: String?
     var thinkingLog: [String] = []
     var modelCatalog: [InsightCatalogModel] = []
-    var selectedModelTag: InsightModelTag
-    var privacyMode: Bool = false
+    var selectedModelTag: InsightModelTag {
+        didSet { persistModelPreference() }
+    }
+    var privacyMode: Bool = false {
+        didSet { persistModelPreference() }
+    }
     var lastInvestigationUsage: InsightTokenUsage?
+    var currentAnalysis: InsightAnalysisResult?
 
     let dataStore: DataStore
     let dataSource: MacInsightDataSource
@@ -33,6 +38,8 @@ final class InsightsMacEnvironment {
     let toolBroker: InsightToolBroker
     let executor: InsightExecutor
     let digestBuilder: InsightDigestBuilder
+    let aggregator: InsightAggregator
+    let analysisEngine: MacInsightAnalysisEngine
 
     init(dataStore: DataStore) throws {
         let supportDir = try Self.applicationSupportDirectory()
@@ -50,7 +57,15 @@ final class InsightsMacEnvironment {
         self.catalog = catalog
         self.executor = InsightExecutor()
         self.digestBuilder = InsightDigestBuilder()
-        self.toolBroker = InsightToolBroker(dataSource: source)
+        self.aggregator = InsightAggregator(digestBuilder: digestBuilder)
+        let broker = InsightToolBroker(dataSource: source)
+        self.toolBroker = broker
+        self.analysisEngine = MacInsightAnalysisEngine(
+            auditLog: InsightAnalysisAuditLog(fileURL: insightsDir.appendingPathComponent("analysis-audit.jsonl")),
+            cache: InsightAnalysisCache(directoryURL: cacheDir.appendingPathComponent("analysis", isDirectory: true)),
+            catalog: catalog,
+            toolBroker: broker
+        )
         self.investigation = InsightInvestigation(
             catalog: catalog,
             cache: cache,
@@ -58,16 +73,18 @@ final class InsightsMacEnvironment {
             toolBroker: toolBroker
         )
 
-        // Local rules adapter is always available.
-        self.selectedModelTag = .init(
+        let fallbackModel = InsightModelTag(
             providerKey: "local-rules",
             modelID: "local-rules-v1",
             displayName: "Local rules",
             egressTier: .localOnly
         )
+        let saved = Self.loadModelPreference(defaults: .standard)
+        self.selectedModelTag = saved.explicitModel ?? fallbackModel
+        self.privacyMode = saved.restrictToLocalOnly
 
         Task {
-            await catalog.register(LocalRuleBasedAdapter())
+            await registerAvailableAnalysisGateways()
             await refreshCatalog()
             await loadInitialCanvases()
         }
@@ -77,6 +94,7 @@ final class InsightsMacEnvironment {
 
     func refreshCatalog() async {
         modelCatalog = await catalog.allModels(refresh: true)
+        applyAutomaticModelSelectionIfNeeded()
     }
 
     // MARK: - Loading
@@ -92,15 +110,29 @@ final class InsightsMacEnvironment {
     }
 
     private func seedInitialCanvas() async {
-        // First-run: instantiate the "Today" template so the user sees
-        // value immediately, even without any provider configured.
-        let template = InsightsBuiltInTemplates.today
-        var canvas = template.instantiate()
-        canvas.modelTag = .init(
-            providerKey: "local-rules", modelID: "local-rules-v1",
-            displayName: "Local rules", egressTier: .localOnly
-        )
-        try? await store.upsert(canvas)
+        let filter = InsightFilter(window: .last7d)
+        do {
+            let snapshot = try await dataSource.snapshot(window: filter.window.interval())
+            let result = try await runAnalysis(
+                prompt: "Generate the default Insights intelligence brief.",
+                snapshot: snapshot,
+                filter: filter,
+                canvas: nil,
+                instruction: .defaultBrief
+            )
+            currentAnalysis = result
+            let canvas = RuleBasedInsightAnalysisEngine.materializeCanvas(
+                from: result,
+                prompt: "Default intelligence brief"
+            )
+            try? await store.upsert(canvas)
+            selectedCanvasID = canvas.id
+        } catch {
+            let template = InsightsBuiltInTemplates.today
+            var canvas = template.instantiate()
+            canvas.modelTag = selectedModelTag
+            try? await store.upsert(canvas)
+        }
     }
 
     // MARK: - Refresh
@@ -129,6 +161,18 @@ final class InsightsMacEnvironment {
         canvas.lastRefreshedAt = Date()
         try? await store.upsert(canvas)
         canvases = await store.allCanvases()
+
+        do {
+            currentAnalysis = try await runAnalysis(
+                prompt: "Refresh the default Insights intelligence brief.",
+                snapshot: snapshot,
+                filter: canvas.filter,
+                canvas: canvas,
+                instruction: .defaultBrief
+            )
+        } catch {
+            composerError = error.localizedDescription
+        }
     }
 
     // MARK: - Composition
@@ -147,67 +191,212 @@ final class InsightsMacEnvironment {
             composerError = error.localizedDescription
             return
         }
-        let digest: InsightDigest
         do {
-            digest = try digestBuilder.build(
-                from: snapshot,
-                filter: currentCanvas?.filter ?? InsightFilter(window: .last7d)
+            let filter = currentCanvas?.filter ?? InsightFilter(window: .last7d)
+            let result = try await runAnalysis(
+                prompt: prompt,
+                snapshot: snapshot,
+                filter: filter,
+                canvas: currentCanvas,
+                instruction: .answerFollowUp
             )
-        } catch {
-            composerError = error.localizedDescription
-            return
-        }
-
-        let request = InsightInvestigateRequest(
-            prompt: prompt,
-            digest: digest,
-            canvas: currentCanvas,
-            modelTag: selectedModelTag,
-            capabilityTier: .strictJSONSchema,
-            instruction: currentCanvas == nil ? .composeCanvas : .refineCanvas
-        )
-        await investigation.updateConfiguration(.init(privacyModeRestrictsToLocal: privacyMode))
-        thinkingLog.removeAll()
-        do {
-            for try await event in await investigation.run(request) {
-                switch event {
-                case .thinkingDelta(let delta):
-                    thinkingLog.append(delta)
-                case .partialCanvas(let partial):
-                    // Render the in-progress canvas so the user sees
-                    // widgets land as the model writes them.
-                    var updated = partial
-                    updated.modelTag = selectedModelTag
-                    try? await store.upsert(updated)
-                    selectedCanvasID = updated.id
-                    canvases = await store.allCanvases()
-                case .widgetReady(let widget):
-                    // Patch a single widget into the active canvas.
-                    if var canvas = currentCanvas {
-                        if canvas.widgets.contains(where: { $0.id == widget.id }) {
-                            canvas.replace(widget)
-                        } else {
-                            canvas.add(widget)
-                        }
-                        try? await store.upsert(canvas)
-                        canvases = await store.allCanvases()
-                    }
-                case .finalCanvas(let final):
-                    var updated = final
-                    updated.modelTag = selectedModelTag
-                    try? await store.upsert(updated)
-                    selectedCanvasID = updated.id
-                case .usage(let usage):
-                    lastInvestigationUsage = usage
-                case .toolCall, .toolResult:
-                    break
-                }
-            }
+            currentAnalysis = result
+            let canvas = RuleBasedInsightAnalysisEngine.materializeCanvas(from: result, prompt: prompt)
+            try? await store.upsert(canvas)
+            selectedCanvasID = canvas.id
             canvases = await store.allCanvases()
             await refreshSelectedCanvasData()
         } catch {
             composerError = error.localizedDescription
         }
+    }
+
+    private func runAnalysis(
+        prompt: String,
+        snapshot: InsightDataSnapshot,
+        filter: InsightFilter,
+        canvas: InsightCanvas?,
+        instruction: InsightAnalysisRequest.Instruction
+    ) async throws -> InsightAnalysisResult {
+        let context = try aggregator.buildContext(
+            snapshot: snapshot,
+            filter: filter,
+            includedDataSources: [
+                "local_session_logs",
+                "datastore_usage",
+                "firestore_rollups",
+                "quota_snapshots",
+                "provider_account_state",
+                "chart_studio_refs",
+                "prior_insight_runs",
+                "audit_history"
+            ],
+            priorRunSummaries: try await recentAnalysisSummaries()
+        )
+        let request = InsightAnalysisRequest(
+            prompt: prompt,
+            context: context,
+            currentCanvas: canvas,
+            selectedModel: selectedModelTag,
+            instruction: instruction,
+            allowDeepTranscriptAnalysis: false,
+            maxGeneratedWidgets: 8
+        )
+        await analysisEngine.updateConfiguration(.init(
+            privacyModeRestrictsToLocal: privacyMode,
+            failWhenSelectedGatewayUnavailable: true
+        ))
+        let result = try await analysisEngine.analyze(request)
+        try? await auditLog.append(.init(
+            id: result.auditID ?? UUID(),
+            canvasID: canvas?.id,
+            prompt: prompt,
+            modelTag: selectedModelTag,
+            egressTier: selectedModelTag.egressTier,
+            digestBytes: context.budgetReport.encodedBytes,
+            digestContentHash: context.digest.contentHash,
+            instruction: "analysis.\(instruction.rawValue)",
+            tokenUsage: result.tokenUsage,
+            completedAt: result.generatedAt,
+            status: .succeeded
+        ))
+        return result
+    }
+
+    private func registerAvailableAnalysisGateways() async {
+        await catalog.register(LocalRuleBasedAdapter())
+        await catalog.register(OllamaInsightAdapter())
+
+        if let apiKey = Self.userKey(provider: "openai", envKeys: ["OPENAI_API_KEY"]) {
+            await catalog.register(OpenAIInsightAdapter(apiKey: apiKey, modelCatalog: [
+                .init(id: "gpt-5.5", displayName: "Codex / GPT-5.5", providerKey: "openai",
+                      egressTier: .userKey, capabilities: .init(supportsStrictJSONSchema: true, supportsJSONObject: true, supportsThinking: true, supportsToolUse: true),
+                      symbolName: "brain.fill"),
+                .init(id: "gpt-5.4", displayName: "Codex / GPT-5.4", providerKey: "openai",
+                      egressTier: .userKey, capabilities: .init(supportsStrictJSONSchema: true, supportsJSONObject: true, supportsThinking: true, supportsToolUse: true),
+                      symbolName: "brain.fill")
+            ] + OpenAIInsightAdapter.defaultModels))
+        }
+
+        if let apiKey = Self.userKey(provider: "anthropic", aliases: ["claude"], envKeys: ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"]) {
+            await catalog.register(AnthropicInsightAdapter(apiKey: apiKey))
+        }
+
+        if let apiKey = Self.userKey(provider: "minimax", envKeys: ["MINIMAX_API_KEY"]),
+           let baseURL = Self.urlFromEnvironment("INSIGHTS_MINIMAX_BASE_URL") ?? URL(string: "https://api.minimax.io") {
+            await catalog.register(OpenAICompatibleInsightAdapter(
+                providerKey: "minimax",
+                displayName: "MiniMax",
+                apiKey: apiKey,
+                baseURL: baseURL,
+                modelCatalog: [
+                    .init(id: "minimax-m1", displayName: "MiniMax M1", providerKey: "minimax", egressTier: .userKey, capabilities: .init(), symbolName: "sparkles")
+                ]
+            ))
+        }
+
+        if let apiKey = Self.userKey(provider: "zai", aliases: ["z.ai"], envKeys: ["ZAI_API_KEY", "ZHIPUAI_API_KEY"]),
+           let baseURL = Self.urlFromEnvironment("INSIGHTS_ZAI_BASE_URL") ?? URL(string: "https://open.bigmodel.cn") {
+            await catalog.register(OpenAICompatibleInsightAdapter(
+                providerKey: "zai",
+                displayName: "Z.ai",
+                apiKey: apiKey,
+                baseURL: baseURL,
+                modelCatalog: [
+                    .init(id: "glm-4.6", displayName: "GLM 4.6", providerKey: "zai", egressTier: .userKey, capabilities: .init(), symbolName: "sparkles")
+                ],
+                chatCompletionsPath: "/api/paas/v4/chat/completions"
+            ))
+        }
+
+        if let apiKey = Self.userKey(provider: "kimi", aliases: ["moonshot"], envKeys: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]),
+           let baseURL = Self.urlFromEnvironment("INSIGHTS_KIMI_BASE_URL") ?? URL(string: "https://api.moonshot.ai") {
+            await catalog.register(OpenAICompatibleInsightAdapter(
+                providerKey: "kimi",
+                displayName: "Kimi",
+                apiKey: apiKey,
+                baseURL: baseURL,
+                modelCatalog: [
+                    .init(id: "kimi-k2", displayName: "Kimi K2", providerKey: "kimi", egressTier: .userKey, capabilities: .init(), symbolName: "moon.stars.fill")
+                ]
+            ))
+        }
+    }
+
+    private func applyAutomaticModelSelectionIfNeeded() {
+        let preference = Self.loadModelPreference(defaults: .standard)
+        guard preference.mode == .automatic else { return }
+        let available = privacyMode
+            ? modelCatalog.filter { $0.egressTier == .localOnly }
+            : modelCatalog
+        let preferred = available.first { $0.providerKey == "hermes" }
+            ?? available.first { $0.providerKey == "ollama" }
+            ?? available.first { $0.providerKey == "local-rules" }
+        guard let preferred else { return }
+        selectedModelTag = .init(
+            providerKey: preferred.providerKey,
+            modelID: preferred.id,
+            displayName: preferred.displayName,
+            egressTier: preferred.egressTier
+        )
+    }
+
+    private func persistModelPreference() {
+        let preference = InsightModelPreference(
+            mode: selectedModelTag.providerKey == "local-rules" ? .automatic : .explicit,
+            explicitModel: selectedModelTag,
+            restrictToLocalOnly: privacyMode,
+            maxEgressTier: privacyMode ? .localOnly : nil,
+            deepTranscriptOptIn: false
+        )
+        guard let data = try? JSONEncoder().encode(preference) else { return }
+        UserDefaults.standard.set(data, forKey: Self.modelPreferenceDefaultsKey)
+    }
+
+    private static let modelPreferenceDefaultsKey = "insights.modelPreference.v1"
+
+    private static func loadModelPreference(defaults: UserDefaults) -> InsightModelPreference {
+        guard let data = defaults.data(forKey: modelPreferenceDefaultsKey),
+              let preference = try? JSONDecoder().decode(InsightModelPreference.self, from: data)
+        else {
+            return .default
+        }
+        return preference
+    }
+
+    private static func userKey(provider: String, aliases: [String] = [], envKeys: [String]) -> String? {
+        let candidates = [provider] + aliases
+        for candidate in candidates {
+            if let key = ProviderAPIKeyStore.shared.apiKey(for: candidate), !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return key.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            let mirrorAccount = "provider.\(candidate).apiKey"
+            let raw = try? KeychainStore().string(for: mirrorAccount, allowUserInteraction: false)
+            if let key = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty {
+                return key
+            }
+        }
+        let env = ProcessInfo.processInfo.environment
+        for key in envKeys {
+            if let value = env[key]?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private static func urlFromEnvironment(_ key: String) -> URL? {
+        guard let raw = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else {
+            return nil
+        }
+        return URL(string: raw)
+    }
+
+    private func recentAnalysisSummaries() async throws -> [String] {
+        try await auditLog.readAll(limit: 10)
+            .filter { $0.instruction.hasPrefix("analysis.") }
+            .map { "\($0.startedAt.formatted(date: .abbreviated, time: .shortened)): \($0.instruction) via \($0.modelTag.displayName)" }
     }
 
     // MARK: - Mutations

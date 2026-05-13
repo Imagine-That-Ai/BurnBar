@@ -30,9 +30,7 @@ struct YouView: View {
                     syncDiagnosticsCard
                         .staggeredEntrance(delay: 0.05)
 
-                    NavigationLink {
-                        iPadDevicesSettingsView()
-                    } label: {
+                    NavigationLink(value: YouRoute.devices) {
                         ConnectedDevicesRow(devices: devicesStore.devices)
                     }
                     .buttonStyle(.plain)
@@ -85,9 +83,7 @@ struct YouView: View {
     private var syncDiagnosticsCard: some View {
         AuroraGlassCard(variant: syncStore.health.cardVariant) {
             HStack(spacing: 12) {
-                NavigationLink {
-                    CloudSyncDetailsView(syncStore: syncStore)
-                } label: {
+                NavigationLink(value: YouRoute.sync) {
                     HStack(spacing: 12) {
                         ZStack {
                             Circle()
@@ -141,9 +137,7 @@ struct YouView: View {
     // MARK: - Provider Connections Row
 
     private var providerConnectionsRow: some View {
-        NavigationLink {
-            ProviderConnectionsView(showsDoneButton: false)
-        } label: {
+        NavigationLink(value: YouRoute.providers) {
             AuroraGlassCard(variant: .standard, cornerRadius: 16) {
                 HStack(spacing: 12) {
                     Image(systemName: "externaldrive.connected.to.line.below")
@@ -218,9 +212,7 @@ struct YouView: View {
     // MARK: - Settings Row
 
     private var settingsRow: some View {
-        NavigationLink {
-            SettingsHubView(authStore: authStore)
-        } label: {
+        NavigationLink(value: YouRoute.settings) {
             AuroraGlassCard(variant: .standard, cornerRadius: 16) {
                 HStack(spacing: 12) {
                     Image(systemName: "gearshape.fill")
@@ -266,6 +258,7 @@ enum YouRoute: Hashable, CaseIterable {
     case sync
     case settings
     case devices
+    case providers
 }
 
 // MARK: - Cloud Sync Details

@@ -73,4 +73,21 @@ final class CastChannelClientTests: XCTestCase {
         XCTAssertEqual(payload["reload"] as? Bool, false)
         XCTAssertEqual(payload["reload_time"] as? Int, 0)
     }
+
+    func testCastProbeAndWatchdogCleanupDoesNotStopReceiverApp() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repoRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let bridgeSource = try String(contentsOf: repoRoot.appendingPathComponent("AgentLens/Services/SmartHub/SmartHubBridgeController.swift"))
+        XCTAssertFalse(bridgeSource.contains("await probeClient.stop()"))
+        XCTAssertFalse(bridgeSource.contains("await refreshClient.stop()"))
+        XCTAssertFalse(bridgeSource.contains("await kickClient.stop()"))
+        XCTAssertFalse(bridgeSource.contains("await recastClient.stop()"))
+
+        let strategySource = try String(contentsOf: repoRoot.appendingPathComponent("AgentLens/Services/Cast/CastReconnectStrategy.swift"))
+        XCTAssertTrue(strategySource.contains("client.disconnect()"))
+    }
 }

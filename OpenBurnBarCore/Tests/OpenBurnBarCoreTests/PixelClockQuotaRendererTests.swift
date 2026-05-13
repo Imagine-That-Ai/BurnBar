@@ -192,7 +192,7 @@ final class PixelClockQuotaRendererTests: XCTestCase {
 
         XCTAssertEqual(pages.count, 1)
         XCTAssertEqual(pages[0].text, "CLD 5h 28% 72/100")
-        XCTAssertEqual(pages[0].color, "#D97757")
+        XCTAssertEqual(pages[0].color, "#E07868")
         XCTAssertFalse(pages[0].draw.isEmpty)
         XCTAssertEqual(payload[0]["text"] as? String, "")
         XCTAssertEqual(payload[0]["noScroll"] as? Bool, true)
@@ -217,12 +217,37 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         )
 
         XCTAssertEqual(pages[0].text, "CDX 5h 100% 0/100")
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 10, y: 1, color: "#8EA0FF"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 14, y: 1, color: "#8EA0FF"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 10, y: 1, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 14, y: 1, color: "#A294F0"))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 15, y: 1))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 16, y: 1))
-        XCTAssertFalse(hasPixel(pages[0].draw, x: 17, y: 1, color: "#8EA0FF"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 22, y: 1, color: "#8EA0FF"))
+        XCTAssertFalse(hasPixel(pages[0].draw, x: 17, y: 1, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 22, y: 1, color: "#A294F0"))
+    }
+
+    func testProviderDashboardUsesSelectedPaletteForMetricAndQuotaBar() {
+        let config = PixelClockConfig(
+            enabled: true,
+            layout: .providerDashboard,
+            palette: .rainbow
+        )
+        let pages = PixelClockQuotaRenderer.renderPages(
+            items: [
+                PixelClockQuotaItem(
+                    providerID: "codex",
+                    providerName: "Codex",
+                    percentUsed: 0,
+                    usageText: "0/100",
+                    windowLabel: "5h"
+                )
+            ],
+            config: config
+        )
+
+        XCTAssertEqual(pages[0].color, "#E40303")
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 10, y: 1, color: "#E40303"))
+        XCTAssertTrue(hasFillRect(pages[0].draw, x: 12, y: 7, width: 20, height: 1, color: "#E40303"))
+        XCTAssertFalse(hasPixel(pages[0].draw, x: 10, y: 1, color: "#8EA0FF"))
     }
 
     func testProviderDashboardPreservesThirtyDayWindowLabel() {
@@ -241,17 +266,17 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         )
 
         XCTAssertEqual(pages[0].text, "CUR 30d 70% 30/100")
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 10, y: 1, color: "#FFFFFF"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 14, y: 1, color: "#FFFFFF"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 16, y: 1, color: "#FFFFFF"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 10, y: 1, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 14, y: 1, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 16, y: 1, color: "#A294F0"))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 15, y: 2))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 18, y: 1))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 19, y: 1))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 1, color: "#FFFFFF"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 18, y: 4, color: "#FFFFFF"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 1, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 18, y: 4, color: "#A294F0"))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 19, y: 4))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 4, color: "#FFFFFF"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 21, y: 1, color: "#FFFFFF"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 4, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 21, y: 1, color: "#A294F0"))
     }
 
     func testProviderDashboardKeepsTwentyFourHourWindowReadableBesideFullMetric() {
@@ -270,16 +295,16 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         )
 
         XCTAssertEqual(pages[0].text, "MMX 24h 100% 0/100")
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 10, y: 1, color: "#EC1970"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 14, y: 1, color: "#EC1970"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 16, y: 1, color: "#EC1970"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 18, y: 1, color: "#EC1970"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 10, y: 1, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 14, y: 1, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 16, y: 1, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 18, y: 1, color: "#A294F0"))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 19, y: 1))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 20, y: 1))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 18, y: 4, color: "#EC1970"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 18, y: 4, color: "#A294F0"))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 19, y: 4))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 4, color: "#EC1970"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 22, y: 1, color: "#EC1970"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 4, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 22, y: 1, color: "#A294F0"))
     }
 
     func testRenderPagesShowsWorkingSpinnerInRightStatusArea() {
@@ -427,10 +452,10 @@ final class PixelClockQuotaRendererTests: XCTestCase {
             "CLD 5h 40% 60/100",
             "CLD 7d 20% 80/100"
         ])
-        XCTAssertEqual(pages[0].color, "#8EA0FF")
-        XCTAssertEqual(pages[1].color, "#8EA0FF")
-        XCTAssertEqual(pages[2].color, "#D97757")
-        XCTAssertEqual(pages[3].color, "#D97757")
+        XCTAssertEqual(pages[0].color, "#A294F0")
+        XCTAssertEqual(pages[1].color, "#A294F0")
+        XCTAssertEqual(pages[2].color, "#E07868")
+        XCTAssertEqual(pages[3].color, "#E07868")
     }
 
     func testProviderDashboardKeepsQuotaBarOutOfProviderLogoColumns() {
@@ -698,13 +723,13 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         )
 
         XCTAssertEqual(pages[0].text, "CUR 30d 70% 30/100")
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 14, y: 1, color: "#FFFFFF"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 14, y: 1, color: "#A294F0"))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 15, y: 2))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 19, y: 1))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 1, color: "#FFFFFF"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 18, y: 4, color: "#FFFFFF"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 1, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 18, y: 4, color: "#A294F0"))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 19, y: 4))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 4, color: "#FFFFFF"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 4, color: "#A294F0"))
     }
 
     func testProviderDashboardDoesNotRenderIdleZzzPixels() {
@@ -793,6 +818,20 @@ final class PixelClockQuotaRendererTests: XCTestCase {
                 return false
             }
             return pixelX == x && pixelY == y
+        })
+    }
+
+    private func hasFillRect(
+        _ draw: [PixelClockDrawInstruction],
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int,
+        color: String
+    ) -> Bool {
+        draw.contains(where: { instruction in
+            instruction.command == .fillRect
+                && instruction.values == [.int(x), .int(y), .int(width), .int(height), .string(color)]
         })
     }
 
