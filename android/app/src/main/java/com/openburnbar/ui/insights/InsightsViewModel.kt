@@ -10,12 +10,13 @@ import com.openburnbar.data.insights.InsightEgressTier
 import com.openburnbar.data.insights.InsightFilter
 import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightTheme
+import com.openburnbar.data.insights.services.AndroidInsightCredentialStore
 import com.openburnbar.data.insights.services.AndroidInsightAnalysisEngine
+import com.openburnbar.data.insights.services.AndroidInsightGatewayRegistry
 import com.openburnbar.data.insights.services.FirestoreInsightDataSource
 import com.openburnbar.data.insights.services.InsightAggregator
 import com.openburnbar.data.insights.services.InsightAnalysisEngine
 import com.openburnbar.data.insights.services.InsightDataSource
-import com.openburnbar.data.insights.services.OllamaInsightAnalysisGateway
 import com.openburnbar.data.insights.services.RuleBasedInsightAnalysisEngine
 import com.openburnbar.data.repos.InsightAnalysisAuditLogRepository
 import com.openburnbar.data.repos.InsightAnalysisCacheRepository
@@ -32,8 +33,8 @@ class InsightsViewModel(
 
     private val auditLog = InsightAnalysisAuditLogRepository(application)
     private val cache = InsightAnalysisCacheRepository(application)
-    private val ollamaGateway = OllamaInsightAnalysisGateway()
-    private val gateways = listOf(ollamaGateway).associateBy { it.providerKey }
+    private val credentialStore = AndroidInsightCredentialStore(application)
+    private val gateways = AndroidInsightGatewayRegistry.defaultGateways(credentialStore).associateBy { it.providerKey }
     private val preferences = application.getSharedPreferences("insights_model_preferences", Application.MODE_PRIVATE)
 
     private val _canvas = MutableStateFlow<InsightCanvas?>(null)
