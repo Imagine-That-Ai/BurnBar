@@ -242,26 +242,38 @@ const surfaceShowcase = SURFACES.filter((s) =>
   <section class="hydrantsec" aria-labelledby="hydrantsec-h">
     <div class="container container--wide">
       <header class="sec-head hydrantsec__head">
-        <span class="eyebrow eyebrow--ember">Fire Hydrant — the multi-provider router</span>
+        <span class="eyebrow eyebrow--ember">BurnBar Router — two modes, one gateway</span>
         <h2 id="hydrantsec-h">
-          When one account runs dry,
-          <span class="hydrantsec__hb">the next picks up.</span>
+          Route by intent.
+          <span class="hydrantsec__hb">Fail over by family.</span>
         </h2>
         <p class="hydrantsec__sub mono">
-          Two pools · same-format failover · zero cross-format hacks
+          Provider-family failover · or intelligent model routing · always local
         </p>
         <p class="lead">
-          Cursor, Factory, Forge, OpenCode and Codex speak OpenAI-shape JSON to one
-          local gateway. Claude Code speaks Anthropic-shape Messages to the same
-          gateway. The OpenBurnBar <strong>Fire Hydrant</strong> at
-          <span class="mono">127.0.0.1:8317</span> keeps the two highways
-          independent — and inside each one it ranks every account you've
-          added by live quota health and least-recently-used, swaps to a
-          healthy peer the moment one rate-limits or runs out, and parks
-          failed accounts in a five-minute cool-down so they recover on their
-          own. No vendor lock-in. No cross-format translation. No 429s landing
-          in your IDE.
+          BurnBar can keep you on the account you selected, fail over only
+          within the same provider family when needed, or intelligently choose
+          the best model when you enable smart routing.
+          <strong>Provider-family mode protects your intent</strong> — Codex
+          stays on OpenAI-family accounts, Claude Code stays on Anthropic-family.
+          <strong>Intelligent mode optimizes the route</strong> — task intent,
+          capability, quota, cost, latency, context, reliability, and benchmark
+          freshness all weigh in. Benchmarks are advisory signals, never
+          absolute truth. User choice, auth, quota, and availability win.
         </p>
+
+        <ul class="hydrantsec__modes mono">
+          <li class="hydrantsec__mode hydrantsec__mode--family">
+            <span class="hydrantsec__modedot" aria-hidden="true"></span>
+            <strong>Provider-Family Failover</strong>
+            <em>default · single intent · multiple accounts</em>
+          </li>
+          <li class="hydrantsec__mode hydrantsec__mode--intelligent">
+            <span class="hydrantsec__modedot" aria-hidden="true"></span>
+            <strong>Intelligent Model Router</strong>
+            <em>opt-in · scored per task · explainable</em>
+          </li>
+        </ul>
       </header>
 
       <div class="hydrantsec__board">
@@ -790,6 +802,65 @@ const surfaceShowcase = SURFACES.filter((s) =>
     letter-spacing: 0.16em;
     text-transform: uppercase;
     margin-top: var(--s-3);
+  }
+  .hydrantsec__modes {
+    list-style: none;
+    margin-top: var(--s-5);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-3);
+    max-width: 56rem;
+  }
+  .hydrantsec__mode {
+    display: grid;
+    grid-template-columns: 10px 1fr;
+    column-gap: var(--s-3);
+    row-gap: 2px;
+    align-items: baseline;
+    padding: var(--s-3) var(--s-4);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-3);
+    background: var(--ink-base);
+  }
+  .hydrantsec__modedot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    align-self: center;
+  }
+  .hydrantsec__mode--family {
+    border-color: color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    background: linear-gradient(180deg, rgba(255, 106, 26, 0.06) 0%, var(--ink-base) 100%);
+  }
+  .hydrantsec__mode--family .hydrantsec__modedot {
+    background: var(--ember-core);
+    box-shadow: 0 0 8px var(--ember-glow);
+  }
+  .hydrantsec__mode--intelligent {
+    border-color: color-mix(in oklab, var(--mercury-bright) 35%, var(--ink-line));
+    background: linear-gradient(180deg, rgba(214, 211, 223, 0.06) 0%, var(--ink-base) 100%);
+  }
+  .hydrantsec__mode--intelligent .hydrantsec__modedot {
+    background: var(--mercury-bright);
+    box-shadow: 0 0 8px color-mix(in oklab, var(--mercury-bright) 55%, transparent);
+  }
+  .hydrantsec__mode strong {
+    color: var(--text-bright);
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 36, "wght" 540;
+    font-size: 0.98rem;
+    letter-spacing: -0.014em;
+    grid-column: 2;
+  }
+  .hydrantsec__mode em {
+    font-style: normal;
+    color: var(--text-mute);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    grid-column: 2;
+  }
+  @media (max-width: 720px) {
+    .hydrantsec__modes { grid-template-columns: 1fr; }
   }
   .hydrantsec__rule--pool {
     grid-column: 1 / -1;

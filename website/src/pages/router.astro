@@ -7,31 +7,208 @@ import { SITE } from "@data/site";
 
 <BaseLayout
   title="Fire Hydrant — the router"
-  description="OpenBurnBar's local multi-provider router routes Cursor, Factory, Forge, and OpenCode traffic across your provider accounts with automatic failover, round-robin, and five-minute cool-downs. The exact ranking policy, lifecycle states, and what is and isn't routed today."
+  description="OpenBurnBar's local router runs in two modes: Provider-Family Failover (default) keeps your intent — Codex stays on OpenAI-family accounts, Claude Code stays on Anthropic-family — and extends capacity across multiple accounts in the same family. Intelligent Model Router (opt-in) scores task intent against model capability, quota, cost, latency, reliability, and benchmark freshness."
 >
   <section class="pagehead">
     <div class="container">
       <span class="eyebrow eyebrow--ember">Fire Hydrant · the router</span>
       <h1 class="pagehead__h">
-        One local gateway. Two format pools.
-        <span class="ember">No cross-format hacks.</span>
+        Route by intent.
+        <span class="ember">Fail over by family.</span>
       </h1>
       <p class="lead">
-        The Fire Hydrant — OpenBurnBar's <strong>routed client gateway</strong> at
-        <span class="mono">127.0.0.1:8317</span> — receives OpenAI-shape requests
-        on <span class="mono">/v1/chat/completions</span> from Cursor, Factory,
-        Forge, OpenCode and Codex, and Anthropic-shape requests on
-        <span class="mono">/v1/messages</span> from Claude Code. Each request is
-        only ever served by accounts in the same format pool, then ranked by
-        live quota health and least-recently-used. When an account hits its
-        quota, rate-limits, or sees an auth failure, the router shifts traffic
-        within the same pool — before your IDE notices. Routing is
-        deterministic, auditable, and entirely on-device.
+        BurnBar can keep you on the account you selected, fail over only within
+        the same provider family when needed, or intelligently choose the best
+        model when you enable smart routing. <strong>Provider-family mode protects
+        your intent.</strong> <strong>Intelligent mode optimizes the route.</strong>
+        Benchmarks inform the decision — but user choice, auth, quota, and
+        availability win.
       </p>
       <div class="pagehead__ctas">
         <a class="btn btn--ember" href="/download">Download for macOS <span class="btn-arrow" aria-hidden="true">→</span></a>
         <a class="btn btn--ghost" href={`${SITE.github}/blob/main/docs/ROUTED_CLIENT_GATEWAY.md`} target="_blank" rel="noopener noreferrer">Read the gateway doc</a>
       </div>
+
+      <ul class="pagehead__chips mono" aria-label="Quick highlights">
+        <li><span class="dot dot--ember"></span> 127.0.0.1:8317 · local-only</li>
+        <li><span class="dot dot--ember"></span> two modes · one daemon</li>
+        <li><span class="dot dot--mercury"></span> benchmarks advisory · never absolute</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ──────────── two modes — the headline framing ──────────── -->
+  <section class="modes">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">Two modes · one switch</span>
+        <h2>Pick a mode like you pick a posture.</h2>
+        <p class="lead">
+          Most days you want the router to honor what you asked for and only
+          quietly stretch capacity behind the scenes. Some days you'd rather it
+          look at the task in front of you and pick the right tool. Same
+          gateway. Same accounts. Different posture.
+        </p>
+      </header>
+
+      <div class="modes__grid">
+        <article class="modecard modecard--family">
+          <header>
+            <span class="mono modecard__tag">01 · default</span>
+            <h3 class="modecard__h">Provider-Family Failover.</h3>
+            <p class="modecard__sub mono">protects your intent · extends your capacity</p>
+          </header>
+
+          <p class="modecard__lede">
+            You picked Codex. You get Codex's family. We extend capacity across
+            <em>multiple accounts inside that family</em> — never across the
+            boundary into Anthropic-shape models. If one Z.ai key throttles,
+            the next OpenAI-family key picks up. Claude Code stays on Claude
+            accounts. Codex stays on OpenAI-family accounts.
+          </p>
+
+          <svg class="modecard__diagram" viewBox="0 0 360 130" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram: Codex request fanning out across OpenAI-family accounts only">
+            <defs>
+              <linearGradient id="fmRail" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0%" stop-color="#ff6a1a" stop-opacity="0.9"/>
+                <stop offset="100%" stop-color="#ffb547" stop-opacity="0.85"/>
+              </linearGradient>
+            </defs>
+            <rect x="2" y="2" width="356" height="126" rx="14" fill="transparent" stroke="#2a2030"/>
+
+            <g transform="translate(20, 18)">
+              <rect width="86" height="22" rx="4" fill="#1a1422" stroke="#ff6a1a" stroke-opacity="0.55"/>
+              <text x="43" y="15" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#ffb547">Codex CLI</text>
+            </g>
+
+            <g transform="translate(20, 50)">
+              <rect width="86" height="22" rx="4" fill="#1a1422" stroke="#ff6a1a" stroke-opacity="0.55"/>
+              <text x="43" y="15" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#ffb547">Forge</text>
+            </g>
+
+            <g transform="translate(20, 82)">
+              <rect width="86" height="22" rx="4" fill="#1a1422" stroke="#ff6a1a" stroke-opacity="0.55"/>
+              <text x="43" y="15" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#ffb547">Cursor BYOK</text>
+            </g>
+
+            <path d="M 110 29 H 178 V 50 H 240" stroke="url(#fmRail)" stroke-width="1.5" fill="none"/>
+            <path d="M 110 61 H 178 V 65 H 240" stroke="url(#fmRail)" stroke-width="1.5" fill="none"/>
+            <path d="M 110 93 H 178 V 82 H 240" stroke="url(#fmRail)" stroke-width="1.5" fill="none"/>
+
+            <g transform="translate(168, 50)">
+              <rect width="22" height="30" rx="4" fill="#1a1422" stroke="#ff6a1a"/>
+              <text x="11" y="15" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="6" fill="#ff8a3d">OBB</text>
+              <text x="11" y="24" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="6" fill="#ff8a3d">8317</text>
+            </g>
+
+            <g transform="translate(238, 30)">
+              <rect width="100" height="20" rx="4" fill="#0c0a0f" stroke="#ff6a1a"/>
+              <text x="50" y="13" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#ffb547">Z.ai · active</text>
+            </g>
+            <g transform="translate(238, 56)">
+              <rect width="100" height="20" rx="4" fill="#0c0a0f" stroke="#ffb547" stroke-opacity="0.55" stroke-dasharray="3 2"/>
+              <text x="50" y="13" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#ffb547">MiniMax · fallback</text>
+            </g>
+            <g transform="translate(238, 82)">
+              <rect width="100" height="20" rx="4" fill="#0c0a0f" stroke="#2a2030"/>
+              <text x="50" y="13" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">Kimi · healthy</text>
+            </g>
+
+            <text x="290" y="120" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="8" fill="#5c5448" letter-spacing="0.06em">OpenAI-family pool — same family only</text>
+          </svg>
+
+          <ul class="modecard__list">
+            <li><strong>Single intent, many accounts.</strong> Pin Z.ai for GLM coding work, hold MiniMax and Kimi in reserve.</li>
+            <li><strong>Same-format failover only.</strong> An OpenAI-shape request can only be served by an OpenAI-family account.</li>
+            <li><strong>Pin sticks unless it can't.</strong> Your preferred account wins when healthy; the runner-up is already chosen.</li>
+            <li><strong>Cool-downs auto-recover.</strong> Five-minute parking on transient failures, then the account rejoins the rotation.</li>
+          </ul>
+
+          <p class="modecard__when mono">use when · single coding intent · trusted account topology · no surprise model swaps</p>
+        </article>
+
+        <article class="modecard modecard--intelligent">
+          <header>
+            <span class="mono modecard__tag">02 · opt-in</span>
+            <h3 class="modecard__h">Intelligent Model Router.</h3>
+            <p class="modecard__sub mono">optimizes the route · benchmark-aware · still local</p>
+          </header>
+
+          <p class="modecard__lede">
+            Tell BurnBar what the task is. Refactor a million-token diff. Draft a
+            release note. Run a fast lint. The router scores every candidate
+            model against the task and picks the one that fits — using
+            capability, quota health, cost, latency, context window,
+            reliability, and benchmark freshness as <em>advisory signals</em>.
+          </p>
+
+          <svg class="modecard__diagram" viewBox="0 0 360 130" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram: task scored against multiple candidate models, winner picked">
+            <defs>
+              <linearGradient id="imRail" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0%" stop-color="#d6d3df" stop-opacity="0.85"/>
+                <stop offset="100%" stop-color="#aeacba" stop-opacity="0.8"/>
+              </linearGradient>
+            </defs>
+            <rect x="2" y="2" width="356" height="126" rx="14" fill="transparent" stroke="#2a2030"/>
+
+            <g transform="translate(20, 18)">
+              <rect width="118" height="22" rx="4" fill="#1a1422" stroke="#d6d3df" stroke-opacity="0.4"/>
+              <text x="59" y="15" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#d6d3df">task · refactor SQL</text>
+            </g>
+
+            <g transform="translate(20, 50)">
+              <rect width="118" height="22" rx="4" fill="#1a1422" stroke="#d6d3df" stroke-opacity="0.4"/>
+              <text x="59" y="15" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#d6d3df">ctx · 940k tokens</text>
+            </g>
+
+            <g transform="translate(20, 82)">
+              <rect width="118" height="22" rx="4" fill="#1a1422" stroke="#d6d3df" stroke-opacity="0.4"/>
+              <text x="59" y="15" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#d6d3df">budget · cost-tight</text>
+            </g>
+
+            <path d="M 142 29 H 180 V 65 H 200" stroke="url(#imRail)" stroke-width="1.5" fill="none"/>
+            <path d="M 142 61 H 200" stroke="url(#imRail)" stroke-width="1.5" fill="none"/>
+            <path d="M 142 93 H 180 V 65 H 200" stroke="url(#imRail)" stroke-width="1.5" fill="none"/>
+
+            <g transform="translate(178, 50)">
+              <circle cx="14" cy="14" r="12" fill="#0c0a0f" stroke="#d6d3df"/>
+              <text x="14" y="11" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="5" fill="#d6d3df">score</text>
+              <text x="14" y="20" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="5" fill="#d6d3df">+rank</text>
+            </g>
+
+            <path d="M 210 65 H 234" stroke="url(#imRail)" stroke-width="1.5" fill="none"/>
+
+            <g transform="translate(236, 30)">
+              <rect width="102" height="20" rx="4" fill="#0c0a0f" stroke="#d6d3df"/>
+              <text x="51" y="13" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#d6d3df">opus-4-7 · pick</text>
+            </g>
+            <g transform="translate(236, 56)">
+              <rect width="102" height="20" rx="4" fill="#0c0a0f" stroke="#aeacba" stroke-opacity="0.45" stroke-dasharray="3 2"/>
+              <text x="51" y="13" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#aeacba">sonnet-4-6 · runner</text>
+            </g>
+            <g transform="translate(236, 82)">
+              <rect width="102" height="20" rx="4" fill="#0c0a0f" stroke="#2a2030"/>
+              <text x="51" y="13" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="9" fill="#8b8275">gpt-4.1 · skipped (ctx)</text>
+            </g>
+
+            <text x="295" y="120" text-anchor="middle" font-family="JetBrains Mono Variable, monospace" font-size="8" fill="#5c5448" letter-spacing="0.06em">scored every turn · explained every pick</text>
+          </svg>
+
+          <ul class="modecard__list">
+            <li><strong>Score, don't guess.</strong> Each candidate model gets a per-task score; the router picks the winner and pre-selects a runner-up.</li>
+            <li><strong>Benchmarks are advisory.</strong> Freshness matters. A 30-day-old benchmark is weighted less than a 3-day-old one.</li>
+            <li><strong>User choice still wins.</strong> A pinned model that meets the floor beats a higher-scored model that doesn't.</li>
+            <li><strong>Always explainable.</strong> Every pick streams a <span class="mono">decision_reason</span> you can inspect in the Router tab.</li>
+          </ul>
+
+          <p class="modecard__when mono">use when · cross-task variance · cost-sensitive work · researcher / scout / autopilot flows</p>
+        </article>
+      </div>
+
+      <p class="modes__cap mono">
+        Both modes run inside the same local gateway. Switch from the Router tab
+        in the macOS app · no daemon restart · no config file edit.
+      </p>
     </div>
   </section>
 
@@ -91,17 +268,157 @@ import { SITE } from "@data/site";
   <section class="routerboard">
     <div class="container container--wide">
       <header class="sec-head">
-        <span class="eyebrow eyebrow--ember">The board</span>
+        <span class="eyebrow eyebrow--ember">The board · family mode</span>
         <h2>What it looks like in practice.</h2>
         <p class="lead">
-          The diagram below mirrors what the macOS app shows on the
-          <strong>Router</strong> tab. Active routes glow ember, next-fallback
-          candidates wait in amber, cooled-down accounts recover quietly, and
-          exhausted accounts are visibly out of play until their cooldown elapses.
+          The board mirrors the macOS app's <strong>Router</strong> tab. The
+          mode strip shows which posture is active and the latest decision the
+          router made. Pinned accounts carry a dashed ring. Active routes glow
+          ember. Next-fallback waits in amber. Blocked routes spell out why.
         </p>
       </header>
 
-      <RouterSwitchboard />
+      <RouterSwitchboard mode="family" />
+
+      <header class="sec-head sec-head--mini routerboard__altcap">
+        <span class="eyebrow eyebrow--mercury">The same board · intelligent mode</span>
+        <h3 class="routerboard__h3">Different posture, same accounts, same wire.</h3>
+      </header>
+
+      <RouterSwitchboard mode="intelligent" />
+    </div>
+  </section>
+
+  <!-- ──────────── how decisions are made ──────────── -->
+  <section class="factors">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--ember">How decisions are made</span>
+        <h2>Nine signals, weighted by the mode you're in.</h2>
+        <p class="lead">
+          In family mode the first three weigh heaviest — they protect intent.
+          In intelligent mode the full nine come into play. <strong>None of them
+          is absolute.</strong> Benchmarks are the youngest source we trust;
+          they're advisory signals, not gospel.
+        </p>
+      </header>
+
+      <ol class="factors__grid">
+        <li class="factor factor--anchor">
+          <span class="mono factor__idx">01</span>
+          <h3>Task intent</h3>
+          <p>What you asked for. The pinned model, the chosen agent, the explicit "Codex" vs "Claude Code" surface — all hard constraints. Anything that violates intent is filtered out before scoring begins.</p>
+        </li>
+        <li class="factor factor--anchor">
+          <span class="mono factor__idx">02</span>
+          <h3>Model capability</h3>
+          <p>Coding ability, reasoning depth, tool-use reliability, multimodal support, fine-grained instruction following. Read from a versioned capability matrix you can audit.</p>
+        </li>
+        <li class="factor factor--anchor">
+          <span class="mono factor__idx">03</span>
+          <h3>Quota health</h3>
+          <p>Live read of the active bucket. Healthy outranks pressure; pressure outranks cooling-down; cooling-down outranks rate-limited; everything outranks exhausted and auth-failed.</p>
+        </li>
+        <li class="factor">
+          <span class="mono factor__idx">04</span>
+          <h3>Local availability</h3>
+          <p>Is the credential on disk right now, or would the router have to fetch a hosted secret? Local credentials win — lower latency, smaller blast radius.</p>
+        </li>
+        <li class="factor">
+          <span class="mono factor__idx">05</span>
+          <h3>Cost</h3>
+          <p>Per-token pricing for the candidate model on the candidate account, against the request size we can estimate. Tie-breaker between equally capable options.</p>
+        </li>
+        <li class="factor">
+          <span class="mono factor__idx">06</span>
+          <h3>Latency</h3>
+          <p>Recent rolling median TTFB and tokens-per-second observed from <em>your</em> traffic on this account. Not vendor marketing — measured locally.</p>
+        </li>
+        <li class="factor">
+          <span class="mono factor__idx">07</span>
+          <h3>Context window</h3>
+          <p>If the request needs 940k tokens of context, a 256k window is disqualified — never picked, never partially used. No silent truncation.</p>
+        </li>
+        <li class="factor">
+          <span class="mono factor__idx">08</span>
+          <h3>Reliability</h3>
+          <p>Recent 5xx rate, stream-corruption rate, and tool-call success rate. An otherwise-perfect account that flakes 4% of the time is penalized accordingly.</p>
+        </li>
+        <li class="factor factor--mercury">
+          <span class="mono factor__idx">09</span>
+          <h3>Benchmark freshness <span class="factor__note mono">advisory</span></h3>
+          <p>External coding benchmarks (Aider, LMSys, SWE-Bench refresh windows) feed in with an age penalty. A 3-day-old score weighs more than a 30-day-old one — and a benchmark never overrides your pin.</p>
+        </li>
+      </ol>
+
+      <p class="factors__cap mono">
+        The first three are hard constraints in both modes. The remaining six
+        weigh into the score the router uses to rank survivors after the filter.
+      </p>
+    </div>
+  </section>
+
+  <!-- ──────────── what BurnBar will not do ──────────── -->
+  <section class="wontdo">
+    <div class="container container--wide">
+      <header class="sec-head">
+        <span class="eyebrow eyebrow--burn">What BurnBar will not do</span>
+        <h2>The bright lines we don't cross.</h2>
+        <p class="lead">
+          A router that's allowed to do anything is a router you can't predict.
+          These are the constraints baked into the policy — not promises, code.
+        </p>
+      </header>
+
+      <ul class="wontdo__grid">
+        <li class="wontno">
+          <span class="wontno__x" aria-hidden="true">✕</span>
+          <div>
+            <h3>Will not send a Codex task to Claude in failover mode.</h3>
+            <p>
+              Family boundaries are enforced at the gateway. An OpenAI-shape request
+              can only be served by an OpenAI-family account. The mode is honored
+              <em>before</em> ranking — there's no fallback path that crosses the wire.
+            </p>
+          </div>
+        </li>
+        <li class="wontno">
+          <span class="wontno__x" aria-hidden="true">✕</span>
+          <div>
+            <h3>Will not collapse your accounts into a generic quota pool.</h3>
+            <p>
+              Each account keeps its own quota, its own cool-down clock, its own
+              decision history. You added them separately — the router treats them
+              separately. No global "tokens left" number that hides which key is
+              actually carrying load.
+            </p>
+          </div>
+        </li>
+        <li class="wontno">
+          <span class="wontno__x" aria-hidden="true">✕</span>
+          <div>
+            <h3>Will not log secrets.</h3>
+            <p>
+              Decision logs record the account ID, the chosen model, the reasons
+              other candidates were skipped — never the API key, never the OAuth
+              bearer, never request bodies. Keys live in the macOS Keychain with
+              device-local accessibility.
+            </p>
+          </div>
+        </li>
+        <li class="wontno">
+          <span class="wontno__x" aria-hidden="true">✕</span>
+          <div>
+            <h3>Will not treat benchmarks as absolute truth.</h3>
+            <p>
+              Benchmarks help break ties, surface candidates, and weigh recency.
+              They never veto your pin. They never trump live quota or auth state.
+              A model that benchmarks two points higher but is rate-limited right
+              now still loses.
+            </p>
+          </div>
+        </li>
+      </ul>
     </div>
   </section>
 
@@ -390,60 +707,75 @@ import { SITE } from "@data/site";
 
       <dl class="qa__list">
         <div>
-          <dt>Why not translate between OpenAI and Anthropic formats?</dt>
+          <dt>What is Provider-Family Failover?</dt>
           <dd>
-            Because the differences aren't superficial. Tool-call schemas,
-            prompt-cache markers, citation blocks, streaming-event shapes,
-            and the way assistant turns are encoded all differ between OpenAI
-            Chat Completions and Anthropic Messages. A translator would have
-            to be perfect on every release of either API — and any drift
-            corrupts your inference in ways that are subtle and hard to
-            debug. Same-format pass-through is a cleaner contract: your
-            Claude request lands on a Claude account, your OpenAI-shape
-            request lands on an OpenAI-shape account. Failover happens
-            inside that contract, never across it.
+            The default mode. BurnBar extends your capacity by stretching a
+            request across <em>multiple accounts inside the same provider
+            family</em>. If your pinned Z.ai key throttles, your MiniMax key
+            picks up — both are OpenAI-shape, so the wire format never
+            changes. Claude Code requests do the same inside the Anthropic
+            family, with your Pro plan as the primary and your Console
+            admin key as the runner-up. The mode is honored before ranking
+            — failover happens inside the family, never across it.
           </dd>
         </div>
         <div>
-          <dt>Is this a load balancer?</dt>
+          <dt>What is Intelligent Model Router?</dt>
           <dd>
-            No — it's a single-tenant router on your Mac. It does not split a
-            request across providers or aggregate responses. One request, one
-            provider, picked by the policy above.
+            The opt-in mode. You tell BurnBar what the task is (or let the
+            client surface it) and the router scores every candidate model
+            against capability, quota health, cost, latency, context window,
+            reliability, and benchmark freshness. The winner serves the
+            request; the runner-up is held in reserve. Benchmarks are
+            <strong>advisory</strong> — they help break ties and weigh recency,
+            but they never override your pin or the live quota state.
           </dd>
         </div>
         <div>
-          <dt>What happens if every provider is exhausted?</dt>
+          <dt>Will BurnBar send my Codex task to Claude?</dt>
           <dd>
-            The Hydrant returns a structured 503 to the client with the
-            specific cooled-down accounts and the elapsed time until the
-            earliest one recovers. Your IDE sees a clear error, not a hang.
+            Not in failover mode. The router refuses to cross the family
+            boundary — your Codex request stays on OpenAI-family accounts,
+            even when every one of them is rate-limited (in which case
+            you get a structured 503, not a silent rewrite). In intelligent
+            mode you can opt into cross-family routing per surface, with the
+            client client opting in too. We never silently swap providers
+            on a request that asked for a specific one.
           </dd>
         </div>
         <div>
-          <dt>Can I disable routing for an account but still track it?</dt>
+          <dt>Can I still pin a model?</dt>
           <dd>
-            Yes. Toggle <span class="mono">routingEnabled</span> off on the
-            account; cost and quota continue to populate the dashboard while
-            the Hydrant skips it for outbound traffic.
+            Yes — pinning is the strongest signal in both modes. A pinned
+            account or pinned model wins as long as it's healthy. In family
+            mode the pin is account-level. In intelligent mode you can pin a
+            model, a family, or even a specific tier (e.g. "always opus-class
+            for the autopilot surface"). The router will still pre-select a
+            runner-up so failover is instant if the pin goes unhealthy.
           </dd>
         </div>
         <div>
-          <dt>How long is the cool-down?</dt>
+          <dt>What benchmark sources does BurnBar use?</dt>
           <dd>
-            Five minutes for transient failures, rate-limits, and auth failures.
-            Exhausted-bucket accounts stay parked until the bucket rolls
-            (daily, weekly, or monthly, per provider).
+            A curated set of <em>recently refreshed</em>, well-methodologized
+            coding benchmarks — currently Aider Leaderboard, LMSys Arena coding
+            slice, and SWE-Bench Verified. Each score carries an age and a
+            confidence label; older scores are weighted down. The full source
+            list ships with each release as a versioned JSON file you can
+            audit, and the weighting curve is documented in
+            <span class="mono">docs/ROUTER_BENCHMARK_POLICY.md</span>. We do
+            not synthesize our own benchmarks — we cite, we don't fabricate.
           </dd>
         </div>
         <div>
-          <dt>Is there a config file?</dt>
+          <dt>Are routing logs safe?</dt>
           <dd>
-            Routing rules are derived from the accounts you've added in the
-            macOS app and a per-account <span class="mono">sortKey</span> +
-            preferred-pin you can drag-to-reorder. No YAML, no hot-reload —
-            change the order in the UI, the new policy takes effect on the next
-            request.
+            Yes. The local <span class="mono">ProviderRoutingDecisionEvent</span>
+            stream records the chosen account ID, the skipped account IDs, the
+            reason each one was skipped, and the final ranking signals — never
+            the API key, never the OAuth bearer, never the request body, never
+            the response body. Logs stay in the local SQLite store and never
+            leave the device unless you explicitly enable an opt-in mirror.
           </dd>
         </div>
       </dl>
@@ -817,4 +1149,358 @@ import { SITE } from "@data/site";
   }
   .endcta--inline h2 { margin-bottom: var(--s-3); }
   .endcta__ctas { display: flex; justify-content: center; gap: var(--s-3); margin-top: var(--s-5); flex-wrap: wrap; }
+
+  /* ===== hero chips ===== */
+  .pagehead__chips {
+    list-style: none;
+    margin-top: var(--s-6);
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--s-3) var(--s-5);
+    padding: var(--s-3) var(--s-4);
+    border: 1px dashed var(--ink-line);
+    border-radius: var(--r-pill);
+    font-size: var(--t-caption);
+    color: var(--text-mute);
+    letter-spacing: 0.03em;
+    background: color-mix(in oklab, var(--ink-surface) 60%, transparent);
+  }
+  .pagehead__chips li { display: inline-flex; align-items: center; gap: var(--s-2); }
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .dot--ember { background: var(--ember-core); box-shadow: 0 0 8px var(--ember-glow); }
+  .dot--mercury { background: var(--mercury-bright); box-shadow: 0 0 8px color-mix(in oklab, var(--mercury-bright) 55%, transparent); }
+
+  /* ===== two modes ===== */
+  .modes {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(60% 60% at 20% 0%, rgba(255, 106, 26, 0.05), transparent 70%),
+      radial-gradient(50% 60% at 90% 100%, rgba(214, 211, 223, 0.04), transparent 70%);
+  }
+  .modes::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(90deg, var(--ink-line-soft) 1px, transparent 1px),
+      linear-gradient(180deg, var(--ink-line-soft) 1px, transparent 1px);
+    background-size: 56px 56px;
+    background-position: -1px -1px;
+    opacity: 0.14;
+    mask-image: radial-gradient(70% 60% at 50% 50%, black 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(70% 60% at 50% 50%, black 30%, transparent 80%);
+  }
+  .modes > .container { position: relative; z-index: 1; }
+  .modes .sec-head { max-width: 64ch; }
+
+  .modes__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-5);
+    align-items: stretch;
+  }
+  .modecard {
+    position: relative;
+    display: grid;
+    gap: var(--s-4);
+    padding: var(--s-6);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-5);
+    background: linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    overflow: hidden;
+  }
+  .modecard::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, currentColor, transparent);
+    opacity: 0.5;
+  }
+  .modecard--family {
+    border-color: color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
+    color: var(--ember-bright);
+  }
+  .modecard--intelligent {
+    border-color: color-mix(in oklab, var(--mercury-bright) 30%, var(--ink-line));
+    color: var(--mercury-bright);
+  }
+  .modecard > * { color: var(--text-base); }
+  .modecard header { display: grid; gap: var(--s-2); }
+  .modecard__tag {
+    display: inline-block;
+    width: max-content;
+    color: var(--ember-bright);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--ember-core) 40%, var(--ink-line));
+    background: color-mix(in oklab, var(--ember-core) 8%, transparent);
+  }
+  .modecard--intelligent .modecard__tag {
+    color: var(--mercury-bright);
+    border-color: color-mix(in oklab, var(--mercury-bright) 35%, var(--ink-line));
+    background: color-mix(in oklab, var(--mercury-bright) 8%, transparent);
+  }
+  .modecard__h {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 1.3rem + 1vw, 2.2rem);
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 80, "wght" 500;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    line-height: 1.05;
+  }
+  .modecard__sub {
+    color: var(--ember-bright);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+  }
+  .modecard--intelligent .modecard__sub { color: var(--mercury-bright); }
+  .modecard__lede {
+    color: var(--text-base);
+    font-size: 0.98rem;
+    line-height: 1.55;
+    max-width: 46ch;
+  }
+  .modecard__lede em {
+    font-style: italic;
+    color: var(--ember-bright);
+    font-variation-settings: "opsz" 36, "wght" 460, "ital" 1;
+  }
+  .modecard--intelligent .modecard__lede em { color: var(--mercury-bright); }
+  .modecard__diagram {
+    width: 100%;
+    height: auto;
+    border-radius: var(--r-3);
+    background:
+      radial-gradient(60% 60% at 30% 50%, rgba(255, 106, 26, 0.05), transparent 70%),
+      var(--ink-base);
+  }
+  .modecard--intelligent .modecard__diagram {
+    background:
+      radial-gradient(60% 60% at 70% 50%, rgba(214, 211, 223, 0.05), transparent 70%),
+      var(--ink-base);
+  }
+  .modecard__list {
+    display: grid;
+    gap: var(--s-3);
+    margin-top: var(--s-2);
+  }
+  .modecard__list li {
+    padding-left: var(--s-4);
+    position: relative;
+    color: var(--text-base);
+    font-size: 0.94rem;
+    line-height: 1.5;
+  }
+  .modecard__list li::before {
+    content: "▸";
+    position: absolute;
+    left: 0;
+    top: 0.05em;
+    color: var(--ember-bright);
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+  .modecard--intelligent .modecard__list li::before { color: var(--mercury-bright); }
+  .modecard__list strong { color: var(--text-bright); font-variation-settings: "wght" 540; }
+  .modecard__when {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: lowercase;
+    padding-top: var(--s-3);
+    border-top: 1px dashed var(--ink-line-soft);
+  }
+  .modes__cap {
+    margin-top: var(--s-5);
+    color: var(--text-dim);
+    font-size: 0.74rem;
+    letter-spacing: 0.04em;
+    text-align: center;
+  }
+  @media (max-width: 1000px) {
+    .modes__grid { grid-template-columns: 1fr; }
+  }
+
+  /* ===== routerboard secondary heading ===== */
+  .routerboard__altcap {
+    margin-top: var(--s-7);
+    margin-bottom: var(--s-5);
+  }
+  .routerboard__h3 {
+    font-family: var(--font-display);
+    font-size: var(--t-h3);
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 80, "wght" 500;
+    letter-spacing: -0.022em;
+    text-wrap: balance;
+  }
+  .sec-head--mini { margin-bottom: var(--s-4); }
+
+  /* ===== factors ===== */
+  .factors {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    background: var(--ink-base);
+  }
+  .factors__grid {
+    list-style: none;
+    counter-reset: factors;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--s-4);
+  }
+  .factor {
+    position: relative;
+    padding: var(--s-5);
+    border: 1px solid var(--ink-line);
+    border-radius: var(--r-4);
+    background:
+      linear-gradient(180deg, var(--ink-surface) 0%, var(--ink-base) 100%);
+    display: grid;
+    gap: var(--s-2);
+  }
+  .factor--anchor {
+    border-color: color-mix(in oklab, var(--ember-core) 28%, var(--ink-line));
+    background:
+      linear-gradient(180deg, rgba(255, 106, 26, 0.05) 0%, var(--ink-base) 100%);
+  }
+  .factor--mercury {
+    border-color: color-mix(in oklab, var(--mercury-bright) 22%, var(--ink-line));
+    background:
+      linear-gradient(180deg, rgba(214, 211, 223, 0.05) 0%, var(--ink-base) 100%);
+  }
+  .factor__idx {
+    color: var(--ember-bright);
+    font-size: var(--t-caption);
+    letter-spacing: 0.18em;
+  }
+  .factor--mercury .factor__idx { color: var(--mercury-bright); }
+  .factor h3 {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.014em;
+    line-height: 1.18;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+  .factor__note {
+    color: var(--mercury-bright);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: var(--r-pill);
+    border: 1px solid color-mix(in oklab, var(--mercury-bright) 32%, var(--ink-line));
+    background: color-mix(in oklab, var(--mercury-bright) 8%, transparent);
+    font-family: var(--font-mono);
+  }
+  .factor p {
+    color: var(--text-base);
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+  .factor p em {
+    color: var(--ember-bright);
+    font-style: italic;
+    font-variation-settings: "opsz" 36, "ital" 1;
+  }
+  .factor--mercury p em { color: var(--mercury-bright); }
+  .factors__cap {
+    margin-top: var(--s-5);
+    padding-top: var(--s-4);
+    border-top: 1px dashed var(--ink-line-soft);
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    max-width: 78ch;
+  }
+  @media (max-width: 1080px) {
+    .factors__grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 640px) {
+    .factors__grid { grid-template-columns: 1fr; }
+  }
+
+  /* ===== wontdo ===== */
+  .wontdo {
+    padding-block: var(--s-9);
+    border-top: 1px solid var(--ink-line);
+    background:
+      radial-gradient(60% 50% at 0% 0%, rgba(229, 72, 60, 0.05), transparent 70%);
+  }
+  .wontdo .sec-head .eyebrow {
+    color: var(--status-burn);
+  }
+  .wontdo__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s-4);
+    list-style: none;
+  }
+  .wontno {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--s-4);
+    padding: var(--s-5);
+    border: 1px solid color-mix(in oklab, var(--status-burn) 18%, var(--ink-line));
+    border-radius: var(--r-4);
+    background:
+      linear-gradient(180deg, rgba(229, 72, 60, 0.04) 0%, var(--ink-base) 100%);
+    align-items: start;
+  }
+  .wontno__x {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid color-mix(in oklab, var(--status-burn) 50%, var(--ink-line));
+    border-radius: 50%;
+    color: var(--status-burn);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    flex-shrink: 0;
+    background: color-mix(in oklab, var(--status-burn) 8%, transparent);
+  }
+  .wontno h3 {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    color: var(--text-bright);
+    font-variation-settings: "opsz" 36, "wght" 540;
+    letter-spacing: -0.014em;
+    line-height: 1.2;
+    margin-bottom: var(--s-2);
+    text-wrap: balance;
+  }
+  .wontno p {
+    color: var(--text-base);
+    font-size: 0.93rem;
+    line-height: 1.55;
+  }
+  .wontno p em {
+    color: var(--ember-bright);
+    font-style: italic;
+    font-variation-settings: "opsz" 36, "ital" 1;
+  }
+  @media (max-width: 880px) {
+    .wontdo__grid { grid-template-columns: 1fr; }
+  }
 </style>
