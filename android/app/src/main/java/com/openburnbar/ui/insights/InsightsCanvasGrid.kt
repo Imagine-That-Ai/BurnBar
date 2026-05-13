@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.openburnbar.data.insights.InsightCanvas
 import com.openburnbar.data.insights.InsightCitation
+import com.openburnbar.data.insights.InsightTheme
 import com.openburnbar.data.insights.InsightWidget
 import com.openburnbar.data.insights.InsightLayout
 import com.openburnbar.data.insights.InsightWidgetData
@@ -44,8 +45,6 @@ fun InsightsCanvasGrid(
     modifier: Modifier = Modifier
 ) {
     val projectedLayout = remember(canvas) {
-        // Default: phone uses 2 columns; tablet uses 6 in split, 12 full-width
-        // TODO: use LocalConfiguration to determine actual column count
         canvas.layout.projectedTo(2)
     }
 
@@ -55,6 +54,7 @@ fun InsightsCanvasGrid(
                 androidx.compose.runtime.key(widget.id) {
                     WidgetCard(
                         widget = widget,
+                        theme = canvas.theme,
                         isSelected = widget.id == selectedWidgetId,
                         onSelect = { onSelect(widget.id) },
                         onCitationTap = onCitationTap
@@ -102,6 +102,7 @@ fun InsightsCanvasGrid(
 @Composable
 private fun WidgetCard(
     widget: InsightWidget,
+    theme: InsightTheme,
     isSelected: Boolean,
     onSelect: () -> Unit,
     onCitationTap: (InsightCitation) -> Unit
@@ -121,7 +122,8 @@ private fun WidgetCard(
         Box(modifier = Modifier.padding(AuroraSpacing.sm.dp)) {
             InsightWidgetRenderer(
                 widget = widget,
-                onCitationTap = onCitationTap
+                onCitationTap = onCitationTap,
+                theme = theme
             )
         }
     }

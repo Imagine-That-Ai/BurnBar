@@ -105,7 +105,7 @@ fun InsightWidgetRenderer(
             InsightWidgetKind.DONUT               -> DonutRenderer(widget, theme, onCitationTap)
             InsightWidgetKind.TREEMAP             -> TreemapRenderer(widget, theme, onCitationTap)
             InsightWidgetKind.HEATMAP             -> HeatmapRenderer(widget, theme, onCitationTap)
-            InsightWidgetKind.SCATTER             -> PlaceholderWidget(widget)
+            InsightWidgetKind.SCATTER             -> ScatterRenderer(widget, theme, onCitationTap)
             InsightWidgetKind.SANKEY              -> SankeyRenderer(widget, theme, onCitationTap)
             InsightWidgetKind.RADAR               -> RadarRenderer(widget, theme, onCitationTap)
             InsightWidgetKind.COHORT              -> CohortRenderer(widget, theme, onCitationTap)
