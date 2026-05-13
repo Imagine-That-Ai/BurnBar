@@ -288,16 +288,17 @@ public struct BurnBarProviderRouter: Sendable {
     ) async throws -> [BurnBarProviderRoute] {
         let configurations = try await configStore.resolvedConfigurations()
         let effectiveRouterMode = try await resolvedRouterMode(routerMode)
-        let effectivePreferredProviderID = preferredProviderID ?? preferredProviderForProviderFamilyMode(
-            modelName: modelName,
-            routerMode: effectiveRouterMode
-        )
+        let derivedPreferredProviderID = preferredProviderID == nil
+            ? preferredProviderForProviderFamilyMode(modelName: modelName, routerMode: effectiveRouterMode)
+            : nil
+        let effectivePreferredProviderID = preferredProviderID ?? derivedPreferredProviderID
         return try candidateRoutes(
             modelName: modelName,
             preferredProviderID: effectivePreferredProviderID,
             excludedRouteKeys: excludedRouteKeys,
             requestedFormatFamily: requestedFormatFamily,
-            configurations: configurations
+            configurations: configurations,
+            strictPreferredProvider: preferredProviderID != nil
         )
     }
 
@@ -306,7 +307,8 @@ public struct BurnBarProviderRouter: Sendable {
         preferredProviderID: String?,
         excludedRouteKeys: Set<String>,
         requestedFormatFamily: BurnBarProviderFormatFamily?,
-        configurations: [BurnBarResolvedProviderConfiguration]
+        configurations: [BurnBarResolvedProviderConfiguration],
+        strictPreferredProvider: Bool = true
     ) throws -> [BurnBarProviderRoute] {
         let trimmedModelName = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedModelName.isEmpty else {
@@ -325,9 +327,15 @@ public struct BurnBarProviderRouter: Sendable {
         let scopedConfigurations: [BurnBarResolvedProviderConfiguration]
         if let preferredProviderID {
             guard let preferredConfiguration = configurations.first(where: { $0.provider.id == preferredProviderID }) else {
+                if strictPreferredProvider == false {
+                    return []
+                }
                 throw BurnBarProviderRouterError.unsupportedProvider(preferredProviderID)
             }
             guard preferredConfiguration.settings.isEnabled else {
+                if strictPreferredProvider == false {
+                    return []
+                }
                 throw BurnBarProviderRouterError.providerDisabled(preferredProviderID)
             }
             scopedConfigurations = [preferredConfiguration]
@@ -701,16 +709,17 @@ extension BurnBarProviderRouter {
     ) async throws -> BurnBarRouteRankingResult {
         let configurations = try await configStore.resolvedConfigurations()
         let effectiveRouterMode = try await resolvedRouterMode(routerMode)
-        let effectivePreferredProviderID = preferredProviderID ?? preferredProviderForProviderFamilyMode(
-            modelName: modelName,
-            routerMode: effectiveRouterMode
-        )
+        let derivedPreferredProviderID = preferredProviderID == nil
+            ? preferredProviderForProviderFamilyMode(modelName: modelName, routerMode: effectiveRouterMode)
+            : nil
+        let effectivePreferredProviderID = preferredProviderID ?? derivedPreferredProviderID
         let candidates = try candidateRoutes(
             modelName: modelName,
             preferredProviderID: effectivePreferredProviderID,
             excludedRouteKeys: excludedRouteKeys,
             requestedFormatFamily: requestedFormatFamily,
-            configurations: configurations
+            configurations: configurations,
+            strictPreferredProvider: preferredProviderID != nil
         )
 
         guard !candidates.isEmpty else {
@@ -930,7 +939,14 @@ extension BurnBarProviderRouter {
 
         // 5. Policy-fit (preferred provider + preferred slot)
         let rawPolicyFitPreferred = (preferredProviderID == route.providerID) || isPreferredSlot
-        let normalizedPolicyFit: Double = rawPolicyFitPreferred ? 1.0 : 0.3
+        let normalizedPolicyFit: Double
+        if isPreferredSlot {
+            normalizedPolicyFit = 1.0
+        } else if preferredProviderID == route.providerID {
+            normalizedPolicyFit = 0.85
+        } else {
+            normalizedPolicyFit = 0.3
+        }
 
         let score = BurnBarRouteScore(
             capability: normalizedCapability,
