@@ -167,6 +167,118 @@ public enum ProviderRoutingRuntimeSignal: String, Codable, CaseIterable, Hashabl
     case transientFailure = "transient_failure"
 }
 
+public enum ProviderRouterMode: String, Codable, CaseIterable, Hashable, Sendable {
+    case providerFamilyFailover = "provider_family_failover"
+    case intelligentModelRouter = "intelligent_model_router"
+}
+
+public enum ProviderRoutingTaskCategory: String, Codable, CaseIterable, Hashable, Sendable {
+    case general
+    case coding
+    case terminal
+    case design
+    case agent
+    case analysis
+    case unknown
+}
+
+public enum ProviderModelBenchmarkSource: String, Codable, CaseIterable, Hashable, Sendable {
+    case artificialAnalysis = "artificial_analysis"
+    case terminalBench = "terminal_bench"
+    case designArena = "design_arena"
+    case huggingFace = "huggingface"
+    case manualFixture = "manual_fixture"
+    case cachedFixture = "cached_fixture"
+}
+
+public enum ProviderModelBenchmarkFreshness: String, Codable, CaseIterable, Hashable, Sendable {
+    case fresh
+    case stale
+    case unavailable
+    case cached
+    case manual
+}
+
+public struct ProviderModelBenchmarkStatus: Codable, Hashable, Sendable {
+    public let source: ProviderModelBenchmarkSource
+    public let fetchedAt: Date?
+    public let freshness: ProviderModelBenchmarkFreshness
+    public let message: String
+    public let attribution: String?
+
+    public init(
+        source: ProviderModelBenchmarkSource,
+        fetchedAt: Date? = nil,
+        freshness: ProviderModelBenchmarkFreshness,
+        message: String,
+        attribution: String? = nil
+    ) {
+        self.source = source
+        self.fetchedAt = fetchedAt
+        self.freshness = freshness
+        self.message = ProviderRoutingPolicy.sanitizedAuditText(message)
+        self.attribution = attribution.map(ProviderRoutingPolicy.sanitizedAuditText)
+    }
+}
+
+public struct ProviderModelBenchmarkSnapshot: Codable, Identifiable, Hashable, Sendable {
+    public let id: String
+    public let source: ProviderModelBenchmarkSource
+    public let sourceURL: String?
+    public let attribution: String?
+    public let fetchedAt: Date
+    public let modelID: String
+    public let providerID: ProviderID?
+    public let taskCategory: ProviderRoutingTaskCategory
+    public let score: Double?
+    public let rank: Int?
+    public let costSignal: Double?
+    public let latencySignal: Double?
+    public let contextWindowTokens: Int?
+    public let reliabilitySignal: Double?
+    public let confidence: Double?
+    public let freshness: ProviderModelBenchmarkFreshness
+    public let schemaVersion: Int
+
+    public init(
+        id: String,
+        source: ProviderModelBenchmarkSource,
+        sourceURL: String? = nil,
+        attribution: String? = nil,
+        fetchedAt: Date,
+        modelID: String,
+        providerID: ProviderID? = nil,
+        taskCategory: ProviderRoutingTaskCategory,
+        score: Double? = nil,
+        rank: Int? = nil,
+        costSignal: Double? = nil,
+        latencySignal: Double? = nil,
+        contextWindowTokens: Int? = nil,
+        reliabilitySignal: Double? = nil,
+        confidence: Double? = nil,
+        freshness: ProviderModelBenchmarkFreshness,
+        schemaVersion: Int = 1
+    ) {
+        self.id = id
+        self.source = source
+        self.sourceURL = sourceURL.map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.attribution = attribution.map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.fetchedAt = fetchedAt
+        self.modelID = ProviderRoutingPolicy.sanitizedAuditText(modelID)
+        self.providerID = providerID
+        self.taskCategory = taskCategory
+        self.score = score
+        self.rank = rank
+        self.costSignal = costSignal
+        self.latencySignal = latencySignal
+        self.contextWindowTokens = contextWindowTokens
+        self.reliabilitySignal = reliabilitySignal
+        self.confidence = confidence
+        self.freshness = freshness
+        self.schemaVersion = schemaVersion
+    }
+}
+
 public struct ProviderRoutingCandidate: Codable, Identifiable, Hashable, Sendable {
     public let providerID: ProviderID
     public let accountID: String
@@ -269,15 +381,30 @@ public struct ProviderRoutingRequest: Codable, Hashable, Sendable {
     public let modelID: String?
     public let preferredProviderIDs: [ProviderID]
     public let allowProviderFallback: Bool
+    public let routerMode: ProviderRouterMode
+    public let selectedProviderID: ProviderID?
+    public let selectedAccountID: String?
+    public let taskCategory: ProviderRoutingTaskCategory
+    public let benchmarkStatus: ProviderModelBenchmarkStatus?
 
     public init(
         modelID: String? = nil,
         preferredProviderIDs: [ProviderID] = [],
-        allowProviderFallback: Bool = true
+        allowProviderFallback: Bool = true,
+        routerMode: ProviderRouterMode = .providerFamilyFailover,
+        selectedProviderID: ProviderID? = nil,
+        selectedAccountID: String? = nil,
+        taskCategory: ProviderRoutingTaskCategory = .unknown,
+        benchmarkStatus: ProviderModelBenchmarkStatus? = nil
     ) {
-        self.modelID = modelID
+        self.modelID = modelID.map(ProviderRoutingPolicy.sanitizedAuditText)
         self.preferredProviderIDs = preferredProviderIDs
         self.allowProviderFallback = allowProviderFallback
+        self.routerMode = routerMode
+        self.selectedProviderID = selectedProviderID
+        self.selectedAccountID = selectedAccountID.map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.taskCategory = taskCategory
+        self.benchmarkStatus = benchmarkStatus
     }
 }
 
@@ -316,10 +443,30 @@ public struct ProviderRoutingSkip: Codable, Hashable, Sendable {
     }
 }
 
+public struct ProviderRoutingRejectedAlternative: Codable, Hashable, Sendable {
+    public let providerID: ProviderID
+    public let accountID: String?
+    public let accountLabel: String?
+    public let reason: String
+
+    public init(
+        providerID: ProviderID,
+        accountID: String? = nil,
+        accountLabel: String? = nil,
+        reason: String
+    ) {
+        self.providerID = providerID
+        self.accountID = accountID.map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.accountLabel = accountLabel.map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.reason = ProviderRoutingPolicy.sanitizedAuditText(reason)
+    }
+}
+
 public struct ProviderRoutingDecisionEvent: Codable, Identifiable, Hashable, Sendable {
     public let id: UUID
     public let occurredAt: Date
     public let modelID: String?
+    public let routerMode: ProviderRouterMode
     public let selectedProviderID: ProviderID?
     public let selectedAccountID: String?
     public let selectedAccountLabel: String?
@@ -327,20 +474,28 @@ public struct ProviderRoutingDecisionEvent: Codable, Identifiable, Hashable, Sen
     public let nextFallbackAccountID: String?
     public let nextFallbackAccountLabel: String?
     public let reason: String
+    public let explanation: String
+    public let rejectedAlternatives: [ProviderRoutingRejectedAlternative]
+    public let benchmarkStatus: ProviderModelBenchmarkStatus?
     public let skipped: [ProviderRoutingSkip]
 
     public init(
         id: UUID = UUID(),
         occurredAt: Date,
         modelID: String?,
+        routerMode: ProviderRouterMode = .providerFamilyFailover,
         selected: ProviderRoutingCandidate?,
         nextFallback: ProviderRoutingCandidate?,
         reason: String,
+        explanation: String? = nil,
+        rejectedAlternatives: [ProviderRoutingRejectedAlternative] = [],
+        benchmarkStatus: ProviderModelBenchmarkStatus? = nil,
         skipped: [ProviderRoutingSkip]
     ) {
         self.id = id
         self.occurredAt = occurredAt
-        self.modelID = modelID
+        self.modelID = modelID.map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.routerMode = routerMode
         self.selectedProviderID = selected?.providerID
         self.selectedAccountID = selected?.accountID
         self.selectedAccountLabel = selected?.accountLabel
@@ -348,7 +503,58 @@ public struct ProviderRoutingDecisionEvent: Codable, Identifiable, Hashable, Sen
         self.nextFallbackAccountID = nextFallback?.accountID
         self.nextFallbackAccountLabel = nextFallback?.accountLabel
         self.reason = ProviderRoutingPolicy.sanitizedAuditText(reason)
+        self.explanation = ProviderRoutingPolicy.sanitizedAuditText(explanation ?? reason)
+        self.rejectedAlternatives = rejectedAlternatives
+        self.benchmarkStatus = benchmarkStatus
         self.skipped = skipped
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case occurredAt
+        case modelID
+        case routerMode
+        case selectedProviderID
+        case selectedAccountID
+        case selectedAccountLabel
+        case nextFallbackProviderID
+        case nextFallbackAccountID
+        case nextFallbackAccountLabel
+        case reason
+        case explanation
+        case rejectedAlternatives
+        case benchmarkStatus
+        case skipped
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.occurredAt = try container.decode(Date.self, forKey: .occurredAt)
+        self.modelID = try container.decodeIfPresent(String.self, forKey: .modelID)
+            .map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.routerMode = try container.decodeIfPresent(ProviderRouterMode.self, forKey: .routerMode)
+            ?? .providerFamilyFailover
+        self.selectedProviderID = try container.decodeIfPresent(ProviderID.self, forKey: .selectedProviderID)
+        self.selectedAccountID = try container.decodeIfPresent(String.self, forKey: .selectedAccountID)
+            .map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.selectedAccountLabel = try container.decodeIfPresent(String.self, forKey: .selectedAccountLabel)
+            .map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.nextFallbackProviderID = try container.decodeIfPresent(ProviderID.self, forKey: .nextFallbackProviderID)
+        self.nextFallbackAccountID = try container.decodeIfPresent(String.self, forKey: .nextFallbackAccountID)
+            .map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.nextFallbackAccountLabel = try container.decodeIfPresent(String.self, forKey: .nextFallbackAccountLabel)
+            .map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.reason = ProviderRoutingPolicy.sanitizedAuditText(try container.decode(String.self, forKey: .reason))
+        self.explanation = ProviderRoutingPolicy.sanitizedAuditText(
+            try container.decodeIfPresent(String.self, forKey: .explanation) ?? self.reason
+        )
+        self.rejectedAlternatives = try container.decodeIfPresent(
+            [ProviderRoutingRejectedAlternative].self,
+            forKey: .rejectedAlternatives
+        ) ?? []
+        self.benchmarkStatus = try container.decodeIfPresent(ProviderModelBenchmarkStatus.self, forKey: .benchmarkStatus)
+        self.skipped = try container.decodeIfPresent([ProviderRoutingSkip].self, forKey: .skipped) ?? []
     }
 }
 
@@ -357,6 +563,9 @@ public struct ProviderRoutingDecision: Codable, Hashable, Sendable {
     public let nextFallback: ProviderRoutingCandidate?
     public let exhaustedOrCoolingDown: [ProviderRoutingCandidate]
     public let skipped: [ProviderRoutingSkip]
+    public let rejectedAlternatives: [ProviderRoutingRejectedAlternative]
+    public let routerMode: ProviderRouterMode
+    public let benchmarkStatus: ProviderModelBenchmarkStatus?
     public let event: ProviderRoutingDecisionEvent
 
     public var activeAccountLabel: String? { selected?.accountLabel }
@@ -364,23 +573,44 @@ public struct ProviderRoutingDecision: Codable, Hashable, Sendable {
 }
 
 public struct ProviderRoutingStateSnapshot: Codable, Hashable, Sendable {
+    public let routerMode: ProviderRouterMode
+    public let selectedProviderID: ProviderID?
+    public let selectedAccountID: String?
+    public let selectedModelID: String?
     public let activeAccount: ProviderRoutingCandidate?
     public let nextFallback: ProviderRoutingCandidate?
     public let exhaustedOrCoolingDownAccounts: [ProviderRoutingCandidate]
     public let lastSwitchReason: String?
+    public let latestExplanation: String?
+    public let rejectedAlternatives: [ProviderRoutingRejectedAlternative]
+    public let benchmarkStatus: ProviderModelBenchmarkStatus?
     public let recentEvents: [ProviderRoutingDecisionEvent]
 
     public init(
+        routerMode: ProviderRouterMode = .providerFamilyFailover,
+        selectedProviderID: ProviderID? = nil,
+        selectedAccountID: String? = nil,
+        selectedModelID: String? = nil,
         activeAccount: ProviderRoutingCandidate?,
         nextFallback: ProviderRoutingCandidate?,
         exhaustedOrCoolingDownAccounts: [ProviderRoutingCandidate],
         lastSwitchReason: String?,
+        latestExplanation: String? = nil,
+        rejectedAlternatives: [ProviderRoutingRejectedAlternative] = [],
+        benchmarkStatus: ProviderModelBenchmarkStatus? = nil,
         recentEvents: [ProviderRoutingDecisionEvent]
     ) {
+        self.routerMode = routerMode
+        self.selectedProviderID = selectedProviderID
+        self.selectedAccountID = selectedAccountID.map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.selectedModelID = selectedModelID.map(ProviderRoutingPolicy.sanitizedAuditText)
         self.activeAccount = activeAccount
         self.nextFallback = nextFallback
         self.exhaustedOrCoolingDownAccounts = exhaustedOrCoolingDownAccounts
         self.lastSwitchReason = lastSwitchReason.map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.latestExplanation = latestExplanation.map(ProviderRoutingPolicy.sanitizedAuditText)
+        self.rejectedAlternatives = rejectedAlternatives
+        self.benchmarkStatus = benchmarkStatus
         self.recentEvents = recentEvents
     }
 
@@ -429,12 +659,30 @@ public enum ProviderRoutingPolicy {
         }.sorted { compare($0, $1, request: request, now: now) }
 
         let reason = decisionReason(selected: selected, nextFallback: nextFallback, skipped: skipped)
+        let rejectedAlternatives = skipped.map { skip in
+            ProviderRoutingRejectedAlternative(
+                providerID: skip.providerID,
+                accountID: skip.accountID,
+                accountLabel: skip.accountLabel,
+                reason: skip.detail
+            )
+        }
+        let explanation = decisionExplanation(
+            request: request,
+            selected: selected,
+            nextFallback: nextFallback,
+            skipped: skipped
+        )
         let event = ProviderRoutingDecisionEvent(
             occurredAt: now,
             modelID: request.modelID,
+            routerMode: request.routerMode,
             selected: selected,
             nextFallback: nextFallback,
             reason: reason,
+            explanation: explanation,
+            rejectedAlternatives: rejectedAlternatives,
+            benchmarkStatus: request.benchmarkStatus,
             skipped: skipped
         )
 
@@ -443,6 +691,9 @@ public enum ProviderRoutingPolicy {
             nextFallback: nextFallback,
             exhaustedOrCoolingDown: blocked,
             skipped: skipped,
+            rejectedAlternatives: rejectedAlternatives,
+            routerMode: request.routerMode,
+            benchmarkStatus: request.benchmarkStatus,
             event: event
         )
     }
@@ -465,6 +716,11 @@ public enum ProviderRoutingPolicy {
         request: ProviderRoutingRequest,
         now: Date
     ) -> ProviderRoutingSkip? {
+        if request.routerMode == .providerFamilyFailover,
+           let selectedProviderID = providerFamilyConstraint(for: request),
+           candidate.providerID != selectedProviderID {
+            return skip(candidate, .providerNotPreferred, "Provider-family mode only allows \(selectedProviderID.rawValue) accounts.")
+        }
         if !request.allowProviderFallback,
            let preferred = request.preferredProviderIDs.first,
            candidate.providerID != preferred {
@@ -554,6 +810,9 @@ public enum ProviderRoutingPolicy {
         let lhsProvider = providerRank(lhs.providerID, preferences: request.preferredProviderIDs)
         let rhsProvider = providerRank(rhs.providerID, preferences: request.preferredProviderIDs)
         if lhsProvider != rhsProvider { return lhsProvider < rhsProvider }
+        let lhsSelected = selectedAccountRank(lhs, request: request)
+        let rhsSelected = selectedAccountRank(rhs, request: request)
+        if lhsSelected != rhsSelected { return lhsSelected < rhsSelected }
         if lhs.localCredentialAvailable != rhs.localCredentialAvailable {
             return lhs.localCredentialAvailable
         }
@@ -566,6 +825,18 @@ public enum ProviderRoutingPolicy {
         if lhsLastUsed != rhsLastUsed { return lhsLastUsed < rhsLastUsed }
         if lhs.providerID.rawValue != rhs.providerID.rawValue { return lhs.providerID.rawValue < rhs.providerID.rawValue }
         return lhs.accountID < rhs.accountID
+    }
+
+    private static func providerFamilyConstraint(for request: ProviderRoutingRequest) -> ProviderID? {
+        request.selectedProviderID ?? request.preferredProviderIDs.first
+    }
+
+    private static func selectedAccountRank(
+        _ candidate: ProviderRoutingCandidate,
+        request: ProviderRoutingRequest
+    ) -> Int {
+        guard let selectedAccountID = request.selectedAccountID else { return 1 }
+        return candidate.accountID == selectedAccountID ? 0 : 1
     }
 
     private static func providerRank(_ providerID: ProviderID, preferences: [ProviderID]) -> Int {
@@ -601,6 +872,46 @@ public enum ProviderRoutingPolicy {
             return "\(selected.accountLabel) is active; \(nextFallback.accountLabel) is next fallback."
         }
         return "\(selected.accountLabel) is active."
+    }
+
+    private static func decisionExplanation(
+        request: ProviderRoutingRequest,
+        selected: ProviderRoutingCandidate?,
+        nextFallback: ProviderRoutingCandidate?,
+        skipped: [ProviderRoutingSkip]
+    ) -> String {
+        let modeLabel: String = {
+            switch request.routerMode {
+            case .providerFamilyFailover:
+                return "Provider-Family Failover"
+            case .intelligentModelRouter:
+                return "Intelligent Model Router"
+            }
+        }()
+        guard let selected else {
+            return "\(modeLabel): no eligible account matched the current constraints."
+        }
+
+        var parts: [String] = ["\(modeLabel) selected \(selected.accountLabel)"]
+        if let selectedProvider = request.selectedProviderID,
+           request.routerMode == .providerFamilyFailover {
+            parts.append("because provider-family mode is pinned to \(selectedProvider.rawValue)")
+        } else if request.routerMode == .providerFamilyFailover {
+            parts.append("because it is in the selected provider family")
+        } else {
+            parts.append("after applying availability, quota, account health, and advisory routing signals")
+        }
+        if let nextFallback {
+            parts.append("\(nextFallback.accountLabel) is next fallback")
+        }
+        if let firstSkipped = skipped.first {
+            parts.append("\(firstSkipped.accountLabel) was rejected: \(plainReason(firstSkipped.reason))")
+        }
+        if let benchmarkStatus = request.benchmarkStatus,
+           request.routerMode == .intelligentModelRouter {
+            parts.append("benchmark status: \(benchmarkStatus.freshness.rawValue)")
+        }
+        return parts.joined(separator: "; ") + "."
     }
 
     private static func plainReason(_ reason: ProviderRoutingSkipReason) -> String {

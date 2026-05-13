@@ -9,6 +9,7 @@ rules_version = '2';
 // - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
 // - users/{uid}/escrow_devices, escrow_public_keys, escrow_grants, escrow_envelopes, escrow_audit_events
 // - server-only: provider_account_secret_refs, users/{uid}/_rate_limits, users/{uid}/rollup_jobs
+// - public read-only: model_benchmark_snapshots, model_benchmark_source_status
 // - workspaces/workspace-{uid}/teams/team-default/artifacts/{artifactID} (+ versions/{revisionID})
 // The shared-artifact rule below intentionally stays owner-scoped for this source release.
 //
@@ -496,6 +497,18 @@ service cloud.firestore {
     // bypasses rules; clients must never read or write these documents.
     match /provider_account_secret_refs/{refId} {
       allow read, write: if false;
+    }
+
+    // --- Public read-only model-landscape metadata ---
+
+    match /model_benchmark_snapshots/{snapshotId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /model_benchmark_source_status/{sourceId} {
+      allow read: if isSignedIn();
+      allow write: if false;
     }
 
     // --- User-scoped data ---

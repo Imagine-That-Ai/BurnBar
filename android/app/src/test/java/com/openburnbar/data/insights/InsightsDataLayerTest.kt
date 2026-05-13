@@ -1,0 +1,158 @@
+package com.openburnbar.data.insights
+
+import com.openburnbar.data.insights.services.InMemoryInsightDataSource
+import com.openburnbar.data.insights.services.adapters.LocalRuleBasedAdapter
+import com.openburnbar.data.insights.services.InsightExecutor
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.*
+import org.junit.Test
+
+class InsightsDataLayerTest {
+
+    private val testDigest = runBlocking {
+        InMemoryInsightDataSource().buildDigest(InsightFilter())
+    }
+
+    @Test
+    fun `placeNew positions widgets sequentially`() {
+        val layout = InsightLayout()
+        val placed = layout.placeNew("w1", 3 to 2)
+        assertEquals(0, placed.placements["w1"]?.column)
+        assertEquals(0, placed.placements["w1"]?.row)
+        assertEquals(3, placed.placements["w1"]?.colSpan)
+        assertEquals(2, placed.placements["w1"]?.rowSpan)
+    }
+
+    @Test
+    fun `placeNew stacks widgets when row is full`() {
+        var layout = InsightLayout(columnCount = 4)
+        layout = layout.placeNew("w1", 3 to 1)
+        layout = layout.placeNew("w2", 3 to 1)
+        assertEquals(0, layout.placements["w1"]?.column)
+    }
+
+    @Test
+    fun `move repositions a widget`() {
+        var layout = InsightLayout(columnCount = 12)
+        layout = layout.placeNew("w1", 4 to 2)
+        layout = layout.move("w1", toColumn = 6, toRow = 3)
+        assertEquals(6, layout.placements["w1"]?.column)
+        assertEquals(3, layout.placements["w1"]?.row)
+    }
+
+    @Test
+    fun `remove clears a placement`() {
+        var layout = InsightLayout()
+        layout = layout.placeNew("w1", 4 to 2)
+        layout = layout.remove("w1")
+        assertNull(layout.placements["w1"])
+    }
+
+    @Test
+    fun `projectedTo shrinks column count proportionally`() {
+        var layout = InsightLayout(columnCount = 12)
+        layout = layout.placeNew("w1", 8 to 2)
+        val projected = layout.projectedTo(4)
+        assertEquals(4, projected.columnCount)
+        assertTrue(projected.placements["w1"]!!.colSpan >= 1)
+    }
+
+    @Test
+    fun `all 26 widget kinds are registered`() {
+        assertEquals(26, InsightWidgetKind.entries.size)
+    }
+
+    @Test
+    fun `every kind has a non-blank display name`() {
+        InsightWidgetKind.entries.forEach { kind ->
+            assertTrue(kind.displayName.isNotBlank())
+        }
+    }
+
+    @Test
+    fun `all 6 themes are registered`() {
+        assertEquals(6, InsightTheme.entries.size)
+    }
+
+    @Test
+    fun `all 5 freshness states are registered`() {
+        assertEquals(5, InsightFreshness.entries.size)
+    }
+
+    @Test
+    fun `ValueFormat has 6 cases matching TypeScript`() {
+        assertEquals(6, ValueFormat.entries.size)
+    }
+
+    @Test
+    fun `LocalRuleBasedAdapter produces a canvas with widgets`() {
+        val canvas = LocalRuleBasedAdapter.buildCanvas(testDigest)
+        assertTrue("Canvas should have widgets (got ${canvas.widgets.size})", canvas.widgets.isNotEmpty())
+        assertEquals(InsightTheme.AURORA, canvas.theme)
+        assertTrue("Should have KPI (kinds: ${canvas.widgets.map { it.kind }})", canvas.widgets.any { it.kind == InsightWidgetKind.KPI_TILE })
+        // TimeSeries is only included when digest.daily.isNotEmpty(); InMemoryInsightDataSource has empty daily
+        // Donut is included when providers.size >= 2
+        assertTrue("Should have Donut (kinds: ${canvas.widgets.map { it.kind }})", canvas.widgets.any { it.kind == InsightWidgetKind.DONUT })
+    }
+
+    @Test
+    fun `executor handles KPI binding`() {
+        val result = InsightExecutor.execute(
+            InsightDataBinding.Kpi(metric = "totalCost", window = InsightTimeWindow.Last7d),
+            testDigest, InsightFilter()
+        )
+        assertNotNull(result)
+        assertTrue(result is InsightWidgetData.KPI)
+    }
+
+    @Test
+    fun `executor handles TimeSeries binding`() {
+        val result = InsightExecutor.execute(
+            InsightDataBinding.TimeSeries(metric = "cost", window = InsightTimeWindow.Last7d),
+            testDigest, InsightFilter()
+        )
+        assertNotNull(result)
+        assertTrue(result is InsightWidgetData.TimeSeries)
+    }
+
+    @Test
+    fun `executor returns Empty for macOS-only bindings`() {
+        val result = InsightExecutor.execute(
+            InsightDataBinding.UseCaseClusters(window = InsightTimeWindow.Last7d),
+            testDigest, InsightFilter()
+        )
+        assertTrue(result is InsightWidgetData.Empty)
+    }
+
+    @Test
+    fun `QuotaState bucket fraction is computed correctly`() {
+        val bucket = InsightWidgetData.QuotaState.Bucket(
+            id = "b1", providerLabel = "Anthropic", bucketName = "usage",
+            symbolName = "gauge", used = 75.0, limit = 100.0
+        )
+        assertEquals(0.75, bucket.fraction, 0.01)
+    }
+
+    @Test
+    fun `QuotaState bucket with null limit has zero fraction`() {
+        val bucket = InsightWidgetData.QuotaState.Bucket(
+            id = "b1", providerLabel = "Anthropic", bucketName = "usage",
+            symbolName = "gauge", used = 75.0, limit = null
+        )
+        assertEquals(0.0, bucket.fraction, 0.01)
+    }
+
+    @Test
+    fun `QuotaState bucket fraction clamps to 1`() {
+        val bucket = InsightWidgetData.QuotaState.Bucket(
+            id = "b1", providerLabel = "Anthropic", bucketName = "usage",
+            symbolName = "gauge", used = 150.0, limit = 100.0
+        )
+        assertEquals(1.0, bucket.fraction, 0.01)
+    }
+
+    @Test
+    fun `digest has 24 KB max encoded bytes constant`() {
+        assertEquals(24 * 1024, InsightDigest.MAX_ENCODED_BYTES)
+    }
+}

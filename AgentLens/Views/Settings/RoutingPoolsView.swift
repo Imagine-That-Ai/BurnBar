@@ -30,9 +30,27 @@ private struct PoolHeader: Hashable {
     var explainerCopy: String {
         switch pool {
         case .openaiCompat:
-            return "Cursor, Factory, Forge, OpenCode, and Codex CLI in API-key mode all send OpenAI-shape requests through this pool. The router fails over within the pool only — never to an Anthropic account."
+            return "Cursor, Factory, Forge, OpenCode, and Codex CLI in API-key mode all send OpenAI-shape requests through this pool. Provider-Family mode stays inside the selected provider; Intelligent mode ranks compatible OpenAI-shape routes."
         case .anthropic:
-            return "Claude Code (`ANTHROPIC_BASE_URL` mode) sends Anthropic-shape requests through this pool. Add a second Anthropic account so a single 429 stops being a wall."
+            return "Claude Code (`ANTHROPIC_BASE_URL` mode) sends Anthropic-shape requests through this pool. Provider-Family mode stays inside Anthropic accounts; Intelligent mode ranks compatible Anthropic-shape routes."
+        }
+    }
+}
+
+private extension ProviderRouterMode {
+    var displayName: String {
+        switch self {
+        case .providerFamilyFailover: return "Provider-Family Failover"
+        case .intelligentModelRouter: return "Intelligent Model Router"
+        }
+    }
+
+    var shortDescription: String {
+        switch self {
+        case .providerFamilyFailover:
+            return "Extends capacity across accounts for the selected provider family only."
+        case .intelligentModelRouter:
+            return "Ranks compatible routes using task, account health, cost, latency, capability, and benchmark freshness signals."
         }
     }
 }
@@ -198,6 +216,7 @@ struct RoutingPoolsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                 explainerHeader
+                routerModeCard
                 poolPicker
                 selectedPoolContent
             }
@@ -220,11 +239,11 @@ struct RoutingPoolsView: View {
                 Image(systemName: "point.3.connected.trianglepath.dotted")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(DesignSystem.Colors.ember)
-                Text("Two pools · same-format failover")
+                Text("Router control")
                     .font(DesignSystem.Typography.headline)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
             }
-            Text("OpenAI-shape requests stay in the OpenAI-compatible pool; Anthropic-shape requests stay in the Anthropic pool. The gateway never translates between the two — when one account runs dry, the next account in the same pool picks up.")
+            Text("OpenAI-shape requests stay in the OpenAI-compatible pool; Anthropic-shape requests stay in the Anthropic pool. The gateway never translates between the two. Pick whether routing stays provider-family-only or uses intelligent ranking inside the compatible pool.")
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -238,6 +257,69 @@ struct RoutingPoolsView: View {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .stroke(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
         )
+    }
+
+    private var routerModeCard: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Image(systemName: daemonManager.routerMode == .intelligentModelRouter ? "brain.head.profile" : "rectangle.2.swap")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.blaze)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(daemonManager.routerMode.displayName)
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text(daemonManager.routerMode.shortDescription)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+                Spacer(minLength: DesignSystem.Spacing.md)
+                Picker("Router mode", selection: Binding(
+                    get: { daemonManager.routerMode },
+                    set: { mode in
+                        Task { @MainActor in
+                            await daemonManager.setRouterMode(mode)
+                            await refreshRoutingState()
+                        }
+                    }
+                )) {
+                    ForEach(ProviderRouterMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: 360)
+                .disabled(daemonManager.isBusy)
+            }
+
+            if daemonManager.routerMode == .intelligentModelRouter {
+                benchmarkStatusRow
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.36))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
+        )
+    }
+
+    private var benchmarkStatusRow: some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            Text("Benchmark freshness: unavailable locally until the daily cloud model-landscape job publishes a fresh snapshot; routing falls back to catalog, account health, quota, cost, and latency signals.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
     }
 
     private var poolPicker: some View {
@@ -809,6 +891,20 @@ struct RoutingPoolsView: View {
     // MARK: - State refresh
 
     private func refreshRoutingState() async {
-        _ = quotaService.refreshRoutingState(dataStore: dataStore)
+        _ = quotaService.refreshRoutingState(
+            dataStore: dataStore,
+            request: ProviderRoutingRequest(
+                routerMode: daemonManager.routerMode,
+                taskCategory: .coding,
+                benchmarkStatus: daemonManager.routerMode == .intelligentModelRouter
+                    ? ProviderModelBenchmarkStatus(
+                        source: .cachedFixture,
+                        freshness: .unavailable,
+                        message: "No local benchmark snapshot is available yet.",
+                        attribution: "OpenBurnBar model landscape adapters"
+                    )
+                    : nil
+            )
+        )
     }
 }

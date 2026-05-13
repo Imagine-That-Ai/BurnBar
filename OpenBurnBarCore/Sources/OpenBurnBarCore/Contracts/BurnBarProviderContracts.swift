@@ -95,9 +95,26 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
 
 public struct BurnBarProviderConfigurationSnapshot: Codable, Hashable, Sendable {
     public var providers: [BurnBarProviderSettings]
+    public var routerMode: ProviderRouterMode
 
-    public init(providers: [BurnBarProviderSettings]) {
+    public init(
+        providers: [BurnBarProviderSettings],
+        routerMode: ProviderRouterMode = .providerFamilyFailover
+    ) {
         self.providers = providers
+        self.routerMode = routerMode
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case providers
+        case routerMode
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.providers = try container.decode([BurnBarProviderSettings].self, forKey: .providers)
+        self.routerMode = try container.decodeIfPresent(ProviderRouterMode.self, forKey: .routerMode)
+            ?? .providerFamilyFailover
     }
 
     public func providerSettings(id: String) -> BurnBarProviderSettings? {

@@ -11,6 +11,7 @@
  *     - onUsageWritten       (Firestore trigger)
  *     - rebuildRollups       (scheduled, every 5 min)
  *     - refreshAllProviderQuotas (scheduled, every 15 min)
+ *     - refreshModelLandscapeBenchmarks (scheduled, every 24h)
  *
  * Before deploying, ensure Firebase Admin is initialized (no args needed in
  * GCP because ADC is automatic; for local emulation set GOOGLE_APPLICATION_CREDENTIALS).
@@ -92,7 +93,11 @@ import type {
 } from "./types.js";
 
 import { onUsageWritten } from "./triggers.js";
-import { rebuildRollups, refreshAllProviderQuotas } from "./scheduled.js";
+import {
+  rebuildRollups,
+  refreshAllProviderQuotas,
+  refreshModelLandscapeBenchmarks,
+} from "./scheduled.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 
 // ---------------------------------------------------------------------------
@@ -2263,7 +2268,12 @@ export const rebuildUsageRollups = onCall(
 // Re-export background functions so `firebase deploy --only functions` picks
 // them up from a single entry point.
 // ---------------------------------------------------------------------------
-export { onUsageWritten, rebuildRollups, refreshAllProviderQuotas };
+export {
+  onUsageWritten,
+  rebuildRollups,
+  refreshAllProviderQuotas,
+  refreshModelLandscapeBenchmarks,
+};
 
 // ---------------------------------------------------------------------------
 // Apple App Store JWS verification surface.

@@ -46,7 +46,8 @@ public actor BurnBarDaemonServer {
         let resolvedRunService = runService ?? BurnBarRunService(
             router: BurnBarProviderRouter(
                 configStore: resolvedConfigStore,
-                logger: BurnBarDaemonLogger(category: "provider-router")
+                logger: BurnBarDaemonLogger(category: "provider-router"),
+                routingEventStore: BurnBarProviderRoutingDecisionEventStore()
             ),
             usageRecorder: resolvedUsageRecorder,
             clientRegistry: resolvedClientRegistry,

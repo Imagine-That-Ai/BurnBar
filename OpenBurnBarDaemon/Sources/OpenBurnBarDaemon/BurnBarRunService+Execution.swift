@@ -339,6 +339,9 @@ extension BurnBarRunService {
                 modelName: run.modelID,
                 excludedRouteKeys: attemptedRouteKeys
             )
+            if let ranking {
+                await router.persistDecisionIfNeeded(ranking: ranking, modelName: run.modelID)
+            }
         } catch {
             logger.silentFailure("score_and_rank_routes", error: error)
             ranking = nil

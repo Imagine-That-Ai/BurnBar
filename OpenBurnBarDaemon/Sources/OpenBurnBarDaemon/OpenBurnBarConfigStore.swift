@@ -294,6 +294,18 @@ public actor BurnBarConfigStore {
         }
     }
 
+    public func setRouterMode(_ mode: ProviderRouterMode) throws {
+        var currentSnapshot = try snapshot()
+        currentSnapshot.routerMode = mode
+        let normalizedSnapshot = try normalize(currentSnapshot, defaults: makeDefaultSnapshot())
+        try persist(normalizedSnapshot)
+        cachedSnapshot = normalizedSnapshot
+        logger.notice(
+            "router_mode_updated",
+            metadata: ["router_mode": mode.rawValue]
+        )
+    }
+
     public func recordCredentialSelection(
         providerID: String,
         slotID: String
@@ -505,7 +517,10 @@ public actor BurnBarConfigStore {
             return try normalize(loadedSettings ?? defaultSettings, defaults: defaultSnapshot)
         }
 
-        return BurnBarProviderConfigurationSnapshot(providers: providers)
+        return BurnBarProviderConfigurationSnapshot(
+            providers: providers,
+            routerMode: snapshot.routerMode
+        )
     }
 
     private func normalize(
@@ -577,7 +592,10 @@ public actor BurnBarConfigStore {
             )
         }
 
-        return BurnBarProviderConfigurationSnapshot(providers: providers)
+        return BurnBarProviderConfigurationSnapshot(
+            providers: providers,
+            routerMode: .providerFamilyFailover
+        )
     }
 
     private func persist(_ snapshot: BurnBarProviderConfigurationSnapshot) throws {

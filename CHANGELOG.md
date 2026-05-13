@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Router mode toggle + model-landscape benchmark snapshots.** Settings ->
+  Routing pools now persists a router mode in the daemon provider config:
+  **Provider-Family Failover** keeps fallback inside the selected provider
+  family/account set, while **Intelligent Model Router** ranks compatible
+  routes using task, health, quota, cost, latency, capability, and benchmark
+  freshness signals. Routing decisions now carry sanitized explanations,
+  rejected alternatives, mode, selected route identity, and benchmark status.
+  A daily Cloud Function normalizes public or fixture-backed model-landscape
+  data from Artificial Analysis, Terminal-Bench/Hugging Face, Design Arena
+  fixtures, and manual fixtures into read-only benchmark snapshot/status
+  collections without scraping private pages or persisting secrets.
 - **Routing pools surface + Claude Code / Codex wiring helpers (macOS).**
   Settings now has a top-level **Routing pools** tab that mirrors the Fire
   Hydrant's two-pool model on the desktop. Each pool tab lists the routed

@@ -438,7 +438,123 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(afterExhaustCandidates.count, 1, "One slot exhausted, one should remain")
     }
 
-    private func makeHarness(name: String) throws -> BurnBarProviderRouterHarness {
+    func testProviderFamilyModeScopesUnpinnedRoutingToCatalogVendor() async throws {
+        let harness = try makeHarness(name: "provider-family-mode", catalog: sharedModelCatalog())
+        try await harness.configStore.setSecret("alpha-key", for: "alpha")
+        try await harness.configStore.setSecret("beta-key", for: "beta")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "alpha",
+                isEnabled: true,
+                baseURL: "https://alpha.example/v1",
+                preferredModelIDs: ["shared-code-model"]
+            )
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "beta",
+                isEnabled: true,
+                baseURL: "https://beta.example/v1",
+                preferredModelIDs: ["shared-code-model"]
+            )
+        )
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "shared-code-model",
+            routerMode: .providerFamilyFailover
+        )
+
+        XCTAssertEqual(ranking.routerMode, .providerFamilyFailover)
+        XCTAssertEqual(ranking.rankedRoutes.map { $0.route.providerID }, ["alpha"])
+    }
+
+    func testIntelligentModeCanRankCompatibleCrossProviderRoutes() async throws {
+        let harness = try makeHarness(name: "intelligent-mode", catalog: sharedModelCatalog())
+        try await harness.configStore.setSecret("alpha-key", for: "alpha")
+        try await harness.configStore.setSecret("beta-key", for: "beta")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "alpha",
+                isEnabled: true,
+                baseURL: "https://alpha.example/v1",
+                preferredModelIDs: ["shared-code-model"]
+            )
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "beta",
+                isEnabled: true,
+                baseURL: "https://beta.example/v1",
+                preferredModelIDs: ["shared-code-model"]
+            )
+        )
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "shared-code-model",
+            routerMode: .intelligentModelRouter,
+            taskCategory: .coding,
+            benchmarkSnapshots: [
+                ProviderModelBenchmarkSnapshot(
+                    id: "shared-code-model-terminal",
+                    source: .terminalBench,
+                    fetchedAt: Date(),
+                    modelID: "shared-code-model",
+                    taskCategory: .terminal,
+                    score: 0.80,
+                    rank: 4,
+                    reliabilitySignal: 0.8,
+                    confidence: 0.8,
+                    freshness: .fresh
+                )
+            ],
+            benchmarkStatus: ProviderModelBenchmarkStatus(
+                source: .terminalBench,
+                fetchedAt: Date(),
+                freshness: .fresh,
+                message: "Fresh benchmark fixture."
+            )
+        )
+
+        XCTAssertEqual(ranking.routerMode, .intelligentModelRouter)
+        XCTAssertEqual(ranking.winner?.providerID, "beta", "Cheaper compatible provider should win once Intelligent mode can consider cross-provider candidates")
+        let event = harness.router.routingDecisionEvent(ranking: ranking, modelName: "shared-code-model")
+        XCTAssertEqual(event.routerMode, .intelligentModelRouter)
+        XCTAssertEqual(event.benchmarkStatus?.freshness, .fresh)
+        XCTAssertFalse(event.explanation.localizedCaseInsensitiveContains("bearer "))
+    }
+
+    func testIntelligentModeHandlesStaleBenchmarkDataSafely() async throws {
+        let harness = try makeHarness(name: "intelligent-stale", catalog: sharedModelCatalog())
+        try await harness.configStore.setSecret("alpha-key", for: "alpha")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "alpha",
+                isEnabled: true,
+                baseURL: "https://alpha.example/v1",
+                preferredModelIDs: ["shared-code-model"]
+            )
+        )
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "shared-code-model",
+            routerMode: .intelligentModelRouter,
+            taskCategory: .coding,
+            benchmarkStatus: ProviderModelBenchmarkStatus(
+                source: .cachedFixture,
+                fetchedAt: Date(timeIntervalSinceNow: -8 * 24 * 60 * 60),
+                freshness: .stale,
+                message: "Cached data is stale."
+            )
+        )
+
+        XCTAssertEqual(ranking.winner?.providerID, "alpha")
+        XCTAssertEqual(ranking.benchmarkStatus?.freshness, .stale)
+    }
+
+    private func makeHarness(
+        name: String,
+        catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog
+    ) throws -> BurnBarProviderRouterHarness {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-provider-router-\(name)-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
@@ -446,7 +562,7 @@ final class BurnBarProviderRouterTests: XCTestCase {
         let secretStore = BurnBarInMemorySecretStore()
         let configStore = BurnBarConfigStore(
             fileURL: rootURL.appendingPathComponent("provider-config.json", isDirectory: false),
-            catalog: BurnBarCatalogLoader.bundledCatalog,
+            catalog: catalog,
             secretStore: secretStore,
             logger: BurnBarDaemonLogger(category: "provider-router-tests")
         )
@@ -458,6 +574,44 @@ final class BurnBarProviderRouterTests: XCTestCase {
                 configStore: configStore,
                 logger: BurnBarDaemonLogger(category: "provider-router-tests")
             )
+        )
+    }
+
+    private func sharedModelCatalog() -> BurnBarCatalog {
+        let expensive = BurnBarCatalogModel(
+            id: "shared-code-model",
+            displayName: "Shared Code Model",
+            visibility: .public,
+            aliases: ["shared-code-model"],
+            pricing: BurnBarModelPricing(inputPerMToken: 20, outputPerMToken: 40, cacheReadPerMToken: 1)
+        )
+        let cheap = BurnBarCatalogModel(
+            id: "shared-code-model",
+            displayName: "Shared Code Model",
+            visibility: .public,
+            aliases: ["shared-code-model"],
+            pricing: BurnBarModelPricing(inputPerMToken: 1, outputPerMToken: 2, cacheReadPerMToken: 0.1)
+        )
+        return BurnBarCatalog(
+            schemaVersion: 1,
+            providers: [
+                BurnBarCatalogProvider(
+                    id: "alpha",
+                    displayName: "Alpha",
+                    baseURL: "https://alpha.example/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [expensive]
+                ),
+                BurnBarCatalogProvider(
+                    id: "beta",
+                    displayName: "Beta",
+                    baseURL: "https://beta.example/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [cheap]
+                )
+            ]
         )
     }
 }

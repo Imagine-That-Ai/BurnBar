@@ -104,7 +104,12 @@ struct ProviderDashboardQuotaPanel: View {
             .task {
                 quotaService.refreshRoutingState(
                     dataStore: dataStore,
-                    request: ProviderRoutingRequest(preferredProviderIDs: [provider.providerID])
+                    request: ProviderRoutingRequest(
+                        preferredProviderIDs: [provider.providerID],
+                        routerMode: OpenBurnBarDaemonManager.shared.routerMode,
+                        selectedProviderID: provider.providerID,
+                        taskCategory: .coding
+                    )
                 )
                 await quotaService.refreshIfNeeded(dataStore: dataStore)
             }

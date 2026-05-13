@@ -253,7 +253,12 @@ final class ProviderQuotaService {
             let scopedRequest = ProviderRoutingRequest(
                 modelID: request.modelID,
                 preferredProviderIDs: request.preferredProviderIDs.isEmpty ? [providerID] : request.preferredProviderIDs,
-                allowProviderFallback: request.allowProviderFallback
+                allowProviderFallback: request.allowProviderFallback,
+                routerMode: request.routerMode,
+                selectedProviderID: request.selectedProviderID ?? providerID,
+                selectedAccountID: request.selectedAccountID,
+                taskCategory: request.taskCategory,
+                benchmarkStatus: request.benchmarkStatus
             )
             let candidates = routingCandidates(
                 providerID: providerID,
@@ -267,10 +272,17 @@ final class ProviderQuotaService {
             )
             appendRoutingEvent(decision.event)
             updatedStates[providerID] = ProviderRoutingStateSnapshot(
+                routerMode: decision.routerMode,
+                selectedProviderID: scopedRequest.selectedProviderID,
+                selectedAccountID: scopedRequest.selectedAccountID,
+                selectedModelID: scopedRequest.modelID,
                 activeAccount: decision.selected,
                 nextFallback: decision.nextFallback,
                 exhaustedOrCoolingDownAccounts: decision.exhaustedOrCoolingDown,
                 lastSwitchReason: decision.lastSwitchReason,
+                latestExplanation: decision.event.explanation,
+                rejectedAlternatives: decision.rejectedAlternatives,
+                benchmarkStatus: decision.benchmarkStatus,
                 recentEvents: Array(
                     routingEvents
                         .filter { $0.selectedProviderID == providerID || $0.nextFallbackProviderID == providerID }
@@ -289,7 +301,7 @@ final class ProviderQuotaService {
 
     func refreshIfNeeded(dataStore: DataStore, maxAge: TimeInterval = 5 * 60) async {
         if let lastFetch, Date().timeIntervalSince(lastFetch) < maxAge {
-            refreshRoutingState(dataStore: dataStore)
+            refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
             return
         }
         await refreshAll(dataStore: dataStore)
@@ -312,7 +324,7 @@ final class ProviderQuotaService {
         }
         upsertAccountSnapshots(batch.accountSnapshots)
         persistDaemonCredentialSlotAccounts(dataStore: dataStore)
-        refreshRoutingState(dataStore: dataStore)
+        refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
 
         lastFetch = Date()
         persistSnapshots()
@@ -331,7 +343,7 @@ final class ProviderQuotaService {
             let accountSnapshots = await quotaRefreshActor.fetchAccountSnapshots(for: provider, dataStoreActor: dataStore.actor)
             upsertAccountSnapshots(accountSnapshots)
             persistDaemonCredentialSlotAccounts(dataStore: dataStore, providers: [provider])
-            refreshRoutingState(dataStore: dataStore, request: ProviderRoutingRequest(preferredProviderIDs: [provider.providerID]))
+            refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest(provider: provider))
             errors.removeValue(forKey: provider)
             lastFetch = Date()
             persistSnapshots()
@@ -356,6 +368,24 @@ final class ProviderQuotaService {
                 ), for: provider)
             }
         }
+    }
+
+    private func currentRoutingRequest(provider: AgentProvider? = nil) -> ProviderRoutingRequest {
+        let mode = OpenBurnBarDaemonManager.shared.routerMode
+        return ProviderRoutingRequest(
+            preferredProviderIDs: provider.map { [$0.providerID] } ?? [],
+            routerMode: mode,
+            selectedProviderID: provider?.providerID,
+            taskCategory: .coding,
+            benchmarkStatus: mode == .intelligentModelRouter
+                ? ProviderModelBenchmarkStatus(
+                    source: .cachedFixture,
+                    freshness: .unavailable,
+                    message: "No local benchmark snapshot is available yet.",
+                    attribution: "OpenBurnBar model landscape adapters"
+                )
+                : nil
+        )
     }
 
     func fetchSnapshot(

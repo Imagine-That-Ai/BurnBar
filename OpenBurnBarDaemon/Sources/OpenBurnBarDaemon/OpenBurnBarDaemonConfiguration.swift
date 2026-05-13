@@ -36,6 +36,10 @@ public enum BurnBarDaemonPaths {
         supportDirectoryURL.appendingPathComponent("run-journal.jsonl", isDirectory: false)
     }
 
+    public static var defaultRoutingDecisionEventsURL: URL {
+        supportDirectoryURL.appendingPathComponent("provider-routing-decisions.jsonl", isDirectory: false)
+    }
+
     public static var defaultRunCheckpointDirectoryURL: URL {
         supportDirectoryURL.appendingPathComponent("run-checkpoints", isDirectory: true)
     }

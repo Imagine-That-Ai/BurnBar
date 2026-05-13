@@ -349,12 +349,14 @@ public actor BurnBarHTTPGatewayServer {
         do {
             let router = BurnBarProviderRouter(
                 configStore: configStore,
-                logger: BurnBarDaemonLogger(category: "gateway-router")
+                logger: BurnBarDaemonLogger(category: "gateway-router"),
+                routingEventStore: BurnBarProviderRoutingDecisionEventStore()
             )
             let ranking = try await router.scoreAndRankRoutes(
                 modelName: modelID,
                 requestedFormatFamily: .openaiCompat
             )
+            await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
             let routes = ranking.rankedRoutes.map(\.route)
             guard routes.isEmpty == false else {
                 return jsonResponse(
@@ -428,12 +430,14 @@ public actor BurnBarHTTPGatewayServer {
         do {
             let router = BurnBarProviderRouter(
                 configStore: configStore,
-                logger: BurnBarDaemonLogger(category: "gateway-router-anthropic")
+                logger: BurnBarDaemonLogger(category: "gateway-router-anthropic"),
+                routingEventStore: BurnBarProviderRoutingDecisionEventStore()
             )
             let ranking = try await router.scoreAndRankRoutes(
                 modelName: modelID,
                 requestedFormatFamily: .anthropic
             )
+            await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
             let routes = ranking.rankedRoutes.map(\.route)
             guard routes.isEmpty == false else {
                 return jsonResponse(

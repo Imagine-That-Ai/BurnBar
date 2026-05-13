@@ -558,6 +558,66 @@ export interface QuotaSnapshotDoc {
 }
 
 // ---------------------------------------------------------------------------
+// Firestore: model_benchmark_snapshots/{source_model_task_timestamp}
+// Firestore: model_benchmark_source_status/{source}
+// ---------------------------------------------------------------------------
+
+export type ModelBenchmarkSource =
+  | "artificial_analysis"
+  | "terminal_bench"
+  | "design_arena"
+  | "huggingface"
+  | "manual_fixture"
+  | "cached_fixture";
+
+export type ModelBenchmarkTaskCategory =
+  | "general"
+  | "coding"
+  | "terminal"
+  | "design"
+  | "agent"
+  | "analysis"
+  | "unknown";
+
+export type ModelBenchmarkFreshness =
+  | "fresh"
+  | "stale"
+  | "unavailable"
+  | "cached"
+  | "manual";
+
+export interface ModelBenchmarkSnapshotDoc {
+  id: string;
+  source: ModelBenchmarkSource;
+  sourceURL?: string;
+  attribution?: string;
+  fetchedAt: string;
+  modelID: string;
+  providerID?: ProviderID;
+  taskCategory: ModelBenchmarkTaskCategory;
+  score?: number;
+  rank?: number;
+  costSignal?: number;
+  latencySignal?: number;
+  contextWindowTokens?: number;
+  reliabilitySignal?: number;
+  confidence?: number;
+  freshness: ModelBenchmarkFreshness;
+  schemaVersion: number;
+  updatedAt: string;
+}
+
+export interface ModelBenchmarkSourceStatusDoc {
+  source: ModelBenchmarkSource;
+  status: "fresh" | "stale" | "unavailable" | "error";
+  fetchedAt?: string;
+  message: string;
+  attribution?: string;
+  schemaVersion: number;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // Firestore: usage_rollups/{windowKey}
 // ---------------------------------------------------------------------------
 

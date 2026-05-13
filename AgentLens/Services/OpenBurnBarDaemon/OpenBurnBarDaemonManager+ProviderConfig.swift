@@ -3,6 +3,26 @@ import OpenBurnBarCore
 
 extension OpenBurnBarDaemonManager {
 
+    func setRouterMode(_ mode: ProviderRouterMode) async {
+        guard case .healthy = status else {
+            lastError = "OpenBurnBar daemon must be healthy before router mode can be updated."
+            return
+        }
+
+        await performBusyWork {
+            let socketURL = paths.socketURL
+            var snapshot = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.config(at: socketURL)
+            }
+            snapshot.routerMode = mode
+            let snapshotToWrite = snapshot
+            _ = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.updateConfig(snapshotToWrite, at: socketURL)
+            }
+            routerMode = mode
+        }
+    }
+
     func updateProviderConfiguration(
         providerID: String,
         isEnabled: Bool? = nil,

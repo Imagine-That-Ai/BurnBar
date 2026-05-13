@@ -4,7 +4,41 @@ OpenBurnBar exposes selected routed models through the local daemon's gateway
 so supported clients can share the same provider rotation policy. The gateway
 runs on `127.0.0.1:8317` and is the named "Fire Hydrant" in user-facing copy.
 
-## Two routing pools (same-format failover)
+## Router modes
+
+OpenBurnBar now has a persisted router mode. Existing installs default to
+**Provider-Family Failover**.
+
+| Mode | What it does | What it will not do |
+|---|---|---|
+| **Provider-Family Failover** | Extends capacity across multiple accounts or subscriptions for the selected provider family. A Codex route stays with Codex accounts, a Claude route stays with Claude accounts, and a Z.ai route stays with Z.ai accounts. The exact selected account/model stays active while it is healthy. | It does not treat unrelated providers as one generic coding quota pool. It will not send Codex traffic to Claude, or Claude traffic to Z.ai, just because another provider has quota or looks cheaper. |
+| **Intelligent Model Router** | Ranks compatible routes using task intent, model capability, quota/account health, local availability, cost, latency, context-window, reliability, and benchmark freshness signals. User pinning, provider-family constraints, auth, quota exhaustion, safety, and availability still win. | It is advisory, not absolute. In v1 it stays within the request wire-format pool; it does not translate OpenAI Chat Completions traffic into Anthropic Messages traffic or vice versa. |
+
+The routing cockpit in Settings -> Routing pools exposes the mode toggle and
+shows the current mode, selected route, active route, next fallback, blocked
+routes, latest sanitized routing reason, and benchmark freshness status when
+Intelligent Model Router is enabled.
+
+## Benchmark source job
+
+The daily `refreshModelLandscapeBenchmarks` Cloud Function normalizes public or
+fixture-backed model-landscape data into `model_benchmark_snapshots` and writes
+source health into `model_benchmark_source_status`.
+
+Current adapters:
+
+- Artificial Analysis API when `ARTIFICIAL_ANALYSIS_API_KEY` is configured.
+- Terminal-Bench via Hugging Face leaderboard data where available.
+- Design Arena via approved API/fixture support; no private dashboard scraping.
+- Manual cached fixtures through `MODEL_LANDSCAPE_MANUAL_FIXTURES_JSON`.
+
+If a source has no configured key, stable public endpoint, or fixture, the job
+writes an `unavailable` source status instead of scraping brittle pages.
+Attribution is stored with each normalized source. No raw provider keys, cookies,
+bearer tokens, or auth material are written to benchmark snapshots or routing
+decision events.
+
+## Two routing pools (wire-format boundary)
 
 The gateway exposes two independent pools. **A request hitting one endpoint
 can only be served by accounts in that pool — format families never cross.**
