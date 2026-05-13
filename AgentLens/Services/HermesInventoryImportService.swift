@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import OpenBurnBarCore
 
 @MainActor
@@ -23,6 +24,7 @@ final class HermesInventoryImportService {
     private let cloudSyncService: CloudSyncService?
     private let iCloudMirrorService: ICloudSessionMirrorService?
     private let parseInventory: @Sendable () async throws -> ParseResult
+    private let preflight: HermesInventoryImportPreflight
     private var cachedParseResult: ParseResult?
 
     init(
@@ -32,13 +34,15 @@ final class HermesInventoryImportService {
         iCloudMirrorService: ICloudSessionMirrorService? = nil,
         parseInventory: @escaping @Sendable () async throws -> ParseResult = {
             try await HermesParser().parse()
-        }
+        },
+        preflight: HermesInventoryImportPreflight = .live
     ) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
         self.cloudSyncService = cloudSyncService
         self.iCloudMirrorService = iCloudMirrorService
         self.parseInventory = parseInventory
+        self.preflight = preflight
     }
 
     var hasImportableInventory: Bool {
@@ -72,7 +76,7 @@ final class HermesInventoryImportService {
             summary = Self.summary(for: result)
             phase = .ready
         } catch {
-            phase = .failed(error.localizedDescription)
+            phase = .failed(Self.describe(error))
         }
     }
 
@@ -91,7 +95,8 @@ final class HermesInventoryImportService {
             }
 
             if decision.importLocally {
-                try dataStore.insert(result.usages)
+                try preflight.check(summary.estimatedTranscriptBytes)
+                try dataStore.insertChunked(result.usages)
                 let report = try await ConversationIndexer.shared.index(result.conversations, in: dataStore)
                 progress = HermesInventoryImportProgress(
                     importedConversationCount: report.changedRecordCount,
@@ -120,7 +125,7 @@ final class HermesInventoryImportService {
 
             phase = .complete
         } catch {
-            phase = .failed(error.localizedDescription)
+            phase = .failed(Self.describe(error))
         }
     }
 
@@ -135,4 +140,102 @@ final class HermesInventoryImportService {
             estimatedTranscriptBytes: estimatedBytes
         )
     }
+
+    /// Converts any thrown error from the import path into a user-facing string.
+    /// Raw GRDB errors (e.g. "SQLite error 10: disk I/O error") are opaque to
+    /// end-users; this maps the common SQLite result codes onto actionable
+    /// guidance the user can act on without filing a bug.
+    static func describe(_ error: Error) -> String {
+        if let preflightError = error as? HermesInventoryImportPreflightError {
+            return preflightError.userMessage
+        }
+        if let dbError = error as? DatabaseError {
+            return describe(databaseError: dbError)
+        }
+        return error.localizedDescription
+    }
+
+    private static func describe(databaseError error: DatabaseError) -> String {
+        let supportPath = OpenBurnBarAppPaths.live().supportDirectory.path
+        let extendedCode = error.extendedResultCode.rawValue
+        switch error.resultCode {
+        case .SQLITE_FULL:
+            return "Your disk is full. Free up space on the volume containing \(supportPath) and try the import again."
+        case .SQLITE_IOERR:
+            return "OpenBurnBar couldn't write to its database. This is usually caused by low disk space or restricted permissions on \(supportPath). Free up space, quit any tools touching that folder, and try the import again. (SQLite \(error.resultCode.rawValue)/\(extendedCode))"
+        case .SQLITE_BUSY, .SQLITE_LOCKED:
+            return "The OpenBurnBar database is busy. Quit other OpenBurnBar processes (Finder previews, Spotlight, backup tools) and try the import again."
+        case .SQLITE_READONLY:
+            return "The OpenBurnBar database is read-only. Check the permissions on \(supportPath) and try the import again."
+        case .SQLITE_NOTADB, .SQLITE_CORRUPT:
+            return "The OpenBurnBar database appears to be corrupt or wrongly encrypted. Restore from a recovery bundle or reset the database before importing."
+        default:
+            let message = error.message ?? "no detail"
+            return "Database error \(error.resultCode.rawValue) (extended \(extendedCode)): \(message). The import was rolled back; nothing was imported."
+        }
+    }
+}
+
+// MARK: - Preflight
+
+/// Read-only failure surface from the import preflight. Caught by the service
+/// and translated to a user-facing string via `userMessage`.
+enum HermesInventoryImportPreflightError: Error, Equatable {
+    case supportDirectoryUnwritable(path: String)
+    case insufficientDiskSpace(availableBytes: Int64, neededBytes: Int64, path: String)
+
+    var userMessage: String {
+        switch self {
+        case let .supportDirectoryUnwritable(path):
+            return "OpenBurnBar can't write to \(path). Check the folder permissions (it should be owned by you with read/write access) and try the import again."
+        case let .insufficientDiskSpace(availableBytes, neededBytes, path):
+            let formatter = ByteCountFormatter()
+            formatter.allowedUnits = [.useKB, .useMB, .useGB]
+            formatter.countStyle = .file
+            let available = formatter.string(fromByteCount: availableBytes)
+            let needed = formatter.string(fromByteCount: neededBytes)
+            return "Not enough free space on the volume containing \(path) — \(available) free, ~\(needed) needed. Free up space and try the import again."
+        }
+    }
+}
+
+/// Pre-flight checks for the import. Extracted so tests can inject deterministic
+/// behavior without needing a real disk volume.
+struct HermesInventoryImportPreflight: Sendable {
+    /// Estimated minimum overhead the import itself consumes on disk regardless
+    /// of transcript size (WAL pages, indexes, projection rows). Picked
+    /// generously so the preflight doesn't surface false positives on tiny
+    /// imports where the transcript footprint is negligible.
+    static let minimumFreeBytes: Int64 = 50_000_000
+
+    var check: @Sendable (_ estimatedTranscriptBytes: Int) throws -> Void
+
+    static let live = HermesInventoryImportPreflight { estimatedTranscriptBytes in
+        let paths = OpenBurnBarAppPaths.live()
+        let supportDir = paths.supportDirectory
+
+        let neededBytes = max(
+            HermesInventoryImportPreflight.minimumFreeBytes,
+            Int64(estimatedTranscriptBytes) * 2
+        )
+
+        if FileManager.default.fileExists(atPath: supportDir.path),
+           !FileManager.default.isWritableFile(atPath: supportDir.path) {
+            throw HermesInventoryImportPreflightError.supportDirectoryUnwritable(
+                path: supportDir.path
+            )
+        }
+
+        let values = try? supportDir.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        if let availableBytes = values?.volumeAvailableCapacityForImportantUsage,
+           availableBytes < neededBytes {
+            throw HermesInventoryImportPreflightError.insufficientDiskSpace(
+                availableBytes: availableBytes,
+                neededBytes: neededBytes,
+                path: supportDir.path
+            )
+        }
+    }
+
+    static let alwaysOk = HermesInventoryImportPreflight { _ in }
 }

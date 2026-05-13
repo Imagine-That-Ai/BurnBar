@@ -10,6 +10,14 @@ extension DataStore {
         try usageStore.insert(newUsages)
     }
 
+    nonisolated func insertChunked(_ newUsages: [TokenUsage], chunkSize: Int = 100) throws {
+        try usageStore.insertChunked(newUsages, chunkSize: chunkSize)
+    }
+
+    nonisolated func checkpointTruncate() throws {
+        try usageStore.checkpointTruncate()
+    }
+
     nonisolated func deleteUsage(sessionIDPrefix: String) throws {
         try usageStore.deleteUsage(sessionIDPrefix: sessionIDPrefix)
     }
