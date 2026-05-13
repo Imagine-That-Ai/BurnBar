@@ -21,12 +21,12 @@
     "verify": "npm run research:test && npm run test:platform && npm run check && npm run build && npm run links:check"
   },
   "dependencies": {
-    "@astrojs/check": "^0.9.4",
-    "@astrojs/mdx": "^3.1.9",
+    "@astrojs/check": "^0.9.9",
+    "@astrojs/mdx": "^5.0.5",
     "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
-    "astro": "^4.16.18",
+    "astro": "^6.3.2",
     "typescript": "^5.6.3"
   },
   "devDependencies": {
@@ -34,7 +34,10 @@
     "prettier": "^3.4.2",
     "prettier-plugin-astro": "^0.14.1"
   },
+  "overrides": {
+    "yaml": "^2.8.3"
+  },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.12.0"
   }
 }
