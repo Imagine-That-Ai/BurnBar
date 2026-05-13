@@ -3,8 +3,10 @@ import Foundation
 // MARK: - Claude OAuth Usage Fetcher
 
 /// Calls `https://api.anthropic.com/api/oauth/usage` to retrieve the
-/// exact `rate_limits` payload Claude Code's statusline uses — without
-/// requiring the user to ever launch the CLI.
+/// exact `rate_limits` payload Claude Code's statusline uses when
+/// credentials are explicitly injected by tests or self-hosted
+/// integrations. Production OpenBurnBar does not discover Claude OAuth
+/// credentials from third-party credential stores.
 ///
 /// ## Rate limit reality (read this before changing the cooldowns)
 ///
@@ -27,13 +29,11 @@ import Foundation
 ///    is missing. Faster polling provides zero benefit (server-side
 ///    counters don't update faster than that) and trips the wall.
 /// 4. **Refresh the access token transparently** when it's about to
-///    expire. Claude Code OAuth access tokens last 8 hours; without
-///    refresh, OpenBurnBar would go dark after the user logged in
-///    until they next ran the CLI. The refresh endpoint
-///    (`https://platform.claude.com/v1/oauth/token`) accepts the
-///    `refresh_token` grant and returns a new access/refresh pair
-///    that we persist back to `~/.claude/.credentials.json` so the
-///    CLI also benefits.
+///    expire. Claude Code OAuth access tokens last 8 hours. The refresh
+///    endpoint (`https://platform.claude.com/v1/oauth/token`) accepts
+///    the `refresh_token` grant and returns a new access/refresh pair
+///    that stays in memory for this fetch result. OpenBurnBar does not
+///    write refreshed tokens into Claude Code's credential files.
 ///
 /// ## On-disk cache format
 ///
@@ -80,15 +80,12 @@ struct ClaudeOAuthUsageFetcher {
     /// and no cached payload survives — callers should fall through
     /// to the JSONL token reader.
     ///
-    /// Side effect: when the access token is within 60 seconds of
-    /// expiry and a refresh token is available, this method may
-    /// transparently refresh the token and rewrite the credentials
-    /// file on disk so the CLI picks up the new pair as well. The
-    /// refreshed credentials are returned so the caller can update
-    /// any in-memory copy.
+    /// When the access token is within 60 seconds of expiry and a
+    /// refresh token is available, this method may transparently
+    /// refresh the token. The refreshed credentials are returned for
+    /// in-memory use only.
     func fetchRateLimits(
         credentials: ClaudeOAuthCredentials,
-        credentialsWriter: ClaudeCredentialsPersisting? = nil,
         now: Date = Date()
     ) async -> RateLimitsResult {
         // 1. Cached payload still inside the soonest reset window.
@@ -130,7 +127,6 @@ struct ClaudeOAuthUsageFetcher {
             if let refreshed = await refreshAccessToken(credentials: credentials) {
                 workingCredentials = refreshed
                 refreshedCredentials = refreshed
-                credentialsWriter?.write(refreshed)
             } else {
                 // Refresh failed — fall through with the old token. It
                 // may still work (Anthropic typically grants a few

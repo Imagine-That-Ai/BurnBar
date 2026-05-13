@@ -95,6 +95,14 @@ final class AppCommandRouter {
 final class WindowManager: ObservableObject {
     static let shared = WindowManager()
 
+    private enum DashboardWindowMetrics {
+        static let preferredWidth: CGFloat = 1360
+        static let preferredHeight: CGFloat = 820
+        static let minimumContentWidth: CGFloat = 1040
+        static let minimumContentHeight: CGFloat = 650
+        static let screenInset: CGFloat = 80
+    }
+
     private var dashboardWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
@@ -133,12 +141,31 @@ final class WindowManager: ObservableObject {
             settingsManager: settingsManager,
             runtimeContext: runtimeContext
         )
-        .frame(minWidth: 900, minHeight: 600)
+        .frame(
+            minWidth: DashboardWindowMetrics.minimumContentWidth,
+            minHeight: DashboardWindowMetrics.minimumContentHeight
+        )
         .environment(settingsManager)
         .environment(navigationCoordinator)
 
+        let visibleFrame = NSScreen.main?.visibleFrame
+        let initialWidth = min(
+            DashboardWindowMetrics.preferredWidth,
+            max(
+                DashboardWindowMetrics.minimumContentWidth,
+                (visibleFrame?.width ?? DashboardWindowMetrics.preferredWidth) - DashboardWindowMetrics.screenInset
+            )
+        )
+        let initialHeight = min(
+            DashboardWindowMetrics.preferredHeight,
+            max(
+                DashboardWindowMetrics.minimumContentHeight,
+                (visibleFrame?.height ?? DashboardWindowMetrics.preferredHeight) - DashboardWindowMetrics.screenInset
+            )
+        )
+
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1100, height: 750),
+            contentRect: NSRect(x: 0, y: 0, width: initialWidth, height: initialHeight),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -149,6 +176,10 @@ final class WindowManager: ObservableObject {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.backgroundColor = NSColor(DesignSystem.Colors.background)
+        window.contentMinSize = NSSize(
+            width: DashboardWindowMetrics.minimumContentWidth,
+            height: DashboardWindowMetrics.minimumContentHeight
+        )
         window.contentView = NSHostingView(rootView: contentView)
         window.center()
         window.makeKeyAndOrderFront(nil)

@@ -1,35 +1,19 @@
 import Foundation
-#if os(macOS)
-import Security
-#endif
 
-// MARK: - Claude OAuth Credentials Reader
+// MARK: - Claude OAuth Credential Shapes
 
-/// Reads Claude Code's OAuth credentials so OpenBurnBar can call
-/// `/api/oauth/usage` directly without forcing the user to launch the
-/// CLI first.
+/// Claude OAuth credential payload used by explicit test/self-hosted
+/// integrations. Production OpenBurnBar deliberately does not discover
+/// these credentials from Claude Code's Keychain item or from
+/// `~/.claude/.credentials.json`.
 ///
-/// ## Why this exists
+/// ## Security boundary
 ///
-/// Before this reader, the only way to get Claude's `rate_limits` JSON
-/// was the statusline bridge — which only fires when the user actually
-/// runs `claude` and types a prompt. Fresh installs of OpenBurnBar
-/// would sit on "Bridge installed but no payload captured yet" until
-/// the user happened to run Claude Code. With Keychain-stored OAuth
-/// credentials, we can hit Anthropic's usage endpoint directly and
-/// surface five-hour / seven-day percentages immediately.
-///
-/// ## Where credentials live
-///
-/// 1. **macOS Keychain** — service `"Claude Code-credentials"`,
-///    account `<short username>`. Claude Code writes the JSON blob
-///    here on every successful OAuth refresh. The keychain ACL is
-///    permissive (no per-app gate), so OpenBurnBar can read it without
-///    triggering an authorization prompt.
-/// 2. **`~/.claude/.credentials.json`** — Linux / CI fallback path.
-///    Same JSON shape; checked when Keychain returns nothing.
-/// 3. **`CLAUDE_CODE_OAUTH_TOKEN` env var** — manual override for
-///    headless tests / dev machines without Claude Code installed.
+/// OpenBurnBar must not trigger macOS authorization prompts for
+/// third-party Claude credentials. The default reader is
+/// `NoClaudeCredentialsReader`, so Claude quota refresh relies on the
+/// statusline bridge and local JSONL session logs unless a caller
+/// injects credentials intentionally.
 ///
 /// ## Payload shape (as observed 2026-05)
 ///
@@ -66,7 +50,7 @@ struct ClaudeOAuthCredentials: Sendable, Equatable {
     /// Returns true when the access token expires within the next 60
     /// seconds. Callers should refresh before that window closes so a
     /// request mid-refresh doesn't see a 401. Returns `false` when
-    /// `expiresAt` is `nil` (e.g. env-override credentials) — those
+    /// `expiresAt` is `nil` (e.g. injected synthetic credentials) — those
     /// are treated as never-expiring because we have no signal.
     func isExpired(now: Date = Date()) -> Bool {
         guard let expiresAt else { return false }
@@ -108,167 +92,21 @@ struct ClaudeOAuthCredentials: Sendable, Equatable {
 
 protocol ClaudeCredentialsReading: Sendable {
     /// Returns the most recent credentials, or `nil` if none are
-    /// reachable on this host. Implementations should swallow I/O
-    /// errors — quota refresh must never crash because Keychain is
-    /// locked or the credentials file is missing.
+    /// intentionally supplied to this OpenBurnBar process.
     func load() -> ClaudeOAuthCredentials?
 }
 
-/// Lets the OAuth fetcher persist refreshed access/refresh tokens
-/// back to `~/.claude/.credentials.json` so the Claude Code CLI
-/// benefits from the refreshed pair too.
-protocol ClaudeCredentialsPersisting: Sendable {
-    func write(_ credentials: ClaudeOAuthCredentials)
+/// Production default: no third-party credential discovery. This keeps
+/// Claude quota refresh prompt-free and prevents OpenBurnBar from
+/// reading or mutating Claude Code's own credential stores.
+struct NoClaudeCredentialsReader: ClaudeCredentialsReading {
+    func load() -> ClaudeOAuthCredentials? { nil }
 }
 
-struct ClaudeCredentialsReader: ClaudeCredentialsReading, ClaudeCredentialsPersisting {
-    let homeDirectoryURL: URL
-    let environment: [String: String]
-    let fileManager: FileManagerSendableBox
-    /// Service name Claude Code uses when persisting credentials to the
-    /// macOS Keychain. Anthropic has shipped this exact label since the
-    /// first Claude Code release.
-    static let keychainService = "Claude Code-credentials"
-
-    init(
-        homeDirectoryURL: URL,
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        fileManager: FileManager = .default
-    ) {
-        self.homeDirectoryURL = homeDirectoryURL
-        self.environment = environment
-        self.fileManager = FileManagerSendableBox(fileManager)
-    }
-
-    func load() -> ClaudeOAuthCredentials? {
-        // 1. Environment override — used by tests and headless machines.
-        if let envToken = quotaNonEmpty(environment["CLAUDE_CODE_OAUTH_TOKEN"]) {
-            return ClaudeOAuthCredentials(
-                accessToken: envToken,
-                refreshToken: quotaNonEmpty(environment["CLAUDE_CODE_OAUTH_REFRESH_TOKEN"]),
-                expiresAt: nil,
-                subscriptionType: quotaNonEmpty(environment["CLAUDE_CODE_SUBSCRIPTION"]) ?? "",
-                rateLimitTier: quotaNonEmpty(environment["CLAUDE_CODE_RATE_LIMIT_TIER"]) ?? "",
-                organizationUuid: quotaNonEmpty(environment["CLAUDE_CODE_ORGANIZATION_UUID"])
-            )
-        }
-
-        // Test hook: when the file path is explicitly synthetic and
-        // the dev machine has a real Keychain entry, skip Keychain
-        // reads so unit tests exercise the file-fallback path. Real
-        // users never set this flag and never reach this branch.
-        let skipKeychain = quotaNonEmpty(environment["CLAUDE_CREDENTIALS_SKIP_KEYCHAIN"]) != nil
-
-        // 2. Keychain — the canonical location on macOS.
-        #if os(macOS)
-        if !skipKeychain, let blob = Self.readKeychainBlob() {
-            if let creds = Self.decode(blob) {
-                return creds
-            }
-        }
-        #endif
-
-        // 3. `~/.claude/.credentials.json` — Linux / CI fallback.
-        let fileURL = credentialsFileURL
-        if let data = try? Data(contentsOf: fileURL),
-           let creds = Self.decode(data) {
-            return creds
-        }
-
-        return nil
-    }
-
-    // MARK: - Persistence
-
-    /// Filesystem path Claude Code reads on every CLI invocation. We
-    /// write refreshed tokens here so a fresh `claude` command keeps
-    /// working without the user having to re-authenticate.
-    var credentialsFileURL: URL {
-        homeDirectoryURL
-            .appendingPathComponent(".claude", isDirectory: true)
-            .appendingPathComponent(".credentials.json")
-    }
-
-    /// Writes the credentials JSON in Anthropic's canonical shape
-    /// (the `claudeAiOauth` wrapper with ms-precision `expiresAt`)
-    /// so Claude Code's reader accepts it. Best-effort — failures
-    /// are swallowed because quota refresh must keep functioning
-    /// even when the credentials file is locked or symlinked into
-    /// a non-writable mount.
-    ///
-    /// **Note on the Keychain:** Anthropic stores the canonical
-    /// credentials in the macOS Keychain — the JSON file is only the
-    /// Linux/CI fallback. We do not currently rewrite the Keychain
-    /// entry because doing so requires the same ACL Claude Code uses
-    /// at sign-in time, and clobbering the entry from another app is
-    /// likely to surface a user-facing keychain prompt. Instead we
-    /// rewrite the file fallback, which the CLI will pick up if the
-    /// Keychain entry is absent. On macOS-with-Keychain the refresh
-    /// still benefits OpenBurnBar's in-memory copy via
-    /// `RateLimitsResult.refreshedCredentials`.
-    func write(_ credentials: ClaudeOAuthCredentials) {
-        let isoFormatter = ISO8601DateFormatter()
-        var oauth: [String: Any] = [
-            "accessToken": credentials.accessToken
-        ]
-        if let refresh = credentials.refreshToken { oauth["refreshToken"] = refresh }
-        if let expires = credentials.expiresAt {
-            oauth["expiresAt"] = Int(expires.timeIntervalSince1970 * 1000)
-            oauth["expiresAtIso"] = isoFormatter.string(from: expires)
-        }
-        if !credentials.subscriptionType.isEmpty {
-            oauth["subscriptionType"] = credentials.subscriptionType
-        }
-        if !credentials.rateLimitTier.isEmpty {
-            oauth["rateLimitTier"] = credentials.rateLimitTier
-        }
-        var envelope: [String: Any] = ["claudeAiOauth": oauth]
-        if let org = credentials.organizationUuid { envelope["organizationUuid"] = org }
-        guard let data = try? JSONSerialization.data(withJSONObject: envelope, options: [.prettyPrinted]) else {
-            return
-        }
-        let url = credentialsFileURL
-        let parent = url.deletingLastPathComponent()
-        try? fileManager.value.createDirectory(at: parent, withIntermediateDirectories: true)
-        try? data.write(to: url, options: [.atomic])
-        // Match Claude Code's 0600 perms (read/write owner only). Best
-        // effort — error is fine because the file is in $HOME.
-        try? fileManager.value.setAttributes(
-            [.posixPermissions: 0o600],
-            ofItemAtPath: url.path
-        )
-    }
-
-    // MARK: - Keychain
-
-    #if os(macOS)
-    private static func readKeychainBlob() -> Data? {
-        // We deliberately do NOT pin `kSecAttrAccount` so Claude
-        // Code's chosen account name (typically the login username
-        // but sometimes the OAuth subject) doesn't have to match
-        // anything OpenBurnBar can pre-compute. `kSecMatchLimitOne`
-        // picks the most recently modified item, which is what we
-        // want when a user has switched Claude accounts.
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else {
-            return nil
-        }
-        return data
-    }
-    #endif
-
-    // MARK: - Decoding
-
+enum ClaudeCredentialsReader {
     /// Internal so tests can exercise the parser against synthetic
-    /// JSON without touching the Keychain. Returns `nil` on any
-    /// schema deviation — better unavailable than a half-formed
+    /// JSON without touching user credential stores. Returns `nil` on
+    /// any schema deviation — better unavailable than a half-formed
     /// credential that 401s on every request.
     static func decode(_ data: Data) -> ClaudeOAuthCredentials? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -302,8 +140,8 @@ struct ClaudeCredentialsReader: ClaudeCredentialsReading, ClaudeCredentialsPersi
     }
 }
 
-/// Test seam: exposes a fixed credentials value without any
-/// Keychain / filesystem dependency. Used by `ProviderQuotaServiceTests`
+/// Test seam: exposes a fixed credentials value without any user-store
+/// dependency. Used by `ProviderQuotaServiceTests`
 /// to drive the OAuth-fetch path deterministically.
 struct StaticClaudeCredentialsReader: ClaudeCredentialsReading {
     let credentials: ClaudeOAuthCredentials?

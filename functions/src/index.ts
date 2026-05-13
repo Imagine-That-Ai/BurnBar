@@ -17,6 +17,7 @@
  */
 
 import { initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
@@ -35,7 +36,7 @@ import {
   refreshUserProviderQuota,
 } from "./quota.js";
 import { computeUserRollups, writeUserRollups } from "./rollups.js";
-import { eraseUserCloudData } from "./accountDeletion.js";
+import { eraseUserAccount } from "./accountDeletion.js";
 import {
   adoptDeviceLink,
   backfillUserDeviceLinks,
@@ -99,6 +100,7 @@ import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 // ---------------------------------------------------------------------------
 initializeApp();
 const db = getFirestore();
+const auth = getAuth();
 // Allow optional fields (e.g. identityHint, sourceDeviceID) to be set to
 // `undefined` directly on writes without crashing the transaction. Firestore
 // otherwise rejects the entire document, which surfaces as a generic INTERNAL
@@ -1254,7 +1256,12 @@ export const deleteUserCloudData = onCall(
     }
     enforceAuthAndAppCheck(request, uid);
 
-    const summary = await eraseUserCloudData(db, uid, { destroyCredential });
+    const summary = await eraseUserAccount(db, uid, {
+      destroyCredential,
+      deleteAuthUser: async (targetUID) => {
+        await auth.deleteUser(targetUID);
+      },
+    });
     if (summary.failedSecretDestroys > 0) {
       throw new HttpsError(
         "internal",

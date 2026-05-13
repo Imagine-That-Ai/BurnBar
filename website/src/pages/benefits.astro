@@ -51,6 +51,18 @@ import BaseLayout from "@layouts/BaseLayout.astro";
             about to roll before your agent hits a wall.
           </p>
         </li>
+        <li class="benefit benefit--ember">
+          <div class="benefit__num mono">B3·5</div>
+          <h3>Never run out of plan quota mid-task.</h3>
+          <p>
+            The <a href="/router" class="benefit__link">Fire Hydrant</a> routes
+            Cursor, Factory, Forge, OpenCode and Codex CLI into one local
+            OpenAI-compatible pool, and Claude Code into a parallel Anthropic
+            pool. When one account exhausts or rate-limits, the next healthy
+            account in the same pool takes over — no cross-format hacks, no
+            vendor lock-in, no 429s in your IDE.
+          </p>
+        </li>
         <li class="benefit">
           <div class="benefit__num mono">B4</div>
           <h3>Recover context fast.</h3>
@@ -141,6 +153,22 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     letter-spacing: -0.014em;
   }
   .benefit p { color: var(--text-base); }
+  .benefit--ember {
+    border-color: color-mix(in oklab, var(--ember-core) 35%, var(--ink-line));
+    background:
+      linear-gradient(180deg, rgba(255, 106, 26, 0.05) 0%, var(--ink-base) 100%);
+    position: relative;
+    box-shadow: 0 12px 32px -20px rgba(255, 106, 26, 0.4);
+  }
+  .benefit--ember .benefit__num { color: var(--ember-bright); }
+  .benefit__link {
+    color: var(--ember-bright);
+    border-bottom: 1px dashed color-mix(in oklab, var(--ember-bright) 40%, var(--ink-line));
+  }
+  .benefit__link:hover {
+    color: var(--ember-glow);
+    border-bottom-color: var(--ember-bright);
+  }
   @media (max-width: 880px) { .benefits__grid { grid-template-columns: 1fr; } }
   .endcta--inline {
     padding-block: var(--s-9);

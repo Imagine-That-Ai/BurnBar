@@ -17,6 +17,7 @@ public actor BurnBarHTTPGatewayServer {
     private let configStore: BurnBarConfigStore
     private let usageRecorder: BurnBarUsageRecorder?
     private let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
+    private let anthropicExecutor: BurnBarAnthropicProviderExecutor
     private let logger: BurnBarDaemonLogger
     private let rateLimiter: BurnBarRateLimiter?
     private var listener: NWListener?
@@ -26,6 +27,7 @@ public actor BurnBarHTTPGatewayServer {
         configStore: BurnBarConfigStore,
         usageRecorder: BurnBarUsageRecorder? = nil,
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
+        anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "http-gateway"),
         rateLimiter: BurnBarRateLimiter? = nil
     ) {
@@ -33,6 +35,7 @@ public actor BurnBarHTTPGatewayServer {
         self.configStore = configStore
         self.usageRecorder = usageRecorder
         self.providerExecutor = providerExecutor
+        self.anthropicExecutor = anthropicExecutor
         self.logger = logger
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
             BurnBarRateLimiter(configuration: $0)
@@ -293,6 +296,9 @@ public actor BurnBarHTTPGatewayServer {
         case ("POST", "/v1/chat/completions"):
             return await handleChatCompletions(body: request.body)
 
+        case ("POST", "/v1/messages"):
+            return await handleAnthropicMessages(body: request.body)
+
         default:
             return jsonResponse(status: 404, body: errorBody("not found"))
         }
@@ -345,10 +351,18 @@ public actor BurnBarHTTPGatewayServer {
                 configStore: configStore,
                 logger: BurnBarDaemonLogger(category: "gateway-router")
             )
-            let ranking = try await router.scoreAndRankRoutes(modelName: modelID)
+            let ranking = try await router.scoreAndRankRoutes(
+                modelName: modelID,
+                requestedFormatFamily: .openaiCompat
+            )
             let routes = ranking.rankedRoutes.map(\.route)
             guard routes.isEmpty == false else {
-                return jsonResponse(status: 502, body: errorBody("routing failed: no eligible route for \(modelID)"))
+                return jsonResponse(
+                    status: 503,
+                    body: errorBody(
+                        "no eligible OpenAI-compatible route for \(modelID). Add or enable an OpenAI-family account (OpenAI, Z.ai, MiniMax, Kimi, Ollama, …) to serve /v1/chat/completions."
+                    )
+                )
             }
 
             var lastError: Error?
@@ -384,6 +398,85 @@ public actor BurnBarHTTPGatewayServer {
             return jsonResponse(status: 502, body: errorBody("routing failed: \(message)"))
         } catch {
             logger.error("gateway_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
+        }
+    }
+
+    // MARK: - /v1/messages (Anthropic Messages format)
+
+    private func handleAnthropicMessages(body: String?) async -> GatewayHTTPResponse {
+        guard let body, !body.isEmpty else {
+            return jsonResponse(status: 400, body: errorBody("request body required"))
+        }
+
+        guard let bodyData = body.data(using: .utf8) else {
+            return jsonResponse(status: 400, body: errorBody("request body must be valid UTF-8"))
+        }
+
+        let messagesRequest: AnthropicMessagesRequest
+        do {
+            messagesRequest = try JSONDecoder().decode(AnthropicMessagesRequest.self, from: bodyData)
+        } catch {
+            return jsonResponse(status: 400, body: errorBody("invalid JSON request body"))
+        }
+
+        let modelID = messagesRequest.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard modelID.isEmpty == false else {
+            return jsonResponse(status: 400, body: errorBody("model field required"))
+        }
+
+        do {
+            let router = BurnBarProviderRouter(
+                configStore: configStore,
+                logger: BurnBarDaemonLogger(category: "gateway-router-anthropic")
+            )
+            let ranking = try await router.scoreAndRankRoutes(
+                modelName: modelID,
+                requestedFormatFamily: .anthropic
+            )
+            let routes = ranking.rankedRoutes.map(\.route)
+            guard routes.isEmpty == false else {
+                return jsonResponse(
+                    status: 503,
+                    body: errorBody(
+                        "no eligible Anthropic-family route for \(modelID). Add an Anthropic Console API key or an Anthropic Pro/Team plan to serve /v1/messages."
+                    )
+                )
+            }
+
+            var lastError: Error?
+            for (index, route) in routes.enumerated() {
+                if let slotID = route.credentialSlotID {
+                    try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
+                }
+
+                do {
+                    let response = try await anthropicExecutor.proxyMessages(
+                        body: bodyData,
+                        route: route
+                    )
+                    await router.markRouteSuccess(route)
+                    await recordUsageIfAvailable(response.usage, route: route)
+                    return GatewayHTTPResponse(
+                        status: response.statusCode,
+                        headers: ["Content-Type": response.contentType],
+                        body: response.body
+                    )
+                } catch {
+                    lastError = error
+                    await router.markRouteFailure(route, error: error)
+                    let hasMoreCandidates = index < routes.count - 1
+                    if shouldFailOverProviderError(error), hasMoreCandidates {
+                        continue
+                    }
+                    break
+                }
+            }
+
+            let message = lastError?.localizedDescription ?? "no eligible route for \(modelID)"
+            return jsonResponse(status: 502, body: errorBody("routing failed: \(message)"))
+        } catch {
+            logger.error("gateway_anthropic_route_error", metadata: ["model": modelID, "error": "\(error)"])
             return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
         }
     }
@@ -458,6 +551,7 @@ public actor BurnBarHTTPGatewayServer {
         case 429: statusText = "Too Many Requests"
         case 500: statusText = "Internal Server Error"
         case 502: statusText = "Bad Gateway"
+        case 503: statusText = "Service Unavailable"
         default: statusText = "Unknown"
         }
 
@@ -662,6 +756,10 @@ public actor BurnBarHTTPGatewayServer {
     }
 
     private struct ChatCompletionsRequest: Decodable {
+        let model: String
+    }
+
+    private struct AnthropicMessagesRequest: Decodable {
         let model: String
     }
 

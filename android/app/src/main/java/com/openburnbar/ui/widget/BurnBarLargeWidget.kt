@@ -30,6 +30,8 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import com.openburnbar.data.assistants.AssistantQuickPromptCatalog
+import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.widget.BurnBarWidgetSnapshot
 import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
@@ -170,6 +172,45 @@ private fun LargeContent(snap: BurnBarWidgetSnapshot) {
                 totalTokens = totalTokens
             )
             Spacer(modifier = GlanceModifier.height(6.dp))
+        }
+
+        // Ask-assistant chip rows — 2 prominent buttons + 3 quick prompts.
+        // Matches iOS DashboardLargeView's `askChipRow`. Each chip launches
+        // MainActivity via a `burnbar://<assistant>?prompt=…` Intent.
+        Spacer(modifier = GlanceModifier.height(6.dp))
+        Row(modifier = GlanceModifier.fillMaxWidth()) {
+            WidgetAskChip(
+                label = "Ask Hermes",
+                assistant = ASK_CHIP_ASSISTANT_HERMES,
+                glyph = AssistantRuntimeID.HERMES.glyph,
+                accent = WidgetTheme.amber,
+                prominent = true,
+                modifier = GlanceModifier.defaultWeight()
+            )
+            Spacer(modifier = GlanceModifier.width(6.dp))
+            WidgetAskChip(
+                label = "Ask Pi",
+                assistant = ASK_CHIP_ASSISTANT_PI,
+                glyph = AssistantRuntimeID.PI.glyph,
+                accent = WidgetTheme.whimsy,
+                prominent = true,
+                modifier = GlanceModifier.defaultWeight()
+            )
+        }
+        Spacer(modifier = GlanceModifier.height(5.dp))
+        Row(modifier = GlanceModifier.fillMaxWidth()) {
+            AssistantQuickPromptCatalog.hermesShortlist.take(3).forEachIndexed { idx, prompt ->
+                if (idx > 0) Spacer(modifier = GlanceModifier.width(5.dp))
+                WidgetAskChip(
+                    label = prompt.chipLabel,
+                    assistant = if (prompt.preferredAssistant == AssistantRuntimeID.PI)
+                        ASK_CHIP_ASSISTANT_PI else ASK_CHIP_ASSISTANT_HERMES,
+                    prompt = prompt.fullPrompt,
+                    accent = WidgetTheme.amber,
+                    prominent = false,
+                    modifier = GlanceModifier.defaultWeight()
+                )
+            }
         }
     }
 }

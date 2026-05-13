@@ -10,11 +10,16 @@ repo commands plus a short web-only App Store Connect pass.
 - Apple app ID: `6766366964`
 - iOS bundle ID: `com.openburnbar.app`
 - iOS version: `1.0`
-- iOS version state: `WAITING_FOR_REVIEW` as of 2026-05-09
-- Linked build: `6`
-- Hosted quota subscription product: `com.openburnbar.hostedQuotaSync.monthly`
+- iOS version state: `WAITING_FOR_REVIEW` as of 2026-05-12 after the build-9
+  rejection repair and resubmission
+- Linked build: `9`
+- Hosted quota subscription product: `com.openburnbar.hostedQuotaSync.cloud.monthly`
 - Subscription reference name: `Hosted Quota Sync Monthly`
-- Subscription state: `WAITING_FOR_REVIEW` as of 2026-05-09
+- Subscription state: `DEVELOPER_ACTION_NEEDED` as of 2026-05-12. Apple's
+  subscription validator reports this as a non-blocking warning after the app
+  version resubmission; the subscription still has a rejected English
+  localization that Apple's public API and web UI do not allow editing while in
+  that state.
 - App Store Server Notifications V2 URL:
   `https://us-central1-burnbar.cloudfunctions.net/appStoreServerNotificationsV2`
 
@@ -87,7 +92,11 @@ Before final submission, the status output must show:
 - `iosVersion.releaseType` is `MANUAL`.
 - `linkedBuild.processingState` is `VALID`.
 - `linkedBuild.buildAudienceType` is `APP_STORE_ELIGIBLE`.
+- `linkedBuild.version` matches the current `OpenBurnBarMobile`
+  `CURRENT_PROJECT_VERSION` in `project.yml`.
 - `linkedBuild.usesNonExemptEncryption` is `false`.
+- `iosVersion.usesIdfa` is `false`; OpenBurnBar does not use the Advertising
+  Identifier.
 - `appReviewDetail.demoAccountRequired` is `true`.
 - `appReviewDetail.demoAccountName` is `app-review@openburnbar.app`.
 - `appReviewDetail.hasNotes` is `true`. App Store Connect does not echo the
@@ -99,7 +108,12 @@ Before final submission, the status output must show:
 After final submission, the expected readback is:
 
 - `iosVersion.state` is `WAITING_FOR_REVIEW` or another Apple review state.
-- Subscription state is `WAITING_FOR_REVIEW` or another Apple review state.
+- `npm --prefix tools/app-store-connect run review-submissions` shows the
+  unresolved iOS submission in `WAITING_FOR_REVIEW` with one app-version item
+  linked to the current iOS version.
+- `asc validate subscriptions --app 6766366964 --pretty` has no blocking
+  errors. The first subscription may still report `DEVELOPER_ACTION_NEEDED`
+  until Apple processes the resubmitted app review.
 - `iosVersion.releaseType` remains `MANUAL` so approval does not publish to
   customers automatically.
 
@@ -149,10 +163,42 @@ npm --prefix tools/app-store-connect run prepare-review-metadata
 
 That command:
 
-1. Sets the linked build's `usesNonExemptEncryption` to `false`.
-2. Sets iOS release mode to `MANUAL`.
-3. Writes App Review login credentials and notes.
-4. Prints a status readback.
+1. Writes the App Information privacy-policy URL.
+2. Writes iOS version metadata, including the Terms of Use and Privacy Policy
+   links Apple requires for auto-renewable subscriptions.
+3. Sets the linked build's `usesNonExemptEncryption` to `false`.
+4. Sets the iOS Advertising Identifier answer to `false`.
+5. Sets iOS release mode to `MANUAL`.
+6. Writes App Review login credentials and notes, including the exact Hosted
+   Quota Sync Monthly paths and the in-app account deletion path.
+7. Prints a status readback.
+
+If App Review rejects the build for missing subscription legal metadata,
+unclear In-App Purchase discovery, or missing account deletion instructions,
+use the explicit alias after shipping the matching app fix:
+
+```bash
+set -a
+. /tmp/openburnbar-app-review-credentials.txt
+set +a
+
+npm --prefix tools/app-store-connect run fix-review-rejection
+```
+
+The corresponding in-app account deletion path is
+**You -> Settings -> Account -> Delete account**. Record a physical-device
+screen capture of sign-in, navigation to that row, the destructive confirmation,
+and return to the signed-out state before replying to App Review.
+
+Attach that recording to the current App Review detail before submission:
+
+```bash
+npm --prefix tools/app-store-connect run upload-review-attachment -- \
+  /path/to/account-deletion-recording.mov
+```
+
+Then rerun `npm --prefix tools/app-store-connect run status` and confirm the
+linked build is still the intended build before the web-only submission step.
 
 ## Web-Only App Store Connect Gates
 
@@ -170,10 +216,49 @@ Some gates are still safest in App Store Connect's web UI:
 8. Stop before **Submit for Review** unless the operator explicitly confirms
    the official Apple submission.
 
+Apple's App Store Connect API supports later subscription review submissions,
+but Apple documents that the first auto-renewable subscription must be submitted
+with an app binary through `appstoreconnect.apple.com`. For this first
+`Hosted Quota Sync Monthly` subscription, do not treat a CLI-only run as
+complete until the web UI shows the subscription in the draft review submission.
+
 ## Final Submission
 
-`Submit for Review` is the official Apple submission action. Click it only
-after an explicit action-time confirmation from the app owner.
+`Submit for Review` is the official Apple submission action. Run it only after
+an explicit action-time confirmation from the app owner:
+
+```bash
+export OPENBURNBAR_SUBMIT_APP_REVIEW="ios:9"
+npm --prefix tools/app-store-connect run submit-review
+```
+
+The command sets the content-rights declaration, refreshes review metadata,
+sets the Advertising Identifier answer, ignores detached draft review
+submissions left by failed retries, and submits the linked iOS app version. It
+does not keep creating duplicate raw subscription or subscription-group
+submissions while the product is still `DEVELOPER_ACTION_NEEDED`; for the first
+auto-renewable subscription, finish the subscription selection through App Store
+Connect's web UI or an authenticated `asc web review subscriptions attach`
+session.
+
+If a web session is available, the CLI-only subscription attach shape is:
+
+```bash
+asc web auth login --apple-id "APPLE_ACCOUNT_EMAIL"
+asc web review subscriptions attach \
+  --app 6766366964 \
+  --subscription-id 6768773163 \
+  --confirm
+```
+
+If a subscription localization is rejected, `repair-subscription-localization`
+can add a temporary replacement localization, but Apple may still reject
+deleting or editing the original rejected English localization. Clean up any
+temporary localization after the attempt:
+
+```bash
+npm --prefix tools/app-store-connect run cleanup-temp-subscription-localization
+```
 
 After submission, rerun:
 

@@ -10,9 +10,18 @@ final class Plan2SharedModelsTests: XCTestCase {
     // MARK: AssistantRuntimeID
 
     func test_assistantRuntimeID_caseRawValuesMatchRelayDiscriminator() {
+        // These five rawValues are persisted on every platform — UserDefaults
+        // (`assistants.activeRuntime`, `chat.tilePreferences.v1`) on Apple
+        // platforms, SharedPreferences on Android. Any rename is a migration.
         XCTAssertEqual(AssistantRuntimeID.hermes.rawValue, "hermes")
         XCTAssertEqual(AssistantRuntimeID.pi.rawValue, "pi")
-        XCTAssertEqual(AssistantRuntimeID.allCases, [.hermes, .pi])
+        XCTAssertEqual(AssistantRuntimeID.codex.rawValue, "codex")
+        XCTAssertEqual(AssistantRuntimeID.claude.rawValue, "claude")
+        XCTAssertEqual(AssistantRuntimeID.openClaw.rawValue, "openclaw")
+        XCTAssertEqual(
+            AssistantRuntimeID.allCases,
+            [.hermes, .pi, .codex, .claude, .openClaw]
+        )
     }
 
     func test_assistantRuntimeID_defaultGatewayURLsAreLoopback() {

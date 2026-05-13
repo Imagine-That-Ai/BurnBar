@@ -170,7 +170,8 @@ struct OperatorModelDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "Operator Model & Setup",
-            subtitle: "Tracks which agents OpenBurnBar can see on this Mac and what setup work is left."
+            subtitle: "Tracks which agents OpenBurnBar can see on this Mac and what setup work is left.",
+            searchRoute: .operatorModel
         ) {
             OpenBurnBarOperatingModelGuideCard(guide: setupGuide)
 
@@ -199,6 +200,7 @@ struct OperatorModelDetailView: View {
                     .controlSize(.small)
                 }
                 .padding(DesignSystem.Spacing.lg)
+                .settingsAnchor(SettingsAnchor.operatorWizard)
             }
         }
     }
@@ -212,7 +214,8 @@ struct AppearanceSettingsDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "Appearance",
-            subtitle: "Choose the macOS theme behavior and where OpenBurnBar is reachable on this Mac."
+            subtitle: "Choose the macOS theme behavior and where OpenBurnBar is reachable on this Mac.",
+            searchRoute: .appearance
         ) {
             AppearanceCorkboardSection(settingsManager: settingsManager)
         }
@@ -227,7 +230,8 @@ struct DefaultViewSettingsDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "Dashboard Defaults",
-            subtitle: "Sets the time window and units OpenBurnBar reaches for when you open the dashboard or menu bar."
+            subtitle: "Sets the time window and units OpenBurnBar reaches for when you open the dashboard or menu bar.",
+            searchRoute: .defaultView
         ) {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -249,6 +253,7 @@ struct DefaultViewSettingsDetailView: View {
                         .pickerStyle(.menu)
                         .frame(width: 160)
                     }
+                    .settingsAnchor(SettingsAnchor.defaultsTimeRange)
 
                     Divider().background(DesignSystem.Colors.border)
 
@@ -269,6 +274,7 @@ struct DefaultViewSettingsDetailView: View {
                         .pickerStyle(.segmented)
                         .frame(width: 200)
                     }
+                    .settingsAnchor(SettingsAnchor.defaultsUsageMode)
                 }
                 .padding(DesignSystem.Spacing.lg)
             }
@@ -284,7 +290,8 @@ struct DataRefreshSettingsDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "Data Refresh",
-            subtitle: "How often OpenBurnBar polls local agent logs for new conversations and usage."
+            subtitle: "How often OpenBurnBar polls local agent logs for new conversations and usage.",
+            searchRoute: .dataRefresh
         ) {
             GlassCard {
                 HStack {
@@ -308,6 +315,7 @@ struct DataRefreshSettingsDetailView: View {
                     .frame(width: 110)
                 }
                 .padding(DesignSystem.Spacing.lg)
+                .settingsAnchor(SettingsAnchor.refreshInterval)
             }
         }
     }
@@ -321,13 +329,16 @@ struct IndexingOverviewDetailView: View {
     let sharedFeaturesAvailable: Bool
 
     var body: some View {
-        PrivacyIndexingSettingsView(
-            settingsManager: settingsManager,
-            dataStore: dataStore,
-            sharedFeaturesAvailable: sharedFeaturesAvailable
-        )
-        .padding(DesignSystem.Spacing.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        SettingsDeepLinkScrollContainer(route: .indexing) { _ in
+            PrivacyIndexingSettingsView(
+                settingsManager: settingsManager,
+                dataStore: dataStore,
+                sharedFeaturesAvailable: sharedFeaturesAvailable
+            )
+            .padding(DesignSystem.Spacing.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .settingsAnchor(SettingsAnchor.indexingToggle)
+        }
         .background(DesignSystem.Colors.background)
         .navigationTitle("Indexing & Search")
     }
@@ -341,7 +352,8 @@ struct SessionSummariesDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "Session Summaries",
-            subtitle: "OpenBurnBar can write short recaps for each session as new conversations are detected."
+            subtitle: "OpenBurnBar can write short recaps for each session as new conversations are detected.",
+            searchRoute: .sessionSummaries
         ) {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -353,6 +365,7 @@ struct SessionSummariesDetailView: View {
                         icon: "text.bubble",
                         isOn: $settingsManager.autoSessionSummariesEnabled
                     )
+                    .settingsAnchor(SettingsAnchor.summariesAuto)
                 }
                 .padding(DesignSystem.Spacing.lg)
             }

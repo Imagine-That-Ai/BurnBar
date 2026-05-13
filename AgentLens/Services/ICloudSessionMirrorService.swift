@@ -10,31 +10,32 @@ enum ICloudSessionMirrorConstants {
 
 // MARK: - Mirror state (persisted)
 
-private struct ICloudSessionMirrorStateFile: Codable, Sendable {
+struct ICloudSessionMirrorStateFile: Codable, Sendable {
     var files: [String: ICloudSessionMirrorFileRecord]
 }
 
-private struct ICloudSessionMirrorFileRecord: Codable, Sendable {
+struct ICloudSessionMirrorFileRecord: Codable, Sendable, Equatable {
     var modificationTime: TimeInterval
     var size: Int64
 }
 
 // MARK: - Snapshot (captured on MainActor, processed off-thread)
 
-private struct ICloudSessionMirrorSnapshot: Sendable {
+struct ICloudSessionMirrorSnapshot: Sendable {
     let containerIdentifier: String
     let mirrorPathComponents: [String]
     let providers: [ICloudSessionProviderSpec]
     let stateFilePath: String
+    let containerBaseURL: URL?
 }
 
-private struct ICloudSessionProviderSpec: Sendable {
+struct ICloudSessionProviderSpec: Sendable {
     let slug: String
     let rootPath: String
     let filePattern: String
 }
 
-private struct ICloudSessionMirrorSyncResult: Sendable {
+struct ICloudSessionMirrorSyncResult: Sendable {
     let lastSyncDate: Date?
     let errorMessage: String?
     let updatedCount: Int
@@ -43,7 +44,7 @@ private struct ICloudSessionMirrorSyncResult: Sendable {
 
 // MARK: - Engine (background)
 
-private enum ICloudSessionMirrorEngine {
+enum ICloudSessionMirrorEngine {
 
     static func estimateBytes(_ snapshot: ICloudSessionMirrorSnapshot) async -> Int64 {
         let fm = FileManager()
@@ -62,7 +63,8 @@ private enum ICloudSessionMirrorEngine {
         let fm = FileManager()
 
         guard let base =
-            fm.url(forUbiquityContainerIdentifier: snapshot.containerIdentifier)
+            snapshot.containerBaseURL
+            ?? fm.url(forUbiquityContainerIdentifier: snapshot.containerIdentifier)
             ?? fallbackContainerURL(for: snapshot.containerIdentifier, fm: fm) else {
             return ICloudSessionMirrorSyncResult(
                 lastSyncDate: nil,
@@ -89,7 +91,6 @@ private enum ICloudSessionMirrorEngine {
         let previousSnapshot = state.files
         var newRecords: [String: ICloudSessionMirrorFileRecord] = [:]
         var updatedCount = 0
-        var removedCount = 0
         var fileIndex = 0
 
         do {
@@ -113,7 +114,10 @@ private enum ICloudSessionMirrorEngine {
                     let size = Int64(attrs.fileSize ?? 0)
                     let prev = state.files[sourcePath]
 
-                    if let prev, prev.modificationTime == mod.timeIntervalSinceReferenceDate, prev.size == size {
+                    if let prev,
+                       prev.modificationTime == mod.timeIntervalSinceReferenceDate,
+                       prev.size == size,
+                       fm.fileExists(atPath: dest.path) {
                         newRecords[sourcePath] = prev
                         continue
                     }
@@ -127,40 +131,30 @@ private enum ICloudSessionMirrorEngine {
                 }
             }
 
-            for (sourcePath, _) in previousSnapshot where newRecords[sourcePath] == nil {
-                guard !fm.fileExists(atPath: sourcePath) else { continue }
-                guard let match = inferProvider(from: sourcePath, specs: snapshot.providers) else { continue }
-                let sourceURL = URL(fileURLWithPath: sourcePath).standardizedFileURL
-                guard let rel = try? relativePath(
-                    from: URL(fileURLWithPath: match.rootPath, isDirectory: true).standardizedFileURL,
-                    to: sourceURL
-                ) else { continue }
-                let dest = mirrorRoot
-                    .appendingPathComponent(match.slug, isDirectory: true)
-                    .appendingPathComponent(rel, isDirectory: false)
-                if fm.fileExists(atPath: dest.path) {
-                    try? fm.removeItem(at: dest)
-                    removedCount += 1
-                }
-            }
-
-            state.files = newRecords
+            state.files = appendSafeMergedRecords(previous: previousSnapshot, incoming: newRecords)
             try saveState(state, path: snapshot.stateFilePath, fm: fm)
 
             return ICloudSessionMirrorSyncResult(
                 lastSyncDate: Date(),
                 errorMessage: nil,
                 updatedCount: updatedCount,
-                removedCount: removedCount
+                removedCount: 0
             )
         } catch {
             return ICloudSessionMirrorSyncResult(
                 lastSyncDate: nil,
                 errorMessage: userFacingMirrorError(error),
                 updatedCount: updatedCount,
-                removedCount: removedCount
+                removedCount: 0
             )
         }
+    }
+
+    static func appendSafeMergedRecords(
+        previous: [String: ICloudSessionMirrorFileRecord],
+        incoming: [String: ICloudSessionMirrorFileRecord]
+    ) -> [String: ICloudSessionMirrorFileRecord] {
+        previous.merging(incoming) { _, incoming in incoming }
     }
 
     private static func fallbackContainerURL(for identifier: String, fm: FileManager) -> URL? {
@@ -241,21 +235,6 @@ private enum ICloudSessionMirrorEngine {
         }
 
         return description
-    }
-
-    private static func inferProvider(from sourcePath: String, specs: [ICloudSessionProviderSpec]) -> ICloudSessionProviderSpec? {
-        let standardizedPath = (sourcePath as NSString).standardizingPath
-        var best: ICloudSessionProviderSpec?
-        var bestLen = 0
-        for spec in specs {
-            let rs = (spec.rootPath as NSString).standardizingPath
-            guard standardizedPath == rs || standardizedPath.hasPrefix(rs + "/") else { continue }
-            if rs.count > bestLen {
-                best = spec
-                bestLen = rs.count
-            }
-        }
-        return best
     }
 
     private static func sourceFiles(for spec: ICloudSessionProviderSpec, fm: FileManager) throws -> [URL] {
@@ -365,7 +344,8 @@ final class ICloudSessionMirrorService {
     private(set) var lastSyncError: String?
     /// Files copied or updated in the last completed sync.
     private(set) var lastSyncUpdatedCount: Int = 0
-    /// Files removed from mirror when sources disappeared locally.
+    /// Files removed by explicit mirror delete operations. Incremental sync never
+    /// treats a missing local source as an implicit delete.
     private(set) var lastSyncRemovedCount: Int = 0
 
     private let settingsManager: SettingsManager
@@ -589,7 +569,8 @@ final class ICloudSessionMirrorService {
             containerIdentifier: ICloudSessionMirrorConstants.containerIdentifier,
             mirrorPathComponents: ICloudSessionMirrorConstants.mirrorPathComponents,
             providers: providers,
-            stateFilePath: stateFileURL.path
+            stateFilePath: stateFileURL.path,
+            containerBaseURL: nil
         )
     }
 

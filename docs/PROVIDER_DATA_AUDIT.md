@@ -57,6 +57,9 @@ Three-tier approach:
 
 - **Source:** Bridge statusline + `~/.claude/projects/**/*.jsonl`
 - **Auth:** None (bridge auto-discovers Claude Code daemon)
+- **Credential boundary:** OpenBurnBar does not read Claude Code's Keychain
+  credential item or `~/.claude/.credentials.json`; this avoids macOS login
+  keychain password prompts and keeps Claude auth owned by Claude Code.
 - **Without bridge:** `.unavailable` — user needs `npm i -g @anthropic-ai/claude-code`
 - **Reference:** ccusage (`ryoppippi/ccusage`)
 

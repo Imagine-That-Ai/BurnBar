@@ -909,5 +909,6 @@ private final class PreviewAuthGateway: AuthGateway {
     func signInWithEmail(email: String, password: String) async throws {
         try await signIn(provider: .email)
     }
+    func deleteAccount() async throws {}
     func signOut() throws {}
 }

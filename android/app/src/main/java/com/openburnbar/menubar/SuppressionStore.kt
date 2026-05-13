@@ -22,6 +22,5 @@ object SuppressionStore {
             .edit()
             .putBoolean(KEY_SUPPRESSED, value)
             .apply()
-        if (value) MenuBarService.stop(context) else MenuBarService.start(context)
     }
 }

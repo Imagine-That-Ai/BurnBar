@@ -219,6 +219,7 @@ struct HermesConversationListView: View {
     @State private var showSetupWizard = false
     @State private var didAutoPresentSetupWizard = false
     @State private var libraryStore = HermesCloudLibraryStore()
+    @State private var historyStore: MobileChatHistoryStore = .shared
     @State private var selectedLibrarySession: HermesLibrarySession?
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
 
@@ -232,7 +233,7 @@ struct HermesConversationListView: View {
             AuroraBackdrop()
 
             Group {
-                if service.sessions.isEmpty && libraryStore.sessions.isEmpty {
+                if service.sessions.isEmpty && libraryStore.sessions.isEmpty && onDeviceThreads.isEmpty {
                     emptyState
                 } else {
                     conversationList
@@ -322,10 +323,20 @@ struct HermesConversationListView: View {
             )
         }
         .task {
+            historyStore.bootstrap()
             service.loadHistory()
             async let reachability: Void = service.checkReachability()
             async let library: Void = libraryStore.refresh()
             _ = await (reachability, library)
+        }
+        // Pending-prompt consumer — picks up prompts stashed by the
+        // "Ask Hermes" widget chip AppIntent or a `burnbar://hermes?prompt=…`
+        // deep link. Non-empty values auto-send; an empty slot left over from
+        // a "focus the composer" widget tap is ignored at the list level
+        // (the user already landed here, and tapping into a session focuses
+        // the input).
+        .task(id: AssistantPendingPrompt.shared.hermes) {
+            await consumePendingHermesPrompt()
         }
         .onAppear {
             presentSetupWizardIfNeeded()
@@ -340,13 +351,52 @@ struct HermesConversationListView: View {
         showSetupWizard = true
     }
 
+    @MainActor
+    private func consumePendingHermesPrompt() async {
+        guard let pending = AssistantPendingPrompt.shared.consume(.hermes),
+              !pending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        // Small delay so the conversation list has settled before we
+        // create a new session and start streaming.
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        service.sendMessage(pending)
+    }
+
     // MARK: - Conversation List
 
     private var conversationList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
+                if !onDeviceThreads.isEmpty {
+                    let onDeviceSessionIDs = Set(sortedSessions.map(\.id))
+                    let onlyDeviceThreads = onDeviceThreads.filter { !onDeviceSessionIDs.contains($0.id) }
+                    if !onlyDeviceThreads.isEmpty {
+                        librarySectionHeader("On This Device", systemImage: "iphone")
+                        ForEach(onlyDeviceThreads) { thread in
+                            NavigationLink(value: HermesChatRoute.existing(sessionID: thread.id)) {
+                                OnDeviceHermesRow(thread: thread)
+                            }
+                            .buttonStyle(.plain)
+                            .simultaneousGesture(TapGesture().onEnded {
+                                HapticBus.sheetOpen()
+                                // Synchronously restore the thread so the detail
+                                // view's first paint shows the right messages.
+                                service.loadMobileThread(id: thread.id)
+                            })
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    service.deleteMobileThread(id: thread.id)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if !sortedSessions.isEmpty {
                     librarySectionHeader("Live Hermes Host", systemImage: "antenna.radiowaves.left.and.right")
+                        .padding(.top, onDeviceThreads.isEmpty ? 0 : 10)
                     ForEach(sortedSessions) { session in
                         NavigationLink(value: HermesChatRoute.existing(sessionID: session.id)) {
                             ConversationRow(
@@ -407,6 +457,10 @@ struct HermesConversationListView: View {
         libraryStore.sessions.sorted {
             ($0.lastActiveAt ?? .distantPast) > ($1.lastActiveAt ?? .distantPast)
         }
+    }
+
+    private var onDeviceThreads: [MobileChatThread] {
+        historyStore.threads(for: .hermes)
     }
 
     private func librarySectionHeader(_ title: String, systemImage: String) -> some View {
@@ -558,6 +612,57 @@ struct HermesConversationListView: View {
         .accessibilityLabel("Start new Hermes conversation")
         .simultaneousGesture(
             TapGesture().onEnded { HapticBus.primaryAction() }
+        )
+    }
+}
+
+// MARK: - On-Device Hermes Row
+
+private struct OnDeviceHermesRow: View {
+    let thread: MobileChatThread
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label {
+                    Text(thread.title)
+                        .font(MobileTheme.Typography.headline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                } icon: {
+                    Image(systemName: "iphone")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(MobileTheme.hermesAureate)
+                }
+                Spacer(minLength: 8)
+                Text(thread.updatedAt, style: .relative)
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary.opacity(0.85))
+                    .lineLimit(1)
+            }
+
+            if !thread.preview.isEmpty {
+                Text(thread.preview)
+                    .font(MobileTheme.Typography.body)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+
+            Text("\(thread.messageCount) messages")
+                .font(MobileTheme.Typography.tiny)
+                .foregroundStyle(MobileTheme.Colors.textSecondary.opacity(0.65))
+        }
+        .padding(MobileTheme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: AuroraDesign.Shape.standardCorner, style: .continuous)
+                .fill(MobileTheme.Colors.surfaceElevated)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AuroraDesign.Shape.standardCorner, style: .continuous)
+                        .stroke(MobileTheme.Colors.border.opacity(0.45), lineWidth: 0.5)
+                )
         )
     }
 }
@@ -1131,11 +1236,17 @@ struct HermesChatView: View {
             guard service.selectedSessionID != sessionID else { return }
             if let summary = service.sessions.first(where: { $0.id == sessionID }) {
                 await service.resumeSession(summary)
+            } else if MobileChatHistoryStore.shared.thread(id: sessionID)?.runtime == AssistantRuntimeID.hermes.rawValue {
+                // Mobile-only thread (host never assigned a session id, or the
+                // host is currently unreachable). Restore from the device cache.
+                service.loadMobileThread(id: sessionID)
             } else {
                 // Sessions list may not be loaded yet; refresh and try again once.
                 await service.refreshRuntime()
                 if let summary = service.sessions.first(where: { $0.id == sessionID }) {
                     await service.resumeSession(summary)
+                } else if MobileChatHistoryStore.shared.thread(id: sessionID)?.runtime == AssistantRuntimeID.hermes.rawValue {
+                    service.loadMobileThread(id: sessionID)
                 }
             }
         }
@@ -1871,15 +1982,51 @@ private struct HermesRuntimeSheet: View {
 struct HermesModelPickerSheet: View {
     @Bindable var service: HermesService
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(ChatTilePreferencesStorage.userDefaultsKey) private var tilePreferencesJSON: String = ""
+
+    /// Visible Hermes sub-providers per user preference. Empty set means
+    /// "no filter" — every advertised model passes through.
+    private var visibleSubProviders: Set<HermesSubProvider> {
+        let prefs = ChatTilePreferences.from(jsonString: tilePreferencesJSON)
+        return prefs.enabledHermesSubProviders
+    }
+
+    /// Live `HermesRuntimeModelOption` list filtered by the user's enabled
+    /// sub-providers. When the relay hasn't advertised any models we render
+    /// the static six-row fallback below.
+    private var filteredModelOptions: [HermesRuntimeModelOption] {
+        let raw = service.modelOptions
+        guard !visibleSubProviders.isEmpty else { return raw }
+        return raw.filter { option in
+            // Drop the option only when its provider tag maps to a sub-provider
+            // that the user has explicitly hidden. Unknown provider tags pass
+            // through so we never silently drop advertised models.
+            if let sub = HermesSubProvider.fromProviderToken(option.providerID) {
+                return visibleSubProviders.contains(sub)
+            }
+            if let sub = HermesSubProvider.fromProviderToken(option.providerName) {
+                return visibleSubProviders.contains(sub)
+            }
+            return true
+        }
+    }
 
     private var groupedModels: [(provider: String, options: [HermesRuntimeModelOption])] {
-        Dictionary(grouping: service.modelOptions, by: \.providerName)
+        Dictionary(grouping: filteredModelOptions, by: \.providerName)
             .map { (provider: $0.key, options: $0.value.sorted { $0.displayName < $1.displayName }) }
             .sorted { $0.provider < $1.provider }
     }
 
     private var favoriteModels: [HermesRuntimeModelOption] {
-        service.favoriteModelOptions
+        let visible = Set(filteredModelOptions.map(\.id))
+        return service.favoriteModelOptions.filter { visible.contains($0.id) }
+    }
+
+    /// Sub-providers shown as static fallback rows when the relay hasn't
+    /// advertised concrete models yet. Always honors the user's visibility set.
+    private var staticFallbackSubProviders: [HermesSubProvider] {
+        let prefs = ChatTilePreferences.from(jsonString: tilePreferencesJSON)
+        return prefs.orderedVisibleHermesSubProviders
     }
 
     var body: some View {
@@ -1889,7 +2036,8 @@ struct HermesModelPickerSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         currentModelCard
-                        if service.modelOptions.isEmpty {
+                        if filteredModelOptions.isEmpty {
+                            staticFallbackGroup
                             emptyModelsCard
                         } else {
                             if !favoriteModels.isEmpty {
@@ -1956,14 +2104,56 @@ struct HermesModelPickerSheet: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(MobileTheme.warning)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("No models discovered")
+                    Text("No live models yet")
                         .font(MobileTheme.Typography.body)
                         .fontWeight(.semibold)
                         .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    Text("Refresh after Hermes is online. The selected relay can still use its advertised default model.")
+                    Text("Pick a sub-provider above to route Hermes through it. The relay will fill in concrete model names once it reports them.")
                         .font(MobileTheme.Typography.caption)
                         .foregroundStyle(MobileTheme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    /// Static six-row fallback rendered when the relay hasn't advertised any
+    /// concrete models. Tapping a row selects the sub-provider's default
+    /// model hint so Hermes routes through that sub-provider until the relay
+    /// reports something more specific.
+    private var staticFallbackGroup: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(MobileTheme.hermesAureate)
+                Text("Hermes sub-providers")
+                    .font(MobileTheme.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                Spacer()
+                Text("\(staticFallbackSubProviders.count)")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+            ForEach(staticFallbackSubProviders) { sub in
+                let option = HermesRuntimeModelOption(
+                    providerID: sub.providerToken,
+                    providerName: sub.displayName,
+                    modelID: sub.defaultModelHint,
+                    displayName: sub.displayName
+                )
+                HermesModelPickerRow(
+                    option: option,
+                    isSelected: service.selectedModelID == option.modelID,
+                    isFavorite: service.isFavoriteModel(option)
+                ) {
+                    service.selectModel(option)
+                    HapticBus.primaryAction()
+                    dismiss()
+                } onToggleFavorite: {
+                    service.toggleFavoriteModel(option)
+                    HapticBus.toggle()
                 }
             }
         }
@@ -2222,18 +2412,31 @@ struct HermesMessageBubble: View {
 
     @ViewBuilder
     private func toolCallPill(_ tool: HermesToolCall) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: toolCallIcon(for: tool.name))
-                .font(.system(size: 11, weight: .bold))
-            Text(tool.name)
-                .font(MobileTheme.Typography.tiny)
-                .fontWeight(.semibold)
-            Spacer(minLength: 8)
-            Text(tool.status)
-                .font(MobileTheme.Typography.tiny)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: toolCallIcon(for: tool.name))
+                    .font(.system(size: 11, weight: .bold))
+                Text(tool.name)
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                Spacer(minLength: 8)
+                Text(tool.status)
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+            if let detail = tool.detail?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !detail.isEmpty {
+                Text(detail)
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .truncationMode(.middle)
+                    .accessibilityLabel("Tool detail: \(detail)")
+            }
         }
         .foregroundStyle(MobileTheme.hermesAureate)
+        .frame(maxWidth: 240, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .background(

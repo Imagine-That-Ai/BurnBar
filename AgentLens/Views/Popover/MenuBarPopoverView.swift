@@ -207,7 +207,7 @@ struct MenuBarPopoverView: View {
         .onChange(of: dataStore.lastRefresh) { _, _ in
             refreshInsightRollups()
         }
-        .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(settingsManager)
     }
 

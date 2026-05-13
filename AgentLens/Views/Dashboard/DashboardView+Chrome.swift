@@ -162,7 +162,7 @@ extension DashboardView {
                 guard isOpen, !chatPanelOpen else { return }
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) { chatPanelOpen = true }
             }
-            .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+            .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
             .environment(settingsManager)
     }
 

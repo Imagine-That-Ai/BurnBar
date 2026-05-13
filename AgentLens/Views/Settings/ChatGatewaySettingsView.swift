@@ -248,6 +248,53 @@ struct ChatEnginesDetailView: View {
                 }
                 .padding(DesignSystem.Spacing.lg)
             }
+
+            // MARK: Hermes model picker — second-level row under Hermes.
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Hermes models")
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("Shown in the secondary row beneath the strip when Hermes is the active surface.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(.top, DesignSystem.Spacing.lg)
+
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    ForEach(HermesModelID.allCases) { model in
+                        Toggle(isOn: Binding(
+                            get: { settingsManager.enabledHermesModels.contains(model) },
+                            set: { settingsManager.setHermesModelEnabled(model, enabled: $0) }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(model.displayName)
+                                    .font(DesignSystem.Typography.body)
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                Text(hermesModelSubtitle(model))
+                                    .font(DesignSystem.Typography.tiny)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                            }
+                        }
+                        if model != HermesModelID.allCases.last {
+                            Divider().background(DesignSystem.Colors.border)
+                        }
+                    }
+                }
+                .padding(DesignSystem.Spacing.lg)
+            }
+        }
+    }
+
+    private func hermesModelSubtitle(_ model: HermesModelID) -> String {
+        switch model {
+        case .codex:   return "Hermes routes through your local Codex CLI"
+        case .claude:  return "Hermes routes through your local Claude Code CLI"
+        case .zai:     return "Hermes routes through Z.ai (GLM)"
+        case .kimi:    return "Hermes routes through Kimi (Moonshot)"
+        case .minimax: return "Hermes routes through MiniMax Coding Plan"
+        case .ollama:  return "Hermes routes through local Ollama"
         }
     }
 

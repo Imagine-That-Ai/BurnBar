@@ -220,6 +220,9 @@ final class QuotaSnapshotSyncService {
         ]
         if let v = bucket.usedPercent { meta["usedPercent"] = String(format: "%.2f", v) }
         if let d = bucket.resetsAt {
+            // Legacy side-car for mobile clients that still read
+            // `meta["resetsAt"]`; the top-level `resetsAt` timestamp below is
+            // the canonical field for new clients.
             meta["resetsAt"] = ISO8601DateFormatter().string(from: d)
         }
         var result: [String: Any] = [
@@ -230,6 +233,13 @@ final class QuotaSnapshotSyncService {
             "window": bucket.windowKind.rawValue,
             "meta": meta
         ]
+        if let d = bucket.resetsAt {
+            // First-class Firestore Timestamp so iOS / Android can read it
+            // without parsing strings out of meta. Lives next to `window`
+            // so the on-the-wire shape matches the new `QuotaBucket`
+            // interface declared in `functions/src/types.ts`.
+            result["resetsAt"] = Timestamp(date: d)
+        }
         return result
     }
 

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import {
+  eraseUserAccount,
   eraseUserCloudData,
+  isFirebaseAuthUserNotFound,
   providerSecretRefDocumentID,
   userWorkspaceID,
 } from "../lib/accountDeletion.js";
@@ -182,4 +184,79 @@ assert.equal(providerSecretRefDocumentID("alice", "codex_work"), "alice_codex_wo
   assert.equal(warnings.length, 1);
   assert.ok(db.deletedPaths.includes("provider_account_secret_refs/alice_codex"));
   assert.ok(db.deletedPaths.includes("users/alice"));
+}
+
+{
+  const db = new FakeFirestore();
+  db.addRootCollection(collection("provider_account_secret_refs", []));
+  db.addRootCollection(collection("users", [doc("users/alice")]));
+  db.addRootCollection(collection("workspaces", []));
+
+  const deletedAuthUsers = [];
+  const summary = await eraseUserAccount(db, "alice", {
+    destroyCredential: async () => {},
+    deleteAuthUser: async (uid) => {
+      deletedAuthUsers.push(uid);
+    },
+    logger: { warn() {} },
+  });
+
+  assert.deepEqual(deletedAuthUsers, ["alice"]);
+  assert.equal(summary.deletedAuthUser, true);
+  assert.equal(summary.authUserAlreadyMissing, false);
+  assert.ok(db.deletedPaths.includes("users/alice"));
+}
+
+{
+  const db = new FakeFirestore();
+  db.addRootCollection(collection("provider_account_secret_refs", [
+    doc("provider_account_secret_refs/alice_codex", {
+      uid: "alice",
+      secretVersionName: "projects/p/secrets/codex/versions/1",
+    }),
+  ]));
+  db.addRootCollection(collection("users", [doc("users/alice")]));
+  db.addRootCollection(collection("workspaces", []));
+
+  const deletedAuthUsers = [];
+  const summary = await eraseUserAccount(db, "alice", {
+    destroyCredential: async () => {
+      throw new Error("destroy failed");
+    },
+    deleteAuthUser: async (uid) => {
+      deletedAuthUsers.push(uid);
+    },
+    logger: { warn() {} },
+  });
+
+  assert.deepEqual(deletedAuthUsers, []);
+  assert.equal(summary.failedSecretDestroys, 1);
+  assert.equal(summary.deletedAuthUser, false);
+  assert.equal(summary.authUserAlreadyMissing, false);
+}
+
+{
+  const db = new FakeFirestore();
+  db.addRootCollection(collection("provider_account_secret_refs", []));
+  db.addRootCollection(collection("users", [doc("users/alice")]));
+  db.addRootCollection(collection("workspaces", []));
+
+  const userNotFound = new Error("No such user.");
+  userNotFound.code = "auth/user-not-found";
+  const summary = await eraseUserAccount(db, "alice", {
+    destroyCredential: async () => {},
+    deleteAuthUser: async () => {
+      throw userNotFound;
+    },
+    logger: { warn() {} },
+  });
+
+  assert.equal(summary.deletedAuthUser, false);
+  assert.equal(summary.authUserAlreadyMissing, true);
+}
+
+{
+  assert.equal(isFirebaseAuthUserNotFound({ code: "auth/user-not-found" }), true);
+  assert.equal(isFirebaseAuthUserNotFound({ errorInfo: { code: "auth/user-not-found" } }), true);
+  assert.equal(isFirebaseAuthUserNotFound({ code: "auth/too-many-requests" }), false);
 }

@@ -14,7 +14,7 @@ import { createHash } from "node:crypto";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 
-const PRODUCT_ID = "com.openburnbar.hostedQuotaSync.monthly";
+const PRODUCT_ID = "com.openburnbar.hostedQuotaSync.cloud.monthly";
 const ENTITLEMENT_PATH = "entitlements/hosted_quota_sync";
 
 function usage() {

@@ -26,10 +26,14 @@ struct AssistantsPopoverChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             runtimeHeroCard
-            HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
-                ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
-                Spacer(minLength: 0)
-                ChatEngineModelMenu(controller: controller)
+            VStack(spacing: 4) {
+                HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
+                    ChatEngineBackendStrip(controller: controller, settingsManager: settingsManager)
+                    Spacer(minLength: 0)
+                    ChatEngineModelMenu(controller: controller)
+                }
+                HermesModelStrip(controller: controller, settingsManager: settingsManager)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.xs)

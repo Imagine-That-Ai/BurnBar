@@ -51,9 +51,14 @@ struct ProviderQuotaBucketRow: View {
                 .frame(height: 104)
 
             HStack(spacing: DesignSystem.Spacing.sm) {
-                if let resetsAt = bucket.resetsAt {
+                if let pair = bucket.resetsAtDisplay {
+                    // Combined "in 2h 14m · May 8, 3:35 AM" — the relative
+                    // half answers "when do I get my budget back" at a
+                    // glance, the absolute half pins it for far-future
+                    // weekly windows where the relative read alone
+                    // ("in 6 days") loses precision.
                     QuotaMicroBadge(
-                        text: "Resets \(resetsAt.formatted(date: .abbreviated, time: .shortened))",
+                        text: "Resets \(pair.relative) · \(pair.absolute)",
                         tint: DesignSystem.Colors.textMuted
                     )
                 }

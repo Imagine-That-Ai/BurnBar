@@ -299,6 +299,24 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(OpenAICompatibleModelListParser.modelName(from: data), "Hermes-3")
     }
 
+    func test_openAICompatibleModelListParser_extractsHermesAdvertisedModels() throws {
+        let data = #"""
+        {
+          "data": [
+            {"id":"kimi-k2","display_name":"Kimi K2","provider_id":"kimi"},
+            {"id":"glm-4.6","display_name":"GLM 4.6","provider_name":"Z.ai"},
+            {"id":"minimax-m2.7-highspeed","display_name":"MiniMax M2.7","owned_by":"minimax"},
+            {"id":"unknown-model","display_name":"Unknown"}
+          ]
+        }
+        """#.data(using: .utf8)!
+
+        let models = OpenAICompatibleModelListParser.hermesAdvertisedModels(from: data)
+
+        XCTAssertEqual(models.map(\.id), ["kimi-k2", "glm-4.6", "minimax-m2.7-highspeed"])
+        XCTAssertEqual(models.map(\.family), [.kimi, .zai, .minimax])
+    }
+
     func test_streamRuntime_cancelRunningProcess_terminatesMatchingTokenOnly() async throws {
         let runtime = CLIBridgeStreamRuntimeCoordinator()
         let process = Process()

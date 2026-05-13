@@ -5,11 +5,15 @@ public enum AuthState: Sendable, Equatable {
     case signedOut
     case signingIn(provider: MobileAuthProviderID)
     case signedIn(identity: MobileAuthIdentity)
+    case deletingAccount(identity: MobileAuthIdentity)
     case firebaseUnavailable
     case firestoreUnavailable
 
     public var isSignedIn: Bool {
-        if case .signedIn = self { return true }; return false
+        switch self {
+        case .signedIn, .deletingAccount: return true
+        default: return false
+        }
     }
     public var inFlightProvider: MobileAuthProviderID? {
         if case .signingIn(let p) = self { return p }; return nil
@@ -52,7 +56,13 @@ final class AuthStore {
 
     var availableProviders: [MobileAuthProviderID] { gateway.availableProviders }
     var currentIdentity: MobileAuthIdentity? {
-        if case .signedIn(let i) = state { return i }; return nil
+        switch state {
+        case .signedIn(let identity), .deletingAccount(let identity): return identity
+        default: return nil
+        }
+    }
+    var isDeletingAccount: Bool {
+        if case .deletingAccount = state { return true }; return false
     }
 
     func signIn(_ provider: MobileAuthProviderID) async {
@@ -83,6 +93,23 @@ final class AuthStore {
         do { try gateway.signOut(); state = .signedOut; lastError = nil }
         catch let CloudGatewayError.classified(c) { lastError = c }
         catch { lastError = .other(message: error.localizedDescription) }
+    }
+
+    func deleteAccount() async {
+        guard gateway.isFirebaseAvailable else { state = .firebaseUnavailable; return }
+        guard let identity = currentIdentity else { return }
+        state = .deletingAccount(identity: identity)
+        lastError = nil
+        do {
+            try await gateway.deleteAccount()
+            state = .signedOut
+        } catch let CloudGatewayError.classified(c) {
+            lastError = c
+            state = .signedIn(identity: identity)
+        } catch {
+            lastError = .other(message: error.localizedDescription)
+            state = .signedIn(identity: identity)
+        }
     }
 
     func clearError() { lastError = nil }

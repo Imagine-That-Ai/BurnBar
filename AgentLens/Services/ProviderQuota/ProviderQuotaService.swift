@@ -22,6 +22,7 @@ final class ProviderQuotaService {
     private let homeDirectoryURL: URL
     private let miniMaxModeProvider: () -> MiniMaxQuotaMode
     private let factoryPlanProvider: () -> FactoryQuotaPlanTier
+    private let claudeCredentialsReader: any ClaudeCredentialsReading
     private let refreshProviders: [AgentProvider]
 
     private let snapshotStore: ProviderQuotaSnapshotStore
@@ -58,6 +59,7 @@ final class ProviderQuotaService {
         homeDirectoryURL: URL = FileManager.default.homeDirectoryForCurrentUser,
         miniMaxModeProvider: (() -> MiniMaxQuotaMode)? = nil,
         factoryPlanProvider: (() -> FactoryQuotaPlanTier)? = nil,
+        claudeCredentialsReader: any ClaudeCredentialsReading = NoClaudeCredentialsReader(),
         refreshProviders: [AgentProvider] = ProviderQuotaService.supportedProviders
     ) {
         self.keyStore = keyStore
@@ -69,6 +71,7 @@ final class ProviderQuotaService {
         self.homeDirectoryURL = homeDirectoryURL
         self.miniMaxModeProvider = miniMaxModeProvider ?? { settingsManager.miniMaxQuotaMode }
         self.factoryPlanProvider = factoryPlanProvider ?? { settingsManager.factoryQuotaPlanTier }
+        self.claudeCredentialsReader = claudeCredentialsReader
         self.refreshProviders = refreshProviders.filter(\.isQuotaSignalProvider)
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
@@ -91,6 +94,7 @@ final class ProviderQuotaService {
             homeDirectoryURL: homeDirectoryURL,
             miniMaxModeProvider: self.miniMaxModeProvider,
             factoryPlanProvider: self.factoryPlanProvider,
+            claudeCredentialsReader: claudeCredentialsReader,
             refreshProviders: self.refreshProviders
         )
 
@@ -267,7 +271,11 @@ final class ProviderQuotaService {
                 nextFallback: decision.nextFallback,
                 exhaustedOrCoolingDownAccounts: decision.exhaustedOrCoolingDown,
                 lastSwitchReason: decision.lastSwitchReason,
-                recentEvents: routingEvents.filter { $0.selectedProviderID == providerID || $0.nextFallbackProviderID == providerID }
+                recentEvents: Array(
+                    routingEvents
+                        .filter { $0.selectedProviderID == providerID || $0.nextFallbackProviderID == providerID }
+                        .suffix(100)
+                )
             )
         }
 
@@ -396,9 +404,6 @@ final class ProviderQuotaService {
         }
         routingEvents.append(event)
         routingEventsDirty = true
-        if routingEvents.count > 100 {
-            routingEvents.removeFirst(routingEvents.count - 100)
-        }
         if !suppressRoutingEventPersistence {
             routingEventsDirty = false
             persistRoutingEvents()
@@ -597,11 +602,7 @@ final class ProviderQuotaService {
                     lastPayloadAt: nil
                 )
             },
-            claudeCredentialsReader: ClaudeCredentialsReader(
-                homeDirectoryURL: homeDirectoryURL,
-                environment: environment,
-                fileManager: fileManager
-            ),
+            claudeCredentialsReader: claudeCredentialsReader,
             resolvedAPIKeys: resolvedKeys
         )
     }

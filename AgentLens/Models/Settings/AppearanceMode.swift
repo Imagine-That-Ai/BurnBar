@@ -15,3 +15,14 @@ enum AppearanceMode: String, CaseIterable, Codable {
         }
     }
 }
+
+extension View {
+    @ViewBuilder
+    func openBurnBarPreferredColorScheme(_ colorScheme: ColorScheme?) -> some View {
+        if let colorScheme {
+            self.preferredColorScheme(colorScheme)
+        } else {
+            self
+        }
+    }
+}

@@ -11,7 +11,12 @@ enum OpenAICompatibleModelProbe {
     }
 
     static func probeWithModel(baseURL: URL, bearerToken: String?) async -> (available: Bool, modelName: String?) {
-        guard let url = modelsURL(baseURL: baseURL) else { return (false, nil) }
+        let result = await probeWithModels(baseURL: baseURL, bearerToken: bearerToken)
+        return (result.available, result.modelName)
+    }
+
+    static func probeWithModels(baseURL: URL, bearerToken: String?) async -> (available: Bool, modelName: String?, models: [HermesAdvertisedModel]) {
+        guard let url = modelsURL(baseURL: baseURL) else { return (false, nil, []) }
         var request = URLRequest(url: url, timeoutInterval: 2)
         request.httpMethod = "GET"
         if let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
@@ -20,10 +25,14 @@ enum OpenAICompatibleModelProbe {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse,
-                  (200...299).contains(http.statusCode) else { return (false, nil) }
-            return (true, OpenAICompatibleModelListParser.modelName(from: data))
+                  (200...299).contains(http.statusCode) else { return (false, nil, []) }
+            return (
+                true,
+                OpenAICompatibleModelListParser.modelName(from: data),
+                OpenAICompatibleModelListParser.hermesAdvertisedModels(from: data)
+            )
         } catch {
-            return (false, nil)
+            return (false, nil, [])
         }
     }
 }

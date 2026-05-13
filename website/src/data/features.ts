@@ -83,6 +83,15 @@ export const FEATURES: Feature[] = [
     category: "control"
   },
   {
+    id: "router",
+    title: "Fire Hydrant — same-format routing across every account",
+    blurb:
+      "Two on-device pools: OpenAI-family (Cursor, Factory, Forge, OpenCode, Codex CLI → Z.ai, MiniMax, Kimi, OpenAI, Ollama) and Anthropic-family (Claude Code → Anthropic Console + Anthropic Pro/Team). When one account exhausts, rate-limits, or fails auth, the router shifts traffic to the next healthy account in the same pool — no cross-format translation, no vendor lock-in, no 429s in your IDE.",
+    evidence:
+      "OpenBurnBarCore/.../ProviderAccountTypes.swift:403-599; OpenBurnBarDaemon/.../OpenBurnBarHTTPGatewayServer.swift; docs/ROUTED_CLIENT_GATEWAY.md",
+    category: "control"
+  },
+  {
     id: "cli",
     title: "openburnbar — a real CLI",
     blurb:

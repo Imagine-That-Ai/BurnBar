@@ -1,19 +1,62 @@
-# Routed Client Gateway
+# Routed Client Gateway — the Fire Hydrant
 
-OpenBurnBar exposes selected routed models through the local daemon's
-OpenAI-compatible gateway so supported clients can share the same provider
-rotation policy. The first practical targets are Cursor, Factory, and OpenCode.
+OpenBurnBar exposes selected routed models through the local daemon's gateway
+so supported clients can share the same provider rotation policy. The gateway
+runs on `127.0.0.1:8317` and is the named "Fire Hydrant" in user-facing copy.
 
-## What Routes
+## Two routing pools (same-format failover)
 
-- Client targets: Cursor, Factory, OpenCode.
-- Upstream routed providers: Z.ai, MiniMax, and Ollama Cloud.
-- Endpoint shape: OpenAI-compatible `/v1/models` and `/v1/chat/completions`.
-- Usage attribution: proxied local-client calls record as `OpenBurnBar Gateway`.
+The gateway exposes two independent pools. **A request hitting one endpoint
+can only be served by accounts in that pool — format families never cross.**
+This is the "two highways" model: pass-through routing within a single
+wire-format family, no cross-format translation.
 
-Factory and OpenCode are client targets, not new upstream providers. Their
-requests still route through the same Z.ai / MiniMax / Ollama Cloud provider
-accounts and credential slots configured in OpenBurnBar.
+| Pool | Endpoint | Format | Upstream providers that participate |
+|---|---|---|---|
+| **OpenAI-family** | `POST /v1/chat/completions` | OpenAI Chat Completions | OpenAI, Z.ai, MiniMax, Kimi, Ollama Cloud, Ollama Local |
+| **Anthropic-family** | `POST /v1/messages` | Anthropic Messages | Anthropic Console (API key), Anthropic Pro/Team (OAuth bearer) |
+
+A request to `/v1/chat/completions` with only Anthropic-family accounts
+configured returns `503` with a structured error pointing the caller at the
+right pool, and vice versa. Within a pool, the existing in-flight failover
+loop applies — on `429` / `quota_exceeded` / `auth_failed` the gateway marks
+the slot, parks it in a five-minute cool-down, and retries against the next
+healthy candidate in the same pool.
+
+## What routes today
+
+- **OpenAI-family client targets:** Cursor (BYOK tunnel), Factory, OpenCode,
+  Codex CLI in `OPENAI_BASE_URL` mode, any OpenAI-compatible IDE.
+- **OpenAI-family upstream providers:** OpenAI, Z.ai, MiniMax, Kimi,
+  Ollama Cloud, Ollama Local.
+- **Anthropic-family client targets:** Claude Code via
+  `ANTHROPIC_BASE_URL=http://127.0.0.1:8317` + `ANTHROPIC_AUTH_TOKEN=<gateway-token>`.
+- **Anthropic-family upstream providers:** Anthropic Console (`sk-ant-…`
+  routed via the `x-api-key` header), Anthropic Pro/Team (OAuth bearer via
+  the `Authorization: Bearer` header).
+- **Endpoint shape:** OpenAI-compatible `/v1/models`, `/v1/chat/completions`,
+  plus Anthropic-compatible `/v1/messages`.
+- **Usage attribution:** proxied local-client calls record as `OpenBurnBar Gateway`.
+
+Factory, OpenCode and Codex are client targets, not new upstream providers.
+Their requests still route through the same upstream accounts and credential
+slots configured in OpenBurnBar.
+
+## Format-family enforcement
+
+The router policy receives a `requestedFormatFamily` argument from the gateway
+that names the pool the request belongs to. `ProviderRoutingPolicy.decide`
+filters every candidate by family before ranking, so a Claude Code request
+can never be served by an OpenAI account and vice versa. End-to-end coverage
+lives in `OpenBurnBarHTTPGatewayServerTests.swift`:
+
+- `testGatewayProxiesAnthropicMessagesHappyPath` — `/v1/messages` 200 path.
+- `testGatewayFailsOverAnthropicAccountOnQuotaExhausted` — `429` on primary
+  Anthropic slot, traffic shifts to backup in the same request.
+- `testGatewayMessagesReturns503WhenOnlyOpenAICompatProvidersConfigured` —
+  Anthropic request with no Anthropic accounts → structured 503.
+- `testGatewayChatCompletionsReturns503WhenOnlyAnthropicProvidersConfigured` —
+  OpenAI-shape request with no OpenAI-shape accounts → structured 503.
 
 ## Setup
 
@@ -40,9 +83,39 @@ before replacing prior OpenBurnBar entries.
 | Factory | `~/.factory/settings.json` | `customModels` entries with provider `openburnbar` |
 | Factory | `~/.factory/config.json` | `custom_models` entries with provider `openburnbar` |
 | OpenCode | `~/.config/opencode/opencode.json` | `provider.openburnbar`; default `model` only when no model is set |
+| Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_AUTH_TOKEN`, plus a marker key `env.OPENBURNBAR_WIRED` so the helper can detect its own previous wiring |
+| Codex CLI | `~/.codex/config.toml` | Sentinel-fenced `[model_providers.openburnbar]` block bounded by `# openburnbar:routing — start` / `# openburnbar:routing — end`. Activate by setting `model_provider = "openburnbar"` in the Codex profile you want routed. |
 
 The client config receives the local gateway URL and gateway auth token. Raw
 upstream provider API keys stay in OpenBurnBar's Keychain-backed provider store.
+Every write snapshots the prior file as
+`<filename>.openburnbar-backup-<UTC-YYYYMMDD-HHMMSS>` so the change is
+reversible by hand if the helper is ever uninstalled.
+
+## Wiring routed CLI clients from the Mac app
+
+`Settings → Routing pools` exposes a per-pool **Wire <client> through the
+Hydrant** card. Two modes:
+
+1. **Config-file mode (toggle)** — writes the env / TOML block listed above,
+   then runs a 1-token probe (`POST /v1/messages` for Claude Code, `POST
+   /v1/chat/completions` for Codex) to confirm the gateway actually serves
+   the wired client before reporting success. Toggle off to remove the
+   OpenBurnBar block.
+2. **Shell-snippet mode (button)** — opens a copy/pasteable
+   `export ANTHROPIC_BASE_URL=…` / `export OPENAI_BASE_URL=…` block for
+   users on managed dotfiles or non-standard shells. No file writes.
+
+Codex's ChatGPT-auth mode (browser session cookies) cannot be routed through
+a generic proxy; only the API-key path participates in the OpenAI-family pool
+today, and the helper card says so explicitly.
+
+Anthropic credentials added through `Add account → Anthropic` are validated
+by `AnthropicCredentialProbe` before they show up as routable accounts.
+`sk-ant-…` keys get sent as `x-api-key` headers; anything else (Pro/Team
+OAuth bearers) is sent as `Authorization: Bearer …`. The probe issues a
+real `max_tokens: 1` request against `/v1/messages` so the credential is
+charged at most one output token for the verification.
 
 ## Ollama Cloud Routing
 

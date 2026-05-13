@@ -54,7 +54,7 @@ A local JSON-RPC server listening on a UNIX domain socket at `~/Library/Applicat
 | Filesystem read: `~/.claude/`, `~/.factory/`, `~/.codex/`, `~/.kimi/`, `~/.hermes/`, `~/.augment/`, `~/.forge/`, `~/.goose/`, `~/Library/Application Support/` | Reads AI agent session logs for usage parsing |
 | Filesystem write: `~/Library/Application Support/OpenBurnBar/` | Stores daemon state, run journals, connector config, search index |
 | UNIX socket listen | JSON-RPC IPC with app and extension |
-| macOS Keychain read/write | Stores and retrieves provider API keys, connector credentials, bearer tokens |
+| macOS Keychain read/write | Stores and retrieves OpenBurnBar-owned provider API keys, connector credentials, bearer tokens, and encryption keys. Claude quota does not read Claude Code's Keychain credential item. |
 | Network (outbound, opt-in only) | Provider API calls for routed models; connector test/sample requests to GitHub, Slack, Linear, PostHog, Sentry, Gmail APIs |
 
 ### What it cannot do

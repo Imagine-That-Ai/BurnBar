@@ -418,6 +418,10 @@ function sanitizeBuckets(raw: unknown): QuotaBucket[] {
         limit,
         remaining,
         window: trimmedString(candidate.window, undefined, 64),
+        // Pass-through: Firestore Timestamp from the Admin SDK or an ISO
+        // 8601 string from legacy writers. Anything else is dropped so we
+        // don't store untyped objects in the bucket doc.
+        resetsAt: sanitizeResetsAt(candidate.resetsAt),
         meta:
           candidate.meta && typeof candidate.meta === "object"
             ? sanitizeMeta(candidate.meta as Record<string, unknown>)
@@ -425,6 +429,25 @@ function sanitizeBuckets(raw: unknown): QuotaBucket[] {
       }) as QuotaBucket,
     ];
   });
+}
+
+function sanitizeResetsAt(
+  value: unknown
+): QuotaBucket["resetsAt"] | undefined {
+  if (!value) return undefined;
+  if (typeof value === "string") {
+    return trimmedString(value, undefined, 64);
+  }
+  // firebase-admin Timestamp has a `.toDate()` method; duck-type rather
+  // than import the runtime class at module load (this file is shared
+  // between Cloud Functions and other consumers).
+  if (
+    typeof value === "object" &&
+    typeof (value as { toDate?: () => Date }).toDate === "function"
+  ) {
+    return value as QuotaBucket["resetsAt"];
+  }
+  return undefined;
 }
 
 function sanitizeMeta(meta: Record<string, unknown>): Record<string, unknown> {

@@ -313,6 +313,13 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Enable or disable a chat backend.
     func setChatBackendEnabled(_ id: ChatBackendID, enabled: Bool)
 
+    /// Hermes model picker (second-level row under the Hermes surface).
+    var enabledHermesModels: [HermesModelID] { get }
+    var selectedHermesModel: HermesModelID? { get set }
+    func setEnabledHermesModels(_ models: [HermesModelID])
+    func setHermesModelEnabled(_ id: HermesModelID, enabled: Bool)
+    func applyHermesModelSelection(_ model: HermesModelID?)
+
     /// Set summary provider order.
     func setSummaryProviderOrder(_ order: [SummaryProviderID])
 

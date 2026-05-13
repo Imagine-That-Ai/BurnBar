@@ -370,3 +370,55 @@ test("rejects sockets that try to switch relay runtimes", async () => {
   assert.equal(JSON.parse(socket.sent.at(-1)!).payload.error, "Relay socket runtime cannot change after registration.");
   assert.equal(socket.closes.at(-1)?.code, 1008);
 });
+
+test("does not bind runtime from a ping before the first routed frame", async () => {
+  const bus = new FakeBus();
+  const quota = new FakeQuota();
+  const host = new FakeSocket();
+  const client = new FakeSocket();
+  makeSession(host, bus, quota, "host", "pi-host-session").start();
+  makeSession(client, bus, quota, "client", "pi-client-session").start();
+
+  client.emit("message", Buffer.from(serializeFrame({
+    type: "ping",
+    uid: "user-1",
+    connectionId: "pi-relay-mac",
+    protocolVersion: PROTOCOL_VERSION,
+  })));
+  await flushRelay();
+
+  host.emit("message", Buffer.from(serializeFrame({
+    type: "host.register",
+    uid: "user-1",
+    connectionId: "pi-relay-mac",
+    protocolVersion: PROTOCOL_VERSION,
+    runtime: "pi",
+    payload: { capabilities: ["realtime_relay"] },
+  })));
+  await flushRelay();
+
+  client.emit("message", Buffer.from(serializeFrame({
+    type: "request.start",
+    uid: "user-1",
+    connectionId: "pi-relay-mac",
+    requestId: "pi-req-after-ping",
+    protocolVersion: PROTOCOL_VERSION,
+    runtime: "pi",
+    payload: {
+      operation: "models",
+      method: "GET",
+      payloadCiphertext: "cipher",
+      wrappedKey: "wrapped",
+      relayEncryption: "p256-hkdf-sha256-aesgcm",
+      relayKeyVersion: 1,
+    },
+  })));
+  await flushRelay();
+
+  assert.equal(JSON.parse(client.sent[0]).type, "pong");
+  assert.equal(quota.inFlight.get("pi-req-after-ping"), "pi");
+  assert.ok(frameTypes(host).includes("request.start"));
+
+  host.close();
+  client.close();
+});

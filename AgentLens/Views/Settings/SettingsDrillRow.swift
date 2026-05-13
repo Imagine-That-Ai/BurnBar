@@ -106,22 +106,43 @@ struct SettingsDrillRow: View {
 /// the title, an optional explanatory blurb, and a vertical scroll area for
 /// section content. Mirrors the iOS detail screen layout (title at top,
 /// grouped content cards below).
+///
+/// Pass `searchRoute` so the Settings search router can scroll to a specific
+/// anchor when the user deep-links from the sidebar search field.
 struct SettingsDetailContainer<Content: View>: View {
     let title: String
     let subtitle: String?
+    let searchRoute: SettingsPageRoute?
     @ViewBuilder var content: Content
 
     init(
         title: String,
         subtitle: String? = nil,
+        searchRoute: SettingsPageRoute? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.subtitle = subtitle
+        self.searchRoute = searchRoute
         self.content = content()
     }
 
     var body: some View {
+        Group {
+            if let searchRoute {
+                SettingsDeepLinkScrollContainer(route: searchRoute) { _ in
+                    scrollBody
+                }
+            } else {
+                scrollBody
+            }
+        }
+        .background(DesignSystem.Colors.background)
+        .scrollContentBackground(.hidden)
+        .navigationTitle(title)
+    }
+
+    private var scrollBody: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                 if let subtitle {
@@ -136,8 +157,5 @@ struct SettingsDetailContainer<Content: View>: View {
             .padding(DesignSystem.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(DesignSystem.Colors.background)
-        .scrollContentBackground(.hidden)
-        .navigationTitle(title)
     }
 }

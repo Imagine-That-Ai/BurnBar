@@ -15,6 +15,8 @@ final class CLIBridge: ObservableObject {
     private(set) var piAgentAvailable: Bool = false
     /// The model name currently loaded in Hermes (fetched from /v1/models).
     private(set) var hermesModelName: String?
+    /// Concrete Hermes gateway models grouped by `HermesModelID` in UI.
+    private(set) var hermesAdvertisedModels: [HermesAdvertisedModel] = []
     /// The model name currently advertised by the Pi gateway.
     private(set) var piAgentModelName: String?
 
@@ -51,6 +53,7 @@ final class CLIBridge: ObservableObject {
         )
         hermesAvailable = result.available
         hermesModelName = result.modelName
+        hermesAdvertisedModels = result.models
     }
 
     /// Probe OpenClaw gateway (OpenAI-compatible `/v1/models`).
@@ -426,7 +429,7 @@ final class CLIBridge: ObservableObject {
         await resolver.resolveExecutable(named: name)
     }
 
-    nonisolated private static func probeHermes(baseURL: URL, bearerToken: String?) async -> (available: Bool, modelName: String?) {
-        await OpenAICompatibleModelProbe.probeWithModel(baseURL: baseURL, bearerToken: bearerToken)
+    nonisolated private static func probeHermes(baseURL: URL, bearerToken: String?) async -> (available: Bool, modelName: String?, models: [HermesAdvertisedModel]) {
+        await OpenAICompatibleModelProbe.probeWithModels(baseURL: baseURL, bearerToken: bearerToken)
     }
 }

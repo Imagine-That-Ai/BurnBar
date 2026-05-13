@@ -232,6 +232,20 @@ final class PixelClockSettingsCardTests: XCTestCase {
         XCTAssertFalse(model.isWaitingForConnection)
     }
 
+    func test_pixelClockSettingsModel_disableTogglePersistsOffAndRemovesApp() async {
+        let ops = InMemoryPixelClockOperations(probeResult: .awtrixReady)
+        var config = PixelClockConfig.disabled
+        config.enabled = true
+        let model = PixelClockSettingsModel(initialConfig: config, operations: ops)
+
+        await model.disableAndRemove()
+
+        XCTAssertFalse(model.config.enabled)
+        XCTAssertEqual(ops.removeCallCount, 1)
+        XCTAssertEqual(ops.lastConfig?.enabled, false)
+        XCTAssertEqual(model.operationState.lastSucceededKind, .remove)
+    }
+
     func test_macAdapterSurfacesProbeStatusFromController() async {
         let settingsManager = SettingsManager()
         var config = settingsManager.pixelClockConfig

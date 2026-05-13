@@ -414,7 +414,60 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(service.messages.last?.role, .assistant)
         XCTAssertEqual(service.messages.last?.text, "Hello")
         XCTAssertEqual(service.messages.last?.toolCalls.first?.name, "read_file")
+        XCTAssertEqual(service.messages.last?.toolCalls.first?.status, "done")
         XCTAssertFalse(service.isStreaming)
+    }
+
+    func testRelayStreamingAccumulatesToolCallArgumentsAcrossDeltas() async throws {
+        // OpenAI-compatible streaming emits a tool call across multiple
+        // chunks: the first carries the function name, and successive chunks
+        // carry partial `arguments` fragments that must be concatenated to
+        // form the full JSON. We then surface a short `detail` preview.
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_42","function":{"name":"read_file","arguments":"{\"path\":\""}}]}}]}"#,
+            #"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"AgentLens/Services/HermesService.swift\"}"}}]}}]}"#,
+            #"data: {"choices":[{"delta":{"content":"Done."}}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("Read a file")
+        await waitForStreamToFinish(service)
+
+        let last = try XCTUnwrap(service.messages.last)
+        XCTAssertEqual(last.role, .assistant)
+        XCTAssertEqual(last.text, "Done.")
+        let tool = try XCTUnwrap(last.toolCalls.first)
+        XCTAssertEqual(tool.id, "call_42")
+        XCTAssertEqual(tool.name, "read_file")
+        XCTAssertEqual(tool.status, "done")
+        XCTAssertEqual(tool.arguments, "{\"path\":\"AgentLens/Services/HermesService.swift\"}")
+        XCTAssertEqual(tool.detail, "AgentLens/Services/HermesService.swift")
+    }
+
+    func testHermesSummarizeToolArgumentsPullsKnownKeys() {
+        XCTAssertEqual(
+            HermesService.summarizeToolArguments(#"{"path":"/etc/hosts"}"#),
+            "/etc/hosts"
+        )
+        XCTAssertEqual(
+            HermesService.summarizeToolArguments(#"{"command":"ls -al"}"#),
+            "ls -al"
+        )
+        XCTAssertEqual(
+            HermesService.summarizeToolArguments(#"{"query":"timezone"}"#),
+            "timezone"
+        )
+        // Partial JSON fragment (mid-stream) — regex fallback should still
+        // pull the path so the pill shows something useful before the JSON
+        // closes.
+        XCTAssertEqual(
+            HermesService.summarizeToolArguments(#"{"path":"docs/README.md""#),
+            "docs/README.md"
+        )
+        XCTAssertNil(HermesService.summarizeToolArguments(""))
     }
 
     func testRelayStreamingParsesFinalMessageContentAfterModelSwitch() async throws {

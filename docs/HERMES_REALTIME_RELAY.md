@@ -11,22 +11,26 @@ The hosted route is intentionally premium-only infrastructure. Every WebSocket u
 
 ## Deploy
 
-1. Create a Memorystore Redis instance in the same region as the relay. Use Standard Tier for production so Redis has automatic failover; Basic is only for local/staging cost control.
+1. Create a Memorystore Redis instance in the same region as the relay. Use Standard Tier, Redis 7, Redis AUTH, and in-transit encryption for production so Redis has automatic failover and every Cloud Run to Redis hop is authenticated and encrypted. Basic/plaintext Redis is only for local or disposable staging.
 2. Ensure Cloud Run can reach Redis. Prefer Direct VPC egress when available; use a Serverless VPC Access connector when Direct VPC egress is not available for the project.
-3. Create a least-privilege Cloud Run service account for production and grant only the Firebase/Firestore access required to read entitlement documents.
-4. Deploy:
+3. Store the Redis AUTH URL and Memorystore CA certificate in Secret Manager, then grant `roles/secretmanager.secretAccessor` for those two secrets only to the relay Cloud Run service account.
+4. Create a least-privilege Cloud Run service account for production and grant only the Firebase/Firestore access required to read entitlement documents.
+5. Deploy:
 
 ```bash
 PROJECT_ID=burnbar \
 REGION=us-central1 \
-REDIS_URL=redis://10.0.0.3:6379 \
+REDIS_INSTANCE_NAME=hermes-realtime-relay-redis-prod-secure \
+REDIS_URL=rediss://10.0.0.3:6378 \
+REDIS_URL_SECRET=hermes-realtime-relay-redis-url \
+REDIS_TLS_CA_PEM_SECRET=hermes-realtime-relay-redis-ca-pem \
 DIRECT_VPC_NETWORK=default \
 DIRECT_VPC_SUBNET=default \
 SERVICE_ACCOUNT=hermes-realtime-relay@burnbar.iam.gserviceaccount.com \
 ./scripts/deploy-hermes-realtime-relay.sh
 ```
 
-The deploy script refuses to deploy production profiles unless `REDIS_URL` points at the `hermes-realtime-relay-redis-prod` instance in the selected project/region and that instance is `READY` and `STANDARD_HA`. Override `REDIS_INSTANCE_NAME` only for an intentional staging deployment; use `SKIP_REDIS_PROJECT_GUARD=true` only for local/self-hosted testing where `gcloud redis describe` is not available.
+For secure production deploys, `REDIS_URL` is a non-secret guard value used to validate host, scheme, and instance metadata. The actual credential-bearing URL must come from `REDIS_URL_SECRET`. The deploy script refuses to deploy production profiles unless `REDIS_URL` points at the `hermes-realtime-relay-redis-prod-secure` instance in the selected project/region and that instance is `READY`, `STANDARD_HA`, AUTH-enabled, and configured with `SERVER_AUTHENTICATION` in-transit encryption. Override `REDIS_INSTANCE_NAME` only for an intentional staging deployment; use `SKIP_REDIS_PROJECT_GUARD=true` only for local/self-hosted testing where `gcloud redis describe` is not available.
 
 Connector-based projects can set `VPC_CONNECTOR=openburnbar-serverless` instead of `DIRECT_VPC_NETWORK` / `DIRECT_VPC_SUBNET`. `VPC_EGRESS` defaults to `private-ranges-only`.
 
@@ -52,7 +56,7 @@ In OpenBurnBar for macOS:
 
 OpenBurnBar ships with the hosted relay endpoint built in; normal users do not paste infrastructure URLs. The endpoint field is kept behind Advanced relay endpoint for development and self-hosted staging only.
 
-Hermes Remote Relay is a premium capability. The Mac can run Hermes locally without a subscription, but advertising a hosted relay connection and sending mobile relay traffic require the Apple-verified `hosted_quota_sync` entitlement for `com.openburnbar.hostedQuotaSync.monthly`. Firestore rules, callable functions, and the WebSocket relay all enforce that gate so hosted relay cost is tied to paid accounts.
+Hermes Remote Relay is a premium capability. The Mac can run Hermes locally without a subscription, but advertising a hosted relay connection and sending mobile relay traffic require the Apple-verified `hosted_quota_sync` entitlement for `com.openburnbar.hostedQuotaSync.cloud.monthly`. Firestore rules, callable functions, and the WebSocket relay all enforce that gate so hosted relay cost is tied to paid accounts.
 
 The Mac publishes the realtime relay URL to its `hermes_connections` document only after the Cloud Run service acknowledges `host.register` with `host.ready`. Mobile uses that verified URL first and falls back to Firestore if realtime connection fails. If the relay service is reachable but no Mac host is subscribed, iOS now receives an immediate realtime error instead of waiting for the full request timeout before falling back.
 
@@ -77,6 +81,8 @@ The relay enforces these checks before accepting a hosted socket:
 Roles are enforced inside the protocol: hosts may register and return responses; clients may start/cancel requests; neither side can impersonate the other frame class. Host registration is single-owner per `(uid, connectionId)`: a newer valid host socket replaces an older one cleanly.
 
 All protocol identifiers are restricted to safe bounded Redis channel segments. The relay rejects unknown operations, methods, frame types, oversized frames, oversized ciphertexts, malformed sequences, and cross-user frames. Payload bodies remain encrypted end to end.
+
+Production Redis uses private Direct VPC egress, Redis AUTH, TLS in transit, Secret Manager backed credentials, and end-to-end relay ciphertext. Redis never stores plaintext chat payloads. Do not treat in-transit encryption as a live toggle: Google only enables it when creating the Redis instance, so rotation to a different encryption posture is a blue-green Redis replacement followed by a relay redeploy.
 
 ## Cost Controls
 
@@ -148,7 +154,7 @@ Redis channels:
 - Host presence key: `hermes:host:{uid}:{connectionId}`
 - Host replacement control channel: `hermes:ctrl:{uid}:{connectionId}`
 
-Pi realtime relay uses the same shapes with the `pi:` prefix. A socket binds to the first valid runtime frame it sends; later explicit runtime frames on that socket must keep the same runtime so a host/client cannot cross-mount relay traffic after registration. Frames that omit `runtime` after binding inherit the socket runtime, preserving Hermes back-compat while keeping Pi response/cancel frames on the Pi Redis channels.
+Pi realtime relay uses the same shapes with the `pi:` prefix. A socket binds to the first routed runtime frame it sends; later explicit runtime frames on that socket must keep the same runtime so a host/client cannot cross-mount relay traffic after registration. Plain ping/pong frames do not bind a socket by themselves. Frames that omit `runtime` after binding inherit the socket runtime, preserving Hermes back-compat while keeping Pi response/cancel frames on the Pi Redis channels.
 
 ## Verification
 

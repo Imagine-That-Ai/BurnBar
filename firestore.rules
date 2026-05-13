@@ -169,7 +169,7 @@ service cloud.firestore {
       let entitlement = get(hostedCloudEntitlementPath(userId)).data;
       return exists(hostedCloudEntitlementPath(userId))
         && entitlement.active == true
-        && entitlement.productID == "com.openburnbar.hostedQuotaSync.monthly"
+        && entitlement.productID == "com.openburnbar.hostedQuotaSync.cloud.monthly"
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
     }
@@ -520,6 +520,15 @@ service cloud.firestore {
     match /users/{userId}/chat_threads/{threadId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableChatThread(userId);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Mobile assistant chat history (Hermes + Pi conversations originated on
+    // an iOS device). Owner-only with no entitlement gate — the same data is
+    // also persisted on-device, so Firestore is the cross-device mirror.
+    match /users/{userId}/mobile_assistant_chats/{threadId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId);
       allow delete: if ownsUserNamespace(userId);
     }
 

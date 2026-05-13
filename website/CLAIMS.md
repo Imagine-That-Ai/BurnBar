@@ -85,7 +85,7 @@ treats Kimi as exact, which matches the running code.
 | Claim | Source |
 |---|---|
 | Free tier — full local product | `docs/PRIVACY.md:21,34`, `docs/HOSTED_QUOTA_SYNC.md:38-68` |
-| Cloud subscription `com.openburnbar.hostedQuotaSync.monthly` | `OpenBurnBarMobile/Models/HostedQuotaSubscriptionStore.swift:61`, `OpenBurnBarMobileTests/Resources/OpenBurnBarHostedQuota.storekit:27`, `functions/src/config.ts:75` |
+| Cloud subscription `com.openburnbar.hostedQuotaSync.cloud.monthly` | `OpenBurnBarMobile/Models/HostedQuotaSubscriptionStore.swift:61`, `OpenBurnBarMobileTests/Resources/OpenBurnBarHostedQuota.storekit:27`, `functions/src/config.ts:75` |
 | `$4.99` / month | `OpenBurnBarMobileTests/Resources/OpenBurnBarHostedQuota.storekit:15`, `docs/HOSTED_QUOTA_SYNC.md:184-188`. **[verify]** the actual App Store Connect price tier in production matches |
 | Apple App Store auto-renewing subscription | `OpenBurnBarHostedQuota.storekit:28,31` |
 | No introductory offer / no free trial | `OpenBurnBarHostedQuota.storekit:19` |

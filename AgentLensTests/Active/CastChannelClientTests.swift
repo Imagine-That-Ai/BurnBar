@@ -53,4 +53,24 @@ final class CastChannelClientTests: XCTestCase {
         XCTAssertEqual(payload["reload_time"] as? Int, 0)
         XCTAssertEqual(payload["sessionId"] as? String, "session-1")
     }
+
+    /// Regression: when `reloadSeconds` is 0 the payload must disable
+    /// DashCast's periodic reload entirely. We rely on this in the
+    /// runtime LOAD path so the Nest Hub does not auto-navigate every
+    /// minute on top of the page's own `/state.json` polling, which
+    /// previously caused the "Hub displays OpenBurnBar briefly, blanks,
+    /// re-displays" reset cycle.
+    func testDashCastLoadPayload_disablesReloadWhenSecondsIsZero() throws {
+        let url = try XCTUnwrap(URL(string: "http://192.168.68.87:8787/render.html"))
+        let payload = CastChannelClient.dashCastLoadPayload(
+            url: url,
+            sessionId: "session-1",
+            reloadSeconds: 0,
+            force: false
+        )
+
+        XCTAssertEqual(payload["force"] as? Bool, false)
+        XCTAssertEqual(payload["reload"] as? Bool, false)
+        XCTAssertEqual(payload["reload_time"] as? Int, 0)
+    }
 }

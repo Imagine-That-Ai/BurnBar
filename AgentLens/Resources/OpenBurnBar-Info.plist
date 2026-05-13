@@ -41,5 +41,13 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>OpenBurnBar discovers your Google Nest Hub and Pixel Clock on the local network so it can mirror live provider quotas. Without this access, smart displays won't be detected.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_googlecast._tcp</string>
+		<string>_googlezone._tcp</string>
+		<string>_http._tcp</string>
+	</array>
 </dict>
 </plist>

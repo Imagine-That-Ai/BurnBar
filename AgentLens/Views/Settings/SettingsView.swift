@@ -13,7 +13,7 @@ struct SettingsView: View {
     var dataStore: DataStore
     var runtimeContext: OpenBurnBarRuntimeContext?
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedTab: SettingsTab? = .general
+    @State private var router = SettingsRouter()
     @State private var presentationWindow: NSWindow?
 
     init(
@@ -34,46 +34,43 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(SettingsTab.allCases, selection: $selectedTab) { tab in
-                NavigationLink(value: tab) {
-                    HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(tab.accentColor)
-                                .frame(width: 28, height: 28)
-                            Image(systemName: tab.icon)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
+            VStack(spacing: 0) {
+                searchField
+                    .padding(.horizontal, DesignSystem.Spacing.md)
+                    .padding(.top, DesignSystem.Spacing.sm)
+                    .padding(.bottom, DesignSystem.Spacing.xs)
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(tab.title)
-                                .font(DesignSystem.Typography.body)
-                                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            Text(tab.subtitle)
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
-                                .lineLimit(2)
-                        }
+                List(SettingsTab.allCases, selection: $router.selectedTab) { tab in
+                    NavigationLink(value: tab) {
+                        sidebarRow(for: tab)
                     }
-                    .padding(.vertical, 2)
+                    .tag(tab)
                 }
-                .tag(tab)
+                .listStyle(.sidebar)
             }
-            .listStyle(.sidebar)
             .navigationTitle("Settings")
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
         } detail: {
-            NavigationStack {
-                detailContent
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { dismiss() }
-                                .keyboardShortcut(.cancelAction)
-                        }
+            NavigationStack(path: $router.path) {
+                Group {
+                    if router.isSearching {
+                        SettingsSearchResultsView(router: router)
+                    } else {
+                        detailContent
                     }
+                }
+                .navigationDestination(for: SettingsPageRoute.self) { route in
+                    destination(for: route)
+                }
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                            .keyboardShortcut(.cancelAction)
+                    }
+                }
             }
-            .id(selectedTab)
+            .id(router.selectedTab)
+            .environment(router)
         }
         .frame(
             minWidth: 820,
@@ -81,14 +78,123 @@ struct SettingsView: View {
             minHeight: 600,
             idealHeight: 720
         )
-        .preferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
+        .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(settingsManager)
         .background(SettingsWindowReader(window: $presentationWindow))
     }
 
+    private var searchField: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+            TextField("Search settings", text: $router.query)
+                .textFieldStyle(.plain)
+                .font(DesignSystem.Typography.body)
+                .accessibilityLabel("Search settings")
+            if router.isSearching {
+                Button {
+                    router.reset()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, DesignSystem.Spacing.sm)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(DesignSystem.Colors.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+                )
+        )
+    }
+
+    private func sidebarRow(for tab: SettingsTab) -> some View {
+        HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(tab.accentColor)
+                    .frame(width: 28, height: 28)
+                Image(systemName: tab.icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tab.title)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(tab.subtitle)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// Build the deep-link destination for a programmatic push from the
+    /// search router. Each branch instantiates the same detail view that the
+    /// natural drill-down would.
+    @ViewBuilder
+    private func destination(for route: SettingsPageRoute) -> some View {
+        switch route {
+        case .operatorModel:
+            OperatorModelDetailView(
+                settingsManager: settingsManager,
+                dataStore: dataStore,
+                setupGuide: setupGuideSnapshot
+            )
+        case .appearance:
+            AppearanceSettingsDetailView(settingsManager: settingsManager)
+        case .defaultView:
+            DefaultViewSettingsDetailView(settingsManager: settingsManager)
+        case .dataRefresh:
+            DataRefreshSettingsDetailView(settingsManager: settingsManager)
+        case .indexing:
+            IndexingOverviewDetailView(
+                settingsManager: settingsManager,
+                dataStore: dataStore,
+                sharedFeaturesAvailable: accountManager.isSignedIn
+            )
+        case .sessionSummaries:
+            SessionSummariesDetailView(settingsManager: settingsManager)
+        case .daemonLifecycle:
+            DaemonLifecycleDetailView(daemonManager: .shared)
+        case .httpGateway:
+            HTTPGatewayDetailView(settingsManager: settingsManager)
+        case .controllerRuntime:
+            ControllerRuntimeDetailView(settingsManager: settingsManager)
+        case .generalRoot, .daemonRoot, .accountRoot, .providersRoot,
+             .routingPoolsRoot,
+             .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,
+             .switcherRoot, .hermesRoot:
+            // Roots are reachable via the sidebar tab selection — the path
+            // stays empty for these.
+            detailContent
+        }
+    }
+
+    private var setupGuideSnapshot: OpenBurnBarSetupGuideSnapshot {
+        OpenBurnBarSetupGuideBuilder.build(
+            detection: settingsManager.detectAvailableProviders(),
+            indexingEnabled: settingsManager.conversationIndexingEnabled,
+            isSignedIn: accountManager.isSignedIn,
+            conversationCloudEnabled: settingsManager.conversationCloudBackupEnabled,
+            iCloudMirrorEnabled: settingsManager.iCloudSessionMirrorEnabled
+        )
+    }
+
     @ViewBuilder
     private var detailContent: some View {
-        switch selectedTab ?? .general {
+        switch router.selectedTab ?? .general {
         case .general:
             GeneralSettingsView(
                 settingsManager: settingsManager,
@@ -141,6 +247,12 @@ struct SettingsView: View {
                 accountManager: accountManager
             )
                 .navigationTitle("Providers")
+        case .routingPools:
+            RoutingPoolsView(
+                settingsManager: settingsManager,
+                dataStore: dataStore
+            )
+                .navigationTitle("Routing pools")
         case .alerts:
             AlertsSettingsView(settingsManager: settingsManager)
                 .navigationTitle("Alerts")
