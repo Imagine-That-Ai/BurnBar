@@ -115,18 +115,24 @@ private fun HeaderCard(header: AgentInsightsHeader) {
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val color = header.provider?.let { Color(it.brandColor) } ?: MaterialTheme.colorScheme.primary
-            Box(
-                modifier = Modifier.size(56.dp).clip(CircleShape).background(color),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = (header.provider?.displayName ?: header.title).first().toString(),
-                    style = MaterialTheme.typography.headlineSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
+            if (header.provider != null) {
+                com.openburnbar.ui.components.ProviderLogo(
+                    provider = header.provider,
+                    size = 56.dp,
                 )
+            } else {
+                Box(
+                    modifier = Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = header.title.first().toString(),
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {

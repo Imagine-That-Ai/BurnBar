@@ -2,6 +2,7 @@ package com.openburnbar.ui.insights
 
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
@@ -17,8 +18,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -29,6 +32,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.NorthEast
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -75,9 +84,9 @@ import com.openburnbar.data.insights.InsightFollowUpQuestion
 import com.openburnbar.data.insights.InsightGeneratedWidget
 import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightMissionCandidate
-import com.openburnbar.data.insights.InsightWidget
-import com.openburnbar.data.insights.InsightWidgetKind
 import com.openburnbar.data.insights.InsightRecommendation
+import com.openburnbar.data.models.AgentProvider
+import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.data.insights.InsightSeverity
 import com.openburnbar.data.insights.InsightTheme as CanvasTheme
 import com.openburnbar.data.insights.InsightTimeWindow
@@ -133,20 +142,6 @@ fun IntelligenceBriefScreen(
     // stagger. Reduce-motion paints everything instantly.
     val visibility = rememberSectionVisibility(reduceMotion)
 
-    // Pull the first chart-bearing widget up into the hero so a graph
-    // lives ABOVE THE FOLD. Remaining widgets stay in the Generated views
-    // section right after the hero. KPI/Time-Series/Ranking/Donut are
-    // first-class chart kinds; we prefer them in that order so the hero
-    // always leads with a chart, not a narrative card.
-    // Pick the first chart-bearing widget that actually has data to render.
-    // A widget with kind=BAR_RANKING but data=null would paint a "No data"
-    // placeholder in the hero — worse than picking nothing.
-    val featuredWidget = result.generatedWidgets.firstOrNull {
-        it.widget.isChart && it.widget.hasChartData
-    }
-    val remainingWidgets = result.generatedWidgets.filterNot { it === featuredWidget }
-    // When the hero shows Fig. 01, Generated views must continue from 02.
-    val generatedFigureStart = if (featuredWidget != null) 2 else 1
     var expandedMissionID by remember(result.id) { mutableStateOf<String?>(null) }
 
     Column(
@@ -159,13 +154,10 @@ fun IntelligenceBriefScreen(
         AnimatedSection(visible = visibility[0], reduceMotion = reduceMotion) {
             HeroSection(
                 result = result,
-                featuredWidget = featuredWidget,
                 isDark = isDark,
                 reduceMotion = reduceMotion,
                 onConfigureModel = onConfigureModel,
-                onPinWidget = onPinWidget,
                 onCitationTap = onCitationTap,
-                theme = theme,
             )
         }
 
@@ -175,23 +167,8 @@ fun IntelligenceBriefScreen(
             })
         }
 
-        // CHARTS NEXT — the remaining generated widgets render right after
-        // the hero so graphs stay front and center. Findings + anomalies +
-        // recommendations sit below, supporting the picture you just saw.
-        if (remainingWidgets.isNotEmpty()) {
-            AnimatedSection(visible = visibility[2], reduceMotion = reduceMotion) {
-                GeneratedViewsSection(
-                    generated = remainingWidgets,
-                    figureStart = generatedFigureStart,
-                    theme = theme,
-                    onPin = onPinWidget,
-                    onCitationTap = onCitationTap,
-                )
-            }
-        }
-
         if (result.findings.isNotEmpty()) {
-            AnimatedSection(visible = visibility[3], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[2], reduceMotion = reduceMotion) {
                 FindingsSection(
                     findings = result.findings,
                     onCitationTap = onCitationTap,
@@ -200,7 +177,7 @@ fun IntelligenceBriefScreen(
         }
 
         if (result.missionCandidates.isNotEmpty()) {
-            AnimatedSection(visible = visibility[4], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[3], reduceMotion = reduceMotion) {
                 MissionBoardSection(
                     missions = result.missionCandidates,
                     expandedMissionID = expandedMissionID,
@@ -213,7 +190,7 @@ fun IntelligenceBriefScreen(
         }
 
         if (result.anomalies.isNotEmpty()) {
-            AnimatedSection(visible = visibility[5], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[4], reduceMotion = reduceMotion) {
                 AnomalyAtlasSection(
                     anomalies = result.anomalies,
                     onCitationTap = onCitationTap,
@@ -222,10 +199,22 @@ fun IntelligenceBriefScreen(
         }
 
         if (result.recommendations.isNotEmpty()) {
-            AnimatedSection(visible = visibility[6], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[5], reduceMotion = reduceMotion) {
                 RecommendationsSection(
                     recommendations = result.recommendations,
                     isDark = isDark,
+                    onCitationTap = onCitationTap,
+                )
+            }
+        }
+
+        if (result.generatedWidgets.isNotEmpty()) {
+            AnimatedSection(visible = visibility[6], reduceMotion = reduceMotion) {
+                GeneratedViewsSection(
+                    generated = result.generatedWidgets,
+                    figureStart = 1,
+                    theme = theme,
+                    onPin = onPinWidget,
                     onCitationTap = onCitationTap,
                 )
             }
@@ -250,60 +239,6 @@ fun IntelligenceBriefScreen(
         }
     }
 }
-
-/**
- * Chart-bearing widget kinds — the ones that paint a graph rather than a
- * narrative or table. Used to choose the hero featured widget so the
- * surface always leads with a picture, not prose.
- */
-private val InsightWidget.isChart: Boolean
-    get() = when (kind) {
-        InsightWidgetKind.TIME_SERIES_LINE,
-        InsightWidgetKind.TIME_SERIES_AREA,
-        InsightWidgetKind.STREAM_GRAPH,
-        InsightWidgetKind.BAR_RANKING,
-        InsightWidgetKind.DONUT,
-        InsightWidgetKind.TREEMAP,
-        InsightWidgetKind.HEATMAP,
-        InsightWidgetKind.SCATTER,
-        InsightWidgetKind.SANKEY,
-        InsightWidgetKind.RADAR,
-        InsightWidgetKind.COHORT,
-        InsightWidgetKind.FUNNEL,
-        InsightWidgetKind.QUOTA_PULSE,
-        InsightWidgetKind.FORECAST,
-        InsightWidgetKind.AGENT_FOCUS_MATRIX,
-        InsightWidgetKind.MODEL_FOCUS_MATRIX,
-        InsightWidgetKind.KPI_TILE -> true
-        else -> false
-    }
-
-/**
- * Whether the widget has actual rows/series/slices to paint. Used together
- * with `isChart` so we never elevate a "spec-only" stub into the hero —
- * a chart kind with no data renders the renderer's "No data" placeholder,
- * which looks broken in the lede.
- */
-private val InsightWidget.hasChartData: Boolean
-    get() = when (val d = data) {
-        is com.openburnbar.data.insights.InsightWidgetData.TimeSeries ->
-            d.series.any { it.points.isNotEmpty() }
-        is com.openburnbar.data.insights.InsightWidgetData.Ranking ->
-            d.rows.isNotEmpty()
-        is com.openburnbar.data.insights.InsightWidgetData.Distribution ->
-            d.slices.isNotEmpty()
-        is com.openburnbar.data.insights.InsightWidgetData.KPI -> true
-        is com.openburnbar.data.insights.InsightWidgetData.Heatmap ->
-            d.cells.any { it.isNotEmpty() }
-        is com.openburnbar.data.insights.InsightWidgetData.Scatter ->
-            d.points.isNotEmpty()
-        is com.openburnbar.data.insights.InsightWidgetData.QuotaState ->
-            d.buckets.isNotEmpty()
-        // Conservative fallback: if data is null or an unrecognized payload,
-        // treat as no-data so we don't risk a placeholder in the hero.
-        null -> false
-        else -> false
-    }
 
 // ─── Section visibility cascade ────────────────────────────────────────────
 
@@ -354,13 +289,10 @@ private fun AnimatedSection(
 @Composable
 private fun HeroSection(
     result: InsightAnalysisResult,
-    featuredWidget: InsightGeneratedWidget?,
     isDark: Boolean,
     reduceMotion: Boolean,
     onConfigureModel: (() -> Unit)?,
-    onPinWidget: (InsightGeneratedWidget) -> Unit,
     onCitationTap: (InsightCitation) -> Unit,
-    theme: CanvasTheme,
 ) {
     Column(
         modifier = Modifier
@@ -370,11 +302,8 @@ private fun HeroSection(
     ) {
         val answer = result.briefingAnswer
         Text(
-            text = answer?.let { answerEyebrow(it) } ?: EYEBROW,
-            style = AuroraType.tiny.copy(
-                letterSpacing = 1.4.sp,
-                fontWeight = FontWeight.SemiBold,
-            ),
+            text = (answer?.let { answerEyebrow(it) } ?: EYEBROW).uppercase(),
+            style = AuroraType.caption.copy(letterSpacing = 2.4.sp),
             color = if (answer?.isFallback == true) InsightsColors.kpiNeutral else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.semantics { contentDescription = answer?.let { answerEyebrow(it) } ?: EYEBROW_DESCRIPTION },
         )
@@ -391,28 +320,35 @@ private fun HeroSection(
             )
         }
         Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
-        Text(
-            text = result.executiveSummary,
-            style = AuroraType.title.copy(
-                fontFamily = FontFamily.SansSerif,
-                fontSize = 22.sp,
-                lineHeight = 30.8.sp, // 1.4× line-height
-                fontWeight = FontWeight.SemiBold,
-            ),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.semantics { heading() },
-        )
-        if (answer != null) {
-            AnswerPanel(answer = answer, onCitationTap = onCitationTap)
+        Row(
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        ) {
+            val leadProvider = heroLeadProvider(result)
+            if (leadProvider != null) {
+                ProviderLogo(
+                    provider = leadProvider,
+                    size = 44.dp,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Text(
+                text = result.executiveSummary,
+                style = AuroraType.title.copy(
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = 22.sp,
+                    lineHeight = 30.8.sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.semantics { heading() },
+            )
         }
-        if (featuredWidget != null) {
-            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
-            HeroChartFrame(
-                generated = featuredWidget,
-                theme = theme,
-                isDark = isDark,
-                onPin = onPinWidget,
+        if (answer != null) {
+            AnswerPanel(
+                answer = answer,
                 onCitationTap = onCitationTap,
+                onConfigureModel = onConfigureModel,
             )
         }
         MetaStrip(
@@ -435,14 +371,23 @@ private fun HeroSection(
 private fun AnswerPanel(
     answer: InsightBriefingAnswer,
     onCitationTap: (InsightCitation) -> Unit,
+    onConfigureModel: (() -> Unit)? = null,
 ) {
+    val showConnectModelCTA = onConfigureModel != null &&
+        answer.source == InsightBriefingAnswer.Source.LOCAL_RULES &&
+        answer.modelDisplayName.contains("no LLM configured", ignoreCase = true)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AuroraRadius.sm.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant), RoundedCornerShape(AuroraRadius.sm.dp))
-            .padding(AuroraSpacing.md.dp),
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.68f))
+            .border(BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant), RoundedCornerShape(8.dp))
+            .padding(AuroraSpacing.md.dp)
+            // Mirrors Swift `.animation(.easeOut(duration: 0.08), value: answer.answer)`.
+            // Keeps the panel from popping when streaming `.delta` chunks
+            // append to `answer.answer` token-by-token.
+            .animateContentSize(),
         verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
     ) {
         Text(
@@ -471,6 +416,61 @@ private fun AnswerPanel(
         if (answer.citations.isNotEmpty()) {
             CitationChipRow(citations = answer.citations, onTap = onCitationTap)
         }
+        if (showConnectModelCTA && onConfigureModel != null) {
+            // "Connect a model" CTA — mirrors the Swift BriefingAnswerPanel
+            // button. Surfaces only when the user has zero LLM gateways
+            // configured so the eyebrow's "Data summary · no LLM configured"
+            // honesty is paired with a one-tap path out.
+            androidx.compose.material3.Button(
+                onClick = onConfigureModel,
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = InsightsColors.kpiPositive.copy(alpha = 0.16f),
+                    contentColor = InsightsColors.kpiPositive,
+                ),
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .semantics {
+                        contentDescription = "Connect a model. Opens the Insights model picker so a connected gateway can author the reply."
+                    },
+            ) {
+                Text(
+                    text = "Connect a model",
+                    style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Mirror of iOS `heroLeadProvider`. Returns the first resolvable
+ * `AgentProvider` referenced by the lead finding's evidence, falling back
+ * through top-level result citations. Powers the 44dp brand mark to the
+ * left of the executive summary so the brief gains visual identity at a
+ * glance before the user reads a word.
+ */
+private fun heroLeadProvider(result: InsightAnalysisResult): AgentProvider? {
+    val candidates = (result.findings.firstOrNull()?.evidence.orEmpty()) + result.citations
+    for (citation in candidates) {
+        val kind = citation.kind
+        if (kind is InsightCitation.Kind.Agent) {
+            AgentProvider.fromKey(kind.provider)?.let { return it }
+        }
+    }
+    return null
+}
+
+/**
+ * Resolves the brand provider for a citation so a tiny brand mark can lead
+ * each chip. Session/Quota citations carry an agent provider key in their
+ * `provider` field; pure `.agent(...)` citations use `kind.provider`.
+ */
+private fun citationProvider(citation: InsightCitation): AgentProvider? {
+    return when (val kind = citation.kind) {
+        is InsightCitation.Kind.Agent -> AgentProvider.fromKey(kind.provider)
+        is InsightCitation.Kind.Session -> kind.provider?.let { AgentProvider.fromKey(it) }
+        is InsightCitation.Kind.Quota -> AgentProvider.fromKey(kind.provider)
+        else -> null
     }
 }
 
@@ -478,7 +478,10 @@ private fun answerEyebrow(answer: InsightBriefingAnswer): String =
     when {
         answer.isFallback -> "Answered locally after LLM fallback"
         answer.source == InsightBriefingAnswer.Source.MODEL_GATEWAY -> "Answered by ${answer.modelDisplayName}"
-        else -> "Answered by ${answer.modelDisplayName} on device"
+        // Mirrors Swift `heroEyebrowText`: don't claim to "answer" when
+        // there's no LLM behind it — the local rule engine only
+        // summarizes the digest. Same wording, same accessibility intent.
+        else -> "Data summary · ${answer.modelDisplayName}"
     }
 
 // ─── Mission Control ───────────────────────────────────────────────────────
@@ -600,21 +603,39 @@ private fun MissionLaunchButton(
     runtime: MissionRuntimeTarget,
     onSelect: (MissionLaunchAction, MissionRuntimeTarget) -> Unit,
 ) {
+    val isDark = isSystemInDarkTheme()
     val color = when (action.tone) {
-        MissionTone.CREATIVE -> InsightsColors.kpiPositive
-        MissionTone.DILIGENCE -> if (isSystemInDarkTheme()) AuroraColors.goldDark else AuroraColors.gold
-        MissionTone.DEBT -> AuroraColors.ember(isSystemInDarkTheme())
+        MissionTone.CREATIVE -> AuroraColors.whimsy(isDark)
+        MissionTone.DILIGENCE -> if (isDark) AuroraColors.warningDark else AuroraColors.warning
+        MissionTone.DEBT -> AuroraColors.ember(isDark)
     }
-    TextButton(
-        onClick = { onSelect(action, runtime) },
+    val icon = when (action.tone) {
+        MissionTone.CREATIVE -> Icons.Filled.AutoAwesome
+        MissionTone.DILIGENCE -> Icons.Filled.VerifiedUser
+        MissionTone.DEBT -> Icons.Filled.Build
+    }
+    Row(
         modifier = Modifier
+            .fillMaxWidth()
             .clip(RoundedCornerShape(AuroraRadius.sm.dp))
             .border(BorderStroke(0.75.dp, color.copy(alpha = 0.32f)), RoundedCornerShape(AuroraRadius.sm.dp))
+            .clickable { onSelect(action, runtime) }
+            .padding(AuroraSpacing.md.dp)
             .testTag("insights.mission.${action.tone.firestoreValue()}")
             .semantics { contentDescription = action.title },
+        horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        verticalAlignment = Alignment.Top,
     ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier
+                .padding(top = 1.dp)
+                .size(22.dp),
+        )
         Column(
-            modifier = Modifier.width(188.dp),
+            modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
@@ -626,65 +647,17 @@ private fun MissionLaunchButton(
                 text = "${action.subtitle} Run on ${runtime.label}.",
                 style = AuroraType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = "Create mission ->",
-                style = AuroraType.monoTiny,
-                color = color,
+                maxLines = 3,
             )
         }
-    }
-}
-
-/**
- * Above-the-fold hero chart. Same renderer the Generated Views section
- * uses, wrapped in a borderless figure-style frame so it reads as part
- * of the editorial lede instead of a card. A mercury figure caption
- * underneath ties the chart to the executive summary above.
- */
-@Composable
-private fun HeroChartFrame(
-    generated: InsightGeneratedWidget,
-    theme: CanvasTheme,
-    isDark: Boolean,
-    onPin: (InsightGeneratedWidget) -> Unit,
-    onCitationTap: (InsightCitation) -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(SECTION_TAG_HERO_CHART),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
-        ) {
-            Text(
-                text = "Fig. 01 · ${generated.widget.title}",
-                style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(
-                onClick = { onPin(generated) },
-                modifier = Modifier.semantics { contentDescription = "Pin chart to canvas" },
-            ) {
-                Text(text = "Pin", style = AuroraType.monoSmall)
-            }
-        }
-        // Render the chart only — pass showHeader=false so the renderer
-        // doesn't repeat the title we already drew with the Fig. ordinal.
-        InsightWidgetRenderer(
-            widget = generated.widget,
-            onCitationTap = onCitationTap,
-            theme = theme,
-            showHeader = false,
+        Icon(
+            imageVector = Icons.Filled.NorthEast,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .size(16.dp),
         )
-        if (generated.reason.isNotBlank()) {
-            FigureCaption(reason = generated.reason, isDark = isDark)
-        }
     }
 }
 
@@ -797,18 +770,10 @@ private fun FindingsSection(
         modifier = Modifier
             .fillMaxWidth()
             .testTag(SECTION_TAG_FINDINGS),
-        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp),
     ) {
         SectionHeader(title = SECTION_FINDINGS_TITLE)
-        findings.forEachIndexed { index, finding ->
-            if (index > 0) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(0.5.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant),
-                )
-            }
+        findings.take(3).forEachIndexed { index, finding ->
             FindingRow(
                 ordinal = index + 1,
                 finding = finding,
@@ -824,26 +789,42 @@ private fun FindingRow(
     finding: InsightFinding,
     onCitationTap: (InsightCitation) -> Unit,
 ) {
+    val isDark = isSystemInDarkTheme()
+    val (severityColor, severityLabel) = finding.severity.palette(isDark)
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min),
         horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
     ) {
-        Text(
-            text = "%02d".format(ordinal),
-            style = AuroraType.monoTiny.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(28.dp),
+        // 3dp leading severity bar — full row height — mirrors iOS FindingRow.
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(severityColor),
         )
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                SeverityChip(severity = finding.severity)
-                ConfidenceChip(confidence = finding.confidence)
+                Text(
+                    text = "%02d".format(ordinal),
+                    style = AuroraType.monoSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                )
+                Text(
+                    text = severityLabel.uppercase(),
+                    style = AuroraType.monoTiny.copy(letterSpacing = 1.4.sp),
+                    color = severityColor,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                ConfidenceDots(confidence = finding.confidence)
             }
             Text(
                 text = finding.title,
@@ -863,6 +844,33 @@ private fun FindingRow(
             if (finding.recommendedAction.isNotBlank()) {
                 ActionStripe(text = finding.recommendedAction)
             }
+        }
+    }
+}
+
+@Composable
+private fun ConfidenceDots(confidence: InsightConfidence) {
+    val isDark = isSystemInDarkTheme()
+    val whimsy = AuroraColors.whimsy(isDark)
+    val filled = when (confidence) {
+        InsightConfidence.LOW -> 1
+        InsightConfidence.MEDIUM -> 2
+        InsightConfidence.HIGH -> 3
+    }
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.semantics {
+            contentDescription = "Confidence ${confidence.name.lowercase()}"
+        },
+    ) {
+        repeat(3) { index ->
+            Box(
+                modifier = Modifier
+                    .size(4.dp)
+                    .clip(CircleShape)
+                    .background(if (index < filled) whimsy else whimsy.copy(alpha = 0.25f)),
+            )
         }
     }
 }
@@ -1598,7 +1606,7 @@ private fun AuditFooterSection(
 private fun SectionHeader(title: String) {
     Text(
         text = title,
-        style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+        style = AuroraType.caption.copy(letterSpacing = 2.0.sp),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.semantics { heading() },
     )
@@ -1707,7 +1715,8 @@ private fun CitationChip(
     citation: InsightCitation,
     onTap: (InsightCitation) -> Unit,
 ) {
-    Box(
+    val provider = citationProvider(citation)
+    Row(
         modifier = Modifier
             .clip(RoundedCornerShape(AuroraRadius.full.dp))
             .border(
@@ -1717,7 +1726,15 @@ private fun CitationChip(
             .clickable { onTap(citation) }
             .padding(horizontal = 8.dp, vertical = 2.dp)
             .semantics { contentDescription = "Citation ${citation.label}" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        if (provider != null) {
+            ProviderLogo(
+                provider = provider,
+                size = 12.dp,
+            )
+        }
         Text(
             text = citation.label,
             style = AuroraType.monoTiny,
@@ -1760,15 +1777,14 @@ private fun rememberReduceMotion(): Boolean {
 private const val EYEBROW = "INTELLIGENCE BRIEF"
 private const val EYEBROW_DESCRIPTION = "Intelligence Brief"
 
-internal const val SECTION_FINDINGS_TITLE = "Top findings"
-internal const val SECTION_MISSIONS_TITLE = "Mission board"
-internal const val SECTION_ANOMALIES_TITLE = "Anomalies"
-internal const val SECTION_RECOMMENDATIONS_TITLE = "Recommendations"
-internal const val SECTION_GENERATED_TITLE = "Generated views"
-internal const val SECTION_FOLLOWUPS_TITLE = "Follow-up questions"
+internal const val SECTION_FINDINGS_TITLE = "TOP FINDINGS"
+internal const val SECTION_MISSIONS_TITLE = "MISSION BOARD"
+internal const val SECTION_ANOMALIES_TITLE = "ANOMALY ATLAS"
+internal const val SECTION_RECOMMENDATIONS_TITLE = "RECOMMENDATIONS"
+internal const val SECTION_GENERATED_TITLE = "GENERATED VIEWS"
+internal const val SECTION_FOLLOWUPS_TITLE = "FOLLOW-UP QUESTIONS"
 
 internal const val SECTION_TAG_HERO = "section-hero"
-internal const val SECTION_TAG_HERO_CHART = "section-hero-chart"
 internal const val SECTION_TAG_FINDINGS = "section-findings"
 internal const val SECTION_TAG_MISSIONS = "section-missions"
 internal const val SECTION_TAG_ANOMALIES = "section-anomalies"

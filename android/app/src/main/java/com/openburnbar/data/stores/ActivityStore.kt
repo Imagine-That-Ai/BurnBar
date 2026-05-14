@@ -7,6 +7,7 @@ import com.openburnbar.data.models.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 class ActivityStore(
@@ -105,18 +106,26 @@ class ActivityStore(
     fun startListening() {
         listenJob?.cancel()
         listenJob = viewModelScope.launch {
-            repo.listenToUsagePage().collect { items ->
-                _usages.value = items
-            }
+            // `.catch` is critical: the underlying Firestore snapshot
+            // listener flow propagates `PERMISSION_DENIED`,
+            // `UNAVAILABLE`, App Check rejections, etc. as exceptions.
+            // Without this guard the exception bubbles up the
+            // viewModelScope on `Dispatchers.Main.immediate` and
+            // crashes the entire activity. We surface the error into
+            // `_error` so the UI can render a real degraded state
+            // (banner / retry) instead of dying.
+            repo.listenToUsagePage()
+                .catch { e -> _error.value = e.message ?: e::class.simpleName }
+                .collect { items -> _usages.value = items }
         }
     }
 
     fun startLiveUsageListening(startDate: Long) {
         liveListenJob?.cancel()
         liveListenJob = viewModelScope.launch {
-            repo.listenToUsageSince(startDate).collect { items ->
-                _liveUsages.value = items
-            }
+            repo.listenToUsageSince(startDate)
+                .catch { e -> _error.value = e.message ?: e::class.simpleName }
+                .collect { items -> _liveUsages.value = items }
         }
     }
 

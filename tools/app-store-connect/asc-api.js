@@ -83,6 +83,12 @@ Use the supplied review account to see seeded companion-app data:
 6. Alternate IAP path: You tab -> Provider connections -> Codex -> Hosted Quota Sync -> Subscribe.
 7. To verify account deletion: You tab -> Settings -> Account -> Delete account -> Delete account confirmation. This calls the server-side deleteUserCloudData function, deletes the Firebase Auth user, and returns to signed-out state.
 
+Guideline 3.1.2(c) subscription disclosure fix:
+The OpenBurnBar Cloud purchase screen now includes a dedicated "Subscription Details" section before purchase. It states the auto-renewing subscription title (OpenBurnBar Cloud Monthly), length (1 month, auto-renews monthly), price (StoreKit display price per month), services provided during each period (Hosted Codex quota refresh, Conversation Backup & Resume, Full Session-Log Sync, and Hermes Remote Relay), Apple billing/cancel instructions, and functional Privacy Policy and Terms of Use links.
+
+Guideline 2.1(a) camera crash fix:
+Build ${APP.buildVersion} adds NSCameraUsageDescription to the iOS app Info.plist for the Take Photo attachment flow. The attachment menu also checks camera availability before presenting the camera sheet.
+
 Terms of Use: ${LEGAL_URLS.terms}
 Privacy Policy: ${LEGAL_URLS.privacy}
 
@@ -104,6 +110,9 @@ Surface Claude Code, Codex, OpenAI, and other provider quota signals in one plac
 
 REMOTE CODEX QUOTA REFRESH
 The optional Hosted Quota Sync subscription lets the mobile app request on-demand Codex quota refreshes through OpenBurnBar's cloud runner. Refreshes happen when you ask for them, not on a random background schedule.
+
+OPTIONAL SUBSCRIPTION
+OpenBurnBar Cloud Monthly is an optional auto-renewable subscription. Length: 1 month, auto-renews monthly. Price: shown in the purchase screen before confirmation and billed monthly by Apple. Each subscription period includes Hosted Codex quota refresh, Conversation Backup & Resume, Full Session-Log Sync, and Hermes Remote Relay. You can manage or cancel the subscription in Settings -> Apple ID.
 
 MAC, IPHONE, AND IPAD
 Your Mac remains the local-first source for private CLI logs. iPhone and iPad provide a clean cockpit for burn, quota, connected devices, and provider status.
@@ -935,10 +944,17 @@ async function getReviewDetail(versionId) {
 async function upsertReviewDetail() {
   const version = await getLatestIosVersion();
   const reviewDetail = await getReviewDetail(version.id);
-  const hasPassword = APP_REVIEW.password.trim().length > 0;
+  const reviewPassword = APP_REVIEW.password.trim();
+  const hasPassword = reviewPassword.length > 0;
+  const passwordFitsAppleLimit = reviewPassword.length <= 100;
   if (!hasPassword && !reviewDetail?.id) {
     throw new Error(
       "OPENBURNBAR_REVIEW_PASSWORD or APP_STORE_REVIEW_PASSWORD is required to create App Review login details"
+    );
+  }
+  if (hasPassword && !passwordFitsAppleLimit && !reviewDetail?.id) {
+    throw new Error(
+      "App Review demo password must be 100 characters or fewer to create App Review login details"
     );
   }
 
@@ -951,8 +967,8 @@ async function upsertReviewDetail() {
     demoAccountName: APP_REVIEW.email,
     notes: APP_REVIEW.notes,
   };
-  if (hasPassword) {
-    attributes.demoAccountPassword = APP_REVIEW.password;
+  if (hasPassword && passwordFitsAppleLimit) {
+    attributes.demoAccountPassword = reviewPassword;
   }
 
   if (reviewDetail?.id) {
@@ -963,6 +979,10 @@ async function upsertReviewDetail() {
     );
     if (!hasPassword) {
       console.log("Retained existing App Review demo password");
+    } else if (!passwordFitsAppleLimit) {
+      console.log(
+        "Retained existing App Review demo password because supplied secret exceeds Apple's 100-character limit"
+      );
     }
     console.log(`Updated App Review details ${reviewDetail.id}`);
     return;

@@ -128,6 +128,14 @@ final class CLIAgentMissionRequestListener {
                 "claimedBy": accountManager.deviceId,
                 "selectedRuntime": backend.rawValue,
                 "selectedRuntimeName": backend.displayName,
+                "liveSummary": "\(backend.displayName) claimed the mission on this Mac.",
+                "events": FieldValue.arrayUnion([
+                    missionEvent(
+                        phase: "claimed",
+                        message: "\(backend.displayName) claimed the mission on this Mac.",
+                        backend: backend
+                    )
+                ]),
                 "startedAt": ISO8601DateFormatter().string(from: Date()),
                 "updatedAt": FieldValue.serverTimestamp()
             ], merge: true)
@@ -145,13 +153,27 @@ final class CLIAgentMissionRequestListener {
         }
 
         logger.info("starting mission id=\(document.documentID, privacy: .public) backend=\(backend.rawValue, privacy: .public)")
-        if let directResult = await runDirectCLIMissionIfNeeded(title: title, prompt: prompt, backend: backend, data: data) {
+        await recordEvent(
+            reference: document.reference,
+            phase: "starting",
+            message: "Starting \(backend.displayName) with the mission prompt.",
+            backend: backend
+        )
+        if let directResult = await runDirectCLIMissionIfNeeded(title: title, prompt: prompt, backend: backend, data: data, reference: document.reference) {
             var payload: [String: Any] = [
                 "status": directResult.status,
                 "selectedRuntime": backend.rawValue,
                 "selectedRuntimeName": backend.displayName,
                 "sessionId": directResult.sessionID,
                 "resultPreview": directResult.output.prefix(600).description,
+                "liveSummary": directResult.status == "completed" ? "\(backend.displayName) returned a result." : "\(backend.displayName) mission failed.",
+                "events": FieldValue.arrayUnion([
+                    missionEvent(
+                        phase: directResult.status == "completed" ? "completed" : "failed",
+                        message: directResult.status == "completed" ? resultSummary(from: directResult.output) : (directResult.errorMessage ?? "\(backend.displayName) mission failed."),
+                        backend: backend
+                    )
+                ]),
                 "completedAt": ISO8601DateFormatter().string(from: Date()),
                 "updatedAt": FieldValue.serverTimestamp()
             ]
@@ -173,23 +195,69 @@ final class CLIAgentMissionRequestListener {
         chatController.inputText = missionPrompt(title: title, prompt: prompt, backend: backend, data: data)
         await chatController.send()
 
+        var lastStreamingEvent = Date.distantPast
+        var mirroredTranscriptPieceIDs = Set<String>()
         while chatController.isStreaming {
+            let assistantMessage = chatController.messages.last(where: { $0.role == .assistant })
+            for piece in assistantMessage?.displayTranscript ?? [] where !mirroredTranscriptPieceIDs.contains(piece.id) {
+                mirroredTranscriptPieceIDs.insert(piece.id)
+                switch piece.kind {
+                case .toolUse:
+                    let detail = piece.detail?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                    await recordEvent(
+                        reference: document.reference,
+                        phase: "tool_use",
+                        message: detail.map { "\(piece.value): \($0)" } ?? piece.value,
+                        backend: backend
+                    )
+                case .text:
+                    let text = piece.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { continue }
+                    await recordEvent(
+                        reference: document.reference,
+                        phase: "assistant_response",
+                        message: text.prefix(600).description,
+                        backend: backend
+                    )
+                }
+            }
+            if Date().timeIntervalSince(lastStreamingEvent) >= 2 {
+                lastStreamingEvent = Date()
+                let assistantPreview = assistantMessage?
+                    .content
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                await recordEvent(
+                    reference: document.reference,
+                    phase: "streaming",
+                    message: assistantPreview?.prefix(420).description.nilIfEmpty ?? "\(backend.displayName) is still working on the mission.",
+                    backend: backend
+                )
+            }
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
 
         let status = chatController.streamError == nil ? "completed" : "failed"
+        let finalSummary = chatController.messages.last(where: { $0.role == .assistant })?.content.prefix(600).description ?? ""
         var payload: [String: Any] = [
             "status": status,
             "selectedRuntime": backend.rawValue,
             "selectedRuntimeName": backend.displayName,
             "sessionId": threadID,
+            "liveSummary": status == "completed" ? "\(backend.displayName) returned a result." : "\(backend.displayName) mission failed.",
+            "events": FieldValue.arrayUnion([
+                missionEvent(
+                    phase: status == "completed" ? "completed" : "failed",
+                    message: status == "completed" ? resultSummary(from: finalSummary) : (chatController.streamError ?? "\(backend.displayName) mission failed."),
+                    backend: backend
+                )
+            ]),
             "completedAt": ISO8601DateFormatter().string(from: Date()),
             "updatedAt": FieldValue.serverTimestamp()
         ]
         if let streamError = chatController.streamError {
             payload["errorMessage"] = streamError
         } else {
-            payload["resultPreview"] = chatController.messages.last(where: { $0.role == .assistant })?.content.prefix(600).description ?? ""
+            payload["resultPreview"] = finalSummary
         }
         do {
             try await document.reference.setData(payload, merge: true)
@@ -204,6 +272,10 @@ final class CLIAgentMissionRequestListener {
             try await document.reference.setData([
                 "status": "failed",
                 "errorMessage": message,
+                "liveSummary": message,
+                "events": FieldValue.arrayUnion([
+                    missionEvent(phase: "failed", message: message, backend: nil)
+                ]),
                 "completedAt": ISO8601DateFormatter().string(from: Date()),
                 "updatedAt": FieldValue.serverTimestamp()
             ], merge: true)
@@ -265,7 +337,8 @@ final class CLIAgentMissionRequestListener {
         title: String,
         prompt: String,
         backend: ChatBackendID,
-        data: [String: Any]
+        data: [String: Any],
+        reference: DocumentReference
     ) async -> DirectCLIMissionResult? {
         switch backend {
         case .piAgent:
@@ -277,7 +350,8 @@ final class CLIAgentMissionRequestListener {
                     "pi --no-session --no-tools -p \"$OPENBURNBAR_MISSION_PROMPT\""
                 ],
                 backend: backend,
-                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": piPrompt]
+                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": piPrompt],
+                reference: reference
             )
         case .openclaw:
             return await runDirectCLIMission(
@@ -289,7 +363,8 @@ final class CLIAgentMissionRequestListener {
                     "--permission-mode", "auto"
                 ],
                 backend: backend,
-                extraEnvironment: [:]
+                extraEnvironment: [:],
+                reference: reference
             )
         case .codex, .claude, .hermes:
             return nil
@@ -300,7 +375,8 @@ final class CLIAgentMissionRequestListener {
         executableName: String,
         arguments: [String],
         backend: ChatBackendID,
-        extraEnvironment: [String: String]
+        extraEnvironment: [String: String],
+        reference: DocumentReference
     ) async -> DirectCLIMissionResult {
         guard let executable = await CLIExecutableResolver().resolveExecutable(named: executableName) else {
             return DirectCLIMissionResult(
@@ -312,11 +388,22 @@ final class CLIAgentMissionRequestListener {
         }
 
         do {
+            await recordEvent(
+                reference: reference,
+                phase: "process_started",
+                message: "Launching \(backend.displayName) CLI process.",
+                backend: backend
+            )
             let output = try await runProcess(
                 executable: executable,
                 arguments: arguments,
                 timeoutSeconds: 180,
-                extraEnvironment: extraEnvironment
+                extraEnvironment: extraEnvironment,
+                eventSink: { [weak self] phase, message in
+                    Task { @MainActor [weak self] in
+                        await self?.recordEvent(reference: reference, phase: phase, message: message, backend: backend)
+                    }
+                }
             )
             return DirectCLIMissionResult(
                 status: "completed",
@@ -338,7 +425,8 @@ final class CLIAgentMissionRequestListener {
         executable: String,
         arguments: [String],
         timeoutSeconds: TimeInterval,
-        extraEnvironment: [String: String]
+        extraEnvironment: [String: String],
+        eventSink: @escaping @Sendable (String, String) -> Void
     ) async throws -> String {
         try await Task.detached(priority: .userInitiated) {
             let process = Process()
@@ -356,10 +444,18 @@ final class CLIAgentMissionRequestListener {
             process.standardError = stderr
 
             try process.run()
+            eventSink("process_running", "\(URL(fileURLWithPath: executable).lastPathComponent) is running.")
 
             let deadline = Date().addingTimeInterval(timeoutSeconds)
+            let startedAt = Date()
+            var lastProgressSecond = 0
             while process.isRunning && Date() < deadline {
                 Thread.sleep(forTimeInterval: 0.1)
+                let elapsed = Int(Date().timeIntervalSince(startedAt))
+                if elapsed >= 5, elapsed % 5 == 0, elapsed != lastProgressSecond {
+                    lastProgressSecond = elapsed
+                    eventSink("process_running", "\(URL(fileURLWithPath: executable).lastPathComponent) is still running after \(elapsed)s.")
+                }
             }
             if process.isRunning {
                 process.terminate()
@@ -385,6 +481,45 @@ final class CLIAgentMissionRequestListener {
 
             return stdoutText.nilIfEmpty ?? stderrText
         }.value
+    }
+
+    private func recordEvent(
+        reference: DocumentReference,
+        phase: String,
+        message: String,
+        backend: ChatBackendID?
+    ) async {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            try await reference.setData([
+                "liveSummary": trimmed.prefix(600).description,
+                "events": FieldValue.arrayUnion([
+                    missionEvent(phase: phase, message: trimmed, backend: backend)
+                ]),
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+        } catch {
+            logger.warning("mission event update failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func missionEvent(phase: String, message: String, backend: ChatBackendID?) -> [String: Any] {
+        var event: [String: Any] = [
+            "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "phase": phase,
+            "message": message.prefix(600).description,
+            "source": "mac"
+        ]
+        if let backend {
+            event["runtime"] = backend.rawValue
+        }
+        return event
+    }
+
+    private func resultSummary(from output: String) -> String {
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.nilIfEmpty?.prefix(600).description ?? "Mission finished without a text result."
     }
 }
 

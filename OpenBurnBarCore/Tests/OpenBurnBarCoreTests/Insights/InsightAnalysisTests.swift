@@ -84,7 +84,14 @@ final class InsightAnalysisTests: XCTestCase {
                        "Reply must surface data-grounded points to prove it's computed from the digest.")
         XCTAssertEqual(answer.source, .localRules,
                        "Local-rules path must declare its provenance honestly so the UI can label it.")
-        XCTAssertEqual(answer.modelDisplayName, "Local rules")
+        // The local rules engine flags the "no LLM configured" case in the
+        // display name so the UI can avoid claiming an LLM "answered" the
+        // question. See `RuleBasedInsightAnalysisEngine.analyze` honesty
+        // check.
+        XCTAssertEqual(answer.modelDisplayName, "Local rules · no LLM configured")
+        XCTAssertTrue(answer.answer.localizedCaseInsensitiveContains("local rules") ||
+                      answer.answer.localizedCaseInsensitiveContains("connect a model"),
+                      "Local-rules reply body should make clear it isn't an LLM answer.")
         XCTAssertFalse(answer.isFallback,
                        "Direct local-rules answer is not a fallback; only gateway failures get isFallback=true.")
     }

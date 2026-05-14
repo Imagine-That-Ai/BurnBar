@@ -127,4 +127,46 @@ final class IntelligenceBriefWiringTests: XCTestCase {
             ["creative", "diligence", "debt"]
         )
     }
+
+    func test_cliAgentMissionSnapshotDecodesLiveFeedAndTerminalResult() throws {
+        let snapshot = try XCTUnwrap(CLIAgentMissionSnapshot(documentID: "mission-1", data: [
+            "id": "mission-1",
+            "title": "Run a debt mission",
+            "status": "completed",
+            "requestedRuntime": "auto",
+            "selectedRuntime": "codex",
+            "selectedRuntimeName": "Codex",
+            "liveSummary": "Codex is summarizing the result.",
+            "resultPreview": "Found three high-leverage refactors.",
+            "sessionId": "thread-123",
+            "events": [
+                [
+                    "timestamp": "2026-05-14T10:00:00Z",
+                    "phase": "queued",
+                    "message": "Mission queued from this device.",
+                    "source": "ios"
+                ],
+                [
+                    "timestamp": "2026-05-14T10:00:02Z",
+                    "phase": "running",
+                    "message": "Codex is inspecting the repo.",
+                    "runtime": "codex",
+                    "source": "mac"
+                ],
+                [
+                    "timestamp": "2026-05-14T10:00:10Z",
+                    "phase": "completed",
+                    "message": "Found three high-leverage refactors.",
+                    "runtime": "codex",
+                    "source": "mac"
+                ]
+            ]
+        ]))
+
+        XCTAssertEqual(snapshot.runtimeLabel, "Codex")
+        XCTAssertEqual(snapshot.events.map(\.phase), ["queued", "running", "completed"])
+        XCTAssertEqual(snapshot.resultPreview, "Found three high-leverage refactors.")
+        XCTAssertEqual(snapshot.sessionID, "thread-123")
+        XCTAssertTrue(snapshot.isTerminal)
+    }
 }

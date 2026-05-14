@@ -238,17 +238,37 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
                 biggestDay: biggestDay,
                 quotaRisk: quotaRisk
             )
-            // The body composes the summary headline + body so the
-            // user sees a complete, multi-sentence response, not just
-            // a 3-word title.
-            let body = "\(summary.headline). \(summary.body) \(summary.action)"
+            // Be honest about what kind of reply this is.
+            //
+            // Local rules never *answer* a freeform question — they only
+            // surface deterministic data summaries from the digest. When
+            // the orchestrator routes here because no LLM gateway is
+            // configured, the reply is explicitly framed as a data
+            // summary, not an LLM answer, so the user isn't tricked by
+            // template-generated narrative prose.
+            let isLocalRulesOnly = request.selectedModel.providerKey == "local-rules"
+            let body: String
+            let displayName: String
+            if isLocalRulesOnly {
+                body = """
+                Local rules can only summarize the data — they can't answer freeform questions. Connect a model gateway in the inspector to get an LLM-authored reply.
+
+                Here's what the data shows for this window:
+
+                \(summary.headline). \(summary.body)
+                """
+                displayName = "Local rules · no LLM configured"
+            } else {
+                body = "\(summary.headline). \(summary.body) \(summary.action)"
+                displayName = request.selectedModel.displayName
+            }
             return InsightBriefingAnswer(
                 question: request.prompt,
                 answer: body,
                 bullets: groundedPoints,
                 citations: Array(citations.prefix(3)),
                 source: .localRules,
-                modelDisplayName: request.selectedModel.displayName
+                modelDisplayName: displayName
             )
         }()
 

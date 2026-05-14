@@ -264,7 +264,7 @@ class IntelligenceBriefScreenTest {
                 }
             }
         }
-        composeRule.onNodeWithText("Top findings").assertExists()
+        composeRule.onNodeWithText("TOP FINDINGS").assertExists()
     }
 
     @Test
@@ -281,7 +281,6 @@ class IntelligenceBriefScreenTest {
         // assert existence rather than display because long content runs
         // below the viewport on a phone-sized device.
         composeRule.onNodeWithTag(SECTION_TAG_HERO).assertExists()
-        composeRule.onNodeWithTag(SECTION_TAG_HERO_CHART).assertExists()
         composeRule.onNodeWithTag(SECTION_TAG_GENERATED).assertExists()
         composeRule.onNodeWithTag(SECTION_TAG_FINDINGS).assertExists()
         composeRule.onNodeWithTag(SECTION_TAG_ANOMALIES).assertExists()
@@ -496,10 +495,10 @@ class IntelligenceBriefScreenTest {
         // the viewport on a phone-sized device but is still in the tree.
         composeRule.onNodeWithText("INTELLIGENCE BRIEF").assertExists()
         composeRule.onNodeWithText("Last 7 days").assertExists()
-        composeRule.onNodeWithText("Top findings").assertExists()
-        composeRule.onNodeWithText("Anomalies").assertExists()
-        composeRule.onNodeWithText("Recommendations").assertExists()
-        composeRule.onNodeWithText("Follow-up questions").assertExists()
+        composeRule.onNodeWithText("TOP FINDINGS").assertExists()
+        composeRule.onNodeWithText("ANOMALY ATLAS").assertExists()
+        composeRule.onNodeWithText("RECOMMENDATIONS").assertExists()
+        composeRule.onNodeWithText("FOLLOW-UP QUESTIONS").assertExists()
     }
 
     private fun captureBriefScreenshot(

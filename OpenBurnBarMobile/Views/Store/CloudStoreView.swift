@@ -7,6 +7,13 @@ private enum CloudStoreLegalURLs {
     static let terms = URL(string: "https://openburnbar.com/legal/terms")!
 }
 
+private enum CloudSubscriptionDisclosure {
+    static let title = "OpenBurnBar Cloud Monthly"
+    static let period = "1 month, auto-renews monthly"
+    static let included = "Hosted Codex quota refresh, Conversation Backup & Resume, Full Session-Log Sync, and Hermes Remote Relay."
+    static let billing = "Billed by Apple. Auto-renews until canceled at least 24 hours before renewal. Manage or cancel in Settings -> Apple ID."
+}
+
 // MARK: - Cloud Store View
 //
 // Premium paywall + member home for the OpenBurnBar Cloud subscription
@@ -196,9 +203,67 @@ private struct CloudStorePlanPicker: View {
                 .padding(.horizontal, MobileTheme.Spacing.sm)
                 .fixedSize(horizontal: false, vertical: true)
 
+            CloudStoreRequiredSubscriptionDisclosure(
+                priceText: store.product?.displayPrice ?? "$4.99"
+            )
+
             CloudStoreLegalLinks()
                 .padding(.top, 2)
         }
+    }
+}
+
+private struct CloudStoreRequiredSubscriptionDisclosure: View {
+    let priceText: String
+
+    private var rows: [(String, String)] {
+        [
+            ("Service", CloudSubscriptionDisclosure.title),
+            ("Length", CloudSubscriptionDisclosure.period),
+            ("Price", "\(priceText) per month"),
+            ("Includes", CloudSubscriptionDisclosure.included),
+            ("Billing", CloudSubscriptionDisclosure.billing)
+        ]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+            Text("SUBSCRIPTION DETAILS")
+                .font(MobileTheme.Typography.tiny)
+                .fontWeight(.semibold)
+                .tracking(1.4)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
+                ForEach(rows, id: \.0) { row in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(row.0)
+                            .font(MobileTheme.Typography.tiny)
+                            .fontWeight(.semibold)
+                            .tracking(0.8)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                        Text(row.1)
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(MobileTheme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.55))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
+                .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
+        )
+        .accessibilityIdentifier("cloudStore.subscriptionDisclosure")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Subscription details. \(CloudSubscriptionDisclosure.title). \(CloudSubscriptionDisclosure.period). \(priceText) per month. Includes \(CloudSubscriptionDisclosure.included) \(CloudSubscriptionDisclosure.billing)")
     }
 }
 
@@ -696,6 +761,17 @@ private struct CloudStoreActionBar: View {
 
     var body: some View {
         VStack(spacing: MobileTheme.Spacing.sm) {
+            VStack(spacing: 2) {
+                Text(CloudSubscriptionDisclosure.title)
+                    .font(MobileTheme.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                Text("\(store.product?.displayPrice ?? "$4.99") per month · \(CloudSubscriptionDisclosure.period)")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             CloudStoreLegalLinks()
             subscribeButton
             Button {

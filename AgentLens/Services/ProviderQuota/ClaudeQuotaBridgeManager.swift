@@ -48,16 +48,20 @@ struct ClaudeQuotaBridgeManager {
         let currentCommand = command(fromStatusLine: currentStatusLine)
         let isAlreadyBridge = currentCommand == wrapperCommand
             || currentCommand == "'\(wrapperCommand.replacingOccurrences(of: "'", with: "'\\''"))'"
-        let originalStatusLine: Any
-        if isAlreadyBridge, let existingOriginal = metadata["originalStatusLine"] {
-            originalStatusLine = existingOriginal
+        let originalStatusLineCandidate: Any? = if isAlreadyBridge {
+            metadata["originalStatusLine"]
         } else {
-            originalStatusLine = currentStatusLine ?? NSNull()
+            currentStatusLine
         }
+        let originalStatusLine = sanitizedOriginalStatusLine(
+            originalStatusLineCandidate,
+            wrapperPath: wrapperCommand
+        )
 
         let originalCommandSpec = originalCommandSpec(
             from: originalStatusLine,
-            existingMetadata: metadata
+            existingMetadata: metadata,
+            wrapperPath: wrapperCommand
         )
         try writeClaudeBridgeWrapper(
             to: wrapperURL,
@@ -201,6 +205,7 @@ struct ClaudeQuotaBridgeManager {
         if [ -f "$METADATA_PATH" ]; then
           /usr/bin/python3 - "$METADATA_PATH" "$TMP_FILE" <<'PY'
         import json
+        import os
         import subprocess
         import sys
 
@@ -217,6 +222,10 @@ struct ClaudeQuotaBridgeManager {
                 raise SystemExit(0)
             if not isinstance(arguments, list) or any(not isinstance(arg, str) for arg in arguments):
                 raise SystemExit(0)
+            wrapper_path = payload.get('wrapperPath')
+            if isinstance(wrapper_path, str) and wrapper_path:
+                if executable == wrapper_path or os.path.realpath(executable) == os.path.realpath(wrapper_path):
+                    raise SystemExit(0)
 
             with open(sys.argv[2], 'rb') as stdin_fh:
                 subprocess.run([executable, *arguments], stdin=stdin_fh, check=False)
@@ -229,20 +238,49 @@ struct ClaudeQuotaBridgeManager {
         try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
     }
 
-    private func originalCommandSpec(from statusLine: Any?, existingMetadata: [String: Any]) -> ClaudeQuotaBridgeCommandSpec? {
-        if let existingSpec = ClaudeQuotaBridgeCommandSpec.fromJSONObject(existingMetadata["originalCommandSpec"]) {
+    private func sanitizedOriginalStatusLine(_ statusLine: Any?, wrapperPath: String) -> Any {
+        guard let statusLine, !(statusLine is NSNull) else { return NSNull() }
+        if isBridgeCommand(command(fromStatusLine: statusLine), wrapperPath: wrapperPath) {
+            return NSNull()
+        }
+        return statusLine
+    }
+
+    private func originalCommandSpec(
+        from statusLine: Any?,
+        existingMetadata: [String: Any],
+        wrapperPath: String
+    ) -> ClaudeQuotaBridgeCommandSpec? {
+        if let existingSpec = ClaudeQuotaBridgeCommandSpec.fromJSONObject(existingMetadata["originalCommandSpec"]),
+           !isBridgeSpec(existingSpec, wrapperPath: wrapperPath) {
             return existingSpec
         }
 
-        if let spec = commandSpec(fromStatusLine: statusLine) {
+        if let spec = commandSpec(fromStatusLine: statusLine),
+           !isBridgeSpec(spec, wrapperPath: wrapperPath) {
             return spec
         }
 
-        if let legacyCommand = existingMetadata["originalCommand"] as? String {
+        if let legacyCommand = existingMetadata["originalCommand"] as? String,
+           !isBridgeCommand(legacyCommand, wrapperPath: wrapperPath) {
             return commandSpec(fromCommandString: legacyCommand)
         }
 
         return nil
+    }
+
+    private func isBridgeSpec(_ spec: ClaudeQuotaBridgeCommandSpec, wrapperPath: String) -> Bool {
+        spec.executable == wrapperPath
+            || URL(fileURLWithPath: spec.executable).standardizedFileURL == URL(fileURLWithPath: wrapperPath).standardizedFileURL
+    }
+
+    private func isBridgeCommand(_ command: String?, wrapperPath: String) -> Bool {
+        guard let command else { return false }
+        if command == wrapperPath || command == "'\(wrapperPath.replacingOccurrences(of: "'", with: "'\\''"))'" {
+            return true
+        }
+        guard let spec = commandSpec(fromCommandString: command) else { return false }
+        return isBridgeSpec(spec, wrapperPath: wrapperPath)
     }
 
     private func commandSpec(fromStatusLine value: Any?) -> ClaudeQuotaBridgeCommandSpec? {

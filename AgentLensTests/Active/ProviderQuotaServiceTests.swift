@@ -443,6 +443,56 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(restoredStatusLine["command"] as? String, "echo original-status")
     }
 
+    func test_claudeBridge_reinstallDropsSelfReferentialOriginalCommand() throws {
+        let home = try makeTemporaryDirectory()
+        let appSupportRoot = try makeTemporaryDirectory()
+            .appendingPathComponent("Application Support", isDirectory: true)
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
+        let wrapperPath = appPaths.claudeStatuslineBridgeScriptURL.path
+        let quotedWrapperPath = "'\(wrapperPath.replacingOccurrences(of: "'", with: "'\\''"))'"
+
+        let claudeDirectory = home.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: claudeDirectory, withIntermediateDirectories: true)
+        let settingsURL = claudeDirectory.appendingPathComponent("settings.json")
+        try JSONSerialization.data(withJSONObject: [
+            "statusLine": [
+                "type": "command",
+                "command": quotedWrapperPath
+            ]
+        ], options: [.prettyPrinted]).write(to: settingsURL)
+
+        try FileManager.default.createDirectory(
+            at: appPaths.claudeStatuslineBridgeMetadataURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try JSONSerialization.data(withJSONObject: [
+            "originalStatusLine": [
+                "type": "command",
+                "command": quotedWrapperPath
+            ],
+            "originalCommandSpec": [
+                "executable": wrapperPath,
+                "arguments": []
+            ],
+            "wrapperPath": wrapperPath
+        ], options: [.prettyPrinted]).write(to: appPaths.claudeStatuslineBridgeMetadataURL)
+
+        let service = makeService(home: home, appSupportRoot: appSupportRoot)
+
+        try service.installClaudeQuotaBridge()
+
+        let metadata = try readJSON(from: appPaths.claudeStatuslineBridgeMetadataURL)
+        XCTAssertTrue(metadata["originalStatusLine"] is NSNull)
+        XCTAssertTrue(metadata["originalCommandSpec"] is NSNull)
+
+        let script = try String(contentsOf: appPaths.claudeStatuslineBridgeScriptURL)
+        XCTAssertTrue(script.contains("os.path.realpath(executable) == os.path.realpath(wrapper_path)"))
+
+        try service.removeClaudeQuotaBridge()
+        let restoredSettings = try readJSON(from: settingsURL)
+        XCTAssertNil(restoredSettings["statusLine"], "Removing a bridge with corrupted self-referential metadata must not restore the wrapper as the user's status line.")
+    }
+
     func test_claudeRefresh_isUnavailableWhenAPIBillingOverrideDetected() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()

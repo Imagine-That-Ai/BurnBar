@@ -8,11 +8,19 @@ import Foundation
 public enum InsightProviderGatewayRegistry {
     public typealias KeyProvider = @Sendable (_ provider: String, _ aliases: [String], _ envKeys: [String]) -> String?
     public typealias URLProvider = @Sendable (_ key: String) -> URL?
+    /// Optional hook for shells to inject a fully-built `HermesInsightAdapter`
+    /// when the user's Hermes relay is connected. macOS daemons return their
+    /// owned session adapter unconditionally; iOS / iPadOS / Android return
+    /// `nil` until `HermesService.isConnected == true`. Keeping this out of
+    /// `keyProvider` is deliberate — Hermes isn't credentialled the same way
+    /// user-key providers are, and the shell knows its own connection state.
+    public typealias HermesProvider = @Sendable () -> HermesInsightAdapter?
 
     public static func registerDefaultSwiftGateways(
         in catalog: InsightModelCatalog,
         keyProvider: KeyProvider,
         urlProvider: URLProvider = { _ in nil },
+        hermesProvider: HermesProvider? = nil,
         includeLocalRules: Bool = true,
         includeOllama: Bool = true
     ) async {
@@ -21,6 +29,9 @@ public enum InsightProviderGatewayRegistry {
         }
         if includeOllama {
             await catalog.register(OllamaInsightAdapter())
+        }
+        if let hermesProvider, let hermesAdapter = hermesProvider() {
+            await catalog.register(hermesAdapter)
         }
 
         if let apiKey = keyProvider("openai", [], ["OPENAI_API_KEY"]) {

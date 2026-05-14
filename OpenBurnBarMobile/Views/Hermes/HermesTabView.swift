@@ -1567,7 +1567,11 @@ struct HermesChatView: View {
                 Label("Photo or Video Library", systemImage: "photo.on.rectangle")
             }
             Button {
-                showCameraSheet = true
+                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                    showCameraSheet = true
+                } else {
+                    attachmentImportError = "Camera is not available on this device. Choose Photo or Video Library instead."
+                }
             } label: {
                 Label("Take Photo", systemImage: "camera")
             }

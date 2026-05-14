@@ -43,8 +43,25 @@ class AndroidInsightCredentialStore(context: Context) {
 }
 
 object AndroidInsightGatewayRegistry {
-    fun defaultGateways(credentials: AndroidInsightCredentialStore): List<InsightAnalysisModelGateway> {
+    /**
+     * @param credentials credential store backing user-key gateways.
+     * @param hermesProvider optional hook the caller uses to inject a
+     *   live Hermes gateway when the user's relay is reachable. Mirrors
+     *   the Swift `HermesProvider` closure on
+     *   `InsightProviderGatewayRegistry.registerDefaultSwiftGateways`.
+     *   Returning `null` means "Hermes not currently available" — the
+     *   registry falls back to the legacy `credentials.endpoint("hermes")`
+     *   path so existing relay-URL preferences keep working.
+     */
+    fun defaultGateways(
+        credentials: AndroidInsightCredentialStore,
+        hermesProvider: () -> InsightAnalysisModelGateway? = { null },
+    ): List<InsightAnalysisModelGateway> {
         val gateways = mutableListOf<InsightAnalysisModelGateway>(OllamaInsightAnalysisGateway())
+        val injectedHermes = hermesProvider()
+        if (injectedHermes != null) {
+            gateways += injectedHermes
+        }
         credentials.credential("openai")?.let { key ->
             gateways += OpenAICompatibleInsightAnalysisGateway(
                 providerKey = "openai",
@@ -89,14 +106,20 @@ object AndroidInsightGatewayRegistry {
                 models = listOf(tag("kimi", "kimi-k2", "Kimi K2"))
             )
         }
-        credentials.endpoint("hermes")?.let { endpoint ->
-            gateways += OpenAICompatibleInsightAnalysisGateway(
-                providerKey = "hermes",
-                displayName = "Hermes",
-                apiKey = credentials.credential("hermes"),
-                baseURL = endpoint,
-                models = listOf(tag("hermes", "hermes-agent", "Hermes gateway", InsightEgressTier.USER_RELAY))
-            )
+        // Back-compat path: legacy "hermes" endpoint preference. Skip
+        // when the new `hermesProvider` hook already supplied an
+        // adapter so the catalog doesn't end up with two Hermes
+        // entries that overwrite each other in `.associateBy { providerKey }`.
+        if (injectedHermes == null) {
+            credentials.endpoint("hermes")?.let { endpoint ->
+                gateways += OpenAICompatibleInsightAnalysisGateway(
+                    providerKey = "hermes",
+                    displayName = "Hermes",
+                    apiKey = credentials.credential("hermes"),
+                    baseURL = endpoint,
+                    models = listOf(tag("hermes", "hermes-agent", "Hermes gateway", InsightEgressTier.USER_RELAY))
+                )
+            }
         }
         return gateways
     }
@@ -234,7 +257,7 @@ class AnthropicInsightAnalysisGateway(
     }
 }
 
-private fun analysisSystemPrompt(request: InsightAnalysisRequest): String =
+internal fun analysisSystemPrompt(request: InsightAnalysisRequest): String =
     """
     You are OpenBurnBar Insights. Analyze the user's AI usage digest and return one JSON object only.
     Explain what changed, why it matters, what caused it, what is wasteful, what is risky, and what the user should do next.

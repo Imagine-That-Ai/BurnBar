@@ -7,6 +7,7 @@ import com.openburnbar.data.models.UsageRollups
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.Instant
@@ -81,9 +82,13 @@ class DashboardStore(
     fun startListening() {
         listenJob?.cancel()
         listenJob = viewModelScope.launch {
-            repo.listenToRollups().collect { rollups ->
-                _rollups.value = rollups
-            }
+            // See ActivityStore.startListening for the rationale —
+            // Firestore listener errors must NEVER reach
+            // Dispatchers.Main.immediate as unhandled exceptions, or
+            // the host activity crashes on PERMISSION_DENIED.
+            repo.listenToRollups()
+                .catch { e -> _error.value = e.message ?: e::class.simpleName }
+                .collect { rollups -> _rollups.value = rollups }
         }
     }
 

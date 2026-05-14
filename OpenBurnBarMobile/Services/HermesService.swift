@@ -3143,6 +3143,23 @@ extension HermesService {
     /// instance value.
     var toolUseIterationCap: Int { maxToolUseIterations }
 
+    /// Read-only accessor for the Insights bridge so the OpenBurnBarCore
+    /// Hermes adapter can target the same `/v1/chat/completions` endpoint
+    /// the chat surface is already using. Tracks `setBaseURL`-driven
+    /// connection switches so a freshly-selected relay routes Insights
+    /// follow-ups through the same path as chat replies. The bridge
+    /// gates the actual registration on `isReachable`, so a stale URL
+    /// here never produces a broken Hermes catalog entry.
+    var insightsBaseURL: URL { baseURL }
+
+    /// Best-effort authorization header the Insights bridge passes to
+    /// the Hermes relay. Local LAN sessions are unauthenticated; hosted
+    /// relays send the user's relay credential. The bridge calls into
+    /// `secretStore` directly for relay credentials, so this hook stays
+    /// nil in production and only exists for the LAN path's diagnostic
+    /// banner.
+    var insightsAuthorizationHeader: String? { nil }
+
     /// Execute every tool call on `message`, append a matching tool-role
     /// reply message to `messages` for each, and stamp the call's
     /// `status` so the pill reflects success / failure. Returns the list

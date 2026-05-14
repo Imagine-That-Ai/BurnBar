@@ -22,11 +22,24 @@ class FirestoreRepository {
     private val db = Firebase.firestore
     private val functions = Firebase.functions
 
-    /** Returns the currently-authenticated user's document ID for subcollection paths.
-     *  Falls back to the auth uid, then to a mock so the client ships without crashing. */
+    /** Returns the currently-authenticated user's document ID for
+     *  subcollection paths. Throws `NotSignedInException` when there is no
+     *  Firebase auth user — the previous "mock-user" fallback silently
+     *  produced `users/mock-user/...` queries that always returned
+     *  `PERMISSION_DENIED: Missing or insufficient permissions` from the
+     *  Firestore security rules, surfacing as a confusing failure in the
+     *  dashboard / activity / insights tabs whenever an auth race or token
+     *  expiry left `FirebaseAuth.currentUser` momentarily null. */
     fun currentUserId(): String {
-        return com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: "mock-user"
+        val uid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+        return uid ?: throw NotSignedInException()
     }
+
+    /** Thrown by [currentUserId] when no Firebase auth user exists. Stores
+     *  catch this and surface "Sign in required" instead of the cryptic
+     *  Firestore permission error. */
+    class NotSignedInException :
+        IllegalStateException("Sign in required to load your dashboard.")
 
     // ── Convenience collection refs ──
     private val usageCollection: CollectionReference

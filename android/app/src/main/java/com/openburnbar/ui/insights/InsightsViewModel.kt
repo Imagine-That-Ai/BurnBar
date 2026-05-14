@@ -10,6 +10,7 @@ import com.openburnbar.data.insights.InsightEgressTier
 import com.openburnbar.data.insights.InsightFilter
 import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightTheme
+import com.openburnbar.data.insights.services.AndroidHermesInsightAnalysisGateway
 import com.openburnbar.data.insights.services.AndroidInsightCredentialStore
 import com.openburnbar.data.insights.services.AndroidInsightAnalysisEngine
 import com.openburnbar.data.insights.services.AndroidInsightGatewayRegistry
@@ -19,8 +20,11 @@ import com.openburnbar.data.insights.services.InsightAnalysisEngine
 import com.openburnbar.data.insights.services.InsightDataSource
 import com.openburnbar.data.insights.services.RuleBasedInsightAnalysisEngine
 import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
+import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import com.openburnbar.data.repos.InsightAnalysisAuditLogRepository
 import com.openburnbar.data.repos.InsightAnalysisCacheRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -28,14 +32,25 @@ import kotlinx.coroutines.launch
 class InsightsViewModel(
     application: Application,
     private val dataSource: InsightDataSource = FirestoreInsightDataSource(),
+    /**
+     * Optional pre-built Hermes Insights gateway. The shell wires this
+     * when the user's Hermes relay is reachable so follow-up taps
+     * stream through Hermes; the default `null` keeps every existing
+     * test + screen factory working unchanged. The secondary
+     * constructor below preserves the no-arg shape `viewModel()` uses.
+     */
+    private val hermesGateway: AndroidHermesInsightAnalysisGateway? = null,
 ) : AndroidViewModel(application) {
 
-    constructor(application: Application) : this(application, FirestoreInsightDataSource())
+    constructor(application: Application) : this(application, FirestoreInsightDataSource(), null)
 
     private val auditLog = InsightAnalysisAuditLogRepository(application)
     private val cache = InsightAnalysisCacheRepository(application)
     private val credentialStore = AndroidInsightCredentialStore(application)
-    private val gateways = AndroidInsightGatewayRegistry.defaultGateways(credentialStore).associateBy { it.providerKey }
+    private val gateways = AndroidInsightGatewayRegistry.defaultGateways(
+        credentialStore,
+        hermesProvider = { hermesGateway }
+    ).associateBy { it.providerKey }
     private val preferences = application.getSharedPreferences("insights_model_preferences", Application.MODE_PRIVATE)
     private val missionDispatcher = CLIAgentMissionDispatcher()
 
@@ -57,11 +72,13 @@ class InsightsViewModel(
     sealed interface MissionStatus {
         data object Idle : MissionStatus
         data class Dispatched(val title: String, val runtime: String) : MissionStatus
+        data class Tracking(val mission: CLIAgentMissionSnapshot) : MissionStatus
         data class Failed(val title: String, val message: String) : MissionStatus
     }
 
     private val _missionStatus = MutableStateFlow<MissionStatus>(MissionStatus.Idle)
     val missionStatus = _missionStatus.asStateFlow()
+    private var missionObservationJob: Job? = null
 
     private val localRulesModel = InsightModelTag(
         providerKey = "local-rules",
@@ -166,11 +183,12 @@ class InsightsViewModel(
         if (trimmedPrompt.isEmpty()) return
         viewModelScope.launch {
             try {
-                missionDispatcher.dispatch(trimmedTitle, trimmedPrompt, missionKind, requestedRuntime)
+                val requestID = missionDispatcher.dispatch(trimmedTitle, trimmedPrompt, missionKind, requestedRuntime)
                 _missionStatus.value = MissionStatus.Dispatched(
                     trimmedTitle,
                     if (requestedRuntime == "auto") "Mac agent fleet" else requestedRuntime,
                 )
+                observeMission(requestID, trimmedTitle)
             } catch (e: Exception) {
                 _missionStatus.value = MissionStatus.Failed(trimmedTitle, e.message ?: "Mission dispatch failed.")
             }
@@ -178,6 +196,8 @@ class InsightsViewModel(
     }
 
     fun dismissMissionStatus() {
+        missionObservationJob?.cancel()
+        missionObservationJob = null
         _missionStatus.value = MissionStatus.Idle
     }
 
@@ -266,5 +286,32 @@ class InsightsViewModel(
             "debt" in lowered || "modernization" in lowered || "architecture" in lowered -> "debt"
             else -> "creative"
         }
+    }
+
+    private fun observeMission(requestID: String, fallbackTitle: String) {
+        missionObservationJob?.cancel()
+        missionObservationJob = viewModelScope.launch {
+            missionDispatcher.observe(requestID)
+                .catch { e ->
+                    _missionStatus.value = MissionStatus.Failed(
+                        fallbackTitle,
+                        e.message ?: "Mission status listener failed."
+                    )
+                    missionObservationJob = null
+                }
+                .collect { snapshot ->
+                    _missionStatus.value = MissionStatus.Tracking(snapshot)
+                    if (snapshot.isTerminal) {
+                        missionObservationJob?.cancel()
+                        missionObservationJob = null
+                    }
+                }
+        }
+    }
+
+    override fun onCleared() {
+        missionObservationJob?.cancel()
+        missionObservationJob = null
+        super.onCleared()
     }
 }

@@ -33,5 +33,7 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>OpenBurnBar uses the camera only when you choose Take Photo to attach an image to a Hermes chat.</string>
 </dict>
 </plist>

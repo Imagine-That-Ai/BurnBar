@@ -180,9 +180,18 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       requestedRuntime: "auto",
       source: "ios-insights",
       status: "pending",
+      liveSummary: "Mission queued from this device.",
+      events: [
+        {
+          timestamp: "2026-05-13T00:00:00.000Z",
+          phase: "queued",
+          message: "Mission queued from this device.",
+          source: "ios",
+        },
+      ],
       createdAt: "2026-05-13T00:00:00.000Z",
       updatedAt: serverTimestamp(),
-      schemaVersion: 1,
+      schemaVersion: 2,
     })
   );
 
@@ -195,6 +204,16 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
         selectedRuntime: "codex",
         selectedRuntimeName: "Codex",
         sessionId: "thread-1",
+        liveSummary: "Codex returned a result.",
+        events: [
+          {
+            timestamp: "2026-05-13T00:00:05.000Z",
+            phase: "completed",
+            message: "Prioritized debt mission with validation commands.",
+            runtime: "codex",
+            source: "mac",
+          },
+        ],
         resultPreview: "Prioritized debt mission with validation commands.",
         completedAt: "2026-05-13T00:00:05.000Z",
         updatedAt: serverTimestamp(),

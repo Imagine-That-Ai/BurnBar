@@ -315,6 +315,25 @@ final class InsightsMacEnvironment {
                     return nil
                 }
                 return URL(string: raw)
+            },
+            hermesProvider: {
+                // macOS owns its Hermes runtime via the daemon — always
+                // register the local relay as an Insights gateway so the
+                // user's follow-up taps stream through Hermes by default,
+                // no API keys required. `HERMES_BASE_URL` lets advanced
+                // users redirect to a different relay (e.g. a remote
+                // session shared from another machine).
+                let envURL = environment["HERMES_BASE_URL"]
+                    .flatMap { URL(string: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                let baseURL = envURL ?? URL(string: "http://127.0.0.1:8642")!
+                let transport = HermesInsightHTTPTransport(
+                    baseURL: baseURL,
+                    advertisedModels: HermesInsightAdapter.defaultModels
+                )
+                return HermesInsightAdapter(
+                    transport: transport,
+                    availableModels: HermesInsightAdapter.defaultModels
+                )
             }
         )
     }

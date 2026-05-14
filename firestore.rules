@@ -600,6 +600,8 @@ service cloud.firestore {
           "selectedRuntime",
           "selectedRuntimeName",
           "sessionId",
+          "liveSummary",
+          "events",
           "resultPreview",
           "errorMessage",
           "schemaVersion"
@@ -619,6 +621,8 @@ service cloud.firestore {
         && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime in ["codex", "claude", "hermes", "openclaw", "piAgent"])
         && (!("selectedRuntimeName" in request.resource.data) || (request.resource.data.selectedRuntimeName is string && request.resource.data.selectedRuntimeName.size() <= 80))
         && (!("sessionId" in request.resource.data) || (request.resource.data.sessionId is string && request.resource.data.sessionId.size() <= 512))
+        && (!("liveSummary" in request.resource.data) || (request.resource.data.liveSummary is string && request.resource.data.liveSummary.size() <= 2048))
+        && (!("events" in request.resource.data) || (request.resource.data.events is list && request.resource.data.events.size() <= 300))
         && (!("resultPreview" in request.resource.data) || (request.resource.data.resultPreview is string && request.resource.data.resultPreview.size() <= 2048))
         && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 2048));
       allow delete: if ownsUserNamespace(userId);

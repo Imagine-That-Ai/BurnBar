@@ -170,19 +170,10 @@ private fun AgentRow(provider: AgentProvider, onTap: () -> Unit) {
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(Color(provider.brandColor)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                provider.displayName.first().toString(),
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = Color.White
-            )
-        }
+        com.openburnbar.ui.components.ProviderLogo(
+            provider = provider,
+            size = 36.dp,
+        )
         Spacer(modifier = Modifier.size(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(

@@ -237,7 +237,11 @@ public struct IntelligenceBriefView: View {
             }
 
             if let answer = result.briefingAnswer {
-                BriefingAnswerPanel(answer: answer, onCitationTap: onCitationTap)
+                BriefingAnswerPanel(
+                    answer: answer,
+                    onCitationTap: onCitationTap,
+                    onConfigureModel: onConfigureModel
+                )
             }
 
             metaStrip
@@ -370,7 +374,10 @@ public struct IntelligenceBriefView: View {
     private func heroEyebrowText(for answer: InsightBriefingAnswer) -> String {
         switch answer.source {
         case .modelGateway: return "Answered by \(answer.modelDisplayName)"
-        case .localRules:   return "Answered by \(answer.modelDisplayName) · on device"
+        case .localRules:
+            // Don't claim to "answer" when there's no LLM behind it —
+            // the local rule engine only summarizes the digest.
+            return "Data summary · \(answer.modelDisplayName)"
         }
     }
 
@@ -658,6 +665,21 @@ private extension View {
 private struct BriefingAnswerPanel: View {
     let answer: InsightBriefingAnswer
     let onCitationTap: (InsightCitation) -> Void
+    /// Optional "Connect a model" call-to-action callback. Wired by the
+    /// hero so users who have no LLM configured can jump straight into
+    /// the model picker instead of being stuck reading the local-rules
+    /// summary. Rendered only when the answer is explicitly framed as
+    /// "no LLM configured" so connected users never see the prompt.
+    let onConfigureModel: (() -> Void)?
+
+    /// True when this answer card is the honest "Data summary · no LLM
+    /// configured" surface — the user can only escape it by attaching a
+    /// gateway, so we surface the CTA right under the body.
+    private var showsConnectModelCTA: Bool {
+        guard onConfigureModel != nil else { return false }
+        return answer.source == .localRules
+            && answer.modelDisplayName.localizedCaseInsensitiveContains("no LLM configured")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
@@ -666,6 +688,12 @@ private struct BriefingAnswerPanel: View {
                 .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
+                // Smooths the per-chunk text growth when a streaming
+                // gateway (Hermes) is appending tokens incrementally —
+                // each `.delta` chunk mutates `answer.answer`, and this
+                // modifier keeps the layout from popping mid-stream.
+                // Matches the Android `animateContentSize()` curve.
+                .animation(.easeOut(duration: 0.08), value: answer.answer)
 
             if !answer.bullets.isEmpty {
                 FlowLayout(spacing: UnifiedDesignSystem.Spacing.xs) {
@@ -686,6 +714,30 @@ private struct BriefingAnswerPanel: View {
 
             if !answer.citations.isEmpty {
                 FootnoteChipFlow(citations: answer.citations, onTap: onCitationTap)
+            }
+
+            if showsConnectModelCTA, let onConfigureModel {
+                Button(action: onConfigureModel) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Connect a model")
+                            .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
+                    }
+                    .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule().fill(UnifiedDesignSystem.Colors.ember.opacity(0.16))
+                    )
+                    .overlay(
+                        Capsule().strokeBorder(UnifiedDesignSystem.Colors.ember.opacity(0.55), lineWidth: 0.75)
+                    )
+                    .foregroundStyle(UnifiedDesignSystem.Colors.ember)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Connect a model")
+                .accessibilityHint("Opens the Insights model picker so a connected gateway can author the reply.")
+                .padding(.top, 2)
             }
         }
         .padding(UnifiedDesignSystem.Spacing.md)

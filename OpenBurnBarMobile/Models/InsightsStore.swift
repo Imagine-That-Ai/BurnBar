@@ -35,8 +35,10 @@ final class InsightsStore {
     enum MissionStatus: Equatable, Sendable {
         case idle
         case dispatched(title: String, runtime: String)
+        case tracking(CLIAgentMissionSnapshot)
         case failed(title: String, message: String)
     }
+    private var missionObservation: CLIAgentMissionObservation?
     var modelCatalog: [InsightCatalogModel] = []
     var selectedModelTag: InsightModelTag {
         didSet { persistModelPreference() }
@@ -272,6 +274,7 @@ final class InsightsStore {
                 )
                 let runtimeLabel = requestedRuntime == "auto" ? "Mac agent fleet" : requestedRuntime
                 missionStatus = .dispatched(title: title, runtime: runtimeLabel)
+                observeMission(requestID: requestID, fallbackTitle: title)
                 Self.log.info("mission dispatch: requestID=\(requestID, privacy: .public) title=\"\(title, privacy: .public)\" missionKind=\(missionKind, privacy: .public) runtime=\(runtimeLabel, privacy: .public)")
             } catch {
                 missionStatus = .failed(title: title, message: error.localizedDescription)
@@ -280,7 +283,32 @@ final class InsightsStore {
     }
 
     func dismissMissionStatus() {
+        missionObservation?.cancel()
+        missionObservation = nil
         missionStatus = .idle
+    }
+
+    private func observeMission(requestID: String, fallbackTitle: String) {
+        missionObservation?.cancel()
+        do {
+            missionObservation = try CLIAgentMissionDispatcher.shared.observe(
+                requestID: requestID,
+                onUpdate: { [weak self] snapshot in
+                    self?.missionStatus = .tracking(snapshot)
+                    if snapshot.isTerminal {
+                        self?.missionObservation?.cancel()
+                        self?.missionObservation = nil
+                    }
+                },
+                onError: { [weak self] message in
+                    self?.missionStatus = .failed(title: fallbackTitle, message: message)
+                    self?.missionObservation?.cancel()
+                    self?.missionObservation = nil
+                }
+            )
+        } catch {
+            missionStatus = .failed(title: fallbackTitle, message: error.localizedDescription)
+        }
     }
 
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "InsightsStore")

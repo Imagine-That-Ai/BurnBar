@@ -27,10 +27,23 @@ struct InsightsRootView: View {
                 let dataSource = MobileInsightDataSource(dashboardStore: dashboardStore)
                 if let s = try? InsightsStore(dataSource: dataSource) {
                     store = s
+                    // Register the user's Hermes relay as an Insights
+                    // gateway as soon as the store is built, so the
+                    // first follow-up tap can already stream through
+                    // Hermes (instead of falling to local rules until
+                    // the next reachability flip).
+                    await s.attachHermesIfReachable(via: hermesService)
                 }
             } else {
                 await store?.refreshSelectedCanvas()
             }
+        }
+        // Keep the Hermes catalog entry in sync with the relay's
+        // reachability — when the user reconnects (or switches relays)
+        // re-register so Insights routes through the new connection.
+        .onChange(of: hermesService.isReachable) {
+            guard let store else { return }
+            Task { await store.attachHermesIfReachable(via: hermesService) }
         }
     }
 }
@@ -42,6 +55,7 @@ private struct AdaptiveInsightsLayout: View {
     @State private var showCanvasList: Bool = false
     @State private var showInspector: Bool = false
     @State private var showTemplateGallery: Bool = false
+    @State private var showMissionDetail: Bool = false
     private static let iPhoneNavigationTrayClearance: CGFloat = 96
 
     var body: some View {
@@ -76,6 +90,9 @@ private struct AdaptiveInsightsLayout: View {
         .sheet(isPresented: $showTemplateGallery) {
             InsightsMobileTemplateGallery(store: store, isPresented: $showTemplateGallery)
         }
+        .sheet(isPresented: $showMissionDetail) {
+            missionDetailSheet
+        }
     }
 
     // MARK: - iPhone layout
@@ -103,6 +120,9 @@ private struct AdaptiveInsightsLayout: View {
         }
         .sheet(isPresented: $showTemplateGallery) {
             InsightsMobileTemplateGallery(store: store, isPresented: $showTemplateGallery)
+        }
+        .sheet(isPresented: $showMissionDetail) {
+            missionDetailSheet
         }
     }
 
@@ -200,22 +220,64 @@ private struct AdaptiveInsightsLayout: View {
                 icon: "paperplane.circle.fill",
                 tone: UnifiedDesignSystem.Colors.success,
                 title: "Mission dispatched to \(runtime)",
-                detail: "\(title). Open the matching assistant tile to watch the Mac-run transcript sync back."
+                detail: "\(title). Waiting for the Mac agent listener to claim it.",
+                feedLines: []
             )
+            .onTapGesture { showMissionDetail = true }
+        case .tracking(let mission):
+            let isFailed = mission.status == "failed"
+            let isComplete = mission.status == "completed"
+            missionBanner(
+                icon: isFailed ? "exclamationmark.triangle.fill" : (isComplete ? "checkmark.circle.fill" : "dot.radiowaves.left.and.right"),
+                tone: isFailed ? UnifiedDesignSystem.Colors.warning : (isComplete ? UnifiedDesignSystem.Colors.success : UnifiedDesignSystem.Colors.whimsy),
+                title: missionBannerTitle(for: mission),
+                detail: missionBannerDetail(for: mission),
+                feedLines: mission.events.suffix(4).map { event in
+                    "\(event.phase): \(event.message)"
+                }
+            )
+            .onTapGesture { showMissionDetail = true }
         case .failed(let title, let message):
             missionBanner(
                 icon: "exclamationmark.triangle.fill",
                 tone: UnifiedDesignSystem.Colors.warning,
                 title: "Mission was not dispatched",
-                detail: "\(title): \(message)"
+                detail: "\(title): \(message)",
+                feedLines: []
             )
         }
     }
 
-    private func missionBanner(icon: String, tone: Color, title: String, detail: String) -> some View {
-        HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+    private func missionBannerTitle(for mission: CLIAgentMissionSnapshot) -> String {
+        switch mission.status {
+        case "pending":
+            return "Mission queued for \(mission.runtimeLabel)"
+        case "running":
+            return "Mission running on \(mission.runtimeLabel)"
+        case "completed":
+            return "Mission completed on \(mission.runtimeLabel)"
+        case "failed":
+            return "Mission failed on \(mission.runtimeLabel)"
+        default:
+            return "Mission \(mission.status) on \(mission.runtimeLabel)"
+        }
+    }
+
+    private func missionBannerDetail(for mission: CLIAgentMissionSnapshot) -> String {
+        if mission.status == "failed", let error = mission.errorMessage?.nilIfEmpty {
+            return error
+        }
+        if mission.status == "completed", let result = mission.resultPreview?.nilIfEmpty {
+            return result
+        }
+        return mission.liveSummary?.nilIfEmpty ?? mission.title
+    }
+
+    private func missionBanner(icon: String, tone: Color, title: String, detail: String, feedLines: [String]) -> some View {
+        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.sm) {
             Image(systemName: icon)
                 .foregroundStyle(tone)
+                .padding(.top, 2)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
@@ -224,6 +286,17 @@ private struct AdaptiveInsightsLayout: View {
                     .font(UnifiedDesignSystem.Typography.tiny)
                     .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     .lineLimit(3)
+                if !feedLines.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(feedLines, id: \.self) { line in
+                            Text(line)
+                                .font(UnifiedDesignSystem.Typography.monoTiny)
+                                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                                .lineLimit(2)
+                        }
+                    }
+                    .padding(.top, 4)
+                }
             }
             Spacer(minLength: 0)
             Button("Dismiss") { store.dismissMissionStatus() }
@@ -233,6 +306,210 @@ private struct AdaptiveInsightsLayout: View {
         .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
         .padding(.vertical, UnifiedDesignSystem.Spacing.sm)
         .background(.thinMaterial)
+    }
+
+    @ViewBuilder
+    private var missionDetailSheet: some View {
+        switch store.missionStatus {
+        case .tracking(let mission):
+            MissionLiveDetailView(mission: mission)
+                .presentationDetents([.medium, .large])
+        case .dispatched(let title, let runtime):
+            MissionQueuedDetailView(
+                title: title,
+                runtime: runtime,
+                detail: "Waiting for the signed-in Mac agent listener to claim this mission."
+            )
+            .presentationDetents([.medium])
+        case .failed(let title, let message):
+            MissionQueuedDetailView(title: title, runtime: "Mac agent fleet", detail: message)
+                .presentationDetents([.medium])
+        case .idle:
+            EmptyView()
+        }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private struct MissionLiveDetailView: View {
+    let mission: CLIAgentMissionSnapshot
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
+                    VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
+                        Text(mission.title)
+                            .font(UnifiedDesignSystem.Typography.title)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                        Text(mission.liveSummary?.nilIfEmpty ?? mission.status.capitalized)
+                            .font(UnifiedDesignSystem.Typography.caption)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                    }
+
+                    HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                        MissionDetailChip(label: mission.status.uppercased(), systemImage: mission.isTerminal ? "checkmark.circle" : "dot.radiowaves.left.and.right")
+                        MissionDetailChip(label: mission.runtimeLabel, systemImage: "desktopcomputer")
+                    }
+
+                    if let sessionID = mission.sessionID?.nilIfEmpty {
+                        MissionDetailSection(title: "Session") {
+                            Text(sessionID)
+                                .font(UnifiedDesignSystem.Typography.monoTiny)
+                                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                                .textSelection(.enabled)
+                        }
+                    }
+
+                    MissionDetailSection(title: "Live Timeline") {
+                        if mission.events.isEmpty {
+                            Text("Waiting for the Mac agent to report progress.")
+                                .font(UnifiedDesignSystem.Typography.caption)
+                                .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                        } else {
+                            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+                                ForEach(mission.events) { event in
+                                    MissionTimelineRow(event: event)
+                                }
+                            }
+                        }
+                    }
+
+                    if let result = mission.resultPreview?.nilIfEmpty {
+                        MissionDetailSection(title: "Result") {
+                            Text(result)
+                                .font(UnifiedDesignSystem.Typography.caption)
+                                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                                .textSelection(.enabled)
+                        }
+                    }
+
+                    if let error = mission.errorMessage?.nilIfEmpty {
+                        MissionDetailSection(title: "Failure") {
+                            Text(error)
+                                .font(UnifiedDesignSystem.Typography.caption)
+                                .foregroundStyle(UnifiedDesignSystem.Colors.warning)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+                .padding(UnifiedDesignSystem.Spacing.lg)
+            }
+            .background(UnifiedDesignSystem.Colors.background)
+            .navigationTitle("Mission Live")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+private struct MissionQueuedDetailView: View {
+    let title: String
+    let runtime: String
+    let detail: String
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
+                Text(title)
+                    .font(UnifiedDesignSystem.Typography.title)
+                MissionDetailChip(label: runtime, systemImage: "desktopcomputer")
+                Text(detail)
+                    .font(UnifiedDesignSystem.Typography.caption)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                Spacer()
+            }
+            .padding(UnifiedDesignSystem.Spacing.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(UnifiedDesignSystem.Colors.background)
+            .navigationTitle("Mission Live")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+private struct MissionDetailChip: View {
+    let label: String
+    let systemImage: String
+
+    var body: some View {
+        Label(label, systemImage: systemImage)
+            .font(UnifiedDesignSystem.Typography.tiny.weight(.semibold))
+            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+            .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
+            .padding(.vertical, 6)
+            .background(UnifiedDesignSystem.Colors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm))
+    }
+}
+
+private struct MissionDetailSection<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+            Text(title)
+                .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+            content
+        }
+    }
+}
+
+private struct MissionTimelineRow: View {
+    let event: CLIAgentMissionEvent
+
+    var body: some View {
+        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.sm) {
+            Image(systemName: iconName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(iconColor)
+                .frame(width: 18, height: 18)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
+                    Text(event.phase.replacingOccurrences(of: "_", with: " ").uppercased())
+                        .font(UnifiedDesignSystem.Typography.monoTiny.weight(.semibold))
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                    if let runtime = event.runtime?.nilIfEmpty {
+                        Text(runtime)
+                            .font(UnifiedDesignSystem.Typography.monoTiny)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                    }
+                }
+                Text(event.message)
+                    .font(UnifiedDesignSystem.Typography.caption)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                    .textSelection(.enabled)
+                Text(event.timestamp)
+                    .font(UnifiedDesignSystem.Typography.monoTiny)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+            }
+        }
+    }
+
+    private var iconName: String {
+        switch event.phase {
+        case "tool_use": return "hammer"
+        case "assistant_response": return "text.bubble"
+        case "completed": return "checkmark.circle.fill"
+        case "failed": return "exclamationmark.triangle.fill"
+        default: return "circle.dotted"
+        }
+    }
+
+    private var iconColor: Color {
+        switch event.phase {
+        case "completed": return UnifiedDesignSystem.Colors.success
+        case "failed": return UnifiedDesignSystem.Colors.warning
+        case "tool_use": return UnifiedDesignSystem.Colors.ember
+        default: return UnifiedDesignSystem.Colors.whimsy
+        }
     }
 }
 
@@ -559,7 +836,7 @@ private struct InsightsComposerStatusBanner: View {
                 .controlSize(.small)
                 .tint(UnifiedDesignSystem.Colors.ember)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Asking via \(model)")
+                Text(Self.runningTitle(model: model))
                     .font(UnifiedDesignSystem.Typography.caption)
                     .fontWeight(.semibold)
                     .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
@@ -581,14 +858,28 @@ private struct InsightsComposerStatusBanner: View {
                 .strokeBorder(UnifiedDesignSystem.Colors.ember.opacity(0.45), lineWidth: 0.75)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Asking \(model): \(prompt)")
+        .accessibilityLabel("\(Self.runningTitle(model: model)): \(prompt)")
+    }
+
+    /// Honest pill text: local rules summarize, LLMs answer. Avoids the
+    /// misleading "Asking via Local rules" framing where no LLM is involved.
+    private static func runningTitle(model: String) -> String {
+        isLocalRulesModel(model) ? "Summarizing data · no LLM configured" : "Asking via \(model)"
+    }
+
+    private static func succeededTitle(model: String) -> String {
+        isLocalRulesModel(model) ? "Data summary ready" : "Answered by \(model)"
+    }
+
+    private static func isLocalRulesModel(_ display: String) -> Bool {
+        display.localizedCaseInsensitiveContains("Local rules")
     }
 
     private func succeededPill(prompt: String, model: String) -> some View {
         HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(UnifiedDesignSystem.Colors.success)
-            Text("Answered by \(model)")
+            Text(Self.succeededTitle(model: model))
                 .font(UnifiedDesignSystem.Typography.caption)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
             Spacer(minLength: 0)
@@ -611,7 +902,7 @@ private struct InsightsComposerStatusBanner: View {
                 .strokeBorder(UnifiedDesignSystem.Colors.success.opacity(0.45), lineWidth: 0.75)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Answered by \(model). \(prompt)")
+        .accessibilityLabel("\(Self.succeededTitle(model: model)). \(prompt)")
     }
 
     private func failedPill(prompt: String, model: String, message: String) -> some View {

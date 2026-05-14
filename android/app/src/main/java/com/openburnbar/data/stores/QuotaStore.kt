@@ -9,6 +9,7 @@ import com.openburnbar.data.models.ProviderQuotaSnapshot
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -61,9 +62,12 @@ class QuotaStore(
     fun startListening() {
         listenJob?.cancel()
         listenJob = viewModelScope.launch {
-            repo.listenToQuotaSnapshots().collect { snapshots ->
-                _snapshots.value = snapshots.dedupeFresh()
-            }
+            // See ActivityStore.startListening for the rationale —
+            // Firestore listener errors must NEVER reach
+            // Dispatchers.Main.immediate as unhandled exceptions.
+            repo.listenToQuotaSnapshots()
+                .catch { e -> _error.value = e.message ?: e::class.simpleName }
+                .collect { snapshots -> _snapshots.value = snapshots.dedupeFresh() }
         }
     }
 

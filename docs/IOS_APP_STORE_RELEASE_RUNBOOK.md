@@ -185,6 +185,17 @@ set +a
 npm --prefix tools/app-store-connect run fix-review-rejection
 ```
 
+For Guideline 3.1.2(c), the in-app purchase flow must visibly show all five
+Apple-required subscription fields before purchase: subscription title, length,
+price, services provided during each period, and functional Privacy Policy /
+Terms of Use links. The current purchase screen uses the
+`cloudStore.subscriptionDisclosure` block for this; do not remove it without a
+replacement that keeps those fields grouped together.
+
+For any camera attachment changes, keep `NSCameraUsageDescription` in
+`OpenBurnBarMobile/Info.plist` and `project.yml`. iOS terminates the app before
+Swift can recover if the Take Photo flow reaches camera APIs without that key.
+
 The corresponding in-app account deletion path is
 **You -> Settings -> Account -> Delete account**. Record a physical-device
 screen capture of sign-in, navigation to that row, the destructive confirmation,

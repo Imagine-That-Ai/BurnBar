@@ -1,5 +1,7 @@
 package com.openburnbar.data.insights
 
+import com.openburnbar.data.assistants.CLIAgentMissionEvent
+import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import com.openburnbar.data.insights.services.InMemoryInsightDataSource
 import com.openburnbar.data.insights.services.InsightAggregator
 import com.openburnbar.data.insights.services.adapters.LocalRuleBasedAdapter
@@ -301,5 +303,42 @@ class InsightsDataLayerTest {
         assertEquals("Remote result without missions.", enriched.executiveSummary)
         assertTrue(enriched.missionCandidates.isNotEmpty())
         assertNotEquals("remote-result", enriched.resultHash)
+    }
+
+    @Test
+    fun `CLI agent mission snapshot exposes runtime label terminal state and feed`() {
+        val snapshot = CLIAgentMissionSnapshot(
+            id = "mission-1",
+            title = "Run debt mission",
+            status = "completed",
+            requestedRuntime = "auto",
+            selectedRuntime = "codex",
+            selectedRuntimeName = "Codex",
+            liveSummary = "Codex is summarizing the result.",
+            resultPreview = "Found three high-leverage refactors.",
+            errorMessage = null,
+            sessionID = "thread-123",
+            events = listOf(
+                CLIAgentMissionEvent(
+                    timestamp = "2026-05-14T10:00:00Z",
+                    phase = "queued",
+                    message = "Mission queued from this device.",
+                    runtime = null,
+                    source = "android"
+                ),
+                CLIAgentMissionEvent(
+                    timestamp = "2026-05-14T10:00:10Z",
+                    phase = "completed",
+                    message = "Found three high-leverage refactors.",
+                    runtime = "codex",
+                    source = "mac"
+                )
+            )
+        )
+
+        assertEquals("Codex", snapshot.runtimeLabel)
+        assertEquals(listOf("queued", "completed"), snapshot.events.map { it.phase })
+        assertEquals("Found three high-leverage refactors.", snapshot.resultPreview)
+        assertTrue(snapshot.isTerminal)
     }
 }
