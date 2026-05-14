@@ -44,7 +44,8 @@ struct SettingsSearchResultsView: View {
                             iconTint: item.tab.accentColor,
                             title: item.title,
                             subtitle: item.subtitle,
-                            value: breadcrumb(for: item)
+                            value: breadcrumb(for: item),
+                            logoProviders: item.logoProviders
                         )
                     }
                     .buttonStyle(.plain)

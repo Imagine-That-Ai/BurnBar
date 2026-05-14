@@ -34,6 +34,12 @@ object SettingsManifest {
             title = "Provider connections",
             subtitle = "Find OpenCode, Codex, Claude, and other quota providers",
             keywords = listOf("providers", "opencode", "open code", "opencode go", "codex", "claude", "quota", "connections"),
+            logoProviderKeys = listOf(
+                AgentProvider.CLAUDE_CODE.key,
+                AgentProvider.OPENCODE.key,
+                AgentProvider.FACTORY.key,
+                AgentProvider.OPEN_AI.key,
+            ),
         ),
 
         // Connected devices
@@ -60,7 +66,7 @@ object SettingsManifest {
         SettingsItem(
             id = "smartDisplays.google",
             section = SettingsSection.SMART_DISPLAYS,
-            pageRoute = SettingsPageRoute.SMART_DISPLAYS,
+            pageRoute = SettingsPageRoute.ROOT,
             anchorId = SettingsAnchor.GOOGLE_SMART_DISPLAY,
             title = "Google Smart Display",
             subtitle = "Nest Hub and Pixel Tablet glance",
@@ -69,7 +75,7 @@ object SettingsManifest {
         SettingsItem(
             id = "smartDisplays.pixelClock",
             section = SettingsSection.SMART_DISPLAYS,
-            pageRoute = SettingsPageRoute.SMART_DISPLAYS,
+            pageRoute = SettingsPageRoute.ROOT,
             anchorId = SettingsAnchor.PIXEL_CLOCK,
             title = "Pixel Clock",
             subtitle = "Pixel Clock cost glance",
@@ -89,7 +95,7 @@ object SettingsManifest {
         SettingsItem(
             id = "menuBarPrefs.persistent",
             section = SettingsSection.NOTIFICATIONS,
-            pageRoute = SettingsPageRoute.MENU_BAR_PREFS,
+            pageRoute = SettingsPageRoute.ROOT,
             anchorId = SettingsAnchor.PERSISTENT_NOTIFICATION,
             title = "Show quick-glance notification",
             subtitle = "Live cost glance in the notification shade",
@@ -107,6 +113,12 @@ object SettingsManifest {
             title = "Hermes Connections",
             subtitle = "Connected Hermes endpoints and tokens",
             keywords = listOf("hermes", "connection", "endpoint"),
+            logoProviderKeys = listOf(
+                AgentProvider.HERMES.key,
+                AgentProvider.CLAUDE_CODE.key,
+                AgentProvider.CODEX.key,
+                AgentProvider.OPEN_CLAW.key,
+            ),
         ),
         SettingsItem(
             id = "hermes.models",
@@ -116,6 +128,12 @@ object SettingsManifest {
             title = "Hermes Models",
             subtitle = "Default models exposed by Hermes",
             keywords = listOf("model", "llm", "hermes"),
+            logoProviderKeys = listOf(
+                AgentProvider.HERMES.key,
+                AgentProvider.CLAUDE_CODE.key,
+                AgentProvider.OPEN_AI.key,
+                AgentProvider.GEMINI_CLI.key,
+            ),
         ),
         SettingsItem(
             id = "hermes.display",
@@ -125,6 +143,7 @@ object SettingsManifest {
             title = "Hermes Display",
             subtitle = "TPS overlay and pretext",
             keywords = listOf("tps", "pretext", "overlay", "display"),
+            logoProviderKeys = listOf(AgentProvider.HERMES.key),
         ),
         SettingsItem(
             id = "hermes.gateway",
@@ -135,6 +154,7 @@ object SettingsManifest {
             title = "Hermes Gateway",
             subtitle = "URL and token for the Hermes webapi gateway",
             keywords = listOf("gateway", "url", "token", "webapi"),
+            logoProviderKeys = listOf(AgentProvider.HERMES.key),
         ),
         SettingsItem(
             id = "hermes.status",
@@ -144,6 +164,7 @@ object SettingsManifest {
             title = "Hermes Status",
             subtitle = "Live Hermes connection state",
             keywords = listOf("status", "health", "live"),
+            logoProviderKeys = listOf(AgentProvider.HERMES.key),
         ),
     )
 
@@ -159,6 +180,7 @@ object SettingsManifest {
                     title = provider.displayName,
                     subtitle = "${provider.displayName} provider quota, usage, and connection signal",
                     keywords = providerKeywords(provider),
+                    logoProviderKeys = listOf(provider.key),
                 )
             }
 
@@ -167,6 +189,26 @@ object SettingsManifest {
     /** Reverse-index of anchorId -> owning page route. */
     val anchorIndex: Map<String, SettingsPageRoute> =
         all.associate { it.anchorId to it.pageRoute }
+
+    /**
+     * Anchors attached to visible Settings rows. Search tests compare this
+     * against [all] so indexed settings cannot drift away from scroll targets.
+     */
+    val visibleAnchorIds: Set<String> = setOf(
+        SettingsAnchor.CLOUD_SYNC,
+        SettingsAnchor.PROVIDERS_ROW,
+        SettingsAnchor.CONNECTED_DEVICES,
+        SettingsAnchor.SMART_DISPLAYS_ROW,
+        SettingsAnchor.GOOGLE_SMART_DISPLAY,
+        SettingsAnchor.PIXEL_CLOCK,
+        SettingsAnchor.QUICK_GLANCE_ROW,
+        SettingsAnchor.PERSISTENT_NOTIFICATION,
+        SettingsAnchor.HERMES_CONNECTIONS,
+        SettingsAnchor.HERMES_MODELS,
+        SettingsAnchor.HERMES_DISPLAY,
+        SettingsAnchor.HERMES_GATEWAY,
+        SettingsAnchor.HERMES_STATUS,
+    ) + providerItems.map { it.anchorId }
 
     private fun providerKeywords(provider: AgentProvider): List<String> {
         val keywords = mutableSetOf(

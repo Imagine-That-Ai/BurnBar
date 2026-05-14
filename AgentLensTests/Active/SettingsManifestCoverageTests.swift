@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBar
+import OpenBurnBarCore
 
 /// Guards the macOS Settings manifest against drift:
 /// - every item has a unique stable id
@@ -34,6 +35,15 @@ final class SettingsManifestCoverageTests: XCTestCase {
         }
     }
 
+    func test_everySearchItemHasVisibleScrollTarget() {
+        for item in SettingsManifest.all {
+            XCTAssertTrue(
+                SettingsManifest.visibleAnchorIDs.contains(item.anchorID),
+                "Search item \(item.id) indexes \(item.anchorID), but no Settings row/control is wired to that anchor"
+            )
+        }
+    }
+
     func test_focusIDsMatchKnownVocabulary() {
         let known: Set<String> = [
             SettingsFocus.gatewayHost,
@@ -55,6 +65,15 @@ final class SettingsManifestCoverageTests: XCTestCase {
         for tab in SettingsTab.allCases {
             XCTAssertTrue(tabs.contains(tab),
                           "SettingsTab.\(tab.rawValue) is not represented in the manifest")
+        }
+    }
+
+    func test_providerSearchItemsCarryTheirProviderLogo() {
+        for provider in AgentProvider.allCases {
+            let expectedID = provider == .openCode ? "providers.openCode" : "providers.\(provider.persistedToken)"
+            let item = SettingsManifest.all.first { $0.id == expectedID }
+            XCTAssertEqual(item?.logoProviders, [provider],
+                           "\(provider.displayName) search result should render its real provider logo")
         }
     }
 }

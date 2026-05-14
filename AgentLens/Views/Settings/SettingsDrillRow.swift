@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - iOS-Style Drill-Down Row
 
@@ -19,6 +20,7 @@ struct SettingsDrillRow: View {
     let valueTint: Color?
     let badge: String?
     let badgeTint: Color?
+    let logoProviders: [AgentProvider]
 
     init(
         icon: String,
@@ -28,7 +30,9 @@ struct SettingsDrillRow: View {
         value: String? = nil,
         valueTint: Color? = nil,
         badge: String? = nil,
-        badgeTint: Color? = nil
+        badgeTint: Color? = nil,
+        logoProvider: AgentProvider? = nil,
+        logoProviders: [AgentProvider] = []
     ) {
         self.icon = icon
         self.iconTint = iconTint
@@ -38,11 +42,16 @@ struct SettingsDrillRow: View {
         self.valueTint = valueTint
         self.badge = badge
         self.badgeTint = badgeTint
+        if let logoProvider {
+            self.logoProviders = [logoProvider]
+        } else {
+            self.logoProviders = logoProviders
+        }
     }
 
     var body: some View {
         HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
-            iconSquircle
+            leadingMark
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: DesignSystem.Spacing.xs) {
@@ -87,6 +96,19 @@ struct SettingsDrillRow: View {
         .accessibilityElement(children: .combine)
     }
 
+    @ViewBuilder
+    private var leadingMark: some View {
+        if logoProviders.isEmpty {
+            iconSquircle
+        } else if logoProviders.count == 1, let provider = logoProviders.first {
+            ProviderLogoView(provider: provider, size: 28, useFallbackColor: true)
+                .accessibilityHidden(true)
+        } else {
+            SettingsProviderLogoStack(providers: logoProviders, size: 24, maxVisible: 4)
+                .accessibilityHidden(true)
+        }
+    }
+
     private var iconSquircle: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -97,6 +119,40 @@ struct SettingsDrillRow: View {
                 .foregroundStyle(.white)
         }
         .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Provider Logo Stack
+
+struct SettingsProviderLogoStack: View {
+    let providers: [AgentProvider]
+    var size: CGFloat = 24
+    var maxVisible: Int = 4
+
+    private var visibleProviders: [AgentProvider] {
+        Array(providers.prefix(maxVisible))
+    }
+
+    var body: some View {
+        HStack(spacing: -size * 0.28) {
+            ForEach(visibleProviders) { provider in
+                ProviderLogoView(provider: provider, size: size, useFallbackColor: true)
+                    .background(
+                        RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
+                            .fill(DesignSystem.Colors.background)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
+                            .stroke(DesignSystem.Colors.border.opacity(0.72), lineWidth: 0.8)
+                    )
+            }
+        }
+        .frame(width: stackWidth, height: size, alignment: .leading)
+    }
+
+    private var stackWidth: CGFloat {
+        guard visibleProviders.count > 1 else { return size }
+        return size + CGFloat(visibleProviders.count - 1) * size * 0.72
     }
 }
 

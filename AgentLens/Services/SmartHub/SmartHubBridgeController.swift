@@ -552,11 +552,12 @@ final class SmartHubBridgeController {
                 routingState: quotaService.routingState(for: provider.providerID)
             )
             let tokenTotal = Self.bridgeTokenTotal(buckets: primary.displayableQuotaBuckets)
+            let footer = runCostTotals[provider]
+            let tokenTotalCurrency = Self.bridgeTokenTotalCurrency(totalCost: footer?.totalCost ?? 0)
             let statusPill = Self.bridgeStatusPill(snapshot: primary, now: now)
             let statusTone = Self.statusPillTone(snapshot: primary, now: now)
             let freshness = Self.bridgeFreshnessLabel(fetchedAt: primary.fetchedAt, now: now)
             let absoluteFetched = Self.bridgeAbsoluteTimestamp(primary.fetchedAt)
-            let footer = runCostTotals[provider]
             let runsLabel = Self.bridgeRunsLabel(footer?.sessionCount ?? 0)
             let costLabel = Self.bridgeCostLabel(footer?.totalCost ?? 0)
 
@@ -570,6 +571,7 @@ final class SmartHubBridgeController {
                 accentHex: Self.accentHex(for: provider),
                 logoSVG: Self.logoSVG(for: provider),
                 tokenTotal: tokenTotal,
+                tokenTotalCurrency: tokenTotalCurrency,
                 tokenTotalLabel: "TOKENS",
                 statusPill: statusPill,
                 statusTone: statusTone,
@@ -578,7 +580,70 @@ final class SmartHubBridgeController {
                 buckets: buckets,
                 accounts: accounts,
                 runsLabel: runsLabel,
-                costLabel: costLabel
+                costLabel: costLabel,
+                hasQuotaData: true,
+                burnRates: []
+            )
+        }
+    }
+
+    /// Providers with no quota snapshots but with usage history. These render
+    /// as burn-rate cards showing 5h and 7d token/cost/run totals instead of
+    /// quota bucket bars.
+    private func burnProviders(
+        period: SmartHubTimePeriod,
+        runCostTotals: [AgentProvider: ProviderRunCostTotals],
+        runCostTotals5h: [AgentProvider: ProviderRunCostTotals],
+        runCostTotals7d: [AgentProvider: ProviderRunCostTotals],
+        now: Date
+    ) -> [SmartHubBridgeSnapshot.Provider] {
+        guard let quotaService else { return [] }
+
+        let allTracked = Set(runCostTotals.keys)
+            .union(runCostTotals5h.keys)
+            .union(runCostTotals7d.keys)
+
+        return AgentProvider.allCases.compactMap { provider -> SmartHubBridgeSnapshot.Provider? in
+            // Skip providers that already have quota data.
+            let accountSnapshots = quotaService.snapshots(for: provider)
+            guard accountSnapshots.isEmpty else { return nil }
+
+            // Skip providers with no usage at all.
+            guard allTracked.contains(provider) else { return nil }
+
+            let footer = runCostTotals[provider]
+            let tokenTotal = Self.bridgeTokenTotal(from: footer)
+            let tokenTotalCurrency = Self.bridgeTokenTotalCurrency(totalCost: footer?.totalCost ?? 0)
+            let runsLabel = Self.bridgeRunsLabel(footer?.sessionCount ?? 0)
+            let costLabel = Self.bridgeCostLabel(footer?.totalCost ?? 0)
+
+            let burnRates: [SmartHubBridgeSnapshot.Provider.BurnRate] = [
+                Self.burnRate(for: provider, totals: runCostTotals5h, windowLabel: "5h"),
+                Self.burnRate(for: provider, totals: runCostTotals7d, windowLabel: "7d")
+            ].compactMap { $0 }
+
+            return SmartHubBridgeSnapshot.Provider(
+                name: provider.displayName,
+                percent: 0,
+                label: "",
+                tone: .mercury,
+                windowLabel: "",
+                slug: provider.persistedToken,
+                accentHex: Self.accentHex(for: provider),
+                logoSVG: Self.logoSVG(for: provider),
+                tokenTotal: tokenTotal,
+                tokenTotalCurrency: tokenTotalCurrency,
+                tokenTotalLabel: "TOKENS",
+                statusPill: "no quota",
+                statusTone: .mercury,
+                freshnessLabel: "",
+                fetchedAtLabel: "",
+                buckets: [],
+                accounts: [],
+                runsLabel: runsLabel,
+                costLabel: costLabel,
+                hasQuotaData: false,
+                burnRates: burnRates
             )
         }
     }
@@ -592,6 +657,32 @@ final class SmartHubBridgeController {
         let hours = period.spanHours
         let start = now.addingTimeInterval(-hours * 3600)
         return start...now
+    }
+
+    private static func bridgeTokenTotalCurrency(totalCost: Double) -> String {
+        guard totalCost > 0 else { return "" }
+        return formatValueAbbreviation(totalCost, unit: .currency)
+    }
+
+    private static func bridgeTokenTotal(from totals: ProviderRunCostTotals?) -> String {
+        guard let totals, totals.totalTokens > 0 else { return "" }
+        return formatValueAbbreviation(Double(totals.totalTokens), unit: .tokens)
+    }
+
+    private static func burnRate(
+        for provider: AgentProvider,
+        totals: [AgentProvider: ProviderRunCostTotals],
+        windowLabel: String
+    ) -> SmartHubBridgeSnapshot.Provider.BurnRate? {
+        guard let t = totals[provider], t.totalTokens > 0 || t.totalCost > 0 || t.sessionCount > 0 else {
+            return nil
+        }
+        return SmartHubBridgeSnapshot.Provider.BurnRate(
+            windowLabel: windowLabel,
+            tokens: t.totalTokens > 0 ? formatValueAbbreviation(Double(t.totalTokens), unit: .tokens) : "—",
+            cost: t.totalCost > 0 ? formatValueAbbreviation(t.totalCost, unit: .currency) : "—",
+            runs: t.sessionCount > 0 ? "\(t.sessionCount) runs" : "0 runs"
+        )
     }
 
     private static func bridgeBuckets(

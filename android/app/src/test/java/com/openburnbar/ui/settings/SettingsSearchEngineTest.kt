@@ -161,6 +161,16 @@ class SettingsSearchEngineTest {
     }
 
     @Test
+    fun manifestEverySearchItemHasVisibleScrollTarget() {
+        for (item in SettingsManifest.all) {
+            assertTrue(
+                "Search item ${item.id} indexes ${item.anchorId}, but no Settings row/control is wired to that anchor",
+                SettingsManifest.visibleAnchorIds.contains(item.anchorId)
+            )
+        }
+    }
+
+    @Test
     fun manifestFindsOpenCodeProviderEntry() {
         val ids = SettingsSearchEngine.search("opencode", SettingsManifest.all).map { it.id }
         assertEquals("root.provider.opencode", ids.first())
@@ -177,6 +187,7 @@ class SettingsSearchEngineTest {
             assertTrue("Missing settings search entry for ${provider.displayName}", item != null)
             assertEquals(SettingsPageRoute.ROOT, item?.pageRoute)
             assertEquals(SettingsPageRoute.ROOT, SettingsManifest.anchorIndex[item?.anchorId])
+            assertEquals(listOf(provider.key), item?.logoProviderKeys)
 
             val result = SettingsSearchEngine.search(provider.displayName, SettingsManifest.all).firstOrNull()
             assertEquals("${provider.displayName} should route to its own provider row", expectedId, result?.id)

@@ -241,7 +241,12 @@ struct SettingsHubView: View {
 
                 Section {
                     NavigationLink(value: SettingsPageRoute.providerConnections) {
-                        SettingsLabel(icon: "externaldrive.connected.to.line.below", color: MobileTheme.ember, title: "Provider connections")
+                        SettingsLabel(
+                            icon: "externaldrive.connected.to.line.below",
+                            color: MobileTheme.ember,
+                            title: "Provider connections",
+                            logoProviders: [.claudeCode, .openCode, .factory, .openAI]
+                        )
                     }
                     .settingsAnchor(SettingsAnchor.providersRow)
                 } header: { groupHeader("Providers") }
@@ -251,7 +256,8 @@ struct SettingsHubView: View {
                         SettingsLabel(
                             icon: "bubble.left.and.bubble.right.fill",
                             color: MobileTheme.amber,
-                            title: "Chat tiles"
+                            title: "Chat tiles",
+                            logoProviders: [.hermes, .claudeCode, .codex, .openClaw]
                         )
                     }
 
@@ -259,7 +265,8 @@ struct SettingsHubView: View {
                         SettingsLabel(
                             icon: "antenna.radiowaves.left.and.right",
                             color: MobileTheme.hermesAureate,
-                            title: "Hermes"
+                            title: "Hermes",
+                            logoProviders: [.hermes]
                         )
                     }
                     .settingsAnchor(SettingsAnchor.hermesRow)
@@ -268,7 +275,8 @@ struct SettingsHubView: View {
                         SettingsLabel(
                             icon: "circle.hexagongrid.fill",
                             color: MobileTheme.whimsy,
-                            title: "Pi"
+                            title: "Pi",
+                            logoProviders: [.piAgent]
                         )
                     }
                     .settingsAnchor(SettingsAnchor.piRow)
@@ -371,6 +379,7 @@ private struct SettingsLabel: View {
     let icon: String
     let color: Color
     let title: String
+    var logoProviders: [AgentProvider] = []
 
     var body: some View {
         Label {
@@ -378,13 +387,17 @@ private struct SettingsLabel: View {
                 .font(MobileTheme.Typography.body)
                 .foregroundStyle(MobileTheme.Colors.textPrimary)
         } icon: {
-            ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(color)
-                    .frame(width: 26, height: 26)
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.white)
+            if logoProviders.isEmpty {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(color)
+                        .frame(width: 26, height: 26)
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            } else {
+                SettingsProviderLogoStack(providers: logoProviders, size: 26, maxVisible: 4)
             }
         }
     }

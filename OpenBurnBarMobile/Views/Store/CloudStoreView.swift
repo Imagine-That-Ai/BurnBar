@@ -83,6 +83,7 @@ struct CloudStoreView: View {
                 .padding(.top, MobileTheme.Spacing.md)
                 .padding(.bottom, store.isActive ? MobileTheme.Spacing.xl : 140)
             }
+            .settingsAnchor(SettingsAnchor.cloudRow)
 
             if !store.isActive {
                 CloudStoreActionBar(store: store)

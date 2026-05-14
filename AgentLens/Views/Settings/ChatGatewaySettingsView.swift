@@ -56,7 +56,8 @@ struct ChatGatewaySettingsView: View {
                         iconTint: DesignSystem.Colors.whimsy,
                         title: "Chat Engines",
                         subtitle: "Which engines appear in the dashboard and menu-bar chat header",
-                        value: "\(settingsManager.enabledChatBackends.count) on"
+                        value: "\(settingsManager.enabledChatBackends.count) on",
+                        logoProviders: [.hermes, .claudeCode, .codex, .openClaw]
                     )
                 }
             } header: {
@@ -81,7 +82,8 @@ struct ChatGatewaySettingsView: View {
                         value: settingsManager.launchHermesWithOpenBurnBar ? "Auto" : "Manual",
                         valueTint: settingsManager.launchHermesWithOpenBurnBar
                             ? DesignSystem.Colors.success
-                            : DesignSystem.Colors.textMuted
+                            : DesignSystem.Colors.textMuted,
+                        logoProvider: .hermes
                     )
                 }
 
@@ -99,7 +101,8 @@ struct ChatGatewaySettingsView: View {
                         value: settingsManager.launchPiAgentsWithOpenBurnBar ? "Auto" : "Manual",
                         valueTint: settingsManager.launchPiAgentsWithOpenBurnBar
                             ? DesignSystem.Colors.success
-                            : DesignSystem.Colors.textMuted
+                            : DesignSystem.Colors.textMuted,
+                        logoProvider: .piAgent
                     )
                 }
 
@@ -111,7 +114,8 @@ struct ChatGatewaySettingsView: View {
                         iconTint: DesignSystem.Colors.teal,
                         title: "OpenClaw Gateway",
                         subtitle: "OpenAI-compatible gateway (default 127.0.0.1:18789)",
-                        value: openClawHostDisplay
+                        value: openClawHostDisplay,
+                        logoProvider: .openClaw
                     )
                 }
 
@@ -126,7 +130,8 @@ struct ChatGatewaySettingsView: View {
                         value: settingsManager.hermesRemoteRelayEnabled ? "On" : "Off",
                         valueTint: settingsManager.hermesRemoteRelayEnabled
                             ? DesignSystem.Colors.success
-                            : DesignSystem.Colors.textMuted
+                            : DesignSystem.Colors.textMuted,
+                        logoProvider: .hermes
                     )
                 }
 
@@ -141,7 +146,8 @@ struct ChatGatewaySettingsView: View {
                         value: settingsManager.piRemoteRelayEnabled ? "On" : "Off",
                         valueTint: settingsManager.piRemoteRelayEnabled
                             ? DesignSystem.Colors.success
-                            : DesignSystem.Colors.textMuted
+                            : DesignSystem.Colors.textMuted,
+                        logoProvider: .piAgent
                     )
                 }
             } header: {
@@ -159,7 +165,8 @@ struct ChatGatewaySettingsView: View {
                         iconTint: DesignSystem.Colors.hermesAureate,
                         title: "Import Hermes Chats",
                         subtitle: "Bring pre-OpenBurnBar Hermes conversations into the local index",
-                        value: inventoryStatusValue
+                        value: inventoryStatusValue,
+                        logoProvider: .hermes
                     )
                 }
 
@@ -179,7 +186,8 @@ struct ChatGatewaySettingsView: View {
                         value: settingsManager.hermesSetupWizardCompleted ? "Done" : "Pending",
                         valueTint: settingsManager.hermesSetupWizardCompleted
                             ? DesignSystem.Colors.success
-                            : DesignSystem.Colors.warning
+                            : DesignSystem.Colors.warning,
+                        logoProvider: .hermes
                     )
                 }
             } header: {

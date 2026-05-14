@@ -57,6 +57,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.AgentProvider
+import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.ui.smartdisplay.SmartDisplayView
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
@@ -188,6 +189,7 @@ private fun SettingsRootList(router: SettingsRouter) {
                     title = provider.displayName,
                     subtitle = "Provider quota, usage, and connection signal",
                     pageRoute = SettingsPageRoute.ROOT,
+                    logoProviderKeys = listOf(provider.key),
                     onTap = {}
                 )
             }
@@ -207,6 +209,12 @@ private fun SettingsRootList(router: SettingsRouter) {
                 title = "Provider connections",
                 subtitle = "Find OpenCode, Codex, Claude, and other quota providers",
                 pageRoute = SettingsPageRoute.ROOT,
+                logoProviderKeys = listOf(
+                    AgentProvider.CLAUDE_CODE.key,
+                    AgentProvider.OPENCODE.key,
+                    AgentProvider.FACTORY.key,
+                    AgentProvider.OPEN_AI.key,
+                ),
                 onTap = {}
             ),
         ) + providerRows + listOf(
@@ -227,12 +235,91 @@ private fun SettingsRootList(router: SettingsRouter) {
                 onTap = { router.page = SettingsPageRoute.SMART_DISPLAYS }
             ),
             RootRow(
+                anchor = SettingsAnchor.GOOGLE_SMART_DISPLAY,
+                icon = Icons.Filled.Tv,
+                title = "Google Smart Display",
+                subtitle = "Nest Hub and Pixel Tablet glance",
+                pageRoute = SettingsPageRoute.SMART_DISPLAYS,
+                onTap = { router.page = SettingsPageRoute.SMART_DISPLAYS }
+            ),
+            RootRow(
+                anchor = SettingsAnchor.PIXEL_CLOCK,
+                icon = Icons.Filled.Tv,
+                title = "Pixel Clock",
+                subtitle = "Pixel Clock cost glance",
+                pageRoute = SettingsPageRoute.SMART_DISPLAYS,
+                onTap = { router.page = SettingsPageRoute.SMART_DISPLAYS }
+            ),
+            RootRow(
                 anchor = SettingsAnchor.QUICK_GLANCE_ROW,
                 icon = Icons.Filled.Notifications,
                 title = "Quick-Glance Notification",
                 subtitle = "BurnBar persistent cost glance",
                 pageRoute = SettingsPageRoute.MENU_BAR_PREFS,
                 onTap = { router.page = SettingsPageRoute.MENU_BAR_PREFS }
+            ),
+            RootRow(
+                anchor = SettingsAnchor.PERSISTENT_NOTIFICATION,
+                icon = Icons.Filled.Notifications,
+                title = "Show quick-glance notification",
+                subtitle = "Live cost glance in the notification shade",
+                pageRoute = SettingsPageRoute.MENU_BAR_PREFS,
+                onTap = { router.page = SettingsPageRoute.MENU_BAR_PREFS }
+            ),
+            RootRow(
+                anchor = SettingsAnchor.HERMES_CONNECTIONS,
+                icon = Icons.Filled.Search,
+                title = "Hermes Connections",
+                subtitle = "Connected Hermes endpoints and tokens",
+                pageRoute = SettingsPageRoute.ROOT,
+                logoProviderKeys = listOf(
+                    AgentProvider.HERMES.key,
+                    AgentProvider.CLAUDE_CODE.key,
+                    AgentProvider.CODEX.key,
+                    AgentProvider.OPEN_CLAW.key,
+                ),
+                onTap = {}
+            ),
+            RootRow(
+                anchor = SettingsAnchor.HERMES_MODELS,
+                icon = Icons.Filled.Search,
+                title = "Hermes Models",
+                subtitle = "Default models exposed by Hermes",
+                pageRoute = SettingsPageRoute.ROOT,
+                logoProviderKeys = listOf(
+                    AgentProvider.HERMES.key,
+                    AgentProvider.CLAUDE_CODE.key,
+                    AgentProvider.OPEN_AI.key,
+                    AgentProvider.GEMINI_CLI.key,
+                ),
+                onTap = {}
+            ),
+            RootRow(
+                anchor = SettingsAnchor.HERMES_DISPLAY,
+                icon = Icons.Filled.Search,
+                title = "Hermes Display",
+                subtitle = "TPS overlay and pretext",
+                pageRoute = SettingsPageRoute.ROOT,
+                logoProviderKeys = listOf(AgentProvider.HERMES.key),
+                onTap = {}
+            ),
+            RootRow(
+                anchor = SettingsAnchor.HERMES_GATEWAY,
+                icon = Icons.Filled.Search,
+                title = "Hermes Gateway",
+                subtitle = "URL and token for the Hermes webapi gateway",
+                pageRoute = SettingsPageRoute.ROOT,
+                logoProviderKeys = listOf(AgentProvider.HERMES.key),
+                onTap = {}
+            ),
+            RootRow(
+                anchor = SettingsAnchor.HERMES_STATUS,
+                icon = Icons.Filled.Search,
+                title = "Hermes Status",
+                subtitle = "Live Hermes connection state",
+                pageRoute = SettingsPageRoute.ROOT,
+                logoProviderKeys = listOf(AgentProvider.HERMES.key),
+                onTap = {}
             ),
         )
     }
@@ -266,6 +353,7 @@ private fun SettingsRootList(router: SettingsRouter) {
                 icon = row.icon,
                 title = row.title,
                 subtitle = row.subtitle,
+                logoProviderKeys = row.logoProviderKeys,
                 onClick = row.onTap,
                 highlighted = router.highlightedAnchor == row.anchor
             )
@@ -279,6 +367,7 @@ private data class RootRow(
     val title: String,
     val subtitle: String,
     val pageRoute: SettingsPageRoute,
+    val logoProviderKeys: List<String> = emptyList(),
     val onTap: () -> Unit,
 )
 
@@ -307,6 +396,7 @@ internal fun SettingsRow(
     title: String,
     subtitle: String,
     highlighted: Boolean,
+    logoProviderKeys: List<String> = emptyList(),
     onClick: () -> Unit = {},
 ) {
     val haloColor by animateColorAsState(
@@ -335,12 +425,17 @@ internal fun SettingsRow(
                     .padding(AuroraSpacing.md.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                val logoProviders = logoProviderKeys.mapNotNull { AgentProvider.fromKey(it) }
+                if (logoProviders.isNotEmpty()) {
+                    SettingsProviderLogoStack(providers = logoProviders)
+                } else {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(title, fontSize = AuroraTypography.body.sp, fontWeight = FontWeight.SemiBold)
@@ -357,6 +452,18 @@ internal fun SettingsRow(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun SettingsProviderLogoStack(
+    providers: List<AgentProvider>,
+    maxVisible: Int = 4,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy((-7).dp)) {
+        providers.take(maxVisible).forEach { provider ->
+            ProviderLogo(provider = provider, size = 28.dp)
         }
     }
 }

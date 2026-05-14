@@ -36,6 +36,7 @@ struct HermesSettingsView: View {
             ScrollView {
                 VStack(spacing: MobileTheme.Spacing.xl) {
                     headerCard
+                        .settingsAnchor(SettingsAnchor.hermesRow)
 
                     connectionsSection
                         .settingsAnchor(SettingsAnchor.hermesConnections)

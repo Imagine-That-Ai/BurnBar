@@ -41,6 +41,9 @@ data class SettingsItem(
 
     /** Long-form help indexed at the lowest weight. */
     val helpText: String? = null,
+
+    /** Provider keys whose bundled logos should identify this setting row. */
+    val logoProviderKeys: List<String> = emptyList(),
 )
 
 /**

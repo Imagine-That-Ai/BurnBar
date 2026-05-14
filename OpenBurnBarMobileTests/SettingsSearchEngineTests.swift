@@ -118,6 +118,15 @@ final class SettingsSearchEngineTests: XCTestCase {
         XCTAssertEqual(ids.count, Set(ids).count)
     }
 
+    func test_manifest_everySearchItemHasVisibleScrollTarget() {
+        for item in SettingsManifest.all {
+            XCTAssertTrue(
+                SettingsManifest.visibleAnchorIDs.contains(item.anchorID),
+                "Search item \(item.id) indexes \(item.anchorID), but no Settings row/control is wired to that anchor"
+            )
+        }
+    }
+
     func test_manifest_eachSectionRepresented() {
         let sections = Set(SettingsManifest.all.map(\.section))
         for section in SettingsSection.allCases {
@@ -143,6 +152,7 @@ final class SettingsSearchEngineTests: XCTestCase {
             XCTAssertNotNil(item, "Missing settings search entry for \(provider.displayName)")
             XCTAssertEqual(item?.pageRoute, .providerConnections)
             XCTAssertEqual(SettingsManifest.anchorIndex[item?.anchorID ?? ""], .providerConnections)
+            XCTAssertEqual(item?.logoProviders, [provider], "\(provider.displayName) should render its real provider logo")
 
             let result = SettingsSearchEngine.search(provider.displayName, in: SettingsManifest.all).first
             XCTAssertEqual(result?.id, expectedID, "\(provider.displayName) should route to its own provider row")

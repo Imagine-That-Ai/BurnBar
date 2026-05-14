@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Settings Search Item (iOS)
 
@@ -40,6 +41,10 @@ struct SettingsItem: Hashable, Identifiable {
     /// Long-form indexed at the lowest weight.
     let helpText: String?
 
+    /// Provider logos shown in search results when the setting maps to a
+    /// provider, provider family, or AI environment.
+    let logoProviders: [AgentProvider]
+
     init(
         id: String,
         section: SettingsSection,
@@ -49,7 +54,8 @@ struct SettingsItem: Hashable, Identifiable {
         title: String,
         subtitle: String? = nil,
         keywords: [String] = [],
-        helpText: String? = nil
+        helpText: String? = nil,
+        logoProviders: [AgentProvider] = []
     ) {
         self.id = id
         self.section = section
@@ -60,6 +66,7 @@ struct SettingsItem: Hashable, Identifiable {
         self.subtitle = subtitle
         self.keywords = keywords
         self.helpText = helpText
+        self.logoProviders = logoProviders
     }
 }
 

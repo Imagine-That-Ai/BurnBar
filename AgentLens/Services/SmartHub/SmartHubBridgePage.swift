@@ -442,6 +442,316 @@ enum SmartHubBridgePage {
         .account .badge.tone-warning { background: color-mix(in oklab, var(--warning) 18%, transparent); color: var(--warning); }
         .account .badge.tone-mercury { background: rgba(232,219,210,0.08); color: var(--mercury); }
 
+        /* Card footer — runs + cost */
+        .footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+          padding-top: 6px;
+          border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        .footer .runs, .footer .cost {
+          font-size: 11px;
+          color: var(--text-2);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .footer .cost {
+          font-variant-numeric: tabular-nums;
+          flex-shrink: 0;
+          max-width: 60%;
+        }
+
+        /* Burn-rate rows for non-quota providers */
+        .burn-list {
+          display: grid;
+          gap: 6px;
+          align-content: start;
+          padding-top: 2px;
+        }
+        .burn-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 8px;
+          padding: 5px 0;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .burn-row:last-child { border-bottom: none; }
+        .burn-row .window {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--text-2);
+          white-space: nowrap;
+        }
+        .burn-row .value {
+          font-size: 13px;
+          font-weight: 700;
+          color: var(--text-1);
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+        }
+        .burn-row .sub {
+          font-size: 11px;
+          color: var(--text-3);
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+        }
+        .burn-row .right {
+          display: flex;
+          align-items: baseline;
+          gap: 8px;
+          min-width: 0;
+        }
+        .no-quota-label {
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--text-3);
+          text-transform: uppercase;
+          letter-spacing: 0.6px;
+          padding: 4px 0;
+        }
+
+        /* Horizontal scroll fade edges */
+        .providers-wrap {
+          position: relative;
+        }
+        .providers-wrap::before,
+        .providers-wrap::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          width: 28px;
+          pointer-events: none;
+          z-index: 2;
+          opacity: 0;
+          transition: opacity 0.3s ease;
+        }
+        .providers-wrap.can-scroll-left::before {
+          left: 0;
+          opacity: 1;
+          background: linear-gradient(90deg, var(--bg-top), transparent);
+        }
+        .providers-wrap.can-scroll-right::after {
+          right: 0;
+          opacity: 1;
+          background: linear-gradient(-90deg, var(--bg-top), transparent);
+        }
+        .providers {
+          scroll-behavior: smooth;
+        }
+
+        /* Currency / Token toggle */
+        .value-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 2px;
+          background: rgba(255,255,255,0.06);
+          border-radius: 8px;
+          padding: 3px;
+        }
+        .value-toggle button {
+          appearance: none;
+          border: none;
+          background: transparent;
+          color: var(--text-3);
+          font-size: 12px;
+          font-weight: 700;
+          padding: 4px 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-family: inherit;
+        }
+        .value-toggle button.active {
+          background: rgba(255,255,255,0.10);
+          color: var(--text-1);
+        }
+
+        /* Provider detail overlay */
+        .detail-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 100;
+          background: rgba(0,0,0,0.65);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          display: none;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+        }
+        .detail-overlay.active {
+          display: flex;
+        }
+        .detail-card {
+          width: 100%;
+          max-width: 720px;
+          max-height: 90vh;
+          overflow-y: auto;
+          background: var(--bg-2);
+          border: 1.5px solid var(--border-strong);
+          border-radius: 24px;
+          padding: 24px;
+          display: grid;
+          gap: 16px;
+          position: relative;
+          box-shadow: 0 24px 48px rgba(0,0,0,0.45);
+        }
+        .detail-close {
+          position: absolute;
+          top: 16px;
+          right: 16px;
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: rgba(255,255,255,0.08);
+          border: none;
+          color: var(--text-2);
+          font-size: 18px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: inherit;
+        }
+        .detail-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding-right: 48px;
+        }
+        .detail-header .logo {
+          width: 40px;
+          height: 40px;
+          flex-shrink: 0;
+          border-radius: 10px;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .detail-header .logo svg, .detail-header .logo img {
+          width: 100%;
+          height: 100%;
+          display: block;
+          object-fit: contain;
+        }
+        .detail-header .name {
+          font-size: 24px;
+          font-weight: 700;
+          color: var(--text-1);
+          letter-spacing: -0.4px;
+        }
+        .detail-header .pill {
+          display: inline-flex;
+          align-items: center;
+          background: rgba(255,255,255,0.06);
+          color: var(--text-2);
+          font-size: 11px;
+          font-weight: 600;
+          padding: 3px 10px;
+          border-radius: 999px;
+          letter-spacing: 0.2px;
+          text-transform: lowercase;
+        }
+        .detail-section {
+          display: grid;
+          gap: 8px;
+        }
+        .detail-section h3 {
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.6px;
+          color: var(--text-3);
+          margin: 0;
+        }
+        .detail-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 7px 0;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          gap: 12px;
+        }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-row .label {
+          font-size: 14px;
+          color: var(--text-2);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .detail-row .value {
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--text-1);
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        .detail-bar {
+          position: relative;
+          height: 6px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.07);
+          overflow: hidden;
+          margin-top: 4px;
+        }
+        .detail-bar .fill {
+          position: absolute;
+          inset: 0;
+          width: 0%;
+          border-radius: 999px;
+          background: var(--card-accent);
+          transition: width 0.6s ease;
+        }
+        .detail-account {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          padding: 6px 0;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .detail-account:last-child { border-bottom: none; }
+        .detail-account .ident {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+        }
+        .detail-account .dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: var(--success);
+          flex-shrink: 0;
+        }
+        .detail-account .label {
+          font-size: 14px;
+          color: var(--text-1);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .detail-account .badge {
+          font-size: 10px;
+          font-weight: 600;
+          padding: 2px 8px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.06);
+          color: var(--text-2);
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
         body.palette-rainbow .fill {
           background: var(--rainbow-gradient) !important;
         }
@@ -544,6 +854,10 @@ enum SmartHubBridgePage {
           </div>
           <div class="controls">
             <div class="segmented" id="periods" role="tablist" aria-label="Time period"></div>
+            <div class="value-toggle" id="valueToggle" role="group" aria-label="Value display mode">
+              <button type="button" data-mode="currency" aria-pressed="true">$</button>
+              <button type="button" data-mode="tokens" aria-pressed="false">T</button>
+            </div>
             <button class="refresh-btn" id="refreshBtn" type="button" aria-label="Refresh quota data">
               <span class="spinner" aria-hidden="true"></span>
               <span class="refresh-label">Refresh</span>
@@ -560,11 +874,20 @@ enum SmartHubBridgePage {
           <div id="ambientValue">$0</div>
         </div>
 
-        <div class="providers" id="providers">
-          <div class="empty">Waiting for first refresh…</div>
+        <div class="providers-wrap" id="providersWrap">
+          <div class="providers" id="providers">
+            <div class="empty">Waiting for first refresh…</div>
+          </div>
         </div>
 
         <div class="footer-meta" id="subline" aria-live="polite" style="text-align:center;font-size:11px;color:var(--text-3);"></div>
+      </div>
+
+      <div class="detail-overlay" id="detailOverlay" aria-modal="true" role="dialog" aria-label="Provider details">
+        <div class="detail-card" id="detailCard" role="document">
+          <button class="detail-close" id="detailClose" type="button" aria-label="Close details">×</button>
+          <div id="detailContent"></div>
+        </div>
       </div>
 
       <script>
@@ -578,6 +901,12 @@ enum SmartHubBridgePage {
         const subEl         = document.getElementById('subline');
         const headerStatus  = document.getElementById('headerStatus');
         const ambientValue  = document.getElementById('ambientValue');
+        const providersWrap = document.getElementById('providersWrap');
+        const valueToggle   = document.getElementById('valueToggle');
+        const detailOverlay = document.getElementById('detailOverlay');
+        const detailCard    = document.getElementById('detailCard');
+        const detailClose   = document.getElementById('detailClose');
+        const detailContent = document.getElementById('detailContent');
 
         let lastVersion = -1;
         let activePeriod = null;
@@ -588,6 +917,7 @@ enum SmartHubBridgePage {
         let lastDisplayFingerprint = '';
         let identifyOnRefresh = false;
         let audioContext = null;
+        let displayMode = localStorage.getItem('obb_displayMode') || 'currency';
 
         // Reliability: count consecutive /state.json failures so we can
         // (1) surface a visible diagnostic before the user thinks the

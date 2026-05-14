@@ -168,6 +168,7 @@ struct ProviderConnectionsView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(EmberSurfaceBackground().ignoresSafeArea())
+        .settingsAnchor(SettingsAnchor.providersRow)
     }
 
     private func anchor(for provider: AgentProvider) -> String {

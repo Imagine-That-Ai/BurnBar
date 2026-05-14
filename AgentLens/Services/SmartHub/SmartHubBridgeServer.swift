@@ -478,8 +478,14 @@ final class SmartHubBridgeServer {
             """
         }.joined(separator: ",")
 
+        let burnRatesJSON = p.burnRates.map { r in
+            """
+            {"windowLabel":"\(escape(r.windowLabel))","tokens":"\(escape(r.tokens))","cost":"\(escape(r.cost))","runs":"\(escape(r.runs))"}
+            """
+        }.joined(separator: ",")
+
         return """
-        {"name":"\(escape(p.name))","slug":"\(escape(p.slug))","percent":\(p.percent),"label":"\(escape(p.label))","tone":"\(p.tone.rawValue)","window":"\(escape(p.windowLabel))","accentHex":"\(escape(p.accentHex))","logoSVG":"\(escape(p.logoSVG))","tokenTotal":"\(escape(p.tokenTotal))","tokenTotalLabel":"\(escape(p.tokenTotalLabel))","statusPill":"\(escape(p.statusPill))","statusTone":"\(p.statusTone.rawValue)","freshnessLabel":"\(escape(p.freshnessLabel))","fetchedAtLabel":"\(escape(p.fetchedAtLabel))","runsLabel":"\(escape(p.runsLabel))","costLabel":"\(escape(p.costLabel))","buckets":[\(bucketsJSON)],"accounts":[\(accountsJSON)]}
+        {"name":"\(escape(p.name))","slug":"\(escape(p.slug))","percent":\(p.percent),"label":"\(escape(p.label))","tone":"\(p.tone.rawValue)","window":"\(escape(p.windowLabel))","accentHex":"\(escape(p.accentHex))","logoSVG":"\(escape(p.logoSVG))","tokenTotal":"\(escape(p.tokenTotal))","tokenTotalCurrency":"\(escape(p.tokenTotalCurrency))","tokenTotalLabel":"\(escape(p.tokenTotalLabel))","statusPill":"\(escape(p.statusPill))","statusTone":"\(p.statusTone.rawValue)","freshnessLabel":"\(escape(p.freshnessLabel))","fetchedAtLabel":"\(escape(p.fetchedAtLabel))","runsLabel":"\(escape(p.runsLabel))","costLabel":"\(escape(p.costLabel))","hasQuotaData":\(p.hasQuotaData ? "true" : "false"),"buckets":[\(bucketsJSON)],"accounts":[\(accountsJSON)],"burnRates":[\(burnRatesJSON)]}
         """
     }
 
@@ -629,6 +635,10 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
         /// the provider doesn't surface a primary token total.
         var tokenTotal: String
 
+        /// Currency value counterpart to `tokenTotal` (e.g. "$52,262.22").
+        /// Used when the user toggles the dashboard to currency view.
+        var tokenTotalCurrency: String
+
         /// Label shown under `tokenTotal` (defaults to "TOKENS").
         var tokenTotalLabel: String
 
@@ -663,6 +673,14 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
         /// "$52,262.22"). Empty hides the spend text.
         var costLabel: String
 
+        /// Whether this provider has real quota data. When `false` the card
+        /// renders burn-rate rows (5h / 7d) instead of bucket bars.
+        var hasQuotaData: Bool
+
+        /// Burn-rate history for non-quota providers. Each entry is one
+        /// time-window (5h, 7d) with tokens, cost, and runs.
+        var burnRates: [BurnRate]
+
         enum Tone: String, Sendable { case ember, whimsy, success, warning, mercury }
 
         struct Bucket: Equatable, Sendable, Hashable {
@@ -685,6 +703,13 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
             var isActive: Bool    // active routing target — drives the green dot
         }
 
+        struct BurnRate: Equatable, Sendable, Hashable {
+            var windowLabel: String   // "5h", "7d"
+            var tokens: String        // "1.2M"
+            var cost: String          // "$0.50"
+            var runs: String          // "12 runs"
+        }
+
         init(
             name: String,
             percent: Int,
@@ -695,6 +720,7 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
             accentHex: String = "",
             logoSVG: String = "",
             tokenTotal: String = "",
+            tokenTotalCurrency: String = "",
             tokenTotalLabel: String = "TOKENS",
             statusPill: String = "",
             statusTone: Tone = .mercury,
@@ -703,7 +729,9 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
             buckets: [Bucket] = [],
             accounts: [Account] = [],
             runsLabel: String = "",
-            costLabel: String = ""
+            costLabel: String = "",
+            hasQuotaData: Bool = true,
+            burnRates: [BurnRate] = []
         ) {
             self.name = name
             self.percent = percent
@@ -714,6 +742,7 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
             self.accentHex = accentHex
             self.logoSVG = logoSVG
             self.tokenTotal = tokenTotal
+            self.tokenTotalCurrency = tokenTotalCurrency
             self.tokenTotalLabel = tokenTotalLabel
             self.statusPill = statusPill
             self.statusTone = statusTone
@@ -723,6 +752,8 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
             self.accounts = accounts
             self.runsLabel = runsLabel
             self.costLabel = costLabel
+            self.hasQuotaData = hasQuotaData
+            self.burnRates = burnRates
         }
 
         private static func slug(forName name: String) -> String {

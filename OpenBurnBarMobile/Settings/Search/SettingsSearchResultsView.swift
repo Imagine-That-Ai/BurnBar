@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - Settings Search Results View (iOS)
 
@@ -54,6 +55,11 @@ struct SettingsSearchResultsView: View {
     @ViewBuilder
     private func resultRow(for item: SettingsItem) -> some View {
         HStack(spacing: MobileTheme.Spacing.md) {
+            if !item.logoProviders.isEmpty {
+                SettingsProviderLogoStack(providers: item.logoProviders, size: 28, maxVisible: 4)
+                    .accessibilityHidden(true)
+            }
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
                     .font(MobileTheme.Typography.body)
@@ -117,5 +123,39 @@ struct SettingsSearchResultsView: View {
         case .pi: return "Pi"
         case .chatTiles: return "Chat tiles"
         }
+    }
+}
+
+// MARK: - Provider Logo Stack
+
+struct SettingsProviderLogoStack: View {
+    let providers: [AgentProvider]
+    var size: CGFloat = 28
+    var maxVisible: Int = 4
+
+    private var visibleProviders: [AgentProvider] {
+        Array(providers.prefix(maxVisible))
+    }
+
+    var body: some View {
+        HStack(spacing: -size * 0.28) {
+            ForEach(visibleProviders) { provider in
+                ProviderAvatar(provider: provider, mode: .plain, size: size)
+                    .background(
+                        RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
+                            .fill(MobileTheme.Colors.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
+                            .stroke(MobileTheme.Colors.border.opacity(0.70), lineWidth: 0.8)
+                    )
+            }
+        }
+        .frame(width: stackWidth, height: size, alignment: .leading)
+    }
+
+    private var stackWidth: CGFloat {
+        guard visibleProviders.count > 1 else { return size }
+        return size + CGFloat(visibleProviders.count - 1) * size * 0.72
     }
 }

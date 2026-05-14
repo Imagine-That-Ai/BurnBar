@@ -181,7 +181,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.providersRow,
             title: "Provider connections",
             subtitle: "Connect Claude, OpenCode, Factory, OpenAI, Kimi, and more",
-            keywords: ["providers", "claude", "opencode", "open code", "factory", "openai", "connections"]
+            keywords: ["providers", "claude", "opencode", "open code", "factory", "openai", "connections"],
+            logoProviders: [.claudeCode, .openCode, .factory, .openAI]
         ),
         SettingsItem(
             id: "providers.add",
@@ -190,7 +191,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.providerAdd,
             title: "Add Provider",
             subtitle: "Connect a new provider account",
-            keywords: ["add", "new", "provider", "account", "opencode", "open code", "opencode go"]
+            keywords: ["add", "new", "provider", "account", "opencode", "open code", "opencode go"],
+            logoProviders: [.claudeCode, .openCode, .factory, .openAI]
         ),
         SettingsItem(
             id: "providers.cliAuth",
@@ -199,7 +201,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.providerCLIAuth,
             title: "CLI Authentication",
             subtitle: "OAuth and API key management for local CLIs",
-            keywords: ["cli", "oauth", "api key", "auth", "opencode", "open code"]
+            keywords: ["cli", "oauth", "api key", "auth", "opencode", "open code"],
+            logoProviders: [.claudeCode, .codex, .openCode]
         ),
 
         // MARK: AI environments — Hermes
@@ -211,7 +214,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.hermesRow,
             title: "Hermes",
             subtitle: "Hermes endpoints, models, gateway, pretext",
-            keywords: ["hermes", "chat", "ai", "assistant"]
+            keywords: ["hermes", "chat", "ai", "assistant"],
+            logoProviders: [.hermes]
         ),
         SettingsItem(
             id: "hermes.connections",
@@ -220,7 +224,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.hermesConnections,
             title: "Hermes Connections",
             subtitle: "Connected Hermes endpoints and tokens",
-            keywords: ["connection", "endpoint", "url", "token"]
+            keywords: ["connection", "endpoint", "url", "token"],
+            logoProviders: [.hermes, .claudeCode, .codex, .openClaw]
         ),
         SettingsItem(
             id: "hermes.models",
@@ -229,7 +234,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.hermesModels,
             title: "Hermes Models",
             subtitle: "Default models exposed by Hermes",
-            keywords: ["model", "llm", "claude", "gpt"]
+            keywords: ["model", "llm", "claude", "gpt"],
+            logoProviders: [.hermes, .claudeCode, .openAI, .geminiCLI]
         ),
         SettingsItem(
             id: "hermes.display.tps",
@@ -238,7 +244,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.hermesDisplayTPS,
             title: "TPS overlay",
             subtitle: "Display tokens-per-second under streaming responses",
-            keywords: ["tps", "tokens", "speed", "overlay"]
+            keywords: ["tps", "tokens", "speed", "overlay"],
+            logoProviders: [.hermes]
         ),
         SettingsItem(
             id: "hermes.pretext",
@@ -247,7 +254,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.hermesPretext,
             title: "Pretext",
             subtitle: "System prompt prefix injected into every Hermes turn",
-            keywords: ["pretext", "system prompt", "context", "prefix"]
+            keywords: ["pretext", "system prompt", "context", "prefix"],
+            logoProviders: [.hermes]
         ),
         SettingsItem(
             id: "hermes.gateway.url",
@@ -257,7 +265,8 @@ enum SettingsManifest {
             focusID: SettingsFocus.hermesGatewayURL,
             title: "Hermes Gateway URL",
             subtitle: "Base URL of the Hermes webapi gateway",
-            keywords: ["gateway", "url", "endpoint", "webapi"]
+            keywords: ["gateway", "url", "endpoint", "webapi"],
+            logoProviders: [.hermes]
         ),
         SettingsItem(
             id: "hermes.gateway.token",
@@ -267,7 +276,8 @@ enum SettingsManifest {
             focusID: SettingsFocus.hermesGatewayToken,
             title: "Hermes Gateway Token",
             subtitle: "Bearer token used to authenticate to the gateway",
-            keywords: ["bearer", "token", "secret", "gateway"]
+            keywords: ["bearer", "token", "secret", "gateway"],
+            logoProviders: [.hermes]
         ),
 
         // MARK: AI environments — Pi
@@ -279,7 +289,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.piRow,
             title: "Pi",
             subtitle: "Raspberry Pi runtimes",
-            keywords: ["pi", "raspberry", "host", "edge"]
+            keywords: ["pi", "raspberry", "host", "edge"],
+            logoProviders: [.piAgent]
         ),
         SettingsItem(
             id: "pi.hosts",
@@ -288,7 +299,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.piHosts,
             title: "Pi Hosts",
             subtitle: "Connected Raspberry Pi runtimes",
-            keywords: ["host", "raspberry", "edge"]
+            keywords: ["host", "raspberry", "edge"],
+            logoProviders: [.piAgent]
         ),
         SettingsItem(
             id: "pi.models",
@@ -297,7 +309,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.piModels,
             title: "Pi Models",
             subtitle: "Models exposed by Pi runtimes",
-            keywords: ["model", "pi", "raspberry"]
+            keywords: ["model", "pi", "raspberry"],
+            logoProviders: [.piAgent]
         ),
 
         // MARK: About
@@ -339,6 +352,43 @@ enum SettingsManifest {
         return index
     }()
 
+    /// Anchors that are attached to concrete rows/controls in SettingsHubView
+    /// and its destination screens. Tests compare this against `all` to prevent
+    /// search-only settings that cannot scroll to a visible target.
+    static let visibleAnchorIDs: Set<String> = Set([
+        SettingsAnchor.theme,
+        SettingsAnchor.usageDisplay,
+        SettingsAnchor.uiMode,
+        SettingsAnchor.dailyBudget,
+        SettingsAnchor.costAlerts,
+        SettingsAnchor.tokenAlerts,
+        SettingsAnchor.dailyDigest,
+        SettingsAnchor.sessionPings,
+        SettingsAnchor.openSystemNotifications,
+        SettingsAnchor.cloudRow,
+        SettingsAnchor.cloudMembership,
+        SettingsAnchor.cloudPlan,
+        SettingsAnchor.cloudRestore,
+        SettingsAnchor.accountRow,
+        SettingsAnchor.deleteAccount,
+        SettingsAnchor.providersRow,
+        SettingsAnchor.providerAdd,
+        SettingsAnchor.providerCLIAuth,
+        SettingsAnchor.hermesRow,
+        SettingsAnchor.hermesConnections,
+        SettingsAnchor.hermesModels,
+        SettingsAnchor.hermesDisplayTPS,
+        SettingsAnchor.hermesPretext,
+        SettingsAnchor.hermesGatewayURL,
+        SettingsAnchor.hermesGatewayToken,
+        SettingsAnchor.piRow,
+        SettingsAnchor.piHosts,
+        SettingsAnchor.piModels,
+        SettingsAnchor.aboutVersion,
+        SettingsAnchor.aboutPrivacy,
+        SettingsAnchor.aboutTerms,
+    ]).union(providerItems.map(\.anchorID))
+
     private static let providerItems: [SettingsItem] = {
         AgentProvider.mobileAccountConnectableProviders.map { provider in
             SettingsItem(
@@ -348,7 +398,8 @@ enum SettingsManifest {
                 anchorID: provider == .openCode ? SettingsAnchor.providerOpenCode : SettingsAnchor.provider(provider.persistedToken),
                 title: provider.displayName,
                 subtitle: "Connect \(provider.displayName) and review its quota/auth path",
-                keywords: providerKeywords(for: provider)
+                keywords: providerKeywords(for: provider),
+                logoProviders: [provider]
             )
         }
     }()

@@ -3,6 +3,7 @@ import Foundation
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
+@MainActor
 final class CLIAgentSessionMirrorTests: XCTestCase {
 
     func test_cliAgent_mapsBackendsToCLIRuntime() {

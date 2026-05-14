@@ -246,7 +246,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.providersAdd,
             title: "Add Provider Account",
             subtitle: "Connect Claude, OpenCode, Factory, OpenAI, Kimi, and more",
-            keywords: ["add", "account", "provider", "claude", "opencode", "open code", "opencode go", "factory", "openai", "anthropic"]
+            keywords: ["add", "account", "provider", "claude", "opencode", "open code", "opencode go", "factory", "openai", "anthropic"],
+            logoProviders: [.claudeCode, .openCode, .factory, .openAI]
         ),
         SettingsItem(
             id: "providers.cli",
@@ -255,7 +256,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.providersCLI,
             title: "CLI Authentication",
             subtitle: "OAuth and API key management for local CLIs",
-            keywords: ["cli", "oauth", "api key", "anthropic", "openai", "opencode", "open code", "auth"]
+            keywords: ["cli", "oauth", "api key", "anthropic", "openai", "opencode", "open code", "auth"],
+            logoProviders: [.claudeCode, .codex, .openCode]
         ),
         SettingsItem(
             id: "providers.logSources",
@@ -264,7 +266,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.providersLogSources,
             title: "Log Sources",
             subtitle: "Enable or disable individual on-disk log scans",
-            keywords: ["logs", "sources", "scan", "claude code", "factory droid", "codex", "opencode", "open code"]
+            keywords: ["logs", "sources", "scan", "claude code", "factory droid", "codex", "opencode", "open code"],
+            logoProviders: [.claudeCode, .codex, .openCode, .factory]
         ),
 
         // MARK: Routing pools
@@ -276,7 +279,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.routingPoolsOverview,
             title: "Routing Pools",
             subtitle: "Wire Claude Code, OpenCode, and OpenAI-compatible clients through routed provider pools",
-            keywords: ["routing", "fire hydrant", "pools", "failover", "claude code", "codex", "opencode", "open code", "gateway"]
+            keywords: ["routing", "fire hydrant", "pools", "failover", "claude code", "codex", "opencode", "open code", "gateway"],
+            logoProviders: [.claudeCode, .codex, .openCode, .openAI]
         ),
 
         // MARK: Alerts
@@ -379,7 +383,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.switcherCLI,
             title: "CLI Profiles",
             subtitle: "Swap CLI credentials between Claude / Factory accounts",
-            keywords: ["cli", "profile", "credentials", "swap"]
+            keywords: ["cli", "profile", "credentials", "swap"],
+            logoProviders: [.claudeCode, .codex, .openCode, .factory]
         ),
 
         // MARK: Hermes / AI environments
@@ -391,7 +396,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.hermesConnections,
             title: "Chat Engines",
             subtitle: "Choose which chat engines appear in OpenBurnBar",
-            keywords: ["hermes", "connection", "engine", "chat", "codex", "claude", "openclaw"]
+            keywords: ["hermes", "connection", "engine", "chat", "codex", "claude", "openclaw"],
+            logoProviders: [.hermes, .claudeCode, .codex, .openClaw]
         ),
         SettingsItem(
             id: "hermes.models",
@@ -400,7 +406,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.hermesModels,
             title: "Hermes Models",
             subtitle: "Default models exposed by Hermes",
-            keywords: ["model", "hermes", "claude", "gpt", "llm"]
+            keywords: ["model", "hermes", "claude", "gpt", "llm"],
+            logoProviders: [.hermes, .claudeCode, .openAI, .geminiCLI]
         ),
         SettingsItem(
             id: "hermes.gateway.url",
@@ -410,7 +417,8 @@ enum SettingsManifest {
             focusID: SettingsFocus.hermesGatewayURL,
             title: "Hermes Gateway URL",
             subtitle: "Base URL of the Hermes webapi gateway",
-            keywords: ["gateway", "url", "endpoint", "webapi"]
+            keywords: ["gateway", "url", "endpoint", "webapi"],
+            logoProviders: [.hermes]
         ),
         SettingsItem(
             id: "hermes.gateway.token",
@@ -420,7 +428,8 @@ enum SettingsManifest {
             focusID: SettingsFocus.hermesGatewayToken,
             title: "Hermes Gateway Token",
             subtitle: "Bearer token used to authenticate to the gateway",
-            keywords: ["bearer", "token", "secret", "gateway"]
+            keywords: ["bearer", "token", "secret", "gateway"],
+            logoProviders: [.hermes]
         ),
         SettingsItem(
             id: "hermes.pi.hosts",
@@ -429,7 +438,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.hermesPiHosts,
             title: "Pi Agent Base URL",
             subtitle: "Gateway endpoint for local Pi runtimes",
-            keywords: ["pi", "raspberry", "host", "edge", "gateway", "url"]
+            keywords: ["pi", "raspberry", "host", "edge", "gateway", "url"],
+            logoProviders: [.piAgent]
         ),
         SettingsItem(
             id: "hermes.relay",
@@ -438,7 +448,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.hermesRelay,
             title: "Remote Relay",
             subtitle: "Reach Hermes from the cloud relay endpoint",
-            keywords: ["relay", "remote", "tunnel", "cloud"]
+            keywords: ["relay", "remote", "tunnel", "cloud"],
+            logoProviders: [.hermes]
         ),
     ]
 
@@ -451,6 +462,52 @@ enum SettingsManifest {
         return index
     }()
 
+    /// Anchors that are wired to concrete rows/controls in the macOS Settings
+    /// UI. Coverage tests compare this against `all` so search cannot index a
+    /// setting that has no scroll target.
+    static let visibleAnchorIDs: Set<String> = Set([
+        SettingsAnchor.operatorWizard,
+        SettingsAnchor.appearanceTheme,
+        SettingsAnchor.appearanceMenuBar,
+        SettingsAnchor.appearanceLaunchAtLogin,
+        SettingsAnchor.defaultsTimeRange,
+        SettingsAnchor.defaultsUsageMode,
+        SettingsAnchor.refreshInterval,
+        SettingsAnchor.indexingToggle,
+        SettingsAnchor.summariesAuto,
+        SettingsAnchor.daemonStatus,
+        SettingsAnchor.gatewayEnabled,
+        SettingsAnchor.gatewayHost,
+        SettingsAnchor.gatewayPort,
+        SettingsAnchor.gatewayAuthToken,
+        SettingsAnchor.controllerEnabled,
+        SettingsAnchor.controllerRefresh,
+        SettingsAnchor.controllerSimulator,
+        SettingsAnchor.accountSignIn,
+        SettingsAnchor.accountSubscription,
+        SettingsAnchor.accountDelete,
+        SettingsAnchor.providersAdd,
+        SettingsAnchor.providersCLI,
+        SettingsAnchor.providersLogSources,
+        SettingsAnchor.routingPoolsOverview,
+        SettingsAnchor.alertsDailySpend,
+        SettingsAnchor.alertsDigest,
+        SettingsAnchor.notificationsLocal,
+        SettingsAnchor.notificationsTelegram,
+        SettingsAnchor.notificationsCalendar,
+        SettingsAnchor.cloudSyncToggle,
+        SettingsAnchor.trustedDevices,
+        SettingsAnchor.smartDisplays,
+        SettingsAnchor.switcherBrowser,
+        SettingsAnchor.switcherCLI,
+        SettingsAnchor.hermesConnections,
+        SettingsAnchor.hermesModels,
+        SettingsAnchor.hermesGatewayURL,
+        SettingsAnchor.hermesGatewayToken,
+        SettingsAnchor.hermesPiHosts,
+        SettingsAnchor.hermesRelay,
+    ]).union(providerItems.map(\.anchorID))
+
     private static let providerItems: [SettingsItem] = {
         AgentProvider.allCases
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
@@ -462,7 +519,8 @@ enum SettingsManifest {
                     anchorID: providerAnchor(for: provider),
                     title: provider.displayName,
                     subtitle: "\(provider.displayName) provider setup, logs, accounts, and quota signals",
-                    keywords: providerKeywords(for: provider)
+                    keywords: providerKeywords(for: provider),
+                    logoProviders: [provider]
                 )
             }
     }()

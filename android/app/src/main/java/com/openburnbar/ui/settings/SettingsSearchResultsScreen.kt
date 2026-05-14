@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.data.models.AgentProvider
+import com.openburnbar.ui.components.ProviderLogo
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
@@ -84,6 +86,11 @@ private fun SettingsResultRow(
                 .padding(AuroraSpacing.md.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val logoProviders = item.logoProviderKeys.mapNotNull { AgentProvider.fromKey(it) }
+            if (logoProviders.isNotEmpty()) {
+                SettingsProviderLogoStack(providers = logoProviders)
+                Spacer(modifier = Modifier.width(AuroraSpacing.md.dp))
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     item.title,
@@ -110,6 +117,18 @@ private fun SettingsResultRow(
                 modifier = Modifier.size(20.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             )
+        }
+    }
+}
+
+@Composable
+private fun SettingsProviderLogoStack(
+    providers: List<AgentProvider>,
+    maxVisible: Int = 4,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy((-7).dp)) {
+        providers.take(maxVisible).forEach { provider ->
+            ProviderLogo(provider = provider, size = 28.dp)
         }
     }
 }

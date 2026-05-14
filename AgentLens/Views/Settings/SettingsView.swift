@@ -120,13 +120,18 @@ struct SettingsView: View {
 
     private func sidebarRow(for tab: SettingsTab) -> some View {
         HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(tab.accentColor)
-                    .frame(width: 28, height: 28)
-                Image(systemName: tab.icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
+            if tab.logoProviders.isEmpty {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(tab.accentColor)
+                        .frame(width: 28, height: 28)
+                    Image(systemName: tab.icon)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+            } else {
+                SettingsProviderLogoStack(providers: tab.logoProviders, size: 26, maxVisible: 4)
+                    .accessibilityHidden(true)
             }
 
             VStack(alignment: .leading, spacing: 2) {

@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Settings Search Item
 
@@ -47,6 +48,10 @@ struct SettingsItem: Hashable, Identifiable {
     /// Long-form help indexed at the lowest weight.
     let helpText: String?
 
+    /// Provider logos that should visually identify this setting in search
+    /// results. Empty means the row falls back to its section/system icon.
+    let logoProviders: [AgentProvider]
+
     init(
         id: String,
         tab: SettingsTab,
@@ -56,7 +61,8 @@ struct SettingsItem: Hashable, Identifiable {
         title: String,
         subtitle: String? = nil,
         keywords: [String] = [],
-        helpText: String? = nil
+        helpText: String? = nil,
+        logoProviders: [AgentProvider] = []
     ) {
         self.id = id
         self.tab = tab
@@ -67,6 +73,7 @@ struct SettingsItem: Hashable, Identifiable {
         self.subtitle = subtitle
         self.keywords = keywords
         self.helpText = helpText
+        self.logoProviders = logoProviders
     }
 }
 
@@ -183,7 +190,6 @@ enum SettingsAnchor {
 
     // Alerts
     static let alertsDailySpend = "alerts.dailySpend"
-    static let alertsPerProvider = "alerts.perProvider"
     static let alertsDigest = "alerts.digest"
 
     // Notifications

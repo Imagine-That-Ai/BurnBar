@@ -19,6 +19,7 @@ struct PiSettingsView: View {
             ScrollView {
                 VStack(spacing: MobileTheme.Spacing.xl) {
                     headerCard
+                        .settingsAnchor(SettingsAnchor.piRow)
                     statusCard
                     hostsCard
                         .settingsAnchor(SettingsAnchor.piHosts)

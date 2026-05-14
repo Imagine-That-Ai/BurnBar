@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - Settings Tab
 
@@ -86,6 +87,21 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .devicesAndSync: return DesignSystem.Colors.teal
         case .switcher: return DesignSystem.Colors.amber
         case .hermes: return DesignSystem.Colors.hermesAureate
+        }
+    }
+
+    var logoProviders: [AgentProvider] {
+        switch self {
+        case .providers:
+            return [.claudeCode, .openCode, .factory, .openAI]
+        case .routingPools:
+            return [.claudeCode, .codex, .openCode, .openAI]
+        case .hermes:
+            return [.hermes]
+        case .switcher:
+            return [.claudeCode, .codex, .openCode, .factory]
+        default:
+            return []
         }
     }
 }
