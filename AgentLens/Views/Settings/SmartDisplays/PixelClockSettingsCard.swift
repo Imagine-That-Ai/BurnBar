@@ -136,31 +136,42 @@ struct PixelClockSettingsCard: View {
             }
 
             HStack(spacing: DesignSystem.Spacing.sm) {
-                GlassButton(
-                    title: model.setupPrimaryTitle,
-                    icon: model.isBusy ? "ellipsis" : (model.firmware == .awtrixReady ? "paperplane.fill" : "bolt.badge.automatic.fill"),
-                    style: .prominent
-                ) {
-                    Task {
-                        if model.firmware == .awtrixReady {
-                            await model.push()
-                        } else {
-                            await model.setupAutomatically()
-                        }
+                if model.firmware == .awtrixReady {
+                    GlassButton(
+                        title: model.setupPrimaryTitle,
+                        icon: model.isBusy ? "ellipsis" : "paperplane.fill",
+                        style: .prominent
+                    ) {
+                        Task { await model.push() }
                     }
-                }
-                .disabled(model.isBusy)
+                    .disabled(model.isBusy)
+                } else {
+                    GlassButton(
+                        title: model.isBusy ? "Flashing..." : "Flash and Finish Setup",
+                        icon: model.isBusy ? "ellipsis" : "bolt.badge.automatic.fill",
+                        style: .prominent
+                    ) {
+                        Task { await model.flashAndFinishSetup() }
+                    }
+                    .disabled(model.isBusy)
 
-                if let flasherURL = model.setupResult?.flasherURL,
-                   let url = URL(string: flasherURL) {
-                    Link(destination: url) {
-                        Label("Flash AWTRIX", systemImage: "bolt.badge.automatic.fill")
+                    Link(destination: URL(string: PixelClockSetupResult.awtrixLightFlasherURL)!) {
+                        Label("Manual fallback", systemImage: "safari")
                             .font(DesignSystem.Typography.caption)
                             .fontWeight(.semibold)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(DesignSystem.Colors.whimsy)
-                    .accessibilityLabel("Open AWTRIX flasher")
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .accessibilityLabel("Open manual AWTRIX Light flasher")
+
+                    GlassButton(
+                        title: model.isBusy ? "Detecting..." : "Detect after flash",
+                        icon: model.isBusy ? "ellipsis" : "wifi",
+                        style: .regular
+                    ) {
+                        Task { await model.probe() }
+                    }
+                    .disabled(model.isBusy)
                 }
             }
         }
@@ -389,9 +400,7 @@ struct PixelClockSettingsCard: View {
                 ) {
                     ForEach(PixelClockPalette.allCases, id: \.self) { palette in
                         HStack {
-                            Circle()
-                                .fill(Color(hex: palette.primaryHex))
-                                .frame(width: 10, height: 10)
+                            paletteSwatch(for: palette)
                             Text(palette.displayName)
                         }
                         .tag(palette)
@@ -518,6 +527,25 @@ struct PixelClockSettingsCard: View {
             )
         }
         .font(DesignSystem.Typography.caption)
+    }
+
+    @ViewBuilder
+    private func paletteSwatch(for palette: PixelClockPalette) -> some View {
+        if palette.isRainbow {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: PixelClockPalette.rainbowFlag.map { Color(hex: $0) },
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: 10, height: 10)
+        } else {
+            Circle()
+                .fill(Color(hex: palette.primaryHex))
+                .frame(width: 10, height: 10)
+        }
     }
 
     private func pixelColorField(title: String, text: Binding<String>) -> some View {

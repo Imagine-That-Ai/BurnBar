@@ -22,6 +22,23 @@ final class CLITerminalSessionSupervisorTests: XCTestCase {
         XCTAssertTrue(detail.localizedCaseInsensitiveContains("5-hour"))
         XCTAssertTrue(supervisor.snapshot().localizedCaseInsensitiveContains("weekly limit reached"))
     }
+
+    func test_supervisor_detectsOpenCodeMonthlyQuota() {
+        let recorder = SupervisorEventRecorder()
+        let supervisor = CLITerminalSessionSupervisor(cliType: .opencode) { event in
+            recorder.record(event)
+        }
+
+        supervisor.ingest("OpenCode Go monthly credit limit reached for this account\n", source: .stderr)
+
+        let events = recorder.snapshot()
+        XCTAssertEqual(events.count, 1)
+        guard case .quotaExhausted(let detail, let source) = events[0] else {
+            return XCTFail("Expected quota exhaustion event")
+        }
+        XCTAssertEqual(source, .stderr)
+        XCTAssertTrue(detail.localizedCaseInsensitiveContains("monthly credit limit"))
+    }
 }
 
 private final class SupervisorEventRecorder: Sendable {

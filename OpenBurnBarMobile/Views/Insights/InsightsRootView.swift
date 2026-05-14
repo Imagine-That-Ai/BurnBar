@@ -129,30 +129,33 @@ private struct AdaptiveInsightsLayout: View {
 
     @ViewBuilder
     private var canvasContent: some View {
-        if let canvas = store.currentCanvas {
-            ScrollView {
-                LazyVStack(spacing: UnifiedDesignSystem.Spacing.md) {
-                    if let analysis = store.currentAnalysis {
-                        InsightsMobileAnalysisBrief(analysis: analysis)
+        if let analysis = store.currentAnalysis {
+            IntelligenceBriefView(
+                result: analysis,
+                onCitationTap: { citation in
+                    // Convert a citation tap into a natural-language
+                    // follow-up prompt — the composer already routes
+                    // those into a new analysis turn with the cited
+                    // entity scoped into the snapshot filter.
+                    Task {
+                        await store.compose(prompt: IntelligenceBriefCitationPrompt.prompt(for: citation))
                     }
-                    ForEach(canvas.widgets) { widget in
-                        InsightWidgetRenderer(
-                            widget: widget,
-                            isSelected: widget.id == store.selectedWidgetID,
-                            onConfigure: {
-                                store.selectedWidgetID = widget.id
-                                showInspector = true
-                            },
-                            onCitationTapped: { _ in }
-                        )
-                        .onTapGesture {
-                            store.selectedWidgetID = widget.id
-                        }
-                    }
-                }
-                .padding(UnifiedDesignSystem.Spacing.md)
-            }
+                },
+                onFollowUpTap: { question in
+                    Task { await store.compose(prompt: question.question) }
+                },
+                onPinWidget: { generated in
+                    Task { await store.pinGeneratedWidget(generated) }
+                },
+                onConfigureModel: { showInspector = true },
+                onShowAudit: nil
+            )
             .scrollDismissesKeyboard(.interactively)
+        } else if store.currentCanvas != nil {
+            // Fallback for a canvas without a generated analysis (rare —
+            // refreshSelectedCanvas always populates analysis on success).
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             InsightsMobileEmptyState(store: store, showTemplates: $showTemplateGallery)
         }
@@ -162,45 +165,6 @@ private struct AdaptiveInsightsLayout: View {
         InsightsMobileComposerBar(store: store)
             .padding(UnifiedDesignSystem.Spacing.md)
             .background(.thinMaterial)
-    }
-}
-
-private struct InsightsMobileAnalysisBrief: View {
-    let analysis: InsightAnalysisResult
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-            HStack(alignment: .firstTextBaseline) {
-                Label("Intelligence Brief", systemImage: "sparkles")
-                    .font(UnifiedDesignSystem.Typography.headline)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                Spacer()
-                Text(analysis.modelTag.displayName)
-                    .font(UnifiedDesignSystem.Typography.tiny)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                    .lineLimit(1)
-            }
-            Text(analysis.executiveSummary)
-                .font(UnifiedDesignSystem.Typography.body)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-            ForEach(analysis.findings.prefix(3)) { finding in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(finding.title)
-                        .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                    Text(finding.recommendedAction)
-                        .font(UnifiedDesignSystem.Typography.caption)
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .padding(UnifiedDesignSystem.Spacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                .fill(UnifiedDesignSystem.Colors.surface)
-        )
     }
 }
 

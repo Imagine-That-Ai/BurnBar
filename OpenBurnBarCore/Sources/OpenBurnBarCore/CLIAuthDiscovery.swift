@@ -148,11 +148,19 @@ public enum CLIAuthDiscovery {
             )
 
         case .opencode:
+            let configDir = normalizedConfigDirectory(
+                configDirectoryOverride,
+                fallback: "\(home)/.config/opencode"
+            )
+            let dataDir = "\(home)/.local/share/opencode"
+            let authState = discoverOpenCodeAuthState(dataDirectory: dataDir, configDirectory: configDir)
             return CLIAuthInfo(
                 cliType: cliType,
                 isInstalled: executablePath != nil,
                 executablePath: executablePath,
-                authState: executablePath != nil ? .notAuthenticated : .notInstalled
+                authState: executablePath == nil ? .notInstalled : authState,
+                configDirectory: FileManager.default.fileExists(atPath: configDir) ? configDir : normalizedNonEmpty(configDir),
+                accountDescription: openCodeAccountDescription(dataDirectory: dataDir, authState: authState)
             )
         }
         #endif
@@ -218,6 +226,20 @@ public enum CLIAuthDiscovery {
         }
 
         return .notAuthenticated
+    }
+
+    private static func discoverOpenCodeAuthState(dataDirectory: String, configDirectory: String) -> CLIAuthState {
+        let fm = FileManager.default
+        let authPath = "\(dataDirectory)/auth.json"
+        guard fm.fileExists(atPath: authPath),
+              let data = fm.contents(atPath: authPath),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              !json.isEmpty else {
+            return (fm.fileExists(atPath: dataDirectory) || fm.fileExists(atPath: configDirectory))
+                ? .notAuthenticated
+                : .notInstalled
+        }
+        return .authenticated(lastRefresh: nil)
     }
 
     /// Returns the parsed auth status JSON from `claude auth status --json`, if available.
@@ -365,6 +387,22 @@ public enum CLIAuthDiscovery {
         }
 
         return normalizedNonEmpty(statusPayload.orgName)
+    }
+
+    static func openCodeAccountDescription(dataDirectory: String, authState: CLIAuthState) -> String? {
+        guard case .authenticated = authState else { return nil }
+        let authPath = "\(dataDirectory)/auth.json"
+        guard let data = FileManager.default.contents(atPath: authPath),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              !json.isEmpty else {
+            return nil
+        }
+        let providers = json.keys
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .sorted()
+        guard !providers.isEmpty else { return nil }
+        return "Signed in: \(providers.joined(separator: ", "))"
     }
 
     static func formattedAccountDescription(name: String?, email: String?) -> String? {

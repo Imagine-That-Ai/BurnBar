@@ -30,6 +30,7 @@ public struct ProviderID: RawRepresentable, Codable, Hashable, Sendable, Express
     public static let anthropic = ProviderID(rawValue: "anthropic")
     public static let claudeCode = ProviderID(rawValue: "claude-code")
     public static let codex = ProviderID(rawValue: "codex")
+    public static let openCode = ProviderID(rawValue: "opencode")
     public static let openAI = ProviderID(rawValue: "openai")
 }
 

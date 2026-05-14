@@ -1,20 +1,24 @@
 import SwiftUI
 
-/// Cross-platform Intelligence Brief — the analysis-first landing surface on
-/// every Insights screen.
+/// Cross-platform Intelligence Brief — the Editorial Observatory.
 ///
-/// Renders an `InsightAnalysisResult` as a structured story:
-/// 1. Hero: executive summary + model attribution + budget badge.
-/// 2. Findings: top finding cards with severity + confidence + evidence chips.
-/// 3. Anomalies: ranked chips (score-sorted).
-/// 4. Recommendations: action cards with estimated impact + cited evidence.
-/// 5. Generated widgets: inline rendering through `InsightWidgetRenderer`.
-/// 6. Follow-up questions: tappable suggestion chips.
+/// Renders an `InsightAnalysisResult` as a single-column editorial story:
+///   1. Hero — eyebrow + window subtitle + display headline + mono meta strip
+///      + mercury hairline (shimmers once on appear).
+///   2. Top Findings — numbered 01 / 02 / 03, severity bar leading edge,
+///      confidence dots, title, why-it-matters, footnote chip citations,
+///      action stripe.
+///   3. Anomaly Atlas — horizontal "instrument tray", mono z-score top-left.
+///   4. Recommendations — ember seal top-right, severity + confidence,
+///      title, rationale, action stripe, mono impact arrow.
+///   5. Generated Views — `InsightWidgetRenderer` inline with a borderless
+///      pin label.
+///   6. Follow-up Questions — inline whimsy underlined links separated by ` · `.
+///   7. Audit Footer — full-width mercury hairline + monoTiny meta.
 ///
-/// The view is a value-type wrapper around its callbacks so platform shells
-/// (macOS 3-pane workspace, iOS/iPadOS navigation stack, embedded preview
-/// surfaces) can drop it in identically. No `@StateObject` — state lives
-/// with the caller.
+/// The view is a value-type wrapper around callbacks so platform shells
+/// (macOS workspace, iOS/iPadOS, embedded preview surfaces) drop it in
+/// identically. State lives with the caller.
 public struct IntelligenceBriefView: View {
     public let result: InsightAnalysisResult
     public let onCitationTap: (InsightCitation) -> Void
@@ -23,13 +27,34 @@ public struct IntelligenceBriefView: View {
     public let onConfigureModel: (() -> Void)?
     public let onShowAudit: (() -> Void)?
 
+    /// When `true`, structural ScrollViews (vertical outer and horizontal
+    /// anomaly atlas) are replaced with plain VStack/HStack so the brief
+    /// renders fully in `ImageRenderer`, screenshot exports, and PDF print
+    /// surfaces. Live screens always leave this `false` so users can
+    /// scroll normally.
+    public var snapshotMode: Bool = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Cascade-in progress. Sentinel `-1` means the view has not yet
+    /// received `onAppear`, so render everything fully visible (this also
+    /// covers `ImageRenderer`, snapshot tests, and accessibility traversal).
+    /// On first appear we either jump straight to fully visible (reduce
+    /// motion) or restart from 0 and animate each section in.
+    @State private var visibleSections: Int = -1
+    @State private var shimmerPhase: CGFloat = -1
+    /// Active cascade-in task. Holding a reference lets `.onDisappear`
+    /// cancel pending animations cleanly when the brief is replaced or
+    /// dismissed mid-cascade.
+    @State private var cascadeTask: Task<Void, Never>?
+
     public init(
         result: InsightAnalysisResult,
         onCitationTap: @escaping (InsightCitation) -> Void = { _ in },
         onFollowUpTap: @escaping (InsightFollowUpQuestion) -> Void = { _ in },
         onPinWidget: @escaping (InsightGeneratedWidget) -> Void = { _ in },
         onConfigureModel: (() -> Void)? = nil,
-        onShowAudit: (() -> Void)? = nil
+        onShowAudit: (() -> Void)? = nil,
+        snapshotMode: Bool = false
     ) {
         self.result = result
         self.onCitationTap = onCitationTap
@@ -37,86 +62,134 @@ public struct IntelligenceBriefView: View {
         self.onPinWidget = onPinWidget
         self.onConfigureModel = onConfigureModel
         self.onShowAudit = onShowAudit
+        self.snapshotMode = snapshotMode
     }
 
+    @ViewBuilder
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
-                hero
-                if !result.findings.isEmpty {
-                    sectionHeader("Top findings", systemImage: "sparkles")
-                    LazyVStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                        ForEach(result.findings) { finding in
-                            FindingCard(
-                                finding: finding,
-                                onCitationTap: onCitationTap
-                            )
-                        }
-                    }
-                }
-                if !result.anomalies.isEmpty {
-                    sectionHeader("Anomalies", systemImage: "exclamationmark.triangle")
-                    AnomalyRow(anomalies: result.anomalies, onCitationTap: onCitationTap)
-                }
-                if !result.recommendations.isEmpty {
-                    sectionHeader("Recommendations", systemImage: "lightbulb")
-                    LazyVStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                        ForEach(result.recommendations) { recommendation in
-                            RecommendationCard(
-                                recommendation: recommendation,
-                                onCitationTap: onCitationTap
-                            )
-                        }
-                    }
-                }
-                if !result.generatedWidgets.isEmpty {
-                    sectionHeader("Generated views", systemImage: "rectangle.3.group")
-                    LazyVStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                        ForEach(result.generatedWidgets) { generated in
-                            GeneratedWidgetRow(
-                                generated: generated,
-                                onPin: onPinWidget,
-                                onCitationTap: onCitationTap
-                            )
-                        }
-                    }
-                }
-                if !result.followUpQuestions.isEmpty {
-                    sectionHeader("Follow-up questions", systemImage: "questionmark.bubble")
-                    FollowUpChipsRow(
-                        questions: result.followUpQuestions,
-                        onTap: onFollowUpTap
-                    )
-                }
-                auditFooter
+        if snapshotMode {
+            // Snapshot / embedded path — no enclosing ScrollView so
+            // `ImageRenderer`, PDF print, and parent ScrollViews can
+            // measure the full editorial column.
+            briefStack
+                .background(UnifiedDesignSystem.Colors.background)
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                .onAppear { runEntranceMotion() }
+                .onDisappear { cancelEntranceMotion() }
+        } else {
+            ScrollView {
+                briefStack
             }
-            .padding(UnifiedDesignSystem.Spacing.lg)
+            .background(UnifiedDesignSystem.Colors.background.ignoresSafeArea())
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+            .onAppear { runEntranceMotion() }
+            .onDisappear { cancelEntranceMotion() }
         }
-        .background(UnifiedDesignSystem.Colors.surface.ignoresSafeArea())
+    }
+
+    /// Equivalent to `body` with `snapshotMode == true`. Kept as a
+    /// dedicated entry point so callers don't have to thread the flag —
+    /// any embed that needs the brief to participate in an outer scroll
+    /// container (`ImageRenderer`, PDF print, share sheet) can grab this
+    /// view directly.
+    public var unscrolledBody: some View {
+        briefStack
+            .background(UnifiedDesignSystem.Colors.background)
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+            .onAppear { runEntranceMotion() }
+            .onDisappear { cancelEntranceMotion() }
+    }
+
+    @ViewBuilder
+    private var briefStack: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xl) {
+            heroSection
+                .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+
+            if !result.findings.isEmpty {
+                findingsSection
+                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+            }
+
+            if !result.anomalies.isEmpty {
+                anomaliesSection
+                    .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+            }
+
+            if !result.recommendations.isEmpty {
+                recommendationsSection
+                    .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+            }
+
+            if !result.generatedWidgets.isEmpty {
+                generatedSection
+                    .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+            }
+
+            if !result.followUpQuestions.isEmpty {
+                followUpSection
+                    .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
+            }
+
+            auditFooter
+                .cascadeIn(index: 6, visible: visibleSections, reduceMotion: reduceMotion)
+        }
+        .padding(UnifiedDesignSystem.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Entrance motion
+
+    private func runEntranceMotion() {
+        if reduceMotion {
+            visibleSections = 7
+            shimmerPhase = 1
+            return
+        }
+        // First appear only — re-runs (from .onAppear on every recompose)
+        // skip restarting the cascade so scroll-induced view churn doesn't
+        // re-trigger animations.
+        guard visibleSections < 0 else { return }
+        visibleSections = 0
+        shimmerPhase = -1
+        cascadeTask?.cancel()
+        cascadeTask = Task { @MainActor in
+            for i in 0..<7 {
+                if i > 0 {
+                    try? await Task.sleep(nanoseconds: 40_000_000) // 0.04s
+                    if Task.isCancelled { return }
+                }
+                withAnimation(UnifiedDesignSystem.Animation.gentle) {
+                    visibleSections = i + 1
+                }
+            }
+        }
+        withAnimation(.linear(duration: 3.0)) {
+            shimmerPhase = 1
+        }
+    }
+
+    private func cancelEntranceMotion() {
+        cascadeTask?.cancel()
+        cascadeTask = nil
     }
 
     // MARK: - Hero
 
     @ViewBuilder
-    private var hero: some View {
+    private var heroSection: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
-            HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                Image(systemName: "sparkles.tv")
-                    .font(.system(size: 26, weight: .medium))
-                    .foregroundStyle(UnifiedDesignSystem.Colors.ember)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Intelligence Brief")
-                        .font(UnifiedDesignSystem.Typography.title)
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                    Text(IntelligenceBriefFormatting.windowLabel(result.timeWindow))
-                        .font(UnifiedDesignSystem.Typography.caption)
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                }
+            HStack(alignment: .firstTextBaseline) {
+                Text("INTELLIGENCE BRIEF")
+                    .font(UnifiedDesignSystem.Typography.caption)
+                    .tracking(2.4)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 0)
                 if let onConfigureModel {
                     Button(action: onConfigureModel) {
                         Image(systemName: "slider.horizontal.3")
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     }
                     .buttonStyle(.plain)
@@ -124,472 +197,705 @@ public struct IntelligenceBriefView: View {
                 }
             }
 
-            Text(result.executiveSummary)
-                .font(UnifiedDesignSystem.Typography.body)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(IntelligenceBriefFormatting.windowLabel(result.timeWindow))
+                .font(UnifiedDesignSystem.Typography.caption)
+                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
-            HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                ModelChip(modelTag: result.modelTag)
-                BudgetChip(budget: result.contextBudget)
-                if let usage = result.tokenUsage {
-                    TokenUsageChip(usage: usage, costUSD: result.estimatedCostUSD)
+            if !result.executiveSummary.isEmpty {
+                Text(result.executiveSummary)
+                    .font(.system(.title2, design: .rounded).weight(.semibold))
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                    .lineSpacing(headlineLineSpacing)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+            }
+
+            metaStrip
+
+            mercuryHairline
+                .padding(.top, UnifiedDesignSystem.Spacing.xs)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(heroAccessibilityLabel)
+    }
+
+    private var heroAccessibilityLabel: String {
+        var parts: [String] = ["Intelligence Brief"]
+        parts.append(IntelligenceBriefFormatting.windowLabel(result.timeWindow))
+        parts.append(result.executiveSummary)
+        parts.append("Model \(result.modelTag.displayName)")
+        parts.append(result.modelTag.egressTier.displayLabel)
+        parts.append("Context \(IntelligenceBriefFormatting.contextTokensLabel(result.contextBudget))")
+        if let usage = result.tokenUsage {
+            parts.append("Cost \(IntelligenceBriefFormatting.tokenCostLabel(usage, cost: result.estimatedCostUSD))")
+        }
+        return parts.joined(separator: ". ")
+    }
+
+    @ViewBuilder
+    private var metaStrip: some View {
+        let segments = IntelligenceBriefFormatting.metaSegments(for: result)
+        Text(segments.joined(separator: "  ·  "))
+            .font(UnifiedDesignSystem.Typography.monoSmall)
+            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var mercuryHairline: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(UnifiedDesignSystem.mercuryGradient)
+                    .frame(height: 0.5)
+                if !reduceMotion {
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    UnifiedDesignSystem.Colors.hermesMercury.opacity(0.0),
+                                    UnifiedDesignSystem.Colors.hermesAureate.opacity(0.55),
+                                    UnifiedDesignSystem.Colors.hermesMercury.opacity(0.0)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(40, width * 0.18), height: 0.5)
+                        .offset(x: shimmerPhase * width)
+                        .blendMode(.plusLighter)
+                        .allowsHitTesting(false)
                 }
-                Spacer(minLength: 0)
+            }
+            .frame(width: width, height: 0.5, alignment: .leading)
+            .clipped()
+        }
+        .frame(height: 0.5)
+        .accessibilityHidden(true)
+    }
+
+    // MARK: - Findings
+
+    @ViewBuilder
+    private var findingsSection: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+            sectionEyebrow("TOP FINDINGS")
+            VStack(spacing: UnifiedDesignSystem.Spacing.lg) {
+                ForEach(Array(result.findings.prefix(3).enumerated()), id: \.element.id) { offset, finding in
+                    FindingRow(
+                        index: offset + 1,
+                        finding: finding,
+                        onCitationTap: onCitationTap
+                    )
+                }
             }
         }
-        .padding(UnifiedDesignSystem.Spacing.lg)
-        .background(
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.lg, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.lg, style: .continuous)
-                        .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
-                )
-        )
     }
 
-    // MARK: - Section headers
+    // MARK: - Anomalies
 
-    private func sectionHeader(_ title: String, systemImage: String) -> some View {
-        HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-            Text(title)
-                .font(UnifiedDesignSystem.Typography.headline)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-            Spacer(minLength: 0)
+    @ViewBuilder
+    private var anomaliesSection: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+            sectionEyebrow("ANOMALY ATLAS")
+            if snapshotMode {
+                // Static two-column wrap for snapshot exports — preserves
+                // editorial L→R reading order without depending on a
+                // horizontal ScrollView (which `ImageRenderer` collapses).
+                let pairs = stride(from: 0, to: result.anomalies.count, by: 2).map { i in
+                    (lhs: result.anomalies[i],
+                     rhs: i + 1 < result.anomalies.count ? result.anomalies[i + 1] : nil,
+                     lhsIndex: i,
+                     rhsIndex: i + 1)
+                }
+                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+                    ForEach(Array(pairs.enumerated()), id: \.offset) { _, pair in
+                        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
+                            AnomalyInstrumentCard(
+                                anomaly: pair.lhs,
+                                position: pair.lhsIndex + 1,
+                                total: result.anomalies.count,
+                                onCitationTap: onCitationTap,
+                                fillWidth: true
+                            )
+                            if let rhs = pair.rhs {
+                                AnomalyInstrumentCard(
+                                    anomaly: rhs,
+                                    position: pair.rhsIndex + 1,
+                                    total: result.anomalies.count,
+                                    onCitationTap: onCitationTap,
+                                    fillWidth: true
+                                )
+                            } else {
+                                Color.clear.frame(maxWidth: .infinity)
+                            }
+                        }
+                    }
+                }
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
+                        ForEach(Array(result.anomalies.enumerated()), id: \.element.id) { idx, anomaly in
+                            AnomalyInstrumentCard(
+                                anomaly: anomaly,
+                                position: idx + 1,
+                                total: result.anomalies.count,
+                                onCitationTap: onCitationTap
+                            )
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+                .scrollIndicators(.hidden)
+            }
         }
-        .padding(.top, UnifiedDesignSystem.Spacing.xs)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Anomaly Atlas — \(result.anomalies.count) entries left to right")
     }
 
-    // MARK: - Footer
+    // MARK: - Recommendations
 
+    @ViewBuilder
+    private var recommendationsSection: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+            sectionEyebrow("RECOMMENDATIONS")
+            VStack(spacing: UnifiedDesignSystem.Spacing.lg) {
+                ForEach(result.recommendations) { recommendation in
+                    RecommendationRow(
+                        recommendation: recommendation,
+                        onCitationTap: onCitationTap
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Generated views
+
+    @ViewBuilder
+    private var generatedSection: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+            sectionEyebrow("GENERATED VIEWS")
+            VStack(spacing: UnifiedDesignSystem.Spacing.lg) {
+                ForEach(result.generatedWidgets) { generated in
+                    GeneratedViewRow(
+                        generated: generated,
+                        onPin: onPinWidget,
+                        onCitationTap: onCitationTap
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Follow-up
+
+    @ViewBuilder
+    private var followUpSection: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+            sectionEyebrow("FOLLOW-UP QUESTIONS")
+            FollowUpInlineLinks(
+                questions: result.followUpQuestions,
+                onTap: onFollowUpTap
+            )
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Follow-up questions")
+    }
+
+    // MARK: - Audit footer
+
+    @ViewBuilder
     private var auditFooter: some View {
-        HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 11, weight: .regular))
-            Text(IntelligenceBriefFormatting.auditFooter(result))
-                .font(UnifiedDesignSystem.Typography.tiny)
-                .lineLimit(2)
-            Spacer(minLength: 0)
-            if let onShowAudit {
-                Button("Audit log") { onShowAudit() }
-                    .buttonStyle(.borderless)
-                    .font(UnifiedDesignSystem.Typography.tiny)
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+            Rectangle()
+                .fill(UnifiedDesignSystem.mercuryGradient)
+                .frame(height: 0.5)
+                .accessibilityHidden(true)
+            HStack(alignment: .firstTextBaseline, spacing: UnifiedDesignSystem.Spacing.sm) {
+                Text(IntelligenceBriefFormatting.auditFooter(result))
+                    .font(UnifiedDesignSystem.Typography.monoTiny)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                    .lineLimit(2)
+                Spacer(minLength: 0)
+                if let onShowAudit {
+                    Button("Audit log") { onShowAudit() }
+                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
+                        .accessibilityLabel("Open audit log")
+                }
             }
         }
-        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-        .padding(.top, UnifiedDesignSystem.Spacing.md)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Audit. \(IntelligenceBriefFormatting.auditFooter(result))")
+    }
+
+    // MARK: - Section eyebrow
+
+    private func sectionEyebrow(_ title: String) -> some View {
+        Text(title)
+            .font(UnifiedDesignSystem.Typography.caption)
+            .tracking(2.0)
+            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    // MARK: - Tuning
+
+    /// 1.4× line-height target for the executive headline. SF Pro Rounded
+    /// at title2 (~22pt) has a default line-height near 28pt, so we add ~3pt
+    /// of additional leading to hit 1.4× without breaking baseline rhythm.
+    private var headlineLineSpacing: CGFloat { 4 }
+}
+
+// MARK: - Cascade-in modifier
+
+private struct CascadeInModifier: ViewModifier {
+    let index: Int
+    let visible: Int
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        // `visible == -1` is the pre-onAppear sentinel: render fully so
+        // image renderers / snapshot tests capture content, and so that
+        // VoiceOver finds every section before SwiftUI calls onAppear.
+        let shown = reduceMotion || visible < 0 || index < visible
+        return content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown ? 0 : 6)
     }
 }
 
-// MARK: - Subviews
+private extension View {
+    func cascadeIn(index: Int, visible: Int, reduceMotion: Bool) -> some View {
+        modifier(CascadeInModifier(index: index, visible: visible, reduceMotion: reduceMotion))
+    }
+}
 
-private struct FindingCard: View {
+// MARK: - Finding row
+
+private struct FindingRow: View {
+    let index: Int
     let finding: InsightFinding
     let onCitationTap: (InsightCitation) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
-            HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
-                SeverityChip(severity: finding.severity)
-                ConfidenceChip(confidence: finding.confidence)
-                Spacer(minLength: 0)
-            }
-            Text(finding.title)
-                .font(UnifiedDesignSystem.Typography.headline)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(finding.whyItMatters)
-                .font(UnifiedDesignSystem.Typography.body)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if !finding.evidence.isEmpty {
-                CitationChipRow(citations: finding.evidence, onTap: onCitationTap)
-            }
-            if !finding.recommendedAction.isEmpty {
-                ActionStripe(action: finding.recommendedAction)
-            }
-        }
-        .padding(UnifiedDesignSystem.Spacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                        .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
-                )
-        )
-    }
-}
+        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
+            // Severity bar: 3pt full height on leading edge.
+            Rectangle()
+                .fill(severityColor)
+                .frame(width: 3)
+                .accessibilityHidden(true)
 
-private struct AnomalyRow: View {
-    let anomalies: [InsightAnomaly]
-    let onCitationTap: (InsightCitation) -> Void
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+                HStack(alignment: .firstTextBaseline, spacing: UnifiedDesignSystem.Spacing.sm) {
+                    Text(String(format: "%02d", index))
+                        .font(UnifiedDesignSystem.Typography.monoSmall)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                        .accessibilityLabel("Finding \(index)")
+                    Text(severityLabel(finding.severity).uppercased())
+                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                        .foregroundStyle(severityColor)
+                        .tracking(1.4)
+                    Spacer(minLength: 0)
+                    ConfidenceDots(confidence: finding.confidence)
+                }
 
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                ForEach(anomalies) { anomaly in
-                    AnomalyChip(anomaly: anomaly, onCitationTap: onCitationTap)
+                Text(finding.title)
+                    .font(UnifiedDesignSystem.Typography.headline)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !finding.whyItMatters.isEmpty {
+                    Text(finding.whyItMatters)
+                        .font(UnifiedDesignSystem.Typography.body)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                        .lineSpacing(bodyLineSpacing)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if !finding.evidence.isEmpty {
+                    FootnoteChipFlow(citations: finding.evidence, onTap: onCitationTap)
+                }
+
+                if !finding.recommendedAction.isEmpty {
+                    ActionStripe(text: finding.recommendedAction)
                 }
             }
-            .padding(.horizontal, 1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        "Finding \(String(format: "%02d", index)). \(severityLabel(finding.severity)) severity. \(finding.title). \(finding.whyItMatters)"
+    }
+
+    private var severityColor: Color {
+        switch finding.severity {
+        case .info: return UnifiedDesignSystem.Colors.textMuted
+        case .low: return UnifiedDesignSystem.Colors.whimsy
+        case .medium: return UnifiedDesignSystem.Colors.warning
+        case .high: return UnifiedDesignSystem.Colors.ember
+        case .critical: return UnifiedDesignSystem.Colors.error
+        }
+    }
+
+    private var bodyLineSpacing: CGFloat { 4 }
+
+    private func severityLabel(_ severity: InsightSeverity) -> String {
+        switch severity {
+        case .info: return "Info"
+        case .low: return "Low"
+        case .medium: return "Medium"
+        case .high: return "High"
+        case .critical: return "Critical"
         }
     }
 }
 
-private struct AnomalyChip: View {
+// MARK: - Anomaly instrument card
+
+private struct AnomalyInstrumentCard: View {
     let anomaly: InsightAnomaly
+    let position: Int
+    let total: Int
     let onCitationTap: (InsightCitation) -> Void
+    /// When `true`, the card grows to fill the available width (used by
+    /// the snapshot-mode wrapping grid). When `false`, the canonical
+    /// 220pt fixed-width form for the horizontal anomaly atlas is used.
+    var fillWidth: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(UnifiedDesignSystem.Colors.warning)
-                Text(anomaly.title)
-                    .font(UnifiedDesignSystem.Typography.caption)
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(zScoreText)
+                    .font(UnifiedDesignSystem.Typography.monoSmall)
                     .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                    .lineLimit(2)
+                Spacer(minLength: 0)
+                ConfidenceDots(confidence: anomaly.confidence)
             }
+            Text(anomaly.title)
+                .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
             Text(anomaly.detail)
                 .font(UnifiedDesignSystem.Typography.tiny)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                .lineLimit(3)
-            HStack(spacing: 4) {
-                Text(String(format: "z %.1f", anomaly.score))
-                    .font(UnifiedDesignSystem.Typography.tiny)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                ConfidenceChip(confidence: anomaly.confidence)
-            }
+                .lineSpacing(2)
+                .lineLimit(4)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
-        .padding(UnifiedDesignSystem.Spacing.sm)
-        .frame(maxWidth: 220, alignment: .leading)
+        .frame(width: fillWidth ? nil : 220, alignment: .leading)
+        .frame(maxWidth: fillWidth ? .infinity : nil, alignment: .leading)
+        .padding(UnifiedDesignSystem.Spacing.md)
         .background(
             RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                        .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
-                )
+                .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
         )
+        .contentShape(Rectangle())
         .onTapGesture {
             if let first = anomaly.evidence.first {
                 onCitationTap(first)
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Anomaly \(position) of \(total). \(zScoreVoice). \(anomaly.title). \(anomaly.detail)")
+        .accessibilityAddTraits(anomaly.evidence.isEmpty ? [] : .isButton)
     }
+
+    private var zScoreText: String { String(format: "z %.1f", anomaly.score) }
+    private var zScoreVoice: String { String(format: "z-score %.1f", anomaly.score) }
 }
 
-private struct RecommendationCard: View {
+// MARK: - Recommendation row
+
+private struct RecommendationRow: View {
     let recommendation: InsightRecommendation
     let onCitationTap: (InsightCitation) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
-            HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
-                Image(systemName: "lightbulb.fill")
-                    .foregroundStyle(UnifiedDesignSystem.Colors.whimsy)
-                    .font(.system(size: 12, weight: .semibold))
-                SeverityChip(severity: recommendation.severity)
-                ConfidenceChip(confidence: recommendation.confidence)
-                Spacer(minLength: 0)
+        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+                HStack(alignment: .firstTextBaseline, spacing: UnifiedDesignSystem.Spacing.sm) {
+                    Text(severityLabel.uppercased())
+                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                        .tracking(1.4)
+                        .foregroundStyle(severityColor)
+                    Text("·")
+                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                    ConfidenceDots(confidence: recommendation.confidence)
+                    Spacer(minLength: 0)
+                }
+
+                Text(recommendation.title)
+                    .font(UnifiedDesignSystem.Typography.headline)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(recommendation.rationale)
+                    .font(UnifiedDesignSystem.Typography.body)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !recommendation.recommendedAction.isEmpty {
+                    ActionStripe(text: recommendation.recommendedAction)
+                }
+
+                if let impact = recommendation.estimatedImpact, !impact.isEmpty {
+                    let (icon, tint) = impactPresentation(for: impact)
+                    HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
+                        Image(systemName: icon)
+                            .font(UnifiedDesignSystem.Typography.monoSmall)
+                            .foregroundStyle(tint)
+                        Text(impact)
+                            .font(UnifiedDesignSystem.Typography.monoSmall)
+                            .foregroundStyle(tint)
+                    }
+                    .accessibilityLabel("Estimated impact: \(impact)")
+                }
+
+                if !recommendation.evidence.isEmpty {
+                    FootnoteChipFlow(citations: recommendation.evidence, onTap: onCitationTap)
+                }
             }
-            Text(recommendation.title)
-                .font(UnifiedDesignSystem.Typography.headline)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(recommendation.rationale)
-                .font(UnifiedDesignSystem.Typography.body)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-            ActionStripe(action: recommendation.recommendedAction)
-            if let impact = recommendation.estimatedImpact {
-                Label(impact, systemImage: "arrow.up.right.circle.fill")
-                    .font(UnifiedDesignSystem.Typography.caption)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.success)
-            }
-            if !recommendation.evidence.isEmpty {
-                CitationChipRow(citations: recommendation.evidence, onTap: onCitationTap)
-            }
+
+            // Ember seal: solid dot top-right.
+            Text("●")
+                .font(UnifiedDesignSystem.Typography.monoSmall)
+                .foregroundStyle(UnifiedDesignSystem.Colors.ember)
+                .accessibilityHidden(true)
         }
-        .padding(UnifiedDesignSystem.Spacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                        .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
-                )
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        "Recommendation. \(severityLabel) severity. \(recommendation.title). \(recommendation.rationale)"
+    }
+
+    private var severityLabel: String {
+        switch recommendation.severity {
+        case .info: return "Info"
+        case .low: return "Low"
+        case .medium: return "Medium"
+        case .high: return "High"
+        case .critical: return "Critical"
+        }
+    }
+
+    private var severityColor: Color {
+        switch recommendation.severity {
+        case .info: return UnifiedDesignSystem.Colors.textMuted
+        case .low: return UnifiedDesignSystem.Colors.whimsy
+        case .medium: return UnifiedDesignSystem.Colors.warning
+        case .high: return UnifiedDesignSystem.Colors.ember
+        case .critical: return UnifiedDesignSystem.Colors.error
+        }
+    }
+
+    /// Choose the arrow glyph + tint based on the sign embedded in the
+    /// impact string. Recommendations skew toward cost reduction so the
+    /// default direction is down-and-right (savings, green). If the
+    /// string contains a positive sign (`+$5`) we point up-and-right and
+    /// switch to the ember warning tint — surfacing that a recommendation
+    /// is asking the user to *spend* more.
+    private func impactPresentation(for impact: String) -> (icon: String, tint: Color) {
+        let lower = impact.lowercased()
+        let isGain = lower.contains("+") && !lower.contains("−") && !lower.contains("-")
+        if isGain {
+            return ("arrow.up.right", UnifiedDesignSystem.Colors.ember)
+        }
+        return ("arrow.down.right", UnifiedDesignSystem.Colors.success)
     }
 }
 
-private struct GeneratedWidgetRow: View {
+// MARK: - Generated view row
+
+private struct GeneratedViewRow: View {
     let generated: InsightGeneratedWidget
     let onPin: (InsightGeneratedWidget) -> Void
     let onCitationTap: (InsightCitation) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
-            HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
-                Image(systemName: generated.widget.kind.symbolName)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                Text(generated.widget.title)
-                    .font(UnifiedDesignSystem.Typography.headline)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+            // `InsightWidgetChrome` already owns the widget title and
+            // freshness pill, so we render only the renderer here and
+            // place the Pin affordance under the chrome (next to the
+            // editorial sidenote + citations). This avoids overlapping
+            // the chrome's own freshness pill / configure menu.
+            InsightWidgetRenderer(widget: generated.widget, onCitationTapped: onCitationTap)
+
+            HStack(alignment: .firstTextBaseline, spacing: UnifiedDesignSystem.Spacing.sm) {
+                if !generated.reason.isEmpty {
+                    Text(generated.reason)
+                        .font(UnifiedDesignSystem.Typography.tiny)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Spacer(minLength: 0)
                 Button {
                     onPin(generated)
                 } label: {
-                    Label("Pin to canvas", systemImage: "pin.fill")
+                    Label("Pin", systemImage: "pin")
+                        .labelStyle(.titleAndIcon)
                         .font(UnifiedDesignSystem.Typography.tiny)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                 }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Pin to canvas")
+                .buttonStyle(.plain)
+                .accessibilityLabel("Pin \(generated.widget.title)")
             }
-            InsightWidgetRenderer(widget: generated.widget)
-                .frame(minHeight: 140)
+
             if !generated.citations.isEmpty {
-                CitationChipRow(citations: generated.citations, onTap: onCitationTap)
-            }
-            if !generated.reason.isEmpty {
-                Text(generated.reason)
-                    .font(UnifiedDesignSystem.Typography.tiny)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+                FootnoteChipFlow(citations: generated.citations, onTap: onCitationTap)
             }
         }
-        .padding(UnifiedDesignSystem.Spacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                        .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
-                )
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Generated view: \(generated.widget.title)")
     }
 }
 
-private struct FollowUpChipsRow: View {
+// MARK: - Follow-up inline links
+
+private struct FollowUpInlineLinks: View {
     let questions: [InsightFollowUpQuestion]
     let onTap: (InsightFollowUpQuestion) -> Void
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
-                ForEach(questions) { question in
-                    Button {
-                        onTap(question)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "questionmark.bubble.fill")
-                                .font(.system(size: 11, weight: .medium))
-                            Text(question.question)
-                                .font(UnifiedDesignSystem.Typography.caption)
-                                .lineLimit(2)
-                        }
-                        .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
-                        .padding(.vertical, UnifiedDesignSystem.Spacing.xs)
-                        .background(
-                            Capsule()
-                                .fill(UnifiedDesignSystem.Colors.whimsy.opacity(0.12))
-                        )
-                        .foregroundStyle(UnifiedDesignSystem.Colors.whimsy)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint(question.rationale ?? "Ask this follow-up")
+        Text(attributedQuestions)
+            .font(UnifiedDesignSystem.Typography.body)
+            .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+            .lineSpacing(4)
+            .fixedSize(horizontal: false, vertical: true)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .environment(\.openURL, OpenURLAction { url in
+                guard url.scheme == "obb-followup",
+                      let host = url.host,
+                      let idx = Int(host),
+                      idx >= 0, idx < questions.count
+                else {
+                    return .systemAction
                 }
+                onTap(questions[idx])
+                return .handled
+            })
+            .accessibilityElement(children: .contain)
+    }
+
+    private var attributedQuestions: AttributedString {
+        var result = AttributedString()
+        for (idx, question) in questions.enumerated() {
+            var segment = AttributedString(question.question)
+            segment.foregroundColor = UnifiedDesignSystem.Colors.whimsy
+            segment.underlineStyle = .single
+            segment.link = URL(string: "obb-followup://\(idx)")
+            result.append(segment)
+            if idx < questions.count - 1 {
+                var separator = AttributedString("  ·  ")
+                separator.foregroundColor = UnifiedDesignSystem.Colors.textMuted
+                result.append(separator)
+            }
+        }
+        return result
+    }
+}
+
+// MARK: - Footnote chip flow
+
+private struct FootnoteChipFlow: View {
+    let citations: [InsightCitation]
+    let onTap: (InsightCitation) -> Void
+
+    var body: some View {
+        FlowLayout(spacing: UnifiedDesignSystem.Spacing.xs) {
+            ForEach(citations.prefix(8), id: \.id) { citation in
+                Button {
+                    onTap(citation)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: citation.kind.symbolName)
+                            .font(.system(size: 9, weight: .medium))
+                        Text(citation.label)
+                            .font(UnifiedDesignSystem.Typography.monoTiny)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
+                    .padding(.vertical, 3)
+                    .overlay(
+                        Capsule()
+                            .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+                    )
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Citation: \(citation.label)")
+                .accessibilityHint("Open evidence")
             }
         }
     }
 }
 
-// MARK: - Chips
+// MARK: - Action stripe
 
-private struct ModelChip: View {
-    let modelTag: InsightModelTag
+private struct ActionStripe: View {
+    let text: String
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: modelTag.egressTier.symbolName)
-                .font(.system(size: 10, weight: .medium))
-            Text(modelTag.displayName)
-                .font(UnifiedDesignSystem.Typography.caption)
-            Text("·")
-                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-            Text(modelTag.egressTier.displayLabel)
-                .font(UnifiedDesignSystem.Typography.tiny)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+        HStack(alignment: .firstTextBaseline, spacing: UnifiedDesignSystem.Spacing.sm) {
+            Text("→")
+                .font(UnifiedDesignSystem.Typography.monoSmall)
+                .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
+                .accessibilityHidden(true)
+            Text(text)
+                .font(UnifiedDesignSystem.Typography.body)
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
-        .padding(.vertical, UnifiedDesignSystem.Spacing.xs)
-        .background(
-            Capsule()
-                .fill(UnifiedDesignSystem.Colors.textSecondary.opacity(0.10))
-        )
-        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Action: \(text)")
     }
 }
 
-private struct BudgetChip: View {
-    let budget: InsightContextBudgetReport
+// MARK: - Confidence dots
 
-    var body: some View {
-        let label = IntelligenceBriefFormatting.budgetLabel(budget)
-        return HStack(spacing: 4) {
-            Image(systemName: "tray.full")
-                .font(.system(size: 10, weight: .medium))
-            Text(label)
-                .font(UnifiedDesignSystem.Typography.tiny)
-        }
-        .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
-        .padding(.vertical, UnifiedDesignSystem.Spacing.xs)
-        .background(
-            Capsule()
-                .fill(UnifiedDesignSystem.Colors.textSecondary.opacity(0.08))
-        )
-        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-        .accessibilityLabel("Context budget \(label)")
-    }
-}
-
-private struct TokenUsageChip: View {
-    let usage: InsightTokenUsage
-    let costUSD: Double?
-
-    var body: some View {
-        let label = IntelligenceBriefFormatting.tokenUsageLabel(usage, cost: costUSD)
-        return HStack(spacing: 4) {
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 10, weight: .medium))
-            Text(label)
-                .font(UnifiedDesignSystem.Typography.tiny)
-        }
-        .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
-        .padding(.vertical, UnifiedDesignSystem.Spacing.xs)
-        .background(
-            Capsule()
-                .fill(UnifiedDesignSystem.Colors.success.opacity(0.10))
-        )
-        .foregroundStyle(UnifiedDesignSystem.Colors.success)
-    }
-}
-
-private struct SeverityChip: View {
-    let severity: InsightSeverity
-
-    var body: some View {
-        let (color, label) = palette
-        return Text(label.uppercased())
-            .font(UnifiedDesignSystem.Typography.tiny)
-            .fontWeight(.bold)
-            .padding(.horizontal, UnifiedDesignSystem.Spacing.xs)
-            .padding(.vertical, 2)
-            .background(
-                Capsule()
-                    .fill(color.opacity(0.12))
-            )
-            .foregroundStyle(color)
-    }
-
-    private var palette: (Color, String) {
-        switch severity {
-        case .info: return (UnifiedDesignSystem.Colors.textMuted, "info")
-        case .low: return (UnifiedDesignSystem.Colors.whimsy, "low")
-        case .medium: return (UnifiedDesignSystem.Colors.warning, "medium")
-        case .high: return (UnifiedDesignSystem.Colors.ember, "high")
-        case .critical: return (UnifiedDesignSystem.Colors.error, "critical")
-        }
-    }
-}
-
-private struct ConfidenceChip: View {
+private struct ConfidenceDots: View {
     let confidence: InsightConfidence
 
     var body: some View {
-        Text("•••".prefix(confidenceDots))
-            .font(UnifiedDesignSystem.Typography.tiny)
-            .fontWeight(.bold)
-            .foregroundStyle(UnifiedDesignSystem.Colors.whimsy)
-            .padding(.horizontal, UnifiedDesignSystem.Spacing.xs)
-            .padding(.vertical, 2)
-            .background(
-                Capsule()
-                    .fill(UnifiedDesignSystem.Colors.whimsy.opacity(0.10))
-            )
-            .accessibilityLabel("Confidence \(confidence.rawValue)")
+        HStack(spacing: 3) {
+            ForEach(0..<3, id: \.self) { idx in
+                Circle()
+                    .fill(idx < filled
+                          ? UnifiedDesignSystem.Colors.hermesAureate
+                          : UnifiedDesignSystem.Colors.borderSubtle)
+                    .frame(width: 4, height: 4)
+            }
+        }
+        .accessibilityElement()
+        .accessibilityLabel("Confidence \(confidence.rawValue)")
     }
 
-    private var confidenceDots: Int {
+    private var filled: Int {
         switch confidence {
         case .low: return 1
         case .medium: return 2
         case .high: return 3
         }
-    }
-}
-
-private struct CitationChipRow: View {
-    let citations: [InsightCitation]
-    let onTap: (InsightCitation) -> Void
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(citations.prefix(6), id: \.id) { citation in
-                    Button {
-                        onTap(citation)
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: citation.kind.symbolName)
-                                .font(.system(size: 9, weight: .medium))
-                            Text(citation.label)
-                                .font(UnifiedDesignSystem.Typography.tiny)
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, UnifiedDesignSystem.Spacing.xs)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule()
-                                .fill(UnifiedDesignSystem.Colors.textSecondary.opacity(0.08))
-                        )
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Open evidence")
-                }
-            }
-        }
-    }
-}
-
-private struct ActionStripe: View {
-    let action: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.xs) {
-            Image(systemName: "arrow.right.circle.fill")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(UnifiedDesignSystem.Colors.whimsy)
-                .padding(.top, 1)
-            Text(action)
-                .font(UnifiedDesignSystem.Typography.caption)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
-        .padding(.vertical, UnifiedDesignSystem.Spacing.xs)
-        .background(
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm, style: .continuous)
-                .fill(UnifiedDesignSystem.Colors.whimsy.opacity(0.08))
-        )
     }
 }
 
@@ -653,7 +959,70 @@ public enum IntelligenceBriefFormatting {
         return "\(prefix) · result \(hash) · \(result.modelTag.egressTier.displayLabel)"
     }
 
+    /// Editorial meta strip — `model · egress · context tokens · cost`.
+    /// Returns the segments in order so callers can join them with the
+    /// canonical `  ·  ` separator (used by the hero strip and the a11y
+    /// label). Cost is included only when `tokenUsage` exists.
+    public static func metaSegments(for result: InsightAnalysisResult) -> [String] {
+        var segments: [String] = []
+        segments.append(result.modelTag.displayName)
+        segments.append(result.modelTag.egressTier.displayLabel)
+        segments.append(contextTokensLabel(result.contextBudget))
+        if let usage = result.tokenUsage {
+            segments.append(tokenCostLabel(usage, cost: result.estimatedCostUSD))
+        }
+        return segments
+    }
+
+    /// `~1280 tokens · ~5 KB` style context summary used in the hero strip.
+    public static func contextTokensLabel(_ budget: InsightContextBudgetReport) -> String {
+        let tokens = budget.estimatedPromptTokens
+        let kb = max(1, budget.encodedBytes / 1024)
+        var label = "~\(tokens) tokens · ~\(kb) KB"
+        if !budget.truncatedDataSources.isEmpty {
+            label += " · trimmed"
+        }
+        return label
+    }
+
+    /// Cost-first label for the hero strip's last segment: `$0.0234` or
+    /// `1600 tokens` when no cost is available.
+    public static func tokenCostLabel(_ usage: InsightTokenUsage, cost: Double?) -> String {
+        if let cost {
+            return currency(cost)
+        }
+        return "\(usage.totalTokens) tokens"
+    }
+
     private static func currency(_ value: Double) -> String {
         String(format: "$%.4f", value)
+    }
+}
+
+/// Turns a `InsightCitation` tap into a natural-language follow-up prompt
+/// so the composer pipeline can route the user back into the data behind
+/// the chip without needing a bespoke citation router. Used by every
+/// mobile/macOS surface that hosts `IntelligenceBriefView`.
+public enum IntelligenceBriefCitationPrompt {
+    public static func prompt(for citation: InsightCitation) -> String {
+        switch citation.kind {
+        case .session(let id, let provider):
+            let providerSuffix = provider.map { " (\($0))" } ?? ""
+            return "Open session \(id)\(providerSuffix) and summarize what drove its cost."
+        case .model(let id):
+            return "Drill into \(citation.label) (\(id)) — show me cost trend, cache hit rate, and top sessions."
+        case .agent(let provider):
+            return "Break down \(citation.label) (\(provider)) usage this window — sessions, cost, and top models."
+        case .project(let name):
+            return "Show me everything from project \(name): cost, model mix, anomalies, and active sessions."
+        case .day(let date):
+            return "Zoom into \(date) (\(citation.label)) — every provider's spend, top sessions, and any anomalies."
+        case .anomaly(let id):
+            return "Investigate anomaly \(id) (\(citation.label)) — what triggered it and is it still active?"
+        case .query(let text):
+            return "Re-run the query \"\(text)\" behind \(citation.label) and explain the result row by row."
+        case .quota(let provider, let bucket):
+            return "Detail the \(citation.label) quota signal: \(provider) bucket \(bucket) — headroom, refresh cadence, and projected throttling."
+        }
     }
 }

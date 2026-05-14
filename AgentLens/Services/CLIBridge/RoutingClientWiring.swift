@@ -14,12 +14,15 @@ import Foundation
 ///   - `.codex` — OpenAI Chat Completions shape (`/v1/chat/completions`).
 ///     Reads `OPENAI_BASE_URL` + `OPENAI_API_KEY` and lives at
 ///     `~/.codex/config.toml` (sentinel-fenced `[model_providers.…]` block).
+///   - `.opencode` — OpenAI-compatible provider entry in
+///     `~/.config/opencode/opencode.json`.
 ///   - `.forge` — OpenAI Chat Completions shape (`/v1/chat/completions`).
 ///     Reads a Forge `[[providers]]` entry at `~/forge/.forge.toml`, matching
 ///     the VibeProxy provider shape Forge already supports locally.
 enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
     case claudeCode
     case codex
+    case opencode
     case forge
 
     var id: String { rawValue }
@@ -28,6 +31,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .claudeCode: return "Claude Code"
         case .codex: return "Codex CLI"
+        case .opencode: return "OpenCode CLI"
         case .forge: return "Forge CLI"
         }
     }
@@ -36,7 +40,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
     var poolDisplayName: String {
         switch self {
         case .claudeCode: return "Anthropic-family"
-        case .codex, .forge: return "OpenAI-family"
+        case .codex, .opencode, .forge: return "OpenAI-family"
         }
     }
 }
@@ -192,6 +196,8 @@ struct RoutingClientWiring {
             return try wireClaudeCode(gateway: gateway)
         case .codex:
             return try wireCodex(gateway: gateway)
+        case .opencode:
+            return try wireOpenCode(gateway: gateway)
         case .forge:
             return try wireForge(gateway: gateway)
         }
@@ -203,6 +209,8 @@ struct RoutingClientWiring {
             try unwireClaudeCode()
         case .codex:
             try unwireCodex()
+        case .opencode:
+            try unwireOpenCode()
         case .forge:
             try unwireForge()
         }
@@ -216,6 +224,8 @@ struct RoutingClientWiring {
             return home.appendingPathComponent(".claude/settings.json")
         case .codex:
             return home.appendingPathComponent(".codex/config.toml")
+        case .opencode:
+            return home.appendingPathComponent(".config/opencode/opencode.json")
         case .forge:
             return home.appendingPathComponent("forge/.forge.toml")
         }
@@ -234,6 +244,8 @@ struct RoutingClientWiring {
             // Claude Code stores the env block as a JSON object, so we look
             // for our well-known marker key.
             return text.contains("\"OPENBURNBAR_WIRED\"") || text.contains(Self.sentinelStart)
+        case .opencode:
+            return text.contains("\"openburnbar\"") && text.contains("OpenBurnBar Gateway")
         case .codex, .forge:
             return text.contains(Self.sentinelStart)
         }
@@ -274,6 +286,15 @@ struct RoutingClientWiring {
             export OPENAI_BASE_URL=\(openAIBaseURL)
             export OPENAI_API_KEY=\(token)
             export OPENBURNBAR_GATEWAY_TOKEN=\(token)
+            """
+        case .opencode:
+            return """
+            # OpenBurnBar — wire OpenCode CLI through the Hydrant
+            # The config-file toggle adds provider.openburnbar to
+            # ~/.config/opencode/opencode.json.
+            export OPENBURNBAR_GATEWAY_TOKEN=\(token)
+            export OPENAI_BASE_URL=\(openAIBaseURL)
+            export OPENAI_API_KEY=\(token)
             """
         case .forge:
             return """
@@ -330,7 +351,7 @@ struct RoutingClientWiring {
                 "max_tokens": 1,
                 "messages": [["role": "user", "content": "ping"]]
             ]
-        case .codex, .forge:
+        case .codex, .opencode, .forge:
             probeModel = "gpt-5.4-nano"
             // OpenAI Chat Completions deprecated `max_tokens` for reasoning-
             // capable models in favor of `max_completion_tokens`. The
@@ -385,7 +406,7 @@ struct RoutingClientWiring {
         switch target {
         case .claudeCode:
             return base?.appending(path: "v1/messages")
-        case .codex, .forge:
+        case .codex, .opencode, .forge:
             return base?.appending(path: "v1/chat/completions")
         }
     }
@@ -497,6 +518,54 @@ struct RoutingClientWiring {
         model_provider = "openburnbar"
         \(Self.sentinelEnd)
         """
+    }
+
+    // MARK: - OpenCode (~/.config/opencode/opencode.json)
+
+    private func wireOpenCode(gateway: RoutingClientGateway) throws -> RoutingClientWiringChange {
+        let url = configURL(for: .opencode)
+        var (root, backupURL) = try loadJSONObjectWithBackup(at: url)
+        var providers = (root["provider"] as? [String: Any]) ?? [:]
+        providers["openburnbar"] = [
+            "npm": "@ai-sdk/openai-compatible",
+            "name": "OpenBurnBar Gateway",
+            "options": [
+                "baseURL": "\(gateway.baseURL)/v1",
+                "apiKey": gateway.effectiveClientToken,
+            ],
+            "models": [
+                "gpt-5.4-nano": [
+                    "name": "gpt-5.4-nano",
+                ],
+            ],
+        ]
+        root["provider"] = providers
+        try writeJSONObject(root, to: url)
+        return RoutingClientWiringChange(
+            target: .opencode,
+            configURL: url,
+            backupURL: backupURL,
+            appliedAt: now()
+        )
+    }
+
+    private func unwireOpenCode() throws {
+        let url = configURL(for: .opencode)
+        guard fileManager.fileExists(atPath: url.path) else {
+            throw RoutingClientWiringError.notEnabled
+        }
+        var (root, _) = try loadJSONObjectWithBackup(at: url)
+        guard var providers = root["provider"] as? [String: Any],
+              providers["openburnbar"] != nil else {
+            throw RoutingClientWiringError.notEnabled
+        }
+        providers.removeValue(forKey: "openburnbar")
+        if providers.isEmpty {
+            root.removeValue(forKey: "provider")
+        } else {
+            root["provider"] = providers
+        }
+        try writeJSONObject(root, to: url)
     }
 
     // MARK: - Forge (~/forge/.forge.toml)

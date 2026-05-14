@@ -12,6 +12,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case cursor = "Cursor"
     case openAI = "OpenAI"
     case codex = "Codex"
+    case openCode = "OpenCode"
     case zai = "Zai"
     case minimax = "MiniMax"
     case kimi = "Kimi"
@@ -36,6 +37,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     /// bridge. Usage-only tools stay out of quota surfaces.
     public static let quotaSignalProviders: [AgentProvider] = [
         .codex,
+        .openCode,
         .claudeCode,
         .openAI,
         .copilot,
@@ -61,6 +63,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     public static let mobileAccountConnectableProviders: [AgentProvider] = [
         .claudeCode,
         .codex,
+        .openCode,
         .factory,
         .cursor,
         .minimax,
@@ -82,6 +85,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .claudeCode
         case .codex:
             return .codex
+        case .openCode:
+            return .openCode
         default:
             return ProviderID(rawValue: persistedToken)
         }
@@ -105,6 +110,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .claudeCode
         case "codex":
             return .codex
+        case "opencode":
+            return .openCode
         default:
             return AgentProvider.allCases.first { $0.providerID == providerID }
         }
@@ -131,6 +138,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .openAI
         case "codex":
             return .codex
+        case "opencode", "open-code", "open code", "opencode-go", "open-code-go", "open code go":
+            return .openCode
         case "google", "gemini", "gemini-cli":
             return .geminiCLI
         case "moonshot", "kimi":
@@ -205,6 +214,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .ollama:     return "OllamaLogo"
         case .windsurf:   return "WindsurfLogo"
         case .warp:       return "WarpLogo"
+        case .openCode:   return "OpenCodeLogo"
         }
     }
 
@@ -234,6 +244,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .ollama: return "server.rack"
         case .windsurf: return "sailboat.fill"
         case .warp: return "terminal.fill"
+        case .openCode: return "chevron.left.forwardslash.chevron.right"
         }
     }
 

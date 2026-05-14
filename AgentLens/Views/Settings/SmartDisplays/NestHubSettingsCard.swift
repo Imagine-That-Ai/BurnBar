@@ -345,9 +345,7 @@ struct NestHubSettingsCard: View {
                 ) {
                     ForEach(SmartHubDisplayPalette.allCases, id: \.self) { palette in
                         HStack {
-                            Circle()
-                                .fill(Color(hex: palette.primaryHex))
-                                .frame(width: 10, height: 10)
+                            paletteSwatch(for: palette)
                             Text(palette.displayName)
                         }
                         .tag(palette)
@@ -587,6 +585,25 @@ struct NestHubSettingsCard: View {
             return "curl -X POST http://127.0.0.1:8787/voice-refresh"
         }
         return "curl -X POST \(url)"
+    }
+
+    @ViewBuilder
+    private func paletteSwatch(for palette: SmartHubDisplayPalette) -> some View {
+        if palette.isRainbow {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: SmartHubDisplayPalette.rainbowFlag.map { Color(hex: $0) },
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: 10, height: 10)
+        } else {
+            Circle()
+                .fill(Color(hex: palette.primaryHex))
+                .frame(width: 10, height: 10)
+        }
     }
 
     private func copySnippet() {

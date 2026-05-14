@@ -1,6 +1,7 @@
 import http from "node:http";
 import { fetchClaudeQuota } from "./providers/claude.mjs";
 import { fetchCodexQuota } from "./providers/codex.mjs";
+import { fetchOpenCodeQuota } from "./providers/opencode.mjs";
 
 const MAX_BODY_BYTES = 128 * 1024;
 
@@ -72,6 +73,13 @@ async function route(req, res) {
   if (provider === "claude-code") {
     writeJSON(res, 200, {
       snapshot: await fetchClaudeQuota({ credential, accountID }),
+    });
+    return;
+  }
+
+  if (provider === "opencode") {
+    writeJSON(res, 200, {
+      snapshot: await fetchOpenCodeQuota({ credential, accountID }),
     });
     return;
   }

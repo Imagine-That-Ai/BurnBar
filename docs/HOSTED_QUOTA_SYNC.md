@@ -1,21 +1,27 @@
-# Claude Code and Codex Remote Quota Sync
+# Claude Code, Codex, and OpenCode Remote Quota Sync
 
 This is the reference guide for the iOS/iPadOS quota-provider work.
 
-The short version: users can add Claude Code and Codex quota providers from the
-mobile apps and refresh quota on demand without relying on the macOS app to do
-the refresh.
+The short version: users can add Claude Code, Codex, and OpenCode quota
+providers from the mobile apps and refresh quota on demand without relying on
+the macOS app to do the refresh.
 
 There is one important compliance distinction:
 
 - **Codex** supports hosted and self-hosted remote quota sync in this codebase.
+- **OpenCode** supports local and self-hosted remote quota sync in this
+  codebase. Hosted OpenCode credential refresh is intentionally disabled
+  because current OpenCode tooling exposes local `opencode stats`, not a stable
+  public account quota API.
 - **Claude Code** supports self-hosted remote quota sync only. OpenBurnBar does
   not collect Claude Code OAuth/setup tokens for the hosted service.
 
-That distinction is intentional. Anthropic's current Claude Code legal guidance
-says third-party developers may not offer Claude.ai login or route Free, Pro, or
-Max credentials on behalf of users. A user-controlled self-hosted runner keeps
-provider auth in the user's own environment.
+Those distinctions are intentional. Anthropic's current Claude Code legal
+guidance says third-party developers may not offer Claude.ai login or route
+Free, Pro, or Max credentials on behalf of users. OpenCode's current public
+surface gives OpenBurnBar local cost history, not hosted account quota. A
+user-controlled self-hosted runner keeps provider auth in the user's own
+environment.
 
 ## What This Solves
 
@@ -28,6 +34,7 @@ Now mobile has remote paths:
 | Provider | Hosted mode | Self-hosted mode | Notes |
 |---|---:|---:|---|
 | Codex | Yes | Yes | Hosted uses OpenBurnBar's runner and Firebase Secret Manager |
+| OpenCode | No | Yes | Self-hosted runner reads local OpenCode CLI stats |
 | Claude Code | No | Yes | Hosted OAuth/setup-token collection is intentionally disabled |
 
 Both paths are explicit and on demand. There is no scheduled polling, random
@@ -67,16 +74,29 @@ The Codex self-hosted flow is the same as Claude Code self-hosted mode, except
 the user's runner needs access to a signed-in `CODEX_HOME` or equivalent Codex
 auth JSON in the user's own infrastructure.
 
+### OpenCode Self-Hosted Mode
+
+The OpenCode self-hosted flow is the same as Claude Code self-hosted mode,
+except the user's runner needs access to a signed-in OpenCode CLI/data
+directory (`~/.local/share/opencode/auth.json`) in the user's own
+infrastructure. The runner reads exact 5-hour spend from
+`~/.local/share/opencode/opencode.db`, then calls `opencode stats` for 7 and
+30 days to normalize estimated 7-day and monthly plan-pressure buckets. If the
+SQLite database is unavailable, the runner falls back to the 1-day stats output
+for a clearly marked 5-hour warning bucket.
+
 ## What It Does Not Do
 
 - It does not scrape Claude or OpenAI websites.
 - It does not collect browser cookies.
-- It does not bypass provider rate limits.
+- It does not bypass provider rate limits or pool quota across different
+  provider families.
 - It does not run on a timer.
 - It does not refresh secretly in the background.
 - It does not return raw CLI output to the app.
 - It does not expose provider tokens in Firestore.
 - It does not collect Claude Code OAuth/setup tokens for OpenBurnBar-hosted refresh.
+- It does not collect OpenCode auth JSON for OpenBurnBar-hosted refresh.
 
 The refresh path is user initiated. The collected output is quota status, not
 private conversation content.
@@ -85,11 +105,11 @@ private conversation content.
 
 Use this wording when explaining it:
 
-> The mobile app can now ask a quota runner to check Claude Code or Codex for
-> you. Codex can use OpenBurnBar hosted sync after subscription, or your own
-> self-hosted runner. Claude Code uses your own self-hosted runner. Either way,
-> you tap refresh when you want fresh quota, and the result syncs across iPhone,
-> iPad, and Mac.
+> The mobile app can now ask a quota runner to check Claude Code, Codex, or
+> OpenCode for you. Codex can use OpenBurnBar hosted sync after subscription,
+> or your own self-hosted runner. Claude Code and OpenCode use your own
+> self-hosted runner. Either way, you tap refresh when you want fresh quota, and
+> the result syncs across iPhone, iPad, and Mac.
 
 ## Provider Credential Inputs
 
@@ -123,9 +143,27 @@ Self-hosted options:
 - Mount a signed-in `CODEX_HOME` into the runner.
 - Or pass the same auth JSON through the user's own infrastructure.
 
+### OpenCode
+
+OpenBurnBar-hosted OpenCode credentials are not supported until OpenCode
+exposes a stable public account quota API. Do not ask users to paste
+`~/.local/share/opencode/auth.json` into the hosted service.
+
+Self-hosted options:
+
+- Run the runner where the OpenCode CLI is already signed in.
+- Keep `~/.local/share/opencode/auth.json` inside the user's own
+  infrastructure.
+- OpenCode quota snapshots include an exact local 5-hour bucket from
+  `~/.local/share/opencode/opencode.db` plus estimated 7d/monthly buckets from
+  `opencode stats --days 7` and `opencode stats --days 30`.
+- If the SQLite database cannot be read, the 5-hour bucket falls back to
+  `opencode stats --days 1` and is explicitly marked as a 24-hour fallback.
+- Cost-derived estimated buckets should warn rather than hard-block routing.
+
 ## Data Flow
 
-### Codex Hosted Refresh
+### Hosted Refresh
 
 ```text
 iOS/iPadOS refresh tap
@@ -140,7 +178,7 @@ Firebase Auth + App Check + hosted entitlement check
 Secret Manager credential read
         |
         v
-Hosted quota runner /v1/quota/refresh
+Hosted quota runner /v1/quota/refresh (codex)
         |
         v
 Sanitized ProviderQuotaSnapshot

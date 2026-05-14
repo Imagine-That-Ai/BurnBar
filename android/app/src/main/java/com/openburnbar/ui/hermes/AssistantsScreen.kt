@@ -37,6 +37,7 @@ import com.openburnbar.MainActivity
 import com.openburnbar.data.assistants.AssistantChatHistoryStore
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.ChatTilePreferences
+import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.hermes.PiService
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
@@ -60,6 +61,9 @@ fun AssistantsScreen() {
     val historyStore = remember { AssistantChatHistoryStore.shared(context.applicationContext) }
     LaunchedEffect(historyStore) { historyStore.bootstrap() }
     val piService = remember { PiService().apply { bindHistoryStore(historyStore) } }
+    val hermesService = remember(context) {
+        HermesService(appContext = context.applicationContext)
+    }
 
     // Honor the runtime hint carried by the launch / new intent — widget
     // chips and `burnbar://pi` deep links both surface it here. Read once
@@ -88,7 +92,7 @@ fun AssistantsScreen() {
         )
 
         when (runtime) {
-            AssistantRuntimeID.HERMES -> HermesView()
+            AssistantRuntimeID.HERMES -> HermesView(hermesService = hermesService)
             AssistantRuntimeID.PI -> PiAssistantView(piService = piService)
             AssistantRuntimeID.CODEX,
             AssistantRuntimeID.CLAUDE,

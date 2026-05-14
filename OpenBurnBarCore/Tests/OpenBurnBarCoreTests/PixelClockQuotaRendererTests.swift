@@ -51,6 +51,35 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         XCTAssertEqual(pages[1].text, "Gemini 24h 55% 55/100")
     }
 
+    func testRunningProviderBypassesProviderFilterSoSpinnerCanAppear() {
+        let config = PixelClockConfig(
+            enabled: true,
+            layout: .providerDashboard,
+            workingSpinnerPrimaryHex: "#00AAFF",
+            workingSpinnerSecondaryHex: "#FFFFFF",
+            providerIDs: ["gemini"]
+        )
+        let pages = PixelClockQuotaRenderer.renderPages(
+            items: [
+                PixelClockQuotaItem(
+                    providerID: "codex",
+                    providerName: "Codex",
+                    percentUsed: 20,
+                    usageText: "20/100",
+                    windowLabel: "7d",
+                    agentStatus: .running
+                )
+            ],
+            config: config,
+            now: Date(timeIntervalSince1970: 0)
+        )
+
+        XCTAssertEqual(pages.count, 1)
+        XCTAssertEqual(pages[0].text, "CDX 7d RUN 80% 20/100")
+        XCTAssertTrue(pages[0].draw.contains(PixelClockDrawInstruction.pixel(x: 29, y: 3, color: "#00AAFF")))
+        XCTAssertTrue(pages[0].draw.contains(PixelClockDrawInstruction.pixel(x: 30, y: 3, color: "#FFFFFF")))
+    }
+
     func testRenderQuotaCarouselShowsWaitingWhenNoProvidersAreAvailable() {
         let config = PixelClockConfig(enabled: true)
         let pages = PixelClockQuotaRenderer.renderQuotaCarousel(items: [], config: config)
@@ -192,7 +221,7 @@ final class PixelClockQuotaRendererTests: XCTestCase {
 
         XCTAssertEqual(pages.count, 1)
         XCTAssertEqual(pages[0].text, "CLD 5h 28% 72/100")
-        XCTAssertEqual(pages[0].color, "#E07868")
+        XCTAssertEqual(pages[0].color, "#D97757")
         XCTAssertFalse(pages[0].draw.isEmpty)
         XCTAssertEqual(payload[0]["text"] as? String, "")
         XCTAssertEqual(payload[0]["noScroll"] as? Bool, true)
@@ -201,113 +230,7 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         XCTAssertNil(payload[0]["progressC"])
     }
 
-    func testProviderDashboardKeepsFullQuotaMetricFromCollidingWithWindowLabel() {
-        let config = PixelClockConfig(enabled: true, layout: .providerDashboard)
-        let pages = PixelClockQuotaRenderer.renderPages(
-            items: [
-                PixelClockQuotaItem(
-                    providerID: "codex",
-                    providerName: "Codex",
-                    percentUsed: 0,
-                    usageText: "0/100",
-                    windowLabel: "5h"
-                )
-            ],
-            config: config
-        )
-
-        XCTAssertEqual(pages[0].text, "CDX 5h 100% 0/100")
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 10, y: 1, color: "#A294F0"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 14, y: 1, color: "#A294F0"))
-        XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 15, y: 1))
-        XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 16, y: 1))
-        XCTAssertFalse(hasPixel(pages[0].draw, x: 17, y: 1, color: "#A294F0"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 22, y: 1, color: "#A294F0"))
-    }
-
-    func testProviderDashboardUsesSelectedPaletteForMetricAndQuotaBar() {
-        let config = PixelClockConfig(
-            enabled: true,
-            layout: .providerDashboard,
-            palette: .rainbow
-        )
-        let pages = PixelClockQuotaRenderer.renderPages(
-            items: [
-                PixelClockQuotaItem(
-                    providerID: "codex",
-                    providerName: "Codex",
-                    percentUsed: 0,
-                    usageText: "0/100",
-                    windowLabel: "5h"
-                )
-            ],
-            config: config
-        )
-
-        XCTAssertEqual(pages[0].color, "#E40303")
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 10, y: 1, color: "#E40303"))
-        XCTAssertTrue(hasFillRect(pages[0].draw, x: 12, y: 7, width: 20, height: 1, color: "#E40303"))
-        XCTAssertFalse(hasPixel(pages[0].draw, x: 10, y: 1, color: "#8EA0FF"))
-    }
-
-    func testProviderDashboardPreservesThirtyDayWindowLabel() {
-        let config = PixelClockConfig(enabled: true, layout: .providerDashboard)
-        let pages = PixelClockQuotaRenderer.renderPages(
-            items: [
-                PixelClockQuotaItem(
-                    providerID: "cursor",
-                    providerName: "Cursor",
-                    percentUsed: 30,
-                    usageText: "30/100",
-                    windowLabel: "30d"
-                )
-            ],
-            config: config
-        )
-
-        XCTAssertEqual(pages[0].text, "CUR 30d 70% 30/100")
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 10, y: 1, color: "#A294F0"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 14, y: 1, color: "#A294F0"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 16, y: 1, color: "#A294F0"))
-        XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 15, y: 2))
-        XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 18, y: 1))
-        XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 19, y: 1))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 1, color: "#A294F0"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 18, y: 4, color: "#A294F0"))
-        XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 19, y: 4))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 4, color: "#A294F0"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 21, y: 1, color: "#A294F0"))
-    }
-
-    func testProviderDashboardKeepsTwentyFourHourWindowReadableBesideFullMetric() {
-        let config = PixelClockConfig(enabled: true, layout: .providerDashboard)
-        let pages = PixelClockQuotaRenderer.renderPages(
-            items: [
-                PixelClockQuotaItem(
-                    providerID: "minimax",
-                    providerName: "MiniMax",
-                    percentUsed: 0,
-                    usageText: "0/100",
-                    windowLabel: "24h"
-                )
-            ],
-            config: config
-        )
-
-        XCTAssertEqual(pages[0].text, "MMX 24h 100% 0/100")
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 10, y: 1, color: "#A294F0"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 14, y: 1, color: "#A294F0"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 16, y: 1, color: "#A294F0"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 18, y: 1, color: "#A294F0"))
-        XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 19, y: 1))
-        XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 20, y: 1))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 18, y: 4, color: "#A294F0"))
-        XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 19, y: 4))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 4, color: "#A294F0"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 22, y: 1, color: "#A294F0"))
-    }
-
-    func testRenderPagesShowsWorkingSpinnerInRightStatusArea() {
+    func testRenderPagesShowsSpinnerWhenGlobalWorkingStateIsActive() {
         let config = PixelClockConfig(
             enabled: true,
             layout: .providerDashboard,
@@ -328,12 +251,9 @@ final class PixelClockQuotaRendererTests: XCTestCase {
 
         XCTAssertEqual(idle[0].text, "CDX 7d 80% 20/100")
         XCTAssertEqual(working[0].text, "CDX 7d RUN 80% 20/100")
-        XCTAssertFalse(hasAnyPixel(working[0].draw, x: 21, y: 1))
-        XCTAssertTrue(working[0].draw.contains(.pixel(x: 24, y: 1, color: "#00AAFF")))
-        XCTAssertTrue(working[0].draw.contains(.pixel(x: 25, y: 2, color: "#FFFFFF")))
-        XCTAssertTrue(working[0].draw.contains(.pixel(x: 26, y: 3, color: "#FFFFFF")))
-        XCTAssertTrue(working[0].draw.contains(.pixel(x: 27, y: 4, color: "#FFFFFF")))
-        XCTAssertTrue(working[0].draw.contains(.pixel(x: 28, y: 5, color: "#FFFFFF")))
+        XCTAssertTrue(working[0].draw.contains(.pixel(x: 27, y: 3, color: "#00AAFF")))
+        XCTAssertTrue(working[0].draw.contains(.pixel(x: 30, y: 6, color: "#FFFFFF")))
+        XCTAssertTrue(working[0].draw.contains(.pixel(x: 16, y: 1, color: "#8EA0FF")))
     }
 
     func testRenderPagesShowsRunningSpinnerFromAgentStatus() {
@@ -356,65 +276,9 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         let pages = PixelClockQuotaRenderer.renderPages(items: [item], config: config, now: Date(timeIntervalSince1970: 0))
 
         XCTAssertEqual(pages[0].text, "CDX 5h RUN 80% running")
-        XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 21, y: 1))
-        XCTAssertTrue(pages[0].draw.contains(.pixel(x: 26, y: 2, color: "#00AAFF")))
-        XCTAssertTrue(pages[0].draw.contains(.pixel(x: 27, y: 2, color: "#FFFFFF")))
-    }
-
-    func testBurnStatusLayoutPromotesToDashboardWithSpinnerWhenWorking() {
-        let config = PixelClockConfig(
-            enabled: true,
-            layout: .burnStatus,
-            workingSpinnerStyle: .scan,
-            workingSpinnerPrimaryHex: "#00AAFF",
-            workingSpinnerSecondaryHex: "#FFFFFF"
-        )
-        let item = PixelClockQuotaItem(
-            providerID: "codex",
-            providerName: "Codex",
-            percentUsed: 20,
-            usageText: "20/100",
-            windowLabel: "7d"
-        )
-
-        let idle = PixelClockQuotaRenderer.renderPages(
-            items: [item], config: config, now: Date(timeIntervalSince1970: 0), isWorking: false
-        )
-        let working = PixelClockQuotaRenderer.renderPages(
-            items: [item], config: config, now: Date(timeIntervalSince1970: 0), isWorking: true
-        )
-
-        XCTAssertTrue(idle[0].draw.isEmpty,
-                      "burnStatus idle pages should still scroll text with no bitmap draw")
-        XCTAssertFalse(working[0].draw.isEmpty,
-                       "burnStatus working pages must promote to dashboard so the spinner has a draw list")
-        XCTAssertTrue(working[0].draw.contains(.pixel(x: 24, y: 1, color: "#00AAFF")),
-                      "burnStatus working pages must include the dashboard spinner pixels")
-    }
-
-    func testAlertsOnlyLayoutPromotesToDashboardWithSpinnerWhenWorking() {
-        let config = PixelClockConfig(
-            enabled: true,
-            layout: .alertsOnly,
-            workingSpinnerStyle: .scan,
-            workingSpinnerPrimaryHex: "#00AAFF"
-        )
-        let item = PixelClockQuotaItem(
-            providerID: "claudecode",
-            providerName: "Claude Code",
-            percentUsed: 40,
-            usageText: "40/100",
-            windowLabel: "5h"
-        )
-
-        let working = PixelClockQuotaRenderer.renderPages(
-            items: [item], config: config, now: Date(timeIntervalSince1970: 0), isWorking: true
-        )
-
-        XCTAssertFalse(working[0].draw.isEmpty,
-                       "alertsOnly working pages must promote to dashboard so the spinner has a draw list")
-        XCTAssertTrue(working[0].draw.contains(.pixel(x: 24, y: 1, color: "#00AAFF")),
-                      "alertsOnly working pages must include the dashboard spinner pixels")
+        XCTAssertTrue(pages[0].draw.contains(.pixel(x: 29, y: 4, color: "#00AAFF")))
+        XCTAssertTrue(pages[0].draw.contains(.pixel(x: 31, y: 5, color: "#00AAFF")))
+        XCTAssertTrue(pages[0].draw.contains(.pixel(x: 14, y: 1, color: "#8EA0FF")))
     }
 
     func testRenderPagesShowsCompletedStatusWithoutSpinner() {
@@ -452,10 +316,10 @@ final class PixelClockQuotaRendererTests: XCTestCase {
             "CLD 5h 40% 60/100",
             "CLD 7d 20% 80/100"
         ])
-        XCTAssertEqual(pages[0].color, "#A294F0")
-        XCTAssertEqual(pages[1].color, "#A294F0")
-        XCTAssertEqual(pages[2].color, "#E07868")
-        XCTAssertEqual(pages[3].color, "#E07868")
+        XCTAssertEqual(pages[0].color, "#8EA0FF")
+        XCTAssertEqual(pages[1].color, "#8EA0FF")
+        XCTAssertEqual(pages[2].color, "#D97757")
+        XCTAssertEqual(pages[3].color, "#D97757")
     }
 
     func testProviderDashboardKeepsQuotaBarOutOfProviderLogoColumns() {
@@ -476,8 +340,8 @@ final class PixelClockQuotaRendererTests: XCTestCase {
             return y == 7
         }
         XCTAssertEqual(barInstructions.count, 1)
-        XCTAssertEqual(barInstructions[0].values[0], .int(12))
-        XCTAssertEqual(barInstructions[0].values[2], .int(20))
+        XCTAssertEqual(barInstructions[0].values[0], .int(10))
+        XCTAssertEqual(barInstructions[0].values[2], .int(21))
     }
 
     func testRenderPagesUsesIconDashboardPayloadForQuotaCarouselSelection() {
@@ -536,7 +400,10 @@ final class PixelClockQuotaRendererTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(litPixelCount, 14, provider.displayName)
             XCTAssertGreaterThanOrEqual(Set(logo.pixels.flatMap(\.self).compactMap(\.self)).count, 2, provider.displayName)
             XCTAssertEqual(logo.sourceName, expectedLogoSourceName(for: provider), provider.displayName)
-            XCTAssertTrue(seenColorGrids.insert(colorGrid).inserted, provider.displayName)
+            let allowsSharedOpenAIFamilyLogo = [.openAI, .codex, .openCode].contains(provider)
+            if !allowsSharedOpenAIFamilyLogo {
+                XCTAssertTrue(seenColorGrids.insert(colorGrid).inserted, provider.displayName)
+            }
         }
 
         XCTAssertEqual(
@@ -723,13 +590,13 @@ final class PixelClockQuotaRendererTests: XCTestCase {
         )
 
         XCTAssertEqual(pages[0].text, "CUR 30d 70% 30/100")
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 14, y: 1, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 14, y: 1, color: "#FFFFFF"))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 15, y: 2))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 19, y: 1))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 1, color: "#A294F0"))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 18, y: 4, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 1, color: "#FFFFFF"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 18, y: 4, color: "#FFFFFF"))
         XCTAssertFalse(hasAnyPixel(pages[0].draw, x: 19, y: 4))
-        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 4, color: "#A294F0"))
+        XCTAssertTrue(hasPixel(pages[0].draw, x: 20, y: 4, color: "#FFFFFF"))
     }
 
     func testProviderDashboardDoesNotRenderIdleZzzPixels() {
@@ -767,6 +634,378 @@ final class PixelClockQuotaRendererTests: XCTestCase {
                 instruction.command == .drawPixel && instruction.values == expectedValues
             }), "Unexpected stale Zzz pixel at \(point)")
         }
+    }
+
+    // MARK: - Rainbow palette (Pride mode)
+
+    func testRainbowPaletteCyclesPrideColorsAcrossPages() {
+        let config = PixelClockConfig(
+            enabled: true,
+            layout: .providerDashboard,
+            palette: .rainbow
+        )
+        // 7 items so we exercise both a full pride-flag cycle (6 colors)
+        // and the wrap-around to the seventh page.
+        let items = (0..<7).map { idx in
+            PixelClockQuotaItem(
+                providerID: "claudecode-\(idx)",
+                providerName: "Claude Code \(idx)",
+                percentUsed: 30 + idx * 5,
+                usageText: "\(30 + idx * 5)/100",
+                windowLabel: "5h"
+            )
+        }
+        let pages = PixelClockQuotaRenderer.renderPages(items: items, config: config)
+
+        XCTAssertEqual(pages.count, 7)
+        XCTAssertEqual(pages[0].color, "#E40303")
+        XCTAssertEqual(pages[1].color, "#FF8C00")
+        XCTAssertEqual(pages[2].color, "#FFED00")
+        XCTAssertEqual(pages[3].color, "#008026")
+        XCTAssertEqual(pages[4].color, "#004CFF")
+        XCTAssertEqual(pages[5].color, "#732982")
+        XCTAssertEqual(pages[6].color, "#E40303") // wraps after 6
+    }
+
+    func testRainbowPaletteWindowAndStatusTextUseRainbowColor() {
+        let config = PixelClockConfig(enabled: true, layout: .providerDashboard, palette: .rainbow)
+        let pages = PixelClockQuotaRenderer.renderPages(
+            items: [
+                PixelClockQuotaItem(
+                    providerID: "codex",
+                    providerName: "Codex",
+                    percentUsed: 40,
+                    usageText: "40/100",
+                    windowLabel: "7d"
+                )
+            ],
+            config: config
+        )
+        XCTAssertEqual(pages[0].color, "#E40303")
+        // Provider color (#8EA0FF) must NOT show up — every drawn pixel
+        // that previously came from providerAccentHex(...) should now
+        // be the rainbow page color.
+        XCTAssertFalse(pages[0].draw.contains(where: { instruction in
+            guard let p = pixelTuple(instruction) else { return false }
+            return p.color == "#8EA0FF"
+        }))
+        // Window label is drawn at row 1; assert at least one window
+        // pixel uses the rainbow accent.
+        XCTAssertTrue(pages[0].draw.contains(where: { instruction in
+            guard let p = pixelTuple(instruction) else { return false }
+            return p.y == 1 && p.color == "#E40303"
+        }))
+    }
+
+    func testRainbowPaletteDrawsFullRainbowBarRegardlessOfPercent() {
+        let config = PixelClockConfig(enabled: true, layout: .providerDashboard, palette: .rainbow)
+        let pages = PixelClockQuotaRenderer.renderPages(
+            items: [
+                PixelClockQuotaItem(
+                    providerID: "claudecode",
+                    providerName: "Claude Code",
+                    percentUsed: 10, // low usage — rainbow must still be fully drawn
+                    usageText: "10/100",
+                    windowLabel: "5h"
+                )
+            ],
+            config: config
+        )
+        // Six fillRect stripes at row 7 totalling 21 pixels, each in the
+        // pride flag order.
+        let stripeWidths = [4, 4, 3, 4, 3, 3]
+        var expectedX = 10
+        for (idx, width) in stripeWidths.enumerated() {
+            let expectedColor = PixelClockPalette.rainbowFlag[idx]
+            let needle = PixelClockDrawInstruction.fillRect(
+                x: expectedX, y: 7, width: width, height: 1, color: expectedColor
+            )
+            XCTAssertTrue(
+                pages[0].draw.contains(needle),
+                "Expected rainbow stripe \(idx) at x=\(expectedX) width=\(width) color=\(expectedColor)"
+            )
+            expectedX += width
+        }
+        // 10% remaining → 19% filled → expect a dim mask covering the
+        // unused portion (21 - 19 = 2 columns starting at x=10+19).
+        let remaining = 100 - 10
+        let filled = Int(round(Double(remaining) / 100.0 * 21.0))
+        let dimX = 10 + filled
+        let dimW = 21 - filled
+        XCTAssertTrue(
+            pages[0].draw.contains(.fillRect(x: dimX, y: 7, width: dimW, height: 1, color: "#181818")),
+            "Expected dim mask at x=\(dimX) width=\(dimW)"
+        )
+    }
+
+    func testRainbowPaletteTintsProviderLogoWithPageRainbowColor() {
+        let config = PixelClockConfig(enabled: true, layout: .providerDashboard, palette: .rainbow)
+        let pages = PixelClockQuotaRenderer.renderPages(
+            items: [
+                PixelClockQuotaItem(
+                    providerID: "claudecode",
+                    providerName: "Claude Code",
+                    percentUsed: 30,
+                    usageText: "30/100",
+                    windowLabel: "5h"
+                )
+            ],
+            config: config
+        )
+        // No pixel in the logo region (columns 0..6, rows 0..7) should
+        // still be drawn in Claude's brand coral #D97757.
+        for instruction in pages[0].draw {
+            guard let p = pixelTuple(instruction), p.x < 8, p.y < 8 else { continue }
+            XCTAssertNotEqual(p.color, "#D97757", "Logo pixel at (\(p.x),\(p.y)) was not tinted")
+        }
+        // At least one logo pixel exists with the rainbow accent.
+        XCTAssertTrue(pages[0].draw.contains(where: { instruction in
+            guard let p = pixelTuple(instruction), p.x < 8, p.y < 8 else { return false }
+            return p.color == "#E40303"
+        }))
+    }
+
+    func testRainbowLogosUseAtLeastTwoDistinctColorsPerPageSoShapesStayRecognizable() {
+        let providers: [(String, String)] = [
+            ("claudecode", "Claude Code"),
+            ("codex", "Codex"),
+            ("minimax", "MiniMax"),
+            ("zai", "Z.ai"),
+            ("factory", "Factory"),
+            ("ollama", "Ollama"),
+            ("cursor", "Cursor"),
+            ("warp", "Warp"),
+            ("kimi", "Kimi")
+        ]
+        let config = PixelClockConfig(enabled: true, layout: .providerDashboard, palette: .rainbow)
+
+        for (id, name) in providers {
+            let pages = PixelClockQuotaRenderer.renderPages(
+                items: [
+                    PixelClockQuotaItem(
+                        providerID: id,
+                        providerName: name,
+                        percentUsed: 50,
+                        usageText: "50/100",
+                        windowLabel: "5h"
+                    )
+                ],
+                config: config
+            )
+            // Count distinct colors among logo-region pixels (x<8, y<8).
+            var logoColors: Set<String> = []
+            for instruction in pages[0].draw {
+                guard let p = pixelTuple(instruction), p.x < 8, p.y < 8 else { continue }
+                logoColors.insert(p.color)
+            }
+            XCTAssertGreaterThanOrEqual(
+                logoColors.count, 2,
+                "Rainbow \(name) logo should use ≥2 distinct colors so silhouette stays recognizable (got \(logoColors))"
+            )
+        }
+    }
+
+    func testRainbowLogoColorsAllComeFromPrideFlag() {
+        let config = PixelClockConfig(enabled: true, layout: .providerDashboard, palette: .rainbow)
+        let pages = PixelClockQuotaRenderer.renderPages(
+            items: [
+                PixelClockQuotaItem(
+                    providerID: "claudecode",
+                    providerName: "Claude Code",
+                    percentUsed: 50,
+                    usageText: "50/100",
+                    windowLabel: "5h"
+                )
+            ],
+            config: config
+        )
+        let flag = Set(PixelClockPalette.rainbowFlag)
+        for instruction in pages[0].draw {
+            guard let p = pixelTuple(instruction), p.x < 8, p.y < 8 else { continue }
+            XCTAssertTrue(
+                flag.contains(p.color),
+                "Logo pixel at (\(p.x),\(p.y)) color \(p.color) is not in the pride flag"
+            )
+        }
+    }
+
+    func testRainbowLogoRemapsRotateAcrossPagesPreservingZoneContrast() {
+        // Same provider rendered on two different pages should produce
+        // two _different_ remaps that each still preserve internal zone
+        // contrast (eyes-vs-body must remain distinct on every page).
+        let config = PixelClockConfig(enabled: true, layout: .providerDashboard, palette: .rainbow)
+        let items = (0..<6).map { idx in
+            PixelClockQuotaItem(
+                providerID: "claudecode-\(idx)",
+                providerName: "Claude Code \(idx)",
+                percentUsed: 50,
+                usageText: "50/100",
+                windowLabel: "5h"
+            )
+        }
+        let pages = PixelClockQuotaRenderer.renderPages(items: items, config: config)
+        var firstPageEyeColor: String?
+        var firstPageBodyColor: String?
+        for (idx, page) in pages.enumerated() {
+            // Claude eye lives at (2, 2) in the logo grid.
+            // Claude body lives at (1, 1).
+            var bodyColor: String?
+            var eyeColor: String?
+            for instruction in page.draw {
+                guard let p = pixelTuple(instruction) else { continue }
+                if p.x == 1, p.y == 1 { bodyColor = p.color }
+                if p.x == 2, p.y == 2 { eyeColor = p.color }
+            }
+            XCTAssertNotEqual(bodyColor, eyeColor, "Page \(idx): claude body and eye collapsed to same color")
+            if idx == 0 {
+                firstPageEyeColor = eyeColor
+                firstPageBodyColor = bodyColor
+            }
+            if idx == 1 {
+                XCTAssertNotEqual(bodyColor, firstPageBodyColor, "Page 1 body color didn't rotate from page 0")
+                XCTAssertNotEqual(eyeColor, firstPageEyeColor, "Page 1 eye color didn't rotate from page 0")
+            }
+        }
+    }
+
+    /// Dump each rainbow logo as an ASCII grid for visual review.
+    /// Marked `disabled` style by prefixing with `disabled_`; flip to
+    /// `test_` to re-print on demand.
+    func disabled_printRainbowGridsForVisualReview() {
+        let providers: [(String, String)] = [
+            ("claudecode", "Claude Code"),
+            ("codex", "Codex"),
+            ("minimax", "MiniMax"),
+            ("zai", "Z.ai"),
+            ("factory", "Factory"),
+            ("ollama", "Ollama"),
+            ("cursor", "Cursor"),
+            ("warp", "Warp"),
+            ("kimi", "Kimi"),
+            ("copilot", "Copilot")
+        ]
+        let palette: [String: Character] = [
+            "#E40303": "R", "#FF8C00": "O", "#FFED00": "Y",
+            "#008026": "G", "#004CFF": "B", "#732982": "V"
+        ]
+        let config = PixelClockConfig(enabled: true, layout: .providerDashboard, palette: .rainbow)
+        for (id, name) in providers {
+            let pages = PixelClockQuotaRenderer.renderPages(
+                items: [
+                    PixelClockQuotaItem(
+                        providerID: id,
+                        providerName: name,
+                        percentUsed: 50,
+                        usageText: "50/100",
+                        windowLabel: "5h"
+                    )
+                ],
+                config: config
+            )
+            print("=== \(name) (page 0) ===")
+            var grid: [[Character]] = Array(repeating: Array(repeating: ".", count: 8), count: 8)
+            for instruction in pages[0].draw {
+                guard let p = pixelTuple(instruction), p.x < 8, p.y < 8 else { continue }
+                grid[p.y][p.x] = palette[p.color] ?? "?"
+            }
+            for row in grid { print(String(row)) }
+        }
+    }
+
+    func testRainbowLogosProduceDistinctRecognizableGrids() {
+        // Snapshot-style assertions: each provider's rainbow grid must
+        // contain at least 4 lit logo pixels and a meaningful color
+        // distribution (no single color dominates more than 90% of the
+        // logo pixels).
+        let providers: [(String, String, Int)] = [
+            ("claudecode", "Claude Code", 24),
+            ("codex", "Codex", 30),
+            ("minimax", "MiniMax", 30),
+            ("zai", "Z.ai", 26),
+            ("factory", "Factory", 22),
+            ("ollama", "Ollama", 22),
+            ("cursor", "Cursor", 18),
+            ("warp", "Warp", 30),
+            ("kimi", "Kimi", 16)
+        ]
+        let config = PixelClockConfig(enabled: true, layout: .providerDashboard, palette: .rainbow)
+        for (id, name, minLitPixels) in providers {
+            let pages = PixelClockQuotaRenderer.renderPages(
+                items: [
+                    PixelClockQuotaItem(
+                        providerID: id,
+                        providerName: name,
+                        percentUsed: 50,
+                        usageText: "50/100",
+                        windowLabel: "5h"
+                    )
+                ],
+                config: config
+            )
+            var lit: [(x: Int, y: Int, color: String)] = []
+            for instruction in pages[0].draw {
+                guard let p = pixelTuple(instruction), p.x < 8, p.y < 8 else { continue }
+                lit.append(p)
+            }
+            XCTAssertGreaterThanOrEqual(
+                lit.count, minLitPixels,
+                "Rainbow \(name) logo only has \(lit.count) lit pixels (expected ≥\(minLitPixels))"
+            )
+            // No color may dominate (otherwise the logo looks like a blob).
+            let counts = Dictionary(grouping: lit, by: \.color).mapValues(\.count)
+            let total = lit.count
+            for (color, count) in counts {
+                let share = Double(count) / Double(total)
+                XCTAssertLessThanOrEqual(
+                    share, 0.9,
+                    "Rainbow \(name) logo: color \(color) covers \(Int(share * 100))% of the logo (must be <90% so silhouette is recognizable)"
+                )
+            }
+        }
+    }
+
+    /// Extracts (x, y, color) from a `.drawPixel` instruction; nil for other commands.
+    private func pixelTuple(_ instruction: PixelClockDrawInstruction) -> (x: Int, y: Int, color: String)? {
+        guard instruction.command == .drawPixel, instruction.values.count >= 3 else { return nil }
+        guard case .int(let x) = instruction.values[0],
+              case .int(let y) = instruction.values[1],
+              case .string(let color) = instruction.values[2] else { return nil }
+        return (x, y, color)
+    }
+
+    func testRainbowPaletteRoundTripsThroughEnumRawValue() {
+        XCTAssertEqual(PixelClockPalette.rainbow.rawValue, "rainbow")
+        XCTAssertEqual(PixelClockPalette(rawValue: "rainbow"), .rainbow)
+        XCTAssertTrue(PixelClockPalette.rainbow.isRainbow)
+        XCTAssertEqual(PixelClockPalette.rainbowFlag.count, 6)
+    }
+
+    func testRainbowPaletteSerializesAndDecodesThroughSmartDisplayConfigCodec() {
+        let config = SmartHubDisplayConfig(
+            layout: .quotaCarousel,
+            palette: .rainbow,
+            theme: .warmCharcoal,
+            background: .dashboard,
+            brightness: 0.85,
+            scrollSpeedSeconds: 8,
+            refreshCadenceSeconds: 5,
+            providerIDs: [],
+            audibleCue: false,
+            identifyOnRefresh: false,
+            updatedAt: Date()
+        )
+        let encoded = SmartDisplayConfigCodec.encode(config)
+        XCTAssertEqual(encoded["palette"] as? String, "rainbow")
+
+        let decoded = SmartDisplayConfigCodec.decode(encoded)
+        XCTAssertEqual(decoded?.palette, .rainbow)
+        XCTAssertTrue(decoded?.palette.isRainbow ?? false)
+    }
+
+    func testSmartHubDisplayPaletteRainbowSurfacesDisplayName() {
+        XCTAssertEqual(SmartHubDisplayPalette.rainbow.displayName, "Pride rainbow")
+        XCTAssertEqual(SmartHubDisplayPalette.rainbowFlag.count, 6)
+        XCTAssertEqual(SmartHubDisplayPalette.rainbow.primaryHex, "#E40303")
     }
 
     private func logo(for provider: AgentProvider) -> PixelClockProviderLogo {

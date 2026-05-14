@@ -154,6 +154,7 @@ public enum DesignSystemColors {
         case .ollama:     return Color(hex: "6B7280")
         case .windsurf:   return Color(hex: "06B6D4")
         case .warp:       return Color(hex: "DDE4EA")
+        case .openCode:   return Color(hex: "10B981")
         }
     }
 
@@ -182,6 +183,7 @@ public enum DesignSystemColors {
         case .ollama:     return Color(hex: "9CA3AF")
         case .windsurf:   return Color(hex: "22D3EE")
         case .warp:       return Color(hex: "111111")
+        case .openCode:   return Color(hex: "34D399")
         }
     }
     public static func colorForModel(_ modelName: String) -> Color {

@@ -372,6 +372,22 @@ final class InsightsStore {
         canvases = await store.allCanvases()
     }
 
+    /// Pin a generated widget from the current brief onto the active
+    /// canvas, replacing an existing entry with the same widget id so
+    /// repeated taps are idempotent. Refreshes the canvas afterward so
+    /// the pinned widget shows fresh data immediately.
+    func pinGeneratedWidget(_ generated: InsightGeneratedWidget) async {
+        guard var canvas = currentCanvas else { return }
+        if let existing = canvas.widgets.firstIndex(where: { $0.id == generated.widget.id }) {
+            canvas.widgets[existing] = generated.widget
+        } else {
+            canvas.widgets.append(generated.widget)
+        }
+        try? await store.upsert(canvas)
+        canvases = await store.allCanvases()
+        await refreshSelectedCanvas(autoSwitchEmptyDefaultCanvas: false)
+    }
+
     func deleteCurrentCanvas() async {
         guard let id = selectedCanvasID else { return }
         try? await store.remove(id: id)

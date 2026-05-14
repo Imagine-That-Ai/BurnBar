@@ -128,16 +128,24 @@ public struct NestHubMiniPreview: View {
 
     private func photoBlendContent(scale: CGFloat) -> some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    Color(hex: config.palette.primaryHex).opacity(0.55),
-                    Color(hex: config.palette.secondaryHex).opacity(0.25),
-                    Color.clear
-                ],
-                startPoint: .topTrailing,
-                endPoint: .bottomLeading
-            )
-            VStack(alignment: .leading, spacing: 4 * scale) {
+            if config.palette.isRainbow {
+                LinearGradient(
+                    colors: SmartHubDisplayPalette.rainbowFlag.map { Color(hex: $0).opacity(0.55) },
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            } else {
+                LinearGradient(
+                    colors: [
+                        Color(hex: config.palette.primaryHex).opacity(0.55),
+                        Color(hex: config.palette.secondaryHex).opacity(0.25),
+                        Color.clear
+                    ],
+                    startPoint: .topTrailing,
+                    endPoint: .bottomLeading
+                )
+            }
+            VStack(alignment: .leading, spacing: 5 * scale) {
                 header(scale: scale)
                 Spacer(minLength: 0)
                 Text(snapshot.totalSpend)

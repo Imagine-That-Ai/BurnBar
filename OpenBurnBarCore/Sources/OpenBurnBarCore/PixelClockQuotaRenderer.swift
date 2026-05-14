@@ -284,21 +284,22 @@ public enum PixelClockQuotaRenderer {
                 usageText: "waiting",
                 windowLabel: ""
             )
-            return [dashboardPage(for: waiting, config: config, now: now, isWorking: isWorking)]
+            return [dashboardPage(for: waiting, pageIndex: 0, config: config, now: now, isWorking: isWorking)]
         }
 
-        return selectedItems.map { item in
-            dashboardPage(for: item, config: config, now: now, isWorking: isWorking)
+        return selectedItems.enumerated().map { index, item in
+            dashboardPage(for: item, pageIndex: index, config: config, now: now, isWorking: isWorking)
         }
     }
 
     private static func dashboardPage(
         for item: PixelClockQuotaItem,
+        pageIndex: Int,
         config: PixelClockConfig,
         now: Date,
         isWorking: Bool
     ) -> PixelClockRenderedPage {
-        let color = config.palette.hexColor(for: item.percentUsed)
+        let color = accentHex(for: item, pageIndex: pageIndex, config: config)
         let provider = shortProviderCode(for: item)
         let status = isWorking ? PixelClockAgentStatus.running : item.agentStatus
         let statusText = status == .ready
@@ -310,22 +311,28 @@ public enum PixelClockQuotaRenderer {
             durationSeconds: config.clampedPageDuration,
             progress: remainingPercent(for: item),
             scrollSpeed: config.clampedScrollSpeed,
-            draw: dashboardDraw(for: item, config: config, now: now, isWorking: isWorking)
+            draw: dashboardDraw(for: item, pageIndex: pageIndex, config: config, now: now, isWorking: isWorking)
         )
     }
 
     private static func dashboardDraw(
         for item: PixelClockQuotaItem,
+        pageIndex: Int,
         config: PixelClockConfig,
         now: Date,
         isWorking: Bool
     ) -> [PixelClockDrawInstruction] {
         var draw: [PixelClockDrawInstruction] = []
-        let primary = config.palette.hexColor(for: item.percentUsed)
+        let primary = accentHex(for: item, pageIndex: pageIndex, config: config)
         let status = isWorking ? PixelClockAgentStatus.running : item.agentStatus
         let remaining = remainingPercent(for: item)
+        let isRainbow = config.palette.isRainbow
 
-        draw.append(contentsOf: providerLogoDraw(for: item))
+        if isRainbow {
+            draw.append(contentsOf: rainbowLogoDraw(for: item, pageIndex: pageIndex))
+        } else {
+            draw.append(contentsOf: providerLogoDraw(for: item, tint: nil))
+        }
 
         let window = normalizedWindowLabel(item.windowLabel)
         if !window.isEmpty {
@@ -341,9 +348,56 @@ public enum PixelClockQuotaRenderer {
             draw.append(contentsOf: miniTextDraw(metricText, x: metricX, y: 1, color: primary))
         }
 
-        let filled = min(max(Int(round(Double(remaining) / 100.0 * 20.0)), 0), 20)
-        if filled > 0 {
-            draw.append(.fillRect(x: 12, y: 7, width: filled, height: 1, color: primary))
+        if status == .running {
+            let tick = Int(now.timeIntervalSince1970.rounded(.down))
+            draw.append(contentsOf: spinnerDraw(config.workingSpinnerStyle, x: 27, y: 3, config: config, tick: tick))
+        }
+
+        let filled = min(max(Int(round(Double(remaining) / 100.0 * 21.0)), 0), 21)
+        if isRainbow {
+            // Always paint the full 21-px rainbow flag at row 7; overlay a dim
+            // mask over the unused portion so the rainbow stays visible at any %.
+            draw.append(contentsOf: rainbowBarDraw(x: 10, y: 7, width: 21))
+            if filled < 21 {
+                let unusedX = 10 + filled
+                let unusedW = 21 - filled
+                draw.append(.fillRect(x: unusedX, y: 7, width: unusedW, height: 1, color: "#181818"))
+            }
+        } else if filled > 0 {
+            draw.append(.fillRect(x: 10, y: 7, width: filled, height: 1, color: primary))
+        }
+        return draw
+    }
+
+    /// Returns the per-page accent color, honoring the rainbow palette by
+    /// cycling through the pride flag based on `pageIndex`.
+    private static func accentHex(
+        for item: PixelClockQuotaItem,
+        pageIndex: Int,
+        config: PixelClockConfig
+    ) -> String {
+        if config.palette.isRainbow {
+            return config.palette.rainbowColor(at: pageIndex)
+        }
+        return providerAccentHex(
+            for: item,
+            fallback: config.palette.hexColor(for: item.percentUsed)
+        )
+    }
+
+    /// 21-column rainbow bar at the given origin. Stripe widths sum to 21:
+    /// [4, 4, 3, 4, 3, 3].
+    private static func rainbowBarDraw(x: Int, y: Int, width: Int) -> [PixelClockDrawInstruction] {
+        let flag = PixelClockPalette.rainbowFlag
+        let widths = [4, 4, 3, 4, 3, 3]
+        var draw: [PixelClockDrawInstruction] = []
+        var cursor = x
+        for (index, stripe) in widths.enumerated() {
+            guard cursor < x + width else { break }
+            let remaining = (x + width) - cursor
+            let stripeWidth = min(stripe, remaining)
+            draw.append(.fillRect(x: cursor, y: y, width: stripeWidth, height: 1, color: flag[index]))
+            cursor += stripeWidth
         }
         return draw
     }
@@ -388,21 +442,299 @@ public enum PixelClockQuotaRenderer {
         return points.map { point in .pixel(x: x + point.0, y: y + point.1, color: point.2) }
     }
 
-    private static func positiveModulo(_ value: Int, _ divisor: Int) -> Int {
-        let remainder = value % divisor
-        return remainder >= 0 ? remainder : remainder + divisor
-    }
-
-    private static func providerLogoDraw(for item: PixelClockQuotaItem) -> [PixelClockDrawInstruction] {
+    private static func providerLogoDraw(
+        for item: PixelClockQuotaItem,
+        tint: String? = nil
+    ) -> [PixelClockDrawInstruction] {
         let logo = providerLogo(for: item)
         var draw: [PixelClockDrawInstruction] = []
         for row in logo.pixels.indices {
             for column in logo.pixels[row].indices {
                 guard let color = logo.colorHex(row: row, column: column) else { continue }
-                draw.append(.pixel(x: column, y: row, color: color))
+                draw.append(.pixel(x: column, y: row, color: tint ?? color))
             }
         }
         return draw
+    }
+
+    /// Draws the provider logo recolored against the pride flag, preserving
+    /// each logo's internal color zones so the shape stays recognizable.
+    ///
+    /// Strategy: every logo has 1-4 distinct color zones (Claude: shell vs.
+    /// eyes; Codex: body vs. white slash vs. dark base; MiniMax: outer vs.
+    /// inner ribbons; …). For each provider we hand-craft a zone→flag-index
+    /// map so the most prominent zone gets one pride color and the secondary
+    /// zones get a contrasting pride color that stays consistent with the
+    /// page accent. The page index rotates the mapping so the matrix sweeps
+    /// through the pride flag while shapes stay sharp.
+    private static func rainbowLogoDraw(
+        for item: PixelClockQuotaItem,
+        pageIndex: Int
+    ) -> [PixelClockDrawInstruction] {
+        let token = "\(item.providerID) \(item.providerName)".lowercased()
+        let logo = providerLogo(for: item)
+        let flag = PixelClockPalette.rainbowFlag
+        let baseIndex = ((pageIndex % flag.count) + flag.count) % flag.count
+
+        // Per-provider color zone → flag-index offset map. Offsets are
+        // _added_ to baseIndex so the whole logo shifts hue per page.
+        let zoneMap: [String: Int] = rainbowZoneOffsets(for: token)
+
+        var draw: [PixelClockDrawInstruction] = []
+        for row in logo.pixels.indices {
+            for column in logo.pixels[row].indices {
+                guard let originalHex = logo.colorHex(row: row, column: column) else { continue }
+                let offset = zoneMap[originalHex.uppercased()] ?? 0
+                let flagIndex = ((baseIndex + offset) % flag.count + flag.count) % flag.count
+                draw.append(.pixel(x: column, y: row, color: flag[flagIndex]))
+            }
+        }
+        // Synthetic detail overlays: a few logos (Z.ai, Factory, Codex)
+        // collapse into one or two color zones when remapped, so we
+        // overlay a small contrasting accent that keeps the silhouette
+        // recognizable on the matrix.
+        draw.append(contentsOf: rainbowAccentOverlay(for: token, pageIndex: pageIndex))
+        return draw
+    }
+
+    /// Tiny per-provider accent pixels that ride on top of the rainbow logo
+    /// so its iconic silhouette stays legible even when every zone is
+    /// mapped to a single flag color.
+    private static func rainbowAccentOverlay(
+        for token: String,
+        pageIndex: Int
+    ) -> [PixelClockDrawInstruction] {
+        let flag = PixelClockPalette.rainbowFlag
+        let baseIndex = ((pageIndex % flag.count) + flag.count) % flag.count
+        // Highlight color = farthest pride color from the base (3 hops).
+        let highlight = flag[(baseIndex + 3) % flag.count]
+        let shadow = flag[(baseIndex + 2) % flag.count]
+        let sparkle = flag[(baseIndex + 5) % flag.count]
+
+        if token.contains("claude") {
+            // Two eye dots stay distinct against the body — already
+            // handled by zone map (offset 3). Add two sparkle pixels
+            // at the antennae tips for extra crab personality.
+            return [
+                .pixel(x: 0, y: 5, color: sparkle),
+                .pixel(x: 7, y: 5, color: sparkle)
+            ]
+        }
+        if token.contains("codex") || token.contains("openai") {
+            // Trace the diagonal slash with sparkle so the staircase
+            // reads even with body fully rainbow.
+            return [
+                .pixel(x: 2, y: 5, color: sparkle),
+                .pixel(x: 3, y: 4, color: sparkle),
+                .pixel(x: 5, y: 5, color: sparkle),
+                .pixel(x: 6, y: 5, color: sparkle)
+            ]
+        }
+        if token.contains("minimax") {
+            // Highlight the two weave crossings on rows 2 and 5.
+            return [
+                .pixel(x: 3, y: 2, color: highlight),
+                .pixel(x: 4, y: 2, color: highlight),
+                .pixel(x: 3, y: 5, color: highlight),
+                .pixel(x: 4, y: 5, color: highlight)
+            ]
+        }
+        if token.contains("z.ai") || token.contains("zai") {
+            // Re-draw the diagonal so the Z still reads even when
+            // top/bottom slabs are remapped to the same flag color.
+            return [
+                .pixel(x: 6, y: 2, color: shadow),
+                .pixel(x: 5, y: 3, color: shadow),
+                .pixel(x: 4, y: 4, color: shadow),
+                .pixel(x: 3, y: 5, color: shadow),
+                .pixel(x: 2, y: 6, color: shadow)
+            ]
+        }
+        if token.contains("factory") || token.contains("droid") {
+            // 2×2 grey hub from the original logo — keep it contrasting.
+            return [
+                .pixel(x: 3, y: 3, color: shadow),
+                .pixel(x: 4, y: 3, color: shadow),
+                .pixel(x: 3, y: 4, color: shadow),
+                .pixel(x: 4, y: 4, color: shadow)
+            ]
+        }
+        if token.contains("ollama") {
+            // Two eye dots on row 3 — already in zone map, but pin them
+            // explicitly so they pop on every page.
+            return [
+                .pixel(x: 2, y: 3, color: sparkle),
+                .pixel(x: 5, y: 3, color: sparkle)
+            ]
+        }
+        if token.contains("cursor") {
+            // Cube edge — keep the inverted corner sparkling.
+            return [
+                .pixel(x: 1, y: 4, color: sparkle),
+                .pixel(x: 1, y: 5, color: sparkle),
+                .pixel(x: 2, y: 5, color: sparkle)
+            ]
+        }
+        if token.contains("warp") {
+            // Center vortex — two dark pixels.
+            return [
+                .pixel(x: 3, y: 4, color: shadow),
+                .pixel(x: 4, y: 4, color: shadow)
+            ]
+        }
+        if token.contains("kimi") {
+            // Eye dot.
+            return [
+                .pixel(x: 5, y: 2, color: sparkle)
+            ]
+        }
+        if token.contains("copilot") {
+            // GitHub-style "ribbon" pop — bright pixel in the middle.
+            return [
+                .pixel(x: 4, y: 4, color: sparkle)
+            ]
+        }
+        return []
+    }
+
+    /// Public helper for previews — returns the resolved hex remap
+    /// for a given provider/page so the SwiftUI preview matches the
+    /// device-side rainbow rendering pixel-for-pixel.
+    public static func rainbowZoneRemap(
+        for item: PixelClockQuotaItem,
+        pageIndex: Int
+    ) -> [String: String] {
+        let token = "\(item.providerID) \(item.providerName)".lowercased()
+        let flag = PixelClockPalette.rainbowFlag
+        let baseIndex = ((pageIndex % flag.count) + flag.count) % flag.count
+        let zoneMap = rainbowZoneOffsets(for: token)
+        var resolved: [String: String] = [:]
+        for (originalHex, offset) in zoneMap {
+            let flagIndex = ((baseIndex + offset) % flag.count + flag.count) % flag.count
+            resolved[originalHex.uppercased()] = flag[flagIndex]
+        }
+        // Fallback for any logo color not explicitly mapped — uses the
+        // base page color so all pixels still receive a pride hue.
+        return resolved
+    }
+
+    /// Convenience used by the preview painter — returns the page accent
+    /// color so unmapped logo pixels still get a pride hue.
+    public static func rainbowPageAccent(at pageIndex: Int) -> String {
+        PixelClockPalette.rainbow.rainbowColor(at: pageIndex)
+    }
+
+    /// Hand-tuned per-provider zone→flag-offset map. Distinct logo colors
+    /// land on _different_ pride colors so shapes stay readable.
+    /// Offsets are chosen to maximize contrast on the flag's hue wheel:
+    /// 0 (red) ↔ 3 (green), 1 (orange) ↔ 4 (blue), 2 (yellow) ↔ 5 (violet).
+    private static func rainbowZoneOffsets(for token: String) -> [String: Int] {
+        // Claude — coral shell vs. dark eyes (preserve eye holes).
+        if token.contains("claude") {
+            return ["#D97757": 0, "#1A1208": 3]
+        }
+        // Codex — light blue body, white slashes, deep blue base.
+        if token.contains("codex") || token.contains("openai") {
+            return ["#8EA0FF": 0, "#FFFFFF": 2, "#4258FF": 4]
+        }
+        // MiniMax — outer magenta ribbon vs. inner coral weave.
+        if token.contains("minimax") {
+            return ["#EC1970": 0, "#FF5B3F": 3]
+        }
+        // Z.ai — top/bottom slabs (white) vs. middle slabs (lavender).
+        if token.contains("z.ai") || token.contains("zai") {
+            return ["#FFFFFF": 0, "#C9B6FF": 3]
+        }
+        // Factory — sunburst petals (white) vs. grey core hub.
+        if token.contains("factory") || token.contains("droid") {
+            return ["#FFFFFF": 0, "#B8B8B8": 3]
+        }
+        // Copilot — multi-hue swirl built from blue, teal, green, yellow,
+        // orange, magenta bands. Map each natural hue family to its own
+        // pride color so the swirl reads as a full spectrum.
+        if token.contains("copilot") {
+            return [
+                "#0F4E70": 4, "#1A80B6": 4, "#187DB4": 4, "#1050A2": 4,
+                "#05293E": 4, "#091F60": 4, "#118BD1": 4, "#1397E1": 4,
+                "#148FDD": 4, "#1558D0": 4, "#1652BA": 4, "#031121": 4,
+                "#1B656E": 3, "#2BA1AF": 3, "#2EA3A9": 3, "#257F90": 3,
+                "#529F62": 3, "#60B46C": 3, "#66B666": 3, "#305A32": 3,
+                "#A5BB36": 2, "#AFC033": 2, "#ABB92D": 2, "#2A310B": 2,
+                "#6C610A": 2, "#AC8D13": 2, "#D19422": 2,
+                "#D26238": 1, "#F36544": 1, "#F88D61": 1, "#F9886D": 1,
+                "#E6756A": 1, "#75341D": 1, "#762D45": 1, "#CD5E5E": 1,
+                "#F46A80": 0, "#F16187": 0, "#963B57": 0,
+                "#67251B": 5, "#B05634": 5, "#BA7B40": 5, "#BA7445": 5,
+                "#72442D": 5, "#172C62": 5, "#675CBC": 5, "#7350AF": 5,
+                "#572E73": 5, "#381429": 5, "#452121": 5,
+                "#C64FAF": 5, "#BB51CC": 5, "#B24FCB": 5, "#E55898": 5,
+                "#D954A7": 5, "#BC4A97": 5
+            ]
+        }
+        // Cursor — cube is built from highlights, midtones, dark face,
+        // and pure black edge. Split into 4 luminance bands.
+        if token.contains("cursor") {
+            return [
+                "#FFFFFF": 0, "#F9F9F9": 0, "#FAFAFA": 0, "#FCFCFC": 0,
+                "#DDDDDD": 1, "#DEDEDE": 1, "#D2D2D2": 1, "#CFCFCF": 1,
+                "#D0D0D0": 1, "#D8D8D8": 1, "#DADADA": 1, "#D9D9D9": 1,
+                "#E6E6E6": 1, "#CBCBCB": 1,
+                "#B3B3B3": 2, "#B2B2B2": 2, "#B0B0B0": 2, "#B9B9B9": 2,
+                "#ABABAB": 2, "#8D8D8D": 2,
+                "#7D7D7D": 3, "#7C7C7C": 3, "#797979": 3, "#5B5B5B": 3,
+                "#787878": 3, "#727272": 3, "#6C6C6C": 3, "#6A6A6A": 3,
+                "#6B6B6B": 3, "#565656": 3,
+                "#333333": 4, "#464646": 4, "#5A5A5A": 4, "#3C3C3C": 4,
+                "#252525": 4, "#232323": 4, "#242424": 4, "#212121": 4,
+                "#1F1F1F": 4, "#1E1E1E": 4, "#171717": 4,
+                "#0F0F0F": 5, "#101010": 5, "#030303": 5, "#000000": 5
+            ]
+        }
+        // Warp — vortex needs three luminance bands (light gloss / midtone
+        // ring / dark core) mapped to three different pride colors so the
+        // circular silhouette stays readable.
+        if token.contains("warp") {
+            return [
+                "#FFFFFF": 0, "#FBFBFB": 0, "#FCFCFC": 0, "#FAFAFA": 0,
+                "#F4F5F6": 1, "#F5F6F7": 1, "#F5F7F7": 1, "#F6F7F8": 1,
+                "#F6F8F8": 1, "#FCFCFD": 1, "#FBFCFC": 1, "#F3F5F5": 1,
+                "#DCE0E3": 2, "#D0D6DA": 2, "#CFD5D9": 2, "#D2D8DC": 2,
+                "#D4DADE": 2, "#D6DCE0": 2, "#D8DEE2": 2, "#CCD2D6": 2,
+                "#E1E6E9": 2, "#E3E8EB": 2,
+                "#ADB2B6": 3, "#A1A6AA": 3, "#ACB1B4": 3, "#B3B8BC": 3,
+                "#B2B7BB": 3, "#B4B9BD": 3, "#C1C6CA": 3, "#C4C9CD": 3,
+                "#6E7173": 4, "#777A7C": 4, "#787B7D": 4, "#8C8F92": 4,
+                "#3B3C3D": 5, "#47494A": 5, "#373838": 5, "#313233": 5,
+                "#4B4C4D": 5, "#323333": 5, "#494A4B": 5, "#282828": 5
+            ]
+        }
+        // Ollama — alpaca body (creamy white) vs. blue eyes vs. grey feet.
+        if token.contains("ollama") {
+            return [
+                "#F6F8FF": 0, "#FAFCFF": 0,
+                "#1EA7FF": 2, "#0098EE": 2,
+                "#AEB7C2": 4, "#BEC7D2": 4
+            ]
+        }
+        // Kimi — dark body vs. light fur highlights vs. blue accent.
+        // Split fur greys into two bands so the silhouette has internal
+        // contrast.
+        if token.contains("kimi") {
+            return [
+                "#252525": 0, "#2F2F2F": 0, "#2D2D2D": 0,
+                "#242424": 1, "#232323": 1, "#1A1A1A": 1,
+                "#303030": 1, "#313131": 1, "#343434": 1,
+                "#404040": 1, "#0F1C2B": 1, "#0A2E57": 1,
+                "#828282": 2, "#858585": 2, "#7C7C7C": 2,
+                "#6F6F6F": 2, "#8B8B8B": 2, "#8D8D8D": 2,
+                "#919191": 2, "#B2B2B2": 2, "#B8B8B8": 2,
+                "#C2C2C2": 3, "#CDCDCD": 3, "#C3C3C3": 3,
+                "#C9C9C9": 3, "#D3D3D3": 3, "#D7D7D7": 3,
+                "#DDDDDD": 3, "#DFDFDF": 3,
+                "#052040": 5, "#136CD2": 5
+            ]
+        }
+        return [:]
     }
 
     static func providerLogoPattern(for item: PixelClockQuotaItem) -> [String] {
@@ -513,7 +845,7 @@ public enum PixelClockQuotaRenderer {
         let normalized = Set(providerIDs.map { $0.lowercased() })
         guard !normalized.isEmpty else { return items }
         return items.filter { item in
-            normalized.contains(item.providerID.lowercased())
+            normalized.contains(item.providerID.lowercased()) || item.agentStatus == .running
         }
     }
 
@@ -676,4 +1008,14 @@ public enum PixelClockQuotaRenderer {
         default: return [[0,0],[0,0],[0,0],[0,0],[0,0]]
         }
     }
+}
+
+// MARK: - Helpers
+
+/// Modulo that always returns a non-negative result, so it can be used to
+/// index into wraparound rings even when the caller passes a negative tick.
+fileprivate func positiveModulo(_ lhs: Int, _ rhs: Int) -> Int {
+    guard rhs != 0 else { return 0 }
+    let r = lhs % rhs
+    return r >= 0 ? r : r + abs(rhs)
 }

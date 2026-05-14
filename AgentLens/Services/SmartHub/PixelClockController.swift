@@ -206,9 +206,88 @@ private actor PixelClockExternalAgentActivityScanCache {
     }
 }
 
+enum PixelClockAgentProcessDetector {
+    static func runningStatuses() async -> [String: PixelClockAgentStatus] {
+        await Task.detached(priority: .utility) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/ps")
+            process.arguments = ["-axo", "comm,args"]
+
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = Pipe()
+
+            do {
+                try process.run()
+            } catch {
+                return [:]
+            }
+
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return [:] }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8) else { return [:] }
+            return statuses(fromPSOutput: output)
+        }.value
+    }
+
+    static func statuses(fromPSOutput output: String) -> [String: PixelClockAgentStatus] {
+        var statuses: [String: PixelClockAgentStatus] = [:]
+        for line in output.split(separator: "\n").dropFirst() {
+            guard let provider = provider(forProcessLine: String(line)) else { continue }
+            statuses[provider.persistedToken] = .running
+        }
+        return statuses
+    }
+
+    private static func provider(forProcessLine line: String) -> AgentProvider? {
+        let lower = line.lowercased()
+        if lower.contains("openburnbar") || lower.contains("/bin/ps") {
+            return nil
+        }
+
+        let tokens = lower
+            .split { !$0.isLetter && !$0.isNumber && $0 != "." && $0 != "-" }
+            .map(String.init)
+
+        let serviceTokens: Set<String> = [
+            "daemon",
+            "proxy",
+            "bridge",
+            "mcp",
+            "server",
+            "language-server",
+            "tsserver",
+            "typingsinstaller",
+            "native-host",
+            "helper",
+            "helpers"
+        ]
+        if tokens.contains(where: { serviceTokens.contains($0) }) {
+            return nil
+        }
+        if lower.contains(".app/contents/") {
+            return nil
+        }
+
+        func has(_ candidates: Set<String>) -> Bool {
+            tokens.contains { candidates.contains($0) }
+        }
+
+        if has(["codex"]) { return .codex }
+        if has(["claude", "claude-code", "claudecode"]) { return .claudeCode }
+        if has(["droid", "factory", "factory-cli"]) { return .factory }
+        if has(["minimax", "mini-max"]) { return .minimax }
+        if has(["zai", "z.ai", "z-ai"]) { return .zai }
+        if has(["kimi", "moonshot"]) { return .kimi }
+
+        return nil
+    }
+}
+
 @MainActor
 final class PixelClockController {
-    static let awtrixLightFlasherURL = "https://blueforcer.github.io/awtrix3/#/flasher"
+    static let awtrixLightFlasherURL = PixelClockSetupResult.awtrixLightFlasherURL
     private static let logger = Logger(subsystem: "com.openburnbar.app", category: "PixelClock")
     private static let sentinelRepublishInterval: TimeInterval = 5 * 60
 

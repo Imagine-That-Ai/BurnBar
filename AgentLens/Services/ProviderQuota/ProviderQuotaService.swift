@@ -568,7 +568,7 @@ final class ProviderQuotaService {
         }
 
         if let remaining = bucket.remainingPercent {
-            if remaining <= 0 { return .exhausted }
+            if remaining <= 0 { return bucket.isEstimated ? .pressure : .exhausted }
             if remaining <= 20 { return .pressure }
             return .healthy
         }
@@ -691,6 +691,8 @@ final class ProviderQuotaService {
             return "zai"
         case .ollama:
             return "ollama"
+        case .openCode:
+            return "opencode"
         case .kimi:
             return "moonshot"
         default:
@@ -713,6 +715,8 @@ final class ProviderQuotaService {
             identifiers.append(contentsOf: ["zai", "z_ai"])
         case .kimi:
             identifiers.append("kimi_auth_token")
+        case .openCode:
+            identifiers.append(contentsOf: ["opencode", "open_code", "opencode_auth_json"])
         default:
             break
         }
@@ -877,6 +881,8 @@ final class ProviderQuotaService {
             return .ollama
         case "openai":
             return .openAI
+        case "opencode", "open-code":
+            return .openCode
         case "moonshot", "kimi":
             return .kimi
         default:

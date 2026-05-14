@@ -10,6 +10,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     CURSOR("cursor", "Cursor", 0xFFAC8C57, 0xFF007AFF),
     OPEN_AI("openai", "OpenAI", 0xFF00A67E, 0xFF00C48C),
     CODEX("codex", "Codex", 0xFF00A67E, 0xFF00C48C),
+    OPENCODE("opencode", "OpenCode", 0xFF0EA5E9, 0xFF38BDF8),
     ZAI("zai", "Zai", 0xFF8B5CF6, 0xFFA78BFA),
     MINIMAX("minimax", "MiniMax", 0xFFF59E0B, 0xFFFCD34D),
     KIMI("kimi", "Kimi", 0xFF6366F1, 0xFF818CF8),
@@ -57,6 +58,8 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
             "chatgpt"       to OPEN_AI,
             "openaiapi"     to OPEN_AI,
             "gpt"           to OPEN_AI,
+            "opencodego"    to OPENCODE,
+            "open-code"     to OPENCODE,
             // Anthropic family
             "anthropic"     to CLAUDE_CODE,
             "anthropicapi"  to CLAUDE_CODE,

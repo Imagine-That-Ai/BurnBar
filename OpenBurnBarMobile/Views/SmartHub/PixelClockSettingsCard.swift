@@ -440,20 +440,44 @@ struct PixelClockSettingsCard: View {
                 Text("Palette")
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
-                Picker(
-                    "Palette",
-                    selection: Binding(
-                        get: { model.config.palette },
-                        set: { model.updatePalette($0) }
-                    )
-                ) {
-                    ForEach(PixelClockPalette.allCases, id: \.self) { palette in
-                        Text(palette.displayName).tag(palette)
+                HStack(spacing: 8) {
+                    paletteSwatch(for: model.config.palette)
+                    Picker(
+                        "Palette",
+                        selection: Binding(
+                            get: { model.config.palette },
+                            set: { model.updatePalette($0) }
+                        )
+                    ) {
+                        ForEach(PixelClockPalette.allCases, id: \.self) { palette in
+                            Text(palette.displayName).tag(palette)
+                        }
                     }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func paletteSwatch(for palette: PixelClockPalette) -> some View {
+        if palette.isRainbow {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: PixelClockPalette.rainbowFlag.map { Color(hex: $0) },
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: 14, height: 14)
+                .overlay(Circle().stroke(MobileTheme.Colors.border.opacity(0.4), lineWidth: 0.5))
+        } else {
+            Circle()
+                .fill(Color(hex: palette.primaryHex))
+                .frame(width: 14, height: 14)
+                .overlay(Circle().stroke(MobileTheme.Colors.border.opacity(0.4), lineWidth: 0.5))
         }
     }
 

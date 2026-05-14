@@ -1,11 +1,18 @@
 package com.openburnbar.data.hermes
 
+import android.content.Context
 import com.openburnbar.data.assistants.AssistantChatHermesMetadata
 import com.openburnbar.data.assistants.AssistantChatHistoryStore
 import com.openburnbar.data.assistants.AssistantChatMessage
 import com.openburnbar.data.assistants.AssistantChatThread
 import com.openburnbar.data.assistants.AssistantChatTokenUsage
 import com.openburnbar.data.assistants.AssistantChatToolCall
+import com.openburnbar.data.hermes.relay.HermesRelayClient
+import com.openburnbar.data.hermes.relay.HermesRelayConnectionDescriptor
+import com.openburnbar.data.hermes.relay.HermesRelayCrypto
+import com.openburnbar.data.hermes.relay.HermesRelayException
+import com.openburnbar.data.hermes.relay.HermesRelayKeyStore
+import com.openburnbar.data.hermes.relay.HermesRelayOperationName
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +24,19 @@ import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
+/** Truthful relay-capability flag for the iOS-parity surfaces. */
+enum class HermesRelayCapability {
+    /** Build has no Firebase / no relay client wired. */
+    NOT_IMPLEMENTED,
+    /** Relay client exists but the user isn't signed in or no relay has been published. */
+    UNSUPPORTED,
+    /** A relay connection has been provisioned and probed successfully. */
+    READY
+}
+
+/** Thrown when Hermes returns 401/403 so callers can show an actionable message. */
+class HermesUnauthorizedException(message: String) : RuntimeException(message)
+
 data class HermesMessage(
     val id: String = "",
     val role: String = "assistant",
@@ -24,7 +44,9 @@ data class HermesMessage(
     val modelName: String = "hermes",
     val tokensPerSecond: Double? = null,
     val toolCalls: List<ToolCall> = emptyList(),
+    val attachments: List<HermesAttachment> = emptyList(),
     val isStreaming: Boolean = false,
+    val isError: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -44,12 +66,25 @@ data class HermesConnection(
 
 enum class ConnectionType { LOCAL, LAN, REMOTE_RELAY }
 
-class HermesService {
+class HermesService(
+    /**
+     * Optional `Context` used to construct the Firebase-backed relay
+     * client. Tests can omit it; production call sites should pass the
+     * app context.
+     */
+    private val appContext: Context? = null,
+    relayClient: HermesRelayClient? = null
+) {
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
+
+    private val relayClient: HermesRelayClient? = relayClient
+        ?: appContext?.let { ctx ->
+            runCatching { HermesRelayClient(HermesRelayKeyStore(ctx)) }.getOrNull()
+        }
 
     private val _messages = MutableStateFlow<List<HermesMessage>>(emptyList())
     val messages: StateFlow<List<HermesMessage>> = _messages
@@ -99,20 +134,39 @@ class HermesService {
     private var chatTilePreferences = ChatTilePreferences.DEFAULT
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    /**
-     * Identifies the conversation currently in [_messages]. Minted on the first
-     * send of a fresh thread so chat history can survive app relaunches.
-     */
     private val _currentThreadID = MutableStateFlow<String?>(null)
     val currentThreadID: StateFlow<String?> = _currentThreadID
 
-    /**
-     * Persistence bridge. Wired by [bindHistoryStore]; null while running in
-     * the test target without an Android Context.
-     */
+    /** Stable across launches; updated on every send so tool replies can tag it. */
+    private val _currentConversationID = MutableStateFlow<String?>(null)
+    val currentConversationID: StateFlow<String?> = _currentConversationID
+
+    /** True while a chat completion (direct or relay) is mid-stream. */
+    private val _isStreaming = MutableStateFlow(false)
+    val isStreaming: StateFlow<Boolean> = _isStreaming
+
+    /** Truthful relay-capability flag. See [HermesRelayCapability]. */
+    private val _relayCapability = MutableStateFlow(
+        if (relayClient != null || appContext != null) HermesRelayCapability.UNSUPPORTED
+        else HermesRelayCapability.NOT_IMPLEMENTED
+    )
+    val relayCapability: StateFlow<HermesRelayCapability> = _relayCapability
+
+    /** Last refreshed list of Hermes relay descriptors. */
+    private val _relayConnections = MutableStateFlow<List<HermesRelayConnectionDescriptor>>(emptyList())
+    val relayConnections: StateFlow<List<HermesRelayConnectionDescriptor>> = _relayConnections
+
+    private val _sessions = MutableStateFlow<List<HermesSessionSummary>>(emptyList())
+    val sessions: StateFlow<List<HermesSessionSummary>> = _sessions
+
+    private val _isLoadingSessions = MutableStateFlow(false)
+    val isLoadingSessions: StateFlow<Boolean> = _isLoadingSessions
+
+    private val _sessionsErrorText = MutableStateFlow<String?>(null)
+    val sessionsErrorText: StateFlow<String?> = _sessionsErrorText
+
     private var historyStore: AssistantChatHistoryStore? = null
 
-    /** Wire the service to the per-app persistence singleton. */
     fun bindHistoryStore(store: AssistantChatHistoryStore) {
         this.historyStore = store
     }
@@ -135,47 +189,126 @@ class HermesService {
     }
 
     fun sendMessage(content: String, modelName: String = "hermes", conversationId: String? = null) {
+        sendMessage(content, modelName, attachments = emptyList(), conversationIdHint = conversationId)
+    }
+
+    /**
+     * Attachment-aware send. The single-string overload above forwards
+     * to this entry point with an empty attachment list.
+     *
+     * Picks the correct transport for the selected connection:
+     *
+     *   - LOCAL / DIRECT_URL: stream over plain HTTP at
+     *     `endpoint/v1/chat/completions`.
+     *   - RELAY_LINK: stream over the encrypted Firestore relay so
+     *     remote Mac hosts can answer without an HTTP endpoint exposed.
+     *
+     * If neither transport is usable for the current connection, an
+     * actionable assistant-side error is appended so the user knows
+     * exactly what to fix.
+     */
+    fun sendMessage(content: String, modelName: String, attachments: List<HermesAttachment>) {
+        sendMessage(content, modelName, attachments, conversationIdHint = _currentConversationID.value)
+    }
+
+    private fun sendMessage(
+        content: String,
+        modelName: String,
+        attachments: List<HermesAttachment>,
+        conversationIdHint: String?
+    ) {
+        // Refuse re-entrant sends while a stream is in flight. The UI
+        // disables the send button via `isStreaming`, but background
+        // intents and deep-link prompts can still re-enter here.
+        if (_isStreaming.value) return
+
         val resolvedModelName = chatTilePreferences.selectedHermesModelOverride
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
+            ?.trim()?.takeIf { it.isNotEmpty() }
             ?: _selectedModelID.value?.trim()?.takeIf { it.isNotEmpty() }
             ?: modelName.trim().takeIf { it.isNotEmpty() }
             ?: "hermes"
-        if (_currentThreadID.value == null) {
-            _currentThreadID.value = UUID.randomUUID().toString()
+        if (_currentThreadID.value == null) _currentThreadID.value = UUID.randomUUID().toString()
+        if (_currentConversationID.value == null) {
+            _currentConversationID.value = conversationIdHint ?: UUID.randomUUID().toString()
         }
+        val conversationId = _currentConversationID.value
 
         _messages.value = _messages.value + HermesMessage(
+            id = UUID.randomUUID().toString(),
             role = "user",
             content = content,
             modelName = resolvedModelName,
+            attachments = attachments,
             timestamp = System.currentTimeMillis()
         )
         persistCurrentThread()
 
-        val endpoint = selectedEndpointURL() ?: legacyEndpointURL(connection)
-        if (endpoint == null) {
-            appendAssistantError("No HTTP Hermes endpoint is configured.", resolvedModelName)
-            return
-        }
-
-        scope.launch {
-            streamChatCompletion(endpoint, content, resolvedModelName, conversationId)
+        val selected = _selectedConnection.value
+        when (selected.mode) {
+            HermesConnectionMode.RELAY_LINK -> {
+                val descriptor = descriptorFor(selected)
+                if (descriptor == null || relayClient == null) {
+                    appendAssistantError(
+                        "This Hermes relay isn't usable yet. Sign in and refresh relay connections, then try again.",
+                        resolvedModelName
+                    )
+                    return
+                }
+                _isStreaming.value = true
+                scope.launch {
+                    try {
+                        streamChatCompletionViaRelay(
+                            descriptor = descriptor,
+                            prompt = content,
+                            modelName = resolvedModelName,
+                            attachments = attachments,
+                            conversationId = conversationId
+                        )
+                    } finally {
+                        _isStreaming.value = false
+                    }
+                }
+            }
+            else -> {
+                val endpoint = selectedEndpointURL() ?: legacyEndpointURL(connection)
+                if (endpoint == null) {
+                    appendAssistantError("No HTTP Hermes endpoint is configured.", resolvedModelName)
+                    return
+                }
+                _isStreaming.value = true
+                scope.launch {
+                    try {
+                        if (attachments.isEmpty()) {
+                            streamChatCompletion(endpoint, content, resolvedModelName, conversationId)
+                        } else {
+                            streamChatCompletionWithAttachments(
+                                endpoint = endpoint,
+                                content = content,
+                                modelName = resolvedModelName,
+                                attachments = attachments,
+                                conversationId = conversationId
+                            )
+                        }
+                    } finally {
+                        _isStreaming.value = false
+                    }
+                }
+            }
         }
     }
 
     fun clearMessages() {
         _messages.value = emptyList()
         _currentThreadID.value = null
+        _currentConversationID.value = null
     }
 
-    /** Starts a brand-new conversation. The previous thread remains in history. */
     fun startNewThread() {
         _messages.value = emptyList()
         _currentThreadID.value = null
+        _currentConversationID.value = null
     }
 
-    /** Restores messages from a persisted thread. */
     fun loadThread(id: String) {
         val store = historyStore ?: return
         val thread = store.thread(id) ?: return
@@ -202,7 +335,6 @@ class HermesService {
         }
     }
 
-    /** Removes a thread from chat history. Clears the active chat if it matches. */
     fun deleteThread(id: String) {
         historyStore?.delete(id)
         if (_currentThreadID.value == id) startNewThread()
@@ -232,7 +364,7 @@ class HermesService {
                 text = msg.content,
                 timestampMillis = msg.timestamp,
                 modelName = msg.modelName,
-                isError = false,
+                isError = msg.isError,
                 attachments = emptyList(),
                 hermes = hermes
             )
@@ -260,6 +392,39 @@ class HermesService {
 
     private suspend fun probeSelectedRuntime(endpointOverride: String? = null) {
         val selected = _selectedConnection.value
+
+        // Relay-mode connections don't expose an HTTP endpoint — they
+        // hand off to Firestore. Trust the descriptor's advertised
+        // model / capabilities so the UI shows the right state.
+        if (selected.mode == HermesConnectionMode.RELAY_LINK && endpointOverride == null) {
+            _runtimeErrorText.value = null
+            _isLoadingRuntime.value = false
+            _isReachable.value = true
+            _isConnected.value = true
+            val advertised = selected.advertisedModel
+            _availableModels.value = listOfNotNull(advertised)
+            _modelOptions.value = listOfNotNull(advertised).map { id ->
+                HermesRuntimeModelOption(
+                    providerID = "hermes",
+                    providerName = "Hermes",
+                    modelID = id,
+                    displayName = id
+                )
+            }
+            if (_selectedModelID.value == null) _selectedModelID.value = advertised
+            _runtimeInfo.value = mapOf(
+                "transport" to "encrypted-relay",
+                "encryption" to (selected.relayEncryption ?: HermesRelayCrypto.ALGORITHM)
+            )
+            updateConnectionStatus(
+                selected,
+                HermesConnectionStatus.ONLINE,
+                advertisedModel = advertised,
+                capabilities = selected.capabilities.ifEmpty { listOf("relay", "chat_completions") }
+            )
+            return
+        }
+
         val endpoint = endpointOverride ?: selectedEndpointURL()
         if (endpoint == null) {
             val error = "Android does not have an HTTP Hermes endpoint for ${selected.displayName}."
@@ -413,6 +578,127 @@ class HermesService {
         }
     }
 
+    private fun streamChatCompletionWithAttachments(
+        endpoint: String,
+        content: String,
+        modelName: String,
+        attachments: List<HermesAttachment>,
+        conversationId: String?
+    ) {
+        val assistantID = UUID.randomUUID().toString()
+        var accumulated = ""
+        val body = JSONObject().apply {
+            put("model", modelName)
+            put("stream", true)
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", HermesAttachmentEncoder.encodeUserTurn(content, attachments))
+                })
+            })
+            conversationId?.let { put("conversation_id", it) }
+        }.toString().toRequestBody(jsonMediaType)
+
+        val request = Request.Builder()
+            .url("$endpoint/v1/chat/completions")
+            .post(body)
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Hermes chat failed: HTTP ${response.code}")
+                }
+                val source = response.body?.source()
+                    ?: throw IllegalStateException("Hermes chat returned an empty body.")
+                while (!source.exhausted()) {
+                    val line = source.readUtf8Line() ?: break
+                    val payload = line.removePrefix("data:").trim()
+                    if (!line.startsWith("data:") || payload.isEmpty()) continue
+                    if (payload == "[DONE]") break
+                    val delta = parseCompletionText(JSONObject(payload))
+                    if (delta.isNotEmpty()) {
+                        accumulated += delta
+                        upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = true)
+                    }
+                }
+            }
+            if (accumulated.isBlank()) accumulated = "Hermes finished without returning text."
+            upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = false)
+            persistCurrentThread()
+            _isConnected.value = true
+            _isReachable.value = true
+            _runtimeErrorText.value = null
+        } catch (e: Exception) {
+            appendAssistantError(e.message ?: e.javaClass.simpleName, modelName)
+            _runtimeErrorText.value = e.message
+        }
+    }
+
+    /**
+     * Stream `/v1/chat/completions` over the encrypted Firestore relay
+     * so remote Mac hosts can answer without ever exposing an HTTP
+     * endpoint. Chunks arrive pre-decrypted from [HermesRelayClient];
+     * we feed each one through the same SSE parser used by the direct
+     * transport.
+     */
+    private suspend fun streamChatCompletionViaRelay(
+        descriptor: HermesRelayConnectionDescriptor,
+        prompt: String,
+        modelName: String,
+        attachments: List<HermesAttachment>,
+        conversationId: String?
+    ) {
+        val relay = relayClient ?: throw HermesRelayException("Relay client unavailable.")
+        val assistantID = UUID.randomUUID().toString()
+        var accumulated = ""
+        val body = JSONObject().apply {
+            put("model", modelName)
+            put("stream", true)
+            put("messages", JSONArray().apply {
+                put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", HermesAttachmentEncoder.encodeUserTurn(prompt, attachments))
+                })
+            })
+            conversationId?.let { put("conversation_id", it) }
+        }.toString().toByteArray(Charsets.UTF_8)
+
+        try {
+            relay.sendStreaming(
+                connection = descriptor,
+                operation = HermesRelayOperationName.CHAT_COMPLETIONS,
+                method = "POST",
+                path = "/v1/chat/completions",
+                body = body,
+                sessionId = conversationId
+            ) { _, text ->
+                // The host forwards SSE chunks verbatim; each chunk may
+                // span multiple `data:` lines and the terminating `[DONE]`.
+                text.split('\n').forEach { rawLine ->
+                    val line = rawLine.trim()
+                    if (!line.startsWith("data:")) return@forEach
+                    val payload = line.removePrefix("data:").trim()
+                    if (payload.isEmpty() || payload == "[DONE]") return@forEach
+                    val delta = runCatching { parseCompletionText(JSONObject(payload)) }.getOrDefault("")
+                    if (delta.isNotEmpty()) {
+                        accumulated += delta
+                        upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = true)
+                    }
+                }
+            }
+            if (accumulated.isBlank()) accumulated = "Hermes finished without returning text."
+            upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = false)
+            persistCurrentThread()
+            _isConnected.value = true
+            _isReachable.value = true
+            _runtimeErrorText.value = null
+        } catch (e: Exception) {
+            appendAssistantError(e.message ?: e.javaClass.simpleName, modelName)
+            _runtimeErrorText.value = e.message
+        }
+    }
+
     private fun parseCompletionText(json: JSONObject): String {
         val choices = json.optJSONArray("choices")
         if (choices != null && choices.length() > 0) {
@@ -472,6 +758,7 @@ class HermesService {
             role = "assistant",
             content = "Error: $error",
             modelName = modelName,
+            isError = true,
             timestamp = System.currentTimeMillis()
         )
         persistCurrentThread()
@@ -551,6 +838,189 @@ class HermesService {
         _connections.value = _connections.value + connection
         selectConnection(connection)
         return connection
+    }
+
+    /** Remove a direct/relay record. The local default is never removable. */
+    fun revokeConnection(connection: HermesConnectionRecord) {
+        if (connection.id == HermesConnectionRecord.localDefault.id) return
+        _connections.value = _connections.value.filterNot { it.id == connection.id }
+        if (_selectedConnection.value.id == connection.id) {
+            selectConnection(HermesConnectionRecord.localDefault)
+        }
+    }
+
+    // ── Encrypted relay support ─────────────────────────────────────────
+
+    suspend fun refreshRelayConnections() {
+        val relay = relayClient ?: run {
+            _relayCapability.value = HermesRelayCapability.NOT_IMPLEMENTED
+            return
+        }
+        if (!relay.isUsable()) {
+            _relayCapability.value = HermesRelayCapability.UNSUPPORTED
+            return
+        }
+        try {
+            val descriptors = relay.listConnections()
+            _relayConnections.value = descriptors
+            if (descriptors.isEmpty()) {
+                _relayCapability.value = HermesRelayCapability.UNSUPPORTED
+                return
+            }
+            val current = _connections.value.toMutableList()
+            for (descriptor in descriptors) {
+                val mapped = HermesConnectionRecord(
+                    id = descriptor.id,
+                    displayName = descriptor.displayName,
+                    mode = HermesConnectionMode.RELAY_LINK,
+                    endpointURL = null,
+                    status = when (descriptor.status) {
+                        "online" -> HermesConnectionStatus.ONLINE
+                        "offline" -> HermesConnectionStatus.OFFLINE
+                        else -> HermesConnectionStatus.PENDING
+                    },
+                    capabilities = descriptor.capabilities,
+                    advertisedModel = descriptor.advertisedModel,
+                    relayPublicKey = descriptor.relayPublicKey,
+                    relayKeyVersion = descriptor.relayKeyVersion,
+                    relayEncryption = descriptor.relayEncryption,
+                    realtimeRelayURL = null
+                )
+                val existingIdx = current.indexOfFirst { it.id == mapped.id }
+                if (existingIdx >= 0) current[existingIdx] = mapped else current.add(mapped)
+            }
+            _connections.value = current
+            _relayCapability.value = HermesRelayCapability.READY
+        } catch (e: Exception) {
+            _relayCapability.value = HermesRelayCapability.UNSUPPORTED
+            _runtimeErrorText.value = e.message ?: "Could not refresh Hermes relay connections."
+        }
+    }
+
+    private fun descriptorFor(connection: HermesConnectionRecord): HermesRelayConnectionDescriptor? {
+        val publicKey = connection.relayPublicKey ?: return null
+        return HermesRelayConnectionDescriptor(
+            id = connection.id,
+            displayName = connection.displayName,
+            relayPublicKey = publicKey,
+            relayKeyVersion = connection.relayKeyVersion,
+            relayEncryption = connection.relayEncryption ?: HermesRelayCrypto.ALGORITHM,
+            advertisedModel = connection.advertisedModel,
+            capabilities = connection.capabilities,
+            status = "online",
+            updatedAt = null
+        )
+    }
+
+    // ── Sessions browser / library import ──────────────────────────────
+
+    suspend fun refreshSessions() {
+        val selected = _selectedConnection.value
+        _isLoadingSessions.value = true
+        _sessionsErrorText.value = null
+        try {
+            val body = when (selected.mode) {
+                HermesConnectionMode.RELAY_LINK -> fetchSessionsViaRelay(selected)
+                else -> fetchSessionsDirect(selected)
+            }
+            _sessions.value = HermesSessionParser.parseSessions(body)
+        } catch (e: Exception) {
+            _sessionsErrorText.value = e.message ?: "Could not load Hermes sessions."
+            _sessions.value = emptyList()
+        } finally {
+            _isLoadingSessions.value = false
+        }
+    }
+
+    private suspend fun fetchSessionsViaRelay(connection: HermesConnectionRecord): String {
+        val relay = relayClient ?: throw HermesRelayException("Relay client unavailable.")
+        val descriptor = descriptorFor(connection)
+            ?: throw HermesRelayException("This Hermes relay hasn't published a usable key yet.")
+        return relay.sendUnary(
+            connection = descriptor,
+            operation = HermesRelayOperationName.SESSIONS,
+            method = "GET",
+            path = "/api/sessions"
+        )
+    }
+
+    private fun fetchSessionsDirect(connection: HermesConnectionRecord): String {
+        val endpoint = normalizeHTTPBaseURL(connection.endpointURL ?: "")
+            ?: throw IllegalStateException("This Hermes host has no valid endpoint URL.")
+        val request = Request.Builder().url("$endpoint/api/sessions").get().build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Hermes sessions probe failed: HTTP ${response.code}")
+            }
+            return response.body?.string().orEmpty()
+        }
+    }
+
+    suspend fun importSession(id: String): String? {
+        val store = historyStore ?: return null
+        val selected = _selectedConnection.value
+        val body = try {
+            when (selected.mode) {
+                HermesConnectionMode.RELAY_LINK -> fetchSessionDetailViaRelay(selected, id)
+                else -> fetchSessionDetailDirect(selected, id)
+            }
+        } catch (_: Exception) {
+            null
+        } ?: return null
+        val messages = HermesSessionParser.parseSessionMessages(body)
+        if (messages.isEmpty()) return null
+        val summary = _sessions.value.firstOrNull { it.id == id }
+        val now = System.currentTimeMillis()
+        val storedMessages = messages.map { msg ->
+            AssistantChatMessage(
+                id = msg.id ?: UUID.randomUUID().toString(),
+                role = msg.role,
+                text = msg.text,
+                timestampMillis = msg.timestampMillis ?: now,
+                modelName = msg.modelName,
+                isError = false,
+                attachments = emptyList(),
+                hermes = null
+            )
+        }
+        val firstUserText = messages.firstOrNull { it.role == "user" }?.text?.trim().orEmpty()
+        val thread = AssistantChatThread(
+            id = "imported-$id",
+            runtime = "hermes",
+            title = summary?.title?.takeIf { it.isNotBlank() }
+                ?: firstUserText.take(64).ifEmpty { "Imported Hermes session" },
+            preview = messages.lastOrNull { it.text.isNotBlank() }?.text?.take(140).orEmpty(),
+            modelName = summary?.model,
+            createdAtMillis = summary?.startedAt ?: now,
+            updatedAtMillis = summary?.lastActiveAt ?: now,
+            messages = storedMessages
+        )
+        store.upsert(thread)
+        return thread.id
+    }
+
+    private suspend fun fetchSessionDetailViaRelay(
+        connection: HermesConnectionRecord,
+        sessionId: String
+    ): String? {
+        val relay = relayClient ?: return null
+        val descriptor = descriptorFor(connection) ?: return null
+        return relay.sendUnary(
+            connection = descriptor,
+            operation = HermesRelayOperationName.SESSION_DETAIL,
+            method = "GET",
+            path = "/api/sessions/$sessionId",
+            sessionId = sessionId
+        )
+    }
+
+    private fun fetchSessionDetailDirect(connection: HermesConnectionRecord, sessionId: String): String? {
+        val endpoint = normalizeHTTPBaseURL(connection.endpointURL ?: "") ?: return null
+        val request = Request.Builder().url("$endpoint/api/sessions/$sessionId").get().build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return null
+            return response.body?.string()
+        }
     }
 
     fun selectModel(option: HermesRuntimeModelOption) {

@@ -8,6 +8,139 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Insights "Editorial Observatory" redesign (iOS / iPadOS).** The
+  Intelligence Brief surface in the Insights tab is rewritten as a
+  single-column editorial story instead of a card grid: eyebrow + window
+  subtitle + 22pt headline + mono meta strip + mercury hairline hero;
+  numbered 01 / 02 / 03 Top Findings with a 3pt severity-bar leading edge,
+  confidence dots, footnote-chip citations, and a mono action stripe;
+  horizontal Anomaly Atlas (220pt instrument cards, mono z-score top-left);
+  Recommendations with an ember `●` seal top-right and a mono impact
+  arrow; inline `InsightWidgetRenderer` for Generated Views with a
+  borderless Pin label; whimsy underlined `AttributedString` follow-up
+  questions separated by ` · `; full-width mercury hairline + monoTiny
+  audit footer. Sections cascade in with a 0.04s stagger that respects
+  `accessibilityReduceMotion`, the hero hairline runs a single 3s shimmer
+  on appear, and Dynamic Type is clamped to `.xxLarge`. A new
+  `snapshotMode` flag swaps the horizontal anomaly scroller for a
+  two-column wrapping grid so `ImageRenderer`, PDF print, and App Store
+  screenshot pipelines render the full atlas. Wired into
+  `InsightsRootView` whenever `store.currentAnalysis` is present;
+  replaces `InsightsMobileAnalysisBrief`.
+- **`IntelligenceBriefSnapshotTests`.** Mobile target ships a seven-case
+  snapshot + accessibility-traversal suite that drives SwiftUI's
+  `ImageRenderer` directly (the target doesn't link
+  `swift-snapshot-testing`). Renders are written to
+  `.appstore-screenshots/insights-editorial/ios/` and cover full light,
+  full dark, minimal (hero + footer only), Dynamic Type `.xLarge`,
+  reduce-motion, and iPad regular. Fixtures use real-world AI-spend
+  storytelling — Sonnet 4.6 cost dominance with cache decay, MiniMax
+  M2.7 weekend spike, Anthropic 5h quota pressure — so the launch
+  screenshots double as the highest-fidelity demo of the editorial
+  voice. The traversal-order test asserts the contract sequence: hero →
+  01 → 02 → 03 → anomalies L→R → recommendations → generated →
+  follow-ups → audit.
+- **`IntelligenceBriefWiringTests`.** Nine-case unit suite covering the
+  `InsightCitation` → composer-prompt mapping that powers every
+  footnote-chip tap. Asserts a deterministic, non-empty prompt for
+  every `InsightCitation.Kind` variant (session, model, agent,
+  project, day, anomaly, query, quota) so adding a new kind without a
+  prompt mapping fails the build.
+- **`InsightsStore.pinGeneratedWidget(_:)`.** Pinning a generated widget
+  from the brief now appends it to the active canvas (or replaces the
+  existing widget with the same id, so repeated taps are idempotent)
+  and refreshes the canvas so the pinned tile shows fresh data on
+  first paint.
+- **Authentic OpenCode logo.** Shipped the official OpenCode mark
+  (sourced from `opencode.ai/favicon.svg`) into both
+  `OpenBurnBarMobile/Resources/Assets.xcassets/OpenCodeLogo.imageset/`
+  and `AgentLens/Resources/Assets.xcassets/OpenCodeLogo.imageset/` as
+  vector SVGs, plus a 512×512 PNG at
+  `android/app/src/main/res/drawable-nodpi/logo_open_code.png`. Wired
+  through `AgentProvider.bundledLogoName`, `iconName`,
+  `primary(for:)`, `accent(for:)`,
+  `DashboardLargeView.color`, and the Android `AgentProvider.logoRes`
+  mapping. `ProviderAvatarTests` green again after the `.openCode`
+  enum case had been missing every brand asset.
+
+### Changed
+- **Editorial Observatory: Generated views row no longer duplicates the
+  widget title.** `InsightWidgetChrome` already owns the title +
+  freshness pill, so `GeneratedViewRow` renders only the renderer +
+  bottom Pin/sidenote/citation strip. Stops the chrome's configure
+  menu / freshness pill from being overlapped by an external Pin
+  button.
+- **Editorial Observatory: Recommendation impact arrow infers direction
+  from sign.** `↘` + success green when the impact string starts with
+  `−`/`-`, `↗` + ember warning when it starts with `+`. Prevents the
+  surface from rewarding cost increases with the same green it uses
+  for savings.
+- **Editorial Observatory: cascade-in cancels on disappear via
+  `Task`.** Replaced the `DispatchQueue.asyncAfter` chain with a
+  stored `@State Task<Void, Never>` so navigating away mid-cascade
+  cancels pending frames cleanly instead of silently calling
+  `withAnimation` on a torn-down view.
+- **Editorial Observatory: empty `executiveSummary` is omitted.** Hero
+  no longer leaves a 22pt vertical gap when the analysis returns an
+  empty headline.
+- **Editorial Observatory: citation chips compose follow-up prompts.**
+  Tapping a footnote chip now drives a deterministic
+  composer prompt via `IntelligenceBriefCitationPrompt` (session →
+  "open and summarize", quota → "detail headroom and refresh
+  cadence", etc.) so the user always lands on the data behind the
+  chip instead of a silent noop.
+- **Insights "Editorial Observatory" redesign (Android, parity port).**
+  `IntelligenceBriefScreen.kt` now matches the iOS story arc on Compose:
+  `INTELLIGENCE BRIEF` eyebrow + window subtitle + 22sp rounded-semibold
+  executive lede + mono meta strip + mercury-gradient hairline with a
+  single 3s shimmer hero; ordered 01 / 02 / 03 Top Findings with mono
+  ordinals, severity capsule, confidence dots, mono footnote-chip
+  citations, and a mono `→` action stripe; horizontal `LazyRow`
+  Anomaly Atlas with mono z-score numerals and a `Canvas`-drawn
+  `ZScoreGauge` instrument scale (±2σ warning bands); Recommendations
+  carry a severity-aware ember seal top-right and a mono `↑ impact`
+  arrow; Generated views render via the existing
+  `InsightWidgetRenderer` with `Fig. 01` ordinals and mercury-rule
+  figure captions; Follow-ups are inline `ClickableText` whimsy
+  segments separated by em-space (not chip buttons); the audit footer
+  uses a mercury hairline + mono meta. Sections cascade in via
+  `AnimatedVisibility` + `slideInVertically(8.dp)` + `fadeIn` at 40 ms
+  stagger; reduce-motion (via `LocalAuroraReduceMotion` driven by
+  `Settings.Global.animator_duration_scale==0`) paints synchronously.
+  Font scale is clamped upstream by `InsightsTheme` to 1.15×. Wired
+  into `InsightsScreen` so any non-null `currentAnalysis` routes to
+  the new screen; the old card-grid `AnalysisBrief` is removed. A new
+  instrumented Compose UI suite (`IntelligenceBriefScreenTest`,
+  12 cases) covers smoke, full-render light/dark, sparse + empty
+  fixtures, font-scale 1.15× layout, reduce-motion synchronous paint,
+  a TalkBack reading-order contract (asserts monotonic
+  `positionInRoot.y` per `testTag`), and four screenshot variants
+  (light, dark, fontscale 1.15×, dark + fontscale 1.15×). Screenshots
+  persist to `targetContext.getExternalFilesDir(null)/insights-editorial/`
+  then sync to `.appstore-screenshots/insights-editorial/android/`.
+  Audit pass added: (1) sign-aware impact arrow + accessibility label
+  via `impactArrow(impact, isDark)` — `↘` + success green for `−`/`-`,
+  `↗` + ember warning for `+`, `↗` + success for unprefixed strings;
+  (2) `MetaStrip` folds the `·` separator into the following label
+  (NBSP-glued) so a wrapped row never starts with an orphan dot;
+  (3) instrumented assertions for citation-tap callback wiring and
+  impact-arrow directionality (parity with iOS
+  `IntelligenceBriefWiringTests`); (4) pure-JVM unit suite
+  `IntelligenceBriefFormattingTest` (5 cases) locking down the
+  `windowLabel`, `budgetLabel`, `tokenUsageLabel`, and `auditFooter`
+  formatter contracts the brief and the audit log share.
+- **OpenCode quota/failover parity.** OpenCode is now a first-class provider
+  identity (`opencode`) across provider accounts, quota snapshots, settings
+  search, mobile provider onboarding, Android provider display, CLI quota
+  grouping, and the self-hosted quota runner. Users can find OpenCode from
+  Settings search, connect local/self-hosted OpenCode quota sync, stack
+	  multiple OpenCode CLI profiles/accounts, and fall over within the OpenCode
+	  provider family when 5h, 7d, or monthly quota signals are exhausted. The
+	  local/self-hosted runner now reads the 5-hour bucket from OpenCode's SQLite
+	  ledger (`~/.local/share/opencode/opencode.db`) and keeps the 7d/monthly
+	  buckets on CLI stats, so the short-window signal is exact instead of a
+	  24-hour estimate. Hosted OpenCode credential refresh is intentionally
+	  disabled until OpenCode exposes a stable public account quota API.
 - **System-wide Insights intelligence layer.** Insights now has a shared
   structured analysis contract across Swift, Kotlin, and the canonical
   Functions schema: `InsightAnalysisRequest`, `InsightAnalysisContext`,

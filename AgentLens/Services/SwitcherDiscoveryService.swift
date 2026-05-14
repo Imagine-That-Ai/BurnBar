@@ -744,7 +744,7 @@ final class SwitcherDiscoveryService: ObservableObject {
         case .claude:
             return .claudeCode
         case .opencode:
-            return nil
+            return .openCode
         }
     }
 

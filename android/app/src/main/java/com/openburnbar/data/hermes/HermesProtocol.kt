@@ -22,7 +22,7 @@ import org.json.JSONObject
  *   - https:// always allowed
  *   - bare host:port → wrapped as http://
  *   - ws:// / wss:// → coerced to http:// / https:// (lifelong daemon nicety)
- *   - trailing /v1/* and /health stripped so callers can append them safely
+ *   - trailing `/v1` paths and `/health` stripped so callers can append them safely
  */
 object HermesProtocol {
 
@@ -111,10 +111,11 @@ object HermesProtocol {
                     when (val item = value.opt(index)) {
                         is String -> builder.append(item)
                         is JSONObject -> {
-                            extractContentValue(item.opt("text"))
+                            val nested = extractContentValue(item.opt("text"))
                                 ?: extractContentValue(item.opt("value"))
                                 ?: extractContentValue(item.opt("content"))
-                        }?.let { builder.append(it) }
+                            if (nested != null) builder.append(nested)
+                        }
                         else -> Unit
                     }
                 }

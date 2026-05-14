@@ -208,6 +208,7 @@ struct ProviderRow: View {
             case .ollama:     return Color(hex: "6B7280")
             case .windsurf:   return Color(hex: "06B6D4")
             case .warp:       return Color(hex: "DDE4EA")
+            case .openCode:   return Color(hex: "10B981")
             }
         }
         return WidgetDesignSystem.Colors.amber

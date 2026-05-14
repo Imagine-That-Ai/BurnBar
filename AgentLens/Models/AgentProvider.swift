@@ -67,6 +67,7 @@ extension AgentProvider {
         // remotely instead of parsing local logs.
         case .openAI: return "~/.codex"
         case .codex: return "~/.codex"
+        case .openCode: return "~/.local/share/opencode"
         case .zai: return "~/.factory/sessions"
         case .minimax: return "~/.factory/sessions"
         case .kimi: return "~/.kimi/sessions"
@@ -100,6 +101,7 @@ extension AgentProvider {
         // watcher never spuriously reads files for this provider.
         case .openAI: return "openai-no-local-logs"
         case .codex: return "state_5.sqlite"
+        case .openCode: return "opencode.db"
         case .zai: return "*.jsonl"
         case .minimax: return "*.jsonl"
         case .kimi: return "*.jsonl"
@@ -119,7 +121,7 @@ extension AgentProvider {
     /// How well the macOS app supports this provider's local data.
     var supportLevel: ProviderSupportLevel {
         switch self {
-        case .factory, .claudeCode, .codex, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose:
+        case .factory, .claudeCode, .codex, .openCode, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose:
             return .supported
         // OpenAI is supported via the official org usage endpoint — no log
         // parsing, but exact aggregate counts.
@@ -136,7 +138,7 @@ extension AgentProvider {
     /// provider's local artifacts.
     var dataConfidence: DataConfidence {
         switch self {
-        case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose, .openClaw, .piAgent:
+        case .factory, .claudeCode, .codex, .openCode, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose, .openClaw, .piAgent:
             return .exact
         // OpenAI exposes exact tokens-used per org via the usage API.
         case .openAI:

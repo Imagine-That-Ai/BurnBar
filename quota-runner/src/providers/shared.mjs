@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 
-export function percentBucket({ name, usedPercent, window, resetsAt, source }) {
+export function percentBucket({ name, usedPercent, window, resetsAt, source, isEstimated = false }) {
   const used = clampPercent(usedPercent);
   return {
     name,
@@ -16,6 +16,38 @@ export function percentBucket({ name, usedPercent, window, resetsAt, source }) {
       unit: "percent",
       ...(resetsAt ? { resetsAt: String(resetsAt) } : {}),
       ...(source ? { source } : {}),
+      ...(isEstimated ? { isEstimated: true } : {}),
+    },
+  };
+}
+
+export function valueBucket({
+  name,
+  used,
+  limit,
+  remaining,
+  window,
+  resetsAt,
+  source,
+  unit = "credits",
+  isEstimated = false,
+}) {
+  const normalizedUsed = finiteNumber(used, 0);
+  const normalizedLimit = finiteNumber(limit, 0);
+  const normalizedRemaining = remaining == null
+    ? Math.max(0, normalizedLimit - normalizedUsed)
+    : finiteNumber(remaining, 0);
+  return {
+    name,
+    used: normalizedUsed,
+    limit: normalizedLimit,
+    remaining: normalizedRemaining,
+    window,
+    meta: {
+      unit,
+      ...(resetsAt ? { resetsAt: String(resetsAt) } : {}),
+      ...(source ? { source } : {}),
+      ...(isEstimated ? { isEstimated: true } : {}),
     },
   };
 }
@@ -48,7 +80,14 @@ export async function writeCodexAuth(codexHome, credential) {
   await writeFile(join(codexHome, "auth.json"), json, { mode: 0o600 });
 }
 
-function normalizeJSONCredential(credential) {
+export async function writeOpenCodeAuth(home, credential) {
+  const json = normalizeJSONCredential(credential);
+  const dataDir = join(home, ".local", "share", "opencode");
+  await mkdir(dataDir, { recursive: true, mode: 0o700 });
+  await writeFile(join(dataDir, "auth.json"), json, { mode: 0o600 });
+}
+
+export function normalizeJSONCredential(credential) {
   const trimmed = credential.trim();
   if (trimmed.startsWith("{")) {
     JSON.parse(trimmed);
@@ -57,6 +96,11 @@ function normalizeJSONCredential(credential) {
   const decoded = Buffer.from(trimmed, "base64").toString("utf8");
   JSON.parse(decoded);
   return decoded;
+}
+
+function finiteNumber(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 export function runProcess(command, args, options = {}) {

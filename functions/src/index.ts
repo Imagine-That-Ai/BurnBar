@@ -133,6 +133,7 @@ const ALLOWED_PROVIDERS = new Set<string>([
   "cursor",
   "claude-code",
   "codex",
+  "opencode",
 ]);
 
 const CONNECTION_SCHEMA_VERSION = 1;
@@ -146,7 +147,7 @@ const PI_AGENT_PAIRING_TTL_MS = 10 * 60 * 1000;
 const PI_AGENT_PAIRING_AUDIT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const PI_AGENT_MAX_FAILED_PAIRING_ATTEMPTS = 5;
 const HOSTED_QUOTA_PROVIDERS = new Set<string>(["codex"]);
-const SELF_HOSTED_QUOTA_PROVIDERS = new Set<string>(["claude-code", "codex"]);
+const SELF_HOSTED_QUOTA_PROVIDERS = new Set<string>(["claude-code", "codex", "opencode"]);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -373,7 +374,7 @@ function assertSelfHostedProvider(provider: string): asserts provider is Provide
   if (!SELF_HOSTED_QUOTA_PROVIDERS.has(provider)) {
     throw new HttpsError(
       "invalid-argument",
-      "Self-hosted quota sync is available for Claude Code and Codex only."
+      "Self-hosted quota sync is available for Claude Code, Codex, and OpenCode."
     );
   }
 }
@@ -399,7 +400,7 @@ async function assertActiveHostedQuotaEntitlement(uid: string): Promise<void> {
   }
 }
 
-function normalizeHostedCredential(raw: unknown): string {
+function normalizeHostedCredential(provider: string, raw: unknown): string {
   const credential = boundedTrimmedString(raw, "credential", getConfig().maxCredentialLength, true);
   if (!credential) {
     throw new HttpsError("invalid-argument", "credential is required.");
@@ -828,9 +829,11 @@ export const connectHostedQuotaAccount = onCall(
     assertHostedProvider(provider);
     await assertActiveHostedQuotaEntitlement(uid);
 
-    const credential = normalizeHostedCredential(request.data.credential);
+    const credential = normalizeHostedCredential(provider, request.data.credential);
     const accountID = accountIDFor(provider, request.data.accountID);
-    const label = boundedTrimmedString(request.data.label, "label", 80) ?? "Hosted Codex";
+    const providerLabel = "Codex";
+    const accountRedactedLabel = "Codex auth.json stored in Secret Manager";
+    const label = boundedTrimmedString(request.data.label, "label", 80) ?? `Hosted ${providerLabel}`;
     const now = nowISO();
     const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
     const existing = await accountRef.get();
@@ -848,7 +851,7 @@ export const connectHostedQuotaAccount = onCall(
       status: "connected",
       credentialKind: "session",
       storageScope: "server_private",
-      redactedLabel: "Codex auth.json stored in Secret Manager",
+      redactedLabel: accountRedactedLabel,
       sourceDeviceID: boundedTrimmedString(request.data.sourceDeviceID, "sourceDeviceID", 128),
       linkedSwitcherProfileID: undefined,
       isDefault: request.data.accountID == null || accountID.endsWith("_default"),
@@ -915,7 +918,7 @@ export const connectSelfHostedQuotaAccount = onCall(
     const accountID = accountIDFor(provider, request.data.accountID);
     const label =
       boundedTrimmedString(request.data.label, "label", 80) ??
-      `${provider === "codex" ? "Codex" : "Claude Code"} self-hosted`;
+      `${provider === "codex" ? "Codex" : provider === "opencode" ? "OpenCode" : "Claude Code"} self-hosted`;
     const now = nowISO();
     const existing = await db.doc(`users/${uid}/provider_accounts/${accountID}`).get();
     const accountDoc: ProviderAccountDoc = {
@@ -1024,13 +1027,17 @@ export const deleteHostedQuotaCredentials = onCall(
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 100,
   },
-  async (request: CallableRequest<{ accountID: string }>) => {
+  async (request: CallableRequest<{ accountID: string; provider?: string }>) => {
     const uid = request.auth?.uid;
     if (!uid) {
       throw new HttpsError("unauthenticated", "Sign in before deleting hosted credentials.");
     }
     enforceAuthAndAppCheck(request, uid);
-    const accountID = accountIDFor("codex", request.data.accountID);
+    const provider = typeof request.data.provider === "string" && request.data.provider.trim()
+      ? request.data.provider.trim()
+      : "codex";
+    assertHostedProvider(provider);
+    const accountID = accountIDFor(provider, request.data.accountID);
     const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
     const accountSnap = await accountRef.get();
     if (!accountSnap.exists) {

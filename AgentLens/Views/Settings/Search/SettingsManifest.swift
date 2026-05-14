@@ -242,8 +242,8 @@ enum SettingsManifest {
             pageRoute: .providersRoot,
             anchorID: SettingsAnchor.providersAdd,
             title: "Add Provider Account",
-            subtitle: "Connect Claude, Factory, OpenAI, Kimi, and more",
-            keywords: ["add", "account", "provider", "claude", "factory", "openai", "anthropic"]
+            subtitle: "Connect Claude, OpenCode, Factory, OpenAI, Kimi, and more",
+            keywords: ["add", "account", "provider", "claude", "opencode", "open code", "opencode go", "factory", "openai", "anthropic"]
         ),
         SettingsItem(
             id: "providers.cli",
@@ -252,7 +252,7 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.providersCLI,
             title: "CLI Authentication",
             subtitle: "OAuth and API key management for local CLIs",
-            keywords: ["cli", "oauth", "api key", "anthropic", "openai", "auth"]
+            keywords: ["cli", "oauth", "api key", "anthropic", "openai", "opencode", "open code", "auth"]
         ),
         SettingsItem(
             id: "providers.logSources",
@@ -261,7 +261,7 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.providersLogSources,
             title: "Log Sources",
             subtitle: "Enable or disable individual on-disk log scans",
-            keywords: ["logs", "sources", "scan", "claude code", "factory droid", "codex"]
+            keywords: ["logs", "sources", "scan", "claude code", "factory droid", "codex", "opencode", "open code"]
         ),
 
         // MARK: Routing pools
@@ -272,8 +272,8 @@ enum SettingsManifest {
             pageRoute: .routingPoolsRoot,
             anchorID: SettingsAnchor.routingPoolsOverview,
             title: "Routing Pools",
-            subtitle: "Wire Claude Code and OpenAI-compatible clients through routed provider pools",
-            keywords: ["routing", "fire hydrant", "pools", "failover", "claude code", "codex", "gateway"]
+            subtitle: "Wire Claude Code, OpenCode, and OpenAI-compatible clients through routed provider pools",
+            keywords: ["routing", "fire hydrant", "pools", "failover", "claude code", "codex", "opencode", "open code", "gateway"]
         ),
 
         // MARK: Alerts

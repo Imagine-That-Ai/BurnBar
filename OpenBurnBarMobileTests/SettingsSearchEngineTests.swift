@@ -125,6 +125,13 @@ final class SettingsSearchEngineTests: XCTestCase {
         }
     }
 
+    func test_manifest_findsOpenCodeProviderEntries() {
+        let ids = SettingsSearchEngine.search("opencode", in: SettingsManifest.all).map(\.id)
+        XCTAssertTrue(ids.contains("hub.providers"))
+        XCTAssertTrue(ids.contains("providers.add"))
+        XCTAssertTrue(ids.contains("providers.cliAuth"))
+    }
+
     // MARK: - Router guards
 
     @MainActor

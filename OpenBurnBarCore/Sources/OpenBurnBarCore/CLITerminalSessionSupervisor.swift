@@ -38,6 +38,8 @@ public enum CLIQuotaExhaustionClassifier {
             "you have reached your limit",
             "5-hour limit reached",
             "weekly limit reached",
+            "monthly limit reached",
+            "monthly credit limit reached",
             "5 hour limit reached",
         ]
 
@@ -58,6 +60,8 @@ public enum CLIQuotaExhaustionClassifier {
         case .opencode:
             cliSpecificPatterns = [
                 "opencode quota",
+                "opencode go quota",
+                "opencode credit",
             ]
         }
 

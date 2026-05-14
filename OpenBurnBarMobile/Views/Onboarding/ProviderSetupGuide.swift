@@ -510,6 +510,26 @@ extension ProviderSetupGuide {
                 supportsHosted: false,
                 supportsSelfHosted: true
             )
+
+        case .openCode:
+            return ProviderSetupGuide(
+                provider: provider,
+                kinds: [.session],
+                defaultKind: .session,
+                labelSuggestion: "OpenCode",
+                dashboardURL: URL(string: "https://opencode.ai/docs/go/"),
+                dashboardCTA: "Open OpenCode Go docs",
+                oneLineHint: "Self-hosted quota sync from a signed-in OpenCode CLI.",
+                instructions: [
+                    GuideStep(1, "Sign in with OpenCode Go", detail: "Use the OpenCode CLI account you want OpenBurnBar to track."),
+                    GuideStep(2, "Run your quota runner where OpenCode is signed in", detail: "The runner reads local OpenCode stats and returns sanitized quota buckets.", codeSnippet: "~/.local/share/opencode/auth.json"),
+                    GuideStep(3, "Paste your runner URL below", detail: "OpenBurnBar does not collect OpenCode auth for hosted refresh until OpenCode publishes a stable quota API.")
+                ],
+                credentialPlaceholder: "https://your-runner.example.com",
+                credentialFooterMarkdown: "Self-hosted OpenCode sync keeps auth on your runner and estimates 5h, 7d, and monthly pressure from local CLI stats.",
+                supportsHosted: false,
+                supportsSelfHosted: true
+            )
         }
     }
 

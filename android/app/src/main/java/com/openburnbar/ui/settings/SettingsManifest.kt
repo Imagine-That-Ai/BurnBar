@@ -24,6 +24,15 @@ object SettingsManifest {
             subtitle = "Sync usage and conversations to OpenBurnBar Cloud",
             keywords = listOf("sync", "cloud", "firebase", "backup"),
         ),
+        SettingsItem(
+            id = "root.providers",
+            section = SettingsSection.PROVIDERS,
+            pageRoute = SettingsPageRoute.ROOT,
+            anchorId = SettingsAnchor.PROVIDERS_ROW,
+            title = "Provider connections",
+            subtitle = "Find OpenCode, Codex, Claude, and other quota providers",
+            keywords = listOf("providers", "opencode", "open code", "opencode go", "codex", "claude", "quota", "connections"),
+        ),
 
         // Connected devices
         SettingsItem(

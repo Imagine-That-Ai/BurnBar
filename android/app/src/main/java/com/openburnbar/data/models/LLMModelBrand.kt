@@ -122,6 +122,7 @@ val AgentProvider.logoRes: Int
         AgentProvider.GEMINI_CLI  -> R.drawable.logo_gemini_cli
         AgentProvider.GOOSE       -> R.drawable.logo_goose
         AgentProvider.OPEN_CLAW   -> R.drawable.logo_openclaw
+        AgentProvider.OPENCODE    -> R.drawable.logo_open_code
         AgentProvider.OLLAMA      -> R.drawable.logo_ollama
         AgentProvider.WINDSURF    -> R.drawable.logo_windsurf
         AgentProvider.WARP        -> R.drawable.logo_warp

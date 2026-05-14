@@ -239,6 +239,7 @@ public enum BurnBarProviderAuthRegistry {
         moonshotKimiDescriptor,
         ollamaDescriptor,
         openAIDescriptor,
+        openCodeDescriptor,
         anthropicDescriptor,
         googleDescriptor,
         xaiDescriptor,
@@ -496,6 +497,30 @@ public enum BurnBarProviderAuthRegistry {
         summary: "Anthropic Claude — tracking and accounting only.",
         proxyHint: "Tracking only — Anthropic uses a non-OpenAI protocol the proxy doesn't speak yet.",
         quotaHint: nil
+    )
+
+    private static let openCodeDescriptor = BurnBarProviderAuthDescriptor(
+        providerID: "opencode",
+        displayName: "OpenCode",
+        aliasProviderIDs: ["open-code", "open code", "opencode-go", "open-code-go", "open code go"],
+        methods: [
+            BurnBarProviderAuthMethod(
+                id: "opencode-auth-json",
+                kind: .sessionToken,
+                displayName: "OpenCode auth.json",
+                summary: "Tracks OpenCode Go quota from local or self-hosted stats.",
+                helperText: "Use ~/.local/share/opencode/auth.json only in your local OpenCode install or your own self-hosted quota runner. OpenBurnBar-hosted OpenCode credential refresh is disabled until OpenCode exposes a public account quota API.",
+                placeholder: "{\"opencode-go\":{\"type\":\"...\",\"key\":\"...\"}}",
+                dashboardURL: "https://opencode.ai/docs/go/",
+                dashboardLabel: "OpenCode Go quota docs",
+                storage: .appKeychain(account: "opencode_auth_json"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
+            )
+        ],
+        summary: "OpenCode Go quota and account tracking.",
+        proxyHint: "Tracking only here. Route the OpenCode CLI through OpenBurnBar from Routing pools.",
+        quotaHint: "Supports local and self-hosted quota refresh for OpenCode Go accounts. Hosted OpenCode refresh is not offered without a public quota API."
     )
 
     private static let googleDescriptor = BurnBarProviderAuthDescriptor(

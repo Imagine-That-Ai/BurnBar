@@ -177,8 +177,8 @@ enum SettingsManifest {
             pageRoute: .providerConnections,
             anchorID: SettingsAnchor.providersRow,
             title: "Provider connections",
-            subtitle: "Connect Claude, Factory, OpenAI, Kimi, and more",
-            keywords: ["providers", "claude", "factory", "openai", "connections"]
+            subtitle: "Connect Claude, OpenCode, Factory, OpenAI, Kimi, and more",
+            keywords: ["providers", "claude", "opencode", "open code", "factory", "openai", "connections"]
         ),
         SettingsItem(
             id: "providers.add",
@@ -187,7 +187,7 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.providerAdd,
             title: "Add Provider",
             subtitle: "Connect a new provider account",
-            keywords: ["add", "new", "provider", "account"]
+            keywords: ["add", "new", "provider", "account", "opencode", "open code", "opencode go"]
         ),
         SettingsItem(
             id: "providers.cliAuth",
@@ -196,7 +196,7 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.providerCLIAuth,
             title: "CLI Authentication",
             subtitle: "OAuth and API key management for local CLIs",
-            keywords: ["cli", "oauth", "api key", "auth"]
+            keywords: ["cli", "oauth", "api key", "auth", "opencode", "open code"]
         ),
 
         // MARK: AI environments — Hermes

@@ -42,6 +42,9 @@ enum SmartHubBridgePage {
           --border-strong: #3F3A2E;
           --primary: var(--ember);
           --secondary: var(--whimsy);
+          --rainbow-gradient: linear-gradient(90deg,
+            #E40303 0%, #FF8C00 17%, #FFED00 33%,
+            #008026 50%, #004CFF 67%, #732982 100%);
           --dashboard-brightness: 1.0;
         }
         * { box-sizing: border-box; }
@@ -356,73 +359,29 @@ enum SmartHubBridgePage {
           text-overflow: ellipsis;
         }
 
-        .accounts-block { margin-top: 4px; }
-        .accounts-block .header {
-          display: flex; justify-content: space-between; align-items: baseline;
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 1.6px;
-          color: var(--text-3);
-          text-transform: uppercase;
-          padding-bottom: 6px;
-          border-bottom: 1px solid rgba(255,255,255,0.06);
+        body.palette-rainbow .fill {
+          background: var(--rainbow-gradient) !important;
         }
-        .accounts-block .count { color: var(--text-2); letter-spacing: 0; }
-        .account {
-          display: grid;
-          grid-template-columns: 1fr auto;
-          align-items: center;
-          gap: 8px;
-          padding: 6px 0 5px;
-          border-bottom: 1px solid rgba(255,255,255,0.04);
+        body.palette-rainbow .segmented button.active {
+          background: var(--rainbow-gradient);
+          color: #1A1208;
         }
-        .account:last-child { border-bottom: 0; }
-        .account .ident {
-          display: flex; align-items: center; gap: 8px;
-          min-width: 0;
+        body.palette-rainbow.bg-photoBlend::before {
+          background: linear-gradient(135deg,
+            color-mix(in oklab, #E40303 45%, transparent) 0%,
+            color-mix(in oklab, #FF8C00 38%, transparent) 22%,
+            color-mix(in oklab, #FFED00 28%, transparent) 44%,
+            color-mix(in oklab, #008026 35%, transparent) 60%,
+            color-mix(in oklab, #004CFF 35%, transparent) 78%,
+            color-mix(in oklab, #732982 40%, transparent) 100%);
         }
-        .account .dot {
-          width: 6px; height: 6px; border-radius: 50%;
-          background: rgba(255,255,255,0.22);
-          flex: 0 0 6px;
+        body.palette-rainbow h1 {
+          background: var(--rainbow-gradient);
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
         }
-        .account.active .dot { background: var(--success); }
-        .account .label {
-          font-size: 12px;
-          font-weight: 500;
-          color: var(--text-1);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .badge {
-          font-size: 9px;
-          font-weight: 700;
-          letter-spacing: 0.8px;
-          padding: 2px 8px;
-          border-radius: 999px;
-          background: rgba(255,255,255,0.08);
-          color: var(--text-2);
-        }
-        .badge.tone-success { background: color-mix(in oklab, var(--success) 25%, transparent); color: var(--success); }
-        .badge.tone-whimsy  { background: color-mix(in oklab, var(--whimsy) 25%, transparent);  color: var(--whimsy); }
-        .badge.tone-ember   { background: color-mix(in oklab, var(--ember) 25%, transparent);   color: var(--ember); }
-        .badge.tone-mercury { background: rgba(232,219,210,0.12); color: var(--mercury); }
-        .badge.tone-warning { background: color-mix(in oklab, var(--warning) 25%, transparent); color: var(--warning); }
 
-        .footer {
-          display: flex;
-          justify-content: space-between;
-          align-items: baseline;
-          font-size: 13px;
-          padding-top: 8px;
-          border-top: 1px solid rgba(255,255,255,0.07);
-        }
-        .footer .runs  { color: var(--text-2); font-weight: 500; font-variant-numeric: tabular-nums; }
-        .footer .cost  { color: var(--text-1); font-weight: 700; font-variant-numeric: tabular-nums; }
-        .footer:empty { display: none; }
-
-        /* Refresh shimmer */
         .stage.refreshing .providers::before {
           content: '';
           position: absolute; inset: -8px;
@@ -799,6 +758,7 @@ enum SmartHubBridgePage {
             root.style.setProperty('--primary', display.paletteHex.primary || 'var(--ember)');
             root.style.setProperty('--secondary', display.paletteHex.secondary || 'var(--whimsy)');
           }
+          body.classList.toggle('palette-rainbow', !!(display.paletteHex && display.paletteHex.rainbow));
           if (display.themeHex) {
             root.style.setProperty('--bg-top', display.themeHex.top || '#1B1610');
             root.style.setProperty('--bg-bottom', display.themeHex.bottom || '#07060A');

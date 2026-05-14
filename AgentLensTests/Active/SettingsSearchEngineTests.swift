@@ -164,4 +164,11 @@ final class SettingsSearchEngineTests: XCTestCase {
         let results = SettingsSearchEngine.search("wizard", in: items)
         XCTAssertEqual(results.first?.id, "title-hit")
     }
+
+    func test_manifestFindsOpenCodeProviderEntries() {
+        let ids = SettingsSearchEngine.search("opencode", in: SettingsManifest.all).map(\.id)
+        XCTAssertTrue(ids.contains("providers.add"))
+        XCTAssertTrue(ids.contains("providers.cli"))
+        XCTAssertTrue(ids.contains("routingPools.overview"))
+    }
 }

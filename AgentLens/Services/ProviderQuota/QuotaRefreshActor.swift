@@ -67,6 +67,7 @@ actor QuotaRefreshActor {
 
         self.adapters = [
             .codex: CodexQuotaAdapter(),
+            .openCode: OpenCodeQuotaAdapter(),
             .claudeCode: ClaudeQuotaAdapter(),
             .copilot: CopilotQuotaAdapter(),
             .minimax: MiniMaxQuotaAdapter(),
@@ -413,6 +414,8 @@ private func daemonProviderID(for provider: AgentProvider) -> String? {
         return "ollama"
     case .openAI:
         return "openai"
+    case .openCode:
+        return "opencode"
     case .kimi:
         return "moonshot"
     default:
@@ -466,6 +469,8 @@ private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
         return .ollama
     case "openai":
         return .openAI
+    case "opencode", "open-code":
+        return .openCode
     case "moonshot", "kimi":
         return .kimi
     default:
@@ -490,6 +495,8 @@ private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {
         identifiers.append("kimi_auth_token")
     case .openAI:
         identifiers.append(contentsOf: ["openai", "open_ai"])
+    case .openCode:
+        identifiers.append(contentsOf: ["opencode", "open_code", "opencode_auth_json"])
     default:
         break
     }

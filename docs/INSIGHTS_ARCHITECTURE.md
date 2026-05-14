@@ -201,17 +201,64 @@ round-trips through iOS, iPadOS, Android, and Firestore without translation.
 
 `IntelligenceBriefView` (Swift, in `OpenBurnBarCore/Views/Insights/`) and
 `IntelligenceBriefScreen` (Compose, in `android/.../ui/insights/`) render an
-`InsightAnalysisResult` identically on every platform. The same arc on each:
-hero card (executive summary + model chip + budget chip + token-usage
-chip), top findings, anomaly chips, recommendation cards, generated
-widgets inline via `InsightWidgetRenderer`, follow-up question chips, and
-an audit footer with the result hash and audit row id. Callers wire the
-five callbacks (`onCitationTap`, `onFollowUpTap`, `onPinWidget`,
-`onConfigureModel`, `onShowAudit`); the view is stateless so it composes
-cleanly into AgentLens's 3-pane workspace, OpenBurnBarMobile's stack/split
-shells, and the Android `InsightsScreen`. The `IntelligenceBriefFormatting`
-helper exposes the same chip/footer text on every surface so audit views
-and previews match the live brief.
+`InsightAnalysisResult` identically on every platform. Both implement
+the same **Editorial Observatory** story arc — the brief is a
+single-column editorial composition, not a card grid:
+
+1. **Hero** — `INTELLIGENCE BRIEF` tracked-out eyebrow + time-window
+   subtitle + 22pt rounded-semibold display headline (the executive
+   summary, omitted entirely if empty) + mono meta strip
+   (`model · egress · context tokens · cost`) + mercury hairline that
+   shimmers once on appear.
+2. **Top Findings** — at most three, numbered `01 / 02 / 03` in mono,
+   3pt severity-bar leading edge, severity tag + confidence dots,
+   headline, why-it-matters body, footnote-chip citations, and a
+   mono `→` action stripe.
+3. **Anomaly Atlas** — horizontal `ScrollView`/`LazyRow` of 220pt
+   instrument cards (mono z-score top-left, confidence dots top-right,
+   title, detail). Snapshot/PDF/export pipelines flip the view's
+   `snapshotMode` flag and the same cards lay out as a two-column
+   wrapping grid so `ImageRenderer` can measure them.
+4. **Recommendations** — severity tag + confidence dots, headline,
+   rationale, action stripe, **sign-aware impact arrow**
+   (`↘` + success green when the impact string starts with `−`/`-`,
+   `↗` + ember warning when it starts with `+`), footnote chips, and
+   an ember `●` seal top-right.
+5. **Generated Views** — render each widget inline via
+   `InsightWidgetRenderer`. The chrome owns the title + freshness
+   pill; the brief row hangs only the Pin affordance + a mercury
+   sidenote + citation chips off the bottom.
+6. **Follow-up Questions** — single inline `AttributedString` /
+   `ClickableText` paragraph with whimsy-underlined questions
+   separated by ` · `.
+7. **Audit Footer** — full-width mercury hairline + monoTiny meta
+   (`Audit {id8} · result {hash8} · {egressLabel}`, or
+   `Local run · result {hash8} · …` when `auditID` is `nil`).
+
+Sections cascade in via a `-1`-sentinel visibility counter that
+starts fully-visible (so `ImageRenderer` / VoiceOver / screenshot
+exports see every section before SwiftUI calls `onAppear`) and then
+animates each section in over a 0.04s stagger when motion is allowed.
+The cascade is owned by a `@State Task<Void, Never>` that the view
+cancels on `.onDisappear`, so navigating away mid-cascade never leaks
+a pending `withAnimation` call into a torn-down view. Reduce-motion
+paints synchronously. Dynamic Type is clamped to `.xxLarge` on iOS
+and font scale 1.15× on Android.
+
+Callers wire the five callbacks (`onCitationTap`, `onFollowUpTap`,
+`onPinWidget`, `onConfigureModel`, `onShowAudit`); the view is
+stateless so it composes cleanly into AgentLens's 3-pane workspace,
+OpenBurnBarMobile's stack/split shells, and the Android
+`InsightsScreen`. `OpenBurnBarMobile` wires citation taps through
+`IntelligenceBriefCitationPrompt` (a deterministic
+`InsightCitation` → composer-prompt mapping with build-time
+exhaustiveness — adding a new `InsightCitation.Kind` case breaks the
+build until a prompt mapping is added) and routes
+`onPinWidget` to `InsightsStore.pinGeneratedWidget(_:)` (idempotent
+append/replace + canvas refresh). The `IntelligenceBriefFormatting`
+helper exposes the same window / context / cost / audit footer text
+on every surface so audit views, previews, and the live brief
+agree byte-for-byte.
 
 ## Adding a new widget kind
 
@@ -307,6 +354,19 @@ OpenBurnBarCore/Tests/OpenBurnBarCoreTests/Insights/
    InsightGatewayTests.swift          — LocalRuleBasedAdapter + prompt + broker
    InsightAnalysisTests.swift         — analysis context, selected dispatch, result, widgets
    InsightTestFixtures.swift          — shared synthetic dataset
+
+OpenBurnBarMobileTests/Insights/
+   IntelligenceBriefSnapshotTests.swift — 9-case Editorial Observatory snapshot suite
+                                         (full light/dark, minimal, Dynamic Type xLarge,
+                                          reduce-motion, iPad regular, stress critical,
+                                          stress accessibility1) + accessibility-traversal
+                                          contract test. Outputs to
+                                          `.appstore-screenshots/insights-editorial/ios/`.
+   IntelligenceBriefWiringTests.swift   — 9-case unit coverage for
+                                         `IntelligenceBriefCitationPrompt`
+                                         (every `InsightCitation.Kind` maps to a
+                                          non-empty, contract-respecting composer prompt).
+   MobileInsightsStoreTests.swift       — `pinGeneratedWidget(_:)` idempotency, etc.
 ```
 
 Run with:

@@ -747,7 +747,7 @@ public enum CLILaunchAdapter {
         case .claude:
             return ["CLAUDE_CONFIG_PATH"]
         case .opencode:
-            return ["OPENCODE_CONFIG_PATH"]
+            return ["OPENCODE_CONFIG_PATH", "OPENCODE_DATA", "OPENCODE_DATA_HOME"]
         }
     }
 }
@@ -1547,6 +1547,17 @@ public final class SwitcherCLILAunchService: Sendable {
         let normalized = detail.lowercased()
         if normalized.contains("weekly") || normalized.contains("week") {
             return now.addingTimeInterval(7 * 24 * 60 * 60)
+        }
+        if normalized.contains("monthly")
+            || normalized.contains("month")
+            || normalized.contains("credit limit") {
+            let calendar = Calendar.current
+            let components = calendar.dateComponents([.year, .month], from: now)
+            if let monthStart = calendar.date(from: components),
+               let nextMonth = calendar.date(byAdding: .month, value: 1, to: monthStart) {
+                return nextMonth
+            }
+            return now.addingTimeInterval(30 * 24 * 60 * 60)
         }
         if normalized.contains("5-hour")
             || normalized.contains("5 hour")

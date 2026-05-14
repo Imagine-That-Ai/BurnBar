@@ -44,7 +44,14 @@ final class CLIAgentChatReader {
     }
 
     deinit {
-        if let handle = authListenerHandle {
+        // `authListenerHandle` is `@MainActor`-isolated by the enclosing
+        // type, but Firebase removes listeners thread-safely. Hop to the
+        // main actor synchronously to read the handle, then call into
+        // Firebase from the same nonisolated context.
+        let handleSnapshot: AuthStateDidChangeListenerHandle? = MainActor.assumeIsolated {
+            authListenerHandle
+        }
+        if let handle = handleSnapshot {
             Auth.auth().removeStateDidChangeListener(handle)
         }
     }

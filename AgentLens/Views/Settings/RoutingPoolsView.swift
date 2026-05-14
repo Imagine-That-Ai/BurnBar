@@ -527,6 +527,7 @@ struct RoutingPoolsView: View {
             switch pool {
             case .openaiCompat:
                 wiringCard(target: .codex)
+                wiringCard(target: .opencode)
                 droidFactorySyncCard
                 wiringCard(target: .forge)
             case .anthropic:
@@ -880,6 +881,8 @@ struct RoutingPoolsView: View {
             return "Writes ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN into ~/.claude/settings.json (and snapshots the previous file). Claude Code now sends every request through the local gateway, which fails over across your Anthropic accounts in the same pool."
         case .codex:
             return "Drops a sentinel-fenced [model_providers.openburnbar] block plus a [profiles.openburnbar] profile into ~/.codex/config.toml. Run `codex --profile openburnbar` after exporting OPENBURNBAR_GATEWAY_TOKEN from the snippet sheet. Codex's ChatGPT-auth mode is not routed; only the API-key path is."
+        case .opencode:
+            return "Adds provider.openburnbar to ~/.config/opencode/opencode.json using the OpenAI-compatible adapter and the local gateway. OpenCode can then use the same OpenAI-family provider pool and fall over across healthy upstream accounts."
         case .forge:
             return "Adds a VibeProxy-style [[providers]] entry named openburnbar to ~/forge/.forge.toml with a chat-completions URL, models URL, and OPENBURNBAR_GATEWAY_TOKEN env var. Your existing Forge session provider is left alone so you can opt in deliberately."
         }
@@ -889,6 +892,7 @@ struct RoutingPoolsView: View {
         switch target {
         case .claudeCode: return "~/.claude/settings.json"
         case .codex: return "~/.codex/config.toml"
+        case .opencode: return "~/.config/opencode/opencode.json"
         case .forge: return "~/forge/.forge.toml"
         }
     }

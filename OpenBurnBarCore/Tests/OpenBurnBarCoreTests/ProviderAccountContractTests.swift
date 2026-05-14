@@ -9,9 +9,13 @@ final class ProviderAccountContractTests: XCTestCase {
         XCTAssertEqual(AgentProvider.claudeCode.providerID, .claudeCode)
         XCTAssertEqual(AgentProvider.openAI.providerID, .openAI)
         XCTAssertEqual(AgentProvider.codex.providerID, .codex)
+        XCTAssertEqual(AgentProvider.openCode.providerID, .openCode)
         XCTAssertEqual(AgentProvider.fromProviderID(.openAI), .openAI)
         XCTAssertEqual(AgentProvider.fromProviderID(.codex), .codex)
+        XCTAssertEqual(AgentProvider.fromProviderID(.openCode), .openCode)
+        XCTAssertEqual(AgentProvider.fromCatalogProviderID("open code go"), .openCode)
         XCTAssertNotNil(BurnBarCatalogLoader.bundledCatalog.provider(id: ProviderID.openAI.rawValue))
+        XCTAssertNotNil(BurnBarCatalogLoader.bundledCatalog.provider(id: ProviderID.openCode.rawValue))
     }
 
     func test_providerAccountDoc_roundTripsNonSecretMetadata() throws {

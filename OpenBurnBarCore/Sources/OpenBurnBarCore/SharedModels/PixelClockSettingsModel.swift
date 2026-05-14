@@ -20,7 +20,12 @@ public protocol PixelClockOperations: AnyObject {
     /// flash URL needed for full OpenBurnBar direct control.
     func preparePixelClock(config: PixelClockConfig) async throws -> PixelClockSetupResult
 
-    func flashPixelClockFirmware(config: PixelClockConfig, wifiCredentials: PixelClockWiFiCredentials?) async throws -> PixelClockSetupResult
+    /// Flash AWTRIX Light onto a USB-connected Pixel Clock, then verify
+    /// HTTP control and push the OpenBurnBar custom app.
+    func flashPixelClockFirmware(
+        config: PixelClockConfig,
+        wifiCredentials: PixelClockWiFiCredentials?
+    ) async throws -> PixelClockSetupResult
 
     /// Send a single notify frame so the user can confirm the right
     /// device responded.
@@ -80,7 +85,10 @@ public final class InMemoryPixelClockOperations: PixelClockOperations {
         )
     }
 
-    public func flashPixelClockFirmware(config: PixelClockConfig, wifiCredentials: PixelClockWiFiCredentials?) async throws -> PixelClockSetupResult {
+    public func flashPixelClockFirmware(
+        config: PixelClockConfig,
+        wifiCredentials: PixelClockWiFiCredentials?
+    ) async throws -> PixelClockSetupResult {
         lastConfig = config
         flashCallCount += 1
         if let failureToThrow { throw failureToThrow }
@@ -354,10 +362,13 @@ public final class PixelClockSettingsModel {
             toggleEnabled(true)
         }
         await runOperation(.flash) {
-            let result = try await self.operations.flashPixelClockFirmware(config: self.config, wifiCredentials: wifiCredentials)
+            let result = try await self.operations.flashPixelClockFirmware(
+                config: self.config,
+                wifiCredentials: wifiCredentials
+            )
             self.setupResult = result
             self.firmware = result.probeStatus
-            self.mutate {
+            self.mutate(persist: false) {
                 $0.host = result.clockHost
                 $0.lastProbeStatus = result.probeStatus
             }
@@ -392,9 +403,6 @@ public final class PixelClockSettingsModel {
     }
 
     public var setupPrimaryTitle: String {
-        if isWaitingForConnection {
-            return "Waiting for Clock..."
-        }
         if inflightOperation == .flash {
             return "Flashing..."
         }
@@ -417,7 +425,7 @@ public final class PixelClockSettingsModel {
         case .awtrixReady:
             return "Push to Pixel Clock"
         case .stockUlanziFirmware, .unreachable, .unsupported, .error, .unknown:
-            return "Set up automatically"
+            return "Flash AWTRIX Light"
         }
     }
 
@@ -435,15 +443,15 @@ public final class PixelClockSettingsModel {
         case .awtrixReady:
             return "Pixel Clock is ready for OpenBurnBar."
         case .stockUlanziFirmware:
-            return "Stock Ulanzi found. OpenBurnBar can configure simulator settings and serve quota frames from your Mac."
+            return "Best path: plug the Pixel Clock into this Mac over USB and flash AWTRIX Light."
         case .unreachable:
-            return "No Pixel Clock found on Wi-Fi or data USB. A lit TC001 can still be battery-powered or charge-only; use stable wall power plus Wi-Fi, or a direct data USB cable for setup."
+            return "The saved Wi-Fi address is not answering. Flash AWTRIX Light over USB, then Detect."
         case .unsupported:
-            return "OpenBurnBar found a device, but it needs AWTRIX Light for direct quota frames."
+            return "This device needs AWTRIX Light before OpenBurnBar can control it directly."
         case .error:
-            return "Setup hit an error. Run automatic setup again."
+            return "Setup hit an error. Flash AWTRIX Light over USB, then Detect."
         case .unknown:
-            return "OpenBurnBar will find the clock, configure what it can, and push the display when it is ready."
+            return "Plug in the Pixel Clock over USB, flash AWTRIX Light, then Detect."
         }
     }
 

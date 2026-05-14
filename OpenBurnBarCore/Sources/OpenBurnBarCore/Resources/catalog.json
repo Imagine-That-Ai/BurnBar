@@ -688,6 +688,16 @@
       ]
     },
     {
+      "id": "opencode",
+      "displayName": "OpenCode",
+      "baseURL": "https://opencode.ai",
+      "visibility": "public",
+      "logoKey": "OpenCodeLogo",
+      "capabilities": ["accounting"],
+      "formatFamily": "openai_compat",
+      "models": []
+    },
+    {
       "id": "google",
       "displayName": "Google",
       "baseURL": "https://generativelanguage.googleapis.com/v1beta",

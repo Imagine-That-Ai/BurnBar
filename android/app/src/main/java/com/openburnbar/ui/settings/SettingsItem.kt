@@ -50,6 +50,7 @@ data class SettingsItem(
  */
 enum class SettingsSection(val displayTitle: String) {
     CLOUD("Cloud"),
+    PROVIDERS("Providers"),
     DEVICES("Devices"),
     SMART_DISPLAYS("Smart Displays"),
     NOTIFICATIONS("Notifications"),
@@ -77,6 +78,7 @@ enum class SettingsPageRoute {
 object SettingsAnchor {
     // Root
     const val CLOUD_SYNC = "root.cloudSync"
+    const val PROVIDERS_ROW = "root.providers"
     const val CONNECTED_DEVICES = "root.connectedDevices"
     const val SMART_DISPLAYS_ROW = "root.smartDisplays"
     const val QUICK_GLANCE_ROW = "root.quickGlance"

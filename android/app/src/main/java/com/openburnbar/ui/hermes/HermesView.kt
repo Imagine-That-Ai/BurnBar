@@ -16,6 +16,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -45,12 +47,18 @@ fun HermesView(
 ) {
     val context = LocalContext.current
     var showConversationList by remember { mutableStateOf(true) }
+    var showSessionsLibrary by remember { mutableStateOf(false) }
+    var showSetupWizard by remember { mutableStateOf(false) }
+    var showHermesSettings by remember { mutableStateOf(false) }
     var conversationTitle by remember { mutableStateOf("New Chat") }
     var tilePrefs by remember { mutableStateOf(loadChatTilePreferences(context).sanitized()) }
+    var stagedAttachments by remember { mutableStateOf<List<HermesAttachment>>(emptyList()) }
     val messages by hermesService.messages.collectAsState()
     val isConnected by hermesService.isConnected.collectAsState()
+    val isStreaming by hermesService.isStreaming.collectAsState()
     val availableModels by hermesService.availableModels.collectAsState()
     val runtimeInfo by hermesService.runtimeInfo.collectAsState()
+    val onboarding = remember(context) { HermesOnboardingState(context.applicationContext) }
 
     val historyStore = remember(context) {
         com.openburnbar.data.assistants.AssistantChatHistoryStore.shared(context.applicationContext)
@@ -61,6 +69,9 @@ fun HermesView(
         historyStore.bootstrap()
         hermesService.setChatTilePreferences(tilePrefs)
         hermesService.connect()
+        if (onboarding.shouldAutoPresentSetupWizard()) {
+            showSetupWizard = true
+        }
     }
 
     LaunchedEffect(tilePrefs) {
@@ -72,7 +83,6 @@ fun HermesView(
         if (!showConversationList) {
             val pending = HermesPendingPrompt.pending
             if (!pending.isNullOrBlank()) {
-                // Small delay to let the composable settle
                 kotlinx.coroutines.delay(300)
                 hermesService.sendMessage(pending.trim())
                 HermesPendingPrompt.pending = null
@@ -80,30 +90,61 @@ fun HermesView(
         }
     }
 
-    if (showConversationList) {
-        ConversationListView(
+    when {
+        showSetupWizard -> HermesSetupWizard(
+            onComplete = { showSetupWizard = false },
+            onOpenConnections = {
+                showSetupWizard = false
+                showHermesSettings = true
+            },
+            onDismiss = { showSetupWizard = false }
+        )
+        showHermesSettings -> HermesSettingsView(
+            service = hermesService,
+            onDismiss = { showHermesSettings = false }
+        )
+        showSessionsLibrary -> HermesSessionsScreen(
+            service = hermesService,
+            onBack = { showSessionsLibrary = false },
+            onImported = { imported ->
+                hermesService.loadThread(imported)
+                showSessionsLibrary = false
+                showConversationList = false
+                conversationTitle = "Imported session"
+            }
+        )
+        showConversationList -> ConversationListView(
             isConnected = isConnected,
             onStartChat = { title ->
                 conversationTitle = title
                 showConversationList = false
                 hermesService.clearMessages()
+                stagedAttachments = emptyList()
             },
+            onOpenLibrary = { showSessionsLibrary = true },
+            onOpenSetup = { showHermesSettings = true },
             hermesService = hermesService
         )
-    } else {
-        ChatView(
+        else -> ChatView(
             messages = messages,
             isConnected = isConnected,
+            isStreaming = isStreaming,
             availableModels = availableModels,
             runtimeInfo = runtimeInfo,
             conversationTitle = conversationTitle,
             tilePreferences = tilePrefs,
+            attachments = stagedAttachments,
+            onAddAttachment = { stagedAttachments = (stagedAttachments + it).take(HermesAttachmentLimits.MAX_ATTACHMENTS) },
+            onRemoveAttachment = { id -> stagedAttachments = stagedAttachments.filterNot { it.id == id } },
             onTilePreferencesChange = { next ->
                 tilePrefs = next.sanitized()
                 saveChatTilePreferences(context, tilePrefs)
             },
             onBack = { showConversationList = true },
-            onSend = { msg, model -> hermesService.sendMessage(msg, model) },
+            onSend = { msg, model ->
+                hermesService.sendMessage(msg, model, stagedAttachments)
+                stagedAttachments = emptyList()
+            },
             onDisconnect = { hermesService.disconnect() }
         )
     }
@@ -115,6 +156,8 @@ fun HermesView(
 fun ConversationListView(
     isConnected: Boolean,
     onStartChat: (String) -> Unit,
+    onOpenLibrary: () -> Unit = {},
+    onOpenSetup: () -> Unit = {},
     hermesService: HermesService
 ) {
     val isDark = isSystemInDarkTheme()
@@ -123,6 +166,14 @@ fun ConversationListView(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("Hermes") },
+                actions = {
+                    IconButton(onClick = onOpenLibrary) {
+                        Icon(Icons.Filled.History, contentDescription = "Library")
+                    }
+                    IconButton(onClick = onOpenSetup) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Setup")
+                    }
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
             )
         },
@@ -205,7 +256,11 @@ fun ChatView(
     onTilePreferencesChange: (ChatTilePreferences) -> Unit,
     onBack: () -> Unit,
     onSend: (String, String) -> Unit,
-    onDisconnect: () -> Unit
+    onDisconnect: () -> Unit,
+    attachments: List<HermesAttachment> = emptyList(),
+    onAddAttachment: (HermesAttachment) -> Unit = {},
+    onRemoveAttachment: (String) -> Unit = {},
+    isStreaming: Boolean = false
 ) {
     var inputText by remember { mutableStateOf("") }
     var selectedModel by remember(tilePreferences.selectedHermesModelOverride) {
@@ -257,7 +312,10 @@ fun ChatView(
                 },
                 navigationIcon = {
                     IconButton(onClick = { onDisconnect(); onBack() }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
+                        )
                     }
                 },
                 actions = {
@@ -301,6 +359,15 @@ fun ChatView(
                 color = (if (isSystemInDarkTheme()) AuroraColors.darkSurface else AuroraColors.lightSurface).copy(alpha = 0.95f),
                 tonalElevation = 4.dp
             ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    HermesAttachmentTray(
+                        attachments = attachments,
+                        onAddAttachment = onAddAttachment,
+                        onRemoveAttachment = onRemoveAttachment,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.xs.dp)
+                    )
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = AuroraSpacing.md.dp, vertical = AuroraSpacing.sm.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -323,19 +390,22 @@ fun ChatView(
 
                     Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
 
+                    val canSend = inputText.isNotBlank() && !isStreaming
                     IconButton(
                         onClick = sendMessage,
-                        enabled = inputText.isNotBlank(),
+                        enabled = canSend,
                         modifier = Modifier.size(40.dp).clip(CircleShape).background(
-                            if (inputText.isNotBlank()) AuroraColors.hermesMercury else Color.Transparent
+                            if (canSend) AuroraColors.hermesMercury else Color.Transparent
                         )
                     ) {
                         Icon(
-                            Icons.Filled.Send, contentDescription = "Send",
-                            tint = if (inputText.isNotBlank()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send",
+                            tint = if (canSend) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
+                } // close composer Column
             }
         }
     }

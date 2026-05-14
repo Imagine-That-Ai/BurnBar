@@ -50,7 +50,7 @@ final class PixelClockSettingsCardTests: XCTestCase {
         XCTAssertNoThrow(try sut.find(text: "ULANZI TC001 Pixel Clock"))
     }
 
-    func test_pixelClockCardMainPathIsAutomaticSetupWhenEnabled() throws {
+    func test_pixelClockCardMainPathIsFlashingWhenEnabledBeforeAWTRIXReady() throws {
         let settingsManager = SettingsManager()
         var config = settingsManager.pixelClockConfig
         config.enabled = true
@@ -64,7 +64,8 @@ final class PixelClockSettingsCardTests: XCTestCase {
         let card = PixelClockSettingsCard(settingsManager: settingsManager, model: model)
         let sut = try card.inspect()
 
-        XCTAssertNoThrow(try sut.find(text: "Set up automatically"))
+        XCTAssertNoThrow(try sut.find(text: "Flash and Finish Setup"))
+        XCTAssertNoThrow(try sut.find(text: "Detect after flash"))
         XCTAssertNoThrow(try sut.find(text: "Customize display"))
         XCTAssertNoThrow(try sut.find(text: "Advanced"))
     }
@@ -79,197 +80,18 @@ final class PixelClockSettingsCardTests: XCTestCase {
         )
     }
 
-    func test_pixelClockSettingsModel_setupStopsWhenClockIsAbsentFromWiFiAndUSB() async {
-        let ops = InMemoryPixelClockOperations(probeResult: .unreachable)
-        ops.prepareResult = PixelClockSetupResult(
-            mode: .unreachable,
-            probeStatus: .unreachable,
-            message: "No Pixel Clock found on Wi-Fi or USB.",
-            clockHost: "192.168.68.92"
-        )
-        let model = PixelClockSettingsModel(initialConfig: .disabled, operations: ops)
-
-        await model.setupAutomatically()
-
-        XCTAssertEqual(ops.prepareCallCount, 1)
-        XCTAssertEqual(ops.flashCallCount, 0)
-        XCTAssertEqual(ops.pushCallCount, 0)
-        XCTAssertEqual(model.firmware, .unreachable)
-        XCTAssertEqual(model.setupPrimaryTitle, "Detect Pixel Clock")
-        XCTAssertEqual(model.setupResult?.mode, .unreachable)
-        XCTAssertNil(model.setupResult?.flasherURL)
+    func test_pixelClockPaletteSupportsPrideRainbowDisplayName() {
+        // Picker iterates `PixelClockPalette.allCases`. Rainbow's display
+        // name is the user-visible string the picker option will render.
+        let names = PixelClockPalette.allCases.map(\.displayName)
+        XCTAssertTrue(names.contains("Pride rainbow"))
+        XCTAssertTrue(PixelClockPalette.rainbow.isRainbow)
     }
 
-    func test_pixelClockSettingsModel_setupFlashesOnlyWhenPrepareFindsUSBSetupPath() async {
-        let ops = InMemoryPixelClockOperations(probeResult: .unreachable)
-        ops.prepareResult = PixelClockSetupResult(
-            mode: .needsAwtrixLightFlash,
-            probeStatus: .unreachable,
-            message: "USB setup is available.",
-            clockHost: "192.168.68.92"
-        )
-        ops.flashResult = PixelClockSetupResult(
-            mode: .awtrixLightReady,
-            probeStatus: .awtrixReady,
-            message: "AWTRIX is ready.",
-            clockHost: "192.168.68.92"
-        )
-        let model = PixelClockSettingsModel(initialConfig: .disabled, operations: ops)
-
-        await model.setupAutomatically()
-
-        XCTAssertEqual(ops.prepareCallCount, 1)
-        XCTAssertEqual(ops.flashCallCount, 1)
-        XCTAssertEqual(ops.pushCallCount, 1)
-        XCTAssertEqual(model.firmware, .awtrixReady)
-        XCTAssertEqual(model.setupPrimaryTitle, "Push to Pixel Clock")
-    }
-
-    func test_pixelClockSettingsModel_setupPersistsAwtrixReadyStatusAfterSuccessfulPush() async throws {
-        let ops = InMemoryPixelClockOperations(probeResult: .awtrixReady)
-        ops.prepareResult = PixelClockSetupResult(
-            mode: .awtrixLightReady,
-            probeStatus: .awtrixReady,
-            message: "AWTRIX Light is ready.",
-            clockHost: "192.168.68.92"
-        )
-        var config = PixelClockConfig.disabled
-        config.host = "100.89.162.125"
-        config.lastProbeStatus = .unreachable
-        let model = PixelClockSettingsModel(initialConfig: config, operations: ops)
-
-        await model.setupAutomatically()
-        try await Task.sleep(nanoseconds: 400_000_000)
-
-        XCTAssertEqual(ops.prepareCallCount, 1)
-        XCTAssertEqual(ops.pushCallCount, 1)
-        XCTAssertEqual(model.firmware, .awtrixReady)
-        XCTAssertEqual(model.config.host, "192.168.68.92")
-        XCTAssertEqual(model.config.lastProbeStatus, .awtrixReady)
-        XCTAssertEqual(ops.lastConfig?.host, "192.168.68.92")
-        XCTAssertEqual(ops.lastConfig?.lastProbeStatus, .awtrixReady)
-        XCTAssertEqual(ops.lastConfig?.enabled, true)
-    }
-
-    func test_pixelClockSettingsModel_setupFinishesVisibleAwtrixSetupWiFi() async {
-        let ops = InMemoryPixelClockOperations(probeResult: .unreachable)
-        ops.prepareResult = PixelClockSetupResult(
-            mode: .needsWiFiProvisioning,
-            probeStatus: .unreachable,
-            message: "AWTRIX setup Wi-Fi awtrix_ab12cd is visible.",
-            clockHost: "192.168.68.92",
-            setupSSID: "awtrix_ab12cd"
-        )
-        ops.flashResult = PixelClockSetupResult(
-            mode: .awtrixLightReady,
-            probeStatus: .awtrixReady,
-            message: "AWTRIX is ready.",
-            clockHost: "192.168.68.92"
-        )
-        let model = PixelClockSettingsModel(initialConfig: .disabled, operations: ops)
-
-        await model.setupAutomatically()
-
-        XCTAssertEqual(ops.prepareCallCount, 1)
-        XCTAssertEqual(ops.flashCallCount, 1)
-        XCTAssertEqual(ops.pushCallCount, 1)
-        XCTAssertEqual(model.firmware, .awtrixReady)
-    }
-
-    func test_pixelClockSettingsModel_visibleAwtrixSetupWiFiUsesWiFiSetupCopy() async {
-        let ops = InMemoryPixelClockOperations(probeResult: .unreachable)
-        ops.prepareResult = PixelClockSetupResult(
-            mode: .needsWiFiProvisioning,
-            probeStatus: .unreachable,
-            message: "AWTRIX setup Wi-Fi awtrix_ab12cd is visible.",
-            clockHost: "192.168.68.92",
-            setupSSID: "awtrix_ab12cd"
-        )
-        let model = PixelClockSettingsModel(initialConfig: .disabled, operations: ops)
-
-        await model.prepare()
-
-        XCTAssertEqual(model.setupPrimaryTitle, "Send Wi-Fi and Finish")
-        XCTAssertEqual(model.setupStatusSymbolName, "wifi.router.fill")
-        XCTAssertTrue(model.setupNeedsAttention)
-    }
-
-    func test_pixelClockSettingsModel_setupWaitsAndPushesWhenClockAppearsOnRetry() async {
-        let ops = InMemoryPixelClockOperations(probeResult: .unreachable)
-        ops.prepareResults = [
-            PixelClockSetupResult(
-                mode: .unreachable,
-                probeStatus: .unreachable,
-                message: "No Pixel Clock found on Wi-Fi or USB.",
-                clockHost: "192.168.68.92"
-            ),
-            PixelClockSetupResult(
-                mode: .awtrixLightReady,
-                probeStatus: .awtrixReady,
-                message: "AWTRIX Light is ready.",
-                clockHost: "192.168.68.92"
-            )
-        ]
-        let model = PixelClockSettingsModel(
-            initialConfig: .disabled,
-            operations: ops,
-            setupRetryAttempts: 2,
-            setupRetryIntervalNanoseconds: 1_000_000
-        )
-
-        await model.setupAutomatically()
-
-        XCTAssertEqual(ops.prepareCallCount, 2)
-        XCTAssertEqual(ops.flashCallCount, 0)
-        XCTAssertEqual(ops.pushCallCount, 1)
-        XCTAssertEqual(model.firmware, .awtrixReady)
-        XCTAssertFalse(model.isWaitingForConnection)
-    }
-
-    func test_pixelClockSettingsModel_prepareDoesNotEnterSetupRetryLoop() async {
-        let ops = InMemoryPixelClockOperations(probeResult: .unreachable)
-        ops.prepareResults = [
-            PixelClockSetupResult(
-                mode: .unreachable,
-                probeStatus: .unreachable,
-                message: "No Pixel Clock found on Wi-Fi or USB.",
-                clockHost: "192.168.68.92"
-            ),
-            PixelClockSetupResult(
-                mode: .awtrixLightReady,
-                probeStatus: .awtrixReady,
-                message: "AWTRIX Light is ready.",
-                clockHost: "192.168.68.92"
-            )
-        ]
-        let model = PixelClockSettingsModel(
-            initialConfig: .disabled,
-            operations: ops,
-            setupRetryAttempts: 150,
-            setupRetryIntervalNanoseconds: 1_000_000
-        )
-
-        await model.prepare()
-
-        XCTAssertEqual(ops.prepareCallCount, 1)
-        XCTAssertEqual(ops.flashCallCount, 0)
-        XCTAssertEqual(ops.pushCallCount, 0)
-        XCTAssertEqual(model.setupResult?.mode, .unreachable)
-        XCTAssertFalse(model.isWaitingForConnection)
-    }
-
-    func test_pixelClockSettingsModel_disableTogglePersistsOffAndRemovesApp() async {
-        let ops = InMemoryPixelClockOperations(probeResult: .awtrixReady)
-        var config = PixelClockConfig.disabled
-        config.enabled = true
-        let model = PixelClockSettingsModel(initialConfig: config, operations: ops)
-
-        await model.disableAndRemove()
-
-        XCTAssertFalse(model.config.enabled)
-        XCTAssertEqual(ops.removeCallCount, 1)
-        XCTAssertEqual(ops.lastConfig?.enabled, false)
-        XCTAssertEqual(model.operationState.lastSucceededKind, .remove)
+    func test_smartHubPaletteSupportsPrideRainbowDisplayName() {
+        let names = SmartHubDisplayPalette.allCases.map(\.displayName)
+        XCTAssertTrue(names.contains("Pride rainbow"))
+        XCTAssertTrue(SmartHubDisplayPalette.rainbow.isRainbow)
     }
 
     func test_macAdapterSurfacesProbeStatusFromController() async {

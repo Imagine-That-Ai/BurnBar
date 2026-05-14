@@ -72,7 +72,7 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
         case .claude:
             return .claudeCode
         case .opencode:
-            return nil
+            return .openCode
         }
     }
 }

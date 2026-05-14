@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!--
+        Compose UI tests in `IntelligenceBriefScreenTest` use
+        `createAndroidComposeRule<ComponentActivity>()`, which requires an
+        instrumentation-only `ComponentActivity` declared in the merged
+        AndroidTest manifest. The Compose `ui-test-manifest` artifact ships
+        this entry — but in this project it is only reached as a transitive
+        constraint, so we mirror its `<activity>` block here to guarantee
+        the merger picks it up. Mirrors the upstream
+        `androidx.compose.ui:ui-test-manifest` declaration.
+    -->
+    <application>
+        <activity
+            android:name="androidx.activity.ComponentActivity"
+            android:exported="true"
+            tools:replace="android:exported" />
+    </application>
+</manifest>

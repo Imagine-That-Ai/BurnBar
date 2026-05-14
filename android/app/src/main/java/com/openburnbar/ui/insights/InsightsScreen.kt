@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,13 +18,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -50,11 +46,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.openburnbar.data.insights.InsightAnalysisResult
 import com.openburnbar.data.insights.InsightEgressTier
 import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightTheme
-import com.openburnbar.data.insights.InsightTimeWindow
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 
@@ -149,7 +143,11 @@ fun InsightsScreen(
 
                 analysis?.let { result ->
                     item {
-                        AnalysisBrief(result)
+                        IntelligenceBriefScreen(
+                            result = result,
+                            theme = canvas?.theme ?: InsightTheme.AURORA,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
 
@@ -285,106 +283,6 @@ private fun ModelPicker(
             }
         }
     }
-}
-
-@Composable
-private fun AnalysisBrief(result: InsightAnalysisResult) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.AutoAwesome,
-                        contentDescription = null,
-                        tint = AuroraColors.purple,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = "Intelligence Brief",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                Text(
-                    text = result.modelTag.displayName,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Text(
-                text = result.executiveSummary,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                lineHeight = MaterialTheme.typography.bodyMedium.lineHeight
-            )
-
-            result.findings.take(3).forEach { finding ->
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(
-                        text = finding.title,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = finding.recommendedAction,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = briefWindowLabel(result.timeWindow),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = AuroraColors.purple
-                )
-                Text(
-                    text = "${result.contextBudget.estimatedPromptTokens} context tokens",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-private fun briefWindowLabel(window: InsightTimeWindow): String = when (window) {
-    InsightTimeWindow.Today -> "Today"
-    InsightTimeWindow.Last24h -> "Last 24 hours"
-    InsightTimeWindow.Last7d -> "Last 7 days"
-    InsightTimeWindow.Last30d -> "Last 30 days"
-    InsightTimeWindow.Last90d -> "Last 90 days"
-    InsightTimeWindow.Last365d -> "Last 365 days"
-    InsightTimeWindow.AllTime -> "All time"
-    is InsightTimeWindow.Custom -> "${window.start} - ${window.end}"
 }
 
 @Composable

@@ -69,5 +69,19 @@ data class HermesAttachment(
     val fileName: String,
     val mimeType: String,
     val uriString: String? = null,
-    val thumbnailUriString: String? = null
-)
+    val thumbnailUriString: String? = null,
+    /** Absolute file-system path after materialising the content URI. */
+    val absolutePath: String? = null,
+    val sizeBytes: Long? = null
+) {
+    val isImage: Boolean
+        get() = mimeType.startsWith("image/")
+
+    val isText: Boolean
+        get() = mimeType.startsWith("text/") ||
+            mimeType == "application/json" ||
+            mimeType == "application/xml"
+
+    val isPdf: Boolean
+        get() = mimeType == "application/pdf"
+}

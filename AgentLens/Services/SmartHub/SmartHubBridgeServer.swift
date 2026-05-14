@@ -429,7 +429,7 @@ final class SmartHubBridgeServer {
         {
           "layout": "\(displayConfig.layout.rawValue)",
           "palette": "\(displayConfig.palette.rawValue)",
-          "paletteHex": {"primary":"\(displayConfig.palette.primaryHex)","secondary":"\(displayConfig.palette.secondaryHex)"},
+          "paletteHex": {"primary":"\(displayConfig.palette.primaryHex)","secondary":"\(displayConfig.palette.secondaryHex)","rainbow":\(displayConfig.palette.isRainbow ? "true" : "false")},
           "theme": "\(displayConfig.theme.rawValue)",
           "themeHex": {"top":"\(theme.top)","bottom":"\(theme.bottom)","text":"\(displayConfig.theme.textHex)"},
           "background": "\(displayConfig.background.rawValue)",

@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.HermesAttachment
+import com.openburnbar.data.hermes.HermesAttachmentLoader
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
 import com.openburnbar.ui.theme.AuroraSpacing
@@ -48,33 +49,13 @@ fun HermesAttachmentTray(
     val photoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let {
-            val name = getFileName(context, it) ?: "image.jpg"
-            val mime = context.contentResolver.getType(it) ?: "image/jpeg"
-            onAddAttachment(
-                HermesAttachment(
-                    fileName = name,
-                    mimeType = mime,
-                    uriString = it.toString()
-                )
-            )
-        }
+        uri?.let { onAddAttachment(buildAttachment(context, it, fallbackName = "image.jpg", fallbackMime = "image/jpeg")) }
     }
 
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
-        uri?.let {
-            val name = getFileName(context, it) ?: "file"
-            val mime = context.contentResolver.getType(it) ?: "application/octet-stream"
-            onAddAttachment(
-                HermesAttachment(
-                    fileName = name,
-                    mimeType = mime,
-                    uriString = it.toString()
-                )
-            )
-        }
+        uri?.let { onAddAttachment(buildAttachment(context, it, fallbackName = "file", fallbackMime = "application/octet-stream")) }
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -231,4 +212,32 @@ private fun getFileName(context: android.content.Context, uri: Uri): String? {
         result = uri.lastPathSegment
     }
     return result
+}
+
+/**
+ * Build a fully-loaded [HermesAttachment] for the supplied content URI.
+ *
+ * Critically, this **materialises** the URI to an app-private cache
+ * file so the encoder can read it without keeping a fragile URI
+ * permission grant alive across process death. Without this step the
+ * encoder falls back to `[unreadable attachment ...]` for every
+ * attachment — silently breaking multimodal sends.
+ */
+private fun buildAttachment(
+    context: android.content.Context,
+    uri: Uri,
+    fallbackName: String,
+    fallbackMime: String
+): HermesAttachment {
+    val displayName = getFileName(context, uri) ?: fallbackName
+    val mime = context.contentResolver.getType(uri) ?: fallbackMime
+    val materialised = HermesAttachmentLoader.materialise(context, uri, displayName)
+    val size = materialised?.let { runCatching { java.io.File(it).length() }.getOrNull() }
+    return HermesAttachment(
+        fileName = displayName,
+        mimeType = mime,
+        uriString = uri.toString(),
+        absolutePath = materialised,
+        sizeBytes = size
+    )
 }

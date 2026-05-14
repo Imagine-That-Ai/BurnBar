@@ -372,9 +372,11 @@ final class MobileProviderWizardModel {
 
     func matchesSearch(_ provider: AgentProvider) -> Bool {
         let needle = searchText.lowercased()
+        let descriptor = ProviderSetupGuide.registryDescriptor(for: provider)
         return provider.displayName.lowercased().contains(needle)
             || provider.persistedToken.contains(needle)
-            || (ProviderSetupGuide.registryDescriptor(for: provider)?.summary.lowercased().contains(needle) ?? false)
+            || (descriptor?.summary.lowercased().contains(needle) ?? false)
+            || (descriptor?.aliasProviderIDs.contains { $0.lowercased().contains(needle) } ?? false)
     }
 
     // MARK: - Connect
