@@ -222,6 +222,36 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             topModel: topModel
         )
 
+        // Build the conversational reply card whenever this is a user
+        // turn (`answerFollowUp` instruction). The rule path always
+        // produces the deterministic, data-grounded body — when an
+        // LLM gateway is available, the orchestrator overrides this
+        // field with the model's reply. Either way the user sees a
+        // visible Q&A surface above the brief.
+        let briefingAnswer: InsightBriefingAnswer? = {
+            guard request.instruction == .answerFollowUp else { return nil }
+            let groundedPoints = Self.groundedPointsForReply(
+                intent: intent,
+                digest: digest,
+                topProvider: topProvider,
+                topModel: topModel,
+                biggestDay: biggestDay,
+                quotaRisk: quotaRisk
+            )
+            // The body composes the summary headline + body so the
+            // user sees a complete, multi-sentence response, not just
+            // a 3-word title.
+            let body = "\(summary.headline). \(summary.body) \(summary.action)"
+            return InsightBriefingAnswer(
+                question: request.prompt,
+                answer: body,
+                bullets: groundedPoints,
+                citations: Array(citations.prefix(3)),
+                source: .localRules,
+                modelDisplayName: request.selectedModel.displayName
+            )
+        }()
+
         return InsightAnalysisResult(
             requestID: request.id,
             platform: platform,
@@ -235,8 +265,45 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             missionCandidates: Array(missionCandidates.prefix(5)),
             generatedWidgets: Array(generatedWidgets.prefix(request.maxGeneratedWidgets)),
             followUpQuestions: followUps,
-            citations: citations
+            citations: citations,
+            briefingAnswer: briefingAnswer
         )
+    }
+
+    /// Produces a small set of "computed from the digest" attestations
+    /// that the briefing-answer card renders as chips beneath the body.
+    /// Each chip cites a real number from the privacy-bounded digest so
+    /// the user can see the answer is grounded.
+    static func groundedPointsForReply(
+        intent: PromptIntent,
+        digest: InsightDigest,
+        topProvider: InsightDigest.ProviderSnapshot?,
+        topModel: InsightDigest.ModelSnapshot?,
+        biggestDay: InsightDigest.DailyPoint?,
+        quotaRisk: InsightDigest.QuotaSnapshotSummary?
+    ) -> [String] {
+        var points: [String] = []
+        if let topProvider {
+            points.append("\(topProvider.displayName): \(currency(topProvider.costUSD)) · \(topProvider.sessionCount) sessions")
+        }
+        if let topModel {
+            points.append("Top model: \(topModel.id) · \(currency(topModel.costUSD))")
+        }
+        if let biggestDay {
+            let day = String(ISO8601DateFormatter().string(from: biggestDay.day).prefix(10))
+            points.append("Peak day \(day) at \(currency(biggestDay.costUSD))")
+        }
+        if let quotaRisk, let limit = quotaRisk.limit, limit > 0 {
+            let pct = Int((quotaRisk.used / limit) * 100)
+            points.append("\(quotaRisk.providerID) \(quotaRisk.bucketName) at \(pct)%")
+        }
+        if intent == .quotaRisk, points.contains(where: { $0.contains("at ") && $0.contains("%") }) == false {
+            points.append("No quota bucket above its known limit in this window.")
+        }
+        if points.isEmpty {
+            points.append("\(digest.totals.sessionCount) sessions · \(currency(digest.totals.costUSD)) total")
+        }
+        return Array(points.prefix(4))
     }
 
     public static func enrichMissionCandidates(
@@ -271,6 +338,10 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         let modelCitation = topModel.map { InsightCitation(kind: .model(id: $0.id), label: $0.id) }
         let providerCitation = topProvider.map { InsightCitation(kind: .agent(provider: $0.id), label: $0.displayName) }
         let quotaCitation = quotaRisk.map { InsightCitation(kind: .quota(provider: $0.providerID, bucket: $0.bucketName), label: "\($0.providerID) quota") }
+        let activityCitation = InsightCitation(
+            kind: .query(text: digest.contentHash.isEmpty ? "insight-activity" : "insight-activity-\(digest.contentHash)"),
+            label: "Activity digest"
+        )
         let projectName = topProject?.displayName ?? "the busiest project"
         let projectCost = topProject.map { currency($0.costUSD) } ?? currency(digest.totals.costUSD)
         let projectSessions = topProject?.sessionCount ?? digest.totals.sessionCount
@@ -291,7 +362,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             findings.append(finding)
         }
 
-        let accretionEvidence = [projectCitation, modelCitation, providerCitation].compactMap { $0 }
+        let accretionEvidence = nonEmptyEvidence([projectCitation, modelCitation, providerCitation], fallback: activityCitation)
         if accretionEvidence.isEmpty == false {
             missions.append(.init(
                 title: "Turn repeated \(projectName) work into an accretive feature",
@@ -314,7 +385,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             ))
         }
 
-        let diligenceEvidence = [projectCitation, quotaCitation, providerCitation].compactMap { $0 }
+        let diligenceEvidence = nonEmptyEvidence([projectCitation, quotaCitation, providerCitation], fallback: activityCitation)
         if diligenceEvidence.isEmpty == false {
             let quotaHot = quotaRisk.flatMap { snap -> Bool? in
                 guard let limit = snap.limit, limit > 0 else { return nil }
@@ -342,7 +413,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         }
 
         if let topModel {
-            let debtEvidence = [modelCitation, projectCitation].compactMap { $0 }
+            let debtEvidence = nonEmptyEvidence([modelCitation, projectCitation], fallback: activityCitation)
             missions.append(.init(
                 title: "Reduce repeated \(topModel.id) drag",
                 summary: "Use the debt lens to decide whether high recurring model usage is doing essential expert work or masking unclear requirements, weak tests, brittle routing, or missing automation.",
@@ -362,6 +433,24 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
                 evidence: debtEvidence,
                 dispatchMetadata: ["lens": "techDebt", "source": "insight_engine"]
             ))
+        } else if topProject == nil {
+            missions.append(.init(
+                title: "Upgrade the next brief with project and model attribution",
+                summary: "The digest has activity totals but lacks enough project, provider, or model breakdown to explain the work intelligently. Use the focus lens to make the next analysis more actionable instead of accepting generic totals.",
+                lens: .focus,
+                priority: digest.totals.sessionCount > 0 ? .high : .medium,
+                confidence: .medium,
+                expectedImpact: "Turns an opaque usage summary into a useful brief that can name the workflow, model choice, and cost driver.",
+                effort: .small,
+                acceptanceCriteria: [
+                    "Confirm mobile sync is receiving provider, model, and project summaries.",
+                    "Refresh Insights and verify the Mission Board names at least one concrete driver.",
+                    "Use the new driver to create one accretion, diligence, or debt mission."
+                ],
+                sourceInsightIDs: existingInsightIDs,
+                evidence: [activityCitation],
+                dispatchMetadata: ["lens": "focus", "source": "insight_engine"]
+            ))
         }
 
         if modelCitation != nil, digest.modelBenchmarks.isEmpty == false {
@@ -378,6 +467,14 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         }
 
         return (findings, recommendations, missions)
+    }
+
+    private static func nonEmptyEvidence(
+        _ candidates: [InsightCitation?],
+        fallback: InsightCitation
+    ) -> [InsightCitation] {
+        let evidence = candidates.compactMap { $0 }
+        return evidence.isEmpty ? [fallback] : evidence
     }
 
     private static func modelBenchmarkAdvice(
@@ -1095,11 +1192,27 @@ public actor OrchestratedInsightAnalysisEngine: InsightAnalysisEngine {
         )
 
         if let cache, let cached = await cache.lookup(key: cacheKey) {
-            let result = RuleBasedInsightAnalysisEngine.enrichMissionCandidates(
+            var result = RuleBasedInsightAnalysisEngine.enrichMissionCandidates(
                 in: cached.result,
                 request: request,
                 platform: platform
             )
+            if request.instruction == .answerFollowUp, result.briefingAnswer == nil {
+                if result.modelTag.providerKey == "local-rules" {
+                    let local = try? await fallback.analyze(request)
+                    result.briefingAnswer = local?.briefingAnswer
+                } else {
+                    result.briefingAnswer = InsightBriefingAnswer(
+                        question: request.prompt,
+                        answer: Self.composeAnswerBody(from: result),
+                        bullets: Self.composeGroundedPoints(from: result),
+                        citations: Array(result.citations.prefix(3)),
+                        source: .modelGateway,
+                        modelDisplayName: result.modelTag.displayName,
+                        isFallback: false
+                    )
+                }
+            }
             if result != cached.result {
                 try? await cache.store(.init(key: cacheKey, result: result, estimatedCostSavedUSD: cached.estimatedCostSavedUSD))
             }
@@ -1211,14 +1324,59 @@ public actor OrchestratedInsightAnalysisEngine: InsightAnalysisEngine {
 
         if let catalog,
            let gateway = await catalog.gateway(for: request.selectedModel.providerKey) {
-            return try await gateway.analyze(
-                request: request,
-                platform: platform,
-                tools: toolBroker
-            )
+            do {
+                var result = try await gateway.analyze(
+                    request: request,
+                    platform: platform,
+                    tools: toolBroker
+                )
+                // If the gateway didn't already embed a `briefingAnswer`,
+                // synthesize one from its tailored executive summary +
+                // top finding so the UI's Q&A card always has a real
+                // LLM-authored reply to render. The gateway path went
+                // out to an actual model; this is *not* a rule
+                // fallback — flag the source accordingly.
+                if request.instruction == .answerFollowUp, result.briefingAnswer == nil {
+                    let body = Self.composeAnswerBody(from: result)
+                    let grounded = Self.composeGroundedPoints(from: result)
+                    result.briefingAnswer = InsightBriefingAnswer(
+                        question: request.prompt,
+                        answer: body,
+                        bullets: grounded,
+                        citations: Array(result.citations.prefix(3)),
+                        source: .modelGateway,
+                        modelDisplayName: result.modelTag.displayName,
+                        isFallback: false
+                    )
+                }
+                return result
+            } catch {
+                // Gateway failed (network, auth, rate limit, etc.).
+                // Degrade gracefully to the local rule engine so the
+                // user *always* gets a reply, with `isFallback: true`
+                // so the UI can surface a "showing local fallback"
+                // hint and a Retry affordance.
+                guard request.instruction == .answerFollowUp else { throw error }
+                var fallbackResult = try await fallback.analyze(request)
+                if var answer = fallbackResult.briefingAnswer {
+                    answer.isFallback = true
+                    answer.modelDisplayName = "\(request.selectedModel.displayName) → Local rules"
+                    fallbackResult.briefingAnswer = answer
+                }
+                return fallbackResult
+            }
         }
 
         if configuration.failWhenSelectedGatewayUnavailable {
+            if request.instruction == .answerFollowUp {
+                var fallbackResult = try await fallback.analyze(request)
+                if var answer = fallbackResult.briefingAnswer {
+                    answer.isFallback = true
+                    answer.modelDisplayName = "\(request.selectedModel.displayName) → Local rules"
+                    fallbackResult.briefingAnswer = answer
+                }
+                return fallbackResult
+            }
             throw InsightGatewayError.modelUnavailable(
                 modelID: request.selectedModel.modelID,
                 reason: "no analysis gateway registered for \(request.selectedModel.providerKey)"
@@ -1226,6 +1384,42 @@ public actor OrchestratedInsightAnalysisEngine: InsightAnalysisEngine {
         }
 
         return try await fallback.analyze(request)
+    }
+
+    /// Composes a multi-sentence answer body from a gateway's
+    /// tailored `InsightAnalysisResult`. Combines the executive
+    /// summary with the lead finding so the user reads a complete
+    /// reply (not just a headline).
+    private static func composeAnswerBody(from result: InsightAnalysisResult) -> String {
+        var parts: [String] = []
+        if !result.executiveSummary.isEmpty {
+            parts.append(result.executiveSummary)
+        }
+        if let lead = result.findings.first {
+            // Avoid double-rendering if the gateway already echoed the
+            // finding text inside the executive summary.
+            if !result.executiveSummary.lowercased().contains(lead.title.lowercased()) {
+                parts.append(lead.whyItMatters)
+            }
+            parts.append(lead.recommendedAction)
+        }
+        return parts.joined(separator: " ")
+    }
+
+    /// Lifts evidence chips from the gateway's findings + anomalies
+    /// for the grounded-points row.
+    private static func composeGroundedPoints(from result: InsightAnalysisResult) -> [String] {
+        var points: [String] = []
+        for finding in result.findings.prefix(3) {
+            points.append(finding.title)
+        }
+        for anomaly in result.anomalies.prefix(2) {
+            points.append("⚡ \(anomaly.title)")
+        }
+        for rec in result.recommendations.prefix(2) {
+            points.append("→ \(rec.title)")
+        }
+        return Array(points.prefix(4))
     }
 
     private static func promptHash(_ prompt: String) -> String {

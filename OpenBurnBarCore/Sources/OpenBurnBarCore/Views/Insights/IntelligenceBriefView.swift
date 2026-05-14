@@ -78,15 +78,34 @@ public struct IntelligenceBriefView: View {
                 .onAppear { runEntranceMotion() }
                 .onDisappear { cancelEntranceMotion() }
         } else {
-            ScrollView {
-                briefStack
+            ScrollViewReader { proxy in
+                ScrollView {
+                    briefStack
+                }
+                .background(UnifiedDesignSystem.Colors.background.ignoresSafeArea())
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+                .onAppear { runEntranceMotion() }
+                .onDisappear { cancelEntranceMotion() }
+                // Whenever a new prompt-driven answer arrives, scroll
+                // the hero (which carries the eyebrow "ANSWERED BY …",
+                // the question line, and the tailored summary) back
+                // into view. This is the *elegant* way to wire
+                // "follow-up tap → visible reply": no extra card, no
+                // duplicate slab — just the hero, now centered.
+                .onChange(of: result.briefingAnswer?.id) { _, newID in
+                    guard newID != nil else { return }
+                    withAnimation(.easeInOut(duration: 0.45)) {
+                        proxy.scrollTo(Self.heroAnchorID, anchor: .top)
+                    }
+                }
             }
-            .background(UnifiedDesignSystem.Colors.background.ignoresSafeArea())
-            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
-            .onAppear { runEntranceMotion() }
-            .onDisappear { cancelEntranceMotion() }
         }
     }
+
+    /// Stable `ScrollView` anchor for the hero so the brief can scroll
+    /// itself back to "the answer" when a follow-up tap or composer
+    /// submission produces a new `briefingAnswer`.
+    fileprivate static let heroAnchorID = "intelligence-brief-hero"
 
     /// Equivalent to `body` with `snapshotMode == true`. Kept as a
     /// dedicated entry point so callers don't have to thread the flag —
@@ -105,40 +124,46 @@ public struct IntelligenceBriefView: View {
     private var briefStack: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xl) {
             heroSection
+                .id(Self.heroAnchorID)
                 .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+
+            MissionLaunchpad { action in
+                onFollowUpTap(action.followUpQuestion)
+            }
+            .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
 
             if !result.findings.isEmpty {
                 findingsSection
-                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
             }
 
             if !result.missionCandidates.isEmpty {
                 missionsSection
-                    .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
             }
 
             if !result.anomalies.isEmpty {
                 anomaliesSection
-                    .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
             }
 
             if !result.recommendations.isEmpty {
                 recommendationsSection
-                    .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
             }
 
             if !result.generatedWidgets.isEmpty {
                 generatedSection
-                    .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 6, visible: visibleSections, reduceMotion: reduceMotion)
             }
 
             if !result.followUpQuestions.isEmpty {
                 followUpSection
-                    .cascadeIn(index: 6, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 7, visible: visibleSections, reduceMotion: reduceMotion)
             }
 
             auditFooter
-                .cascadeIn(index: 7, visible: visibleSections, reduceMotion: reduceMotion)
+                .cascadeIn(index: 8, visible: visibleSections, reduceMotion: reduceMotion)
         }
         .padding(UnifiedDesignSystem.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -148,7 +173,7 @@ public struct IntelligenceBriefView: View {
 
     private func runEntranceMotion() {
         if reduceMotion {
-            visibleSections = 8
+            visibleSections = 9
             shimmerPhase = 1
             return
         }
@@ -160,7 +185,7 @@ public struct IntelligenceBriefView: View {
         shimmerPhase = -1
         cascadeTask?.cancel()
         cascadeTask = Task { @MainActor in
-            for i in 0..<8 {
+            for i in 0..<9 {
                 if i > 0 {
                     try? await Task.sleep(nanoseconds: 40_000_000) // 0.04s
                     if Task.isCancelled { return }
@@ -185,44 +210,165 @@ public struct IntelligenceBriefView: View {
     @ViewBuilder
     private var heroSection: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("INTELLIGENCE BRIEF")
-                    .font(UnifiedDesignSystem.Typography.caption)
-                    .tracking(2.4)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 0)
-                if let onConfigureModel {
-                    Button(action: onConfigureModel) {
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Configure model")
-                }
-            }
+            heroEyebrowRow
 
             Text(IntelligenceBriefFormatting.windowLabel(result.timeWindow))
                 .font(UnifiedDesignSystem.Typography.caption)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
 
-            if !result.executiveSummary.isEmpty {
-                Text(result.executiveSummary)
-                    .font(.system(.title2, design: .rounded).weight(.semibold))
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                    .lineSpacing(headlineLineSpacing)
+            // When the brief is answering a user question, surface
+            // the question itself as a small italic line above the
+            // headline so the user *sees* their prompt being replied
+            // to. Without this the hero looks like a generic brief.
+            if let answer = result.briefingAnswer {
+                Text("Q · \(answer.question)")
+                    .font(UnifiedDesignSystem.Typography.caption)
+                    .italic()
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                    .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
+            }
+
+            if !result.executiveSummary.isEmpty {
+                heroAnswerRow
+            }
+
+            if let answer = result.briefingAnswer {
+                BriefingAnswerPanel(answer: answer, onCitationTap: onCitationTap)
             }
 
             metaStrip
+
+            if result.briefingAnswer?.isFallback == true {
+                fallbackBadge
+            }
 
             mercuryHairline
                 .padding(.top, UnifiedDesignSystem.Spacing.xs)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(heroAccessibilityLabel)
+    }
+
+    /// The eyebrow at the top of the hero. When the brief is replying
+    /// to a user prompt this becomes the explicit "ANSWERED BY …"
+    /// chip — the only signal the user needs to know that *this whole
+    /// hero* is the reply, not a generic recap.
+    @ViewBuilder
+    private var heroEyebrowRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if let answer = result.briefingAnswer {
+                Image(systemName: heroEyebrowSymbol(for: answer))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(heroEyebrowColor(for: answer))
+                Text(heroEyebrowText(for: answer).uppercased())
+                    .font(UnifiedDesignSystem.Typography.caption)
+                    .tracking(1.8)
+                    .foregroundStyle(heroEyebrowColor(for: answer))
+                    .accessibilityAddTraits(.isHeader)
+            } else {
+                Text("INTELLIGENCE BRIEF")
+                    .font(UnifiedDesignSystem.Typography.caption)
+                    .tracking(2.4)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            Spacer(minLength: 0)
+            if let onConfigureModel {
+                Button(action: onConfigureModel) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Configure model")
+            }
+        }
+    }
+
+    /// The big answer line. When we have a lead provider in the
+    /// findings, render its logo to the left of the summary so the
+    /// hero gains visual identity at a glance — the brand mark
+    /// telegraphs "this brief is about Claude Code" before the user
+    /// reads a single word.
+    @ViewBuilder
+    private var heroAnswerRow: some View {
+        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
+            if let provider = heroLeadProvider {
+                UnifiedProviderLogoView(provider: provider, size: 44)
+                    .accessibilityHidden(true)
+            }
+            Text(result.executiveSummary)
+                .font(.system(.title2, design: .rounded).weight(.semibold))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                .lineSpacing(headlineLineSpacing)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+        }
+    }
+
+    /// "Showing local fallback" warning chip — only renders when the
+    /// gateway call failed and we degraded to rules. Sits below the
+    /// metaStrip so it's discoverable without competing with the
+    /// answer text.
+    @ViewBuilder
+    private var fallbackBadge: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11, weight: .semibold))
+            Text("Showing local fallback")
+                .font(UnifiedDesignSystem.Typography.tiny)
+                .tracking(0.6)
+        }
+        .foregroundStyle(UnifiedDesignSystem.Colors.warning)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .background(
+            Capsule().fill(UnifiedDesignSystem.Colors.warning.opacity(0.12))
+        )
+        .overlay(
+            Capsule().strokeBorder(UnifiedDesignSystem.Colors.warning.opacity(0.4), lineWidth: 0.5)
+        )
+    }
+
+    /// The provider whose evidence anchors the lead finding, used as
+    /// the hero's visual anchor. Falls back through finding evidence
+    /// then top-level result citations, and resolves the first
+    /// `.agent(provider:)` citation that maps to a known
+    /// `AgentProvider` enum case. Returns `nil` when no agent
+    /// citations are present (rare — only synthetic digests).
+    private var heroLeadProvider: AgentProvider? {
+        let candidates = (result.findings.first?.evidence ?? []) + result.citations
+        for citation in candidates {
+            if case .agent(let provider) = citation.kind,
+               let resolved = AgentProvider(rawValue: provider) {
+                return resolved
+            }
+        }
+        return nil
+    }
+
+    private func heroEyebrowSymbol(for answer: InsightBriefingAnswer) -> String {
+        if answer.isFallback { return "exclamationmark.triangle.fill" }
+        switch answer.source {
+        case .modelGateway: return "sparkles"
+        case .localRules:   return "lock.shield.fill"
+        }
+    }
+
+    private func heroEyebrowColor(for answer: InsightBriefingAnswer) -> Color {
+        if answer.isFallback { return UnifiedDesignSystem.Colors.warning }
+        switch answer.source {
+        case .modelGateway: return UnifiedDesignSystem.Colors.ember
+        case .localRules:   return UnifiedDesignSystem.Colors.whimsy
+        }
+    }
+
+    private func heroEyebrowText(for answer: InsightBriefingAnswer) -> String {
+        switch answer.source {
+        case .modelGateway: return "Answered by \(answer.modelDisplayName)"
+        case .localRules:   return "Answered by \(answer.modelDisplayName) · on device"
+        }
     }
 
     private var heroAccessibilityLabel: String {
@@ -506,6 +652,54 @@ private extension View {
 
 // MARK: - Finding row
 
+private struct BriefingAnswerPanel: View {
+    let answer: InsightBriefingAnswer
+    let onCitationTap: (InsightCitation) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+            Text(answer.answer)
+                .font(UnifiedDesignSystem.Typography.body)
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !answer.bullets.isEmpty {
+                FlowLayout(spacing: UnifiedDesignSystem.Spacing.xs) {
+                    ForEach(Array(answer.bullets.prefix(4).enumerated()), id: \.offset) { _, bullet in
+                        Text(bullet)
+                            .font(UnifiedDesignSystem.Typography.monoTiny)
+                            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
+                            .padding(.vertical, 4)
+                            .overlay(
+                                Capsule()
+                                    .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+                            )
+                    }
+                }
+            }
+
+            if !answer.citations.isEmpty {
+                FootnoteChipFlow(citations: answer.citations, onTap: onCitationTap)
+            }
+        }
+        .padding(UnifiedDesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(UnifiedDesignSystem.Colors.surface.opacity(0.68))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Answer. \(answer.answer)")
+    }
+}
+
 private struct FindingRow: View {
     let index: Int
     let finding: InsightFinding
@@ -586,6 +780,157 @@ private struct FindingRow: View {
         case .critical: return "Critical"
         }
     }
+}
+
+// MARK: - Mission launchpad
+
+private struct MissionLaunchpad: View {
+    let onSelect: (MissionLaunchAction) -> Void
+
+    private let actions = MissionLaunchAction.defaults
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+            Text("MISSION CONTROL")
+                .font(UnifiedDesignSystem.Typography.caption)
+                .tracking(2.0)
+                .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                .accessibilityAddTraits(.isHeader)
+            Text("Create a dispatch-ready mission for your local Hermes, Pi, OpenClaw, Claude, and Codex agents.")
+                .font(UnifiedDesignSystem.Typography.body)
+                .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            AdaptiveMissionActionGrid(actions: actions, onSelect: onSelect)
+        }
+    }
+}
+
+private struct AdaptiveMissionActionGrid: View {
+    let actions: [MissionLaunchAction]
+    let onSelect: (MissionLaunchAction) -> Void
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
+                ForEach(actions) { action in
+                    MissionLaunchButton(action: action, onSelect: onSelect)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+                ForEach(actions) { action in
+                    MissionLaunchButton(action: action, onSelect: onSelect)
+                }
+            }
+        }
+    }
+}
+
+private struct MissionLaunchButton: View {
+    let action: MissionLaunchAction
+    let onSelect: (MissionLaunchAction) -> Void
+
+    var body: some View {
+        Button {
+            onSelect(action)
+        } label: {
+            HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.sm) {
+                Image(systemName: action.symbolName)
+                    .font(UnifiedDesignSystem.Typography.headline)
+                    .foregroundStyle(action.color)
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(action.title)
+                        .font(UnifiedDesignSystem.Typography.body.weight(.semibold))
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                    Text(action.subtitle)
+                        .font(UnifiedDesignSystem.Typography.caption)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.right.circle")
+                    .font(UnifiedDesignSystem.Typography.body)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+            }
+            .padding(UnifiedDesignSystem.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(action.color.opacity(0.32), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(action.title)
+        .accessibilityHint("Create a dispatch-ready Insights mission prompt")
+    }
+}
+
+private struct MissionLaunchAction: Identifiable {
+    enum Kind {
+        case creative
+        case diligence
+        case debt
+    }
+
+    let kind: Kind
+    let title: String
+    let subtitle: String
+    let symbolName: String
+    let color: Color
+
+    var id: String { title }
+
+    var followUpQuestion: InsightFollowUpQuestion {
+        InsightFollowUpQuestion(
+            question: prompt,
+            rationale: "Turns the current brief into a local-agent mission."
+        )
+    }
+
+    private var prompt: String {
+        switch kind {
+        case .creative:
+            return """
+            Create a creative/accretive mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, target project, user value, implementation surface, acceptance criteria, evidence to inspect, likely risks, and how mobile should show the result. Also recommend adjacent missions for UI improvements, modernizations, and small features that compound product value.
+            """
+        case .diligence:
+            return """
+            Create a diligence mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, target project, launch-readiness/security/reliability questions, exact evidence to collect, severity model, acceptance criteria, and the mobile result summary I should expect. Also recommend adjacent security, QA, and production-readiness missions when the data supports them.
+            """
+        case .debt:
+            return """
+            Create a technical debt mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, project/module focus, debt hypothesis, delivery drag, validation commands, acceptance criteria, remediation sequence, and how mobile should summarize progress. Also recommend adjacent modernization, dependency, architecture, and UI cleanup missions when the evidence supports them.
+            """
+        }
+    }
+
+    static let defaults: [MissionLaunchAction] = [
+        .init(
+            kind: .creative,
+            title: "Creative Mission",
+            subtitle: "Accretive features, UI improvements, modernizations.",
+            symbolName: "sparkles",
+            color: UnifiedDesignSystem.Colors.whimsy
+        ),
+        .init(
+            kind: .diligence,
+            title: "Diligence Mission",
+            subtitle: "Security, reliability, launch-readiness evidence.",
+            symbolName: "checkmark.seal",
+            color: UnifiedDesignSystem.Colors.warning
+        ),
+        .init(
+            kind: .debt,
+            title: "Debt Mission",
+            subtitle: "Compounding drag, rewrite risk, focused remediation.",
+            symbolName: "wrench.and.screwdriver",
+            color: UnifiedDesignSystem.Colors.ember
+        )
+    ]
 }
 
 // MARK: - Mission row

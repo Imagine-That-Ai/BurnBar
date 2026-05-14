@@ -196,7 +196,7 @@ class InsightsViewModel(
             prompt = prompt,
             context = context,
             currentCanvas = _canvas.value,
-            selectedModel = _selectedModel.value,
+            selectedModel = modelForAnalysis(instruction),
             instruction = instruction,
             allowDeepTranscriptAnalysis = false,
             maxGeneratedWidgets = 6
@@ -204,5 +204,15 @@ class InsightsViewModel(
         val result = analysisEngine().analyze(request)
         _analysis.value = result
         _canvas.value = RuleBasedInsightAnalysisEngine.materializeCanvas(result, prompt)
+    }
+
+    private fun modelForAnalysis(instruction: InsightAnalysisRequest.Instruction): InsightModelTag {
+        val selected = _selectedModel.value
+        if (instruction != InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP || _localOnlyMode.value) return selected
+        if (selected.providerKey != "local-rules") return selected
+        return _modelOptions.value.firstOrNull { it.egressTier != InsightEgressTier.LOCAL_ONLY && it.providerKey == "hermes" }
+            ?: _modelOptions.value.firstOrNull { it.egressTier != InsightEgressTier.LOCAL_ONLY && it.providerKey != "ollama" }
+            ?: _modelOptions.value.firstOrNull { it.egressTier != InsightEgressTier.LOCAL_ONLY }
+            ?: selected
     }
 }

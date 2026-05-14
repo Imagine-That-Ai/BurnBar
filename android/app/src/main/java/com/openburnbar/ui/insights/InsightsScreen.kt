@@ -139,6 +139,7 @@ fun InsightsScreen(
                             theme = canvas?.theme ?: InsightTheme.AURORA,
                             modifier = Modifier.fillMaxWidth(),
                             onCitationTap = { viewModel.ask(citationPrompt(it)) },
+                            onFollowUpTap = { viewModel.ask(it.question) },
                         )
                     }
                 }

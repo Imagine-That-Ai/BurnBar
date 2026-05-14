@@ -7,6 +7,7 @@ import com.openburnbar.data.insights.InsightAnalysisRequest
 import com.openburnbar.data.insights.InsightAnalysisResult
 import com.openburnbar.data.insights.InsightCanvas
 import com.openburnbar.data.insights.InsightCitation
+import com.openburnbar.data.insights.InsightBriefingAnswer
 import com.openburnbar.data.insights.InsightConfidence
 import com.openburnbar.data.insights.InsightContextBudgetReport
 import com.openburnbar.data.insights.InsightDataBinding
@@ -79,10 +80,13 @@ class AndroidInsightAnalysisEngine(
             instruction = request.instruction,
         )
         cache?.lookup(cacheKey)?.let { cached ->
-            val result = RuleBasedInsightAnalysisEngine.enrichMissionCandidates(
+            val result = ensureBriefingAnswer(
+                RuleBasedInsightAnalysisEngine.enrichMissionCandidates(
                 result = cached.result,
                 request = request,
                 platform = InsightAnalysisPlatform.ANDROID
+                ),
+                request
             )
             if (result != cached.result) {
                 cache.store(InsightAnalysisCacheRepository.cachedNow(cacheKey, result, cached.estimatedCostSavedUSD))
@@ -164,9 +168,77 @@ class AndroidInsightAnalysisEngine(
             return fallback.analyze(request)
         }
         val gateway = gateways[request.selectedModel.providerKey]
-            ?: error("No Android Insights gateway is configured for ${request.selectedModel.providerKey}.")
-        return gateway.analyze(request)
+            ?: return fallbackForQuestionOrThrow(request, "No Android Insights gateway is configured for ${request.selectedModel.providerKey}.")
+        return try {
+            val result = gateway.analyze(request)
+            if (request.instruction == InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP && result.briefingAnswer == null) {
+                result.copy(
+                    briefingAnswer = InsightBriefingAnswer(
+                        question = request.prompt,
+                        answer = composeAnswerBody(result),
+                        bullets = composeGroundedPoints(result),
+                        citations = result.citations.take(3),
+                        source = InsightBriefingAnswer.Source.MODEL_GATEWAY,
+                        modelDisplayName = result.modelTag.displayName
+                    )
+                )
+            } else {
+                result
+            }
+        } catch (t: Throwable) {
+            fallbackForQuestionOrThrow(request, t.message ?: t.javaClass.simpleName)
+        }
     }
+
+    private suspend fun ensureBriefingAnswer(
+        result: InsightAnalysisResult,
+        request: InsightAnalysisRequest
+    ): InsightAnalysisResult {
+        if (request.instruction != InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP || result.briefingAnswer != null) {
+            return result
+        }
+        if (result.modelTag.providerKey == "local-rules") {
+            return result.copy(briefingAnswer = fallback.analyze(request).briefingAnswer)
+        }
+        return result.copy(
+            briefingAnswer = InsightBriefingAnswer(
+                question = request.prompt,
+                answer = composeAnswerBody(result),
+                bullets = composeGroundedPoints(result),
+                citations = result.citations.take(3),
+                source = InsightBriefingAnswer.Source.MODEL_GATEWAY,
+                modelDisplayName = result.modelTag.displayName
+            )
+        )
+    }
+
+    private suspend fun fallbackForQuestionOrThrow(request: InsightAnalysisRequest, reason: String): InsightAnalysisResult {
+        if (request.instruction != InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) {
+            error(reason)
+        }
+        val fallbackResult = fallback.analyze(request)
+        val answer = fallbackResult.briefingAnswer ?: return fallbackResult
+        return fallbackResult.copy(
+            briefingAnswer = answer.copy(
+                isFallback = true,
+                modelDisplayName = "${request.selectedModel.displayName} → Local rules"
+            )
+        )
+    }
+
+    private fun composeAnswerBody(result: InsightAnalysisResult): String =
+        buildList {
+            if (result.executiveSummary.isNotBlank()) add(result.executiveSummary)
+            result.findings.firstOrNull()?.let {
+                if (!result.executiveSummary.lowercase().contains(it.title.lowercase())) add(it.whyItMatters)
+                add(it.recommendedAction)
+            }
+        }.joinToString(" ")
+
+    private fun composeGroundedPoints(result: InsightAnalysisResult): List<String> =
+        (result.findings.take(3).map { it.title } +
+            result.anomalies.take(2).map { "Spike: ${it.title}" } +
+            result.recommendations.take(2).map { "Action: ${it.title}" }).take(4)
 }
 
 class OllamaInsightAnalysisGateway(
@@ -242,8 +314,11 @@ class OllamaInsightAnalysisGateway(
         When model benchmark evidence exists, compare observed model usage against score/rank, cost signal, latency, task category, freshness, and attribution.
         Never invent benchmark ranks, prices, or dollar savings. If exact prices are absent, say cost signal rather than savings.
         For UI/design work, separate design/coding benchmark fit from general reasoning fit.
+        Treat Android, iOS, iPadOS, and macOS Insights as mission-control remotes for the user's local Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex agents.
+        When a user asks for a mission, produce dispatch-ready work: recommended agent, target project, evidence to inspect, acceptance criteria, validation commands, risks, and what mobile should show when complete.
         Return missionCandidates separately from findings and recommendations. Missions must be concrete work packages, not duplicate insight prose.
         Use accretion, diligence, techDebt, routing, quota, and focus lenses to propose greater-purpose missions from the evidence.
+        Recommend adjacent security, UI improvement, modernization, and cost-efficiency missions when the digest or benchmark evidence supports them.
         Return keys: executiveSummary, findings, anomalies, recommendations, missionCandidates, generatedWidgets, followUpQuestions, citations.
         Generated widgets must use known widget kinds and must include citations. Max generated widgets: ${request.maxGeneratedWidgets}.
         """.trimIndent()
@@ -796,6 +871,18 @@ class RuleBasedInsightAnalysisEngine(
             )
             findings.addAll(missionAdvice.findings)
             recommendations.addAll(missionAdvice.recommendations)
+            val briefingAnswer = if (request.instruction == InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) {
+                InsightBriefingAnswer(
+                    question = request.prompt,
+                    answer = "$headline. $body ${findings.firstOrNull()?.recommendedAction ?: "Review the cited evidence and choose the next action from the brief."}",
+                    bullets = groundedPointsForReply(digest, topProvider, topModel),
+                    citations = citations.take(3),
+                    source = InsightBriefingAnswer.Source.LOCAL_RULES,
+                    modelDisplayName = request.selectedModel.displayName
+                )
+            } else {
+                null
+            }
             return InsightAnalysisResult(
                 requestID = request.id,
                 platform = platform,
@@ -815,8 +902,24 @@ class RuleBasedInsightAnalysisEngine(
                     "Which model should handle UI and design tasks?",
                     "Find quota risks in the next 24 hours."
                 ).map { InsightFollowUpQuestion(question = it) },
-                citations = citations
+                citations = citations,
+                briefingAnswer = briefingAnswer
             )
+        }
+
+        private fun groundedPointsForReply(
+            digest: InsightDigest,
+            topProvider: InsightDigest.ProviderSnapshot?,
+            topModel: InsightDigest.ModelSnapshot?
+        ): List<String> {
+            val points = mutableListOf<String>()
+            topProvider?.let { points.add("${it.displayName}: ${currency(it.costUSD)} · ${it.sessionCount} sessions") }
+            topModel?.let { points.add("Top model: ${it.id} · ${currency(it.costUSD)}") }
+            if (digest.daily.isNotEmpty()) {
+                digest.daily.maxByOrNull { it.costUSD }?.let { points.add("Peak day ${it.day.take(10)} at ${currency(it.costUSD)}") }
+            }
+            if (points.isEmpty()) points.add("${digest.totals.sessionCount} sessions · ${currency(digest.totals.costUSD)} total")
+            return points.take(4)
         }
 
         private data class MissionAdvice(
@@ -853,6 +956,11 @@ class RuleBasedInsightAnalysisEngine(
             val quotaCitation = quotaRisk?.let {
                 InsightCitation("quota:${it.providerID}:${it.bucketName}", InsightCitation.Kind.Quota(it.providerID, it.bucketName), "${it.providerID} quota")
             }
+            val activityCitation = InsightCitation(
+                "query:${digest.contentHash.ifBlank { "insight-activity" }}",
+                InsightCitation.Kind.Query("insight-activity"),
+                "Activity digest"
+            )
 
             val findings = mutableListOf<InsightFinding>()
             if (topProject != null && projectCitation != null) {
@@ -869,7 +977,7 @@ class RuleBasedInsightAnalysisEngine(
             }
 
             val missions = mutableListOf<InsightMissionCandidate>()
-            val accretionEvidence = listOfNotNull(projectCitation, modelCitation, providerCitation)
+            val accretionEvidence = nonEmptyEvidence(listOf(projectCitation, modelCitation, providerCitation), activityCitation)
             if (accretionEvidence.isNotEmpty()) {
                 missions.add(
                     InsightMissionCandidate(
@@ -894,7 +1002,7 @@ class RuleBasedInsightAnalysisEngine(
                 )
             }
 
-            val diligenceEvidence = listOfNotNull(projectCitation, quotaCitation, providerCitation)
+            val diligenceEvidence = nonEmptyEvidence(listOf(projectCitation, quotaCitation, providerCitation), activityCitation)
             if (diligenceEvidence.isNotEmpty()) {
                 val quotaHot = quotaRisk?.let { (it.limit ?: 0.0) > 0.0 && it.used / (it.limit ?: 1.0) >= 0.8 } ?: false
                 missions.add(
@@ -938,8 +1046,28 @@ class RuleBasedInsightAnalysisEngine(
                             "Add or update a test, runbook, or automation proof that the drag was actually reduced."
                         ),
                         sourceInsightIDs = sourceInsightIDs,
-                        evidence = listOfNotNull(modelCitation, projectCitation),
+                        evidence = nonEmptyEvidence(listOf(modelCitation, projectCitation), activityCitation),
                         dispatchMetadata = mapOf("lens" to "techDebt", "source" to "insight_engine")
+                    )
+                )
+            } else if (topProject == null) {
+                missions.add(
+                    InsightMissionCandidate(
+                        title = "Upgrade the next brief with project and model attribution",
+                        summary = "The digest has activity totals but lacks enough project, provider, or model breakdown to explain the work intelligently. Use the focus lens to make the next analysis more actionable instead of accepting generic totals.",
+                        lens = InsightMissionCandidate.Lens.FOCUS,
+                        priority = if (digest.totals.sessionCount > 0) InsightMissionCandidate.Priority.HIGH else InsightMissionCandidate.Priority.MEDIUM,
+                        confidence = InsightConfidence.MEDIUM,
+                        expectedImpact = "Turns an opaque usage summary into a useful brief that can name the workflow, model choice, and cost driver.",
+                        effort = InsightMissionCandidate.Effort.SMALL,
+                        acceptanceCriteria = listOf(
+                            "Confirm mobile sync is receiving provider, model, and project summaries.",
+                            "Refresh Insights and verify the Mission Board names at least one concrete driver.",
+                            "Use the new driver to create one accretion, diligence, or debt mission."
+                        ),
+                        sourceInsightIDs = sourceInsightIDs,
+                        evidence = listOf(activityCitation),
+                        dispatchMetadata = mapOf("lens" to "focus", "source" to "insight_engine")
                     )
                 )
             }
@@ -962,6 +1090,9 @@ class RuleBasedInsightAnalysisEngine(
 
             return MissionAdvice(findings, recommendations, missions)
         }
+
+        private fun nonEmptyEvidence(candidates: List<InsightCitation?>, fallback: InsightCitation): List<InsightCitation> =
+            candidates.filterNotNull().ifEmpty { listOf(fallback) }
 
         private data class BenchmarkAdvice(
             val findings: List<InsightFinding>,

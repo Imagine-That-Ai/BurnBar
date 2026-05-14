@@ -22,6 +22,7 @@ data class InsightAnalysisResult(
     val generatedWidgets: List<InsightGeneratedWidget> = emptyList(),
     val followUpQuestions: List<InsightFollowUpQuestion> = emptyList(),
     val citations: List<InsightCitation> = emptyList(),
+    val briefingAnswer: InsightBriefingAnswer? = null,
     val tokenUsage: InsightTokenUsage? = null,
     val estimatedCostUSD: Double? = null,
     val auditID: String? = null,
@@ -29,6 +30,24 @@ data class InsightAnalysisResult(
 ) {
     companion object {
         const val CURRENT_SCHEMA_VERSION = 1
+    }
+}
+
+@Serializable
+data class InsightBriefingAnswer(
+    val id: String = UUID.randomUUID().toString(),
+    val question: String,
+    val answer: String,
+    val bullets: List<String> = emptyList(),
+    val citations: List<InsightCitation> = emptyList(),
+    val source: Source = Source.LOCAL_RULES,
+    val modelDisplayName: String = "Local rules",
+    val isFallback: Boolean = false
+) {
+    @Serializable
+    enum class Source {
+        @SerialName("modelGateway") MODEL_GATEWAY,
+        @SerialName("localRules") LOCAL_RULES
     }
 }
 

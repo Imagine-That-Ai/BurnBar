@@ -52,6 +52,66 @@ final class InsightAnalysisTests: XCTestCase {
         XCTAssertFalse(result.resultHash.isEmpty)
     }
 
+    /// Regression: an `.answerFollowUp` request must produce a
+    /// non-nil `briefingAnswer` with the user's question echoed back,
+    /// a non-empty data-grounded body, and at least one chip. Without
+    /// this, the Q&A card above the brief stays empty and the user
+    /// sees a follow-up tap as a no-op.
+    func testRuleBasedAnalysisProducesBriefingAnswerForFollowUp() async throws {
+        let snapshot = InsightTestFixtures.twoWeeksOfUsage()
+        let context = try InsightAggregator().buildContext(
+            snapshot: snapshot,
+            filter: InsightFilter(window: .last7d),
+            includedDataSources: ["datastore_usage", "quota_snapshots", "provider_summaries"]
+        )
+        let model = InsightModelTag(
+            providerKey: "local-rules",
+            modelID: "local-rules-v1",
+            displayName: "Local rules",
+            egressTier: .localOnly
+        )
+        let engine = RuleBasedInsightAnalysisEngine(platform: .iOS)
+        let prompt = "Why did cost spike this week?"
+        let result = try await engine.analyze(
+            .init(prompt: prompt, context: context, selectedModel: model, instruction: .answerFollowUp)
+        )
+        let answer = try XCTUnwrap(result.briefingAnswer,
+                                   "Engine must surface a briefingAnswer for .answerFollowUp prompts so the UI Q&A card has content.")
+        XCTAssertEqual(answer.question, prompt)
+        XCTAssertFalse(answer.answer.isEmpty,
+                       "Reply body must not be empty — the card needs visible answer text.")
+        XCTAssertFalse(answer.bullets.isEmpty,
+                       "Reply must surface data-grounded points to prove it's computed from the digest.")
+        XCTAssertEqual(answer.source, .localRules,
+                       "Local-rules path must declare its provenance honestly so the UI can label it.")
+        XCTAssertEqual(answer.modelDisplayName, "Local rules")
+        XCTAssertFalse(answer.isFallback,
+                       "Direct local-rules answer is not a fallback; only gateway failures get isFallback=true.")
+    }
+
+    /// Regression: the default brief (instruction == .defaultBrief)
+    /// must NOT carry a `briefingAnswer`, so the Q&A card is hidden
+    /// when there's no user question to reply to (first launch).
+    func testRuleBasedAnalysisDefaultBriefOmitsBriefingAnswer() async throws {
+        let snapshot = InsightTestFixtures.twoWeeksOfUsage()
+        let context = try InsightAggregator().buildContext(
+            snapshot: snapshot,
+            filter: InsightFilter(window: .last7d),
+            includedDataSources: ["datastore_usage", "provider_summaries"]
+        )
+        let model = InsightModelTag(
+            providerKey: "local-rules",
+            modelID: "local-rules-v1",
+            displayName: "Local rules",
+            egressTier: .localOnly
+        )
+        let result = try await RuleBasedInsightAnalysisEngine(platform: .iOS).analyze(
+            .init(prompt: "Default brief.", context: context, selectedModel: model, instruction: .defaultBrief)
+        )
+        XCTAssertNil(result.briefingAnswer,
+                     "Default brief must not carry a Q&A reply card — it isn't answering a question.")
+    }
+
     /// Regression: each canonical follow-up prompt must produce a
     /// distinct executive summary so tapping different questions
     /// doesn't render identical briefs. Catches the bug where the

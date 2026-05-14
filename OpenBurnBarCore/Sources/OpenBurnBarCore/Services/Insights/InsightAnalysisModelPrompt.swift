@@ -28,6 +28,8 @@ public struct InsightAnalysisModelPrompt: Sendable {
         lines.append("- When `modelBenchmarks` or `model_benchmarks` evidence exists, compare observed model usage against benchmark score/rank, cost signal, latency, task category, freshness, and attribution.")
         lines.append("- Never invent benchmark ranks, prices, or savings. If exact prices are absent, say `cost signal`, not dollar savings.")
         lines.append("- For UI/design work, call out design/coding benchmark fit separately from general reasoning fit.")
+        lines.append("- Treat iOS, iPadOS, Android, and macOS Insights as mission-control remotes for the user's local Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex agents.")
+        lines.append("- When a user asks for a mission, produce dispatch-ready work: recommended agent, target project, evidence to inspect, acceptance criteria, validation commands, risks, and what mobile should show when complete.")
         if !request.allowDeepTranscriptAnalysis {
             lines.append("- Deep transcript analysis is disabled. Do not request transcript content.")
         }
@@ -38,6 +40,7 @@ public struct InsightAnalysisModelPrompt: Sendable {
         lines.append("- Every finding and recommendation must include evidence and a concrete recommended action.")
         lines.append("- Return `missionCandidates` separately from findings and recommendations. Missions must be concrete work packages, not duplicate insight prose.")
         lines.append("- Use accretion, diligence, techDebt, routing, quota, and focus lenses to propose greater-purpose missions from the evidence.")
+        lines.append("- Recommend adjacent security, UI improvement, modernization, and cost-efficiency missions when the digest or benchmark evidence supports them.")
         lines.append("- Propose at most \(request.maxGeneratedWidgets) generated widgets.")
         lines.append("- Prefer concise, decision-grade language over generic commentary.")
         lines.append("- Strict schema requested: \(strictSchema ? "yes" : "no").")

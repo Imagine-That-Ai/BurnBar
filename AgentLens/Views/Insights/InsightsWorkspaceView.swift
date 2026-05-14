@@ -93,38 +93,20 @@ struct InsightsWorkspaceView: View {
     }
 
     private func analysisBrief(_ analysis: InsightAnalysisResult) -> some View {
-        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-            HStack(alignment: .firstTextBaseline) {
-                Label("Intelligence Brief", systemImage: "sparkles")
-                    .font(UnifiedDesignSystem.Typography.headline)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                Spacer()
-                Label(analysis.modelTag.displayName, systemImage: analysis.modelTag.egressTier.symbolName)
-                    .font(UnifiedDesignSystem.Typography.caption)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-            }
-            Text(analysis.executiveSummary)
-                .font(UnifiedDesignSystem.Typography.body)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-            ForEach(analysis.findings.prefix(3)) { finding in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(finding.title)
-                        .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                    Text(finding.recommendedAction)
-                        .font(UnifiedDesignSystem.Typography.caption)
-                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                }
-            }
-        }
-        .padding(UnifiedDesignSystem.Spacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                .fill(UnifiedDesignSystem.Colors.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
-                        .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.5)
-                )
+        IntelligenceBriefView(
+            result: analysis,
+            onCitationTap: { citation in
+                Task { await environment?.compose(prompt: IntelligenceBriefCitationPrompt.prompt(for: citation)) }
+            },
+            onFollowUpTap: { question in
+                Task { await environment?.compose(prompt: question.question) }
+            },
+            onPinWidget: { generated in
+                Task { await environment?.pinGeneratedWidget(generated) }
+            },
+            onConfigureModel: nil,
+            onShowAudit: { showAuditLog = true },
+            snapshotMode: true
         )
     }
 

@@ -184,8 +184,9 @@ final class InsightsStore {
 
     func compose(prompt: String) async {
         guard !prompt.isEmpty else { return }
-        let modelDisplay = selectedModelTag.displayName
-        let egressLabel = selectedModelTag.egressTier.displayLabel
+        let answerModel = modelForAnalysis(instruction: .answerFollowUp)
+        let modelDisplay = answerModel.displayName
+        let egressLabel = answerModel.egressTier.displayLabel
         Self.log.info("compose: prompt=\"\(prompt, privacy: .public)\" model=\(modelDisplay, privacy: .public) egress=\(egressLabel, privacy: .public)")
         composerError = nil
         isComposing = true
@@ -269,11 +270,12 @@ final class InsightsStore {
             ],
             priorRunSummaries: try await recentAnalysisSummaries()
         )
+        let analysisModel = modelForAnalysis(instruction: instruction)
         let request = InsightAnalysisRequest(
             prompt: prompt,
             context: context,
             currentCanvas: canvas,
-            selectedModel: selectedModelTag,
+            selectedModel: analysisModel,
             instruction: instruction,
             allowDeepTranscriptAnalysis: false,
             maxGeneratedWidgets: 6
@@ -287,8 +289,8 @@ final class InsightsStore {
             id: result.auditID ?? UUID(),
             canvasID: canvas?.id,
             prompt: prompt,
-            modelTag: selectedModelTag,
-            egressTier: selectedModelTag.egressTier,
+            modelTag: result.modelTag,
+            egressTier: result.modelTag.egressTier,
             digestBytes: context.budgetReport.encodedBytes,
             digestContentHash: context.digest.contentHash,
             instruction: "analysis.\(instruction.rawValue)",
@@ -320,6 +322,21 @@ final class InsightsStore {
             ?? available.first { $0.providerKey == "local-rules" }
         guard let preferred else { return }
         selectedModelTag = .init(
+            providerKey: preferred.providerKey,
+            modelID: preferred.id,
+            displayName: preferred.displayName,
+            egressTier: preferred.egressTier
+        )
+    }
+
+    private func modelForAnalysis(instruction: InsightAnalysisRequest.Instruction) -> InsightModelTag {
+        guard instruction == .answerFollowUp, !privacyMode else { return selectedModelTag }
+        guard selectedModelTag.providerKey == "local-rules" else { return selectedModelTag }
+        let preferred = modelCatalog.first { $0.egressTier != .localOnly && $0.providerKey == "hermes" }
+            ?? modelCatalog.first { $0.egressTier != .localOnly && $0.providerKey != "ollama" }
+            ?? modelCatalog.first { $0.egressTier != .localOnly }
+        guard let preferred else { return selectedModelTag }
+        return .init(
             providerKey: preferred.providerKey,
             modelID: preferred.id,
             displayName: preferred.displayName,

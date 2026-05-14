@@ -205,7 +205,6 @@ final class InsightsMacEnvironment {
             try? await store.upsert(canvas)
             selectedCanvasID = canvas.id
             canvases = await store.allCanvases()
-            await refreshSelectedCanvasData()
         } catch {
             composerError = error.localizedDescription
         }
@@ -233,11 +232,12 @@ final class InsightsMacEnvironment {
             ],
             priorRunSummaries: try await recentAnalysisSummaries()
         )
+        let analysisModel = modelForAnalysis(instruction: instruction)
         let request = InsightAnalysisRequest(
             prompt: prompt,
             context: context,
             currentCanvas: canvas,
-            selectedModel: selectedModelTag,
+            selectedModel: analysisModel,
             instruction: instruction,
             allowDeepTranscriptAnalysis: false,
             maxGeneratedWidgets: 8
@@ -251,8 +251,8 @@ final class InsightsMacEnvironment {
             id: result.auditID ?? UUID(),
             canvasID: canvas?.id,
             prompt: prompt,
-            modelTag: selectedModelTag,
-            egressTier: selectedModelTag.egressTier,
+            modelTag: result.modelTag,
+            egressTier: result.modelTag.egressTier,
             digestBytes: context.budgetReport.encodedBytes,
             digestContentHash: context.digest.contentHash,
             instruction: "analysis.\(instruction.rawValue)",
@@ -337,6 +337,21 @@ final class InsightsMacEnvironment {
         )
     }
 
+    private func modelForAnalysis(instruction: InsightAnalysisRequest.Instruction) -> InsightModelTag {
+        guard instruction == .answerFollowUp, !privacyMode else { return selectedModelTag }
+        guard selectedModelTag.providerKey == "local-rules" else { return selectedModelTag }
+        let preferred = modelCatalog.first { $0.egressTier != .localOnly && $0.providerKey == "hermes" }
+            ?? modelCatalog.first { $0.egressTier != .localOnly && $0.providerKey != "ollama" }
+            ?? modelCatalog.first { $0.egressTier != .localOnly }
+        guard let preferred else { return selectedModelTag }
+        return .init(
+            providerKey: preferred.providerKey,
+            modelID: preferred.id,
+            displayName: preferred.displayName,
+            egressTier: preferred.egressTier
+        )
+    }
+
     private func persistModelPreference() {
         let preference = InsightModelPreference(
             mode: selectedModelTag.providerKey == "local-rules" ? .automatic : .explicit,
@@ -399,6 +414,17 @@ final class InsightsMacEnvironment {
         try? await store.upsert(canvas)
         canvases = await store.allCanvases()
         await refreshSelectedCanvasData()
+    }
+
+    func pinGeneratedWidget(_ generated: InsightGeneratedWidget) async {
+        guard var canvas = currentCanvas else { return }
+        if let existing = canvas.widgets.firstIndex(where: { $0.id == generated.widget.id }) {
+            canvas.widgets[existing] = generated.widget
+        } else {
+            canvas.widgets.append(generated.widget)
+        }
+        try? await store.upsert(canvas)
+        canvases = await store.allCanvases()
     }
 
     func removeWidget(id widgetID: UUID) async {

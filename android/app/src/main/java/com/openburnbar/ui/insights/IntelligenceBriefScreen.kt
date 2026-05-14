@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.insights.InsightAnalysisResult
 import com.openburnbar.data.insights.InsightAnomaly
+import com.openburnbar.data.insights.InsightBriefingAnswer
 import com.openburnbar.data.insights.InsightCitation
 import com.openburnbar.data.insights.InsightConfidence
 import com.openburnbar.data.insights.InsightContextBudgetReport
@@ -167,11 +168,17 @@ fun IntelligenceBriefScreen(
             )
         }
 
+        AnimatedSection(visible = visibility[1], reduceMotion = reduceMotion) {
+            MissionLaunchpad(onSelect = { action ->
+                onFollowUpTap(action.followUpQuestion())
+            })
+        }
+
         // CHARTS NEXT — the remaining generated widgets render right after
         // the hero so graphs stay front and center. Findings + anomalies +
         // recommendations sit below, supporting the picture you just saw.
         if (remainingWidgets.isNotEmpty()) {
-            AnimatedSection(visible = visibility[1], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[2], reduceMotion = reduceMotion) {
                 GeneratedViewsSection(
                     generated = remainingWidgets,
                     figureStart = generatedFigureStart,
@@ -183,7 +190,7 @@ fun IntelligenceBriefScreen(
         }
 
         if (result.findings.isNotEmpty()) {
-            AnimatedSection(visible = visibility[2], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[3], reduceMotion = reduceMotion) {
                 FindingsSection(
                     findings = result.findings,
                     onCitationTap = onCitationTap,
@@ -192,7 +199,7 @@ fun IntelligenceBriefScreen(
         }
 
         if (result.missionCandidates.isNotEmpty()) {
-            AnimatedSection(visible = visibility[3], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[4], reduceMotion = reduceMotion) {
                 MissionBoardSection(
                     missions = result.missionCandidates,
                     expandedMissionID = expandedMissionID,
@@ -205,7 +212,7 @@ fun IntelligenceBriefScreen(
         }
 
         if (result.anomalies.isNotEmpty()) {
-            AnimatedSection(visible = visibility[4], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[5], reduceMotion = reduceMotion) {
                 AnomalyAtlasSection(
                     anomalies = result.anomalies,
                     onCitationTap = onCitationTap,
@@ -214,7 +221,7 @@ fun IntelligenceBriefScreen(
         }
 
         if (result.recommendations.isNotEmpty()) {
-            AnimatedSection(visible = visibility[5], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[6], reduceMotion = reduceMotion) {
                 RecommendationsSection(
                     recommendations = result.recommendations,
                     isDark = isDark,
@@ -224,7 +231,7 @@ fun IntelligenceBriefScreen(
         }
 
         if (result.followUpQuestions.isNotEmpty()) {
-            AnimatedSection(visible = visibility[6], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[7], reduceMotion = reduceMotion) {
                 FollowUpSection(
                     questions = result.followUpQuestions,
                     isDark = isDark,
@@ -233,7 +240,7 @@ fun IntelligenceBriefScreen(
             }
         }
 
-        AnimatedSection(visible = visibility[7], reduceMotion = reduceMotion) {
+        AnimatedSection(visible = visibility[8], reduceMotion = reduceMotion) {
             AuditFooterSection(
                 result = result,
                 isDark = isDark,
@@ -315,7 +322,7 @@ private fun rememberSectionVisibility(reduceMotion: Boolean): SnapshotStateList<
     return state
 }
 
-private const val SECTION_COUNT = 8
+private const val SECTION_COUNT = 9
 
 @Composable
 private fun AnimatedSection(
@@ -360,20 +367,28 @@ private fun HeroSection(
             .testTag(SECTION_TAG_HERO),
         verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
     ) {
+        val answer = result.briefingAnswer
         Text(
-            text = EYEBROW,
+            text = answer?.let { answerEyebrow(it) } ?: EYEBROW,
             style = AuroraType.tiny.copy(
                 letterSpacing = 1.4.sp,
                 fontWeight = FontWeight.SemiBold,
             ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.semantics { contentDescription = EYEBROW_DESCRIPTION },
+            color = if (answer?.isFallback == true) InsightsColors.kpiNeutral else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.semantics { contentDescription = answer?.let { answerEyebrow(it) } ?: EYEBROW_DESCRIPTION },
         )
         Text(
             text = IntelligenceBriefFormatting.windowLabel(result.timeWindow),
             style = AuroraType.caption,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (answer != null) {
+            Text(
+                text = "Q · ${answer.question}",
+                style = AuroraType.caption,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
         Text(
             text = result.executiveSummary,
@@ -386,6 +401,9 @@ private fun HeroSection(
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.semantics { heading() },
         )
+        if (answer != null) {
+            AnswerPanel(answer = answer, onCitationTap = onCitationTap)
+        }
         if (featuredWidget != null) {
             Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
             HeroChartFrame(
@@ -408,6 +426,166 @@ private fun HeroSection(
             reduceMotion = reduceMotion,
             shimmer = true,
         )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AnswerPanel(
+    answer: InsightBriefingAnswer,
+    onCitationTap: (InsightCitation) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AuroraRadius.sm.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant), RoundedCornerShape(AuroraRadius.sm.dp))
+            .padding(AuroraSpacing.md.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+    ) {
+        Text(
+            text = answer.answer,
+            style = AuroraType.body,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        if (answer.bullets.isNotEmpty()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+                verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+            ) {
+                answer.bullets.take(4).forEach { bullet ->
+                    Text(
+                        text = bullet,
+                        style = AuroraType.monoTiny,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .border(BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant), RoundedCornerShape(999.dp))
+                            .padding(horizontal = AuroraSpacing.sm.dp, vertical = 3.dp),
+                    )
+                }
+            }
+        }
+        if (answer.citations.isNotEmpty()) {
+            CitationChipRow(citations = answer.citations, onTap = onCitationTap)
+        }
+    }
+}
+
+private fun answerEyebrow(answer: InsightBriefingAnswer): String =
+    when {
+        answer.isFallback -> "Answered locally after LLM fallback"
+        answer.source == InsightBriefingAnswer.Source.MODEL_GATEWAY -> "Answered by ${answer.modelDisplayName}"
+        else -> "Answered by ${answer.modelDisplayName} on device"
+    }
+
+// ─── Mission Control ───────────────────────────────────────────────────────
+
+private data class MissionLaunchAction(
+    val title: String,
+    val subtitle: String,
+    val tone: MissionTone,
+    val prompt: String,
+) {
+    fun followUpQuestion(): InsightFollowUpQuestion =
+        InsightFollowUpQuestion(
+            question = prompt.trimIndent(),
+            rationale = "Turns the current brief into a local-agent mission.",
+        )
+}
+
+private enum class MissionTone { CREATIVE, DILIGENCE, DEBT }
+
+private val missionLaunchActions = listOf(
+    MissionLaunchAction(
+        title = "Creative Mission",
+        subtitle = "Accretive features, UI improvements, modernizations.",
+        tone = MissionTone.CREATIVE,
+        prompt = """
+            Create a creative/accretive mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, target project, user value, implementation surface, acceptance criteria, evidence to inspect, likely risks, and how mobile should show the result. Also recommend adjacent missions for UI improvements, modernizations, and small features that compound product value.
+        """,
+    ),
+    MissionLaunchAction(
+        title = "Diligence Mission",
+        subtitle = "Security, reliability, launch-readiness evidence.",
+        tone = MissionTone.DILIGENCE,
+        prompt = """
+            Create a diligence mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, target project, launch-readiness/security/reliability questions, exact evidence to collect, severity model, acceptance criteria, and the mobile result summary I should expect. Also recommend adjacent security, QA, and production-readiness missions when the data supports them.
+        """,
+    ),
+    MissionLaunchAction(
+        title = "Debt Mission",
+        subtitle = "Compounding drag, rewrite risk, focused remediation.",
+        tone = MissionTone.DEBT,
+        prompt = """
+            Create a technical debt mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, project/module focus, debt hypothesis, delivery drag, validation commands, acceptance criteria, remediation sequence, and how mobile should summarize progress. Also recommend adjacent modernization, dependency, architecture, and UI cleanup missions when the evidence supports them.
+        """,
+    ),
+)
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MissionLaunchpad(onSelect: (MissionLaunchAction) -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+    ) {
+        SectionHeader(title = "MISSION CONTROL")
+        Text(
+            text = "Create a dispatch-ready mission for your local Hermes, Pi, OpenClaw, Claude, and Codex agents.",
+            style = AuroraType.body,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        ) {
+            missionLaunchActions.forEach { action ->
+                MissionLaunchButton(action = action, onSelect = onSelect)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MissionLaunchButton(
+    action: MissionLaunchAction,
+    onSelect: (MissionLaunchAction) -> Unit,
+) {
+    val color = when (action.tone) {
+        MissionTone.CREATIVE -> InsightsColors.kpiPositive
+        MissionTone.DILIGENCE -> if (isSystemInDarkTheme()) AuroraColors.goldDark else AuroraColors.gold
+        MissionTone.DEBT -> AuroraColors.ember(isSystemInDarkTheme())
+    }
+    TextButton(
+        onClick = { onSelect(action) },
+        modifier = Modifier
+            .clip(RoundedCornerShape(AuroraRadius.sm.dp))
+            .border(BorderStroke(0.75.dp, color.copy(alpha = 0.32f)), RoundedCornerShape(AuroraRadius.sm.dp))
+            .semantics { contentDescription = action.title },
+    ) {
+        Column(
+            modifier = Modifier.width(188.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = action.title,
+                style = AuroraType.body.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = action.subtitle,
+                style = AuroraType.caption,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "Create mission ->",
+                style = AuroraType.monoTiny,
+                color = color,
+            )
+        }
     }
 }
 
