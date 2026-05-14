@@ -104,7 +104,7 @@ struct SettingsDrillRow: View {
             ProviderLogoView(provider: provider, size: 28, useFallbackColor: true)
                 .accessibilityHidden(true)
         } else {
-            SettingsProviderLogoStack(providers: logoProviders, size: 24, maxVisible: 4)
+            SettingsProviderLogoStack(providers: logoProviders, size: 24, maxVisible: 5)
                 .accessibilityHidden(true)
         }
     }
@@ -127,7 +127,7 @@ struct SettingsDrillRow: View {
 struct SettingsProviderLogoStack: View {
     let providers: [AgentProvider]
     var size: CGFloat = 24
-    var maxVisible: Int = 4
+    var maxVisible: Int = 5
 
     private var visibleProviders: [AgentProvider] {
         Array(providers.prefix(maxVisible))

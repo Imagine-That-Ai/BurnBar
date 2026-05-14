@@ -76,4 +76,27 @@ final class SettingsManifestCoverageTests: XCTestCase {
                            "\(provider.displayName) search result should render its real provider logo")
         }
     }
+
+    func test_aiEnvironmentSearchItemsCarryExactProviderLogos() {
+        XCTAssertEqual(
+            SettingsManifest.all.first { $0.id == "hermes.connections" }?.logoProviders,
+            [.hermes, .piAgent, .openClaw, .claudeCode, .codex],
+            "Chat Engines must show Hermes, Pi, OpenClaw, Claude, and Codex with their own logos."
+        )
+        XCTAssertEqual(
+            SettingsManifest.all.first { $0.id == "hermes.pi.hosts" }?.logoProviders,
+            [.piAgent],
+            "Pi Agent settings must never reuse the Hermes logo."
+        )
+        XCTAssertEqual(
+            SettingsManifest.all.first { $0.id == "hermes.relay" }?.logoProviders,
+            [.hermes],
+            "Hermes Remote Relay must stay Hermes-specific."
+        )
+        XCTAssertEqual(
+            SettingsManifest.all.first { $0.id == "hermes.pi.relay" }?.logoProviders,
+            [.piAgent],
+            "Pi Remote Relay must stay Pi-specific."
+        )
+    }
 }

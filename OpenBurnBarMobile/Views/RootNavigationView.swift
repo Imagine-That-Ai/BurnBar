@@ -255,7 +255,7 @@ struct RootNavigationView: View {
                 switch selection {
                 case .pulse:    PulseView(router: router)
                 case .burn:     BurnView()
-                case .insights: InsightsRootView(dashboardStore: insightsDashboardStore)
+                case .insights: AgentInsightsTabScreen(dashboardStore: insightsDashboardStore, hermesService: hermesService)
                 case .streams:  StreamsView()
                 case .hermes:   HermesConversationListView(service: hermesService)
                 case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)

@@ -47,4 +47,9 @@ final class ProviderLogoViewTests: XCTestCase {
             XCTAssertFalse(provider.displayName.isEmpty, "Provider has empty displayName")
         }
     }
+
+    func test_piAgentDoesNotReuseHermesLogo() {
+        XCTAssertEqual(AgentProvider.piAgent.bundledLogoName, "PiAgentLogo")
+        XCTAssertNotEqual(AgentProvider.piAgent.bundledLogoName, AgentProvider.hermes.bundledLogoName)
+    }
 }

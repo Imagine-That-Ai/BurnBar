@@ -124,6 +124,7 @@ enum SettingsPageRoute: Hashable, Codable {
     case hermesGateway
     case hermesPiAgent
     case hermesRelay
+    case hermesPiRelay
 }
 
 // MARK: - Anchor IDs
@@ -213,6 +214,7 @@ enum SettingsAnchor {
     static let hermesGatewayToken = "hermes.gateway.token"
     static let hermesPiHosts = "hermes.pi.hosts"
     static let hermesRelay = "hermes.relay"
+    static let hermesPiRelay = "hermes.pi.relay"
 }
 
 // MARK: - Focus IDs

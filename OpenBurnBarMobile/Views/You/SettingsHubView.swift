@@ -257,7 +257,7 @@ struct SettingsHubView: View {
                             icon: "bubble.left.and.bubble.right.fill",
                             color: MobileTheme.amber,
                             title: "Chat tiles",
-                            logoProviders: [.hermes, .claudeCode, .codex, .openClaw]
+                            logoProviders: [.hermes, .piAgent, .openClaw, .claudeCode, .codex]
                         )
                     }
 
@@ -397,7 +397,7 @@ private struct SettingsLabel: View {
                         .foregroundStyle(.white)
                 }
             } else {
-                SettingsProviderLogoStack(providers: logoProviders, size: 26, maxVisible: 4)
+                SettingsProviderLogoStack(providers: logoProviders, size: 26, maxVisible: 5)
             }
         }
     }

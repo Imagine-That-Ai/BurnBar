@@ -166,6 +166,104 @@ test("non-paying users can remove previously backed-up chat content", async () =
   );
 });
 
+test("owners can dispatch mobile Insights missions and read Mac agent results", async () => {
+  const phoneDb = authedDb("ivy");
+  const otherDb = authedDb("mallory");
+  const requestPath = "users/ivy/cli_agent_mission_requests/mission-1";
+
+  await assertSucceeds(
+    setDoc(doc(phoneDb, requestPath), {
+      id: "mission-1",
+      title: "Debt Mission",
+      prompt: "Find the highest-leverage technical debt mission from the current Insights brief.",
+      missionKind: "debt",
+      requestedRuntime: "auto",
+      source: "ios-insights",
+      status: "pending",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(
+      doc(phoneDb, requestPath),
+      {
+        status: "completed",
+        claimedBy: "mac-1",
+        selectedRuntime: "codex",
+        selectedRuntimeName: "Codex",
+        sessionId: "thread-1",
+        resultPreview: "Prioritized debt mission with validation commands.",
+        completedAt: "2026-05-13T00:00:05.000Z",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+
+  await assertFails(getDoc(doc(otherDb, requestPath)));
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivy/cli_agent_mission_requests/mission-2"), {
+      id: "mission-2",
+      title: "Bad Mission",
+      prompt: "Run a mission with an unsupported runtime.",
+      missionKind: "debt",
+      requestedRuntime: "unknown",
+      source: "ios-insights",
+      status: "pending",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+});
+
+test("owners can mirror CLI agent transcripts for mobile assistant tiles", async () => {
+  const macDb = authedDb("jules");
+  const otherDb = authedDb("mallory");
+  const sessionPath = "users/jules/cli_sessions/thread-1";
+
+  await assertSucceeds(
+    setDoc(doc(macDb, sessionPath), {
+      id: "thread-1",
+      agent: "claude",
+      title: "Diligence Mission",
+      preview: "Security and launch-readiness findings",
+      modelName: "claude-code",
+      workspaceLabel: "BurnBar",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: "2026-05-13T00:00:03.000Z",
+      schemaVersion: 1,
+      messages: [
+        {
+          id: "m1",
+          role: "assistant",
+          text: "Found one launch-readiness issue.",
+          timestamp: "2026-05-13T00:00:03.000Z",
+          isError: false,
+          toolUses: [],
+        },
+      ],
+    })
+  );
+
+  await assertSucceeds(getDoc(doc(macDb, sessionPath)));
+  await assertFails(getDoc(doc(otherDb, sessionPath)));
+  await assertFails(
+    setDoc(doc(macDb, "users/jules/cli_sessions/thread-2"), {
+      id: "thread-2",
+      agent: "unknown",
+      title: "Unsupported",
+      preview: "Unsupported agent",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: "2026-05-13T00:00:03.000Z",
+      schemaVersion: 1,
+    })
+  );
+});
+
 test("conversation and session-log backup require hosted cloud entitlement", async () => {
   const db = authedDb("carol");
 

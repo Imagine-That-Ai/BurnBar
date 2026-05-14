@@ -236,7 +236,32 @@ private fun BurnBarContent(
         composable(
             BurnBarTab.INSIGHTS.route,
             deepLinks = listOf(navDeepLink { uriPattern = "burnbar://insights" })
-        ) { InsightsScreen() }
+        ) {
+            com.openburnbar.ui.insights.AgentInsightsRosterScreen(
+                onSelectProvider = { provider ->
+                    navController.navigate("agent_insights/${provider.key}")
+                },
+                onSelectAggregate = {
+                    navController.navigate("agent_insights/all")
+                }
+            )
+        }
+        composable(
+            "agent_insights/{slug}",
+            deepLinks = listOf(navDeepLink { uriPattern = "burnbar://insights/{slug}" })
+        ) { entry ->
+            val slug = entry.arguments?.getString("slug") ?: "all"
+            val scope = com.openburnbar.ui.insights.AgentInsightsScope.fromRouteSlug(slug)
+                ?: com.openburnbar.ui.insights.AgentInsightsScope.Aggregate
+            com.openburnbar.ui.insights.AgentInsightsHost(
+                scope = scope,
+                onOpenWorkspace = {
+                    navController.navigate("insights_workspace")
+                },
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable("insights_workspace") { InsightsScreen() }
         composable(
             BurnBarTab.STREAMS.route,
             deepLinks = listOf(

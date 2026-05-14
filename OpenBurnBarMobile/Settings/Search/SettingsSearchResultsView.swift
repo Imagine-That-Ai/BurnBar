@@ -56,7 +56,7 @@ struct SettingsSearchResultsView: View {
     private func resultRow(for item: SettingsItem) -> some View {
         HStack(spacing: MobileTheme.Spacing.md) {
             if !item.logoProviders.isEmpty {
-                SettingsProviderLogoStack(providers: item.logoProviders, size: 28, maxVisible: 4)
+                SettingsProviderLogoStack(providers: item.logoProviders, size: 28, maxVisible: 5)
                     .accessibilityHidden(true)
             }
 
@@ -131,7 +131,7 @@ struct SettingsSearchResultsView: View {
 struct SettingsProviderLogoStack: View {
     let providers: [AgentProvider]
     var size: CGFloat = 28
-    var maxVisible: Int = 4
+    var maxVisible: Int = 5
 
     private var visibleProviders: [AgentProvider] {
         Array(providers.prefix(maxVisible))

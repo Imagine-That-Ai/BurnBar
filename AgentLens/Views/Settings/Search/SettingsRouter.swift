@@ -119,7 +119,7 @@ final class SettingsRouter {
              .switcherRoot,
              .hermesRoot:
             return []
-        case .hermesChatEngines, .hermesGateway, .hermesPiAgent, .hermesRelay:
+        case .hermesChatEngines, .hermesGateway, .hermesPiAgent, .hermesRelay, .hermesPiRelay:
             return [route]
         }
     }

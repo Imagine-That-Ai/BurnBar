@@ -396,8 +396,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.hermesConnections,
             title: "Chat Engines",
             subtitle: "Choose which chat engines appear in OpenBurnBar",
-            keywords: ["hermes", "connection", "engine", "chat", "codex", "claude", "openclaw"],
-            logoProviders: [.hermes, .claudeCode, .codex, .openClaw]
+            keywords: ["hermes", "pi", "connection", "engine", "chat", "codex", "claude", "openclaw"],
+            logoProviders: [.hermes, .piAgent, .openClaw, .claudeCode, .codex]
         ),
         SettingsItem(
             id: "hermes.models",
@@ -446,10 +446,20 @@ enum SettingsManifest {
             tab: .hermes,
             pageRoute: .hermesRelay,
             anchorID: SettingsAnchor.hermesRelay,
-            title: "Remote Relay",
+            title: "Hermes Remote Relay",
             subtitle: "Reach Hermes from the cloud relay endpoint",
-            keywords: ["relay", "remote", "tunnel", "cloud"],
+            keywords: ["hermes", "relay", "remote", "tunnel", "cloud"],
             logoProviders: [.hermes]
+        ),
+        SettingsItem(
+            id: "hermes.pi.relay",
+            tab: .hermes,
+            pageRoute: .hermesPiRelay,
+            anchorID: SettingsAnchor.hermesPiRelay,
+            title: "Pi Remote Relay",
+            subtitle: "Reach Pi from the cloud relay endpoint",
+            keywords: ["pi", "raspberry", "relay", "remote", "tunnel", "cloud"],
+            logoProviders: [.piAgent]
         ),
     ]
 
@@ -506,6 +516,7 @@ enum SettingsManifest {
         SettingsAnchor.hermesGatewayToken,
         SettingsAnchor.hermesPiHosts,
         SettingsAnchor.hermesRelay,
+        SettingsAnchor.hermesPiRelay,
     ]).union(providerItems.map(\.anchorID))
 
     private static let providerItems: [SettingsItem] = {

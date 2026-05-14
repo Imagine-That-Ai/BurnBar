@@ -130,7 +130,7 @@ struct SettingsView: View {
                         .foregroundStyle(.white)
                 }
             } else {
-                SettingsProviderLogoStack(providers: tab.logoProviders, size: 26, maxVisible: 4)
+                SettingsProviderLogoStack(providers: tab.logoProviders, size: 26, maxVisible: 5)
                     .accessibilityHidden(true)
             }
 
@@ -193,6 +193,8 @@ struct SettingsView: View {
             )
         case .hermesRelay:
             RemoteRelayDetailView(settingsManager: settingsManager)
+        case .hermesPiRelay:
+            RemoteRelayPiDetailView(settingsManager: settingsManager)
         case .generalRoot, .daemonRoot, .accountRoot, .providersRoot,
              .routingPoolsRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,

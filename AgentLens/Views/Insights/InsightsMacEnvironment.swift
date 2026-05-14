@@ -338,11 +338,15 @@ final class InsightsMacEnvironment {
     }
 
     private func modelForAnalysis(instruction: InsightAnalysisRequest.Instruction) -> InsightModelTag {
-        guard instruction == .answerFollowUp, !privacyMode else { return selectedModelTag }
+        guard instruction == .answerFollowUp else { return selectedModelTag }
         guard selectedModelTag.providerKey == "local-rules" else { return selectedModelTag }
-        let preferred = modelCatalog.first { $0.egressTier != .localOnly && $0.providerKey == "hermes" }
-            ?? modelCatalog.first { $0.egressTier != .localOnly && $0.providerKey != "ollama" }
-            ?? modelCatalog.first { $0.egressTier != .localOnly }
+        let available = privacyMode
+            ? modelCatalog.filter { $0.egressTier == .localOnly }
+            : modelCatalog
+        let preferred = available.first { $0.providerKey == "hermes" }
+            ?? available.first { $0.egressTier != .localOnly && $0.providerKey != "ollama" }
+            ?? available.first { $0.providerKey == "ollama" }
+            ?? available.first { $0.providerKey != "local-rules" }
         guard let preferred else { return selectedModelTag }
         return .init(
             providerKey: preferred.providerKey,

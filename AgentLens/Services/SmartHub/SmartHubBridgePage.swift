@@ -1008,9 +1008,21 @@ enum SmartHubBridgePage {
           const card = document.createElement('article');
           card.className = 'card live';
           card.id = 'card-' + (p.slug || slugify(p.name));
+          card.setAttribute('role', 'button');
+          card.setAttribute('tabindex', '0');
+          card.setAttribute('aria-label', p.name + ' details');
           if (p.accentHex) {
             card.style.setProperty('--card-accent', '#' + p.accentHex);
           }
+
+          // Click / Enter to open detail overlay
+          card.addEventListener('click', () => showDetail(p));
+          card.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              showDetail(p);
+            }
+          });
 
           // Top row: logo + name+freshness, status dot
           const top = document.createElement('div');
@@ -1045,33 +1057,47 @@ enum SmartHubBridgePage {
             card.appendChild(pill);
           }
 
-          // Big token total + label
-          if (p.tokenTotal) {
+          // Big number: currency or tokens depending on toggle
+          const bigValue = displayMode === 'currency'
+            ? (p.tokenTotalCurrency || p.tokenTotal || '')
+            : (p.tokenTotal || p.tokenTotalCurrency || '');
+          if (bigValue) {
             const total = document.createElement('div');
             total.className = 'token-total';
-            total.textContent = p.tokenTotal;
+            total.textContent = bigValue;
             card.appendChild(total);
 
             const tlabel = document.createElement('div');
             tlabel.className = 'token-label';
-            tlabel.textContent = p.tokenTotalLabel || 'TOKENS';
+            tlabel.textContent = displayMode === 'currency' ? 'COST' : (p.tokenTotalLabel || 'TOKENS');
             card.appendChild(tlabel);
           } else {
-            // Without a token total the card still needs vertical rhythm.
             const spacer = document.createElement('div');
             spacer.style.height = '6px';
             card.appendChild(spacer);
           }
 
-          // Bucket rows
-          const buckets = document.createElement('div');
-          buckets.className = 'bucket-list';
-          (p.buckets || []).forEach(b => buckets.appendChild(renderBucket(b)));
-          card.appendChild(buckets);
+          if (p.hasQuotaData !== false) {
+            // Quota provider: bucket rows + accounts
+            const buckets = document.createElement('div');
+            buckets.className = 'bucket-list';
+            (p.buckets || []).forEach(b => buckets.appendChild(renderBucket(b, p.accentHex)));
+            card.appendChild(buckets);
 
-          // Accounts block (only when populated)
-          if (p.accounts && p.accounts.length > 0) {
-            card.appendChild(renderAccounts(p.accounts));
+            if (p.accounts && p.accounts.length > 0) {
+              card.appendChild(renderAccounts(p.accounts));
+            }
+          } else {
+            // Burn-only provider: burn-rate rows
+            const noQuota = document.createElement('div');
+            noQuota.className = 'no-quota-label';
+            noQuota.textContent = 'Usage';
+            card.appendChild(noQuota);
+
+            const burnList = document.createElement('div');
+            burnList.className = 'burn-list';
+            (p.burnRates || []).forEach(r => burnList.appendChild(renderBurnRow(r)));
+            card.appendChild(burnList);
           }
 
           // Footer (runs + cost). Hide entirely if both empty.
@@ -1092,7 +1118,7 @@ enum SmartHubBridgePage {
           return card;
         }
 
-        function renderBucket(b) {
+        function renderBucket(b, accentHex) {
           const wrap = document.createElement('div');
           wrap.className = 'bucket';
           const name = document.createElement('div');
@@ -1105,6 +1131,7 @@ enum SmartHubBridgePage {
           bar.className = 'bar';
           const fill = document.createElement('div');
           fill.className = 'fill tone-' + (b.tone || 'ember');
+          if (accentHex) fill.style.background = '#' + accentHex;
           fill.style.width = Math.min(Math.max(b.percent || 0, 0), 100) + '%';
           bar.appendChild(fill);
           const sub = document.createElement('div');
@@ -1121,6 +1148,27 @@ enum SmartHubBridgePage {
             wrap.appendChild(reset);
           }
           return wrap;
+        }
+
+        function renderBurnRow(r) {
+          const row = document.createElement('div');
+          row.className = 'burn-row';
+          const window = document.createElement('span');
+          window.className = 'window';
+          window.textContent = r.windowLabel || '';
+          const right = document.createElement('div');
+          right.className = 'right';
+          const value = document.createElement('span');
+          value.className = 'value';
+          value.textContent = displayMode === 'currency' ? (r.cost || '—') : (r.tokens || '—');
+          const sub = document.createElement('span');
+          sub.className = 'sub';
+          sub.textContent = r.runs || '';
+          right.appendChild(value);
+          right.appendChild(sub);
+          row.appendChild(window);
+          row.appendChild(right);
+          return row;
         }
 
         function renderAccounts(accounts) {
@@ -1161,6 +1209,216 @@ enum SmartHubBridgePage {
         function slugify(s) {
           return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
         }
+
+        function updateScrollIndicators() {
+          if (!providersWrap || !providersEl) return;
+          const canLeft = providersEl.scrollLeft > 4;
+          const canRight = providersEl.scrollLeft + providersEl.clientWidth < providersEl.scrollWidth - 4;
+          providersWrap.classList.toggle('can-scroll-left', canLeft);
+          providersWrap.classList.toggle('can-scroll-right', canRight);
+        }
+        if (providersEl) {
+          providersEl.addEventListener('scroll', updateScrollIndicators, { passive: true });
+        }
+
+        function renderValueToggle() {
+          if (!valueToggle) return;
+          for (const btn of valueToggle.querySelectorAll('button')) {
+            btn.classList.toggle('active', btn.dataset.mode === displayMode);
+            btn.setAttribute('aria-pressed', btn.dataset.mode === displayMode ? 'true' : 'false');
+          }
+        }
+        if (valueToggle) {
+          valueToggle.addEventListener('click', (e) => {
+            const btn = e.target.closest('button');
+            if (!btn) return;
+            displayMode = btn.dataset.mode;
+            localStorage.setItem('obb_displayMode', displayMode);
+            renderValueToggle();
+            poll();
+          });
+        }
+
+        function showDetail(p) {
+          if (!detailOverlay || !detailContent) return;
+          detailContent.innerHTML = '';
+          detailOverlay.classList.add('active');
+          if (detailCard) detailCard.style.setProperty('--card-accent', p.accentHex ? '#' + p.accentHex : 'var(--primary)');
+
+          const header = document.createElement('div');
+          header.className = 'detail-header';
+          const logo = document.createElement('div');
+          logo.className = 'logo';
+          logo.innerHTML = p.logoSVG || '';
+          const title = document.createElement('div');
+          title.className = 'name';
+          title.textContent = p.name;
+          const pill = document.createElement('span');
+          pill.className = 'pill tone-' + (p.statusTone || 'mercury');
+          pill.textContent = p.statusPill || 'live';
+          header.appendChild(logo);
+          header.appendChild(title);
+          header.appendChild(pill);
+          detailContent.appendChild(header);
+
+          if (p.hasQuotaData !== false) {
+            if (p.buckets && p.buckets.length > 0) {
+              const sec = document.createElement('div');
+              sec.className = 'detail-section';
+              const h3 = document.createElement('h3');
+              h3.textContent = 'Quota';
+              sec.appendChild(h3);
+              p.buckets.forEach(b => {
+                const row = document.createElement('div');
+                row.className = 'detail-row';
+                const label = document.createElement('span');
+                label.className = 'label';
+                label.textContent = b.name || '';
+                const value = document.createElement('span');
+                value.className = 'value';
+                value.textContent = b.headlineValue || (b.percent + '%');
+                row.appendChild(label);
+                row.appendChild(value);
+                sec.appendChild(row);
+                if (b.percent != null) {
+                  const bar = document.createElement('div');
+                  bar.className = 'detail-bar';
+                  const fill = document.createElement('div');
+                  fill.className = 'fill';
+                  if (p.accentHex) fill.style.background = '#' + p.accentHex;
+                  fill.style.width = Math.min(Math.max(b.percent, 0), 100) + '%';
+                  bar.appendChild(fill);
+                  sec.appendChild(bar);
+                }
+                if (b.resetsLabel) {
+                  const reset = document.createElement('div');
+                  reset.style.cssText = 'font-size:11px;color:var(--text-3);padding-top:2px;';
+                  reset.textContent = b.resetsLabel;
+                  sec.appendChild(reset);
+                }
+              });
+              detailContent.appendChild(sec);
+            }
+            if (p.accounts && p.accounts.length > 0) {
+              const sec = document.createElement('div');
+              sec.className = 'detail-section';
+              const h3 = document.createElement('h3');
+              h3.textContent = 'Accounts';
+              sec.appendChild(h3);
+              p.accounts.forEach(a => {
+                const row = document.createElement('div');
+                row.className = 'detail-account';
+                const ident = document.createElement('div');
+                ident.className = 'ident';
+                const dot = document.createElement('span');
+                dot.className = 'dot';
+                const lbl = document.createElement('span');
+                lbl.className = 'label';
+                lbl.textContent = a.label || '';
+                ident.appendChild(dot);
+                ident.appendChild(lbl);
+                const badge = document.createElement('span');
+                badge.className = 'badge tone-' + (a.tone || 'mercury');
+                badge.textContent = a.badge || '';
+                row.appendChild(ident);
+                row.appendChild(badge);
+                sec.appendChild(row);
+              });
+              detailContent.appendChild(sec);
+            }
+          } else {
+            if (p.burnRates && p.burnRates.length > 0) {
+              const sec = document.createElement('div');
+              sec.className = 'detail-section';
+              const h3 = document.createElement('h3');
+              h3.textContent = 'Burn History';
+              sec.appendChild(h3);
+              p.burnRates.forEach(r => {
+                const row = document.createElement('div');
+                row.className = 'detail-row';
+                const label = document.createElement('span');
+                label.className = 'label';
+                label.textContent = r.windowLabel || '';
+                const value = document.createElement('span');
+                value.className = 'value';
+                value.textContent = displayMode === 'currency' ? (r.cost || '—') : (r.tokens || '—');
+                row.appendChild(label);
+                row.appendChild(value);
+                sec.appendChild(row);
+                if (r.runs) {
+                  const sub = document.createElement('div');
+                  sub.style.cssText = 'font-size:11px;color:var(--text-3);';
+                  sub.textContent = r.runs;
+                  sec.appendChild(sub);
+                }
+              });
+              detailContent.appendChild(sec);
+            }
+          }
+
+          if (p.runsLabel || p.costLabel || p.tokenTotal) {
+            const sec = document.createElement('div');
+            sec.className = 'detail-section';
+            const h3 = document.createElement('h3');
+            h3.textContent = 'Totals';
+            sec.appendChild(h3);
+            if (p.runsLabel) {
+              const row = document.createElement('div');
+              row.className = 'detail-row';
+              const label = document.createElement('span');
+              label.className = 'label';
+              label.textContent = 'Runs';
+              const value = document.createElement('span');
+              value.className = 'value';
+              value.textContent = p.runsLabel;
+              row.appendChild(label);
+              row.appendChild(value);
+              sec.appendChild(row);
+            }
+            if (p.costLabel) {
+              const row = document.createElement('div');
+              row.className = 'detail-row';
+              const label = document.createElement('span');
+              label.className = 'label';
+              label.textContent = 'Cost';
+              const value = document.createElement('span');
+              value.className = 'value';
+              value.textContent = p.costLabel;
+              row.appendChild(label);
+              row.appendChild(value);
+              sec.appendChild(row);
+            }
+            if (p.tokenTotal) {
+              const row = document.createElement('div');
+              row.className = 'detail-row';
+              const label = document.createElement('span');
+              label.className = 'label';
+              label.textContent = 'Tokens';
+              const value = document.createElement('span');
+              value.className = 'value';
+              value.textContent = p.tokenTotal;
+              row.appendChild(label);
+              row.appendChild(value);
+              sec.appendChild(row);
+            }
+            detailContent.appendChild(sec);
+          }
+        }
+
+        function closeDetail() {
+          if (detailOverlay) detailOverlay.classList.remove('active');
+        }
+        if (detailClose) detailClose.addEventListener('click', closeDetail);
+        if (detailOverlay) {
+          detailOverlay.addEventListener('click', (e) => {
+            if (e.target === detailOverlay) closeDetail();
+          });
+        }
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && detailOverlay && detailOverlay.classList.contains('active')) {
+            closeDetail();
+          }
+        });
 
         function applyDisplayConfig(display) {
           if (!display) return;
@@ -1283,6 +1541,8 @@ enum SmartHubBridgePage {
         }
 
         refreshBtn.addEventListener('click', triggerRefresh);
+
+        renderValueToggle();
 
         poll();
         schedulePolling();

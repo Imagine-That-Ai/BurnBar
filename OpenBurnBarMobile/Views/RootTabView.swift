@@ -107,9 +107,10 @@ struct RootTabView: View {
     @State private var insightsDashboardStore = DashboardStore()
 
     private var insightsStack: some View {
-        NavigationStack {
-            InsightsRootView(dashboardStore: insightsDashboardStore)
-        }
+        AgentInsightsTabScreen(
+            dashboardStore: insightsDashboardStore,
+            hermesService: hermesService
+        )
     }
 
     // MARK: - Stacks

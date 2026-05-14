@@ -961,36 +961,11 @@ final class SmartHubBridgeController {
     }
 
     /// Map an `AgentProvider` to the imageset name already shipped in
-    /// `AgentLens/Resources/Assets.xcassets/`. Returns `nil` for
-    /// providers that have no bundled brand asset so the caller falls
-    /// back to the monogram.
-    private static func logoAssetName(for provider: AgentProvider) -> String? {
-        switch provider {
-        case .factory:    return "FactoryLogo"
-        case .claudeCode: return "ClaudeCodeLogo"
-        case .copilot:    return "CopilotLogo"
-        case .aider:      return "AiderLogo"
-        case .cursor:     return "CursorLogo"
-        case .openAI:     return "OpenAILogo"
-        case .codex:      return "CodexLogo"
-        case .openCode:   return "OpenCodeLogo"
-        case .zai:        return "ZaiLogo"
-        case .minimax:    return "MiniMaxLogo"
-        case .kimi:       return "KimiLogo"
-        case .cline:      return "ClineLogo"
-        case .kiloCode:   return "KiloCodeLogo"
-        case .rooCode:    return "RooCodeLogo"
-        case .forgeDev:   return "ForgeLogo"
-        case .augment:    return "AugmentLogo"
-        case .hermes:     return "HermesLogo"
-        case .piAgent:    return nil
-        case .geminiCLI:  return "GeminiCLILogo"
-        case .goose:      return "GooseLogo"
-        case .openClaw:   return "OpenClawLogo"
-        case .ollama:     return "OllamaLogo"
-        case .windsurf:   return "WindsurfLogo"
-        case .warp:       return "WarpLogo"
-        }
+    /// `AgentLens/Resources/Assets.xcassets/`. Keep Smart Hub aligned with
+    /// the shared provider source of truth so provider-specific logos cannot
+    /// drift from Settings, mobile, or dashboard surfaces.
+    static func logoAssetName(for provider: AgentProvider) -> String? {
+        provider.bundledLogoName
     }
 
     /// One-per-process cache so we only rasterize each bundled logo once.

@@ -207,7 +207,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .forgeDev:   return "ForgeLogo"
         case .augment:    return "AugmentLogo"
         case .hermes:     return "HermesLogo"
-        case .piAgent:    return "HermesLogo"
+        case .piAgent:    return "PiAgentLogo"
         case .geminiCLI:  return "GeminiCLILogo"
         case .goose:      return "GooseLogo"
         case .openClaw:   return "OpenClawLogo"

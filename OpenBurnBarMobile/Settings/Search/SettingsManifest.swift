@@ -224,8 +224,8 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.hermesConnections,
             title: "Hermes Connections",
             subtitle: "Connected Hermes endpoints and tokens",
-            keywords: ["connection", "endpoint", "url", "token"],
-            logoProviders: [.hermes, .claudeCode, .codex, .openClaw]
+            keywords: ["connection", "endpoint", "url", "token", "pi", "openclaw", "codex", "claude"],
+            logoProviders: [.hermes, .piAgent, .openClaw, .claudeCode, .codex]
         ),
         SettingsItem(
             id: "hermes.models",

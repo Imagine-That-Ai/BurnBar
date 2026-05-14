@@ -23,6 +23,7 @@ public struct IntelligenceBriefView: View {
     public let result: InsightAnalysisResult
     public let onCitationTap: (InsightCitation) -> Void
     public let onFollowUpTap: (InsightFollowUpQuestion) -> Void
+    public let onMissionLaunchTap: (InsightFollowUpQuestion) -> Void
     public let onPinWidget: (InsightGeneratedWidget) -> Void
     public let onConfigureModel: (() -> Void)?
     public let onShowAudit: (() -> Void)?
@@ -52,6 +53,7 @@ public struct IntelligenceBriefView: View {
         result: InsightAnalysisResult,
         onCitationTap: @escaping (InsightCitation) -> Void = { _ in },
         onFollowUpTap: @escaping (InsightFollowUpQuestion) -> Void = { _ in },
+        onMissionLaunchTap: ((InsightFollowUpQuestion) -> Void)? = nil,
         onPinWidget: @escaping (InsightGeneratedWidget) -> Void = { _ in },
         onConfigureModel: (() -> Void)? = nil,
         onShowAudit: (() -> Void)? = nil,
@@ -60,6 +62,7 @@ public struct IntelligenceBriefView: View {
         self.result = result
         self.onCitationTap = onCitationTap
         self.onFollowUpTap = onFollowUpTap
+        self.onMissionLaunchTap = onMissionLaunchTap ?? onFollowUpTap
         self.onPinWidget = onPinWidget
         self.onConfigureModel = onConfigureModel
         self.onShowAudit = onShowAudit
@@ -128,7 +131,7 @@ public struct IntelligenceBriefView: View {
                 .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
 
             MissionLaunchpad { action in
-                onFollowUpTap(action.followUpQuestion)
+                onMissionLaunchTap(action.followUpQuestion)
             }
             .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
 

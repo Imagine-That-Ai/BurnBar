@@ -7,11 +7,12 @@ struct InsightsRootView: View {
 
     @State private var store: InsightsStore?
     let dashboardStore: DashboardStore
+    let hermesService: HermesService
 
     var body: some View {
         Group {
             if let store {
-                AdaptiveInsightsLayout(store: store)
+                AdaptiveInsightsLayout(store: store, hermesService: hermesService)
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -36,6 +37,7 @@ struct InsightsRootView: View {
 private struct AdaptiveInsightsLayout: View {
 
     @Bindable var store: InsightsStore
+    @Bindable var hermesService: HermesService
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showCanvasList: Bool = false
     @State private var showInspector: Bool = false
@@ -60,6 +62,7 @@ private struct AdaptiveInsightsLayout: View {
             VStack(spacing: 0) {
                 canvasContent
                     .frame(maxHeight: .infinity)
+                missionStatusBanner
                 composerBar
             }
             .background(UnifiedDesignSystem.Colors.background)
@@ -82,6 +85,7 @@ private struct AdaptiveInsightsLayout: View {
             VStack(spacing: 0) {
                 canvasContent
                     .frame(maxHeight: .infinity)
+                missionStatusBanner
                 composerBar
                     .padding(.bottom, Self.iPhoneNavigationTrayClearance)
             }
@@ -145,6 +149,9 @@ private struct AdaptiveInsightsLayout: View {
                     onFollowUpTap: { question in
                         Task { await store.compose(prompt: question.question) }
                     },
+                    onMissionLaunchTap: { question in
+                        store.dispatchMission(question, via: hermesService)
+                    },
                     onPinWidget: { generated in
                         Task { await store.pinGeneratedWidget(generated) }
                     },
@@ -176,6 +183,51 @@ private struct AdaptiveInsightsLayout: View {
         InsightsMobileComposerBar(store: store)
             .padding(UnifiedDesignSystem.Spacing.md)
             .background(.thinMaterial)
+    }
+
+    @ViewBuilder
+    private var missionStatusBanner: some View {
+        switch store.missionStatus {
+        case .idle:
+            EmptyView()
+        case .dispatched(let title, let runtime):
+            missionBanner(
+                icon: "paperplane.circle.fill",
+                tone: UnifiedDesignSystem.Colors.success,
+                title: "Mission dispatched to \(runtime)",
+                detail: "\(title). Open the matching assistant tile to watch the Mac-run transcript sync back."
+            )
+        case .failed(let title, let message):
+            missionBanner(
+                icon: "exclamationmark.triangle.fill",
+                tone: UnifiedDesignSystem.Colors.warning,
+                title: "Mission was not dispatched",
+                detail: "\(title): \(message)"
+            )
+        }
+    }
+
+    private func missionBanner(icon: String, tone: Color, title: String, detail: String) -> some View {
+        HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+            Image(systemName: icon)
+                .foregroundStyle(tone)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                Text(detail)
+                    .font(UnifiedDesignSystem.Typography.tiny)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                    .lineLimit(3)
+            }
+            Spacer(minLength: 0)
+            Button("Dismiss") { store.dismissMissionStatus() }
+                .font(UnifiedDesignSystem.Typography.tiny)
+                .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+        .padding(.vertical, UnifiedDesignSystem.Spacing.sm)
+        .background(.thinMaterial)
     }
 }
 

@@ -57,7 +57,7 @@ struct ChatGatewaySettingsView: View {
                         title: "Chat Engines",
                         subtitle: "Which engines appear in the dashboard and menu-bar chat header",
                         value: "\(settingsManager.enabledChatBackends.count) on",
-                        logoProviders: [.hermes, .claudeCode, .codex, .openClaw]
+                        logoProviders: [.hermes, .piAgent, .openClaw, .claudeCode, .codex]
                     )
                 }
             } header: {
@@ -726,7 +726,8 @@ struct RemoteRelayPiDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "Pi Remote Relay",
-            subtitle: "Premium accounts can use this Mac as a private Remote Relay host so iPhone and iPad can chat with local Pi over cell signal. Bearer tokens stay on this Mac; OpenBurnBar relays only encrypted request and response frames."
+            subtitle: "Premium accounts can use this Mac as a private Remote Relay host so iPhone and iPad can chat with local Pi over cell signal. Bearer tokens stay on this Mac; OpenBurnBar relays only encrypted request and response frames.",
+            searchRoute: .hermesPiRelay
         ) {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -752,6 +753,7 @@ struct RemoteRelayPiDetailView: View {
                 }
                 .padding(DesignSystem.Spacing.lg)
             }
+            .settingsAnchor(SettingsAnchor.hermesPiRelay)
         }
     }
 }

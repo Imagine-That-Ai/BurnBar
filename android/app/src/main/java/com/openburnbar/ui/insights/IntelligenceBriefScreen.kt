@@ -119,6 +119,7 @@ fun IntelligenceBriefScreen(
     modifier: Modifier = Modifier,
     onCitationTap: (InsightCitation) -> Unit = {},
     onFollowUpTap: (InsightFollowUpQuestion) -> Unit = {},
+    onMissionLaunchTap: (MissionLaunchAction) -> Unit = {},
     onPinWidget: (InsightGeneratedWidget) -> Unit = {},
     onConfigureModel: (() -> Unit)? = null,
     onShowAudit: (() -> Unit)? = null,
@@ -170,7 +171,7 @@ fun IntelligenceBriefScreen(
 
         AnimatedSection(visible = visibility[1], reduceMotion = reduceMotion) {
             MissionLaunchpad(onSelect = { action ->
-                onFollowUpTap(action.followUpQuestion())
+                onMissionLaunchTap(action)
             })
         }
 
@@ -482,7 +483,7 @@ private fun answerEyebrow(answer: InsightBriefingAnswer): String =
 
 // ─── Mission Control ───────────────────────────────────────────────────────
 
-private data class MissionLaunchAction(
+data class MissionLaunchAction(
     val title: String,
     val subtitle: String,
     val tone: MissionTone,
@@ -495,7 +496,7 @@ private data class MissionLaunchAction(
         )
 }
 
-private enum class MissionTone { CREATIVE, DILIGENCE, DEBT }
+enum class MissionTone { CREATIVE, DILIGENCE, DEBT }
 
 private val missionLaunchActions = listOf(
     MissionLaunchAction(

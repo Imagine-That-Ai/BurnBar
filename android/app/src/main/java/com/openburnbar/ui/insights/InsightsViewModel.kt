@@ -18,6 +18,7 @@ import com.openburnbar.data.insights.services.InsightAggregator
 import com.openburnbar.data.insights.services.InsightAnalysisEngine
 import com.openburnbar.data.insights.services.InsightDataSource
 import com.openburnbar.data.insights.services.RuleBasedInsightAnalysisEngine
+import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
 import com.openburnbar.data.repos.InsightAnalysisAuditLogRepository
 import com.openburnbar.data.repos.InsightAnalysisCacheRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +37,7 @@ class InsightsViewModel(
     private val credentialStore = AndroidInsightCredentialStore(application)
     private val gateways = AndroidInsightGatewayRegistry.defaultGateways(credentialStore).associateBy { it.providerKey }
     private val preferences = application.getSharedPreferences("insights_model_preferences", Application.MODE_PRIVATE)
+    private val missionDispatcher = CLIAgentMissionDispatcher()
 
     private val _canvas = MutableStateFlow<InsightCanvas?>(null)
     val canvas = _canvas.asStateFlow()
@@ -51,6 +53,15 @@ class InsightsViewModel(
 
     private val _analysis = MutableStateFlow<InsightAnalysisResult?>(null)
     val analysis = _analysis.asStateFlow()
+
+    sealed interface MissionStatus {
+        data object Idle : MissionStatus
+        data class Dispatched(val title: String, val runtime: String) : MissionStatus
+        data class Failed(val title: String, val message: String) : MissionStatus
+    }
+
+    private val _missionStatus = MutableStateFlow<MissionStatus>(MissionStatus.Idle)
+    val missionStatus = _missionStatus.asStateFlow()
 
     private val localRulesModel = InsightModelTag(
         providerKey = "local-rules",
@@ -144,6 +155,24 @@ class InsightsViewModel(
         }
     }
 
+    fun launchMission(title: String, prompt: String) {
+        val trimmedPrompt = prompt.trim()
+        val trimmedTitle = title.trim().ifEmpty { "Insights mission" }
+        if (trimmedPrompt.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                missionDispatcher.dispatch(trimmedTitle, trimmedPrompt, missionKind(trimmedPrompt))
+                _missionStatus.value = MissionStatus.Dispatched(trimmedTitle, "Mac agent fleet")
+            } catch (e: Exception) {
+                _missionStatus.value = MissionStatus.Failed(trimmedTitle, e.message ?: "Mission dispatch failed.")
+            }
+        }
+    }
+
+    fun dismissMissionStatus() {
+        _missionStatus.value = MissionStatus.Idle
+    }
+
     fun selectModel(modelTag: InsightModelTag) {
         _selectedModel.value = modelTag
         persistSelectedModel(modelTag)
@@ -208,11 +237,26 @@ class InsightsViewModel(
 
     private fun modelForAnalysis(instruction: InsightAnalysisRequest.Instruction): InsightModelTag {
         val selected = _selectedModel.value
-        if (instruction != InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP || _localOnlyMode.value) return selected
+        if (instruction != InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) return selected
         if (selected.providerKey != "local-rules") return selected
-        return _modelOptions.value.firstOrNull { it.egressTier != InsightEgressTier.LOCAL_ONLY && it.providerKey == "hermes" }
-            ?: _modelOptions.value.firstOrNull { it.egressTier != InsightEgressTier.LOCAL_ONLY && it.providerKey != "ollama" }
-            ?: _modelOptions.value.firstOrNull { it.egressTier != InsightEgressTier.LOCAL_ONLY }
+        val available = if (_localOnlyMode.value) {
+            _modelOptions.value.filter { it.egressTier == InsightEgressTier.LOCAL_ONLY }
+        } else {
+            _modelOptions.value
+        }
+        return available.firstOrNull { it.providerKey == "hermes" }
+            ?: available.firstOrNull { it.egressTier != InsightEgressTier.LOCAL_ONLY && it.providerKey != "ollama" }
+            ?: available.firstOrNull { it.providerKey == "ollama" }
+            ?: available.firstOrNull { it.providerKey != "local-rules" }
             ?: selected
+    }
+
+    private fun missionKind(prompt: String): String {
+        val lowered = prompt.lowercase()
+        return when {
+            "diligence" in lowered || "security" in lowered || "launch-readiness" in lowered -> "diligence"
+            "debt" in lowered || "modernization" in lowered || "architecture" in lowered -> "debt"
+            else -> "creative"
+        }
     }
 }

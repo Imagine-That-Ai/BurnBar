@@ -112,7 +112,8 @@ struct SettingsSearchResultsView: View {
         case .hermesChatEngines: return "Chat Engines"
         case .hermesGateway: return "Hermes Gateway"
         case .hermesPiAgent: return "Pi Agent Instances"
-        case .hermesRelay: return "Remote Relay"
+        case .hermesRelay: return "Hermes Remote Relay"
+        case .hermesPiRelay: return "Pi Remote Relay"
         }
     }
 }

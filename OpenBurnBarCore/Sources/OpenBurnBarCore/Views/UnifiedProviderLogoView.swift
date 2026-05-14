@@ -51,7 +51,7 @@ public struct UnifiedProviderLogoView: View {
         case .openAI, .codex, .cursor, .forgeDev, .claudeCode,
              .factory, .windsurf, .copilot, .aider, .ollama,
              .openClaw, .geminiCLI, .goose, .augment, .cline,
-             .kiloCode, .rooCode, .hermes:
+             .kiloCode, .rooCode, .hermes, .piAgent:
             return true
         default:
             return false

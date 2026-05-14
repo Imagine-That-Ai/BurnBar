@@ -33,4 +33,9 @@ final class ProviderAvatarTests: XCTestCase {
             XCTAssertTrue(name.hasSuffix("Logo"), "Logo name should end with 'Logo': \(name)")
         }
     }
+
+    func testPiAgentDoesNotReuseHermesLogo() {
+        XCTAssertEqual(AgentProvider.piAgent.bundledLogoName, "PiAgentLogo")
+        XCTAssertNotEqual(AgentProvider.piAgent.bundledLogoName, AgentProvider.hermes.bundledLogoName)
+    }
 }

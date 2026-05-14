@@ -97,7 +97,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .routingPools:
             return [.claudeCode, .codex, .openCode, .openAI]
         case .hermes:
-            return [.hermes]
+            return [.hermes, .piAgent, .openClaw]
         case .switcher:
             return [.claudeCode, .codex, .openCode, .factory]
         default:

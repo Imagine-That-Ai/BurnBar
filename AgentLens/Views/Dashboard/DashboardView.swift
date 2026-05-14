@@ -321,7 +321,7 @@ struct DashboardView: View {
                 case .overview:
                     overviewView
                 case .insights:
-                    InsightsWorkspaceView(
+                    MacAgentInsightsWorkspace(
                         dataStore: dataStore,
                         settingsManager: settingsManager,
                         chatController: chatController

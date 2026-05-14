@@ -189,6 +189,7 @@ final class OpenBurnBarRuntimeContext {
     var smartDisplayConfigPublisher: SmartDisplayConfigPublisher?
     var smartDisplayActionsListener: SmartDisplayActionsListener?
     var castActionsListener: CastActionsListener?
+    var cliAgentMissionRequestListener: CLIAgentMissionRequestListener?
     let chatController: ChatSessionController
     let operatingLayer: OpenBurnBarOperatingLayer
 
@@ -293,5 +294,18 @@ final class OpenBurnBarRuntimeContext {
             castActionsListener = castListener
         }
         castListener.start()
+
+        let missionListener: CLIAgentMissionRequestListener
+        if let existing = cliAgentMissionRequestListener {
+            missionListener = existing
+        } else {
+            missionListener = CLIAgentMissionRequestListener(
+                accountManager: accountManager,
+                settingsManager: settingsManager,
+                chatController: chatController
+            )
+            cliAgentMissionRequestListener = missionListener
+        }
+        missionListener.start()
     }
 }

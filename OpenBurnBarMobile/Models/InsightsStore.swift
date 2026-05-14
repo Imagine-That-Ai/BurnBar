@@ -31,6 +31,12 @@ final class InsightsStore {
         case succeeded(prompt: String, modelDisplayName: String)
         case failed(prompt: String, modelDisplayName: String, message: String)
     }
+    var missionStatus: MissionStatus = .idle
+    enum MissionStatus: Equatable, Sendable {
+        case idle
+        case dispatched(title: String, runtime: String)
+        case failed(title: String, message: String)
+    }
     var modelCatalog: [InsightCatalogModel] = []
     var selectedModelTag: InsightModelTag {
         didSet { persistModelPreference() }
@@ -245,7 +251,43 @@ final class InsightsStore {
         await compose(prompt: prompt)
     }
 
+    func dispatchMission(_ question: InsightFollowUpQuestion, via hermesService: HermesService) {
+        let title = question.question
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .first
+            .map(String.init) ?? "Insights mission"
+        let missionKind = Self.missionKind(for: question.question)
+        Task {
+            do {
+                let requestID = try await CLIAgentMissionDispatcher.shared.dispatch(
+                    title: title,
+                    prompt: question.question,
+                    missionKind: missionKind
+                )
+                missionStatus = .dispatched(title: title, runtime: "Mac agent fleet")
+                Self.log.info("mission dispatch: requestID=\(requestID, privacy: .public) title=\"\(title, privacy: .public)\" runtime=Mac agent fleet")
+            } catch {
+                missionStatus = .failed(title: title, message: error.localizedDescription)
+            }
+        }
+    }
+
+    func dismissMissionStatus() {
+        missionStatus = .idle
+    }
+
     private static let log = Logger(subsystem: "com.openburnbar.app", category: "InsightsStore")
+
+    private static func missionKind(for prompt: String) -> String {
+        let lowered = prompt.lowercased()
+        if lowered.contains("diligence") || lowered.contains("security") || lowered.contains("launch-readiness") {
+            return "diligence"
+        }
+        if lowered.contains("debt") || lowered.contains("modernization") || lowered.contains("architecture") {
+            return "debt"
+        }
+        return "creative"
+    }
 
     private func runAnalysis(
         prompt: String,
@@ -330,11 +372,15 @@ final class InsightsStore {
     }
 
     private func modelForAnalysis(instruction: InsightAnalysisRequest.Instruction) -> InsightModelTag {
-        guard instruction == .answerFollowUp, !privacyMode else { return selectedModelTag }
+        guard instruction == .answerFollowUp else { return selectedModelTag }
         guard selectedModelTag.providerKey == "local-rules" else { return selectedModelTag }
-        let preferred = modelCatalog.first { $0.egressTier != .localOnly && $0.providerKey == "hermes" }
-            ?? modelCatalog.first { $0.egressTier != .localOnly && $0.providerKey != "ollama" }
-            ?? modelCatalog.first { $0.egressTier != .localOnly }
+        let available = privacyMode
+            ? modelCatalog.filter { $0.egressTier == .localOnly }
+            : modelCatalog
+        let preferred = available.first { $0.providerKey == "hermes" }
+            ?? available.first { $0.egressTier != .localOnly && $0.providerKey != "ollama" }
+            ?? available.first { $0.providerKey == "ollama" }
+            ?? available.first { $0.providerKey != "local-rules" }
         guard let preferred else { return selectedModelTag }
         return .init(
             providerKey: preferred.providerKey,

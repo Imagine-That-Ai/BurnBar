@@ -142,6 +142,9 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         XCTAssertTrue(json.contains("\"fetchedAtLabel\":\"May 7, 6:58 PM\""))
         XCTAssertTrue(json.contains("\"runsLabel\":\"1,002 runs\""))
         XCTAssertTrue(json.contains("\"costLabel\":\"$5,835.40\""))
+        XCTAssertTrue(json.contains("\"tokenTotalCurrency\":\"\""))
+        XCTAssertTrue(json.contains("\"hasQuotaData\":true"))
+        XCTAssertTrue(json.contains("\"burnRates\":[]"))
         // Two bucket rows + two account rows must be emitted under the
         // nested arrays so the device can render them as multi-bar /
         // chip rows on the card.
@@ -177,6 +180,68 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
 
         let json = SmartHubBridgeServer.shared.renderStateJSONForTesting()
         XCTAssertTrue(json.contains("\"resetsLabel\":\"\""))
+    }
+
+    func test_stateJSONEmitsBurnRateFieldsForNonQuotaProvider() throws {
+        let provider = SmartHubBridgeSnapshot.Provider(
+            name: "Ollama",
+            percent: 0,
+            label: "",
+            tone: .mercury,
+            slug: "ollama",
+            accentHex: "6B7280",
+            logoSVG: "<svg/>",
+            tokenTotal: "1.2M",
+            tokenTotalCurrency: "$0.00",
+            tokenTotalLabel: "TOKENS",
+            statusPill: "no quota",
+            statusTone: .mercury,
+            freshnessLabel: "",
+            fetchedAtLabel: "",
+            buckets: [],
+            accounts: [],
+            runsLabel: "42 runs",
+            costLabel: "$0.00",
+            hasQuotaData: false,
+            burnRates: [
+                .init(windowLabel: "5h", tokens: "120K", cost: "$0.00", runs: "5 runs"),
+                .init(windowLabel: "7d", tokens: "1.2M", cost: "$0.00", runs: "42 runs")
+            ]
+        )
+        SmartHubBridgeServer.shared.updateSnapshot(
+            SmartHubBridgeSnapshot(
+                totalSpend: "$0",
+                headline: "Showing last 5 hours",
+                subheadline: "Updated at 9:42 PM",
+                providers: [provider]
+            )
+        )
+
+        let json = SmartHubBridgeServer.shared.renderStateJSONForTesting()
+        XCTAssertTrue(json.contains("\"hasQuotaData\":false"))
+        XCTAssertTrue(json.contains("\"windowLabel\":\"5h\""))
+        XCTAssertTrue(json.contains("\"windowLabel\":\"7d\""))
+        XCTAssertTrue(json.contains("\"tokens\":\"120K\""))
+        XCTAssertTrue(json.contains("\"tokens\":\"1.2M\""))
+        XCTAssertTrue(json.contains("\"cost\":\"$0.00\""))
+        XCTAssertTrue(json.contains("\"runs\":\"5 runs\""))
+        XCTAssertTrue(json.contains("\"runs\":\"42 runs\""))
+    }
+
+    func test_providerLogoAssetNamesUseSharedProviderMapping() throws {
+        for provider in AgentProvider.allCases {
+            XCTAssertEqual(
+                SmartHubBridgeController.logoAssetName(for: provider),
+                provider.bundledLogoName,
+                "Smart Hub logo mapping drifted for \(provider.displayName)"
+            )
+        }
+        XCTAssertEqual(SmartHubBridgeController.logoAssetName(for: .piAgent), "PiAgentLogo")
+        XCTAssertNotEqual(
+            SmartHubBridgeController.logoAssetName(for: .piAgent),
+            SmartHubBridgeController.logoAssetName(for: .hermes),
+            "Pi Agent must not reuse the Hermes Smart Hub logo."
+        )
     }
 
     func test_stateJSONLeavesRichFieldsOutWhenSnapshotIsLegacyShape() throws {

@@ -159,6 +159,24 @@ final class SettingsSearchEngineTests: XCTestCase {
         }
     }
 
+    func test_manifest_aiEnvironmentRowsCarryExactProviderLogos() {
+        XCTAssertEqual(
+            SettingsManifest.all.first { $0.id == "hermes.connections" }?.logoProviders,
+            [.hermes, .piAgent, .openClaw, .claudeCode, .codex],
+            "Chat tile search results must show Hermes, Pi, OpenClaw, Claude, and Codex with their own logos."
+        )
+        XCTAssertEqual(
+            SettingsManifest.all.first { $0.id == "hub.hermes" }?.logoProviders,
+            [.hermes],
+            "Hermes settings must remain Hermes-specific."
+        )
+        XCTAssertEqual(
+            SettingsManifest.all.first { $0.id == "hub.pi" }?.logoProviders,
+            [.piAgent],
+            "Pi settings must never reuse the Hermes logo."
+        )
+    }
+
     // MARK: - Router guards
 
     @MainActor

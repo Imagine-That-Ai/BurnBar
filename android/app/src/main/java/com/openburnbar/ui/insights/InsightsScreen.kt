@@ -34,6 +34,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
@@ -75,6 +76,7 @@ fun InsightsScreen(
     val selectedModel by viewModel.selectedModel.collectAsState()
     val modelOptions by viewModel.modelOptions.collectAsState()
     val localOnlyMode by viewModel.localOnlyMode.collectAsState()
+    val missionStatus by viewModel.missionStatus.collectAsState()
 
     var showInspector by remember { mutableStateOf(false) }
 
@@ -140,8 +142,18 @@ fun InsightsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             onCitationTap = { viewModel.ask(citationPrompt(it)) },
                             onFollowUpTap = { viewModel.ask(it.question) },
+                            onMissionLaunchTap = { action ->
+                                viewModel.launchMission(action.title, action.followUpQuestion().question)
+                            },
                         )
                     }
+                }
+
+                item {
+                    MissionStatusBanner(
+                        status = missionStatus,
+                        onDismiss = { viewModel.dismissMissionStatus() },
+                    )
                 }
 
                 item {
@@ -240,6 +252,62 @@ fun InsightsScreen(
                     onThemeChange = { viewModel.changeTheme(it) },
                     onDismiss = { showInspector = false }
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MissionStatusBanner(
+    status: InsightsViewModel.MissionStatus,
+    onDismiss: () -> Unit,
+) {
+    when (status) {
+        InsightsViewModel.MissionStatus.Idle -> Unit
+        is InsightsViewModel.MissionStatus.Dispatched -> {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                tonalElevation = 1.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(AuroraSpacing.md.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Send, contentDescription = null, tint = InsightsColors.kpiPositive)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Mission dispatched to ${status.runtime}", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            "${status.title}. Open the matching assistant tile to watch the Mac-run transcript sync back.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = onDismiss) { Text("Dismiss") }
+                }
+            }
+        }
+        is InsightsViewModel.MissionStatus.Failed -> {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                tonalElevation = 1.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(AuroraSpacing.md.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Mission was not dispatched", style = MaterialTheme.typography.labelLarge)
+                        Text("${status.title}: ${status.message}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    TextButton(onClick = onDismiss) { Text("Dismiss") }
+                }
             }
         }
     }
