@@ -571,6 +571,7 @@ private fun MissionLaunchpad(onSelect: (MissionLaunchAction, MissionRuntimeTarge
                             if (selected) MaterialTheme.colorScheme.onSurface
                             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
                         )
+                        .testTag("insights.mission.runtime.${runtime.firestoreValue}")
                         .semantics { contentDescription = "Run mission on ${runtime.label}" },
                 ) {
                     Text(
@@ -609,6 +610,7 @@ private fun MissionLaunchButton(
         modifier = Modifier
             .clip(RoundedCornerShape(AuroraRadius.sm.dp))
             .border(BorderStroke(0.75.dp, color.copy(alpha = 0.32f)), RoundedCornerShape(AuroraRadius.sm.dp))
+            .testTag("insights.mission.${action.tone.firestoreValue()}")
             .semantics { contentDescription = action.title },
     ) {
         Column(

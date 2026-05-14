@@ -787,11 +787,103 @@ private struct FindingRow: View {
 
 // MARK: - Mission launchpad
 
-private struct MissionLaunchpad: View {
-    let onSelect: (MissionLaunchAction, MissionRuntimeTarget) -> Void
+public enum InsightMissionRuntimeTarget: String, CaseIterable, Identifiable, Sendable {
+    case auto
+    case codex
+    case claude
+    case hermes
+    case openclaw
+    case piAgent
 
-    private let actions = MissionLaunchAction.defaults
-    @State private var selectedRuntime: MissionRuntimeTarget = .auto
+    public var id: String { rawValue }
+    public var firestoreValue: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .auto: return "Auto"
+        case .codex: return "Codex"
+        case .claude: return "Claude"
+        case .hermes: return "Hermes"
+        case .openclaw: return "OpenClaw"
+        case .piAgent: return "Pi"
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .auto: return "best available local agent"
+        default: return label
+        }
+    }
+}
+
+public struct InsightMissionLaunchAction: Identifiable, Sendable {
+    public enum Kind: String, CaseIterable, Sendable {
+        case creative
+        case diligence
+        case debt
+
+        public var firestoreValue: String { rawValue }
+    }
+
+    public let kind: Kind
+    public let title: String
+    public let subtitle: String
+    let symbolName: String
+
+    public var id: String { title }
+
+    public var followUpQuestion: InsightFollowUpQuestion {
+        InsightFollowUpQuestion(
+            question: prompt,
+            rationale: "Turns the current brief into a local-agent mission."
+        )
+    }
+
+    private var prompt: String {
+        switch kind {
+        case .creative:
+            return """
+            Create a creative/accretive mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, target project, user value, implementation surface, acceptance criteria, evidence to inspect, likely risks, and how mobile should show the result. Also recommend adjacent missions for UI improvements, modernizations, and small features that compound product value.
+            """
+        case .diligence:
+            return """
+            Create a diligence mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, target project, launch-readiness/security/reliability questions, exact evidence to collect, severity model, acceptance criteria, and the mobile result summary I should expect. Also recommend adjacent security, QA, and production-readiness missions when the data supports them.
+            """
+        case .debt:
+            return """
+            Create a technical debt mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, project/module focus, debt hypothesis, delivery drag, validation commands, acceptance criteria, remediation sequence, and how mobile should summarize progress. Also recommend adjacent modernization, dependency, architecture, and UI cleanup missions when the evidence supports them.
+            """
+        }
+    }
+
+    public static let defaultActions: [InsightMissionLaunchAction] = [
+        .init(
+            kind: .creative,
+            title: "Creative Mission",
+            subtitle: "Accretive features, UI improvements, modernizations.",
+            symbolName: "sparkles"
+        ),
+        .init(
+            kind: .diligence,
+            title: "Diligence Mission",
+            subtitle: "Security, reliability, launch-readiness evidence.",
+            symbolName: "checkmark.seal"
+        ),
+        .init(
+            kind: .debt,
+            title: "Debt Mission",
+            subtitle: "Compounding drag, rewrite risk, focused remediation.",
+            symbolName: "wrench.and.screwdriver"
+        )
+    ]
+}
+
+private struct MissionLaunchpad: View {
+    let onSelect: (InsightMissionLaunchAction, InsightMissionRuntimeTarget) -> Void
+
+    private let actions = InsightMissionLaunchAction.defaultActions
+    @State private var selectedRuntime: InsightMissionRuntimeTarget = .auto
 
     var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
@@ -812,9 +904,9 @@ private struct MissionLaunchpad: View {
 }
 
 private struct AdaptiveMissionActionGrid: View {
-    let actions: [MissionLaunchAction]
-    let selectedRuntime: MissionRuntimeTarget
-    let onSelect: (MissionLaunchAction, MissionRuntimeTarget) -> Void
+    let actions: [InsightMissionLaunchAction]
+    let selectedRuntime: InsightMissionRuntimeTarget
+    let onSelect: (InsightMissionLaunchAction, InsightMissionRuntimeTarget) -> Void
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -835,9 +927,9 @@ private struct AdaptiveMissionActionGrid: View {
 }
 
 private struct MissionLaunchButton: View {
-    let action: MissionLaunchAction
-    let runtime: MissionRuntimeTarget
-    let onSelect: (MissionLaunchAction, MissionRuntimeTarget) -> Void
+    let action: InsightMissionLaunchAction
+    let runtime: InsightMissionRuntimeTarget
+    let onSelect: (InsightMissionLaunchAction, InsightMissionRuntimeTarget) -> Void
 
     var body: some View {
         Button {
@@ -873,16 +965,17 @@ private struct MissionLaunchButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel(action.title)
         .accessibilityHint("Create a dispatch-ready Insights mission prompt")
+        .accessibilityIdentifier("insights.mission.\(action.kind.firestoreValue)")
     }
 }
 
 private struct RuntimeTargetPicker: View {
-    @Binding var selection: MissionRuntimeTarget
+    @Binding var selection: InsightMissionRuntimeTarget
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
-                ForEach(MissionRuntimeTarget.allCases) { runtime in
+                ForEach(InsightMissionRuntimeTarget.allCases) { runtime in
                     Button {
                         selection = runtime
                     } label: {
@@ -898,6 +991,7 @@ private struct RuntimeTargetPicker: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Run mission on \(runtime.accessibilityLabel)")
+                    .accessibilityIdentifier("insights.mission.runtime.\(runtime.firestoreValue)")
                 }
             }
             .padding(.vertical, 1)
@@ -905,106 +999,12 @@ private struct RuntimeTargetPicker: View {
     }
 }
 
-private enum MissionRuntimeTarget: String, CaseIterable, Identifiable {
-    case auto
-    case codex
-    case claude
-    case hermes
-    case openclaw
-    case piAgent
-
-    var id: String { rawValue }
-    var firestoreValue: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .auto: return "Auto"
-        case .codex: return "Codex"
-        case .claude: return "Claude"
-        case .hermes: return "Hermes"
-        case .openclaw: return "OpenClaw"
-        case .piAgent: return "Pi"
-        }
-    }
-
-    var accessibilityLabel: String {
-        switch self {
-        case .auto: return "best available local agent"
-        default: return label
-        }
-    }
-}
-
-private struct MissionLaunchAction: Identifiable {
-    enum Kind {
-        case creative
-        case diligence
-        case debt
-    }
-
-    let kind: Kind
-    let title: String
-    let subtitle: String
-    let symbolName: String
-    let color: Color
-
-    var id: String { title }
-
-    var followUpQuestion: InsightFollowUpQuestion {
-        InsightFollowUpQuestion(
-            question: prompt,
-            rationale: "Turns the current brief into a local-agent mission."
-        )
-    }
-
-    private var prompt: String {
+private extension InsightMissionLaunchAction {
+    var color: Color {
         switch kind {
-        case .creative:
-            return """
-            Create a creative/accretive mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, target project, user value, implementation surface, acceptance criteria, evidence to inspect, likely risks, and how mobile should show the result. Also recommend adjacent missions for UI improvements, modernizations, and small features that compound product value.
-            """
-        case .diligence:
-            return """
-            Create a diligence mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, target project, launch-readiness/security/reliability questions, exact evidence to collect, severity model, acceptance criteria, and the mobile result summary I should expect. Also recommend adjacent security, QA, and production-readiness missions when the data supports them.
-            """
-        case .debt:
-            return """
-            Create a technical debt mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, project/module focus, debt hypothesis, delivery drag, validation commands, acceptance criteria, remediation sequence, and how mobile should summarize progress. Also recommend adjacent modernization, dependency, architecture, and UI cleanup missions when the evidence supports them.
-            """
-        }
-    }
-
-    static let defaults: [MissionLaunchAction] = [
-        .init(
-            kind: .creative,
-            title: "Creative Mission",
-            subtitle: "Accretive features, UI improvements, modernizations.",
-            symbolName: "sparkles",
-            color: UnifiedDesignSystem.Colors.whimsy
-        ),
-        .init(
-            kind: .diligence,
-            title: "Diligence Mission",
-            subtitle: "Security, reliability, launch-readiness evidence.",
-            symbolName: "checkmark.seal",
-            color: UnifiedDesignSystem.Colors.warning
-        ),
-        .init(
-            kind: .debt,
-            title: "Debt Mission",
-            subtitle: "Compounding drag, rewrite risk, focused remediation.",
-            symbolName: "wrench.and.screwdriver",
-            color: UnifiedDesignSystem.Colors.ember
-        )
-    ]
-}
-
-private extension MissionLaunchAction.Kind {
-    var firestoreValue: String {
-        switch self {
-        case .creative: return "creative"
-        case .diligence: return "diligence"
-        case .debt: return "debt"
+        case .creative: return UnifiedDesignSystem.Colors.whimsy
+        case .diligence: return UnifiedDesignSystem.Colors.warning
+        case .debt: return UnifiedDesignSystem.Colors.ember
         }
     }
 }

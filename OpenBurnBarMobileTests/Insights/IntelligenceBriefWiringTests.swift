@@ -97,4 +97,34 @@ final class IntelligenceBriefWiringTests: XCTestCase {
             XCTAssertGreaterThan(prompt.count, 12, "Prompt for \(kind) too short to be useful: '\(prompt)'")
         }
     }
+
+    // MARK: - Mission launch wiring
+
+    func test_missionLaunchContractPassesSelectedRuntimeAndKind() throws {
+        var captured: (kind: String, runtime: String, prompt: String)?
+        let action = try XCTUnwrap(
+            InsightMissionLaunchAction.defaultActions.first { $0.kind == .creative }
+        )
+        let runtime = InsightMissionRuntimeTarget.piAgent
+
+        let dispatch: (InsightFollowUpQuestion, String, String) -> Void = { question, kind, runtime in
+            captured = (kind, runtime, question.question)
+        }
+        dispatch(action.followUpQuestion, action.kind.firestoreValue, runtime.firestoreValue)
+
+        XCTAssertEqual(captured?.kind, "creative")
+        XCTAssertEqual(captured?.runtime, "piAgent")
+        XCTAssertTrue(captured?.prompt.contains("creative/accretive mission") == true)
+    }
+
+    func test_missionLaunchContractIncludesAllMobileRemoteControlRuntimes() {
+        XCTAssertEqual(
+            InsightMissionRuntimeTarget.allCases.map(\.firestoreValue),
+            ["auto", "codex", "claude", "hermes", "openclaw", "piAgent"]
+        )
+        XCTAssertEqual(
+            InsightMissionLaunchAction.defaultActions.map { $0.kind.firestoreValue },
+            ["creative", "diligence", "debt"]
+        )
+    }
 }

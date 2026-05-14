@@ -291,6 +291,37 @@ class IntelligenceBriefScreenTest {
     }
 
     @Test
+    fun mission_launchpad_passes_selected_runtime_and_kind() {
+        var capturedTitle: String? = null
+        var capturedKind: String? = null
+        var capturedRuntime: String? = null
+
+        composeRule.setContent {
+            AuroraTheme(darkTheme = false) {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    IntelligenceBriefScreen(
+                        result = fullFixture(),
+                        onMissionLaunchTap = { action, runtime ->
+                            capturedTitle = action.title
+                            capturedKind = action.tone.firestoreValue()
+                            capturedRuntime = runtime.firestoreValue
+                        },
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("insights.mission.runtime.codex", useUnmergedTree = true).performClick()
+        composeRule.onNodeWithTag("insights.mission.creative").performScrollTo().performClick()
+
+        composeRule.runOnIdle {
+            require(capturedTitle == "Creative Mission")
+            require(capturedKind == "creative")
+            require(capturedRuntime == "codex")
+        }
+    }
+
+    @Test
     fun talkback_reading_order_matches_contract() {
         composeRule.setContent {
             AuroraTheme(darkTheme = false) {
@@ -696,4 +727,3 @@ class IntelligenceBriefScreenTest {
     private fun timePoint(date: String, value: Double) =
         InsightWidgetData.TimeSeries.Point(date = date, value = value)
 }
-
