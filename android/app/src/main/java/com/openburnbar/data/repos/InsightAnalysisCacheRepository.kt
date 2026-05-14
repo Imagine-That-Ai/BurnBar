@@ -68,13 +68,15 @@ class InsightAnalysisCacheRepository(
     }
 
     companion object {
+        private const val SCHEMA_VERSION = "v3-insight-mission-candidates"
+
         fun key(
             prompt: String,
             digestContentHash: String,
             modelID: String,
             instruction: InsightAnalysisRequest.Instruction,
         ): String {
-            val payload = "$prompt$digestContentHash$modelID${instruction.name}"
+            val payload = "$SCHEMA_VERSION$prompt$digestContentHash$modelID${instruction.name}"
             val digest = MessageDigest.getInstance("SHA-256")
                 .digest(payload.toByteArray(Charsets.UTF_8))
             return digest.joinToString("") { "%02x".format(it) }

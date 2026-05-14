@@ -48,11 +48,15 @@ public actor InsightAnalysisCache {
     /// inputs (e.g., when widget data synthesis lands and previously
     /// cached entries would render empty charts).
     ///
+    /// v3 — 2026-05-14: analysis results now include mission candidates
+    /// generated from the same evidence as findings/recommendations.
+    /// Pre-v3 cached remote results may have an empty mission board.
+    ///
     /// v2 — 2026-05-13: rule-based engine now synthesizes widget data
     /// for `barRanking`, `timeSeriesLine`, and `quotaPulse` straight
     /// from the digest. Pre-fix cached entries have `data = nil` and
     /// must be invalidated so the brief paints real charts.
-    public static let schemaVersion = "v2-engine-widget-data-synth"
+    public static let schemaVersion = "v3-insight-mission-candidates"
 
     public static func key(
         prompt: String,

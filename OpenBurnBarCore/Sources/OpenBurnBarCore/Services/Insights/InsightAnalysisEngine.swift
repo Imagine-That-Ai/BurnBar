@@ -239,6 +239,20 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         )
     }
 
+    public static func enrichMissionCandidates(
+        in result: InsightAnalysisResult,
+        request: InsightAnalysisRequest,
+        platform: InsightAnalysisPlatform
+    ) -> InsightAnalysisResult {
+        guard result.missionCandidates.isEmpty else { return result }
+        let baseline = buildResult(request: request, platform: platform)
+        guard baseline.missionCandidates.isEmpty == false else { return result }
+        var enriched = result
+        enriched.missionCandidates = baseline.missionCandidates
+        enriched.resultHash = resultHash(enriched)
+        return enriched
+    }
+
     private static func missionIntelligence(
         digest: InsightDigest,
         topProvider: InsightDigest.ProviderSnapshot?,
@@ -1081,7 +1095,15 @@ public actor OrchestratedInsightAnalysisEngine: InsightAnalysisEngine {
         )
 
         if let cache, let cached = await cache.lookup(key: cacheKey) {
-            return cached.result
+            let result = RuleBasedInsightAnalysisEngine.enrichMissionCandidates(
+                in: cached.result,
+                request: request,
+                platform: platform
+            )
+            if result != cached.result {
+                try? await cache.store(.init(key: cacheKey, result: result, estimatedCostSavedUSD: cached.estimatedCostSavedUSD))
+            }
+            return result
         }
 
         let auditID = UUID()
@@ -1111,6 +1133,11 @@ public actor OrchestratedInsightAnalysisEngine: InsightAnalysisEngine {
 
         do {
             var result = try await executeSelectedModel(request)
+            result = RuleBasedInsightAnalysisEngine.enrichMissionCandidates(
+                in: result,
+                request: request,
+                platform: platform
+            )
             result.auditID = auditID
             let completedAt = Date()
 

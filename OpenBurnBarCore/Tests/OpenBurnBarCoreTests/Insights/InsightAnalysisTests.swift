@@ -360,7 +360,8 @@ final class InsightAnalysisTests: XCTestCase {
         XCTAssertEqual(result.modelTag.providerKey, "selected-stub")
         XCTAssertEqual(result.executiveSummary, "Selected gateway produced this analysis.")
         XCTAssertEqual(result.tokenUsage?.inputTokens, 11)
-        XCTAssertEqual(result.resultHash, "selected-gateway-result")
+        XCTAssertFalse(result.missionCandidates.isEmpty)
+        XCTAssertNotEqual(result.resultHash, "selected-gateway-result")
     }
 
     func testCacheKeyIsStableAcrossEquivalentInputs() {

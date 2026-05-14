@@ -78,7 +78,17 @@ class AndroidInsightAnalysisEngine(
             modelID = request.selectedModel.modelID,
             instruction = request.instruction,
         )
-        cache?.lookup(cacheKey)?.let { return it.result }
+        cache?.lookup(cacheKey)?.let { cached ->
+            val result = RuleBasedInsightAnalysisEngine.enrichMissionCandidates(
+                result = cached.result,
+                request = request,
+                platform = InsightAnalysisPlatform.ANDROID
+            )
+            if (result != cached.result) {
+                cache.store(InsightAnalysisCacheRepository.cachedNow(cacheKey, result, cached.estimatedCostSavedUSD))
+            }
+            return result
+        }
 
         val auditID = UUID.randomUUID().toString()
         val startedAt = Instant.now().toString()
@@ -103,7 +113,11 @@ class AndroidInsightAnalysisEngine(
 
         return try {
             val raw = executeSelectedModel(request)
-            val result = raw.copy(auditID = auditID)
+            val result = RuleBasedInsightAnalysisEngine.enrichMissionCandidates(
+                result = raw,
+                request = request,
+                platform = InsightAnalysisPlatform.ANDROID
+            ).copy(auditID = auditID)
             val completedAt = Instant.now().toString()
             val completedEntry = startedEntry.copy(
                 selectedModel = result.modelTag,
@@ -558,6 +572,18 @@ class RuleBasedInsightAnalysisEngine(
                 canvas = canvas.add(generated.widget.copy(modelTag = result.modelTag))
             }
             return canvas
+        }
+
+        fun enrichMissionCandidates(
+            result: InsightAnalysisResult,
+            request: InsightAnalysisRequest,
+            platform: InsightAnalysisPlatform
+        ): InsightAnalysisResult {
+            if (result.missionCandidates.isNotEmpty()) return result
+            val baseline = buildResult(request, platform)
+            if (baseline.missionCandidates.isEmpty()) return result
+            val enriched = result.copy(missionCandidates = baseline.missionCandidates, resultHash = "")
+            return enriched.copy(resultHash = sha256(enriched.toString()))
         }
 
         private fun buildResult(

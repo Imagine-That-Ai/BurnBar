@@ -265,4 +265,41 @@ class InsightsDataLayerTest {
         assertTrue(result.recommendations.any { it.title.contains("cheaper") || it.rationale.contains("cost signal") })
         assertTrue(result.generatedWidgets.any { it.widget.title == "Benchmark-aware model board" })
     }
+
+    @Test
+    fun `mission enrichment fills remote results that omit missions`() = runBlocking {
+        val context = InsightAggregator.buildContext(
+            digest = testDigest,
+            includedDataSources = listOf("firestore_rollups", "provider_summaries")
+        )
+        val model = InsightModelTag(
+            providerKey = "remote-stub",
+            modelID = "remote-stub-model",
+            displayName = "Remote stub"
+        )
+        val request = InsightAnalysisRequest(
+            prompt = "Generate the default Android Insights intelligence brief.",
+            context = context,
+            selectedModel = model
+        )
+        val remoteResult = InsightAnalysisResult(
+            requestID = request.id,
+            platform = InsightAnalysisPlatform.ANDROID,
+            timeWindow = InsightTimeWindow.Last7d,
+            executiveSummary = "Remote result without missions.",
+            modelTag = model,
+            contextBudget = context.budgetReport,
+            resultHash = "remote-result"
+        )
+
+        val enriched = RuleBasedInsightAnalysisEngine.enrichMissionCandidates(
+            result = remoteResult,
+            request = request,
+            platform = InsightAnalysisPlatform.ANDROID
+        )
+
+        assertEquals("Remote result without missions.", enriched.executiveSummary)
+        assertTrue(enriched.missionCandidates.isNotEmpty())
+        assertNotEquals("remote-result", enriched.resultHash)
+    }
 }
