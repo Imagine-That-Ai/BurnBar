@@ -965,6 +965,7 @@ enum SmartHubBridgePage {
 
         function render(state) {
           applyDisplayConfig(state.display);
+          renderValueToggle();
 
           // Header text uses server-provided strings when present, otherwise
           // fall back to a local-time clock.
@@ -992,6 +993,7 @@ enum SmartHubBridgePage {
 
           if (!state.providers || state.providers.length === 0) {
             providersEl.innerHTML = '<div class="empty">No provider quota data yet</div>';
+            updateScrollIndicators();
             return;
           }
 
@@ -999,6 +1001,7 @@ enum SmartHubBridgePage {
           for (const p of state.providers) {
             providersEl.appendChild(renderCard(p));
           }
+          updateScrollIndicators();
         }
 
         function renderCard(p) {
