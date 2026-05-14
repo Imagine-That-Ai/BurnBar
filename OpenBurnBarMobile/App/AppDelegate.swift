@@ -29,7 +29,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// valid attestation token. Otherwise the project's App Check enforcement
     /// will block every read (`App Check blocked` in Sync diagnostics).
     ///
-    /// - Production builds: App Attest (iOS 14+) with DeviceCheck fallback.
+    /// - Production builds: DeviceCheck. App Attest is stronger, but it must
+    ///   also be enabled on the Apple Bundle ID/provisioning profile before the
+    ///   entitlement can be shipped. DeviceCheck keeps enforced Firestore App
+    ///   Check working for TestFlight while that Apple capability is managed.
     /// - Debug builds: the App Check debug provider so a registered debug
     ///   token from `firebase.console -> App Check -> iOS app` is accepted.
     private func configureFirebase() {
@@ -71,13 +74,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 }
 
-/// App Check provider factory that prefers App Attest (iOS 14+) and falls
-/// back to DeviceCheck on devices that don't support attestation.
+/// App Check provider factory for release builds.
 final class OpenBurnBarAppCheckProviderFactory: NSObject, AppCheckProviderFactory {
     func createProvider(with app: FirebaseApp) -> AppCheckProvider? {
-        if #available(iOS 14.0, *) {
-            return AppAttestProvider(app: app)
-        }
         return DeviceCheckProvider(app: app)
     }
 }
