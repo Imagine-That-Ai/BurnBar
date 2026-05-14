@@ -125,7 +125,8 @@ struct PulseHeroBurnCard: View {
 
     private func computedTrend() -> RollingMetric.Trend? {
         guard let total, let trailingTotal else { return nil }
-        let avg = trailingTotal.costUsd / 7.0
+        let divisor: Double = scope == .week ? 7.0 : (scope == .month ? 30.0 : 7.0)
+        let avg = trailingTotal.costUsd / divisor
         guard avg > 0 else { return nil }
         let delta = ((total.costUsd - avg) / avg) * 100
         let direction: RollingMetric.Trend.Direction = delta > 1 ? .up : (delta < -1 ? .down : .flat)

@@ -113,6 +113,10 @@ enum SettingsPageRoute: Hashable, Codable {
 
     // Hermes / AI Environments
     case hermesRoot
+    case hermesChatEngines
+    case hermesGateway
+    case hermesPiAgent
+    case hermesRelay
 }
 
 // MARK: - Anchor IDs
@@ -164,7 +168,15 @@ enum SettingsAnchor {
     static let providersAdd = "providers.add"
     static let providersCLI = "providers.cliAuth"
     static let providersLogSources = "providers.logSources"
-    static let providersOpenCode = "providers.openCode"
+    static let providersOpenCode = "providers.cli.opencode"
+
+    static func providerLogSource(_ persistedToken: String) -> String {
+        "providers.logSource.\(persistedToken)"
+    }
+
+    static func providerCLI(_ cliToken: String) -> String {
+        "providers.cli.\(cliToken)"
+    }
 
     // Routing pools
     static let routingPoolsOverview = "routingPools.overview"
@@ -191,8 +203,6 @@ enum SettingsAnchor {
     // Hermes
     static let hermesConnections = "hermes.connections"
     static let hermesModels = "hermes.models"
-    static let hermesTPS = "hermes.tpsOverlay"
-    static let hermesPretext = "hermes.pretext"
     static let hermesGatewayURL = "hermes.gateway.url"
     static let hermesGatewayToken = "hermes.gateway.token"
     static let hermesPiHosts = "hermes.pi.hosts"

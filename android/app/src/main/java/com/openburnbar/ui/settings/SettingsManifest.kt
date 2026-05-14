@@ -1,5 +1,7 @@
 package com.openburnbar.ui.settings
 
+import com.openburnbar.data.models.AgentProvider
+
 /**
  * Hand-authored index of every searchable control in the Android Settings
  * surface and its sub-screens.
@@ -12,7 +14,7 @@ package com.openburnbar.ui.settings
  */
 object SettingsManifest {
 
-    val all: List<SettingsItem> = listOf(
+    private val baseItems: List<SettingsItem> = listOf(
 
         // Cloud / Sync
         SettingsItem(
@@ -145,7 +147,55 @@ object SettingsManifest {
         ),
     )
 
+    private val providerItems: List<SettingsItem> =
+        AgentProvider.entries
+            .sortedBy { it.displayName.lowercase() }
+            .map { provider ->
+                SettingsItem(
+                    id = "root.provider.${provider.key}",
+                    section = SettingsSection.PROVIDERS,
+                    pageRoute = SettingsPageRoute.ROOT,
+                    anchorId = SettingsAnchor.provider(provider.key),
+                    title = provider.displayName,
+                    subtitle = "${provider.displayName} provider quota, usage, and connection signal",
+                    keywords = providerKeywords(provider),
+                )
+            }
+
+    val all: List<SettingsItem> = baseItems + providerItems
+
     /** Reverse-index of anchorId -> owning page route. */
     val anchorIndex: Map<String, SettingsPageRoute> =
         all.associate { it.anchorId to it.pageRoute }
+
+    private fun providerKeywords(provider: AgentProvider): List<String> {
+        val keywords = mutableSetOf(
+            provider.key,
+            provider.displayName,
+            provider.displayName.replace(" ", ""),
+            "provider",
+            "quota",
+            "usage",
+            "connection",
+        )
+
+        when (provider) {
+            AgentProvider.CLAUDE_CODE -> keywords.addAll(listOf("claude", "anthropic", "claude code", "claude cli", "sonnet", "opus"))
+            AgentProvider.CODEX -> keywords.addAll(listOf("openai codex", "codex cli", "chatgpt", "openai"))
+            AgentProvider.OPENCODE -> keywords.addAll(listOf("opencode", "open code", "opencode go", "open code go", "cli"))
+            AgentProvider.OPEN_AI -> keywords.addAll(listOf("open ai", "openai", "gpt", "chatgpt"))
+            AgentProvider.GEMINI_CLI -> keywords.addAll(listOf("gemini", "google", "google ai", "gemini cli"))
+            AgentProvider.KILO_CODE -> keywords.addAll(listOf("kilo", "kilo code", "kilocode"))
+            AgentProvider.ROO_CODE -> keywords.addAll(listOf("roo", "roo code", "roocode"))
+            AgentProvider.FORGE_DEV -> keywords.addAll(listOf("forge", "forge dev", "forgedev"))
+            AgentProvider.OPEN_CLAW -> keywords.addAll(listOf("open claw", "openclaw"))
+            AgentProvider.KIMI -> keywords.addAll(listOf("moonshot", "kimi k2"))
+            AgentProvider.ZAI -> keywords.addAll(listOf("z.ai", "z-ai", "zai"))
+            AgentProvider.MINIMAX -> keywords.addAll(listOf("mini max", "minimax"))
+            AgentProvider.COPILOT -> keywords.addAll(listOf("github", "github copilot"))
+            else -> Unit
+        }
+
+        return keywords.sorted()
+    }
 }

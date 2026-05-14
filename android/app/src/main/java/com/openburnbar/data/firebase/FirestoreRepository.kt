@@ -13,7 +13,10 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import java.time.Instant
 import java.time.format.DateTimeParseException
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 class FirestoreRepository {
     private val db = Firebase.firestore
@@ -181,6 +184,24 @@ class FirestoreRepository {
                 trySend(snapshot?.documents?.mapNotNull { it.toTokenUsage() } ?: emptyList())
             }
         awaitClose { listener.remove() }
+    }
+
+    fun listenToUsageSince(startDate: Long): Flow<List<TokenUsage>> = callbackFlow {
+        val cutoff = isoFirestoreCutoff(startDate)
+        val listener = usageCollection
+            .whereGreaterThanOrEqualTo("startTime", cutoff)
+            .orderBy("startTime", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) { close(error); return@addSnapshotListener }
+                trySend(snapshot?.documents?.mapNotNull { it.toTokenUsage() } ?: emptyList())
+            }
+        awaitClose { listener.remove() }
+    }
+
+    private fun isoFirestoreCutoff(millis: Long): String {
+        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date(millis))
     }
 
     // ── Quota Snapshots ──

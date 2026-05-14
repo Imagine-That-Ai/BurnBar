@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Settings Manifest (iOS)
 
@@ -14,7 +15,9 @@ import Foundation
 ///    `@FocusState` in the destination.
 enum SettingsManifest {
 
-    static let all: [SettingsItem] = [
+    static let all: [SettingsItem] = baseItems + providerItems
+
+    private static let baseItems: [SettingsItem] = [
 
         // MARK: Appearance
 
@@ -190,15 +193,6 @@ enum SettingsManifest {
             keywords: ["add", "new", "provider", "account", "opencode", "open code", "opencode go"]
         ),
         SettingsItem(
-            id: "providers.openCode",
-            section: .providers,
-            pageRoute: .providerConnections,
-            anchorID: SettingsAnchor.providerOpenCode,
-            title: "OpenCode",
-            subtitle: "Connect OpenCode and review its local quota/auth path",
-            keywords: ["opencode", "open code", "opencode go", "cli", "quota", "auth", "provider"]
-        ),
-        SettingsItem(
             id: "providers.cliAuth",
             section: .providers,
             pageRoute: .providerConnections,
@@ -344,4 +338,55 @@ enum SettingsManifest {
         for item in all { index[item.anchorID] = item.pageRoute }
         return index
     }()
+
+    private static let providerItems: [SettingsItem] = {
+        AgentProvider.mobileAccountConnectableProviders.map { provider in
+            SettingsItem(
+                id: providerItemID(for: provider),
+                section: .providers,
+                pageRoute: .providerConnections,
+                anchorID: provider == .openCode ? SettingsAnchor.providerOpenCode : SettingsAnchor.provider(provider.persistedToken),
+                title: provider.displayName,
+                subtitle: "Connect \(provider.displayName) and review its quota/auth path",
+                keywords: providerKeywords(for: provider)
+            )
+        }
+    }()
+
+    private static func providerItemID(for provider: AgentProvider) -> String {
+        provider == .openCode ? "providers.openCode" : "providers.\(provider.persistedToken)"
+    }
+
+    private static func providerKeywords(for provider: AgentProvider) -> [String] {
+        var keywords: [String] = [
+            provider.persistedToken,
+            provider.providerID.rawValue,
+            "provider",
+            "account",
+            "connect",
+            "auth",
+            "quota"
+        ]
+
+        switch provider {
+        case .claudeCode:
+            keywords += ["claude", "anthropic", "claude code", "claude cli", "sonnet", "opus"]
+        case .codex:
+            keywords += ["openai codex", "codex cli", "chatgpt", "openai"]
+        case .openCode:
+            keywords += ["opencode", "open code", "opencode go", "open code go", "cli"]
+        case .openAI:
+            keywords += ["open ai", "openai", "gpt", "chatgpt"]
+        case .kimi:
+            keywords += ["moonshot", "kimi k2"]
+        case .zai:
+            keywords += ["z.ai", "z-ai", "zai"]
+        case .minimax:
+            keywords += ["mini max", "minimax"]
+        default:
+            break
+        }
+
+        return Array(Set(keywords)).sorted()
+    }
 }

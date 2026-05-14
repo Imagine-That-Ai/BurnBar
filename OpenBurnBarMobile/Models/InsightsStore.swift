@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 import Security
 import SwiftUI
 import UIKit
@@ -19,6 +20,17 @@ final class InsightsStore {
     var isComposing: Bool = false
     var composerPrompt: String = ""
     var composerError: String?
+
+    /// User-visible status banner state for the brief. Surfaces what
+    /// the engine is doing (or why it failed) so a tap on a follow-up
+    /// link never leaves the user staring at an unchanged screen.
+    var composerStatus: ComposerStatus = .idle
+    enum ComposerStatus: Equatable, Sendable {
+        case idle
+        case running(prompt: String, modelDisplayName: String, egressLabel: String)
+        case succeeded(prompt: String, modelDisplayName: String)
+        case failed(prompt: String, modelDisplayName: String, message: String)
+    }
     var modelCatalog: [InsightCatalogModel] = []
     var selectedModelTag: InsightModelTag {
         didSet { persistModelPreference() }
@@ -172,14 +184,21 @@ final class InsightsStore {
 
     func compose(prompt: String) async {
         guard !prompt.isEmpty else { return }
+        let modelDisplay = selectedModelTag.displayName
+        let egressLabel = selectedModelTag.egressTier.displayLabel
+        Self.log.info("compose: prompt=\"\(prompt, privacy: .public)\" model=\(modelDisplay, privacy: .public) egress=\(egressLabel, privacy: .public)")
         composerError = nil
         isComposing = true
+        composerStatus = .running(prompt: prompt, modelDisplayName: modelDisplay, egressLabel: egressLabel)
         defer { isComposing = false }
         let snapshot: InsightDataSnapshot
         do {
             snapshot = try await makeSnapshot(for: currentCanvas?.filter.window ?? .last7d)
         } catch {
+            Self.log.error("compose: snapshot failed: \(error.localizedDescription, privacy: .public)")
             composerError = error.localizedDescription
+            composerStatus = .failed(prompt: prompt, modelDisplayName: modelDisplay,
+                                     message: "Couldn't build the snapshot: \(error.localizedDescription)")
             return
         }
         do {
@@ -191,16 +210,41 @@ final class InsightsStore {
                 canvas: currentCanvas,
                 instruction: .answerFollowUp
             )
+            // Persist the tailored result *before* materializing the
+            // derived canvas so any UI observer reads the new analysis
+            // first. We deliberately do NOT call
+            // `refreshSelectedCanvas` afterwards — it would re-run the
+            // engine with `.defaultBrief` and silently wipe the
+            // prompt-tailored output the user just asked for.
             currentAnalysis = result
             let canvas = RuleBasedInsightAnalysisEngine.materializeCanvas(from: result, prompt: prompt)
             try? await store.upsert(canvas)
             selectedCanvasID = canvas.id
             canvases = await self.store.allCanvases()
-            await refreshSelectedCanvas(autoSwitchEmptyDefaultCanvas: false)
+            composerStatus = .succeeded(prompt: prompt, modelDisplayName: modelDisplay)
+            Self.log.info("compose: succeeded auditID=\(result.auditID?.uuidString ?? "nil", privacy: .public) resultHash=\(result.resultHash, privacy: .public)")
         } catch {
+            Self.log.error("compose: failed: \(error.localizedDescription, privacy: .public)")
             composerError = error.localizedDescription
+            composerStatus = .failed(prompt: prompt, modelDisplayName: modelDisplay,
+                                     message: error.localizedDescription)
         }
     }
+
+    /// Clear the banner once the user has acknowledged the most
+    /// recent compose result.
+    func dismissComposerStatus() {
+        composerStatus = .idle
+    }
+
+    /// Re-run the last failed prompt through `compose`. Used by the
+    /// banner's Retry button.
+    func retryComposerStatus() async {
+        guard case let .failed(prompt, _, _) = composerStatus else { return }
+        await compose(prompt: prompt)
+    }
+
+    private static let log = Logger(subsystem: "com.openburnbar.app", category: "InsightsStore")
 
     private func runAnalysis(
         prompt: String,

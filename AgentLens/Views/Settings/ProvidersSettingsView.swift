@@ -106,14 +106,15 @@ struct ProvidersSettingsView: View {
                     GlassCard {
                         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                             ForEach(providers) { provider in
-                                ProviderObservationRow(
-                                    provider: provider,
-                                    configuredPath: settingsManager.logPaths[provider] ?? provider.logDirectory,
-                                    isDetected: settingsManager.detectAvailableProviders()[provider] ?? false
-                                )
+                            ProviderObservationRow(
+                                provider: provider,
+                                configuredPath: settingsManager.logPaths[provider] ?? provider.logDirectory,
+                                isDetected: settingsManager.detectAvailableProviders()[provider] ?? false
+                            )
+                            .settingsAnchor(SettingsAnchor.providerLogSource(provider.persistedToken))
 
-                                if provider.id != providers.last?.id {
-                                    Divider().background(DesignSystem.Colors.border)
+                            if provider.id != providers.last?.id {
+                                Divider().background(DesignSystem.Colors.border)
                                 }
                             }
                         }
@@ -929,7 +930,7 @@ private struct CLIConnectionsSettingsSection: View {
                         onTest: { runCheck(for: cliType) },
                         onLogin: { openLogin(for: cliType) }
                     )
-                    .settingsAnchor(cliType == .opencode ? SettingsAnchor.providersOpenCode : "providers.cli.\(cliType.rawValue)")
+                    .settingsAnchor(SettingsAnchor.providerCLI(cliType.rawValue))
 
                     if cliType != supportedCLIs.last {
                         Divider().background(DesignSystem.Colors.border)

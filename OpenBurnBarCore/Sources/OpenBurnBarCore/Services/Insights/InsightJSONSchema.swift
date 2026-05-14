@@ -33,6 +33,12 @@ public enum InsightJSONSchema {
           "maxItems": 8,
           "items": { "$ref": "#/$defs/recommendation" }
         },
+        "missionCandidates": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/missionCandidate" }
+        },
         "generatedWidgets": {
           "type": "array",
           "minItems": 0,
@@ -88,6 +94,37 @@ public enum InsightJSONSchema {
             "evidence": { "type": "array", "items": { "$ref": "#/$defs/citationRef" } },
             "confidence": { "$ref": "#/$defs/confidence" },
             "severity": { "$ref": "#/$defs/severity" }
+          }
+        },
+        "missionCandidate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["title", "summary", "lens", "priority", "confidence", "expectedImpact", "effort", "acceptanceCriteria", "evidence"],
+          "properties": {
+            "title": { "type": "string", "minLength": 1, "maxLength": 140 },
+            "summary": { "type": "string", "minLength": 1, "maxLength": 700 },
+            "projectID": { "type": "string", "maxLength": 160 },
+            "projectDisplayName": { "type": "string", "maxLength": 160 },
+            "lens": { "type": "string", "enum": ["accretion", "diligence", "techDebt", "routing", "quota", "focus"] },
+            "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+            "confidence": { "$ref": "#/$defs/confidence" },
+            "expectedImpact": { "type": "string", "minLength": 1, "maxLength": 400 },
+            "effort": { "type": "string", "enum": ["small", "medium", "large"] },
+            "acceptanceCriteria": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 6,
+              "items": { "type": "string", "minLength": 1, "maxLength": 180 }
+            },
+            "sourceInsightIDs": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "maxLength": 120 }
+            },
+            "evidence": { "type": "array", "items": { "$ref": "#/$defs/citationRef" } },
+            "dispatchMetadata": {
+              "type": "object",
+              "additionalProperties": { "type": "string", "maxLength": 160 }
+            }
           }
         },
         "generatedWidget": {

@@ -194,10 +194,75 @@ class InsightsDataLayerTest {
         assertTrue(result.executiveSummary.isNotBlank())
         assertTrue(result.findings.isNotEmpty())
         assertTrue(result.findings.flatMap { it.evidence }.isNotEmpty())
+        assertTrue(result.missionCandidates.isNotEmpty())
+        assertTrue(result.missionCandidates.any { it.lens == InsightMissionCandidate.Lens.ACCRETION })
+        assertTrue(result.missionCandidates.any { it.lens == InsightMissionCandidate.Lens.DILIGENCE || it.lens == InsightMissionCandidate.Lens.TECH_DEBT })
+        assertTrue(result.missionCandidates.all { it.acceptanceCriteria.isNotEmpty() && it.evidence.isNotEmpty() })
         assertTrue(result.generatedWidgets.isNotEmpty())
         assertTrue(result.followUpQuestions.isNotEmpty())
         assertTrue(result.resultHash.isNotBlank())
         assertEquals(result.generatedWidgets.size, canvas.widgets.size)
         assertEquals(model, canvas.modelTag)
+    }
+
+    @Test
+    fun `RuleBasedInsightAnalysisEngine uses benchmark evidence for model recommendations`() = runBlocking {
+        val digest = testDigest.copy(
+            modelBenchmarks = listOf(
+                InsightDigest.ModelBenchmarkSummary(
+                    id = "aa-claude-coding",
+                    source = "artificial_analysis",
+                    attribution = "Artificial Analysis",
+                    fetchedAt = "2026-05-13T00:00:00Z",
+                    modelID = "claude-sonnet-4-6",
+                    providerID = "anthropic",
+                    taskCategory = "coding",
+                    score = 0.86,
+                    rank = 3,
+                    costSignal = 0.24,
+                    confidence = 0.80,
+                    freshness = "fresh",
+                    blendedCostPerMtoken = 9.50
+                ),
+                InsightDigest.ModelBenchmarkSummary(
+                    id = "da-ui-fast",
+                    source = "design_arena",
+                    attribution = "Design Arena",
+                    fetchedAt = "2026-05-13T00:00:00Z",
+                    modelID = "ui-fast-model",
+                    providerID = "openai",
+                    taskCategory = "design",
+                    score = 0.84,
+                    rank = 2,
+                    costSignal = 0.82,
+                    confidence = 0.78,
+                    freshness = "fresh",
+                    blendedCostPerMtoken = 1.20
+                )
+            )
+        )
+        val context = InsightAggregator.buildContext(
+            digest = digest,
+            includedDataSources = listOf("firestore_rollups", "provider_summaries", "model_benchmarks")
+        )
+        val model = InsightModelTag(
+            providerKey = "local-rules",
+            modelID = "local-rules-v1",
+            displayName = "Local rules"
+        )
+        val request = InsightAnalysisRequest(
+            prompt = "Which model should handle UI tasks?",
+            context = context,
+            selectedModel = model,
+            instruction = InsightAnalysisRequest.Instruction.DEFAULT_BRIEF
+        )
+
+        val result = RuleBasedInsightAnalysisEngine(InsightAnalysisPlatform.ANDROID).analyze(request)
+
+        assertTrue(result.contextBudget.includedDataSources.contains("model_benchmarks"))
+        assertTrue(result.citations.any { it.kind is InsightCitation.Kind.Benchmark })
+        assertTrue(result.findings.any { it.title.contains("UI/design") })
+        assertTrue(result.recommendations.any { it.title.contains("cheaper") || it.rationale.contains("cost signal") })
+        assertTrue(result.generatedWidgets.any { it.widget.title == "Benchmark-aware model board" })
     }
 }

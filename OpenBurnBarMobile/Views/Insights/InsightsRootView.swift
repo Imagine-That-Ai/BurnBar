@@ -130,27 +130,38 @@ private struct AdaptiveInsightsLayout: View {
     @ViewBuilder
     private var canvasContent: some View {
         if let analysis = store.currentAnalysis {
-            IntelligenceBriefView(
-                result: analysis,
-                onCitationTap: { citation in
-                    // Convert a citation tap into a natural-language
-                    // follow-up prompt — the composer already routes
-                    // those into a new analysis turn with the cited
-                    // entity scoped into the snapshot filter.
-                    Task {
-                        await store.compose(prompt: IntelligenceBriefCitationPrompt.prompt(for: citation))
-                    }
-                },
-                onFollowUpTap: { question in
-                    Task { await store.compose(prompt: question.question) }
-                },
-                onPinWidget: { generated in
-                    Task { await store.pinGeneratedWidget(generated) }
-                },
-                onConfigureModel: { showInspector = true },
-                onShowAudit: nil
-            )
-            .scrollDismissesKeyboard(.interactively)
+            ZStack(alignment: .top) {
+                IntelligenceBriefView(
+                    result: analysis,
+                    onCitationTap: { citation in
+                        // Convert a citation tap into a natural-language
+                        // follow-up prompt — the composer already routes
+                        // those into a new analysis turn with the cited
+                        // entity scoped into the snapshot filter.
+                        Task {
+                            await store.compose(prompt: IntelligenceBriefCitationPrompt.prompt(for: citation))
+                        }
+                    },
+                    onFollowUpTap: { question in
+                        Task { await store.compose(prompt: question.question) }
+                    },
+                    onPinWidget: { generated in
+                        Task { await store.pinGeneratedWidget(generated) }
+                    },
+                    onConfigureModel: { showInspector = true },
+                    onShowAudit: nil
+                )
+                .scrollDismissesKeyboard(.interactively)
+
+                // Inline status banner — the user always sees the
+                // engine acknowledging the tap, completing, or
+                // failing. Without this banner, follow-up taps look
+                // like no-ops because the engine work is fast and the
+                // resulting hero change is subtle.
+                InsightsComposerStatusBanner(store: store)
+                    .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+                    .padding(.top, UnifiedDesignSystem.Spacing.sm)
+            }
         } else if store.currentCanvas != nil {
             // Fallback for a canvas without a generated analysis (rare —
             // refreshSelectedCanvas always populates analysis on success).
@@ -251,17 +262,6 @@ private struct InsightsMobileComposerBar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
-            HStack {
-                modelMenu
-                Spacer()
-                Toggle(isOn: $store.privacyMode) {
-                    Label("Privacy", systemImage: "lock.shield.fill")
-                        .labelStyle(.titleAndIcon)
-                        .font(UnifiedDesignSystem.Typography.tiny)
-                }
-                .toggleStyle(.switch)
-                .controlSize(.small)
-            }
             HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
                 TextField("Ask anything…", text: $prompt, axis: .horizontal)
                     .textFieldStyle(.plain)
@@ -293,6 +293,7 @@ private struct InsightsMobileComposerBar: View {
                 .buttonStyle(.borderedProminent)
                 .tint(UnifiedDesignSystem.Colors.ember)
                 .disabled(prompt.isEmpty || store.isComposing)
+                .accessibilityLabel("Send")
             }
             if let error = store.composerError {
                 Text(error)
@@ -309,34 +310,6 @@ private struct InsightsMobileComposerBar: View {
         promptFocused = false
         Task { await store.compose(prompt: p) }
     }
-
-    private var modelMenu: some View {
-        Menu {
-            ForEach(store.modelCatalog) { model in
-                Button {
-                    store.selectedModelTag = .init(
-                        providerKey: model.providerKey,
-                        modelID: model.id,
-                        displayName: model.displayName,
-                        egressTier: model.egressTier
-                    )
-                } label: {
-                    Label("\(model.displayName) · \(model.egressTier.displayLabel)",
-                          systemImage: model.egressTier.symbolName)
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: store.selectedModelTag.egressTier.symbolName)
-                Text(store.selectedModelTag.displayName)
-                Image(systemName: "chevron.down").font(.caption)
-            }
-            .font(UnifiedDesignSystem.Typography.caption)
-            .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(UnifiedDesignSystem.Colors.surface))
-        }
-    }
 }
 
 // MARK: - Inspector
@@ -347,6 +320,62 @@ private struct InsightsMobileInspectorView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // Model + privacy is the most-changed control surface
+                // for the brief, so it leads the inspector. Both
+                // controls are bound to the same `InsightsStore` state
+                // that the brief reads back out in its meta strip, so
+                // changing them here is immediately reflected on the
+                // brief without a round-trip.
+                Section {
+                    Picker(selection: Binding(
+                        get: { store.selectedModelTag.modelID },
+                        set: { newID in
+                            guard let model = store.modelCatalog.first(where: { $0.id == newID }) else { return }
+                            store.selectedModelTag = .init(
+                                providerKey: model.providerKey,
+                                modelID: model.id,
+                                displayName: model.displayName,
+                                egressTier: model.egressTier
+                            )
+                        }
+                    )) {
+                        ForEach(store.modelCatalog) { model in
+                            Label {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(model.displayName)
+                                    Text(model.egressTier.displayLabel)
+                                        .font(.caption2)
+                                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                                }
+                            } icon: {
+                                Image(systemName: model.egressTier.symbolName)
+                            }
+                            .tag(model.id)
+                        }
+                    } label: {
+                        Label("Model", systemImage: store.selectedModelTag.egressTier.symbolName)
+                    }
+                    .pickerStyle(.navigationLink)
+
+                    Toggle(isOn: $store.privacyMode) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Local-only models")
+                                Text("Restrict to engines that never leave this device")
+                                    .font(.caption2)
+                                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                            }
+                        } icon: {
+                            Image(systemName: "lock.shield.fill")
+                        }
+                    }
+                } header: {
+                    Text("Model & privacy")
+                } footer: {
+                    Text("Currently running on \(store.selectedModelTag.displayName) · \(store.selectedModelTag.egressTier.displayLabel).")
+                        .font(.caption)
+                }
+
                 if let canvas = store.currentCanvas {
                     Section("Canvas") {
                         Text(canvas.title)
@@ -381,11 +410,9 @@ private struct InsightsMobileInspectorView: View {
                         }
                     }
                 }
-                Section("Privacy") {
-                    Toggle("Local-only models", isOn: $store.privacyMode)
-                }
             }
-            .navigationTitle("Inspector")
+            .navigationTitle("Brief options")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 
@@ -428,6 +455,167 @@ private struct InsightsMobileTemplateGallery: View {
                     Button("Close") { isPresented = false }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Composer status banner
+
+/// Inline banner that shows the live state of the most recent
+/// `InsightsStore.compose(prompt:)` call. Renders four states:
+///
+/// * `.idle` — invisible (no UI noise when nothing is happening).
+/// * `.running` — coral-tinted pill with a spinner + "Asking X via
+///   {model}" text. Tells the user the tap registered.
+/// * `.succeeded` — short-lived green confirmation that auto-dismisses
+///   so the brief returns to its quiet editorial mode.
+/// * `.failed` — error pill with the underlying error message, the
+///   model that was attempted, and a Retry / Dismiss pair.
+///
+/// This is the single source of truth for "did my tap do anything?"
+/// across follow-up links, citation taps, and the inline composer.
+private struct InsightsComposerStatusBanner: View {
+    @Bindable var store: InsightsStore
+    @State private var autoDismissTask: Task<Void, Never>?
+
+    var body: some View {
+        Group {
+            switch store.composerStatus {
+            case .idle:
+                EmptyView()
+            case .running(let prompt, let model, let egress):
+                runningPill(prompt: prompt, model: model, egress: egress)
+            case .succeeded(let prompt, let model):
+                succeededPill(prompt: prompt, model: model)
+                    .onAppear { scheduleAutoDismiss() }
+                    .onDisappear { autoDismissTask?.cancel() }
+            case .failed(let prompt, let model, let message):
+                failedPill(prompt: prompt, model: model, message: message)
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: store.composerStatus)
+    }
+
+    private func runningPill(prompt: String, model: String, egress: String) -> some View {
+        HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+            ProgressView()
+                .controlSize(.small)
+                .tint(UnifiedDesignSystem.Colors.ember)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Asking via \(model)")
+                    .font(UnifiedDesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                Text("\"\(prompt)\" · \(egress)")
+                    .font(UnifiedDesignSystem.Typography.tiny)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+        .padding(.vertical, UnifiedDesignSystem.Spacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
+                .fill(UnifiedDesignSystem.Colors.surfaceElevated)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(UnifiedDesignSystem.Colors.ember.opacity(0.45), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Asking \(model): \(prompt)")
+    }
+
+    private func succeededPill(prompt: String, model: String) -> some View {
+        HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(UnifiedDesignSystem.Colors.success)
+            Text("Answered by \(model)")
+                .font(UnifiedDesignSystem.Typography.caption)
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+            Spacer(minLength: 0)
+            Button("Dismiss") {
+                autoDismissTask?.cancel()
+                store.dismissComposerStatus()
+            }
+            .buttonStyle(.plain)
+            .font(UnifiedDesignSystem.Typography.tiny)
+            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+        }
+        .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+        .padding(.vertical, UnifiedDesignSystem.Spacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
+                .fill(UnifiedDesignSystem.Colors.surfaceElevated)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(UnifiedDesignSystem.Colors.success.opacity(0.45), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Answered by \(model). \(prompt)")
+    }
+
+    private func failedPill(prompt: String, model: String, message: String) -> some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
+            HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(UnifiedDesignSystem.Colors.error)
+                Text("\(model) couldn't answer")
+                    .font(UnifiedDesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                Spacer(minLength: 0)
+            }
+            Text("\"\(prompt)\"")
+                .font(UnifiedDesignSystem.Typography.tiny)
+                .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                .lineLimit(2)
+            Text(message)
+                .font(UnifiedDesignSystem.Typography.tiny)
+                .foregroundStyle(UnifiedDesignSystem.Colors.error)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                Button {
+                    Task { await store.retryComposerStatus() }
+                } label: {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                        .labelStyle(.titleAndIcon)
+                        .font(UnifiedDesignSystem.Typography.tiny)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(UnifiedDesignSystem.Colors.ember)
+                Button("Dismiss") { store.dismissComposerStatus() }
+                    .buttonStyle(.plain)
+                    .font(UnifiedDesignSystem.Typography.tiny)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+        .padding(.vertical, UnifiedDesignSystem.Spacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
+                .fill(UnifiedDesignSystem.Colors.surfaceElevated)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(UnifiedDesignSystem.Colors.error.opacity(0.55), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(model) couldn't answer \(prompt). \(message). Tap Retry to try again.")
+    }
+
+    private func scheduleAutoDismiss() {
+        autoDismissTask?.cancel()
+        autoDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_400_000_000) // 2.4s
+            guard !Task.isCancelled,
+                  case .succeeded = store.composerStatus else { return }
+            store.dismissComposerStatus()
         }
     }
 }

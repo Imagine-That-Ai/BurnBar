@@ -2,6 +2,8 @@ package com.openburnbar.ui.pulse
 
 import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.data.models.UsageRollups
+import java.time.Instant
+import java.time.ZoneId
 
 data class PulseWindowMetrics(
     val value: Double,
@@ -15,27 +17,30 @@ fun pulseWindowMetrics(
     scope: PulseTimelineScope,
     rollups: UsageRollups,
     recentUsages: List<TokenUsage>,
-    nowMillis: Long = System.currentTimeMillis()
+    nowMillis: Long = System.currentTimeMillis(),
+    zoneId: ZoneId = ZoneId.systemDefault()
 ): PulseWindowMetrics {
     return when (scope) {
         PulseTimelineScope.MINUTE -> usageMetricsForWindow(
             recentUsages = recentUsages,
             cutoffMillis = nowMillis - 60_000L,
+            nowMillis = nowMillis,
             trailingValue = rollups.sevenDays,
             trailingTokenValue = rollups.sevenDayTokens
         )
         PulseTimelineScope.HOUR -> usageMetricsForWindow(
             recentUsages = recentUsages,
             cutoffMillis = nowMillis - 60L * 60L * 1_000L,
+            nowMillis = nowMillis,
             trailingValue = rollups.sevenDays,
             trailingTokenValue = rollups.sevenDayTokens
         )
-        PulseTimelineScope.DAY -> PulseWindowMetrics(
-            value = rollups.today,
+        PulseTimelineScope.DAY -> usageMetricsForWindow(
+            recentUsages = recentUsages,
+            cutoffMillis = startOfLocalDayMillis(nowMillis, zoneId),
+            nowMillis = nowMillis,
             trailingValue = rollups.sevenDays,
-            tokenValue = rollups.todayTokens,
-            trailingTokenValue = rollups.sevenDayTokens,
-            requestValue = rollups.todayRequests
+            trailingTokenValue = rollups.sevenDayTokens
         )
         PulseTimelineScope.WEEK -> PulseWindowMetrics(
             value = rollups.sevenDays,
@@ -57,10 +62,14 @@ fun pulseWindowMetrics(
 private fun usageMetricsForWindow(
     recentUsages: List<TokenUsage>,
     cutoffMillis: Long,
+    nowMillis: Long,
     trailingValue: Double,
     trailingTokenValue: Long
 ): PulseWindowMetrics {
-    val usages = recentUsages.filter { it.effectiveTimeMillis >= cutoffMillis }
+    val usages = recentUsages.filter {
+        val attributedAt = it.effectiveTimeMillis
+        attributedAt in cutoffMillis..nowMillis
+    }
     return PulseWindowMetrics(
         value = usages.sumOf { it.effectiveCost },
         trailingValue = trailingValue,
@@ -71,7 +80,7 @@ private fun usageMetricsForWindow(
 }
 
 private val TokenUsage.effectiveTimeMillis: Long
-    get() = listOf(startTime, timestamp, endTime, updatedAt, createdAt).firstOrNull { it > 0L } ?: 0L
+    get() = listOf(timestamp, startTime, endTime, updatedAt, createdAt).firstOrNull { it > 0L } ?: 0L
 
 private val TokenUsage.effectiveTotalTokens: Long
     get() {
@@ -82,3 +91,17 @@ private val TokenUsage.effectiveTotalTokens: Long
             cacheReadTokens.toLong() +
             reasoningTokens.toLong()
     }
+
+fun startOfLocalPulseDayMillis(
+    nowMillis: Long = System.currentTimeMillis(),
+    zoneId: ZoneId = ZoneId.systemDefault()
+): Long = startOfLocalDayMillis(nowMillis, zoneId)
+
+private fun startOfLocalDayMillis(nowMillis: Long, zoneId: ZoneId): Long {
+    return Instant.ofEpochMilli(nowMillis)
+        .atZone(zoneId)
+        .toLocalDate()
+        .atStartOfDay(zoneId)
+        .toInstant()
+        .toEpochMilli()
+}

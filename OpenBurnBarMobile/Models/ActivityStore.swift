@@ -12,10 +12,12 @@ final class ActivityStore {
     private(set) var isSearching = false
     private(set) var error: String?
     private(set) var rawUsages: [TokenUsage] = []
+    private(set) var liveUsages: [TokenUsage] = []
     private(set) var usages: [TokenUsage] = []
     private(set) var searchHits: [StreamSearchHit] = []
     private(set) var hasMore = true
     private var lastDoc: DocumentSnapshot?
+    private var liveUsageListener: ListenerRegistration?
     private let targetSessionPageSize = 25
     private let rawPageSize = 100
     private let maxRawPagesPerBatch = 6
@@ -50,6 +52,7 @@ final class ActivityStore {
             isLoading = false
             error = nil
             rawUsages = AppStoreScreenshotData.recentUsage
+            liveUsages = AppStoreScreenshotData.recentUsage
             usages = Self.summarizeSessions(rawUsages)
             lastDoc = nil
             hasMore = false
@@ -62,6 +65,9 @@ final class ActivityStore {
         do {
             let batch = try await fetchRawBatch(after: nil, existingSessionKeys: [])
             rawUsages = batch.rows
+            if liveUsages.isEmpty {
+                liveUsages = batch.rows
+            }
             usages = Self.summarizeSessions(rawUsages)
             lastDoc = batch.last
             hasMore = batch.hasMore
@@ -100,6 +106,41 @@ final class ActivityStore {
         usages = []
         hasMore = true
         await load()
+    }
+
+    func loadLiveUsage(since startDate: Date) async {
+        if AppStoreScreenshotMode.isEnabled {
+            liveUsages = AppStoreScreenshotData.recentUsage
+            return
+        }
+        do {
+            liveUsages = try await firestore.fetchUsageSince(startDate)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func startLiveUsageListening(since startDate: Date) {
+        guard !AppStoreScreenshotMode.isEnabled else {
+            liveUsages = AppStoreScreenshotData.recentUsage
+            return
+        }
+        liveUsageListener?.remove()
+        liveUsageListener = firestore.listenToUsageSince(startDate) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let rows):
+                self.liveUsages = rows
+                self.error = nil
+            case .failure(let error):
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
+    func stopLiveUsageListening() {
+        liveUsageListener?.remove()
+        liveUsageListener = nil
     }
 
     /// Re-runs the query with the current `filter*` properties. Called by

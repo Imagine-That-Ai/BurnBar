@@ -13,53 +13,57 @@ struct AlertsSettingsView: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                NavigationLink {
-                    SpendAlertDetailView(
-                        settingsManager: settingsManager,
-                        costAlertBinding: costAlertBinding
-                    )
-                } label: {
-                    SettingsDrillRow(
-                        icon: "dollarsign.circle.fill",
-                        iconTint: DesignSystem.Colors.coral,
-                        title: "Cost Threshold",
-                        subtitle: "Highlight unusually expensive days before spend drifts upward",
-                        value: settingsManager.costAlertThreshold == nil
-                            ? "Off"
-                            : "$\(settingsManager.costAlertThreshold!.formatted(.number.precision(.fractionLength(0...2))))",
-                        valueTint: settingsManager.costAlertThreshold == nil
-                            ? DesignSystem.Colors.textMuted
-                            : DesignSystem.Colors.success
-                    )
+        SettingsDeepLinkScrollContainer(route: .alertsRoot) { _ in
+            List {
+                Section {
+                    NavigationLink {
+                        SpendAlertDetailView(
+                            settingsManager: settingsManager,
+                            costAlertBinding: costAlertBinding
+                        )
+                    } label: {
+                        SettingsDrillRow(
+                            icon: "dollarsign.circle.fill",
+                            iconTint: DesignSystem.Colors.coral,
+                            title: "Cost Threshold",
+                            subtitle: "Highlight unusually expensive days before spend drifts upward",
+                            value: settingsManager.costAlertThreshold == nil
+                                ? "Off"
+                                : "$\(settingsManager.costAlertThreshold!.formatted(.number.precision(.fractionLength(0...2))))",
+                            valueTint: settingsManager.costAlertThreshold == nil
+                                ? DesignSystem.Colors.textMuted
+                                : DesignSystem.Colors.success
+                        )
+                    }
+                    .settingsAnchor(SettingsAnchor.alertsDailySpend)
+                } header: {
+                    Text("Spend alerts")
+                } footer: {
+                    Text("OpenBurnBar evaluates spend locally; nothing here is sent to a server.")
+                        .font(DesignSystem.Typography.tiny)
                 }
-            } header: {
-                Text("Spend alerts")
-            } footer: {
-                Text("OpenBurnBar evaluates spend locally; nothing here is sent to a server.")
-                    .font(DesignSystem.Typography.tiny)
-            }
 
-            Section {
-                NavigationLink {
-                    DailyDigestDetailView(settingsManager: settingsManager)
-                } label: {
-                    SettingsDrillRow(
-                        icon: "newspaper.fill",
-                        iconTint: DesignSystem.Colors.amber,
-                        title: "Daily Digest",
-                        subtitle: "One compact reality check at a fixed local time",
-                        value: settingsManager.dailyDigestEnabled
-                            ? String(format: "%02d:00", settingsManager.dailyDigestHour)
-                            : "Off",
-                        valueTint: settingsManager.dailyDigestEnabled
-                            ? DesignSystem.Colors.success
-                            : DesignSystem.Colors.textMuted
-                    )
+                Section {
+                    NavigationLink {
+                        DailyDigestDetailView(settingsManager: settingsManager)
+                    } label: {
+                        SettingsDrillRow(
+                            icon: "newspaper.fill",
+                            iconTint: DesignSystem.Colors.amber,
+                            title: "Daily Digest",
+                            subtitle: "One compact reality check at a fixed local time",
+                            value: settingsManager.dailyDigestEnabled
+                                ? String(format: "%02d:00", settingsManager.dailyDigestHour)
+                                : "Off",
+                            valueTint: settingsManager.dailyDigestEnabled
+                                ? DesignSystem.Colors.success
+                                : DesignSystem.Colors.textMuted
+                        )
+                    }
+                    .settingsAnchor(SettingsAnchor.alertsDigest)
+                } header: {
+                    Text("Digest")
                 }
-            } header: {
-                Text("Digest")
             }
         }
         .listStyle(.inset)
@@ -177,75 +181,80 @@ struct NotificationsSettingsView: View {
     @Bindable var settingsManager: SettingsManager
 
     var body: some View {
-        List {
-            Section {
-                NavigationLink {
-                    LocalNotificationsDetailView(settingsManager: settingsManager)
-                } label: {
-                    SettingsDrillRow(
-                        icon: "app.badge.fill",
-                        iconTint: DesignSystem.Colors.whimsy,
-                        title: "Local Notifications",
-                        subtitle: "Controller can nudge you on this Mac about followups and pending work",
-                        value: settingsManager.controllerLocalNotificationsEnabled ? "On" : "Off",
-                        valueTint: settingsManager.controllerLocalNotificationsEnabled
-                            ? DesignSystem.Colors.success
-                            : DesignSystem.Colors.textMuted
-                    )
-                }
-            } header: {
-                Text("On this Mac")
-            }
-
-            Section {
-                NavigationLink {
-                    TelegramBridgeDetailView(settingsManager: settingsManager)
-                } label: {
-                    SettingsDrillRow(
-                        icon: "paperplane.fill",
-                        iconTint: DesignSystem.Colors.teal,
-                        title: "Telegram Bridge",
-                        subtitle: "Followup delivery and commands through a Telegram bot",
-                        value: settingsManager.controllerTelegramEnabled ? "On" : "Off",
-                        valueTint: settingsManager.controllerTelegramEnabled
-                            ? DesignSystem.Colors.success
-                            : DesignSystem.Colors.textMuted
-                    )
+        SettingsDeepLinkScrollContainer(route: .notificationsRoot) { _ in
+            List {
+                Section {
+                    NavigationLink {
+                        LocalNotificationsDetailView(settingsManager: settingsManager)
+                    } label: {
+                        SettingsDrillRow(
+                            icon: "app.badge.fill",
+                            iconTint: DesignSystem.Colors.whimsy,
+                            title: "Local Notifications",
+                            subtitle: "Controller can nudge you on this Mac about followups and pending work",
+                            value: settingsManager.controllerLocalNotificationsEnabled ? "On" : "Off",
+                            valueTint: settingsManager.controllerLocalNotificationsEnabled
+                                ? DesignSystem.Colors.success
+                                : DesignSystem.Colors.textMuted
+                        )
+                    }
+                    .settingsAnchor(SettingsAnchor.notificationsLocal)
+                } header: {
+                    Text("On this Mac")
                 }
 
-                NavigationLink {
-                    CalendarIntegrationDetailView(settingsManager: settingsManager)
-                } label: {
-                    SettingsDrillRow(
-                        icon: "calendar",
-                        iconTint: DesignSystem.Colors.coral,
-                        title: "Calendar Integration",
-                        subtitle: "Block local calendar placeholders for scheduled followups",
-                        value: settingsManager.controllerCalendarIntegrationEnabled
-                            ? "\(settingsManager.controllerCalendarDefaultMinutes) min"
-                            : "Off",
-                        valueTint: settingsManager.controllerCalendarIntegrationEnabled
-                            ? DesignSystem.Colors.success
-                            : DesignSystem.Colors.textMuted
-                    )
-                }
+                Section {
+                    NavigationLink {
+                        TelegramBridgeDetailView(settingsManager: settingsManager)
+                    } label: {
+                        SettingsDrillRow(
+                            icon: "paperplane.fill",
+                            iconTint: DesignSystem.Colors.teal,
+                            title: "Telegram Bridge",
+                            subtitle: "Followup delivery and commands through a Telegram bot",
+                            value: settingsManager.controllerTelegramEnabled ? "On" : "Off",
+                            valueTint: settingsManager.controllerTelegramEnabled
+                                ? DesignSystem.Colors.success
+                                : DesignSystem.Colors.textMuted
+                        )
+                    }
+                    .settingsAnchor(SettingsAnchor.notificationsTelegram)
 
-                NavigationLink {
-                    SnoozeDefaultsDetailView(settingsManager: settingsManager)
-                } label: {
-                    SettingsDrillRow(
-                        icon: "clock.arrow.circlepath",
-                        iconTint: DesignSystem.Colors.amber,
-                        title: "Snooze Defaults",
-                        subtitle: "Default snooze window applied to new or deferred followups",
-                        value: "\(settingsManager.controllerDefaultSnoozeMinutes) min"
-                    )
+                    NavigationLink {
+                        CalendarIntegrationDetailView(settingsManager: settingsManager)
+                    } label: {
+                        SettingsDrillRow(
+                            icon: "calendar",
+                            iconTint: DesignSystem.Colors.coral,
+                            title: "Calendar Integration",
+                            subtitle: "Block local calendar placeholders for scheduled followups",
+                            value: settingsManager.controllerCalendarIntegrationEnabled
+                                ? "\(settingsManager.controllerCalendarDefaultMinutes) min"
+                                : "Off",
+                            valueTint: settingsManager.controllerCalendarIntegrationEnabled
+                                ? DesignSystem.Colors.success
+                                : DesignSystem.Colors.textMuted
+                        )
+                    }
+                    .settingsAnchor(SettingsAnchor.notificationsCalendar)
+
+                    NavigationLink {
+                        SnoozeDefaultsDetailView(settingsManager: settingsManager)
+                    } label: {
+                        SettingsDrillRow(
+                            icon: "clock.arrow.circlepath",
+                            iconTint: DesignSystem.Colors.amber,
+                            title: "Snooze Defaults",
+                            subtitle: "Default snooze window applied to new or deferred followups",
+                            value: "\(settingsManager.controllerDefaultSnoozeMinutes) min"
+                        )
+                    }
+                } header: {
+                    Text("Controller channels")
+                } footer: {
+                    Text("Telegram credentials are stored locally and only used to send your own bot messages.")
+                        .font(DesignSystem.Typography.tiny)
                 }
-            } header: {
-                Text("Controller channels")
-            } footer: {
-                Text("Telegram credentials are stored locally and only used to send your own bot messages.")
-                    .font(DesignSystem.Typography.tiny)
             }
         }
         .listStyle(.inset)

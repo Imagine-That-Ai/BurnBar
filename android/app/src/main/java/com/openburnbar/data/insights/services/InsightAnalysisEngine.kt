@@ -16,6 +16,7 @@ import com.openburnbar.data.insights.InsightFinding
 import com.openburnbar.data.insights.InsightFollowUpQuestion
 import com.openburnbar.data.insights.InsightGeneratedWidget
 import com.openburnbar.data.insights.InsightModelTag
+import com.openburnbar.data.insights.InsightMissionCandidate
 import com.openburnbar.data.insights.InsightRecommendation
 import com.openburnbar.data.insights.InsightSeverity
 import com.openburnbar.data.insights.InsightTheme
@@ -27,6 +28,7 @@ import com.openburnbar.data.insights.InsightWidgetSpec
 import com.openburnbar.data.insights.InsightAnalysisAuditEntry
 import com.openburnbar.data.insights.InsightEgressTier
 import com.openburnbar.data.insights.InsightTokenUsage
+import com.openburnbar.data.insights.ValueFormat
 import com.openburnbar.data.repos.InsightAnalysisAuditLogRepository
 import com.openburnbar.data.repos.InsightAnalysisCacheRepository
 import kotlinx.coroutines.Dispatchers
@@ -226,7 +228,9 @@ class OllamaInsightAnalysisGateway(
         When model benchmark evidence exists, compare observed model usage against score/rank, cost signal, latency, task category, freshness, and attribution.
         Never invent benchmark ranks, prices, or dollar savings. If exact prices are absent, say cost signal rather than savings.
         For UI/design work, separate design/coding benchmark fit from general reasoning fit.
-        Return keys: executiveSummary, findings, anomalies, recommendations, generatedWidgets, followUpQuestions, citations.
+        Return missionCandidates separately from findings and recommendations. Missions must be concrete work packages, not duplicate insight prose.
+        Use accretion, diligence, techDebt, routing, quota, and focus lenses to propose greater-purpose missions from the evidence.
+        Return keys: executiveSummary, findings, anomalies, recommendations, missionCandidates, generatedWidgets, followUpQuestions, citations.
         Generated widgets must use known widget kinds and must include citations. Max generated widgets: ${request.maxGeneratedWidgets}.
         """.trimIndent()
 }
@@ -267,6 +271,26 @@ object InsightAnalysisResultJsonDecoder {
                 severity = severity(obj.optString("severity"))
             )
         }
+        val missions = root.optJSONArray("missionCandidates").toObjects().map { obj ->
+            InsightMissionCandidate(
+                title = obj.optString("title", "Mission"),
+                summary = obj.optString("summary", ""),
+                projectID = obj.optString("projectID").takeIf { it.isNotBlank() },
+                projectDisplayName = obj.optString("projectDisplayName").takeIf { it.isNotBlank() },
+                lens = missionLens(obj.optString("lens")),
+                priority = missionPriority(obj.optString("priority")),
+                confidence = confidence(obj.optString("confidence")),
+                expectedImpact = obj.optString("expectedImpact", obj.optString("expected_impact", "")),
+                effort = missionEffort(obj.optString("effort")),
+                acceptanceCriteria = obj.optJSONArray("acceptanceCriteria").toStrings()
+                    .ifEmpty { obj.optJSONArray("acceptance_criteria").toStrings() },
+                sourceInsightIDs = obj.optJSONArray("sourceInsightIDs").toStrings()
+                    .ifEmpty { obj.optJSONArray("source_insight_ids").toStrings() },
+                evidence = obj.optJSONArray("evidence").toCitationRefs().map { resolver.resolve(it) },
+                dispatchMetadata = obj.optJSONObject("dispatchMetadata").toStringMap()
+                    .ifEmpty { obj.optJSONObject("dispatch_metadata").toStringMap() }
+            )
+        }
         val widgets = root.optJSONArray("generatedWidgets").toObjects()
             .take(request.maxGeneratedWidgets)
             .map { obj ->
@@ -295,6 +319,7 @@ object InsightAnalysisResultJsonDecoder {
             findings = findings,
             anomalies = anomalies,
             recommendations = recommendations,
+            missionCandidates = missions,
             generatedWidgets = widgets,
             followUpQuestions = followUps,
             citations = if (citations.isEmpty()) request.context.evidenceIndex.map { it.citation } else citations,
@@ -377,6 +402,18 @@ object InsightAnalysisResultJsonDecoder {
             )
         }
 
+    private fun JSONArray?.toStrings(): List<String> {
+        if (this == null) return emptyList()
+        return (0 until length()).mapNotNull { optString(it).takeIf { value -> value.isNotBlank() } }
+    }
+
+    private fun JSONObject?.toStringMap(): Map<String, String> {
+        if (this == null) return emptyMap()
+        return keys().asSequence().mapNotNull { key ->
+            optString(key).takeIf { it.isNotBlank() }?.let { key to it }
+        }.toMap()
+    }
+
     private class CitationResolver(context: InsightAnalysisContext) {
         private val byID = context.evidenceIndex.associateBy { it.id.lowercase() }
         private val byCitationID = context.evidenceIndex.associateBy { it.citation.id.lowercase() }
@@ -411,6 +448,32 @@ object InsightAnalysisResultJsonDecoder {
             "low" -> InsightSeverity.LOW
             "info" -> InsightSeverity.INFO
             else -> InsightSeverity.MEDIUM
+        }
+
+    private fun missionLens(raw: String): InsightMissionCandidate.Lens =
+        when (raw.replace("_", "").replace("-", "").lowercase()) {
+            "accretion" -> InsightMissionCandidate.Lens.ACCRETION
+            "diligence" -> InsightMissionCandidate.Lens.DILIGENCE
+            "techdebt" -> InsightMissionCandidate.Lens.TECH_DEBT
+            "routing" -> InsightMissionCandidate.Lens.ROUTING
+            "quota" -> InsightMissionCandidate.Lens.QUOTA
+            "focus" -> InsightMissionCandidate.Lens.FOCUS
+            else -> InsightMissionCandidate.Lens.FOCUS
+        }
+
+    private fun missionPriority(raw: String): InsightMissionCandidate.Priority =
+        when (raw.lowercase()) {
+            "critical" -> InsightMissionCandidate.Priority.CRITICAL
+            "high" -> InsightMissionCandidate.Priority.HIGH
+            "low" -> InsightMissionCandidate.Priority.LOW
+            else -> InsightMissionCandidate.Priority.MEDIUM
+        }
+
+    private fun missionEffort(raw: String): InsightMissionCandidate.Effort =
+        when (raw.lowercase()) {
+            "large" -> InsightMissionCandidate.Effort.LARGE
+            "small" -> InsightMissionCandidate.Effort.SMALL
+            else -> InsightMissionCandidate.Effort.MEDIUM
         }
 
     private fun widgetKind(raw: String): InsightWidgetKind =
@@ -551,13 +614,30 @@ class RuleBasedInsightAnalysisEngine(
                     generatedWidgetID = narrativeWidget.widget.id
                 )
             )
-            if (topProvider != null) {
+            if (topProvider != null && digest.providers.isNotEmpty()) {
                 val providerCitation = InsightCitation("provider:${topProvider.id}", InsightCitation.Kind.Agent(topProvider.id), topProvider.displayName)
+                // Real ranking rows from the digest — top providers by cost.
+                val rankingRows = digest.providers
+                    .sortedByDescending { it.costUSD }
+                    .take(5)
+                    .map { p ->
+                        InsightWidgetData.Ranking.Row(
+                            id = "p:${p.id}",
+                            label = p.displayName,
+                            value = p.costUSD,
+                            secondaryLabel = "${p.sessionCount} sessions",
+                        )
+                    }
+                val rankingData = InsightWidgetData.Ranking(
+                    rows = rankingRows,
+                    valueFormat = ValueFormat.CURRENCY,
+                    dimensionLabel = "Provider",
+                )
                 val ranking = generatedWidget(
                     kind = InsightWidgetKind.BAR_RANKING,
                     title = "Provider spend ranking",
                     dataBinding = InsightDataBinding.Ranking("cost", InsightWidgetSpec.Dimension.PROVIDER, 5, request.currentCanvas?.filter?.window ?: InsightTimeWindow.Last7d),
-                    data = null,
+                    data = rankingData,
                     reason = "Shows the provider driving the main cost signal.",
                     modelTag = request.selectedModel,
                     citations = listOf(providerCitation)
@@ -575,19 +655,93 @@ class RuleBasedInsightAnalysisEngine(
                     )
                 )
             }
-            widgets.add(
-                generatedWidget(
-                    kind = InsightWidgetKind.TIME_SERIES_LINE,
-                    title = "Main supporting trend",
-                    dataBinding = InsightDataBinding.TimeSeries("cost", InsightWidgetSpec.Dimension.PROVIDER, request.currentCanvas?.filter?.window ?: InsightTimeWindow.Last7d),
-                    data = null,
-                    reason = "Shows whether the main finding is a spike or a sustained trend.",
-                    modelTag = request.selectedModel,
-                    citations = citations.take(3)
+            // Time series — real cost-per-day points from the digest.
+            if (digest.daily.isNotEmpty()) {
+                val tsData = InsightWidgetData.TimeSeries(
+                    series = listOf(
+                        InsightWidgetData.TimeSeries.Series(
+                            id = "cost",
+                            name = "Daily cost",
+                            points = digest.daily.map {
+                                InsightWidgetData.TimeSeries.Point(date = it.day, value = it.costUSD)
+                            },
+                        )
+                    ),
+                    xAxisLabel = "Date",
+                    yAxisLabel = "Cost (USD)",
+                    yFormat = ValueFormat.CURRENCY,
                 )
-            )
+                widgets.add(
+                    generatedWidget(
+                        kind = InsightWidgetKind.TIME_SERIES_LINE,
+                        title = "Cost trend",
+                        dataBinding = InsightDataBinding.TimeSeries("cost", InsightWidgetSpec.Dimension.PROVIDER, request.currentCanvas?.filter?.window ?: InsightTimeWindow.Last7d),
+                        data = tsData,
+                        reason = "Shows whether the main finding is a spike or a sustained trend.",
+                        modelTag = request.selectedModel,
+                        citations = citations.take(3)
+                    )
+                )
+            }
+            // Donut — provider mix by cost share. Only when ≥2 providers, otherwise the donut degenerates.
+            if (digest.providers.size >= 2) {
+                val total = digest.providers.sumOf { it.costUSD }
+                val slices = digest.providers
+                    .sortedByDescending { it.costUSD }
+                    .map {
+                        InsightWidgetData.Distribution.Slice(
+                            id = "slice:${it.id}",
+                            label = it.displayName,
+                            value = it.costUSD,
+                        )
+                    }
+                widgets.add(
+                    generatedWidget(
+                        kind = InsightWidgetKind.DONUT,
+                        title = "Provider cost share",
+                        dataBinding = InsightDataBinding.Distribution("cost", InsightWidgetSpec.Dimension.PROVIDER, request.currentCanvas?.filter?.window ?: InsightTimeWindow.Last7d),
+                        data = InsightWidgetData.Distribution(
+                            slices = slices,
+                            valueFormat = ValueFormat.CURRENCY,
+                            total = total,
+                        ),
+                        reason = "How spend splits across the providers in this window.",
+                        modelTag = request.selectedModel,
+                        citations = citations.take(3)
+                    )
+                )
+            }
+            // Top models bar — only when models present and distinct from the provider ranking above.
+            if (digest.models.isNotEmpty()) {
+                val modelRows = digest.models
+                    .sortedByDescending { it.costUSD }
+                    .take(5)
+                    .map {
+                        InsightWidgetData.Ranking.Row(
+                            id = "m:${it.id}",
+                            label = it.id,
+                            value = it.costUSD,
+                            secondaryLabel = "${it.sessionCount} sessions",
+                        )
+                    }
+                widgets.add(
+                    generatedWidget(
+                        kind = InsightWidgetKind.BAR_RANKING,
+                        title = "Top models by cost",
+                        dataBinding = InsightDataBinding.Ranking("cost", InsightWidgetSpec.Dimension.MODEL, 5, request.currentCanvas?.filter?.window ?: InsightTimeWindow.Last7d),
+                        data = InsightWidgetData.Ranking(
+                            rows = modelRows,
+                            valueFormat = ValueFormat.CURRENCY,
+                            dimensionLabel = "Model",
+                        ),
+                        reason = "Which models cost you the most in this window.",
+                        modelTag = request.selectedModel,
+                        citations = citations.take(3)
+                    )
+                )
+            }
             val recommendations = topModel?.let {
-                listOf(
+                mutableListOf(
                     InsightRecommendation(
                         title = "Check whether ${it.id} is the right default",
                         rationale = "${it.id} is the largest model cost contributor in this window.",
@@ -598,7 +752,24 @@ class RuleBasedInsightAnalysisEngine(
                         severity = InsightSeverity.MEDIUM
                     )
                 )
-            } ?: emptyList()
+            } ?: mutableListOf()
+            val benchmarkAdvice = modelBenchmarkAdvice(
+                digest = digest,
+                topModel = topModel,
+                selectedModel = request.selectedModel,
+                window = request.currentCanvas?.filter?.window ?: InsightTimeWindow.Last7d
+            )
+            findings.addAll(benchmarkAdvice.findings)
+            recommendations.addAll(benchmarkAdvice.recommendations)
+            widgets.addAll(benchmarkAdvice.widgets)
+            val missionAdvice = missionIntelligence(
+                digest = digest,
+                topProvider = topProvider,
+                topModel = topModel,
+                sourceInsightIDs = findings.map { it.id }
+            )
+            findings.addAll(missionAdvice.findings)
+            recommendations.addAll(missionAdvice.recommendations)
             return InsightAnalysisResult(
                 requestID = request.id,
                 platform = platform,
@@ -606,18 +777,305 @@ class RuleBasedInsightAnalysisEngine(
                 executiveSummary = body,
                 modelTag = request.selectedModel,
                 contextBudget = request.context.budgetReport,
-                findings = findings.take(3),
+                findings = findings.take(6),
                 recommendations = recommendations,
+                missionCandidates = missionAdvice.missions.take(5),
                 generatedWidgets = widgets.take(request.maxGeneratedWidgets),
                 followUpQuestions = listOf(
                     "Why did cost spike this week?",
                     "Which project wasted the most money?",
                     "Which model should I route routine work to instead?",
+                    "Which benchmarked model is cheapest at similar performance?",
+                    "Which model should handle UI and design tasks?",
                     "Find quota risks in the next 24 hours."
                 ).map { InsightFollowUpQuestion(question = it) },
                 citations = citations
             )
         }
+
+        private data class MissionAdvice(
+            val findings: List<InsightFinding>,
+            val recommendations: List<InsightRecommendation>,
+            val missions: List<InsightMissionCandidate>
+        )
+
+        private fun missionIntelligence(
+            digest: InsightDigest,
+            topProvider: InsightDigest.ProviderSnapshot?,
+            topModel: InsightDigest.ModelSnapshot?,
+            sourceInsightIDs: List<String>
+        ): MissionAdvice {
+            if (digest.totals.sessionCount <= 0 && digest.rowCount <= 0) {
+                return MissionAdvice(emptyList(), emptyList(), emptyList())
+            }
+            val topProject = digest.projects.maxByOrNull { it.costUSD }
+            val projectName = topProject?.displayName ?: "the busiest project"
+            val projectCost = currency(topProject?.costUSD ?: digest.totals.costUSD)
+            val projectSessions = topProject?.sessionCount ?: digest.totals.sessionCount
+            val projectCitation = topProject?.let {
+                InsightCitation("project:${it.id}", InsightCitation.Kind.Project(it.id), it.displayName)
+            }
+            val providerCitation = topProvider?.let {
+                InsightCitation("provider:${it.id}", InsightCitation.Kind.Agent(it.id), it.displayName)
+            }
+            val modelCitation = topModel?.let {
+                InsightCitation("model:${it.id}", InsightCitation.Kind.Model(it.id), it.id)
+            }
+            val quotaRisk = digest.quotaSnapshots
+                .filter { (it.limit ?: 0.0) > 0.0 }
+                .maxByOrNull { it.used / maxOf(it.limit ?: 1.0, 1.0) }
+            val quotaCitation = quotaRisk?.let {
+                InsightCitation("quota:${it.providerID}:${it.bucketName}", InsightCitation.Kind.Quota(it.providerID, it.bucketName), "${it.providerID} quota")
+            }
+
+            val findings = mutableListOf<InsightFinding>()
+            if (topProject != null && projectCitation != null) {
+                findings.add(
+                    InsightFinding(
+                        title = "${topProject.displayName} is where the work concentrated",
+                        whyItMatters = "${topProject.displayName} accounts for $projectCost across $projectSessions sessions, so missions should start where repeated AI effort is already compounding.",
+                        evidence = listOf(projectCitation),
+                        confidence = InsightConfidence.HIGH,
+                        severity = if (projectSessions >= 3) InsightSeverity.MEDIUM else InsightSeverity.LOW,
+                        recommendedAction = "Create one focused mission for ${topProject.displayName} instead of treating the brief as isolated observations."
+                    )
+                )
+            }
+
+            val missions = mutableListOf<InsightMissionCandidate>()
+            val accretionEvidence = listOfNotNull(projectCitation, modelCitation, providerCitation)
+            if (accretionEvidence.isNotEmpty()) {
+                missions.add(
+                    InsightMissionCandidate(
+                        title = "Turn repeated $projectName work into an accretive feature",
+                        summary = "Use the accretion lens to convert the highest-activity project into a small product or workflow improvement that reuses existing primitives instead of becoming a one-off analysis.",
+                        projectID = topProject?.id,
+                        projectDisplayName = topProject?.displayName,
+                        lens = InsightMissionCandidate.Lens.ACCRETION,
+                        priority = if (projectSessions >= 3) InsightMissionCandidate.Priority.HIGH else InsightMissionCandidate.Priority.MEDIUM,
+                        confidence = if (topProject == null) InsightConfidence.MEDIUM else InsightConfidence.HIGH,
+                        expectedImpact = "Compounds current AI spend into a durable workflow, trust cue, or UI affordance.",
+                        effort = InsightMissionCandidate.Effort.MEDIUM,
+                        acceptanceCriteria = listOf(
+                            "Name the concrete user job currently driving the repeated sessions.",
+                            "Ship one native workflow or polish layer that reuses existing BurnBar primitives.",
+                            "Verify the next brief can cite reduced friction, clearer routing, or better user confidence."
+                        ),
+                        sourceInsightIDs = sourceInsightIDs,
+                        evidence = accretionEvidence,
+                        dispatchMetadata = mapOf("lens" to "accretion", "source" to "insight_engine")
+                    )
+                )
+            }
+
+            val diligenceEvidence = listOfNotNull(projectCitation, quotaCitation, providerCitation)
+            if (diligenceEvidence.isNotEmpty()) {
+                val quotaHot = quotaRisk?.let { (it.limit ?: 0.0) > 0.0 && it.used / (it.limit ?: 1.0) >= 0.8 } ?: false
+                missions.add(
+                    InsightMissionCandidate(
+                        title = if (quotaHot) "Run a diligence pass before the next heavy session" else "Run a diligence pass on $projectName",
+                        summary = "Use the diligence lens to turn the brief's risk signals into an evidence-backed launch-readiness check with explicit blockers, owner, and proof.",
+                        projectID = topProject?.id,
+                        projectDisplayName = topProject?.displayName,
+                        lens = InsightMissionCandidate.Lens.DILIGENCE,
+                        priority = if (quotaHot) InsightMissionCandidate.Priority.CRITICAL else InsightMissionCandidate.Priority.HIGH,
+                        confidence = InsightConfidence.MEDIUM,
+                        expectedImpact = "Prevents cost, quota, or release surprises from hiding behind a normal-looking usage summary.",
+                        effort = InsightMissionCandidate.Effort.SMALL,
+                        acceptanceCriteria = listOf(
+                            "List the top production, cost, privacy, and reliability risks with citations.",
+                            "Separate blockers from serious concerns and acceptable tradeoffs.",
+                            "Attach the verification command or live evidence that closes each blocker."
+                        ),
+                        sourceInsightIDs = sourceInsightIDs,
+                        evidence = diligenceEvidence,
+                        dispatchMetadata = mapOf("lens" to "diligence", "source" to "insight_engine")
+                    )
+                )
+            }
+
+            if (topModel != null) {
+                missions.add(
+                    InsightMissionCandidate(
+                        title = "Reduce repeated ${topModel.id} drag",
+                        summary = "Use the debt lens to decide whether high recurring model usage is doing essential expert work or masking unclear requirements, weak tests, brittle routing, or missing automation.",
+                        projectID = topProject?.id,
+                        projectDisplayName = topProject?.displayName,
+                        lens = InsightMissionCandidate.Lens.TECH_DEBT,
+                        priority = if (topModel.costUSD > maxOf(1.0, digest.totals.costUSD * 0.35)) InsightMissionCandidate.Priority.HIGH else InsightMissionCandidate.Priority.MEDIUM,
+                        confidence = InsightConfidence.MEDIUM,
+                        expectedImpact = "Cuts future analysis spend by removing the underlying delivery friction, not just swapping models.",
+                        effort = InsightMissionCandidate.Effort.MEDIUM,
+                        acceptanceCriteria = listOf(
+                            "Identify the repeated work pattern causing the expensive model usage.",
+                            "Choose the smallest remediation that prevents the same class of future sessions.",
+                            "Add or update a test, runbook, or automation proof that the drag was actually reduced."
+                        ),
+                        sourceInsightIDs = sourceInsightIDs,
+                        evidence = listOfNotNull(modelCitation, projectCitation),
+                        dispatchMetadata = mapOf("lens" to "techDebt", "source" to "insight_engine")
+                    )
+                )
+            }
+
+            val recommendations = if (topModel != null && digest.modelBenchmarks.isNotEmpty()) {
+                listOf(
+                    InsightRecommendation(
+                        title = "Convert model-board advice into a routing experiment",
+                        rationale = "Benchmark evidence is useful only after a bounded comparison against your actual $projectName work.",
+                        recommendedAction = "Run one UI/design or routine-coding session through the best-fit candidate, then compare quality, cost signal, and quota health before changing defaults.",
+                        estimatedImpact = "Turns abstract model rankings into a safer routing decision.",
+                        evidence = listOfNotNull(modelCitation) + digest.modelBenchmarks.take(2).map { benchmarkCitation(it) },
+                        confidence = InsightConfidence.MEDIUM,
+                        severity = InsightSeverity.MEDIUM
+                    )
+                )
+            } else {
+                emptyList()
+            }
+
+            return MissionAdvice(findings, recommendations, missions)
+        }
+
+        private data class BenchmarkAdvice(
+            val findings: List<InsightFinding>,
+            val recommendations: List<InsightRecommendation>,
+            val widgets: List<InsightGeneratedWidget>
+        )
+
+        private fun modelBenchmarkAdvice(
+            digest: InsightDigest,
+            topModel: InsightDigest.ModelSnapshot?,
+            selectedModel: InsightModelTag,
+            window: InsightTimeWindow
+        ): BenchmarkAdvice {
+            val benchmarks = digest.modelBenchmarks
+            if (benchmarks.isEmpty()) return BenchmarkAdvice(emptyList(), emptyList(), emptyList())
+
+            val used = digest.models.associateBy { normalizedModelID(it.id) }
+            val topBenchmark = topModel?.let { model ->
+                benchmarks.filter { normalizedModelID(it.modelID) == normalizedModelID(model.id) }
+                    .maxByOrNull { it.score ?: -1.0 }
+            }
+            val bestDesign = benchmarks
+                .filter { it.taskCategory == "design" }
+                .maxByOrNull { it.score ?: -1.0 }
+                ?: benchmarks
+                    .filter { it.taskCategory == "coding" }
+                    .maxByOrNull { it.score ?: -1.0 }
+            val cheapestSimilar = topModel?.let { current ->
+                benchmarks
+                    .filter { normalizedModelID(it.modelID) != normalizedModelID(current.id) }
+                    .filter { (it.costSignal ?: -1.0) > (topBenchmark?.costSignal ?: 0.0) + 0.12 }
+                    .filter { topBenchmark?.score == null || it.score == null || it.score >= (topBenchmark.score ?: 0.0) - 0.08 }
+                    .maxWithOrNull(compareBy<InsightDigest.ModelBenchmarkSummary> { it.costSignal ?: 0.0 }.thenBy { it.score ?: 0.0 })
+            }
+
+            val findings = mutableListOf<InsightFinding>()
+            val recommendations = mutableListOf<InsightRecommendation>()
+            val widgets = mutableListOf<InsightGeneratedWidget>()
+
+            if (topModel != null && bestDesign != null && normalizedModelID(bestDesign.modelID) != normalizedModelID(topModel.id)) {
+                findings.add(
+                    InsightFinding(
+                        title = "UI/design work should be checked against ${bestDesign.modelID}",
+                        whyItMatters = "${topModel.id} leads spend, but ${bestDesign.modelID} is the strongest cited ${bestDesign.taskCategory} benchmark candidate${scorePhrase(bestDesign)}.",
+                        evidence = listOf(
+                            InsightCitation("model:${topModel.id}", InsightCitation.Kind.Model(topModel.id), topModel.id),
+                            benchmarkCitation(bestDesign)
+                        ),
+                        confidence = confidence(bestDesign),
+                        severity = InsightSeverity.MEDIUM,
+                        recommendedAction = "Use ${bestDesign.modelID} for the next UI-heavy task only if quota and routing are healthy."
+                    )
+                )
+            }
+
+            if (topModel != null && cheapestSimilar != null) {
+                val impact = cheapestSimilar.blendedCostPerMtoken?.let { "$${"%.2f".format(it)}/MTok blended; validate quality before moving routine work." }
+                    ?: cheapestSimilar.costSignal?.let { "Cost signal ${(it * 100).toInt()}/100; exact savings need provider price confirmation." }
+                recommendations.add(
+                    InsightRecommendation(
+                        title = "${cheapestSimilar.modelID} looks cheaper at similar benchmark strength",
+                        rationale = "${topModel.id} is your largest model cost contributor. ${cheapestSimilar.modelID} is close on benchmark evidence${scorePhrase(cheapestSimilar)} and has a stronger cost signal.",
+                        recommendedAction = "Route one routine ${cheapestSimilar.taskCategory} session to ${cheapestSimilar.modelID}, then compare output quality before changing defaults.",
+                        estimatedImpact = impact,
+                        evidence = listOf(
+                            InsightCitation("model:${topModel.id}", InsightCitation.Kind.Model(topModel.id), topModel.id),
+                            benchmarkCitation(cheapestSimilar)
+                        ),
+                        confidence = confidence(cheapestSimilar),
+                        severity = InsightSeverity.HIGH
+                    )
+                )
+            }
+
+            val rows = benchmarks
+                .filter { it.score != null || it.rank != null }
+                .sortedWith(
+                    compareByDescending<InsightDigest.ModelBenchmarkSummary> { used.containsKey(normalizedModelID(it.modelID)) }
+                        .thenByDescending { it.score ?: -1.0 }
+                        .thenBy { it.rank ?: Int.MAX_VALUE }
+                )
+                .take(6)
+                .map {
+                    InsightWidgetData.Ranking.Row(
+                        id = it.id,
+                        label = it.modelID,
+                        value = it.score ?: it.rank?.let { rank -> 1.0 / rank.coerceAtLeast(1) } ?: 0.0,
+                        secondaryLabel = listOf(it.taskCategory, it.attribution ?: it.source).joinToString(" · ")
+                    )
+                }
+            if (rows.isNotEmpty()) {
+                val widget = InsightWidget(
+                    kind = InsightWidgetKind.BAR_RANKING,
+                    title = "Benchmark-aware model board",
+                    spec = InsightWidgetSpec.Ranking(InsightWidgetSpec.RankingSpec()),
+                    dataBinding = InsightDataBinding.Ranking("cost", InsightWidgetSpec.Dimension.MODEL, 6, window),
+                    data = InsightWidgetData.Ranking(rows, ValueFormat.PERCENT, "Benchmark"),
+                    freshness = com.openburnbar.data.insights.InsightFreshness.FRESH,
+                    modelTag = selectedModel,
+                    rationale = "Ranks cited benchmark candidates beside models used in this window."
+                )
+                widgets.add(InsightGeneratedWidget(widget = widget, reason = "Shows used models against public benchmark evidence.", citations = benchmarks.take(6).map { benchmarkCitation(it) }))
+            }
+
+            benchmarks.maxByOrNull { it.score ?: -1.0 }?.let {
+                recommendations.add(
+                    InsightRecommendation(
+                        title = "Do not blindly switch to ${it.modelID}",
+                        rationale = "Benchmarks are advisory. A higher public score loses when quota, account health, privacy mode, or task fit is worse.",
+                        recommendedAction = "Treat ${it.modelID} as a candidate for ${it.taskCategory}, not as a global default.",
+                        estimatedImpact = "Avoids over-routing premium or unavailable models.",
+                        evidence = listOf(benchmarkCitation(it)),
+                        confidence = confidence(it),
+                        severity = InsightSeverity.MEDIUM
+                    )
+                )
+            }
+
+            return BenchmarkAdvice(findings.take(2), recommendations.take(3), widgets.take(2))
+        }
+
+        private fun benchmarkCitation(benchmark: InsightDigest.ModelBenchmarkSummary): InsightCitation =
+            InsightCitation(
+                "benchmark:${benchmark.id}",
+                InsightCitation.Kind.Benchmark(benchmark.source, benchmark.modelID, benchmark.taskCategory),
+                "${benchmark.attribution ?: benchmark.source} ${benchmark.taskCategory}"
+            )
+
+        private fun confidence(benchmark: InsightDigest.ModelBenchmarkSummary): InsightConfidence =
+            when {
+                (benchmark.confidence ?: 0.6) >= 0.75 -> InsightConfidence.HIGH
+                (benchmark.confidence ?: 0.6) <= 0.45 -> InsightConfidence.LOW
+                else -> InsightConfidence.MEDIUM
+            }
+
+        private fun scorePhrase(benchmark: InsightDigest.ModelBenchmarkSummary): String =
+            benchmark.score?.let { " (${(it * 100).toInt()}/100)" } ?: benchmark.rank?.let { " (#$it)" } ?: ""
+
+        private fun normalizedModelID(value: String): String =
+            value.lowercase().replace("_", "-").replace(".", "-").replace("/", "-")
 
         private fun generatedWidget(
             kind: InsightWidgetKind,

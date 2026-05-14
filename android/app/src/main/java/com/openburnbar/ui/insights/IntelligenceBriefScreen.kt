@@ -73,6 +73,7 @@ import com.openburnbar.data.insights.InsightFinding
 import com.openburnbar.data.insights.InsightFollowUpQuestion
 import com.openburnbar.data.insights.InsightGeneratedWidget
 import com.openburnbar.data.insights.InsightModelTag
+import com.openburnbar.data.insights.InsightMissionCandidate
 import com.openburnbar.data.insights.InsightWidget
 import com.openburnbar.data.insights.InsightWidgetKind
 import com.openburnbar.data.insights.InsightRecommendation
@@ -135,8 +136,16 @@ fun IntelligenceBriefScreen(
     // section right after the hero. KPI/Time-Series/Ranking/Donut are
     // first-class chart kinds; we prefer them in that order so the hero
     // always leads with a chart, not a narrative card.
-    val featuredWidget = result.generatedWidgets.firstOrNull { it.widget.isChart }
+    // Pick the first chart-bearing widget that actually has data to render.
+    // A widget with kind=BAR_RANKING but data=null would paint a "No data"
+    // placeholder in the hero — worse than picking nothing.
+    val featuredWidget = result.generatedWidgets.firstOrNull {
+        it.widget.isChart && it.widget.hasChartData
+    }
     val remainingWidgets = result.generatedWidgets.filterNot { it === featuredWidget }
+    // When the hero shows Fig. 01, Generated views must continue from 02.
+    val generatedFigureStart = if (featuredWidget != null) 2 else 1
+    var expandedMissionID by remember(result.id) { mutableStateOf<String?>(null) }
 
     Column(
         modifier = modifier
@@ -165,6 +174,7 @@ fun IntelligenceBriefScreen(
             AnimatedSection(visible = visibility[1], reduceMotion = reduceMotion) {
                 GeneratedViewsSection(
                     generated = remainingWidgets,
+                    figureStart = generatedFigureStart,
                     theme = theme,
                     onPin = onPinWidget,
                     onCitationTap = onCitationTap,
@@ -181,8 +191,21 @@ fun IntelligenceBriefScreen(
             }
         }
 
-        if (result.anomalies.isNotEmpty()) {
+        if (result.missionCandidates.isNotEmpty()) {
             AnimatedSection(visible = visibility[3], reduceMotion = reduceMotion) {
+                MissionBoardSection(
+                    missions = result.missionCandidates,
+                    expandedMissionID = expandedMissionID,
+                    onToggle = { missionID ->
+                        expandedMissionID = if (expandedMissionID == missionID) null else missionID
+                    },
+                    onCitationTap = onCitationTap,
+                )
+            }
+        }
+
+        if (result.anomalies.isNotEmpty()) {
+            AnimatedSection(visible = visibility[4], reduceMotion = reduceMotion) {
                 AnomalyAtlasSection(
                     anomalies = result.anomalies,
                     onCitationTap = onCitationTap,
@@ -191,7 +214,7 @@ fun IntelligenceBriefScreen(
         }
 
         if (result.recommendations.isNotEmpty()) {
-            AnimatedSection(visible = visibility[4], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[5], reduceMotion = reduceMotion) {
                 RecommendationsSection(
                     recommendations = result.recommendations,
                     isDark = isDark,
@@ -201,7 +224,7 @@ fun IntelligenceBriefScreen(
         }
 
         if (result.followUpQuestions.isNotEmpty()) {
-            AnimatedSection(visible = visibility[5], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[6], reduceMotion = reduceMotion) {
                 FollowUpSection(
                     questions = result.followUpQuestions,
                     isDark = isDark,
@@ -210,7 +233,7 @@ fun IntelligenceBriefScreen(
             }
         }
 
-        AnimatedSection(visible = visibility[6], reduceMotion = reduceMotion) {
+        AnimatedSection(visible = visibility[7], reduceMotion = reduceMotion) {
             AuditFooterSection(
                 result = result,
                 isDark = isDark,
@@ -247,6 +270,33 @@ private val InsightWidget.isChart: Boolean
         else -> false
     }
 
+/**
+ * Whether the widget has actual rows/series/slices to paint. Used together
+ * with `isChart` so we never elevate a "spec-only" stub into the hero —
+ * a chart kind with no data renders the renderer's "No data" placeholder,
+ * which looks broken in the lede.
+ */
+private val InsightWidget.hasChartData: Boolean
+    get() = when (val d = data) {
+        is com.openburnbar.data.insights.InsightWidgetData.TimeSeries ->
+            d.series.any { it.points.isNotEmpty() }
+        is com.openburnbar.data.insights.InsightWidgetData.Ranking ->
+            d.rows.isNotEmpty()
+        is com.openburnbar.data.insights.InsightWidgetData.Distribution ->
+            d.slices.isNotEmpty()
+        is com.openburnbar.data.insights.InsightWidgetData.KPI -> true
+        is com.openburnbar.data.insights.InsightWidgetData.Heatmap ->
+            d.cells.any { it.isNotEmpty() }
+        is com.openburnbar.data.insights.InsightWidgetData.Scatter ->
+            d.points.isNotEmpty()
+        is com.openburnbar.data.insights.InsightWidgetData.QuotaState ->
+            d.buckets.isNotEmpty()
+        // Conservative fallback: if data is null or an unrecognized payload,
+        // treat as no-data so we don't risk a placeholder in the hero.
+        null -> false
+        else -> false
+    }
+
 // ─── Section visibility cascade ────────────────────────────────────────────
 
 @Composable
@@ -265,7 +315,7 @@ private fun rememberSectionVisibility(reduceMotion: Boolean): SnapshotStateList<
     return state
 }
 
-private const val SECTION_COUNT = 7
+private const val SECTION_COUNT = 8
 
 @Composable
 private fun AnimatedSection(
@@ -591,6 +641,158 @@ private fun FindingRow(
         }
     }
 }
+
+// ─── Mission Board ────────────────────────────────────────────────────────
+
+@Composable
+private fun MissionBoardSection(
+    missions: List<InsightMissionCandidate>,
+    expandedMissionID: String?,
+    onToggle: (String) -> Unit,
+    onCitationTap: (InsightCitation) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(SECTION_TAG_MISSIONS),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
+    ) {
+        SectionHeader(title = SECTION_MISSIONS_TITLE)
+        missions.forEach { mission ->
+            MissionCard(
+                mission = mission,
+                expanded = expandedMissionID == mission.id,
+                onToggle = { onToggle(mission.id) },
+                onCitationTap = onCitationTap,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MissionCard(
+    mission: InsightMissionCandidate,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onCitationTap: (InsightCitation) -> Unit,
+) {
+    val lensColor = missionLensColor(mission.lens)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AuroraRadius.sm.dp))
+            .border(
+                BorderStroke(if (expanded) 1.dp else 0.5.dp, lensColor.copy(alpha = if (expanded) 0.55f else 0.28f)),
+                RoundedCornerShape(AuroraRadius.sm.dp),
+            )
+            .clickable(onClick = onToggle)
+            .padding(AuroraSpacing.md.dp)
+            .semantics {
+                contentDescription = "Mission ${missionLensLabel(mission.lens)}, ${missionPriorityLabel(mission.priority)} priority, ${mission.title}"
+            },
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = missionLensLabel(mission.lens).uppercase(),
+                style = AuroraType.monoTiny.copy(fontWeight = FontWeight.SemiBold),
+                color = lensColor,
+            )
+            Text(
+                text = missionPriorityLabel(mission.priority).uppercase(),
+                style = AuroraType.monoTiny.copy(fontWeight = FontWeight.SemiBold),
+                color = missionPriorityColor(mission.priority),
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = mission.effort.name.lowercase().uppercase(),
+                style = AuroraType.monoTiny,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = if (expanded) "Close" else "Open",
+                style = AuroraType.monoTiny,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            text = mission.title,
+            style = AuroraType.headline,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        if (mission.summary.isNotBlank()) {
+            Text(
+                text = mission.summary,
+                style = AuroraType.body,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (expanded) {
+            if (mission.expectedImpact.isNotBlank()) {
+                ActionStripe(text = mission.expectedImpact)
+            }
+            mission.acceptanceCriteria.take(5).forEachIndexed { index, criterion ->
+                Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+                    Text(
+                        text = "${index + 1}.",
+                        style = AuroraType.monoTiny,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = criterion,
+                        style = AuroraType.body,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+            if (mission.evidence.isNotEmpty()) {
+                CitationChipRow(citations = mission.evidence, onTap = onCitationTap)
+            }
+        }
+    }
+}
+
+private fun missionLensLabel(lens: InsightMissionCandidate.Lens): String =
+    when (lens) {
+        InsightMissionCandidate.Lens.ACCRETION -> "Accretion"
+        InsightMissionCandidate.Lens.DILIGENCE -> "Diligence"
+        InsightMissionCandidate.Lens.TECH_DEBT -> "Debt"
+        InsightMissionCandidate.Lens.ROUTING -> "Routing"
+        InsightMissionCandidate.Lens.QUOTA -> "Quota"
+        InsightMissionCandidate.Lens.FOCUS -> "Focus"
+    }
+
+private fun missionPriorityLabel(priority: InsightMissionCandidate.Priority): String =
+    when (priority) {
+        InsightMissionCandidate.Priority.LOW -> "Low"
+        InsightMissionCandidate.Priority.MEDIUM -> "Medium"
+        InsightMissionCandidate.Priority.HIGH -> "High"
+        InsightMissionCandidate.Priority.CRITICAL -> "Critical"
+    }
+
+@Composable
+private fun missionLensColor(lens: InsightMissionCandidate.Lens): Color =
+    when (lens) {
+        InsightMissionCandidate.Lens.ACCRETION -> InsightsColors.kpiPositive
+        InsightMissionCandidate.Lens.DILIGENCE -> if (isSystemInDarkTheme()) AuroraColors.goldDark else AuroraColors.gold
+        InsightMissionCandidate.Lens.TECH_DEBT -> AuroraColors.ember(isSystemInDarkTheme())
+        InsightMissionCandidate.Lens.ROUTING -> MaterialTheme.colorScheme.primary
+        InsightMissionCandidate.Lens.QUOTA -> InsightsColors.kpiNeutral
+        InsightMissionCandidate.Lens.FOCUS -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+@Composable
+private fun missionPriorityColor(priority: InsightMissionCandidate.Priority): Color =
+    when (priority) {
+        InsightMissionCandidate.Priority.LOW -> MaterialTheme.colorScheme.onSurfaceVariant
+        InsightMissionCandidate.Priority.MEDIUM -> InsightsColors.kpiNeutral
+        InsightMissionCandidate.Priority.HIGH -> AuroraColors.ember(isSystemInDarkTheme())
+        InsightMissionCandidate.Priority.CRITICAL -> InsightsColors.kpiNegative
+    }
 
 // ─── Anomaly Atlas ────────────────────────────────────────────────────────
 
@@ -938,6 +1140,7 @@ private fun EmberSeal(severity: InsightSeverity, isDark: Boolean) {
 @Composable
 private fun GeneratedViewsSection(
     generated: List<InsightGeneratedWidget>,
+    figureStart: Int,
     theme: CanvasTheme,
     onPin: (InsightGeneratedWidget) -> Unit,
     onCitationTap: (InsightCitation) -> Unit,
@@ -952,7 +1155,7 @@ private fun GeneratedViewsSection(
         SectionHeader(title = SECTION_GENERATED_TITLE)
         generated.forEachIndexed { index, item ->
             GeneratedView(
-                figureOrdinal = index + 1,
+                figureOrdinal = figureStart + index,
                 generated = item,
                 theme = theme,
                 isDark = isDark,
@@ -1333,6 +1536,7 @@ private const val EYEBROW = "INTELLIGENCE BRIEF"
 private const val EYEBROW_DESCRIPTION = "Intelligence Brief"
 
 internal const val SECTION_FINDINGS_TITLE = "Top findings"
+internal const val SECTION_MISSIONS_TITLE = "Mission board"
 internal const val SECTION_ANOMALIES_TITLE = "Anomalies"
 internal const val SECTION_RECOMMENDATIONS_TITLE = "Recommendations"
 internal const val SECTION_GENERATED_TITLE = "Generated views"
@@ -1341,6 +1545,7 @@ internal const val SECTION_FOLLOWUPS_TITLE = "Follow-up questions"
 internal const val SECTION_TAG_HERO = "section-hero"
 internal const val SECTION_TAG_HERO_CHART = "section-hero-chart"
 internal const val SECTION_TAG_FINDINGS = "section-findings"
+internal const val SECTION_TAG_MISSIONS = "section-missions"
 internal const val SECTION_TAG_ANOMALIES = "section-anomalies"
 internal const val SECTION_TAG_RECOMMENDATIONS = "section-recommendations"
 internal const val SECTION_TAG_GENERATED = "section-generated"

@@ -36,6 +36,8 @@ public struct InsightAnalysisModelPrompt: Sendable {
         lines.append("- Emit one JSON object only.")
         lines.append("- Match the `InsightAnalysisResult` schema subset exactly.")
         lines.append("- Every finding and recommendation must include evidence and a concrete recommended action.")
+        lines.append("- Return `missionCandidates` separately from findings and recommendations. Missions must be concrete work packages, not duplicate insight prose.")
+        lines.append("- Use accretion, diligence, techDebt, routing, quota, and focus lenses to propose greater-purpose missions from the evidence.")
         lines.append("- Propose at most \(request.maxGeneratedWidgets) generated widgets.")
         lines.append("- Prefer concise, decision-grade language over generic commentary.")
         lines.append("- Strict schema requested: \(strictSchema ? "yes" : "no").")
@@ -100,6 +102,7 @@ enum InsightAnalysisModelDecoder {
         var findings: [Finding]
         var anomalies: [Anomaly]
         var recommendations: [Recommendation]
+        var missionCandidates: [MissionCandidate]?
         var generatedWidgets: [GeneratedWidget]
         var followUpQuestions: [FollowUpQuestion]
         var citations: [CitationRef]
@@ -131,6 +134,22 @@ enum InsightAnalysisModelDecoder {
         var evidence: [CitationRef]
         var confidence: InsightConfidence
         var severity: InsightSeverity
+    }
+
+    struct MissionCandidate: Decodable {
+        var title: String
+        var summary: String
+        var projectID: String?
+        var projectDisplayName: String?
+        var lens: InsightMissionCandidate.Lens
+        var priority: InsightMissionCandidate.Priority
+        var confidence: InsightConfidence
+        var expectedImpact: String
+        var effort: InsightMissionCandidate.Effort
+        var acceptanceCriteria: [String]
+        var sourceInsightIDs: [String]?
+        var evidence: [CitationRef]
+        var dispatchMetadata: [String: String]?
     }
 
     struct GeneratedWidget: Decodable {
@@ -207,6 +226,23 @@ enum InsightAnalysisModelDecoder {
                 severity: raw.severity
             )
         }
+        let missionCandidates = (envelope.missionCandidates ?? []).map { raw in
+            InsightMissionCandidate(
+                title: raw.title,
+                summary: raw.summary,
+                projectID: raw.projectID,
+                projectDisplayName: raw.projectDisplayName,
+                lens: raw.lens,
+                priority: raw.priority,
+                confidence: raw.confidence,
+                expectedImpact: raw.expectedImpact,
+                effort: raw.effort,
+                acceptanceCriteria: raw.acceptanceCriteria,
+                sourceInsightIDs: (raw.sourceInsightIDs ?? []).compactMap(UUID.init(uuidString:)),
+                evidence: raw.evidence.map { resolver.resolve($0) },
+                dispatchMetadata: raw.dispatchMetadata ?? [:]
+            )
+        }
         let widgets = envelope.generatedWidgets.prefix(request.maxGeneratedWidgets).map { raw in
             generatedWidget(
                 raw,
@@ -229,6 +265,7 @@ enum InsightAnalysisModelDecoder {
             findings: findings,
             anomalies: anomalies,
             recommendations: recommendations,
+            missionCandidates: missionCandidates,
             generatedWidgets: Array(widgets),
             followUpQuestions: followUps,
             citations: citations.isEmpty ? request.context.evidenceIndex.map(\.citation) : citations,

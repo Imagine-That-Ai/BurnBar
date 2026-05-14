@@ -15,6 +15,8 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var router = SettingsRouter()
     @State private var presentationWindow: NSWindow?
+    @State private var hermesRuntimeLauncher = HermesRuntimeLauncher()
+    @State private var piAgentRuntimeAdapter = PiAgentRuntimeAdapter()
 
     init(
         settingsManager: SettingsManager,
@@ -172,6 +174,20 @@ struct SettingsView: View {
             HTTPGatewayDetailView(settingsManager: settingsManager)
         case .controllerRuntime:
             ControllerRuntimeDetailView(settingsManager: settingsManager)
+        case .hermesChatEngines:
+            ChatEnginesDetailView(settingsManager: settingsManager)
+        case .hermesGateway:
+            HermesGatewayDetailView(
+                settingsManager: settingsManager,
+                hermesRuntimeLauncher: hermesRuntimeLauncher
+            )
+        case .hermesPiAgent:
+            PiAgentDetailView(
+                settingsManager: settingsManager,
+                piAgentRuntimeAdapter: piAgentRuntimeAdapter
+            )
+        case .hermesRelay:
+            RemoteRelayDetailView(settingsManager: settingsManager)
         case .generalRoot, .daemonRoot, .accountRoot, .providersRoot,
              .routingPoolsRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,

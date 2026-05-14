@@ -47,15 +47,18 @@ struct CloudStoreView: View {
             ScrollView {
                 VStack(spacing: MobileTheme.Spacing.xl) {
                     CloudStoreHeroSection(store: store)
+                        .settingsAnchor(SettingsAnchor.cloudMembership)
                         .staggeredEntrance(delay: 0.0)
 
                     if store.isActive {
                         CloudStoreMemberCard(store: store)
                             .padding(.horizontal, MobileTheme.Spacing.lg)
+                            .settingsAnchor(SettingsAnchor.cloudPlan)
                             .staggeredEntrance(delay: 0.05)
                     } else {
                         CloudStorePlanPicker(store: store)
                             .padding(.horizontal, MobileTheme.Spacing.lg)
+                            .settingsAnchor(SettingsAnchor.cloudPlan)
                             .staggeredEntrance(delay: 0.05)
                     }
 
@@ -84,6 +87,7 @@ struct CloudStoreView: View {
             if !store.isActive {
                 CloudStoreActionBar(store: store)
                     .frame(maxHeight: .infinity, alignment: .bottom)
+                    .settingsAnchor(SettingsAnchor.cloudRestore)
             }
         }
         .navigationTitle("OpenBurnBar Cloud")
@@ -913,6 +917,7 @@ private struct CloudStoreMemberCard: View {
             }
             .buttonStyle(.plain)
             .disabled(store.isLoading)
+            .settingsAnchor(SettingsAnchor.cloudRestore)
         }
     }
 

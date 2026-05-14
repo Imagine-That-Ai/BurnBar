@@ -1836,6 +1836,7 @@ export interface InsightAnalysisResultDoc {
   findings: InsightFindingDoc[];
   anomalies: InsightAnomalyDoc[];
   recommendations: InsightRecommendationDoc[];
+  missionCandidates: InsightMissionCandidateDoc[];
   generatedWidgets: InsightGeneratedWidgetDoc[];
   followUpQuestions: InsightFollowUpQuestionDoc[];
   citations: InsightCitationDoc[];
@@ -1884,6 +1885,34 @@ export interface InsightRecommendationDoc {
   evidence: InsightCitationDoc[];
   confidence: InsightConfidenceDoc;
   severity: InsightSeverityDoc;
+}
+
+export type InsightMissionLensDoc =
+  | "accretion"
+  | "diligence"
+  | "techDebt"
+  | "routing"
+  | "quota"
+  | "focus";
+
+export type InsightMissionPriorityDoc = "low" | "medium" | "high" | "critical";
+export type InsightMissionEffortDoc = "small" | "medium" | "large";
+
+export interface InsightMissionCandidateDoc {
+  id: string;
+  title: string;
+  summary: string;
+  projectID?: string;
+  projectDisplayName?: string;
+  lens: InsightMissionLensDoc;
+  priority: InsightMissionPriorityDoc;
+  confidence: InsightConfidenceDoc;
+  expectedImpact: string;
+  effort: InsightMissionEffortDoc;
+  acceptanceCriteria: string[];
+  sourceInsightIDs: string[];
+  evidence: InsightCitationDoc[];
+  dispatchMetadata: Record<string, string>;
 }
 
 export interface InsightGeneratedWidgetDoc {

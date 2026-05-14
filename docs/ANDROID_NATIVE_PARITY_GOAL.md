@@ -23,7 +23,7 @@ The visual identity is "Aurora" — warm gradient-driven glass-morphism. Key des
 - Cards in order with staggered entrance animations:
   1. CloudUpsellBanner (conditionally shown)
   2. TimelineScopePicker (day/week/month chip selector)
-  3. PulseHeroBurnCard — marquee card with massive rolling number (44pt), sparkline, currency/token toggle pill, delta vs trailing average, "Streaming live from your Mac" indicator with breathing green dot, provider avatar overlay
+  3. PulseHeroBurnCard — marquee card with massive rolling number (44pt), sparkline, currency/token toggle pill, delta vs trailing average, "Streaming live from your Mac" indicator with breathing green dot, provider avatar overlay. `1M`, `1H`, and `1D` totals are computed from the live raw usage stream; `1D` starts at local midnight, while `7D` and `30D` remain Firestore rollup-backed.
   4. VelocityForecastCard — projected end-of-period spend
   5. QuotaPulseCard — provider pressure rings that navigate to Burn tab
   6. TrendAtlasCard — daily spend chart with provider/model/device summaries

@@ -359,6 +359,89 @@ enum SmartHubBridgePage {
           text-overflow: ellipsis;
         }
 
+        /* Accounts block — compact rows inside provider cards */
+        .accounts-block {
+          display: grid;
+          gap: 5px;
+          align-content: start;
+        }
+        .accounts-block .header {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.3px;
+          text-transform: uppercase;
+          color: var(--text-3);
+        }
+        .accounts-block .count {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 18px;
+          height: 18px;
+          padding: 0 5px;
+          border-radius: 999px;
+          background: var(--surface-elevated, rgba(255,255,255,0.06));
+          color: var(--text-2);
+          font-size: 10px;
+          font-weight: 700;
+          font-variant-numeric: tabular-nums;
+        }
+        .account {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+          min-width: 0;
+        }
+        .account .ident {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          min-width: 0;
+          flex: 1;
+        }
+        .account .dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: var(--success);
+          flex-shrink: 0;
+        }
+        .account.active .dot {
+          background: var(--success);
+          box-shadow: 0 0 0 2px rgba(56,216,152,0.25);
+        }
+        .account .label {
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--text-1);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .account .badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 2px 7px;
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.2px;
+          text-transform: uppercase;
+          background: rgba(255,255,255,0.06);
+          color: var(--text-2);
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        .account .badge.tone-success { background: color-mix(in oklab, var(--success) 18%, transparent); color: var(--success); }
+        .account .badge.tone-whimsy  { background: color-mix(in oklab, var(--whimsy) 18%, transparent);  color: var(--whimsy); }
+        .account .badge.tone-ember   { background: color-mix(in oklab, var(--ember) 18%, transparent);   color: var(--ember); }
+        .account .badge.tone-warning { background: color-mix(in oklab, var(--warning) 18%, transparent); color: var(--warning); }
+        .account .badge.tone-mercury { background: rgba(232,219,210,0.08); color: var(--mercury); }
+
         body.palette-rainbow .fill {
           background: var(--rainbow-gradient) !important;
         }

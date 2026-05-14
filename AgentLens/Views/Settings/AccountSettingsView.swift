@@ -26,26 +26,36 @@ struct AccountSettingsView: View {
     @State private var activeAuthProvider: AuthProviderAction?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            // Account header
-            if let user = currentUser {
-                accountHeaderView(user)
-            } else {
-                anonymousHeaderView
+        SettingsDeepLinkScrollContainer(route: .accountRoot) { _ in
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                    // Account header
+                    if let user = currentUser {
+                        accountHeaderView(user)
+                    } else {
+                        anonymousHeaderView
+                    }
+
+                    // Sign-in methods section
+                    if isAnonymous {
+                        signInMethodsSection
+                            .settingsAnchor(SettingsAnchor.accountSignIn)
+                    } else {
+                        linkedAccountsSection
+                            .settingsAnchor(SettingsAnchor.accountSignIn)
+                    }
+
+                    // Premium upgrade section
+                    premiumSection
+                        .settingsAnchor(SettingsAnchor.accountSubscription)
+
+                    // Actions section
+                    actionsSection
+                        .settingsAnchor(SettingsAnchor.accountDelete)
+                }
+                .padding(DesignSystem.Spacing.lg)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            // Sign-in methods section
-            if isAnonymous {
-                signInMethodsSection
-            } else {
-                linkedAccountsSection
-            }
-
-            // Premium upgrade section
-            premiumSection
-
-            // Actions section
-            actionsSection
         }
         .sheet(isPresented: $showEmailLinkSheet) {
             emailLinkSheet

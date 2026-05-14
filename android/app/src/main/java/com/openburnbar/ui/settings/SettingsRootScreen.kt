@@ -56,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.ui.smartdisplay.SmartDisplayView
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraRadius
@@ -178,6 +179,19 @@ private fun SettingsRootList(router: SettingsRouter) {
 
     // Map anchor ids to LazyColumn indexes so the router can scroll.
     val rootRows = remember {
+        val providerRows = AgentProvider.entries
+            .sortedBy { it.displayName.lowercase() }
+            .map { provider ->
+                RootRow(
+                    anchor = SettingsAnchor.provider(provider.key),
+                    icon = Icons.Filled.Search,
+                    title = provider.displayName,
+                    subtitle = "Provider quota, usage, and connection signal",
+                    pageRoute = SettingsPageRoute.ROOT,
+                    onTap = {}
+                )
+            }
+
         listOf(
             RootRow(
                 anchor = SettingsAnchor.CLOUD_SYNC,
@@ -195,6 +209,7 @@ private fun SettingsRootList(router: SettingsRouter) {
                 pageRoute = SettingsPageRoute.ROOT,
                 onTap = {}
             ),
+        ) + providerRows + listOf(
             RootRow(
                 anchor = SettingsAnchor.CONNECTED_DEVICES,
                 icon = Icons.Filled.Devices,

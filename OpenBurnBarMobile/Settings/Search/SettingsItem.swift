@@ -148,7 +148,11 @@ enum SettingsAnchor {
     // Provider connections
     static let providerAdd = "providers.add"
     static let providerCLIAuth = "providers.cliAuth"
-    static let providerOpenCode = "providers.openCode"
+    static let providerOpenCode = "providers.provider.opencode"
+
+    static func provider(_ persistedToken: String) -> String {
+        "providers.provider.\(persistedToken)"
+    }
 
     // Hermes
     static let hermesConnections = "hermes.connections"

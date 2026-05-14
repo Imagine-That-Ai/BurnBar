@@ -15,6 +15,9 @@ class ActivityStore(
     private val _usages = MutableStateFlow<List<TokenUsage>>(emptyList())
     val usages = _usages.asStateFlow()
 
+    private val _liveUsages = MutableStateFlow<List<TokenUsage>>(emptyList())
+    val liveUsages = _liveUsages.asStateFlow()
+
     private val _projects = MutableStateFlow<List<ProjectSummary>>(emptyList())
     val projects = _projects.asStateFlow()
 
@@ -32,6 +35,7 @@ class ActivityStore(
 
     private var lastDoc: com.google.firebase.firestore.DocumentSnapshot? = null
     private var listenJob: Job? = null
+    private var liveListenJob: Job? = null
 
     fun loadInitial(pageSize: Int = 25) {
         viewModelScope.launch {
@@ -39,6 +43,9 @@ class ActivityStore(
             try {
                 val (page, last) = repo.fetchUsagePage(pageSize = pageSize)
                 _usages.value = page
+                if (_liveUsages.value.isEmpty()) {
+                    _liveUsages.value = page
+                }
                 lastDoc = last
                 _hasMore.value = last != null
             } catch (e: Exception) {
@@ -104,9 +111,20 @@ class ActivityStore(
         }
     }
 
+    fun startLiveUsageListening(startDate: Long) {
+        liveListenJob?.cancel()
+        liveListenJob = viewModelScope.launch {
+            repo.listenToUsageSince(startDate).collect { items ->
+                _liveUsages.value = items
+            }
+        }
+    }
+
     fun stopListening() {
         listenJob?.cancel()
         listenJob = null
+        liveListenJob?.cancel()
+        liveListenJob = null
     }
 }
 

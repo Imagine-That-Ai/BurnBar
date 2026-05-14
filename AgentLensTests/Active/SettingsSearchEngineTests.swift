@@ -174,4 +174,17 @@ final class SettingsSearchEngineTests: XCTestCase {
         XCTAssertTrue(ids.contains("routingPools.overview"))
         XCTAssertEqual(SettingsManifest.anchorIndex[SettingsAnchor.providersOpenCode], .providersRoot)
     }
+
+    func test_manifestFindsEveryProviderWithExactProviderAnchor() {
+        for provider in AgentProvider.allCases {
+            let expectedID = provider == .openCode ? "providers.openCode" : "providers.\(provider.persistedToken)"
+            let item = SettingsManifest.all.first { $0.id == expectedID }
+            XCTAssertNotNil(item, "Missing settings search entry for \(provider.displayName)")
+            XCTAssertEqual(item?.pageRoute, .providersRoot)
+            XCTAssertEqual(SettingsManifest.anchorIndex[item?.anchorID ?? ""], .providersRoot)
+
+            let result = SettingsSearchEngine.search(provider.displayName, in: SettingsManifest.all).first
+            XCTAssertEqual(result?.id, expectedID, "\(provider.displayName) should route to its own provider row")
+        }
+    }
 }

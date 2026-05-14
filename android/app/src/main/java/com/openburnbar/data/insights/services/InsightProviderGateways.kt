@@ -242,6 +242,8 @@ private fun analysisSystemPrompt(request: InsightAnalysisRequest): String =
     When model benchmark evidence exists, compare observed model usage against score/rank, cost signal, latency, task category, freshness, and attribution.
     Never invent benchmark ranks, prices, or dollar savings. If exact prices are absent, say cost signal rather than savings.
     For UI/design work, separate design/coding benchmark fit from general reasoning fit.
-    Return keys: executiveSummary, findings, anomalies, recommendations, generatedWidgets, followUpQuestions, citations.
+    Return missionCandidates separately from findings and recommendations. Missions must be concrete work packages, not duplicate insight prose.
+    Use accretion, diligence, techDebt, routing, quota, and focus lenses to propose greater-purpose missions from the evidence.
+    Return keys: executiveSummary, findings, anomalies, recommendations, missionCandidates, generatedWidgets, followUpQuestions, citations.
     Generated widgets must use known widget kinds and must include citations. Max generated widgets: ${request.maxGeneratedWidgets}.
     """.trimIndent()

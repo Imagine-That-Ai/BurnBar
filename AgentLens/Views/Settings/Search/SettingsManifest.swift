@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Settings Manifest (macOS)
 
@@ -16,7 +17,9 @@ import Foundation
 ///    `@FocusState` in the destination.
 enum SettingsManifest {
 
-    static let all: [SettingsItem] = [
+    static let all: [SettingsItem] = baseItems + providerItems
+
+    private static let baseItems: [SettingsItem] = [
 
         // MARK: General → Operator model & setup
 
@@ -246,15 +249,6 @@ enum SettingsManifest {
             keywords: ["add", "account", "provider", "claude", "opencode", "open code", "opencode go", "factory", "openai", "anthropic"]
         ),
         SettingsItem(
-            id: "providers.openCode",
-            tab: .providers,
-            pageRoute: .providersRoot,
-            anchorID: SettingsAnchor.providersOpenCode,
-            title: "OpenCode",
-            subtitle: "OpenCode CLI auth, quota, logs, and routed-provider setup",
-            keywords: ["opencode", "open code", "opencode go", "cli", "quota", "logs", "routing", "gateway", "failover"]
-        ),
-        SettingsItem(
             id: "providers.cli",
             tab: .providers,
             pageRoute: .providersRoot,
@@ -296,15 +290,6 @@ enum SettingsManifest {
             title: "Daily Spend Threshold",
             subtitle: "Notify when today's USD crosses this number",
             keywords: ["spend", "budget", "threshold", "limit", "alert", "usd"]
-        ),
-        SettingsItem(
-            id: "alerts.perProvider",
-            tab: .alerts,
-            pageRoute: .alertsRoot,
-            anchorID: SettingsAnchor.alertsPerProvider,
-            title: "Per-Provider Thresholds",
-            subtitle: "Set spend ceilings for each provider",
-            keywords: ["provider", "threshold", "ceiling", "anthropic", "openai"]
         ),
         SettingsItem(
             id: "alerts.digest",
@@ -402,43 +387,25 @@ enum SettingsManifest {
         SettingsItem(
             id: "hermes.connections",
             tab: .hermes,
-            pageRoute: .hermesRoot,
+            pageRoute: .hermesChatEngines,
             anchorID: SettingsAnchor.hermesConnections,
-            title: "Hermes Connections",
-            subtitle: "Connected Hermes endpoints and tokens",
-            keywords: ["hermes", "connection", "endpoint", "token"]
+            title: "Chat Engines",
+            subtitle: "Choose which chat engines appear in OpenBurnBar",
+            keywords: ["hermes", "connection", "engine", "chat", "codex", "claude", "openclaw"]
         ),
         SettingsItem(
             id: "hermes.models",
             tab: .hermes,
-            pageRoute: .hermesRoot,
+            pageRoute: .hermesChatEngines,
             anchorID: SettingsAnchor.hermesModels,
             title: "Hermes Models",
             subtitle: "Default models exposed by Hermes",
             keywords: ["model", "hermes", "claude", "gpt", "llm"]
         ),
         SettingsItem(
-            id: "hermes.tps",
-            tab: .hermes,
-            pageRoute: .hermesRoot,
-            anchorID: SettingsAnchor.hermesTPS,
-            title: "TPS Overlay",
-            subtitle: "Display tokens-per-second under streaming responses",
-            keywords: ["tps", "tokens", "speed", "overlay"]
-        ),
-        SettingsItem(
-            id: "hermes.pretext",
-            tab: .hermes,
-            pageRoute: .hermesRoot,
-            anchorID: SettingsAnchor.hermesPretext,
-            title: "Pretext",
-            subtitle: "System prompt prefix injected into every Hermes turn",
-            keywords: ["pretext", "system prompt", "context", "prefix"]
-        ),
-        SettingsItem(
             id: "hermes.gateway.url",
             tab: .hermes,
-            pageRoute: .hermesRoot,
+            pageRoute: .hermesGateway,
             anchorID: SettingsAnchor.hermesGatewayURL,
             focusID: SettingsFocus.hermesGatewayURL,
             title: "Hermes Gateway URL",
@@ -448,7 +415,7 @@ enum SettingsManifest {
         SettingsItem(
             id: "hermes.gateway.token",
             tab: .hermes,
-            pageRoute: .hermesRoot,
+            pageRoute: .hermesGateway,
             anchorID: SettingsAnchor.hermesGatewayToken,
             focusID: SettingsFocus.hermesGatewayToken,
             title: "Hermes Gateway Token",
@@ -458,16 +425,16 @@ enum SettingsManifest {
         SettingsItem(
             id: "hermes.pi.hosts",
             tab: .hermes,
-            pageRoute: .hermesRoot,
+            pageRoute: .hermesPiAgent,
             anchorID: SettingsAnchor.hermesPiHosts,
-            title: "Pi Hosts",
-            subtitle: "Connected Raspberry Pi runtimes",
-            keywords: ["pi", "raspberry", "host", "edge"]
+            title: "Pi Agent Base URL",
+            subtitle: "Gateway endpoint for local Pi runtimes",
+            keywords: ["pi", "raspberry", "host", "edge", "gateway", "url"]
         ),
         SettingsItem(
             id: "hermes.relay",
             tab: .hermes,
-            pageRoute: .hermesRoot,
+            pageRoute: .hermesRelay,
             anchorID: SettingsAnchor.hermesRelay,
             title: "Remote Relay",
             subtitle: "Reach Hermes from the cloud relay endpoint",
@@ -483,4 +450,85 @@ enum SettingsManifest {
         for item in all { index[item.anchorID] = item.pageRoute }
         return index
     }()
+
+    private static let providerItems: [SettingsItem] = {
+        AgentProvider.allCases
+            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+            .map { provider in
+                SettingsItem(
+                    id: providerItemID(for: provider),
+                    tab: .providers,
+                    pageRoute: .providersRoot,
+                    anchorID: providerAnchor(for: provider),
+                    title: provider.displayName,
+                    subtitle: "\(provider.displayName) provider setup, logs, accounts, and quota signals",
+                    keywords: providerKeywords(for: provider)
+                )
+            }
+    }()
+
+    private static func providerItemID(for provider: AgentProvider) -> String {
+        provider == .openCode ? "providers.openCode" : "providers.\(provider.persistedToken)"
+    }
+
+    private static func providerAnchor(for provider: AgentProvider) -> String {
+        switch provider {
+        case .claudeCode:
+            return SettingsAnchor.providerCLI(SwitcherCLIProfileType.claude.rawValue)
+        case .codex:
+            return SettingsAnchor.providerCLI(SwitcherCLIProfileType.codex.rawValue)
+        case .openCode:
+            return SettingsAnchor.providersOpenCode
+        default:
+            return SettingsAnchor.providerLogSource(provider.persistedToken)
+        }
+    }
+
+    private static func providerKeywords(for provider: AgentProvider) -> [String] {
+        var keywords: [String] = [
+            provider.persistedToken,
+            provider.providerID.rawValue,
+            "provider",
+            "account",
+            "quota",
+            "logs",
+            "routing",
+            "failover"
+        ]
+
+        switch provider {
+        case .claudeCode:
+            keywords += ["claude", "anthropic", "claude code", "claude cli", "sonnet", "opus"]
+        case .codex:
+            keywords += ["openai codex", "codex cli", "chatgpt", "openai"]
+        case .openCode:
+            keywords += ["opencode", "open code", "opencode go", "open code go", "cli"]
+        case .openAI:
+            keywords += ["open ai", "openai", "gpt", "chatgpt"]
+        case .geminiCLI:
+            keywords += ["gemini", "google", "google ai", "gemini cli"]
+        case .kiloCode:
+            keywords += ["kilo", "kilo code", "kilocode"]
+        case .rooCode:
+            keywords += ["roo", "roo code", "roocode"]
+        case .forgeDev:
+            keywords += ["forge", "forge dev", "forgedev"]
+        case .openClaw:
+            keywords += ["open claw", "openclaw"]
+        case .piAgent:
+            keywords += ["pi", "raspberry", "pi agent"]
+        case .kimi:
+            keywords += ["moonshot", "kimi k2"]
+        case .zai:
+            keywords += ["z.ai", "z-ai", "zai"]
+        case .minimax:
+            keywords += ["mini max", "minimax"]
+        case .copilot:
+            keywords += ["github", "github copilot"]
+        default:
+            break
+        }
+
+        return Array(Set(keywords)).sorted()
+    }
 }

@@ -158,6 +158,7 @@ struct ProviderConnectionsView: View {
                 }
             } header: {
                 Text("Add Account")
+                    .settingsAnchor(SettingsAnchor.providerAdd)
             } footer: {
                 Text("Accounts added here appear on signed-in Macs. Backend-refreshable providers update from cloud; local quota bridges refresh from the Mac.")
                     .font(MobileTheme.Typography.caption)
@@ -171,8 +172,7 @@ struct ProviderConnectionsView: View {
 
     private func anchor(for provider: AgentProvider) -> String {
         if provider == .openCode { return SettingsAnchor.providerOpenCode }
-        if provider == availableProviders.first { return SettingsAnchor.providerAdd }
-        return "providers.add.\(provider.persistedToken)"
+        return SettingsAnchor.provider(provider.persistedToken)
     }
 
     private var connectedSectionHeader: some View {

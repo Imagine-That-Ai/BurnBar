@@ -43,9 +43,52 @@ final class InsightAnalysisTests: XCTestCase {
         XCTAssertFalse(result.executiveSummary.isEmpty)
         XCTAssertFalse(result.findings.isEmpty)
         XCTAssertFalse(result.findings.flatMap(\.evidence).isEmpty)
+        XCTAssertFalse(result.missionCandidates.isEmpty)
+        XCTAssertTrue(result.missionCandidates.contains { $0.lens == .accretion })
+        XCTAssertTrue(result.missionCandidates.contains { $0.lens == .diligence || $0.lens == .techDebt })
+        XCTAssertTrue(result.missionCandidates.allSatisfy { !$0.acceptanceCriteria.isEmpty && !$0.evidence.isEmpty })
         XCTAssertFalse(result.generatedWidgets.isEmpty)
         XCTAssertFalse(result.followUpQuestions.isEmpty)
         XCTAssertFalse(result.resultHash.isEmpty)
+    }
+
+    /// Regression: each canonical follow-up prompt must produce a
+    /// distinct executive summary so tapping different questions
+    /// doesn't render identical briefs. Catches the bug where the
+    /// engine ignored `request.prompt` and the only thing that
+    /// changed was the audit ID + result hash.
+    func testRuleBasedAnalysisExecutiveSummaryRespondsToPrompt() async throws {
+        let snapshot = InsightTestFixtures.twoWeeksOfUsage()
+        let context = try InsightAggregator().buildContext(
+            snapshot: snapshot,
+            filter: InsightFilter(window: .last7d),
+            includedDataSources: ["datastore_usage", "quota_snapshots", "provider_summaries"]
+        )
+        let model = InsightModelTag(
+            providerKey: "local-rules",
+            modelID: "local-rules-v1",
+            displayName: "Local rules",
+            egressTier: .localOnly
+        )
+        let engine = RuleBasedInsightAnalysisEngine(platform: .iOS)
+        let prompts = [
+            "Why did cost spike this week?",
+            "Which project or workflow wasted the most money?",
+            "Which model should I route routine work to instead?",
+            "Which benchmarked model is cheapest at similar performance?",
+            "Which model should handle UI and design tasks?",
+            "Find quota risks in the next 24 hours."
+        ]
+        var summaries: [String] = []
+        for prompt in prompts {
+            let result = try await engine.analyze(
+                .init(prompt: prompt, context: context, selectedModel: model, instruction: .answerFollowUp)
+            )
+            summaries.append(result.executiveSummary)
+        }
+        let uniqueSummaries = Set(summaries)
+        XCTAssertEqual(uniqueSummaries.count, prompts.count,
+                       "Expected one distinct executive summary per prompt; got \(uniqueSummaries.count) unique out of \(prompts.count). Summaries: \(summaries)")
     }
 
     /// Regression test: every generated widget surfaced by the
@@ -101,6 +144,71 @@ final class InsightAnalysisTests: XCTestCase {
                 break
             }
         }
+    }
+
+    func testRuleBasedAnalysisUsesBenchmarkEvidenceForModelRecommendations() async throws {
+        var snapshot = InsightTestFixtures.twoWeeksOfUsage()
+        snapshot.modelBenchmarks = [
+            .init(
+                id: "aa-gpt-55-coding",
+                source: "artificial_analysis",
+                sourceURL: "https://artificialanalysis.ai/",
+                attribution: "Artificial Analysis",
+                fetchedAt: snapshot.generatedAt,
+                modelID: "gpt-5.5",
+                providerID: "openai",
+                taskCategory: "coding",
+                score: 0.91,
+                rank: 1,
+                costSignal: 0.28,
+                confidence: 0.82,
+                freshness: "fresh",
+                blendedCostPerMtoken: 8.50
+            ),
+            .init(
+                id: "da-ui-model-design",
+                source: "design_arena",
+                sourceURL: "https://www.designarena.ai/",
+                attribution: "Design Arena",
+                fetchedAt: snapshot.generatedAt,
+                modelID: "ui-fast-model",
+                providerID: "openai",
+                taskCategory: "design",
+                score: 0.88,
+                rank: 2,
+                costSignal: 0.74,
+                confidence: 0.78,
+                freshness: "fresh",
+                blendedCostPerMtoken: 1.25
+            )
+        ]
+        let context = try InsightAggregator().buildContext(
+            snapshot: snapshot,
+            filter: InsightFilter(window: .last7d),
+            includedDataSources: ["datastore_usage", "provider_summaries", "model_benchmarks"]
+        )
+        let request = InsightAnalysisRequest(
+            prompt: "Which model should I use?",
+            context: context,
+            selectedModel: .init(
+                providerKey: "local-rules",
+                modelID: "local-rules-v1",
+                displayName: "Local rules",
+                egressTier: .localOnly
+            ),
+            instruction: .defaultBrief
+        )
+
+        let result = try await RuleBasedInsightAnalysisEngine(platform: .iOS).analyze(request)
+
+        XCTAssertTrue(result.contextBudget.includedDataSources.contains("model_benchmarks"))
+        XCTAssertTrue(result.citations.contains { citation in
+            if case .benchmark = citation.kind { return true }
+            return false
+        })
+        XCTAssertTrue(result.findings.contains { $0.title.contains("UI/design") })
+        XCTAssertTrue(result.recommendations.contains { $0.title.contains("cheaper") || $0.rationale.contains("cost signal") })
+        XCTAssertTrue(result.generatedWidgets.contains { $0.widget.title == "Benchmark-aware model board" })
     }
 
     func testOrchestratedEngineWritesAuditAndCachesResult() async throws {

@@ -39,7 +39,19 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             citations.append(.init(kind: .query(text: "empty-insight-context"), label: "No synced activity"))
         }
 
-        let summary = executiveSummary(digest: digest, topProvider: topProvider, biggestDay: biggestDay)
+        // Classify the prompt up front so the executive summary,
+        // finding ordering, and headline can all specialize on it.
+        let intent = Self.classifyPromptIntent(request.prompt)
+        let baseSummary = executiveSummary(digest: digest, topProvider: topProvider, biggestDay: biggestDay)
+        let summary = Self.specialize(
+            summary: baseSummary,
+            for: intent,
+            digest: digest,
+            topProvider: topProvider,
+            topModel: topModel,
+            biggestDay: biggestDay,
+            quotaRisk: quotaRisk
+        )
         var findings: [InsightFinding] = []
         var generatedWidgets: [InsightGeneratedWidget] = []
 
@@ -116,6 +128,7 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         }
 
         var recommendations: [InsightRecommendation] = []
+        var missionCandidates: [InsightMissionCandidate] = []
         if let quotaRisk, let limit = quotaRisk.limit, limit > 0 {
             let fraction = quotaRisk.used / limit
             let citation = InsightCitation(kind: .quota(provider: quotaRisk.providerID, bucket: quotaRisk.bucketName),
@@ -162,6 +175,17 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         recommendations.append(contentsOf: benchmarkAdvice.recommendations)
         generatedWidgets.append(contentsOf: benchmarkAdvice.widgets)
 
+        let missionAdvice = missionIntelligence(
+            digest: digest,
+            topProvider: topProvider,
+            topModel: topModel,
+            quotaRisk: quotaRisk,
+            existingInsightIDs: findings.map(\.id)
+        )
+        findings.append(contentsOf: missionAdvice.findings)
+        recommendations.append(contentsOf: missionAdvice.recommendations)
+        missionCandidates.append(contentsOf: missionAdvice.missions)
+
         generatedWidgets.append(generatedWidget(
             kind: .timeSeriesLine,
             title: "Main supporting trend",
@@ -181,20 +205,165 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             "Find quota risks in the next 24 hours."
         ].map { InsightFollowUpQuestion(question: $0) }
 
+        // Compose the executive summary with a "Answering: ..."
+        // eyebrow so the user can immediately see the brief is
+        // tailored to the question they tapped.
+        let composedSummary: String
+        if let eyebrow = Self.answerEyebrow(for: intent) {
+            composedSummary = "\(eyebrow) — \(summary.body)"
+        } else {
+            composedSummary = summary.body
+        }
+        // Pull the most prompt-relevant finding to position #1.
+        let orderedFindings = Self.reorderFindings(
+            findings,
+            for: intent,
+            topProvider: topProvider,
+            topModel: topModel
+        )
+
         return InsightAnalysisResult(
             requestID: request.id,
             platform: platform,
             timeWindow: request.currentCanvas?.filter.window ?? .last7d,
-            executiveSummary: summary.body,
+            executiveSummary: composedSummary,
             modelTag: request.selectedModel,
             contextBudget: request.context.budgetReport,
-            findings: Array(findings.prefix(3)),
+            findings: Array(orderedFindings.prefix(6)),
             anomalies: anomalies,
             recommendations: recommendations,
+            missionCandidates: Array(missionCandidates.prefix(5)),
             generatedWidgets: Array(generatedWidgets.prefix(request.maxGeneratedWidgets)),
             followUpQuestions: followUps,
             citations: citations
         )
+    }
+
+    private static func missionIntelligence(
+        digest: InsightDigest,
+        topProvider: InsightDigest.ProviderSnapshot?,
+        topModel: InsightDigest.ModelSnapshot?,
+        quotaRisk: InsightDigest.QuotaSnapshotSummary?,
+        existingInsightIDs: [UUID]
+    ) -> (
+        findings: [InsightFinding],
+        recommendations: [InsightRecommendation],
+        missions: [InsightMissionCandidate]
+    ) {
+        guard digest.rowCount > 0 || digest.totals.sessionCount > 0 else { return ([], [], []) }
+
+        let topProject = digest.projects.max { $0.costUSD < $1.costUSD }
+        let projectCitation = topProject.map { InsightCitation(kind: .project(name: $0.id), label: $0.displayName) }
+        let modelCitation = topModel.map { InsightCitation(kind: .model(id: $0.id), label: $0.id) }
+        let providerCitation = topProvider.map { InsightCitation(kind: .agent(provider: $0.id), label: $0.displayName) }
+        let quotaCitation = quotaRisk.map { InsightCitation(kind: .quota(provider: $0.providerID, bucket: $0.bucketName), label: "\($0.providerID) quota") }
+        let projectName = topProject?.displayName ?? "the busiest project"
+        let projectCost = topProject.map { currency($0.costUSD) } ?? currency(digest.totals.costUSD)
+        let projectSessions = topProject?.sessionCount ?? digest.totals.sessionCount
+
+        var findings: [InsightFinding] = []
+        var recommendations: [InsightRecommendation] = []
+        var missions: [InsightMissionCandidate] = []
+
+        if let topProject, let citation = projectCitation {
+            let finding = InsightFinding(
+                title: "\(topProject.displayName) is where the work concentrated",
+                whyItMatters: "\(topProject.displayName) accounts for \(projectCost) across \(projectSessions) sessions, so missions should start where repeated AI effort is already compounding.",
+                evidence: [citation],
+                confidence: .high,
+                severity: projectSessions >= 3 ? .medium : .low,
+                recommendedAction: "Create one focused mission for \(topProject.displayName) instead of treating the brief as isolated observations."
+            )
+            findings.append(finding)
+        }
+
+        let accretionEvidence = [projectCitation, modelCitation, providerCitation].compactMap { $0 }
+        if accretionEvidence.isEmpty == false {
+            missions.append(.init(
+                title: "Turn repeated \(projectName) work into an accretive feature",
+                summary: "Use the accretion lens to convert the highest-activity project into a small product or workflow improvement that reuses existing primitives instead of becoming a one-off analysis.",
+                projectID: topProject?.id,
+                projectDisplayName: topProject?.displayName,
+                lens: .accretion,
+                priority: projectSessions >= 3 ? .high : .medium,
+                confidence: topProject == nil ? .medium : .high,
+                expectedImpact: "Compounds current AI spend into a durable workflow, trust cue, or UI affordance.",
+                effort: .medium,
+                acceptanceCriteria: [
+                    "Name the concrete user job currently driving the repeated sessions.",
+                    "Ship one native workflow or polish layer that reuses existing BurnBar primitives.",
+                    "Verify the next brief can cite reduced friction, clearer routing, or better user confidence."
+                ],
+                sourceInsightIDs: existingInsightIDs,
+                evidence: accretionEvidence,
+                dispatchMetadata: ["lens": "accretion", "source": "insight_engine"]
+            ))
+        }
+
+        let diligenceEvidence = [projectCitation, quotaCitation, providerCitation].compactMap { $0 }
+        if diligenceEvidence.isEmpty == false {
+            let quotaHot = quotaRisk.flatMap { snap -> Bool? in
+                guard let limit = snap.limit, limit > 0 else { return nil }
+                return snap.used / limit >= 0.8
+            } ?? false
+            missions.append(.init(
+                title: quotaHot ? "Run a diligence pass before the next heavy session" : "Run a diligence pass on \(projectName)",
+                summary: "Use the diligence lens to turn the brief's risk signals into an evidence-backed launch-readiness check with explicit blockers, owner, and proof.",
+                projectID: topProject?.id,
+                projectDisplayName: topProject?.displayName,
+                lens: .diligence,
+                priority: quotaHot ? .critical : .high,
+                confidence: .medium,
+                expectedImpact: "Prevents cost, quota, or release surprises from hiding behind a normal-looking usage summary.",
+                effort: .small,
+                acceptanceCriteria: [
+                    "List the top production, cost, privacy, and reliability risks with citations.",
+                    "Separate blockers from serious concerns and acceptable tradeoffs.",
+                    "Attach the verification command or live evidence that closes each blocker."
+                ],
+                sourceInsightIDs: existingInsightIDs,
+                evidence: diligenceEvidence,
+                dispatchMetadata: ["lens": "diligence", "source": "insight_engine"]
+            ))
+        }
+
+        if let topModel {
+            let debtEvidence = [modelCitation, projectCitation].compactMap { $0 }
+            missions.append(.init(
+                title: "Reduce repeated \(topModel.id) drag",
+                summary: "Use the debt lens to decide whether high recurring model usage is doing essential expert work or masking unclear requirements, weak tests, brittle routing, or missing automation.",
+                projectID: topProject?.id,
+                projectDisplayName: topProject?.displayName,
+                lens: .techDebt,
+                priority: topModel.costUSD > max(1, digest.totals.costUSD * 0.35) ? .high : .medium,
+                confidence: .medium,
+                expectedImpact: "Cuts future analysis spend by removing the underlying delivery friction, not just swapping models.",
+                effort: .medium,
+                acceptanceCriteria: [
+                    "Identify the repeated work pattern causing the expensive model usage.",
+                    "Choose the smallest remediation that prevents the same class of future sessions.",
+                    "Add or update a test, runbook, or automation proof that the drag was actually reduced."
+                ],
+                sourceInsightIDs: existingInsightIDs,
+                evidence: debtEvidence,
+                dispatchMetadata: ["lens": "techDebt", "source": "insight_engine"]
+            ))
+        }
+
+        if modelCitation != nil, digest.modelBenchmarks.isEmpty == false {
+            let routingEvidence: [InsightCitation] = [modelCitation].compactMap { $0 } + digest.modelBenchmarks.prefix(2).map(benchmarkCitation(_:))
+            recommendations.append(.init(
+                title: "Convert model-board advice into a routing experiment",
+                rationale: "Benchmark evidence is useful only after a bounded comparison against your actual \(projectName) work.",
+                recommendedAction: "Run one UI/design or routine-coding session through the best-fit candidate, then compare quality, cost signal, and quota health before changing defaults.",
+                estimatedImpact: "Turns abstract model rankings into a safer routing decision.",
+                evidence: routingEvidence,
+                confidence: .medium,
+                severity: .medium
+            ))
+        }
+
+        return (findings, recommendations, missions)
     }
 
     private static func modelBenchmarkAdvice(
@@ -213,7 +382,8 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         let usedModels = Dictionary(uniqueKeysWithValues: digest.models.map { (normalizedModelID($0.id), $0) })
         let benchmarkByModel = Dictionary(grouping: benchmarks, by: { normalizedModelID($0.modelID) })
         let topUsedBenchmark = topModel.flatMap { bestBenchmark(for: normalizedModelID($0.id), in: benchmarkByModel) }
-        let bestDesign = bestBenchmark(in: benchmarks.filter { $0.taskCategory == "design" || $0.taskCategory == "coding" })
+        let bestDesign = bestBenchmark(in: benchmarks.filter { $0.taskCategory == "design" })
+            ?? bestBenchmark(in: benchmarks.filter { $0.taskCategory == "coding" })
         let bestAny = bestBenchmark(in: benchmarks)
         let cheapestSimilar = cheapestSimilarAlternative(
             usedModel: topModel,
@@ -639,6 +809,210 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
 
     private static func currency(_ value: Double) -> String {
         String(format: "$%.2f", value)
+    }
+
+    /// Replaces or augments the base executive summary so the hero
+    /// headline + body reflect what the user actually asked, not the
+    /// default "biggest provider" framing.
+    static func specialize(
+        summary: (headline: String, body: String, bullets: [String], tone: InsightWidgetData.Narrative.Tone, action: String),
+        for intent: PromptIntent,
+        digest: InsightDigest,
+        topProvider: InsightDigest.ProviderSnapshot?,
+        topModel: InsightDigest.ModelSnapshot?,
+        biggestDay: InsightDigest.DailyPoint?,
+        quotaRisk: InsightDigest.QuotaSnapshotSummary?
+    ) -> (headline: String, body: String, bullets: [String], tone: InsightWidgetData.Narrative.Tone, action: String) {
+        switch intent {
+        case .generalBrief:
+            return summary
+
+        case .costSpike:
+            guard let biggestDay else { return summary }
+            let day = String(ISO8601DateFormatter().string(from: biggestDay.day).prefix(10))
+            let cost = currency(biggestDay.costUSD)
+            let provider = topProvider?.displayName ?? "your top provider"
+            return (
+                headline: "Cost peaked on \(day) at \(cost)",
+                body: "\(provider) was the largest contributor on that day. Re-run with a tighter window or cap top-spend models if the spike isn't a planned investment.",
+                bullets: summary.bullets,
+                tone: .warning,
+                action: "Open the highest-cost session for \(provider) and confirm it was intentional."
+            )
+
+        case .wasteByProject:
+            // The digest exposes projects as ID hashes (no raw paths).
+            // If we have at least one project, build a deterministic
+            // "where it leaked" story; otherwise fall back.
+            if let leakProvider = topProvider {
+                return (
+                    headline: "Where spend leaked",
+                    body: "\(leakProvider.displayName) led with \(currency(leakProvider.costUSD)) across \(leakProvider.sessionCount) sessions. Inspect that provider's biggest sessions first — that's where the dollar density is.",
+                    bullets: summary.bullets,
+                    tone: summary.tone,
+                    action: "Sort sessions by cost descending and audit the top three."
+                )
+            }
+            return summary
+
+        case .routeToCheaper:
+            guard let topModel else { return summary }
+            return (
+                headline: "Route routine work off \(topModel.id)",
+                body: "\(topModel.id) is carrying the largest model cost in this window. For prompts under ~2K input tokens and short replies, a cheaper sibling model usually closes the quality gap.",
+                bullets: summary.bullets,
+                tone: .neutral,
+                action: "Route Claude-class traffic with conversationDepth < 3 to Haiku for one week and re-measure."
+            )
+
+        case .benchmarkPerformance:
+            return (
+                headline: "Cheapest benchmark-equivalent route",
+                body: "The router can compare your top models against public benchmark scores (Artificial Analysis / Design Arena / Terminal-Bench). Look for a sibling model with similar rank but a meaningfully lower cost signal.",
+                bullets: summary.bullets,
+                tone: .neutral,
+                action: "Open the benchmark column in the model picker and swap any top-cost model whose lower-rank neighbor is within one tier."
+            )
+
+        case .uiOrDesignFit:
+            return (
+                headline: "UI / design work model fit",
+                body: "Design tasks reward visual reasoning more than raw token throughput. If a top spender is the routine default for layout / Figma reads, swap to a vision-capable Sonnet-class model and keep the cheaper one for boilerplate.",
+                bullets: summary.bullets,
+                tone: .neutral,
+                action: "Tag design-heavy sessions and route them to the highest visual-reasoning score."
+            )
+
+        case .quotaRisk:
+            if let risky = quotaRisk, let limit = risky.limit, limit > 0 {
+                let pct = Int((risky.used / limit) * 100)
+                return (
+                    headline: "\(risky.providerID) \(risky.bucketName) at \(pct)%",
+                    body: "This bucket is the closest to its ceiling in the included window. If you have a heavy run planned in the next 24h, switch the router default before you start.",
+                    bullets: summary.bullets,
+                    tone: pct >= 80 ? .warning : .neutral,
+                    action: "Pre-route the next deep session to a healthier provider until this bucket resets."
+                )
+            }
+            return summary
+        }
+    }
+
+    // MARK: - Prompt intent classification
+
+    /// Tagged intents extracted from the natural-language `prompt`.
+    /// The follow-up question links and the inline composer both feed
+    /// the engine through the same pipe, so this classifier is the
+    /// single hinge that makes tapping "Why did cost spike?" produce a
+    /// different brief than tapping "Which model is cheapest at
+    /// similar performance?".
+    public enum PromptIntent: Sendable, Equatable {
+        case costSpike            // "why did cost spike", "what blew up"
+        case wasteByProject       // "which project / workflow wasted"
+        case routeToCheaper       // "route routine work", "cheaper alternative"
+        case benchmarkPerformance // "similar performance", "benchmark", "leaderboard"
+        case uiOrDesignFit        // "ui", "design", "design tasks"
+        case quotaRisk            // "quota risk", "limit", "headroom"
+        case generalBrief         // catch-all / default brief
+    }
+
+    /// Classifies a free-text prompt into one of the canonical intents
+    /// the rule engine knows how to specialize for. Pure function over
+    /// the prompt text — no I/O, no locale assumptions beyond ASCII
+    /// keyword matching (all canonical questions are English).
+    public static func classifyPromptIntent(_ prompt: String) -> PromptIntent {
+        let lower = prompt.lowercased()
+        // Order matters: more specific intents check first so
+        // "benchmark cost" lands on `.benchmarkPerformance`, not
+        // `.routeToCheaper`.
+        if lower.contains("benchmark") || lower.contains("leaderboard")
+            || (lower.contains("similar") && lower.contains("performance")) {
+            return .benchmarkPerformance
+        }
+        if lower.contains(" ui ") || lower.hasPrefix("ui ")
+            || lower.contains("design task") || lower.contains("design tasks")
+            || lower.contains("ux") {
+            return .uiOrDesignFit
+        }
+        if lower.contains("quota") || lower.contains("headroom")
+            || lower.contains("rate limit") || lower.contains(" limit") {
+            return .quotaRisk
+        }
+        if lower.contains("route") || lower.contains("cheaper")
+            || lower.contains("cost relief") || lower.contains("haiku") {
+            return .routeToCheaper
+        }
+        if lower.contains("project") || lower.contains("workflow")
+            || lower.contains("waste") || lower.contains("wasted") {
+            return .wasteByProject
+        }
+        if lower.contains("spike") || lower.contains("blew up")
+            || lower.contains("why did") || lower.contains("what changed") {
+            return .costSpike
+        }
+        return .generalBrief
+    }
+
+    /// A one-line "you asked about X" eyebrow that the brief renders
+    /// above the executive summary so the user can see the tap they
+    /// just made is actually steering the output.
+    public static func answerEyebrow(for intent: PromptIntent) -> String? {
+        switch intent {
+        case .costSpike:            return "Answering: why cost moved"
+        case .wasteByProject:       return "Answering: where spend leaked"
+        case .routeToCheaper:       return "Answering: routing to cheaper"
+        case .benchmarkPerformance: return "Answering: benchmark-equivalent cost"
+        case .uiOrDesignFit:        return "Answering: UI / design model fit"
+        case .quotaRisk:            return "Answering: 24h quota risk"
+        case .generalBrief:         return nil
+        }
+    }
+
+    /// Re-orders findings so the most prompt-relevant one becomes #1.
+    /// Uses a small bag-of-words match against each finding's title
+    /// and `whyItMatters` text — deterministic, no model call.
+    static func reorderFindings(
+        _ findings: [InsightFinding],
+        for intent: PromptIntent,
+        topProvider: InsightDigest.ProviderSnapshot?,
+        topModel: InsightDigest.ModelSnapshot?
+    ) -> [InsightFinding] {
+        guard !findings.isEmpty, intent != .generalBrief else { return findings }
+        // Score each finding for the intent.
+        func score(_ f: InsightFinding) -> Int {
+            let blob = (f.title + " " + f.whyItMatters).lowercased()
+            switch intent {
+            case .costSpike:
+                return blob.contains("spike") || blob.contains("change") || blob.contains("absorb") ? 3
+                    : (blob.contains("cost") ? 1 : 0)
+            case .wasteByProject:
+                return blob.contains("project") || blob.contains("workflow") || blob.contains("session")
+                    ? 3 : (blob.contains("waste") ? 2 : 0)
+            case .routeToCheaper:
+                return blob.contains("route") || blob.contains("haiku") || blob.contains("cheaper")
+                    ? 3 : (blob.contains("default") ? 1 : 0)
+            case .benchmarkPerformance:
+                return blob.contains("benchmark") || blob.contains("performance") || blob.contains("similar")
+                    ? 3 : 0
+            case .uiOrDesignFit:
+                return blob.contains("ui") || blob.contains("design") ? 3 : 0
+            case .quotaRisk:
+                return blob.contains("quota") || blob.contains("headroom") || blob.contains("limit")
+                    ? 3 : 0
+            case .generalBrief:
+                return 0
+            }
+        }
+        // Stable sort: keep relative order within the same score, but
+        // pull higher-scoring items to the top.
+        return findings.enumerated()
+            .sorted { lhs, rhs in
+                let ls = score(lhs.element)
+                let rs = score(rhs.element)
+                if ls == rs { return lhs.offset < rhs.offset }
+                return ls > rs
+            }
+            .map(\.element)
     }
 }
 

@@ -7,7 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Pulse live-window totals are now raw-event accurate.** The iOS and Android
+  Pulse hero now computes `1M`, `1H`, and `1D` from the live
+  `usage` stream instead of reusing coarse rollup documents. `1D` is pinned to
+  the viewer's local calendar day, `1M` / `1H` decay every second as events age
+  out, and `7D` / `30D` stay rollup-backed for stable long-window totals.
+- **Editorial Observatory generated widgets now paint real charts.** The
+  rule-based `InsightAnalysisEngine` previously set `data = nil` for
+  `barRanking`, `timeSeriesLine`, and `quotaPulse` widgets, so the
+  Intelligence Brief rendered chrome with empty bodies until a canvas
+  refresh re-evaluated each binding through the `InsightExecutor`. The
+  engine now synthesizes those payloads directly from the privacy-bounded
+  digest (`synthesizeData(for:binding:digest:)`) so the brief paints
+  provider-mix bar rankings, peak-annotated cost lines, and quota pulses
+  on first render. Cache schema bumped to `v2-engine-widget-data-synth`
+  so any pre-fix cached results are invalidated on launch.
+- **Intelligence Brief follow-up question taps now fire reliably.** The
+  previous `AttributedString.link` + `OpenURLAction` pipe silently
+  swallowed taps inside the brief's `ScrollView`. Follow-up questions
+  now render through a `FlowLayout` of dedicated `Button` views
+  (`FollowUpLinkButton`) styled identically (underlined whimsy color)
+  but driven by real `Button` taps, with accessibility labels + hints.
+- **Widget extension contract restored.** The dashboard redesign in
+  `a1f72dd42` shipped four call sites (`WidgetEyebrow`,
+  `WidgetMiniSparkline`, `WidgetCompactShareBar`, `widgetGlassCard /
+  widgetGlassCardElevated / widgetAccentable`) without their
+  declarations, breaking the device build. Implemented all six
+  primitives in `WidgetDesignSystem.swift` using DESIGN.md tokens
+  (`backgroundLight`, `surfaceLight`, "pressed sage" border #C5CEB6,
+  primary gradient), added adaptive `background` / `surface` / `border`
+  / `borderSubtle` aliases so the in-flight Warm Charcoal / Botanical
+  Cream palette can land without touching call sites, and removed the
+  duplicate `WidgetMetricBadge` declaration so only the design-system
+  copy remains. A `#if DEBUG`-gated `_WidgetDesignSystemContractCanary`
+  references every shared primitive so this exact class of breakage
+  (call site without declaration) fails the widget compile in the
+  future.
+
 ### Added
+- **Insights mission board.** iOS and Android Intelligence Briefs now keep
+  findings, anomalies, recommendations, and generated charts, while adding
+  first-class mission candidates generated from the same cited evidence.
+  The rule-based engine proposes accretion, diligence, and tech-debt missions
+  from project focus, quota/provider risk, and high-recurring model usage;
+  strict model prompts and JSON schemas now accept `missionCandidates` so
+  remote models can return complementary missions without replacing insights.
+- **Benchmark-aware mobile Insights.** iOS and Android Intelligence Briefs now
+  compare observed model usage against the public model-board evidence used by
+  the router: Artificial Analysis / Design Arena / Terminal-Bench style
+  score, rank, cost signal, latency, freshness, and attribution. The local
+  rule engine can now surface UI/design model-fit warnings, cheaper
+  similar-performance alternatives, and "benchmarks are advisory" guardrails
+  without requiring a remote model call. Benchmark citation chips are wired
+  into deterministic follow-up prompts.
 - **Insights "Editorial Observatory" redesign (iOS / iPadOS).** The
   Intelligence Brief surface in the Insights tab is rewritten as a
   single-column editorial story instead of a card grid: eyebrow + window
@@ -44,8 +97,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `InsightCitation` → composer-prompt mapping that powers every
   footnote-chip tap. Asserts a deterministic, non-empty prompt for
   every `InsightCitation.Kind` variant (session, model, agent,
-  project, day, anomaly, query, quota) so adding a new kind without a
-  prompt mapping fails the build.
+  project, day, anomaly, query, quota, benchmark) so adding a new kind
+  without a prompt mapping fails the build.
 - **`InsightsStore.pinGeneratedWidget(_:)`.** Pinning a generated widget
   from the brief now appends it to the active canvas (or replaces the
   existing widget with the same id, so repeated taps are idempotent)

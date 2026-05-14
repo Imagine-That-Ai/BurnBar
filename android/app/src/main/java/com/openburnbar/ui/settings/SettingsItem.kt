@@ -96,6 +96,8 @@ object SettingsAnchor {
     const val HERMES_DISPLAY = "hermes.display"
     const val HERMES_GATEWAY = "hermes.gateway"
     const val HERMES_STATUS = "hermes.status"
+
+    fun provider(providerKey: String): String = "root.provider.$providerKey"
 }
 
 object SettingsFocus {

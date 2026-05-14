@@ -623,6 +623,51 @@ final class FirestoreRepository {
         }
     }
 
+    func fetchUsageSince(_ startDate: Date) async throws -> [TokenUsage] {
+        let uid = try uid()
+        let cutoff = isoFirestoreCutoff(startDate)
+        let snapshot = try await db.collection("users/\(uid)/usage")
+            .whereField("startTime", isGreaterThanOrEqualTo: cutoff)
+            .order(by: "startTime", descending: true)
+            .getDocuments()
+        return snapshot.documents.compactMap { doc -> TokenUsage? in
+            decodeWithDocID(TokenUsage.self, from: doc.data(), docID: doc.documentID)
+        }
+    }
+
+    func listenToUsageSince(
+        _ startDate: Date,
+        onUpdate: @escaping @MainActor (Result<[TokenUsage], Error>) -> Void
+    ) -> ListenerRegistration? {
+        guard let uid = try? uid() else {
+            Task { @MainActor in onUpdate(.failure(FirestoreError.notAuthenticated)) }
+            return nil
+        }
+        let cutoff = isoFirestoreCutoff(startDate)
+        return db.collection("users/\(uid)/usage")
+            .whereField("startTime", isGreaterThanOrEqualTo: cutoff)
+            .order(by: "startTime", descending: true)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self else { return }
+                Task { @MainActor in
+                    if let error {
+                        onUpdate(.failure(error))
+                        return
+                    }
+                    let rows = snapshot?.documents.compactMap { doc -> TokenUsage? in
+                        self.decodeWithDocID(TokenUsage.self, from: doc.data(), docID: doc.documentID)
+                    } ?? []
+                    onUpdate(.success(rows))
+                }
+            }
+    }
+
+    private func isoFirestoreCutoff(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
+
     // MARK: - Stream Detail
 
     func fetchHermesCloudLibrarySessions(limit: Int = 120) async throws -> [HermesCloudLibraryManifest] {

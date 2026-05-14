@@ -21,15 +21,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +51,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.openburnbar.data.insights.InsightCitation
 import com.openburnbar.data.insights.InsightEgressTier
 import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightTheme
@@ -69,6 +75,8 @@ fun InsightsScreen(
     val selectedModel by viewModel.selectedModel.collectAsState()
     val modelOptions by viewModel.modelOptions.collectAsState()
     val localOnlyMode by viewModel.localOnlyMode.collectAsState()
+
+    var showInspector by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.load()
@@ -102,43 +110,26 @@ fun InsightsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Insights",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Analysis by ${selectedModel.displayName}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        Text(
+                            text = "Insights",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                        // Brief-options inspector — mirrors iOS toolbar
+                        // `slider.horizontal.3`. All model / privacy /
+                        // theme controls live behind this single gear so
+                        // the editorial brief is uncluttered.
+                        IconButton(onClick = { showInspector = true }) {
+                            Icon(
+                                imageVector = Icons.Filled.Tune,
+                                contentDescription = "Brief options",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
-                        Icon(
-                            imageVector = Icons.Filled.AutoAwesome,
-                            contentDescription = "Insights",
-                            tint = AuroraColors.purple,
-                            modifier = Modifier.size(22.dp)
-                        )
                     }
-                }
-
-                item {
-                    ModelPicker(
-                        selectedModel = selectedModel,
-                        modelOptions = modelOptions,
-                        localOnlyMode = localOnlyMode,
-                        onModelSelected = { viewModel.selectModel(it) },
-                        onLocalOnlyChanged = { viewModel.setLocalOnlyMode(it) }
-                    )
-                }
-
-                item {
-                    ThemePicker(
-                        currentTheme = canvas?.theme ?: InsightTheme.AURORA,
-                        onThemeChange = { viewModel.changeTheme(it) }
-                    )
                 }
 
                 analysis?.let { result ->
@@ -147,6 +138,7 @@ fun InsightsScreen(
                             result = result,
                             theme = canvas?.theme ?: InsightTheme.AURORA,
                             modifier = Modifier.fillMaxWidth(),
+                            onCitationTap = { viewModel.ask(citationPrompt(it)) },
                         )
                     }
                 }
@@ -189,7 +181,7 @@ fun InsightsScreen(
                                 onSelect = { id -> viewModel.selectWidget(id) },
                                 onMove = { _, _, _ -> },
                                 onConfigure = { id -> viewModel.selectWidget(id) },
-                                onCitationTap = { }
+                                onCitationTap = { viewModel.ask(citationPrompt(it)) }
                             )
                         }
                     }
@@ -235,54 +227,164 @@ fun InsightsScreen(
                     )
                 }
             }
+
+            if (showInspector) {
+                BriefOptionsSheet(
+                    selectedModel = selectedModel,
+                    modelOptions = modelOptions,
+                    localOnlyMode = localOnlyMode,
+                    currentTheme = canvas?.theme ?: InsightTheme.AURORA,
+                    onModelSelected = { viewModel.selectModel(it) },
+                    onLocalOnlyChanged = { viewModel.setLocalOnlyMode(it) },
+                    onThemeChange = { viewModel.changeTheme(it) },
+                    onDismiss = { showInspector = false }
+                )
+            }
+        }
+    }
+}
+
+private fun citationPrompt(citation: InsightCitation): String = when (val kind = citation.kind) {
+    is InsightCitation.Kind.Session ->
+        "Open session ${kind.id}${kind.provider?.let { " ($it)" } ?: ""} and summarize what drove its cost."
+    is InsightCitation.Kind.Model ->
+        "Drill into ${citation.label} (${kind.id}) — show me cost trend, cache hit rate, benchmark fit, and top sessions."
+    is InsightCitation.Kind.Agent ->
+        "Break down ${citation.label} (${kind.provider}) usage this window — sessions, cost, and top models."
+    is InsightCitation.Kind.Project ->
+        "Show me everything from project ${kind.name}: cost, model mix, anomalies, and active sessions."
+    is InsightCitation.Kind.Day ->
+        "Zoom into ${kind.date} (${citation.label}) — every provider's spend, top sessions, and any anomalies."
+    is InsightCitation.Kind.Anomaly ->
+        "Investigate anomaly ${kind.id} (${citation.label}) — what triggered it and is it still active?"
+    is InsightCitation.Kind.Query ->
+        "Re-run the query \"${kind.text}\" behind ${citation.label} and explain the result row by row."
+    is InsightCitation.Kind.Quota ->
+        "Detail the ${citation.label} quota signal: ${kind.provider} bucket ${kind.bucket} — headroom, refresh cadence, and projected throttling."
+    is InsightCitation.Kind.Benchmark ->
+        "Explain the ${citation.label} benchmark row: source ${kind.source}, model ${kind.modelID}, task ${kind.taskCategory}. Compare it to the models I actually used, including cost, rank, freshness, and whether switching would make sense."
+}
+
+/**
+ * Brief options inspector — Android parity for the iOS
+ * `InsightsMobileInspectorView` modal. Hosts the controls that used to
+ * clutter the brief header (Insights model, Local-only privacy toggle,
+ * Theme picker) behind a single gear so the editorial brief itself stays
+ * uncluttered. Opens as a Material 3 `ModalBottomSheet` from the gear
+ * icon in the Insights header.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BriefOptionsSheet(
+    selectedModel: InsightModelTag,
+    modelOptions: List<InsightModelTag>,
+    localOnlyMode: Boolean,
+    currentTheme: InsightTheme,
+    onModelSelected: (InsightModelTag) -> Unit,
+    onLocalOnlyChanged: (Boolean) -> Unit,
+    onThemeChange: (InsightTheme) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = AuroraSpacing.lg.dp,
+                    end = AuroraSpacing.lg.dp,
+                    bottom = AuroraSpacing.xl.dp
+                ),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.lg.dp)
+        ) {
+            Text(
+                text = "Brief options",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            // ─── Model & privacy ────────────────────────────────────
+            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+                SectionHeader(text = "Model & privacy")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Local-only models",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Restrict to engines that never leave this device",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = localOnlyMode, onCheckedChange = onLocalOnlyChanged)
+                }
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(
+                        modelOptions.filter {
+                            !localOnlyMode || it.egressTier == InsightEgressTier.LOCAL_ONLY
+                        }
+                    ) { model ->
+                        FilterChip(
+                            selected = model.providerKey == selectedModel.providerKey &&
+                                model.modelID == selectedModel.modelID,
+                            onClick = { onModelSelected(model) },
+                            label = {
+                                Text(
+                                    text = model.displayName,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        )
+                    }
+                }
+                Text(
+                    text = "Currently running on ${selectedModel.displayName} · ${selectedModel.egressTier.displayLabel}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // ─── Theme ───────────────────────────────────────────────
+            Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+                SectionHeader(text = "Theme")
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(InsightTheme.entries.toList()) { theme ->
+                        FilterChip(
+                            selected = theme == currentTheme,
+                            onClick = { onThemeChange(theme) },
+                            label = {
+                                Text(
+                                    text = theme.displayName,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun ModelPicker(
-    selectedModel: InsightModelTag,
-    modelOptions: List<InsightModelTag>,
-    localOnlyMode: Boolean,
-    onModelSelected: (InsightModelTag) -> Unit,
-    onLocalOnlyChanged: (Boolean) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Insights model",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Local only",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Switch(checked = localOnlyMode, onCheckedChange = onLocalOnlyChanged)
-            }
-        }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(modelOptions.filter { !localOnlyMode || it.egressTier == InsightEgressTier.LOCAL_ONLY }) { model ->
-                FilterChip(
-                    selected = model.providerKey == selectedModel.providerKey && model.modelID == selectedModel.modelID,
-                    onClick = { onModelSelected(model) },
-                    label = {
-                        Text(
-                            text = model.displayName,
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    }
-                )
-            }
-        }
-    }
+private fun SectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 @Composable
@@ -312,30 +414,6 @@ private fun InsightsComposer(
             }
         ) {
             Icon(Icons.Filled.Send, contentDescription = "Ask")
-        }
-    }
-}
-
-@Composable
-private fun ThemePicker(
-    currentTheme: InsightTheme,
-    onThemeChange: (InsightTheme) -> Unit
-) {
-    val themes = InsightTheme.entries
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        items(themes) { theme ->
-            FilterChip(
-                selected = theme == currentTheme,
-                onClick = { onThemeChange(theme) },
-                label = {
-                    Text(
-                        text = theme.displayName,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-            )
         }
     }
 }

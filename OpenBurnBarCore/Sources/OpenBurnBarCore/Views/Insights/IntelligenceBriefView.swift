@@ -42,6 +42,7 @@ public struct IntelligenceBriefView: View {
     /// motion) or restart from 0 and animate each section in.
     @State private var visibleSections: Int = -1
     @State private var shimmerPhase: CGFloat = -1
+    @State private var expandedMissionID: UUID?
     /// Active cascade-in task. Holding a reference lets `.onDisappear`
     /// cancel pending animations cleanly when the brief is replaced or
     /// dismissed mid-cascade.
@@ -111,28 +112,33 @@ public struct IntelligenceBriefView: View {
                     .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
             }
 
+            if !result.missionCandidates.isEmpty {
+                missionsSection
+                    .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+            }
+
             if !result.anomalies.isEmpty {
                 anomaliesSection
-                    .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
             }
 
             if !result.recommendations.isEmpty {
                 recommendationsSection
-                    .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
             }
 
             if !result.generatedWidgets.isEmpty {
                 generatedSection
-                    .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
             }
 
             if !result.followUpQuestions.isEmpty {
                 followUpSection
-                    .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 6, visible: visibleSections, reduceMotion: reduceMotion)
             }
 
             auditFooter
-                .cascadeIn(index: 6, visible: visibleSections, reduceMotion: reduceMotion)
+                .cascadeIn(index: 7, visible: visibleSections, reduceMotion: reduceMotion)
         }
         .padding(UnifiedDesignSystem.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -142,7 +148,7 @@ public struct IntelligenceBriefView: View {
 
     private func runEntranceMotion() {
         if reduceMotion {
-            visibleSections = 7
+            visibleSections = 8
             shimmerPhase = 1
             return
         }
@@ -154,7 +160,7 @@ public struct IntelligenceBriefView: View {
         shimmerPhase = -1
         cascadeTask?.cancel()
         cascadeTask = Task { @MainActor in
-            for i in 0..<7 {
+            for i in 0..<8 {
                 if i > 0 {
                     try? await Task.sleep(nanoseconds: 40_000_000) // 0.04s
                     if Task.isCancelled { return }
@@ -287,6 +293,29 @@ public struct IntelligenceBriefView: View {
                     FindingRow(
                         index: offset + 1,
                         finding: finding,
+                        onCitationTap: onCitationTap
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Missions
+
+    @ViewBuilder
+    private var missionsSection: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+            sectionEyebrow("MISSION BOARD")
+            VStack(spacing: UnifiedDesignSystem.Spacing.md) {
+                ForEach(result.missionCandidates) { mission in
+                    MissionCandidateRow(
+                        mission: mission,
+                        isExpanded: expandedMissionID == mission.id,
+                        onToggle: {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                expandedMissionID = expandedMissionID == mission.id ? nil : mission.id
+                            }
+                        },
                         onCitationTap: onCitationTap
                     )
                 }
@@ -555,6 +584,121 @@ private struct FindingRow: View {
         case .medium: return "Medium"
         case .high: return "High"
         case .critical: return "Critical"
+        }
+    }
+}
+
+// MARK: - Mission row
+
+private struct MissionCandidateRow: View {
+    let mission: InsightMissionCandidate
+    let isExpanded: Bool
+    let onToggle: () -> Void
+    let onCitationTap: (InsightCitation) -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+                HStack(alignment: .firstTextBaseline, spacing: UnifiedDesignSystem.Spacing.sm) {
+                    Text(lensLabel.uppercased())
+                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                        .tracking(1.4)
+                        .foregroundStyle(lensColor)
+                    Text(priorityLabel.uppercased())
+                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                        .tracking(1.4)
+                        .foregroundStyle(priorityColor)
+                    Spacer(minLength: 0)
+                    Text(mission.effort.rawValue.uppercased())
+                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                }
+
+                Text(mission.title)
+                    .font(UnifiedDesignSystem.Typography.headline)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(mission.summary)
+                    .font(UnifiedDesignSystem.Typography.body)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if isExpanded {
+                    VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+                        ActionStripe(text: mission.expectedImpact)
+                        ForEach(Array(mission.acceptanceCriteria.prefix(5).enumerated()), id: \.offset) { index, criterion in
+                            HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.sm) {
+                                Text("\(index + 1).")
+                                    .font(UnifiedDesignSystem.Typography.monoTiny)
+                                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                                Text(criterion)
+                                    .font(UnifiedDesignSystem.Typography.body)
+                                    .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        if !mission.evidence.isEmpty {
+                            FootnoteChipFlow(citations: mission.evidence, onTap: onCitationTap)
+                        }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .padding(UnifiedDesignSystem.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(lensColor.opacity(isExpanded ? 0.55 : 0.28), lineWidth: isExpanded ? 1 : 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Mission. \(lensLabel). \(priorityLabel) priority. \(mission.title). \(mission.summary)")
+        .accessibilityHint(isExpanded ? "Collapse mission details" : "Open mission details")
+    }
+
+    private var lensLabel: String {
+        switch mission.lens {
+        case .accretion: return "Accretion"
+        case .diligence: return "Diligence"
+        case .techDebt: return "Debt"
+        case .routing: return "Routing"
+        case .quota: return "Quota"
+        case .focus: return "Focus"
+        }
+    }
+
+    private var priorityLabel: String {
+        switch mission.priority {
+        case .low: return "Low"
+        case .medium: return "Medium"
+        case .high: return "High"
+        case .critical: return "Critical"
+        }
+    }
+
+    private var lensColor: Color {
+        switch mission.lens {
+        case .accretion: return UnifiedDesignSystem.Colors.whimsy
+        case .diligence: return UnifiedDesignSystem.Colors.hermesAureate
+        case .techDebt: return UnifiedDesignSystem.Colors.ember
+        case .routing: return UnifiedDesignSystem.Colors.hermesMercury
+        case .quota: return UnifiedDesignSystem.Colors.warning
+        case .focus: return UnifiedDesignSystem.Colors.textSecondary
+        }
+    }
+
+    private var priorityColor: Color {
+        switch mission.priority {
+        case .low: return UnifiedDesignSystem.Colors.textMuted
+        case .medium: return UnifiedDesignSystem.Colors.warning
+        case .high: return UnifiedDesignSystem.Colors.ember
+        case .critical: return UnifiedDesignSystem.Colors.error
         }
     }
 }

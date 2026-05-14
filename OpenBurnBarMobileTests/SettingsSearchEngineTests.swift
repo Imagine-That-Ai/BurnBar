@@ -1,5 +1,6 @@
 import XCTest
 @testable import OpenBurnBarMobile
+import OpenBurnBarCore
 
 /// Behavioral parity test for the iOS Settings search ranking engine.
 /// Mirrors the macOS suite — the engines share semantics across platforms.
@@ -133,6 +134,19 @@ final class SettingsSearchEngineTests: XCTestCase {
         XCTAssertTrue(ids.contains("providers.add"))
         XCTAssertTrue(ids.contains("providers.cliAuth"))
         XCTAssertEqual(SettingsManifest.anchorIndex[SettingsAnchor.providerOpenCode], .providerConnections)
+    }
+
+    func test_manifest_findsEveryConnectableProviderWithExactProviderAnchor() {
+        for provider in AgentProvider.mobileAccountConnectableProviders {
+            let expectedID = provider == .openCode ? "providers.openCode" : "providers.\(provider.persistedToken)"
+            let item = SettingsManifest.all.first { $0.id == expectedID }
+            XCTAssertNotNil(item, "Missing settings search entry for \(provider.displayName)")
+            XCTAssertEqual(item?.pageRoute, .providerConnections)
+            XCTAssertEqual(SettingsManifest.anchorIndex[item?.anchorID ?? ""], .providerConnections)
+
+            let result = SettingsSearchEngine.search(provider.displayName, in: SettingsManifest.all).first
+            XCTAssertEqual(result?.id, expectedID, "\(provider.displayName) should route to its own provider row")
+        }
     }
 
     // MARK: - Router guards

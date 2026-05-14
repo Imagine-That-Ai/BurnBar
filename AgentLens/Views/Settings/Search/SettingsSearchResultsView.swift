@@ -108,6 +108,10 @@ struct SettingsSearchResultsView: View {
         case .daemonLifecycle: return "Lifecycle"
         case .httpGateway: return "HTTP Gateway"
         case .controllerRuntime: return "Controller Runtime"
+        case .hermesChatEngines: return "Chat Engines"
+        case .hermesGateway: return "Hermes Gateway"
+        case .hermesPiAgent: return "Pi Agent Instances"
+        case .hermesRelay: return "Remote Relay"
         }
     }
 }

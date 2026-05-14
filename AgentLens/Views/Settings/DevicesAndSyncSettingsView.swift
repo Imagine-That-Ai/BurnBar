@@ -109,58 +109,63 @@ struct DevicesAndSyncSettingsView: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                NavigationLink {
-                    CloudSyncStatusDetailView()
-                } label: {
-                    SettingsDrillRow(
-                        icon: "icloud.fill",
-                        iconTint: DesignSystem.Colors.teal,
-                        title: MacCopy.cloudSyncSectionTitle,
-                        subtitle: "Status and security model for sync across devices",
-                        value: "Healthy",
-                        valueTint: DesignSystem.Colors.success
-                    )
-                }
-            } header: {
-                Text("Sync")
-            }
-
-            Section {
-                NavigationLink {
-                    TrustedDevicesDetailView(
-                        deviceTrust: deviceTrust,
-                        exportViewModel: exportViewModel
-                    )
-                } label: {
-                    SettingsDrillRow(
-                        icon: "macbook.and.iphone",
-                        iconTint: DesignSystem.Colors.whimsy,
-                        title: "Trusted Devices",
-                        subtitle: "Approve, revoke, and transfer encrypted credentials between devices",
-                        value: trustedDevicesSummary
-                    )
+        SettingsDeepLinkScrollContainer(route: .devicesAndSyncRoot) { _ in
+            List {
+                Section {
+                    NavigationLink {
+                        CloudSyncStatusDetailView()
+                    } label: {
+                        SettingsDrillRow(
+                            icon: "icloud.fill",
+                            iconTint: DesignSystem.Colors.teal,
+                            title: MacCopy.cloudSyncSectionTitle,
+                            subtitle: "Status and security model for sync across devices",
+                            value: "Healthy",
+                            valueTint: DesignSystem.Colors.success
+                        )
+                    }
+                    .settingsAnchor(SettingsAnchor.cloudSyncToggle)
+                } header: {
+                    Text("Sync")
                 }
 
-                NavigationLink {
-                    SmartDisplaysDetailView(
-                        settingsManager: settingsManager,
-                        runtimeContext: runtimeContext
-                    )
-                } label: {
-                    SettingsDrillRow(
-                        icon: "tv.fill",
-                        iconTint: DesignSystem.Colors.coral,
-                        title: MacCopy.smartDisplaysSectionTitle,
-                        subtitle: "Nest Hub and ULANZI Pixel Clock companion displays"
-                    )
+                Section {
+                    NavigationLink {
+                        TrustedDevicesDetailView(
+                            deviceTrust: deviceTrust,
+                            exportViewModel: exportViewModel
+                        )
+                    } label: {
+                        SettingsDrillRow(
+                            icon: "macbook.and.iphone",
+                            iconTint: DesignSystem.Colors.whimsy,
+                            title: "Trusted Devices",
+                            subtitle: "Approve, revoke, and transfer encrypted credentials between devices",
+                            value: trustedDevicesSummary
+                        )
+                    }
+                    .settingsAnchor(SettingsAnchor.trustedDevices)
+
+                    NavigationLink {
+                        SmartDisplaysDetailView(
+                            settingsManager: settingsManager,
+                            runtimeContext: runtimeContext
+                        )
+                    } label: {
+                        SettingsDrillRow(
+                            icon: "tv.fill",
+                            iconTint: DesignSystem.Colors.coral,
+                            title: MacCopy.smartDisplaysSectionTitle,
+                            subtitle: "Nest Hub and ULANZI Pixel Clock companion displays"
+                        )
+                    }
+                    .settingsAnchor(SettingsAnchor.smartDisplays)
+                } header: {
+                    Text("Devices")
+                } footer: {
+                    Text("Credentials never leave your devices unencrypted. Transfers use device trust and provider readback.")
+                        .font(DesignSystem.Typography.tiny)
                 }
-            } header: {
-                Text("Devices")
-            } footer: {
-                Text("Credentials never leave your devices unencrypted. Transfers use device trust and provider readback.")
-                    .font(DesignSystem.Typography.tiny)
             }
         }
         .listStyle(.inset)

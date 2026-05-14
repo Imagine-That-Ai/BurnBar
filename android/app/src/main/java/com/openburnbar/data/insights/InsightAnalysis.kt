@@ -18,6 +18,7 @@ data class InsightAnalysisResult(
     val findings: List<InsightFinding> = emptyList(),
     val anomalies: List<InsightAnomaly> = emptyList(),
     val recommendations: List<InsightRecommendation> = emptyList(),
+    val missionCandidates: List<InsightMissionCandidate> = emptyList(),
     val generatedWidgets: List<InsightGeneratedWidget> = emptyList(),
     val followUpQuestions: List<InsightFollowUpQuestion> = emptyList(),
     val citations: List<InsightCitation> = emptyList(),
@@ -157,6 +158,49 @@ data class InsightRecommendation(
     val confidence: InsightConfidence,
     val severity: InsightSeverity = InsightSeverity.MEDIUM
 )
+
+@Serializable
+data class InsightMissionCandidate(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val summary: String,
+    val projectID: String? = null,
+    val projectDisplayName: String? = null,
+    val lens: Lens,
+    val priority: Priority,
+    val confidence: InsightConfidence,
+    val expectedImpact: String,
+    val effort: Effort,
+    val acceptanceCriteria: List<String>,
+    val sourceInsightIDs: List<String> = emptyList(),
+    val evidence: List<InsightCitation>,
+    val dispatchMetadata: Map<String, String> = emptyMap()
+) {
+    @Serializable
+    enum class Lens {
+        @SerialName("accretion") ACCRETION,
+        @SerialName("diligence") DILIGENCE,
+        @SerialName("techDebt") TECH_DEBT,
+        @SerialName("routing") ROUTING,
+        @SerialName("quota") QUOTA,
+        @SerialName("focus") FOCUS
+    }
+
+    @Serializable
+    enum class Priority {
+        @SerialName("low") LOW,
+        @SerialName("medium") MEDIUM,
+        @SerialName("high") HIGH,
+        @SerialName("critical") CRITICAL
+    }
+
+    @Serializable
+    enum class Effort {
+        @SerialName("small") SMALL,
+        @SerialName("medium") MEDIUM,
+        @SerialName("large") LARGE
+    }
+}
 
 @Serializable
 data class InsightGeneratedWidget(

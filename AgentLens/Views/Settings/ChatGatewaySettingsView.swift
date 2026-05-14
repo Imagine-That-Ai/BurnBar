@@ -223,7 +223,8 @@ struct ChatEnginesDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "Chat Engines",
-            subtitle: "Only the engines you enable here appear in the dashboard and menu bar chat header."
+            subtitle: "Only the engines you enable here appear in the dashboard and menu bar chat header.",
+            searchRoute: .hermesChatEngines
         ) {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
@@ -248,6 +249,7 @@ struct ChatEnginesDetailView: View {
                 }
                 .padding(DesignSystem.Spacing.lg)
             }
+            .settingsAnchor(SettingsAnchor.hermesConnections)
 
             // MARK: Hermes model picker — second-level row under Hermes.
 
@@ -284,6 +286,7 @@ struct ChatEnginesDetailView: View {
                 }
                 .padding(DesignSystem.Spacing.lg)
             }
+            .settingsAnchor(SettingsAnchor.hermesModels)
         }
     }
 
@@ -318,7 +321,8 @@ struct HermesGatewayDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "Hermes Gateway",
-            subtitle: "OpenBurnBar can start the Hermes Dashboard and local API gateway for you. The gateway defaults to port 8642."
+            subtitle: "OpenBurnBar can start the Hermes Dashboard and local API gateway for you. The gateway defaults to port 8642.",
+            searchRoute: .hermesGateway
         ) {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -391,21 +395,29 @@ struct HermesGatewayDetailView: View {
 
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                    fieldLabel("Base URL")
-                    TextField("http://localhost:8642", text: $settingsManager.hermesGatewayBaseURL)
-                        .textFieldStyle(.roundedBorder)
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                        fieldLabel("Base URL")
+                        TextField("http://localhost:8642", text: $settingsManager.hermesGatewayBaseURL)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .settingsAnchor(SettingsAnchor.hermesGatewayURL)
 
-                    fieldLabel("Bearer Token")
-                    SecureField("Same as API_SERVER_KEY (leave empty if unset)",
-                                text: $settingsManager.hermesBearerToken)
-                        .textFieldStyle(.roundedBorder)
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                        fieldLabel("Bearer Token")
+                        SecureField("Same as API_SERVER_KEY (leave empty if unset)",
+                                    text: $settingsManager.hermesBearerToken)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .settingsAnchor(SettingsAnchor.hermesGatewayToken)
 
-                    fieldLabel("Model Override")
-                    TextField("Leave empty for auto (e.g. gpt-5.5)",
-                              text: $settingsManager.hermesChatModelOverride)
-                        .textFieldStyle(.roundedBorder)
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                        fieldLabel("Model Override")
+                        TextField("Leave empty for auto (e.g. gpt-5.5)",
+                                  text: $settingsManager.hermesChatModelOverride)
+                            .textFieldStyle(.roundedBorder)
+                    }
                 }
-                .padding(DesignSystem.Spacing.lg)
+                    .padding(DesignSystem.Spacing.lg)
             }
         }
         .task { await refreshHermes() }
@@ -445,7 +457,8 @@ struct PiAgentDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "Pi Agent Instances",
-            subtitle: "OpenBurnBar can start the Pi agent and its local API gateway. Redis is optional and only used for richer multi-instance discovery and control."
+            subtitle: "OpenBurnBar can start the Pi agent and its local API gateway. Redis is optional and only used for richer multi-instance discovery and control.",
+            searchRoute: .hermesPiAgent
         ) {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -524,26 +537,31 @@ struct PiAgentDetailView: View {
 
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                    fieldLabel("Base URL")
-                    TextField("http://127.0.0.1:8765", text: $settingsManager.piAgentGatewayBaseURL)
-                        .textFieldStyle(.roundedBorder)
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                        fieldLabel("Base URL")
+                        TextField("http://127.0.0.1:8765", text: $settingsManager.piAgentGatewayBaseURL)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .settingsAnchor(SettingsAnchor.hermesPiHosts)
 
-                    fieldLabel("Bearer Token")
-                    SecureField("Optional bearer token", text: $settingsManager.piAgentBearerToken)
-                        .textFieldStyle(.roundedBorder)
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                        fieldLabel("Bearer Token")
+                        SecureField("Optional bearer token", text: $settingsManager.piAgentBearerToken)
+                            .textFieldStyle(.roundedBorder)
 
-                    fieldLabel("Redis URL (optional)")
-                    TextField("redis://127.0.0.1:6379/0", text: $settingsManager.piAgentRedisURL)
-                        .textFieldStyle(.roundedBorder)
+                        fieldLabel("Redis URL (optional)")
+                        TextField("redis://127.0.0.1:6379/0", text: $settingsManager.piAgentRedisURL)
+                            .textFieldStyle(.roundedBorder)
 
-                    fieldLabel("Model Override")
-                    TextField("Leave empty for gateway default",
-                              text: $settingsManager.piAgentChatModelOverride)
-                        .textFieldStyle(.roundedBorder)
+                        fieldLabel("Model Override")
+                        TextField("Leave empty for gateway default",
+                                  text: $settingsManager.piAgentChatModelOverride)
+                            .textFieldStyle(.roundedBorder)
 
-                    instancePicker
+                        instancePicker
+                    }
                 }
-                .padding(DesignSystem.Spacing.lg)
+                    .padding(DesignSystem.Spacing.lg)
             }
         }
         .task { await refreshPi() }
@@ -654,7 +672,8 @@ struct RemoteRelayDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "Remote Relay",
-            subtitle: "Premium accounts can use this Mac as a private Remote Relay host so iPhone and iPad can chat with local Hermes over cell signal. The API_SERVER_KEY stays on this Mac; OpenBurnBar relays only encrypted request and response frames."
+            subtitle: "Premium accounts can use this Mac as a private Remote Relay host so iPhone and iPad can chat with local Hermes over cell signal. The API_SERVER_KEY stays on this Mac; OpenBurnBar relays only encrypted request and response frames.",
+            searchRoute: .hermesRelay
         ) {
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
@@ -680,6 +699,7 @@ struct RemoteRelayDetailView: View {
                 }
                 .padding(DesignSystem.Spacing.lg)
             }
+            .settingsAnchor(SettingsAnchor.hermesRelay)
         }
     }
 }

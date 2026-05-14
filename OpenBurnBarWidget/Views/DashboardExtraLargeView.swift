@@ -222,36 +222,12 @@ struct WidgetModelPill: View {
     }
 }
 
-struct WidgetMetricBadge: View {
-    let icon: String
-    let value: String
-    let label: String
-    let color: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 3) {
-                Image(systemName: icon)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(color)
-                Text(label)
-                    .font(WidgetDesignSystem.Typography.micro)
-                    .foregroundStyle(WidgetDesignSystem.Colors.textMuted)
-                    .textCase(.uppercase)
-            }
-            Text(value)
-                .font(WidgetDesignSystem.Typography.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(WidgetDesignSystem.Colors.textPrimary)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: WidgetDesignSystem.Radius.sm, style: .continuous)
-                .fill(color.opacity(0.08))
-        )
-    }
-}
+// `WidgetMetricBadge` lives in `WidgetDesignSystem.swift` so every
+// widget surface (small, medium, large, extra large, lock screen)
+// shares one canonical chip style. Re-declaring it here would shadow
+// the design-system copy and force future palette/typography updates
+// to be made in two places — the duplicate fought the compiler at
+// HEAD until this consolidation.
 
 #Preview("Extra Large", as: .systemExtraLarge, widget: {
     BurnBarWidget()

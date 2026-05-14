@@ -179,6 +179,34 @@ export interface InsightRecommendation {
   severity: InsightSeverity;
 }
 
+export type InsightMissionLens =
+  | "accretion"
+  | "diligence"
+  | "techDebt"
+  | "routing"
+  | "quota"
+  | "focus";
+
+export type InsightMissionPriority = "low" | "medium" | "high" | "critical";
+export type InsightMissionEffort = "small" | "medium" | "large";
+
+export interface InsightMissionCandidate {
+  id: string;
+  title: string;
+  summary: string;
+  projectID?: string;
+  projectDisplayName?: string;
+  lens: InsightMissionLens;
+  priority: InsightMissionPriority;
+  confidence: InsightConfidence;
+  expectedImpact: string;
+  effort: InsightMissionEffort;
+  acceptanceCriteria: string[];
+  sourceInsightIDs: string[];
+  evidence: InsightCitationDoc[];
+  dispatchMetadata: Record<string, string>;
+}
+
 /**
  * A widget the engine wants the UI to materialize. The widget itself reuses
  * the existing `InsightWidgetDoc` so it slots straight into the canvas grid.
@@ -209,6 +237,7 @@ export interface InsightAnalysisResult {
   findings: InsightFinding[];
   anomalies: InsightAnomaly[];
   recommendations: InsightRecommendation[];
+  missionCandidates: InsightMissionCandidate[];
   generatedWidgets: InsightGeneratedWidget[];
   followUpQuestions: InsightFollowUpQuestion[];
   citations: InsightCitationDoc[];
@@ -351,6 +380,11 @@ export const InsightJSONSchema = {
         maxItems: 8,
         items: { $ref: "#/$defs/recommendation" },
       },
+      missionCandidates: {
+        type: "array",
+        maxItems: 8,
+        items: { $ref: "#/$defs/missionCandidate" },
+      },
       generatedWidgets: {
         type: "array",
         maxItems: 8,
@@ -426,6 +460,50 @@ export const InsightJSONSchema = {
           evidence: { type: "array", items: { $ref: "#/$defs/citationRef" } },
           confidence: { $ref: "#/$defs/confidence" },
           severity: { $ref: "#/$defs/severity" },
+        },
+      },
+      missionCandidate: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "title",
+          "summary",
+          "lens",
+          "priority",
+          "confidence",
+          "expectedImpact",
+          "effort",
+          "acceptanceCriteria",
+          "evidence",
+        ],
+        properties: {
+          title: { type: "string", minLength: 1, maxLength: 140 },
+          summary: { type: "string", minLength: 1, maxLength: 700 },
+          projectID: { type: "string", maxLength: 160 },
+          projectDisplayName: { type: "string", maxLength: 160 },
+          lens: {
+            type: "string",
+            enum: ["accretion", "diligence", "techDebt", "routing", "quota", "focus"],
+          },
+          priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
+          confidence: { $ref: "#/$defs/confidence" },
+          expectedImpact: { type: "string", minLength: 1, maxLength: 400 },
+          effort: { type: "string", enum: ["small", "medium", "large"] },
+          acceptanceCriteria: {
+            type: "array",
+            minItems: 1,
+            maxItems: 6,
+            items: { type: "string", minLength: 1, maxLength: 180 },
+          },
+          sourceInsightIDs: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 120 },
+          },
+          evidence: { type: "array", items: { $ref: "#/$defs/citationRef" } },
+          dispatchMetadata: {
+            type: "object",
+            additionalProperties: { type: "string", maxLength: 160 },
+          },
         },
       },
       generatedWidget: {

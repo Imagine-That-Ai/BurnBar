@@ -1,5 +1,6 @@
 package com.openburnbar.ui.settings
 
+import com.openburnbar.data.models.AgentProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -162,7 +163,23 @@ class SettingsSearchEngineTest {
     @Test
     fun manifestFindsOpenCodeProviderEntry() {
         val ids = SettingsSearchEngine.search("opencode", SettingsManifest.all).map { it.id }
+        assertEquals("root.provider.opencode", ids.first())
+        assertTrue(ids.contains("root.provider.opencode"))
         assertTrue(ids.contains("root.providers"))
         assertEquals(SettingsPageRoute.ROOT, SettingsManifest.anchorIndex[SettingsAnchor.PROVIDERS_ROW])
+    }
+
+    @Test
+    fun manifestFindsEveryProviderWithExactProviderAnchor() {
+        for (provider in AgentProvider.entries) {
+            val expectedId = "root.provider.${provider.key}"
+            val item = SettingsManifest.all.firstOrNull { it.id == expectedId }
+            assertTrue("Missing settings search entry for ${provider.displayName}", item != null)
+            assertEquals(SettingsPageRoute.ROOT, item?.pageRoute)
+            assertEquals(SettingsPageRoute.ROOT, SettingsManifest.anchorIndex[item?.anchorId])
+
+            val result = SettingsSearchEngine.search(provider.displayName, SettingsManifest.all).firstOrNull()
+            assertEquals("${provider.displayName} should route to its own provider row", expectedId, result?.id)
+        }
     }
 }

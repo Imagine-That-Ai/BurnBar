@@ -18,6 +18,7 @@ public struct InsightAnalysisResult: Codable, Hashable, Sendable, Identifiable {
     public var findings: [InsightFinding]
     public var anomalies: [InsightAnomaly]
     public var recommendations: [InsightRecommendation]
+    public var missionCandidates: [InsightMissionCandidate]
     public var generatedWidgets: [InsightGeneratedWidget]
     public var followUpQuestions: [InsightFollowUpQuestion]
     public var citations: [InsightCitation]
@@ -32,6 +33,29 @@ public struct InsightAnalysisResult: Codable, Hashable, Sendable, Identifiable {
 
     public static let currentSchemaVersion = 1
 
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case requestID
+        case schemaVersion
+        case generatedAt
+        case platform
+        case timeWindow
+        case executiveSummary
+        case modelTag
+        case contextBudget
+        case findings
+        case anomalies
+        case recommendations
+        case missionCandidates
+        case generatedWidgets
+        case followUpQuestions
+        case citations
+        case tokenUsage
+        case estimatedCostUSD
+        case auditID
+        case resultHash
+    }
+
     public init(
         id: UUID = UUID(),
         requestID: UUID,
@@ -45,6 +69,7 @@ public struct InsightAnalysisResult: Codable, Hashable, Sendable, Identifiable {
         findings: [InsightFinding] = [],
         anomalies: [InsightAnomaly] = [],
         recommendations: [InsightRecommendation] = [],
+        missionCandidates: [InsightMissionCandidate] = [],
         generatedWidgets: [InsightGeneratedWidget] = [],
         followUpQuestions: [InsightFollowUpQuestion] = [],
         citations: [InsightCitation] = [],
@@ -65,6 +90,7 @@ public struct InsightAnalysisResult: Codable, Hashable, Sendable, Identifiable {
         self.findings = findings
         self.anomalies = anomalies
         self.recommendations = recommendations
+        self.missionCandidates = missionCandidates
         self.generatedWidgets = generatedWidgets
         self.followUpQuestions = followUpQuestions
         self.citations = citations
@@ -72,6 +98,30 @@ public struct InsightAnalysisResult: Codable, Hashable, Sendable, Identifiable {
         self.estimatedCostUSD = estimatedCostUSD
         self.auditID = auditID
         self.resultHash = resultHash
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.requestID = try container.decode(UUID.self, forKey: .requestID)
+        self.schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        self.generatedAt = try container.decode(Date.self, forKey: .generatedAt)
+        self.platform = try container.decode(InsightAnalysisPlatform.self, forKey: .platform)
+        self.timeWindow = try container.decode(InsightTimeWindow.self, forKey: .timeWindow)
+        self.executiveSummary = try container.decode(String.self, forKey: .executiveSummary)
+        self.modelTag = try container.decode(InsightModelTag.self, forKey: .modelTag)
+        self.contextBudget = try container.decode(InsightContextBudgetReport.self, forKey: .contextBudget)
+        self.findings = try container.decodeIfPresent([InsightFinding].self, forKey: .findings) ?? []
+        self.anomalies = try container.decodeIfPresent([InsightAnomaly].self, forKey: .anomalies) ?? []
+        self.recommendations = try container.decodeIfPresent([InsightRecommendation].self, forKey: .recommendations) ?? []
+        self.missionCandidates = try container.decodeIfPresent([InsightMissionCandidate].self, forKey: .missionCandidates) ?? []
+        self.generatedWidgets = try container.decodeIfPresent([InsightGeneratedWidget].self, forKey: .generatedWidgets) ?? []
+        self.followUpQuestions = try container.decodeIfPresent([InsightFollowUpQuestion].self, forKey: .followUpQuestions) ?? []
+        self.citations = try container.decodeIfPresent([InsightCitation].self, forKey: .citations) ?? []
+        self.tokenUsage = try container.decodeIfPresent(InsightTokenUsage.self, forKey: .tokenUsage)
+        self.estimatedCostUSD = try container.decodeIfPresent(Double.self, forKey: .estimatedCostUSD)
+        self.auditID = try container.decodeIfPresent(UUID.self, forKey: .auditID)
+        self.resultHash = try container.decodeIfPresent(String.self, forKey: .resultHash) ?? ""
     }
 }
 
@@ -346,6 +396,77 @@ public struct InsightRecommendation: Codable, Hashable, Sendable, Identifiable {
         self.evidence = evidence
         self.confidence = confidence
         self.severity = severity
+    }
+}
+
+public struct InsightMissionCandidate: Codable, Hashable, Sendable, Identifiable {
+    public var id: UUID
+    public var title: String
+    public var summary: String
+    public var projectID: String?
+    public var projectDisplayName: String?
+    public var lens: Lens
+    public var priority: Priority
+    public var confidence: InsightConfidence
+    public var expectedImpact: String
+    public var effort: Effort
+    public var acceptanceCriteria: [String]
+    public var sourceInsightIDs: [UUID]
+    public var evidence: [InsightCitation]
+    public var dispatchMetadata: [String: String]
+
+    public init(
+        id: UUID = UUID(),
+        title: String,
+        summary: String,
+        projectID: String? = nil,
+        projectDisplayName: String? = nil,
+        lens: Lens,
+        priority: Priority,
+        confidence: InsightConfidence,
+        expectedImpact: String,
+        effort: Effort,
+        acceptanceCriteria: [String],
+        sourceInsightIDs: [UUID] = [],
+        evidence: [InsightCitation],
+        dispatchMetadata: [String: String] = [:]
+    ) {
+        self.id = id
+        self.title = title
+        self.summary = summary
+        self.projectID = projectID
+        self.projectDisplayName = projectDisplayName
+        self.lens = lens
+        self.priority = priority
+        self.confidence = confidence
+        self.expectedImpact = expectedImpact
+        self.effort = effort
+        self.acceptanceCriteria = acceptanceCriteria
+        self.sourceInsightIDs = sourceInsightIDs
+        self.evidence = evidence
+        self.dispatchMetadata = dispatchMetadata
+    }
+
+    public enum Lens: String, Codable, Hashable, Sendable, CaseIterable {
+        case accretion
+        case diligence
+        case techDebt
+        case routing
+        case quota
+        case focus
+    }
+
+    public enum Priority: String, Codable, Hashable, Sendable, CaseIterable {
+        case low
+        case medium
+        case high
+        case critical
+    }
+
+    public enum Effort: String, Codable, Hashable, Sendable, CaseIterable {
+        case small
+        case medium
+        case large
     }
 }
 

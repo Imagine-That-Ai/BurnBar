@@ -86,7 +86,8 @@ final class IntelligenceBriefWiringTests: XCTestCase {
             .day(date: "d"),
             .anomaly(id: "x"),
             .query(text: "q"),
-            .quota(provider: "p", bucket: "b")
+            .quota(provider: "p", bucket: "b"),
+            .benchmark(source: "artificial_analysis", modelID: "gpt-5.5", taskCategory: "coding")
         ]
         for kind in kinds {
             let prompt = IntelligenceBriefCitationPrompt.prompt(

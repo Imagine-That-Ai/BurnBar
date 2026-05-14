@@ -7,23 +7,25 @@ extension AccountSwitcherSettingsView {
         withReconnectConfirmation(
             appliedTo: withPendingCLIAccountAlert(
                 appliedTo: withDeleteProfileAlert(
-                    appliedTo: ScrollView {
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                            // OAuth boundary messaging (VAL-SETTINGS-007, VAL-SETTINGS-016)
-                            boundaryMessagingCard
-                            if let error {
-                                errorBanner(error)
-                            }
+                    appliedTo: SettingsDeepLinkScrollContainer(route: .switcherRoot) { _ in
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                                // OAuth boundary messaging (VAL-SETTINGS-007, VAL-SETTINGS-016)
+                                boundaryMessagingCard
+                                if let error {
+                                    errorBanner(error)
+                                }
 
-                            if isLoading {
-                                loadingView
-                            } else if profiles.isEmpty {
-                                emptyStateView
-                            } else {
-                                profileListView
+                                if isLoading {
+                                    loadingView
+                                } else if profiles.isEmpty {
+                                    emptyStateView
+                                } else {
+                                    profileListView
+                                }
                             }
+                            .padding(DesignSystem.Spacing.lg)
                         }
-                        .padding(DesignSystem.Spacing.lg)
                     }
                     .background(settingsBackground)
                     .scrollContentBackground(.hidden)
@@ -297,10 +299,24 @@ extension AccountSwitcherSettingsView {
 
                 GlassCard {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        Text("Browser Profiles")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .settingsAnchor(SettingsAnchor.switcherBrowser)
+
                         supportedTargetRow(logoName: "ChromeLogo", sfFallback: "globe", title: "Google Chrome", subtitle: "Browser profile")
                         Divider().background(DesignSystem.Colors.borderSubtle)
                         supportedTargetRow(logoName: "SafariLogo", sfFallback: "safari", title: "Safari", subtitle: "Browser profile")
                         Divider().background(DesignSystem.Colors.borderSubtle)
+
+                        Text("CLI Profiles")
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .padding(.top, DesignSystem.Spacing.xs)
+                            .settingsAnchor(SettingsAnchor.switcherCLI)
+
                         supportedTargetRow(logoName: "CodexLogo", sfFallback: "terminal.fill", title: "Codex", subtitle: "CLI profile")
                         Divider().background(DesignSystem.Colors.borderSubtle)
                         supportedTargetRow(logoName: "ClaudeCodeLogo", sfFallback: "terminal.fill", title: "Claude Code", subtitle: "CLI profile")
@@ -485,14 +501,37 @@ extension AccountSwitcherSettingsView {
             }
 
             // Provider-grouped sections
-            ForEach(profileGroups, id: \.key) { group in
+            profileCategoryHeader("CLI Profiles", anchor: SettingsAnchor.switcherCLI)
+            ForEach(cliProfileGroups, id: \.key) { group in
                 providerSection(group)
             }
 
-            Text("Codex and Claude stay available at the same time. Primary and reserve order only apply within the same provider, so switching Codex accounts never deactivates Claude.")
+            profileCategoryHeader("Browser Profiles", anchor: SettingsAnchor.switcherBrowser)
+            ForEach(browserProfileGroups, id: \.key) { group in
+                providerSection(group)
+            }
+
+            Text("Codex, Claude, and OpenCode stay available at the same time. Primary and reserve order only apply within the same provider, so switching Codex accounts never deactivates Claude.")
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
         }
+    }
+
+    var cliProfileGroups: [ProfileGroup] {
+        profileGroups.filter { $0.cliType != nil }
+    }
+
+    var browserProfileGroups: [ProfileGroup] {
+        profileGroups.filter { $0.browserType != nil }
+    }
+
+    func profileCategoryHeader(_ title: String, anchor: String) -> some View {
+        Text(title)
+            .font(DesignSystem.Typography.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .textCase(.uppercase)
+            .settingsAnchor(anchor)
     }
 
     @ViewBuilder

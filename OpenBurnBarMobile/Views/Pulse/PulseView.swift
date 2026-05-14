@@ -14,6 +14,8 @@ struct PulseView: View {
     @State private var hermesService = HermesService()
     @State private var displayMode: UsageDisplayMode = .currency
     @State private var timelineScope: PulseTimelineScope = .day
+    @State private var liveNow = Date()
+    @State private var liveUsageStart = PulseWindowMetricBuilder.todayStart()
     @State private var showCloudStore = false
     @AppStorage("cloudBannerDismissed") private var cloudBannerDismissed = false
 
@@ -46,9 +48,15 @@ struct PulseView: View {
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .staggeredEntrance(delay: 0.0)
 
+                    let metrics = PulseWindowMetricBuilder.metrics(
+                        scope: timelineScope,
+                        rollupTotals: dashboard.windowTotals,
+                        liveUsages: liveUsagesForPulse,
+                        now: liveNow
+                    )
                     PulseHeroBurnCard(
-                        total: dashboard.windowTotals[timelineScope.rollupKey],
-                        trailingTotal: dashboard.windowTotals[timelineScope.trailingKey],
+                        total: metrics.total,
+                        trailingTotal: metrics.trailingTotal,
                         dailyPoints: dashboard.dailyPoints,
                         topProvider: topProvider,
                         displayMode: displayMode,
@@ -129,10 +137,19 @@ struct PulseView: View {
         .onDisappear {
             dashboard.stopListening()
             quotaStore.stopListening()
+            sessionsStore.stopLiveUsageListening()
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now in
+            liveNow = now
+            let todayStart = PulseWindowMetricBuilder.todayStart(now: now)
+            guard todayStart != liveUsageStart else { return }
+            liveUsageStart = todayStart
+            sessionsStore.startLiveUsageListening(since: todayStart)
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await dashboard.refresh() }
+            sessionsStore.startLiveUsageListening(since: liveUsageStart)
             // Re-load the full Hermes runtime (connections + reachability +
             // models) when Pulse comes back to the foreground so Chart Studio
             // inherits the user's saved Remote Relay / LAN endpoint instead of
@@ -156,20 +173,23 @@ struct PulseView: View {
         async let d: Void = dashboard.load()
         async let q: Void = quotaStore.load()
         async let s: Void = sessionsStore.loadInitial()
+        async let live: Void = sessionsStore.loadLiveUsage(since: liveUsageStart)
         // Full runtime refresh so the saved Remote Relay / LAN connection is
         // attached before the user opens Chart Studio. `checkReachability`
         // alone leaves `selectedConnection == .localDefault`, which is fatal
         // on iPhone (no `localhost:8642` Hermes process).
         async let h: Void = hermesService.refreshRuntime()
-        _ = await (d, q, s, h)
+        _ = await (d, q, s, live, h)
         quotaStore.startListening()
+        sessionsStore.startLiveUsageListening(since: liveUsageStart)
     }
 
     private func reload() async {
         async let d: Void = dashboard.refresh()
         async let q: Void = quotaStore.refresh()
         async let s: Void = sessionsStore.refresh()
-        _ = await (d, q, s)
+        async let live: Void = sessionsStore.loadLiveUsage(since: liveUsageStart)
+        _ = await (d, q, s, live)
     }
 
     // MARK: - Derived
@@ -183,6 +203,10 @@ struct PulseView: View {
     private var topProvider: AgentProvider? {
         guard let topKey = dashboard.topProviders.first?.provider else { return nil }
         return AgentProvider.fromPersistedToken(topKey)
+    }
+
+    private var liveUsagesForPulse: [TokenUsage] {
+        sessionsStore.liveUsages.isEmpty ? sessionsStore.rawUsages : sessionsStore.liveUsages
     }
 
     private var suggestedPrompts: [String] {

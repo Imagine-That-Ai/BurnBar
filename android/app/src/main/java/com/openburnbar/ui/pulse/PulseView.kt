@@ -32,6 +32,7 @@ import com.openburnbar.data.stores.UserStore
 import com.openburnbar.ui.components.*
 import com.openburnbar.ui.theme.*
 import com.openburnbar.util.Formatting
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,10 +54,37 @@ fun PulseView(
     val demoError by demoDataStore.error.collectAsState()
     var timelineScope by remember { mutableStateOf(PulseTimelineScope.DAY) }
     var displayMode by remember { mutableStateOf(UsageDisplayMode.CURRENCY) }
+    var liveNowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var liveUsageStartMillis by remember { mutableLongStateOf(startOfLocalPulseDayMillis(liveNowMillis)) }
     val currentUser by userStore.user.collectAsState()
 
-    LaunchedEffect(currentUser.isSignedIn) { if (currentUser.isSignedIn) {
-        dashboardStore.load(); quotaStore.load(); activityStore.loadInitial(pageSize = 250) } }
+    LaunchedEffect(currentUser.isSignedIn) {
+        if (currentUser.isSignedIn) {
+            dashboardStore.load()
+            quotaStore.load()
+            activityStore.loadInitial(pageSize = 250)
+        } else {
+            activityStore.stopListening()
+        }
+    }
+
+    LaunchedEffect(currentUser.isSignedIn, liveUsageStartMillis) {
+        if (currentUser.isSignedIn) {
+            activityStore.startLiveUsageListening(liveUsageStartMillis)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000L)
+            val now = System.currentTimeMillis()
+            liveNowMillis = now
+            val todayStart = startOfLocalPulseDayMillis(now)
+            if (todayStart != liveUsageStartMillis) {
+                liveUsageStartMillis = todayStart
+            }
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Title bar — centered "Pulse" with avatar in the top-right (mirrors iOS).
@@ -116,6 +144,7 @@ fun PulseView(
                     rollups = rollups!!,
                     displayMode = displayMode,
                     timelineScope = timelineScope,
+                    nowMillis = liveNowMillis,
                     quotaStore = quotaStore,
                     activityStore = activityStore,
                     demoIsSeeding = demoIsSeeding,
@@ -145,6 +174,7 @@ private fun Content(
     rollups: UsageRollups,
     displayMode: UsageDisplayMode,
     timelineScope: PulseTimelineScope,
+    nowMillis: Long,
     quotaStore: QuotaStore,
     activityStore: ActivityStore,
     demoIsSeeding: Boolean,
@@ -160,12 +190,15 @@ private fun Content(
 ) {
     val snapshots by quotaStore.snapshots.collectAsState()
     val recentUsages by activityStore.usages.collectAsState()
-    val shouldOfferDemoData = rollups.isEmpty() && snapshots.isEmpty() && recentUsages.isEmpty()
+    val liveUsages by activityStore.liveUsages.collectAsState()
+    val pulseUsages = liveUsages.ifEmpty { recentUsages }
+    val shouldOfferDemoData = rollups.isEmpty() && snapshots.isEmpty() && pulseUsages.isEmpty()
 
     val windowMetrics = pulseWindowMetrics(
         scope = timelineScope,
         rollups = rollups,
-        recentUsages = recentUsages
+        recentUsages = pulseUsages,
+        nowMillis = nowMillis
     )
     val topProvider = rollups.topProviders.firstOrNull()
 
@@ -281,7 +314,15 @@ fun PulseHeroBurnCard(
 ) {
     val tokens = tokenValue
     val requests = requestValue
-    val deltaPct = if (trailingValue > 0) ((value - trailingValue / 7.0) / (trailingValue / 7.0)) * 100.0 else 0.0
+    val trailingDivisor = when (timelineScope) {
+        PulseTimelineScope.MINUTE,
+        PulseTimelineScope.HOUR,
+        PulseTimelineScope.DAY,
+        PulseTimelineScope.WEEK -> 7.0
+        PulseTimelineScope.MONTH -> 30.0
+    }
+    val trailingAverage = trailingValue / trailingDivisor
+    val deltaPct = if (trailingAverage > 0) ((value - trailingAverage) / trailingAverage) * 100.0 else 0.0
     val isBelow = deltaPct < 0
     val absDelta = kotlin.math.abs(deltaPct)
 
@@ -316,11 +357,19 @@ fun PulseHeroBurnCard(
         if (trailingValue > 0) {
             Spacer(Modifier.height(AuroraSpacing.sm.dp))
             ComparisonLine(
-                text = "${if (isBelow) "Below" else "Above"} ${absDelta.toInt()}% your 7-day average",
+                text = "${if (isBelow) "Below" else "Above"} ${absDelta.toInt()}% your ${trailingWindowLabel(timelineScope)} average",
                 isBelow = isBelow
             )
         }
     }
+}
+
+private fun trailingWindowLabel(scope: PulseTimelineScope): String = when (scope) {
+    PulseTimelineScope.MINUTE,
+    PulseTimelineScope.HOUR,
+    PulseTimelineScope.DAY -> "7-day"
+    PulseTimelineScope.WEEK -> "30-day"
+    PulseTimelineScope.MONTH -> "90-day"
 }
 
 @Composable
