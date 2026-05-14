@@ -11,9 +11,11 @@ import OpenBurnBarCore
 final class MobileInsightDataSource: InsightDataSource {
 
     typealias UsagePageLoader = @MainActor (DateInterval) async throws -> [TokenUsage]
+    typealias BenchmarkLoader = @MainActor () async throws -> [InsightDigest.ModelBenchmarkSummary]
 
     private let dashboardStore: DashboardStore
     private let usagePageLoader: UsagePageLoader
+    private let benchmarkLoader: BenchmarkLoader
 
     init(
         dashboardStore: DashboardStore,
@@ -28,10 +30,14 @@ final class MobileInsightDataSource: InsightDataSource {
                 endDate: interval.end
             )
             return items
+        },
+        benchmarkLoader: @escaping BenchmarkLoader = {
+            try await FirestoreRepository.shared.fetchModelBenchmarkSnapshots()
         }
     ) {
         self.dashboardStore = dashboardStore
         self.usagePageLoader = usagePageLoader
+        self.benchmarkLoader = benchmarkLoader
     }
 
     nonisolated func snapshot(window: DateInterval) async throws -> InsightDataSnapshot {
@@ -59,6 +65,7 @@ final class MobileInsightDataSource: InsightDataSource {
         let usages = rollupRows.isEmpty
             ? await rawUsageRows(in: window)
             : rollupRows
+        let modelBenchmarks = await loadModelBenchmarks()
         return InsightDataSnapshot(
             window: window,
             generatedAt: Date(),
@@ -66,7 +73,8 @@ final class MobileInsightDataSource: InsightDataSource {
             sessions: [],
             quotaBuckets: [],
             operatingActions: [],
-            summaryRuns: []
+            summaryRuns: [],
+            modelBenchmarks: modelBenchmarks
         )
     }
 
@@ -134,6 +142,14 @@ final class MobileInsightDataSource: InsightDataSource {
             return usages
                 .filter { $0.intersects(window) }
                 .map(Self.insightRow(from:))
+        } catch {
+            return []
+        }
+    }
+
+    private func loadModelBenchmarks() async -> [InsightDigest.ModelBenchmarkSummary] {
+        do {
+            return try await benchmarkLoader()
         } catch {
             return []
         }

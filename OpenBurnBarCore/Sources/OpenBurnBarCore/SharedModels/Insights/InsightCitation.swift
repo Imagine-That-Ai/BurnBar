@@ -36,5 +36,7 @@ public struct InsightCitation: Codable, Hashable, Sendable, Identifiable {
         case query(text: String)
         /// A specific quota bucket on a provider.
         case quota(provider: String, bucket: String)
+        /// A public benchmark row such as Artificial Analysis, Terminal-Bench, or Design Arena.
+        case benchmark(source: String, modelID: String, taskCategory: String)
     }
 }

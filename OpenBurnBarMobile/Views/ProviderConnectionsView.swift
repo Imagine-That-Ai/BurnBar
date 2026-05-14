@@ -11,6 +11,7 @@ struct ProviderConnectionsView: View {
     @State private var pendingError: String?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(SettingsRouter.self) private var settingsRouter: SettingsRouter?
 
     init(showsDoneButton: Bool = true) {
         self.showsDoneButton = showsDoneButton
@@ -74,6 +75,16 @@ struct ProviderConnectionsView: View {
 
     @ViewBuilder
     private var content: some View {
+        if settingsRouter != nil {
+            SettingsDeepLinkScrollContainer(route: .providerConnections) { _ in
+                providerList
+            }
+        } else {
+            providerList
+        }
+    }
+
+    private var providerList: some View {
         List {
             Section {
                 if connectionStore.isLoading && !hasFirstClassAccounts && store.connections.isEmpty {
@@ -125,6 +136,7 @@ struct ProviderConnectionsView: View {
                 }
             } header: {
                 connectedSectionHeader
+                    .settingsAnchor(SettingsAnchor.providerCLIAuth)
             } footer: {
                 if hasFirstClassAccounts {
                     Text("OpenBurnBar shows where each account is stored. Cloud accounts can refresh from any signed-in device. Mac Keychain accounts only refresh from your Mac.")
@@ -142,6 +154,7 @@ struct ProviderConnectionsView: View {
                         selectedProvider = provider
                         showAddSheet = true
                     }
+                    .settingsAnchor(anchor(for: provider))
                 }
             } header: {
                 Text("Add Account")
@@ -154,6 +167,12 @@ struct ProviderConnectionsView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(EmberSurfaceBackground().ignoresSafeArea())
+    }
+
+    private func anchor(for provider: AgentProvider) -> String {
+        if provider == .openCode { return SettingsAnchor.providerOpenCode }
+        if provider == availableProviders.first { return SettingsAnchor.providerAdd }
+        return "providers.add.\(provider.persistedToken)"
     }
 
     private var connectedSectionHeader: some View {

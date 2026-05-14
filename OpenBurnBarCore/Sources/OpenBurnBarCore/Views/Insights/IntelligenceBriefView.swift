@@ -775,42 +775,44 @@ private struct FollowUpInlineLinks: View {
     let onTap: (InsightFollowUpQuestion) -> Void
 
     var body: some View {
-        Text(attributedQuestions)
-            .font(UnifiedDesignSystem.Typography.body)
-            .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-            .lineSpacing(4)
-            .fixedSize(horizontal: false, vertical: true)
-            .multilineTextAlignment(.leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .environment(\.openURL, OpenURLAction { url in
-                guard url.scheme == "obb-followup",
-                      let host = url.host,
-                      let idx = Int(host),
-                      idx >= 0, idx < questions.count
-                else {
-                    return .systemAction
+        FlowLayout(spacing: UnifiedDesignSystem.Spacing.xs) {
+            ForEach(Array(questions.enumerated()), id: \.element.id) { offset, question in
+                if offset > 0 {
+                    Text("·")
+                        .font(UnifiedDesignSystem.Typography.body)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                        .accessibilityHidden(true)
                 }
-                onTap(questions[idx])
-                return .handled
-            })
-            .accessibilityElement(children: .contain)
-    }
-
-    private var attributedQuestions: AttributedString {
-        var result = AttributedString()
-        for (idx, question) in questions.enumerated() {
-            var segment = AttributedString(question.question)
-            segment.foregroundColor = UnifiedDesignSystem.Colors.whimsy
-            segment.underlineStyle = .single
-            segment.link = URL(string: "obb-followup://\(idx)")
-            result.append(segment)
-            if idx < questions.count - 1 {
-                var separator = AttributedString("  ·  ")
-                separator.foregroundColor = UnifiedDesignSystem.Colors.textMuted
-                result.append(separator)
+                FollowUpLinkButton(question: question, onTap: onTap)
             }
         }
-        return result
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// A single underlined whimsy-coloured link styled to read inline with
+/// the surrounding paragraph but driven by a real `Button` so iOS
+/// reliably fires the tap (the previous `AttributedString.link` +
+/// `OpenURLAction` approach silently swallowed taps inside a
+/// `ScrollView`).
+private struct FollowUpLinkButton: View {
+    let question: InsightFollowUpQuestion
+    let onTap: (InsightFollowUpQuestion) -> Void
+
+    var body: some View {
+        Button {
+            onTap(question)
+        } label: {
+            Text(question.question)
+                .font(UnifiedDesignSystem.Typography.body)
+                .foregroundStyle(UnifiedDesignSystem.Colors.whimsy)
+                .underline(true, color: UnifiedDesignSystem.Colors.whimsy.opacity(0.55))
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Follow-up: \(question.question)")
+        .accessibilityHint("Asks the composer")
     }
 }
 
@@ -912,6 +914,7 @@ private extension InsightCitation.Kind {
         case .anomaly: return "exclamationmark.triangle"
         case .query: return "magnifyingglass"
         case .quota: return "gauge"
+        case .benchmark: return "chart.line.uptrend.xyaxis"
         }
     }
 }
@@ -1023,6 +1026,8 @@ public enum IntelligenceBriefCitationPrompt {
             return "Re-run the query \"\(text)\" behind \(citation.label) and explain the result row by row."
         case .quota(let provider, let bucket):
             return "Detail the \(citation.label) quota signal: \(provider) bucket \(bucket) — headroom, refresh cadence, and projected throttling."
+        case .benchmark(let source, let modelID, let taskCategory):
+            return "Explain the \(citation.label) benchmark row: source \(source), model \(modelID), task \(taskCategory). Compare it to the models I actually used, including cost, rank, freshness, and whether switching would make sense."
         }
     }
 }

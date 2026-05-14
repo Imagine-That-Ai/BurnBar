@@ -153,6 +153,7 @@ public struct InsightDataSnapshot: Codable, Hashable, Sendable {
     public var quotaBuckets: [InsightQuotaBucket]
     public var operatingActions: [InsightOperatingAction]
     public var summaryRuns: [InsightSummaryRun]
+    public var modelBenchmarks: [InsightDigest.ModelBenchmarkSummary]
 
     public init(window: DateInterval,
                 generatedAt: Date = Date(),
@@ -160,7 +161,8 @@ public struct InsightDataSnapshot: Codable, Hashable, Sendable {
                 sessions: [InsightSessionRow] = [],
                 quotaBuckets: [InsightQuotaBucket] = [],
                 operatingActions: [InsightOperatingAction] = [],
-                summaryRuns: [InsightSummaryRun] = []) {
+                summaryRuns: [InsightSummaryRun] = [],
+                modelBenchmarks: [InsightDigest.ModelBenchmarkSummary] = []) {
         self.window = window
         self.generatedAt = generatedAt
         self.usages = usages
@@ -168,6 +170,7 @@ public struct InsightDataSnapshot: Codable, Hashable, Sendable {
         self.quotaBuckets = quotaBuckets
         self.operatingActions = operatingActions
         self.summaryRuns = summaryRuns
+        self.modelBenchmarks = modelBenchmarks
     }
 }
 

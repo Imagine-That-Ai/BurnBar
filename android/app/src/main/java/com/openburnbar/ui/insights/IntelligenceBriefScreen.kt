@@ -73,6 +73,8 @@ import com.openburnbar.data.insights.InsightFinding
 import com.openburnbar.data.insights.InsightFollowUpQuestion
 import com.openburnbar.data.insights.InsightGeneratedWidget
 import com.openburnbar.data.insights.InsightModelTag
+import com.openburnbar.data.insights.InsightWidget
+import com.openburnbar.data.insights.InsightWidgetKind
 import com.openburnbar.data.insights.InsightRecommendation
 import com.openburnbar.data.insights.InsightSeverity
 import com.openburnbar.data.insights.InsightTheme as CanvasTheme
@@ -128,6 +130,14 @@ fun IntelligenceBriefScreen(
     // stagger. Reduce-motion paints everything instantly.
     val visibility = rememberSectionVisibility(reduceMotion)
 
+    // Pull the first chart-bearing widget up into the hero so a graph
+    // lives ABOVE THE FOLD. Remaining widgets stay in the Generated views
+    // section right after the hero. KPI/Time-Series/Ranking/Donut are
+    // first-class chart kinds; we prefer them in that order so the hero
+    // always leads with a chart, not a narrative card.
+    val featuredWidget = result.generatedWidgets.firstOrNull { it.widget.isChart }
+    val remainingWidgets = result.generatedWidgets.filterNot { it === featuredWidget }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -138,14 +148,32 @@ fun IntelligenceBriefScreen(
         AnimatedSection(visible = visibility[0], reduceMotion = reduceMotion) {
             HeroSection(
                 result = result,
+                featuredWidget = featuredWidget,
                 isDark = isDark,
                 reduceMotion = reduceMotion,
                 onConfigureModel = onConfigureModel,
+                onPinWidget = onPinWidget,
+                onCitationTap = onCitationTap,
+                theme = theme,
             )
         }
 
-        if (result.findings.isNotEmpty()) {
+        // CHARTS NEXT — the remaining generated widgets render right after
+        // the hero so graphs stay front and center. Findings + anomalies +
+        // recommendations sit below, supporting the picture you just saw.
+        if (remainingWidgets.isNotEmpty()) {
             AnimatedSection(visible = visibility[1], reduceMotion = reduceMotion) {
+                GeneratedViewsSection(
+                    generated = remainingWidgets,
+                    theme = theme,
+                    onPin = onPinWidget,
+                    onCitationTap = onCitationTap,
+                )
+            }
+        }
+
+        if (result.findings.isNotEmpty()) {
+            AnimatedSection(visible = visibility[2], reduceMotion = reduceMotion) {
                 FindingsSection(
                     findings = result.findings,
                     onCitationTap = onCitationTap,
@@ -154,7 +182,7 @@ fun IntelligenceBriefScreen(
         }
 
         if (result.anomalies.isNotEmpty()) {
-            AnimatedSection(visible = visibility[2], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[3], reduceMotion = reduceMotion) {
                 AnomalyAtlasSection(
                     anomalies = result.anomalies,
                     onCitationTap = onCitationTap,
@@ -163,21 +191,10 @@ fun IntelligenceBriefScreen(
         }
 
         if (result.recommendations.isNotEmpty()) {
-            AnimatedSection(visible = visibility[3], reduceMotion = reduceMotion) {
+            AnimatedSection(visible = visibility[4], reduceMotion = reduceMotion) {
                 RecommendationsSection(
                     recommendations = result.recommendations,
                     isDark = isDark,
-                    onCitationTap = onCitationTap,
-                )
-            }
-        }
-
-        if (result.generatedWidgets.isNotEmpty()) {
-            AnimatedSection(visible = visibility[4], reduceMotion = reduceMotion) {
-                GeneratedViewsSection(
-                    generated = result.generatedWidgets,
-                    theme = theme,
-                    onPin = onPinWidget,
                     onCitationTap = onCitationTap,
                 )
             }
@@ -202,6 +219,33 @@ fun IntelligenceBriefScreen(
         }
     }
 }
+
+/**
+ * Chart-bearing widget kinds — the ones that paint a graph rather than a
+ * narrative or table. Used to choose the hero featured widget so the
+ * surface always leads with a picture, not prose.
+ */
+private val InsightWidget.isChart: Boolean
+    get() = when (kind) {
+        InsightWidgetKind.TIME_SERIES_LINE,
+        InsightWidgetKind.TIME_SERIES_AREA,
+        InsightWidgetKind.STREAM_GRAPH,
+        InsightWidgetKind.BAR_RANKING,
+        InsightWidgetKind.DONUT,
+        InsightWidgetKind.TREEMAP,
+        InsightWidgetKind.HEATMAP,
+        InsightWidgetKind.SCATTER,
+        InsightWidgetKind.SANKEY,
+        InsightWidgetKind.RADAR,
+        InsightWidgetKind.COHORT,
+        InsightWidgetKind.FUNNEL,
+        InsightWidgetKind.QUOTA_PULSE,
+        InsightWidgetKind.FORECAST,
+        InsightWidgetKind.AGENT_FOCUS_MATRIX,
+        InsightWidgetKind.MODEL_FOCUS_MATRIX,
+        InsightWidgetKind.KPI_TILE -> true
+        else -> false
+    }
 
 // ─── Section visibility cascade ────────────────────────────────────────────
 
@@ -252,9 +296,13 @@ private fun AnimatedSection(
 @Composable
 private fun HeroSection(
     result: InsightAnalysisResult,
+    featuredWidget: InsightGeneratedWidget?,
     isDark: Boolean,
     reduceMotion: Boolean,
     onConfigureModel: (() -> Unit)?,
+    onPinWidget: (InsightGeneratedWidget) -> Unit,
+    onCitationTap: (InsightCitation) -> Unit,
+    theme: CanvasTheme,
 ) {
     Column(
         modifier = Modifier
@@ -288,6 +336,16 @@ private fun HeroSection(
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.semantics { heading() },
         )
+        if (featuredWidget != null) {
+            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+            HeroChartFrame(
+                generated = featuredWidget,
+                theme = theme,
+                isDark = isDark,
+                onPin = onPinWidget,
+                onCitationTap = onCitationTap,
+            )
+        }
         MetaStrip(
             modelTag = result.modelTag,
             budget = result.contextBudget,
@@ -300,6 +358,58 @@ private fun HeroSection(
             reduceMotion = reduceMotion,
             shimmer = true,
         )
+    }
+}
+
+/**
+ * Above-the-fold hero chart. Same renderer the Generated Views section
+ * uses, wrapped in a borderless figure-style frame so it reads as part
+ * of the editorial lede instead of a card. A mercury figure caption
+ * underneath ties the chart to the executive summary above.
+ */
+@Composable
+private fun HeroChartFrame(
+    generated: InsightGeneratedWidget,
+    theme: CanvasTheme,
+    isDark: Boolean,
+    onPin: (InsightGeneratedWidget) -> Unit,
+    onCitationTap: (InsightCitation) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(SECTION_TAG_HERO_CHART),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+        ) {
+            Text(
+                text = "Fig. 01 · ${generated.widget.title}",
+                style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                onClick = { onPin(generated) },
+                modifier = Modifier.semantics { contentDescription = "Pin chart to canvas" },
+            ) {
+                Text(text = "Pin", style = AuroraType.monoSmall)
+            }
+        }
+        // Render the chart only — pass showHeader=false so the renderer
+        // doesn't repeat the title we already drew with the Fig. ordinal.
+        InsightWidgetRenderer(
+            widget = generated.widget,
+            onCitationTap = onCitationTap,
+            theme = theme,
+            showHeader = false,
+        )
+        if (generated.reason.isNotBlank()) {
+            FigureCaption(reason = generated.reason, isDark = isDark)
+        }
     }
 }
 
@@ -895,7 +1005,7 @@ private fun GeneratedView(
                     modifier = Modifier.semantics { contentDescription = "Pin to canvas" },
                 ) {
                     Text(
-                        text = "Pin to canvas",
+                        text = "Pin",
                         style = AuroraType.monoSmall,
                     )
                 }
@@ -904,6 +1014,7 @@ private fun GeneratedView(
                 widget = generated.widget,
                 onCitationTap = onCitationTap,
                 theme = theme,
+                showHeader = false,
             )
             if (generated.citations.isNotEmpty()) {
                 CitationChipRow(
@@ -1228,6 +1339,7 @@ internal const val SECTION_GENERATED_TITLE = "Generated views"
 internal const val SECTION_FOLLOWUPS_TITLE = "Follow-up questions"
 
 internal const val SECTION_TAG_HERO = "section-hero"
+internal const val SECTION_TAG_HERO_CHART = "section-hero-chart"
 internal const val SECTION_TAG_FINDINGS = "section-findings"
 internal const val SECTION_TAG_ANOMALIES = "section-anomalies"
 internal const val SECTION_TAG_RECOMMENDATIONS = "section-recommendations"

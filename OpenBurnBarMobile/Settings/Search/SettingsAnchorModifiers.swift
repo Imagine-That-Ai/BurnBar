@@ -11,7 +11,7 @@ import SwiftUI
 /// }
 /// ```
 struct SettingsDeepLinkScrollContainer<Content: View>: View {
-    @Environment(SettingsRouter.self) private var router
+    @Environment(SettingsRouter.self) private var router: SettingsRouter?
     let route: SettingsPageRoute
     @ViewBuilder var content: (ScrollViewProxy) -> Content
 
@@ -19,13 +19,14 @@ struct SettingsDeepLinkScrollContainer<Content: View>: View {
         ScrollViewReader { proxy in
             content(proxy)
                 .onAppear { applyPendingNavigation(proxy: proxy) }
-                .onChange(of: router.pendingAnchor) { _, _ in
+                .onChange(of: router?.pendingAnchor) { _, _ in
                     applyPendingNavigation(proxy: proxy)
                 }
         }
     }
 
     private func applyPendingNavigation(proxy: ScrollViewProxy) {
+        guard let router else { return }
         guard let anchor = router.pendingAnchor else { return }
         guard SettingsManifest.anchorIndex[anchor] == route else { return }
 
@@ -44,7 +45,7 @@ struct SettingsDeepLinkScrollContainer<Content: View>: View {
 /// Tags a row with a stable id (so the `ScrollViewReader` can find it) and
 /// paints a brief halo when the router asks for that anchor.
 struct SettingsAnchorModifier: ViewModifier {
-    @Environment(SettingsRouter.self) private var router
+    @Environment(SettingsRouter.self) private var router: SettingsRouter?
     let anchor: String
 
     func body(content: Content) -> some View {
@@ -55,10 +56,10 @@ struct SettingsAnchorModifier: ViewModifier {
 
     @ViewBuilder
     private var highlightBackground: some View {
-        if router.highlightedAnchor == anchor {
+        if router?.highlightedAnchor == anchor {
             MobileTheme.amber.opacity(0.18)
                 .animation(.easeInOut(duration: 0.35),
-                           value: router.highlightedAnchor)
+                           value: router?.highlightedAnchor)
         } else {
             Color.clear
         }

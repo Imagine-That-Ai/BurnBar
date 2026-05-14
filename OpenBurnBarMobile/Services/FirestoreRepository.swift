@@ -462,6 +462,17 @@ final class FirestoreRepository {
         return results
     }
 
+    func fetchModelBenchmarkSnapshots(limit: Int = 160) async throws -> [InsightDigest.ModelBenchmarkSummary] {
+        _ = try uid()
+        let snapshot = try await db.collection("model_benchmark_snapshots")
+            .order(by: "updatedAt", descending: true)
+            .limit(to: limit)
+            .getDocuments()
+        return snapshot.documents.compactMap { doc in
+            decodeWithDocID(InsightDigest.ModelBenchmarkSummary.self, from: doc.data(), docID: doc.documentID)
+        }
+    }
+
     func listenToRollups(
         onUpdate: @escaping @Sendable (Result<[UsageRollupDoc], Error>) -> Void
     ) -> ListenerRegistration? {

@@ -6,22 +6,37 @@ struct CircularLockScreenView: View {
     let snap: BurnBarWidgetSnapshot?
 
     private var cost: Double { snap?.heroTotalCost ?? 0 }
-    private var progress: Double { min(cost / 10.0, 1.0) }
+    private var totalTokens: Int { snap?.heroTotalTokens ?? 0 }
+
+    var providerEnum: AgentProvider? {
+        guard let first = snap?.topProviders.first else { return nil }
+        return AgentProvider.fromPersistedToken(first)
+    }
+
+    var gaugeColor: Color {
+        guard let p = providerEnum else { return WidgetDesignSystem.Colors.amber }
+        return DesignSystemColors.primary(for: p)
+    }
+
+    /// Gauge fill is based on cost as a fraction of a $20 daily soft cap.
+    private var progress: Double {
+        min(cost / 20.0, 1.0)
+    }
 
     var body: some View {
         ZStack {
             // Background track
             Circle()
                 .stroke(
-                    Color.gray.opacity(0.15),
+                    WidgetDesignSystem.Colors.border.opacity(0.25),
                     style: StrokeStyle(lineWidth: 5, lineCap: .round)
                 )
 
-            // Progress arc with gradient
+            // Progress arc with provider color
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
-                    WidgetDesignSystem.Colors.accentGradient,
+                    gaugeColor,
                     style: StrokeStyle(lineWidth: 5, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
@@ -35,8 +50,8 @@ struct CircularLockScreenView: View {
                     .minimumScaleFactor(0.55)
                     .widgetAccentable()
 
-                if let tokens = snap?.heroTotalTokens {
-                    Text(tokens.formatAsTokens())
+                if totalTokens > 0 {
+                    Text(totalTokens.formatAsTokens())
                         .font(.system(size: 8, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

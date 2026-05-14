@@ -24,6 +24,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -38,8 +39,16 @@ import com.openburnbar.data.insights.InsightFinding
 import com.openburnbar.data.insights.InsightFollowUpQuestion
 import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightSeverity
+import com.openburnbar.data.insights.InsightDataBinding
+import com.openburnbar.data.insights.InsightFreshness
+import com.openburnbar.data.insights.InsightGeneratedWidget
 import com.openburnbar.data.insights.InsightTimeWindow
 import com.openburnbar.data.insights.InsightTokenUsage
+import com.openburnbar.data.insights.InsightWidget
+import com.openburnbar.data.insights.InsightWidgetData
+import com.openburnbar.data.insights.InsightWidgetKind
+import com.openburnbar.data.insights.InsightWidgetSpec
+import com.openburnbar.data.insights.ValueFormat
 import com.openburnbar.ui.theme.AuroraTheme
 import com.openburnbar.ui.theme.LocalAuroraReduceMotion
 import org.junit.Rule
@@ -138,7 +147,11 @@ class IntelligenceBriefScreenTest {
                 severity = InsightSeverity.MEDIUM,
             ),
         ),
-        generatedWidgets = emptyList(),
+        generatedWidgets = listOf(
+            generatedTimeSeriesWidget(),
+            generatedRankingWidget(),
+            generatedDonutWidget(),
+        ),
         followUpQuestions = listOf(
             followUp("How does this week compare to last week?"),
             followUp("Which sessions used Claude Opus?"),
@@ -268,6 +281,8 @@ class IntelligenceBriefScreenTest {
         // assert existence rather than display because long content runs
         // below the viewport on a phone-sized device.
         composeRule.onNodeWithTag(SECTION_TAG_HERO).assertExists()
+        composeRule.onNodeWithTag(SECTION_TAG_HERO_CHART).assertExists()
+        composeRule.onNodeWithTag(SECTION_TAG_GENERATED).assertExists()
         composeRule.onNodeWithTag(SECTION_TAG_FINDINGS).assertExists()
         composeRule.onNodeWithTag(SECTION_TAG_ANOMALIES).assertExists()
         composeRule.onNodeWithTag(SECTION_TAG_RECOMMENDATIONS).assertExists()
@@ -290,8 +305,12 @@ class IntelligenceBriefScreenTest {
                 }
             }
         }
+        // Reading order is hero → generated views (CHARTS) → findings →
+        // anomalies → recommendations → follow-ups → audit. Charts sit
+        // second so a reader gets a graph before they get prose.
         val orderedTags = listOf(
             SECTION_TAG_HERO,
+            SECTION_TAG_GENERATED,
             SECTION_TAG_FINDINGS,
             SECTION_TAG_ANOMALIES,
             SECTION_TAG_RECOMMENDATIONS,
@@ -429,8 +448,10 @@ class IntelligenceBriefScreenTest {
                 }
             }
         }
-        // The fullFixture seeds finding #1 with a "Claude Opus, 7d" chip.
-        composeRule.onNodeWithText("Claude Opus, 7d").performClick()
+        // The fullFixture seeds finding #1 with a "Claude Opus, 7d" chip,
+        // but charts now sit above findings so the chip is below the fold.
+        // Scroll until the chip is in the viewport, then click.
+        composeRule.onNodeWithText("Claude Opus, 7d").performScrollTo().performClick()
         composeRule.waitForIdle()
         assert(tapped?.label == "Claude Opus, 7d") {
             "Expected onCitationTap to fire with label 'Claude Opus, 7d' — got ${tapped?.label}"
@@ -543,5 +564,136 @@ class IntelligenceBriefScreenTest {
         kind = InsightCitation.Kind.Query(text = label),
         label = label,
     )
+
+    // ─── Generated widget fixtures (real chart data) ─────────────────────
+
+    /** Provider-mix cost-over-time. 7 daily points, 3 series. */
+    private fun generatedTimeSeriesWidget() = InsightGeneratedWidget(
+        widget = InsightWidget(
+            kind = InsightWidgetKind.TIME_SERIES_LINE,
+            title = "Weekly cost · provider mix",
+            spec = InsightWidgetSpec.TimeSeries(
+                InsightWidgetSpec.TimeSeriesSpec(style = InsightWidgetSpec.TimeSeriesSpec.Style.LINE),
+            ),
+            dataBinding = InsightDataBinding.TimeSeries(
+                metric = "cost",
+                dimension = InsightWidgetSpec.Dimension.PROVIDER,
+                window = InsightTimeWindow.Last7d,
+            ),
+            data = InsightWidgetData.TimeSeries(
+                series = listOf(
+                    InsightWidgetData.TimeSeries.Series(
+                        id = "anthropic",
+                        name = "Anthropic",
+                        colorHex = "#E07868",
+                        points = listOf(
+                            timePoint("2026-05-06", 4.20),
+                            timePoint("2026-05-07", 5.10),
+                            timePoint("2026-05-08", 6.40),
+                            timePoint("2026-05-09", 8.95),
+                            timePoint("2026-05-10", 7.60),
+                            timePoint("2026-05-11", 9.80),
+                            timePoint("2026-05-12", 11.40),
+                        ),
+                    ),
+                    InsightWidgetData.TimeSeries.Series(
+                        id = "openai",
+                        name = "OpenAI",
+                        colorHex = "#8E86D0",
+                        points = listOf(
+                            timePoint("2026-05-06", 2.10),
+                            timePoint("2026-05-07", 2.30),
+                            timePoint("2026-05-08", 2.80),
+                            timePoint("2026-05-09", 2.40),
+                            timePoint("2026-05-10", 2.60),
+                            timePoint("2026-05-11", 3.10),
+                            timePoint("2026-05-12", 3.40),
+                        ),
+                    ),
+                    InsightWidgetData.TimeSeries.Series(
+                        id = "minimax",
+                        name = "MiniMax",
+                        colorHex = "#2CBEC8",
+                        points = listOf(
+                            timePoint("2026-05-06", 0.80),
+                            timePoint("2026-05-07", 0.90),
+                            timePoint("2026-05-08", 1.00),
+                            timePoint("2026-05-09", 5.60),
+                            timePoint("2026-05-10", 1.20),
+                            timePoint("2026-05-11", 1.30),
+                            timePoint("2026-05-12", 1.10),
+                        ),
+                    ),
+                ),
+                xAxisLabel = "Day",
+                yAxisLabel = "USD",
+                yFormat = ValueFormat.CURRENCY,
+            ),
+            freshness = InsightFreshness.FRESH,
+        ),
+        reason = "Provider mix tells the cost story the executive summary references " +
+            "— Anthropic is the rising line.",
+        citations = emptyList(),
+    )
+
+    /** Top models by cost — horizontal bar ranking. */
+    private fun generatedRankingWidget() = InsightGeneratedWidget(
+        widget = InsightWidget(
+            kind = InsightWidgetKind.BAR_RANKING,
+            title = "Top models by cost",
+            spec = InsightWidgetSpec.Ranking(InsightWidgetSpec.RankingSpec()),
+            dataBinding = InsightDataBinding.Ranking(
+                metric = "cost",
+                dimension = InsightWidgetSpec.Dimension.MODEL,
+                limit = 5,
+                window = InsightTimeWindow.Last7d,
+            ),
+            data = InsightWidgetData.Ranking(
+                rows = listOf(
+                    InsightWidgetData.Ranking.Row("opus", "Claude Opus", 42.18, "62% share"),
+                    InsightWidgetData.Ranking.Row("sonnet", "Claude Sonnet 4.6", 18.46, "27% share"),
+                    InsightWidgetData.Ranking.Row("gpt5", "OpenAI GPT-5", 6.91, "10% share"),
+                    InsightWidgetData.Ranking.Row("minimax", "MiniMax M2.7", 7.84, "5h burst"),
+                    InsightWidgetData.Ranking.Row("kimi", "Kimi K2", 1.42, "9 sessions"),
+                ),
+                valueFormat = ValueFormat.CURRENCY,
+                dimensionLabel = "Model",
+            ),
+            freshness = InsightFreshness.FRESH,
+        ),
+        reason = "Pinning this puts the Sonnet-default recommendation one tap away " +
+            "from its evidence.",
+        citations = emptyList(),
+    )
+
+    /** Provider distribution donut. */
+    private fun generatedDonutWidget() = InsightGeneratedWidget(
+        widget = InsightWidget(
+            kind = InsightWidgetKind.DONUT,
+            title = "Spend distribution by provider",
+            spec = InsightWidgetSpec.Distribution(InsightWidgetSpec.DistributionSpec()),
+            dataBinding = InsightDataBinding.Distribution(
+                metric = "cost",
+                dimension = InsightWidgetSpec.Dimension.PROVIDER,
+                window = InsightTimeWindow.Last7d,
+            ),
+            data = InsightWidgetData.Distribution(
+                slices = listOf(
+                    InsightWidgetData.Distribution.Slice("anthropic", "Anthropic", 60.64, "#E07868"),
+                    InsightWidgetData.Distribution.Slice("openai", "OpenAI", 18.70, "#8E86D0"),
+                    InsightWidgetData.Distribution.Slice("minimax", "MiniMax", 11.90, "#2CBEC8"),
+                    InsightWidgetData.Distribution.Slice("kimi", "Kimi", 4.81, "#D49A3A"),
+                ),
+                valueFormat = ValueFormat.CURRENCY,
+                total = 96.05,
+            ),
+            freshness = InsightFreshness.FRESH,
+        ),
+        reason = "Donut frames the headline: one provider, one model family, dominating spend.",
+        citations = emptyList(),
+    )
+
+    private fun timePoint(date: String, value: Double) =
+        InsightWidgetData.TimeSeries.Point(date = date, value = value)
 }
 

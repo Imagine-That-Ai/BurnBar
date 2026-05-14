@@ -9,7 +9,7 @@ struct RectangularLockScreenView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(snap?.heroTotalCost.formatAsCost() ?? "—")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                     .widgetAccentable()
@@ -23,9 +23,20 @@ struct RectangularLockScreenView: View {
             Spacer()
 
             if let first = snap?.topProviders.first {
+                let providerEnum = AgentProvider.fromPersistedToken(first)
+                let color: Color = {
+                    guard let p = providerEnum else { return WidgetDesignSystem.Colors.amber }
+                    return DesignSystemColors.primary(for: p)
+                }()
+
                 HStack(spacing: 4) {
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 8, weight: .semibold))
+                    if let p = providerEnum,
+                       UIImage(named: p.bundledLogoName) != nil {
+                        UnifiedProviderLogoView(provider: p, size: 12)
+                    } else {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 8, weight: .semibold))
+                    }
 
                     Text(first)
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -34,14 +45,14 @@ struct RectangularLockScreenView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .background(
-                    Capsule()
-                        .fill(WidgetDesignSystem.Colors.amber.opacity(0.15))
+                    Capsule(style: .continuous)
+                        .fill(color.opacity(0.15))
                 )
                 .overlay(
-                    Capsule()
-                        .stroke(WidgetDesignSystem.Colors.amber.opacity(0.35), lineWidth: 1)
+                    Capsule(style: .continuous)
+                        .stroke(color.opacity(0.35), lineWidth: 1)
                 )
-                .foregroundStyle(WidgetDesignSystem.Colors.amber)
+                .foregroundStyle(color)
                 .widgetAccentable()
             }
         }

@@ -25,6 +25,9 @@ public struct InsightAnalysisModelPrompt: Sendable {
         lines.append("- Use only the compact digest, evidence index, budget report, and prior-run summaries supplied by the user payload.")
         lines.append("- Never ask for or infer secrets, credentials, raw source files, or full transcripts.")
         lines.append("- Treat citations as evidence handles. Only cite handles that appear in `evidenceIndex`.")
+        lines.append("- When `modelBenchmarks` or `model_benchmarks` evidence exists, compare observed model usage against benchmark score/rank, cost signal, latency, task category, freshness, and attribution.")
+        lines.append("- Never invent benchmark ranks, prices, or savings. If exact prices are absent, say `cost signal`, not dollar savings.")
+        lines.append("- For UI/design work, call out design/coding benchmark fit separately from general reasoning fit.")
         if !request.allowDeepTranscriptAnalysis {
             lines.append("- Deep transcript analysis is disabled. Do not request transcript content.")
         }

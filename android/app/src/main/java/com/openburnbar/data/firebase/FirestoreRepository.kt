@@ -5,6 +5,7 @@ import com.google.firebase.Timestamp
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
+import com.openburnbar.data.insights.InsightDigest
 import com.openburnbar.data.models.*
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -42,6 +43,9 @@ class FirestoreRepository {
     private val projectsCollection: CollectionReference
         get() = db.collection("users").document(currentUserId()).collection("projects")
 
+    private val modelBenchmarkSnapshotsCollection: CollectionReference
+        get() = db.collection("model_benchmark_snapshots")
+
     // ── Rollups ──
     suspend fun fetchRollups(): UsageRollups {
         // Cloud Functions write one document per window key:
@@ -52,6 +56,15 @@ class FirestoreRepository {
             rollupsCollection.document(key).get().await()
         }
         return mergeWindowDocs(windowDocs)
+    }
+
+    suspend fun fetchModelBenchmarkSnapshots(limit: Long = 160): List<InsightDigest.ModelBenchmarkSummary> {
+        val snapshot = modelBenchmarkSnapshotsCollection
+            .orderBy("updatedAt", Query.Direction.DESCENDING)
+            .limit(limit)
+            .get()
+            .await()
+        return snapshot.documents.mapNotNull { doc -> doc.toModelBenchmarkSummary() }
     }
 
     fun listenToRollups(): Flow<UsageRollups> = callbackFlow {
@@ -258,6 +271,42 @@ object FirestoreValueParsers {
             0L
         }
     }
+}
+
+private fun DocumentSnapshot.toModelBenchmarkSummary(): InsightDigest.ModelBenchmarkSummary? {
+    val data = data ?: return null
+    fun string(vararg keys: String): String? = FirestoreValueParsers.string(data, *keys)
+    fun number(vararg keys: String): Double? {
+        for (key in keys) {
+            val raw = data[key]
+            if (raw is Number) return raw.toDouble()
+        }
+        return null
+    }
+    fun int(vararg keys: String): Int? = number(*keys)?.toInt()
+    val modelID = string("modelID", "modelId", "model") ?: return null
+    val taskCategory = string("taskCategory", "task_category") ?: "unknown"
+    return InsightDigest.ModelBenchmarkSummary(
+        id = string("id") ?: id,
+        source = string("source") ?: "unknown",
+        sourceURL = string("sourceURL", "sourceUrl"),
+        attribution = string("attribution"),
+        fetchedAt = string("fetchedAt") ?: string("updatedAt") ?: "",
+        modelID = modelID,
+        providerID = string("providerID", "providerId"),
+        taskCategory = taskCategory,
+        score = number("score"),
+        rank = int("rank"),
+        costSignal = number("costSignal"),
+        latencySignal = number("latencySignal"),
+        contextWindowTokens = int("contextWindowTokens"),
+        reliabilitySignal = number("reliabilitySignal"),
+        confidence = number("confidence"),
+        freshness = string("freshness") ?: "fresh",
+        inputCostPerMtoken = number("inputCostPerMtoken"),
+        outputCostPerMtoken = number("outputCostPerMtoken"),
+        blendedCostPerMtoken = number("blendedCostPerMtoken")
+    )
 }
 
 // ── Rollup data classes (flat shape matching UsageRollupDoc) ──

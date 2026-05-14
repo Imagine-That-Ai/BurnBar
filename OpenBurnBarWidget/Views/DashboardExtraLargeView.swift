@@ -11,7 +11,7 @@ struct DashboardExtraLargeView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Left column: hero metrics + sparkline
+            // Left column: hero + sparkline
             VStack(alignment: .leading, spacing: 0) {
                 headerBar
 
@@ -20,13 +20,12 @@ struct DashboardExtraLargeView: View {
                     .padding(.top, 10)
 
                 if let points = snap?.dailyPoints, !points.isEmpty {
-                    TokenSparkline(data: points, color: WidgetDesignSystem.Colors.amber)
-                        .frame(height: 70)
+                    WidgetMiniSparkline(data: points, color: WidgetDesignSystem.Colors.amber, height: 60)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 8)
                 }
 
-                modelChips
+                modelPills
                     .padding(.horizontal, 20)
                     .padding(.bottom, 10)
 
@@ -35,14 +34,13 @@ struct DashboardExtraLargeView: View {
                 footerBar
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(WidgetDesignSystem.Colors.surfaceLight)
+            .widgetGlassCard()
 
-            // Vertical divider
-            Rectangle()
-                .fill(WidgetDesignSystem.Colors.amber.opacity(0.15))
+            // Mercury column divider
+            WidgetDesignSystem.Colors.mercuryGradient
                 .frame(width: 1)
 
-            // Right column: provider breakdown + details
+            // Right column: breakdown + details
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Text("Breakdown")
@@ -63,16 +61,12 @@ struct DashboardExtraLargeView: View {
 
                 Spacer(minLength: 0)
 
-                askChipRows
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
-
                 detailGrid
                     .padding(.horizontal, 20)
                     .padding(.bottom, 12)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(WidgetDesignSystem.Colors.surfaceElevated)
+            .widgetGlassCardElevated()
         }
         .widgetAccentable()
     }
@@ -81,20 +75,8 @@ struct DashboardExtraLargeView: View {
 
     private var headerBar: some View {
         HStack {
-            HStack(spacing: 5) {
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(WidgetDesignSystem.Colors.accentGradient)
-
-                Text("BurnBar")
-                    .font(WidgetDesignSystem.Typography.micro)
-                    .foregroundStyle(WidgetDesignSystem.Colors.textSecondary)
-                    .textCase(.uppercase)
-                    .tracking(0.6)
-            }
-
+            WidgetEyebrow(text: "BurnBar", showLiveDot: false)
             Spacer()
-
             if let window = snap?.windowKey {
                 Text(window)
                     .font(WidgetDesignSystem.Typography.micro)
@@ -105,7 +87,6 @@ struct DashboardExtraLargeView: View {
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 8)
-        .widgetHeaderBackground()
     }
 
     private var heroMetrics: some View {
@@ -113,7 +94,7 @@ struct DashboardExtraLargeView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(snap?.heroTotalCost.formatAsCost() ?? "—")
                     .font(.system(size: 38, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(WidgetDesignSystem.Colors.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .widgetAccentable()
@@ -126,28 +107,33 @@ struct DashboardExtraLargeView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 6) {
-                WidgetMetricBadge(
-                    icon: "number",
-                    value: "\(snap?.heroTotalRequests ?? 0)",
-                    label: "requests",
-                    color: WidgetDesignSystem.Colors.whimsy
-                )
+                HStack(spacing: 4) {
+                    Text("\(snap?.heroTotalRequests ?? 0)")
+                        .font(WidgetDesignSystem.Typography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(WidgetDesignSystem.Colors.textPrimary)
+                    Text("reqs")
+                        .font(WidgetDesignSystem.Typography.micro)
+                        .foregroundStyle(WidgetDesignSystem.Colors.textMuted)
+                        .textCase(.uppercase)
+                }
 
                 if let first = snap?.topProviders.first {
                     WidgetProviderPill(
                         name: first,
-                        tokens: snap?.topProviderTokens.first
+                        tokens: snap?.topProviderTokens.first,
+                        compact: true
                     )
                 }
             }
         }
     }
 
-    private var modelChips: some View {
+    private var modelPills: some View {
         HStack(spacing: 6) {
             if let models = snap?.topModels.prefix(5), !models.isEmpty {
                 ForEach(Array(models), id: \.self) { model in
-                    WidgetModelChip(model: model)
+                    WidgetModelPill(model: model)
                 }
             }
         }
@@ -163,55 +149,6 @@ struct DashboardExtraLargeView: View {
                         tokens: snap?.topProviderTokens[safe: index] ?? 0,
                         totalTokens: totalTokens
                     )
-                }
-            }
-        }
-    }
-
-    private var askChipRows: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                Button(intent: AskAssistantIntent(assistant: .hermes, prompt: nil)) {
-                    AskChipLabel(
-                        icon: "sparkle",
-                        title: "Ask Hermes",
-                        color: WidgetDesignSystem.Colors.amber,
-                        prominent: true
-                    )
-                }
-                .buttonStyle(.plain)
-                Button(intent: AskAssistantIntent(assistant: .pi, prompt: nil)) {
-                    AskChipLabel(
-                        icon: "cpu",
-                        title: "Ask Pi",
-                        color: WidgetDesignSystem.Colors.whimsy,
-                        prominent: true
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-            // Full 6-prompt catalog — 3 + 3 grid keeps row width sensible.
-            ForEach(0..<2, id: \.self) { rowIndex in
-                HStack(spacing: 6) {
-                    ForEach(
-                        Array(AssistantQuickPromptCatalog.all.dropFirst(rowIndex * 3).prefix(3)),
-                        id: \.id
-                    ) { prompt in
-                        Button(intent: AskAssistantIntent(
-                            assistant: AssistantRuntimeOption(rawValue: prompt.preferredAssistant.rawValue) ?? .hermes,
-                            prompt: prompt.fullPrompt
-                        )) {
-                            AskChipLabel(
-                                icon: nil,
-                                title: prompt.chipLabel,
-                                color: prompt.preferredAssistant == .pi
-                                    ? WidgetDesignSystem.Colors.whimsy
-                                    : WidgetDesignSystem.Colors.amber,
-                                prominent: false
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
             }
         }
@@ -255,6 +192,64 @@ struct DashboardExtraLargeView: View {
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 10)
+    }
+}
+
+// MARK: - Supporting Components
+
+struct WidgetModelPill: View {
+    let model: String
+
+    var color: Color {
+        DesignSystemColors.colorForModel(model)
+    }
+
+    var body: some View {
+        Text(model)
+            .font(WidgetDesignSystem.Typography.micro)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(color.opacity(0.10))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(color.opacity(0.25), lineWidth: 0.5)
+            )
+            .foregroundStyle(color)
+    }
+}
+
+struct WidgetMetricBadge: View {
+    let icon: String
+    let value: String
+    let label: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(color)
+                Text(label)
+                    .font(WidgetDesignSystem.Typography.micro)
+                    .foregroundStyle(WidgetDesignSystem.Colors.textMuted)
+                    .textCase(.uppercase)
+            }
+            Text(value)
+                .font(WidgetDesignSystem.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(WidgetDesignSystem.Colors.textPrimary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: WidgetDesignSystem.Radius.sm, style: .continuous)
+                .fill(color.opacity(0.08))
+        )
     }
 }
 

@@ -188,6 +188,14 @@ private fun SettingsRootList(router: SettingsRouter) {
                 onTap = {}
             ),
             RootRow(
+                anchor = SettingsAnchor.PROVIDERS_ROW,
+                icon = Icons.Filled.Search,
+                title = "Provider connections",
+                subtitle = "Find OpenCode, Codex, Claude, and other quota providers",
+                pageRoute = SettingsPageRoute.ROOT,
+                onTap = {}
+            ),
+            RootRow(
                 anchor = SettingsAnchor.CONNECTED_DEVICES,
                 icon = Icons.Filled.Devices,
                 title = "Connected Devices",

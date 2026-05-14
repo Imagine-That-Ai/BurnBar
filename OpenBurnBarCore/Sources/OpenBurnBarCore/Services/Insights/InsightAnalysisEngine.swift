@@ -77,7 +77,8 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
                 dataBinding: .ranking(metric: .cost, dimension: .provider, limit: 5, window: request.context.digest.window.asInsightWindow(default: request.currentCanvas?.filter.window ?? .last7d)),
                 reason: "Shows the provider driving the main cost signal.",
                 modelTag: request.selectedModel,
-                citations: [citation]
+                citations: [citation],
+                digest: digest
             )
             generatedWidgets.append(widget)
             findings.append(.init(
@@ -134,7 +135,8 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
                 dataBinding: .quota(providerKey: nil),
                 reason: "Supports the quota-risk recommendation.",
                 modelTag: request.selectedModel,
-                citations: [citation]
+                citations: [citation],
+                digest: digest
             ))
         }
         if let topModel {
@@ -150,19 +152,32 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             ))
         }
 
+        let benchmarkAdvice = modelBenchmarkAdvice(
+            digest: digest,
+            topModel: topModel,
+            selectedModel: request.selectedModel,
+            window: request.currentCanvas?.filter.window ?? .last7d
+        )
+        findings.append(contentsOf: benchmarkAdvice.findings)
+        recommendations.append(contentsOf: benchmarkAdvice.recommendations)
+        generatedWidgets.append(contentsOf: benchmarkAdvice.widgets)
+
         generatedWidgets.append(generatedWidget(
             kind: .timeSeriesLine,
             title: "Main supporting trend",
             dataBinding: .timeSeries(metric: .cost, dimension: .provider, window: request.currentCanvas?.filter.window ?? .last7d),
             reason: "Shows whether the main finding is a one-day spike or a sustained trend.",
             modelTag: request.selectedModel,
-            citations: Array(citations.prefix(3))
+            citations: Array(citations.prefix(3)),
+            digest: digest
         ))
 
         let followUps = [
             "Why did cost spike this week?",
             "Which project or workflow wasted the most money?",
             "Which model should I route routine work to instead?",
+            "Which benchmarked model is cheapest at similar performance?",
+            "Which model should handle UI and design tasks?",
             "Find quota risks in the next 24 hours."
         ].map { InsightFollowUpQuestion(question: $0) }
 
@@ -179,6 +194,120 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             generatedWidgets: Array(generatedWidgets.prefix(request.maxGeneratedWidgets)),
             followUpQuestions: followUps,
             citations: citations
+        )
+    }
+
+    private static func modelBenchmarkAdvice(
+        digest: InsightDigest,
+        topModel: InsightDigest.ModelSnapshot?,
+        selectedModel: InsightModelTag,
+        window: InsightTimeWindow
+    ) -> (
+        findings: [InsightFinding],
+        recommendations: [InsightRecommendation],
+        widgets: [InsightGeneratedWidget]
+    ) {
+        let benchmarks = digest.modelBenchmarks
+        guard benchmarks.isEmpty == false else { return ([], [], []) }
+
+        let usedModels = Dictionary(uniqueKeysWithValues: digest.models.map { (normalizedModelID($0.id), $0) })
+        let benchmarkByModel = Dictionary(grouping: benchmarks, by: { normalizedModelID($0.modelID) })
+        let topUsedBenchmark = topModel.flatMap { bestBenchmark(for: normalizedModelID($0.id), in: benchmarkByModel) }
+        let bestDesign = bestBenchmark(in: benchmarks.filter { $0.taskCategory == "design" || $0.taskCategory == "coding" })
+        let bestAny = bestBenchmark(in: benchmarks)
+        let cheapestSimilar = cheapestSimilarAlternative(
+            usedModel: topModel,
+            usedBenchmark: topUsedBenchmark,
+            benchmarks: benchmarks
+        )
+
+        var findings: [InsightFinding] = []
+        var recommendations: [InsightRecommendation] = []
+        var widgets: [InsightGeneratedWidget] = []
+
+        if let topModel, let bestDesign, normalizedModelID(bestDesign.modelID) != normalizedModelID(topModel.id) {
+            let modelCitation = InsightCitation(kind: .model(id: topModel.id), label: topModel.id)
+            let benchmarkCitation = benchmarkCitation(bestDesign)
+            findings.append(.init(
+                title: "UI/design work should be checked against \(bestDesign.modelID)",
+                whyItMatters: "\(topModel.id) leads your spend, but \(bestDesign.modelID) is the strongest cited \(bestDesign.taskCategory) benchmark candidate in the synced model board\(scorePhrase(bestDesign)).",
+                evidence: [modelCitation, benchmarkCitation],
+                confidence: confidence(for: bestDesign),
+                severity: .medium,
+                recommendedAction: "Use \(bestDesign.modelID) for the next UI-heavy task only if quota and routing are healthy; keep \(topModel.id) for work where its context or reliability matters."
+            ))
+        }
+
+        if let topModel, let alternative = cheapestSimilar {
+            let topCitation = InsightCitation(kind: .model(id: topModel.id), label: topModel.id)
+            let altCitation = benchmarkCitation(alternative)
+            let impact = savingsPhrase(current: topModel, alternative: alternative)
+            recommendations.append(.init(
+                title: "\(alternative.modelID) looks cheaper at similar benchmark strength",
+                rationale: "\(topModel.id) is your largest cost contributor. \(alternative.modelID) is close on benchmark evidence\(scorePhrase(alternative)) and has a stronger cost signal.",
+                recommendedAction: "Route one routine \(alternative.taskCategory) session to \(alternative.modelID), then compare output quality before changing defaults.",
+                estimatedImpact: impact,
+                evidence: [topCitation, altCitation],
+                confidence: confidence(for: alternative),
+                severity: .high
+            ))
+            widgets.append(generatedWidget(
+                kind: .recommendation,
+                title: "Cost-efficient alternative",
+                dataBinding: .recommendation(.init(
+                    headline: "\(alternative.modelID) for routine \(alternative.taskCategory)",
+                    rationale: "\(alternative.modelID) has similar public benchmark evidence and a better cost signal than the current top-spend model.",
+                    action: "Try it on one low-risk session before changing the router default.",
+                    estimatedImpact: impact,
+                    confidence: .medium,
+                    citations: [altCitation]
+                )),
+                reason: "Compares observed spend against public benchmark and cost signals.",
+                modelTag: selectedModel,
+                citations: [topCitation, altCitation],
+                digest: digest
+            ))
+        }
+
+        let benchmarkRows = benchmarkRankingRows(
+            benchmarks: benchmarks,
+            usedModels: usedModels,
+            limit: 6
+        )
+        if benchmarkRows.isEmpty == false {
+            widgets.append(.init(
+                widget: .init(
+                    kind: .barRanking,
+                    title: "Benchmark-aware model board",
+                    spec: .ranking(.init()),
+                    dataBinding: .ranking(metric: .cost, dimension: .model, limit: 6, window: window),
+                    data: .ranking(.init(rows: benchmarkRows, valueFormat: .percent, dimensionLabel: "Benchmark")),
+                    freshness: .fresh,
+                    modelTag: selectedModel,
+                    lastComputedAt: Date(),
+                    rationale: "Ranks cited benchmark candidates beside models used in this window."
+                ),
+                reason: "Shows where used models sit against public model-board evidence.",
+                citations: benchmarks.prefix(6).map(benchmarkCitation(_:))
+            ))
+        }
+
+        if let bestAny {
+            recommendations.append(.init(
+                title: "Do not blindly switch to \(bestAny.modelID)",
+                rationale: "Benchmarks are advisory. A higher public score loses when quota, account health, privacy mode, or task fit is worse.",
+                recommendedAction: "Treat \(bestAny.modelID) as a candidate for \(bestAny.taskCategory), not as a global default.",
+                estimatedImpact: "Avoids over-routing premium or unavailable models.",
+                evidence: [benchmarkCitation(bestAny)],
+                confidence: confidence(for: bestAny),
+                severity: .medium
+            ))
+        }
+
+        return (
+            Array(findings.prefix(2)),
+            Array(recommendations.prefix(3)),
+            Array(widgets.prefix(2))
         )
     }
 
@@ -240,7 +369,8 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         dataBinding: InsightDataBinding,
         reason: String,
         modelTag: InsightModelTag,
-        citations: [InsightCitation]
+        citations: [InsightCitation],
+        digest: InsightDigest? = nil
     ) -> InsightGeneratedWidget {
         let spec: InsightWidgetSpec
         switch kind {
@@ -255,7 +385,12 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
         switch dataBinding {
         case .narrative(let value): data = .narrative(value)
         case .recommendation(let value): data = .recommendation(value)
-        default: data = nil
+        default:
+            // Synthesize data straight from the digest so the brief's
+            // generated widgets paint a real chart on first render —
+            // otherwise we'd ship an empty chrome that waits for a
+            // canvas refresh to fill in its body.
+            data = digest.flatMap { Self.synthesizeData(for: kind, binding: dataBinding, digest: $0) }
         }
         return .init(
             widget: .init(
@@ -272,6 +407,224 @@ public struct RuleBasedInsightAnalysisEngine: InsightAnalysisEngine {
             reason: reason,
             citations: citations
         )
+    }
+
+    /// Build the `InsightWidgetData` payload from the privacy-bounded
+    /// digest so the brief's auto-generated widgets render with real
+    /// numbers immediately instead of as empty chrome.
+    private static func synthesizeData(
+        for kind: InsightWidgetKind,
+        binding: InsightDataBinding,
+        digest: InsightDigest
+    ) -> InsightWidgetData? {
+        switch kind {
+        case .barRanking:
+            // Provider spend ranking — sort by cost, cap at 5.
+            let sorted = digest.providers
+                .sorted { $0.costUSD > $1.costUSD }
+                .prefix(5)
+            guard !sorted.isEmpty else { return nil }
+            let rows = sorted.map { provider in
+                InsightWidgetData.Ranking.Row(
+                    id: provider.id,
+                    label: provider.displayName,
+                    value: provider.costUSD,
+                    secondaryLabel: "\(provider.sessionCount) session\(provider.sessionCount == 1 ? "" : "s")"
+                )
+            }
+            return .ranking(.init(
+                rows: rows,
+                valueFormat: .currency,
+                dimensionLabel: "Provider"
+            ))
+
+        case .timeSeriesLine:
+            // Cost by day, one series total. Skip if we have fewer than
+            // two points (a line with one point is just a dot).
+            let daily = digest.daily.sorted { $0.day < $1.day }
+            guard daily.count >= 2 else { return nil }
+            let points = daily.map { day in
+                InsightWidgetData.TimeSeries.Point(date: day.day, value: day.costUSD)
+            }
+            let series = InsightWidgetData.TimeSeries.Series(
+                id: "total-cost",
+                name: "Daily cost",
+                colorHex: "#E87060", // coral
+                points: points
+            )
+            let peak = daily.max { $0.costUSD < $1.costUSD }
+            let annotations: [InsightWidgetData.TimeSeries.Annotation] = peak.map { day in
+                [.init(date: day.day, label: "Peak", tone: .warning)]
+            } ?? []
+            return .timeSeries(.init(
+                series: [series],
+                xAxisLabel: "Day",
+                yAxisLabel: "USD",
+                yFormat: .currency,
+                annotations: annotations
+            ))
+
+        case .quotaPulse:
+            // Show every quota bucket with a known limit, hottest first.
+            let bucketSummaries = digest.quotaSnapshots
+                .filter { ($0.limit ?? 0) > 0 }
+                .sorted { lhs, rhs in
+                    (lhs.used / max(lhs.limit ?? 1, 1)) > (rhs.used / max(rhs.limit ?? 1, 1))
+                }
+                .prefix(4)
+            guard !bucketSummaries.isEmpty else { return nil }
+            let buckets = bucketSummaries.map { snap in
+                InsightWidgetData.QuotaState.Bucket(
+                    id: "\(snap.providerID)-\(snap.bucketName)",
+                    providerLabel: snap.providerID,
+                    bucketName: snap.bucketName,
+                    used: snap.used,
+                    limit: snap.limit,
+                    resetsAt: snap.resetsAt,
+                    symbolName: "gauge",
+                    colorHex: nil
+                )
+            }
+            return .quota(.init(buckets: Array(buckets)))
+
+        default:
+            return nil
+        }
+    }
+
+    private static func benchmarkRankingRows(
+        benchmarks: [InsightDigest.ModelBenchmarkSummary],
+        usedModels: [String: InsightDigest.ModelSnapshot],
+        limit: Int
+    ) -> [InsightWidgetData.Ranking.Row] {
+        var bestByModel: [String: InsightDigest.ModelBenchmarkSummary] = [:]
+        for benchmark in benchmarks {
+            let key = normalizedModelID(benchmark.modelID)
+            guard benchmark.score != nil || benchmark.rank != nil else { continue }
+            if let existing = bestByModel[key] {
+                let existingScore = existing.score ?? -1
+                let score = benchmark.score ?? -1
+                if score > existingScore || (score == existingScore && (benchmark.rank ?? Int.max) < (existing.rank ?? Int.max)) {
+                    bestByModel[key] = benchmark
+                }
+            } else {
+                bestByModel[key] = benchmark
+            }
+        }
+        return bestByModel.values
+            .sorted {
+                let lhsUsed = usedModels[normalizedModelID($0.modelID)] != nil
+                let rhsUsed = usedModels[normalizedModelID($1.modelID)] != nil
+                if lhsUsed != rhsUsed { return lhsUsed }
+                let lhsScore = $0.score ?? -1
+                let rhsScore = $1.score ?? -1
+                if lhsScore != rhsScore { return lhsScore > rhsScore }
+                return ($0.rank ?? Int.max) < ($1.rank ?? Int.max)
+            }
+            .prefix(limit)
+            .map { benchmark in
+                let used = usedModels[normalizedModelID(benchmark.modelID)]
+                let value = benchmark.score ?? (benchmark.rank.map { 1 / Double(max($0, 1)) } ?? 0)
+                let secondaryParts = [
+                    benchmark.taskCategory,
+                    benchmark.attribution ?? benchmark.source,
+                    used.map { String(format: "$%.2f used", $0.costUSD) }
+                ].compactMap { $0 }
+                return .init(
+                    id: benchmark.id,
+                    label: benchmark.modelID,
+                    value: value,
+                    secondaryLabel: secondaryParts.joined(separator: " · ")
+                )
+            }
+    }
+
+    private static func cheapestSimilarAlternative(
+        usedModel: InsightDigest.ModelSnapshot?,
+        usedBenchmark: InsightDigest.ModelBenchmarkSummary?,
+        benchmarks: [InsightDigest.ModelBenchmarkSummary]
+    ) -> InsightDigest.ModelBenchmarkSummary? {
+        guard let usedModel else { return nil }
+        let usedKey = normalizedModelID(usedModel.id)
+        let usedScore = usedBenchmark?.score
+        let usedCostSignal = usedBenchmark?.costSignal ?? 0
+        return benchmarks
+            .filter { normalizedModelID($0.modelID) != usedKey }
+            .filter { candidate in
+                guard candidate.costSignal ?? -1 > usedCostSignal + 0.12 else { return false }
+                guard let usedScore, let candidateScore = candidate.score else { return true }
+                return candidateScore >= usedScore - 0.08
+            }
+            .sorted {
+                let lhsCost = $0.costSignal ?? 0
+                let rhsCost = $1.costSignal ?? 0
+                if lhsCost != rhsCost { return lhsCost > rhsCost }
+                return ($0.score ?? 0) > ($1.score ?? 0)
+            }
+            .first
+    }
+
+    private static func bestBenchmark(
+        for modelKey: String,
+        in benchmarkByModel: [String: [InsightDigest.ModelBenchmarkSummary]]
+    ) -> InsightDigest.ModelBenchmarkSummary? {
+        bestBenchmark(in: benchmarkByModel[modelKey] ?? [])
+    }
+
+    private static func bestBenchmark(in benchmarks: [InsightDigest.ModelBenchmarkSummary]) -> InsightDigest.ModelBenchmarkSummary? {
+        benchmarks.sorted {
+            let lhsScore = $0.score ?? -1
+            let rhsScore = $1.score ?? -1
+            if lhsScore != rhsScore { return lhsScore > rhsScore }
+            return ($0.rank ?? Int.max) < ($1.rank ?? Int.max)
+        }.first
+    }
+
+    private static func benchmarkCitation(_ benchmark: InsightDigest.ModelBenchmarkSummary) -> InsightCitation {
+        .init(
+            kind: .benchmark(source: benchmark.source, modelID: benchmark.modelID, taskCategory: benchmark.taskCategory),
+            label: "\(benchmark.attribution ?? benchmark.source) \(benchmark.taskCategory)"
+        )
+    }
+
+    private static func confidence(for benchmark: InsightDigest.ModelBenchmarkSummary) -> InsightConfidence {
+        let value = benchmark.confidence ?? 0.6
+        if value >= 0.75 { return .high }
+        if value <= 0.45 { return .low }
+        return .medium
+    }
+
+    private static func scorePhrase(_ benchmark: InsightDigest.ModelBenchmarkSummary) -> String {
+        if let rank = benchmark.rank, let score = benchmark.score {
+            return " (#\(rank), \(Int((score * 100).rounded()))/100)"
+        }
+        if let score = benchmark.score {
+            return " (\(Int((score * 100).rounded()))/100)"
+        }
+        if let rank = benchmark.rank {
+            return " (#\(rank))"
+        }
+        return ""
+    }
+
+    private static func savingsPhrase(
+        current: InsightDigest.ModelSnapshot,
+        alternative: InsightDigest.ModelBenchmarkSummary
+    ) -> String? {
+        if let blended = alternative.blendedCostPerMtoken {
+            return String(format: "Alternative blended price is $%.2f/MTok; validate quality before moving %.0f%% of current spend.", blended, min(50, max(10, current.costUSD > 0 ? 25 : 10)))
+        }
+        if let signal = alternative.costSignal {
+            return "Cost signal \(Int((signal * 100).rounded()))/100; exact dollar savings need provider price confirmation."
+        }
+        return nil
+    }
+
+    private static func normalizedModelID(_ value: String) -> String {
+        value.lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+            .replacingOccurrences(of: ".", with: "-")
+            .replacingOccurrences(of: "/", with: "-")
     }
 
     private static func resultHash(_ result: InsightAnalysisResult) -> String {

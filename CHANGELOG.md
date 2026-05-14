@@ -121,14 +121,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Audit pass added: (1) sign-aware impact arrow + accessibility label
   via `impactArrow(impact, isDark)` — `↘` + success green for `−`/`-`,
   `↗` + ember warning for `+`, `↗` + success for unprefixed strings;
-  (2) `MetaStrip` folds the `·` separator into the following label
-  (NBSP-glued) so a wrapped row never starts with an orphan dot;
+  (2) `MetaStrip` folds the `·` separator into the trailing position of
+  each non-final label so a wrapped row ends with a dot instead of
+  orphaning one at the start of the next line;
   (3) instrumented assertions for citation-tap callback wiring and
   impact-arrow directionality (parity with iOS
   `IntelligenceBriefWiringTests`); (4) pure-JVM unit suite
   `IntelligenceBriefFormattingTest` (5 cases) locking down the
   `windowLabel`, `budgetLabel`, `tokenUsageLabel`, and `auditFooter`
-  formatter contracts the brief and the audit log share.
+  formatter contracts the brief and the audit log share;
+  (5) **Charts are now front-and-center.** The hero picks the first
+  chart-bearing generated widget (KPI / time-series / ranking / donut /
+  treemap / heatmap / scatter / sankey / radar / cohort / funnel /
+  quota-pulse / forecast / focus-matrix) and renders it inline directly
+  below the 22 sp executive summary with a `Fig. 01 · <title>` editorial
+  caption + Pin action. The renderer's `WidgetHeader` gained an opt-out
+  (`showHeader = false`) so the editorial caption doesn't duplicate the
+  widget title. Reading order is reordered to hero → Generated views →
+  findings → anomalies → recommendations → follow-ups → audit so any
+  remaining charts paint immediately after the hero instead of below
+  findings. The instrumented fixture now seeds three real chart widgets
+  (provider-mix time-series with the MiniMax burst spike, top-models
+  bar ranking, spend-distribution donut) so every screenshot variant
+  ships with actual graphs above the fold instead of pure typography.
 - **OpenCode quota/failover parity.** OpenCode is now a first-class provider
   identity (`opencode`) across provider accounts, quota snapshots, settings
   search, mobile provider onboarding, Android provider display, CLI quota

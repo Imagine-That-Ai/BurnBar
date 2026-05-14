@@ -35,89 +35,94 @@ struct ProvidersSettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                SettingsSectionHeader(title: "Routed Providers")
+        SettingsDeepLinkScrollContainer(route: .providersRoot) { _ in
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                    SettingsSectionHeader(title: "Routed Providers")
 
-                routerModeCard
+                    routerModeCard
 
-                GlassCard {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Daemon routing")
-                                    .font(DesignSystem.Typography.body)
-                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                Text("OpenBurnBar's routed providers live behind the local daemon and are mirrored here from the daemon config.")
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Daemon routing")
+                                        .font(DesignSystem.Typography.body)
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    Text("OpenBurnBar's routed providers live behind the local daemon and are mirrored here from the daemon config.")
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                }
+                                Spacer()
+                                Button("Refresh") {
+                                    Task { await daemonManager.refreshHealth() }
+                                }
+                                .buttonStyle(.bordered)
                             }
-                            Spacer()
-                            Button("Refresh") {
-                                Task { await daemonManager.refreshHealth() }
+
+                            if daemonManager.providerConfigurations.isEmpty {
+                                Text("No daemon provider configuration is available yet. Install or repair the daemon to manage routed providers.")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            } else {
+                                ForEach(daemonManager.providerConfigurations) { configuration in
+                                    providerCard(configuration)
+
+                                    if configuration.id != daemonManager.providerConfigurations.last?.id {
+                                        Divider().background(DesignSystem.Colors.border)
+                                    }
+                                }
                             }
-                            .buttonStyle(.bordered)
                         }
+                        .padding(DesignSystem.Spacing.lg)
+                    }
+                    .settingsAnchor(SettingsAnchor.providersAdd)
 
-                        if daemonManager.providerConfigurations.isEmpty {
-                            Text("No daemon provider configuration is available yet. Install or repair the daemon to manage routed providers.")
-                                .font(DesignSystem.Typography.caption)
-                                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        } else {
-                            ForEach(daemonManager.providerConfigurations) { configuration in
-                                providerCard(configuration)
+                    SettingsSectionHeader(title: "Quota Reporting")
 
-                                if configuration.id != daemonManager.providerConfigurations.last?.id {
+                    ProviderQuotaSettingsSection(
+                        settingsManager: settingsManager,
+                        quotaService: quotaService,
+                        dataStore: dataStore,
+                        onOpenProviderPlans: openProviderPlans(for:),
+                        quotaSourceSummary: quotaSourceSummary(for:)
+                    )
+
+                    SettingsSectionHeader(title: "Smart Hubs")
+
+                    ProviderQuotaSmartHubsSection(settingsManager: settingsManager)
+
+                    SettingsSectionHeader(title: "Provider Accounts")
+
+                    providerAccountsSection
+
+                    SettingsSectionHeader(title: "CLI Connections")
+
+                    CLIConnectionsSettingsSection()
+                        .settingsAnchor(SettingsAnchor.providersCLI)
+
+                    SettingsSectionHeader(title: "Observed Log Sources")
+
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                            ForEach(providers) { provider in
+                                ProviderObservationRow(
+                                    provider: provider,
+                                    configuredPath: settingsManager.logPaths[provider] ?? provider.logDirectory,
+                                    isDetected: settingsManager.detectAvailableProviders()[provider] ?? false
+                                )
+
+                                if provider.id != providers.last?.id {
                                     Divider().background(DesignSystem.Colors.border)
                                 }
                             }
                         }
+                        .padding(DesignSystem.Spacing.lg)
                     }
-                    .padding(DesignSystem.Spacing.lg)
+                    .settingsAnchor(SettingsAnchor.providersLogSources)
                 }
-
-                SettingsSectionHeader(title: "Quota Reporting")
-
-                ProviderQuotaSettingsSection(
-                    settingsManager: settingsManager,
-                    quotaService: quotaService,
-                    dataStore: dataStore,
-                    onOpenProviderPlans: openProviderPlans(for:),
-                    quotaSourceSummary: quotaSourceSummary(for:)
-                )
-
-                SettingsSectionHeader(title: "Smart Hubs")
-
-                ProviderQuotaSmartHubsSection(settingsManager: settingsManager)
-
-                SettingsSectionHeader(title: "Provider Accounts")
-
-                providerAccountsSection
-
-                SettingsSectionHeader(title: "CLI Connections")
-
-                CLIConnectionsSettingsSection()
-
-                SettingsSectionHeader(title: "Observed Log Sources")
-
-                GlassCard {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                        ForEach(providers) { provider in
-                            ProviderObservationRow(
-                                provider: provider,
-                                configuredPath: settingsManager.logPaths[provider] ?? provider.logDirectory,
-                                isDetected: settingsManager.detectAvailableProviders()[provider] ?? false
-                            )
-
-                            if provider.id != providers.last?.id {
-                                Divider().background(DesignSystem.Colors.border)
-                            }
-                        }
-                    }
-                    .padding(DesignSystem.Spacing.lg)
-                }
+                .padding(DesignSystem.Spacing.lg)
             }
-            .padding(DesignSystem.Spacing.lg)
         }
         .background(DesignSystem.Colors.background)
         .scrollContentBackground(.hidden)
@@ -924,6 +929,7 @@ private struct CLIConnectionsSettingsSection: View {
                         onTest: { runCheck(for: cliType) },
                         onLogin: { openLogin(for: cliType) }
                     )
+                    .settingsAnchor(cliType == .opencode ? SettingsAnchor.providersOpenCode : "providers.cli.\(cliType.rawValue)")
 
                     if cliType != supportedCLIs.last {
                         Divider().background(DesignSystem.Colors.border)

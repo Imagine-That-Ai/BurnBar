@@ -106,11 +106,14 @@ fun InsightWidgetRenderer(
     widget: InsightWidget,
     onCitationTap: (InsightCitation) -> Unit,
     theme: InsightTheme = InsightTheme.AURORA,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showHeader: Boolean = true,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        WidgetHeader(widget, theme)
-        Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+        if (showHeader) {
+            WidgetHeader(widget, theme)
+            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+        }
         when (widget.kind) {
             InsightWidgetKind.KPI_TILE            -> KpiTileRenderer(widget, theme, onCitationTap)
             InsightWidgetKind.TIME_SERIES_LINE    -> TimeSeriesRenderer(widget, theme, onCitationTap)

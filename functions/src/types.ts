@@ -599,6 +599,9 @@ export interface ModelBenchmarkSnapshotDoc {
   score?: number;
   rank?: number;
   costSignal?: number;
+  inputCostPerMtoken?: number;
+  outputCostPerMtoken?: number;
+  blendedCostPerMtoken?: number;
   latencySignal?: number;
   contextWindowTokens?: number;
   reliabilitySignal?: number;
@@ -1307,7 +1310,8 @@ export type InsightCitationKindDoc =
   | { day: { date: string } }
   | { anomaly: { id: string } }
   | { query: { text: string } }
-  | { quota: { provider: string; bucket: string } };
+  | { quota: { provider: string; bucket: string } }
+  | { benchmark: { source: string; modelID: string; taskCategory: string } };
 
 export interface InsightTaxonomyDoc {
   focuses: string[];
@@ -1595,6 +1599,7 @@ export interface InsightDigestDoc {
   quotaSnapshots: InsightDigestQuotaSnapshotDoc[];
   operatingActions: InsightDigestActionDoc[];
   summaryRunsLog: InsightDigestSummaryRunDoc[];
+  modelBenchmarks: InsightDigestModelBenchmarkDoc[];
   anomalies: InsightDigestAnomalyDoc[];
   glossary: InsightTaxonomyDoc;
 }
@@ -1697,6 +1702,28 @@ export interface InsightDigestSummaryRunDoc {
   modelID: string;
   costUSD: number;
   ranAt: string;
+}
+
+export interface InsightDigestModelBenchmarkDoc {
+  id: string;
+  source: string;
+  sourceURL?: string;
+  attribution?: string;
+  fetchedAt: string;
+  modelID: string;
+  providerID?: string;
+  taskCategory: string;
+  score?: number;
+  rank?: number;
+  costSignal?: number;
+  latencySignal?: number;
+  contextWindowTokens?: number;
+  reliabilitySignal?: number;
+  confidence?: number;
+  freshness: string;
+  inputCostPerMtoken?: number;
+  outputCostPerMtoken?: number;
+  blendedCostPerMtoken?: number;
 }
 
 export interface InsightDigestAnomalyDoc {

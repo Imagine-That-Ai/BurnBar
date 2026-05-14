@@ -223,6 +223,9 @@ class OllamaInsightAnalysisGateway(
         You are OpenBurnBar Insights. Analyze the user's AI usage digest and return one JSON object only.
         Explain what changed, why it matters, what caused it, what is wasteful, what is risky, and what the user should do next.
         Never include secrets, credentials, raw files, or full transcripts. Only cite evidence IDs present in evidenceIndex.
+        When model benchmark evidence exists, compare observed model usage against score/rank, cost signal, latency, task category, freshness, and attribution.
+        Never invent benchmark ranks, prices, or dollar savings. If exact prices are absent, say cost signal rather than savings.
+        For UI/design work, separate design/coding benchmark fit from general reasoning fit.
         Return keys: executiveSummary, findings, anomalies, recommendations, generatedWidgets, followUpQuestions, citations.
         Generated widgets must use known widget kinds and must include citations. Max generated widgets: ${request.maxGeneratedWidgets}.
         """.trimIndent()
@@ -696,6 +699,22 @@ object InsightAggregator {
         digest.models.take(8).forEach { model ->
             val citation = InsightCitation("model:${model.id}", InsightCitation.Kind.Model(model.id), model.id)
             out.add(InsightEvidence("model:${model.id}", citation, "model_summaries", "${model.id}: ${model.sessionCount} sessions, ${model.totalTokens} tokens.", model.costUSD))
+        }
+        digest.modelBenchmarks.take(12).forEach { benchmark ->
+            val label = "${benchmark.attribution ?: benchmark.source} ${benchmark.taskCategory} · ${benchmark.modelID}"
+            val citation = InsightCitation(
+                "benchmark:${benchmark.id}",
+                InsightCitation.Kind.Benchmark(benchmark.source, benchmark.modelID, benchmark.taskCategory),
+                label
+            )
+            val parts = buildList {
+                benchmark.score?.let { add("score ${(it * 100).toInt()}/100") }
+                benchmark.rank?.let { add("rank #$it") }
+                benchmark.blendedCostPerMtoken?.let { add("$${"%.2f".format(it)}/MTok blended") }
+                    ?: benchmark.costSignal?.let { add("cost signal ${(it * 100).toInt()}/100") }
+                add("freshness ${benchmark.freshness}")
+            }
+            out.add(InsightEvidence("benchmark:${benchmark.id}", citation, "model_benchmarks", "${benchmark.modelID} ${benchmark.taskCategory}: ${parts.joinToString()}.", benchmark.score))
         }
         digest.quotaSnapshots.take(8).forEach { quota ->
             val citation = InsightCitation("quota:${quota.id}", InsightCitation.Kind.Quota(quota.providerID, quota.bucketName), "${quota.providerID} ${quota.bucketName}")

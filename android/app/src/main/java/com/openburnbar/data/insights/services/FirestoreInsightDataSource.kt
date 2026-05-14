@@ -66,6 +66,7 @@ class FirestoreInsightDataSource(
 
         val quotaSnapshots = quotaStore?.snapshots?.value?.takeIf { it.isNotEmpty() }
             ?: repo.fetchQuotaSnapshots().dedupeFresh()
+        val modelBenchmarks = runCatching { repo.fetchModelBenchmarkSnapshots() }.getOrDefault(emptyList())
 
         val daily = rollups.dailyPoints.entries.map { (date, cost) ->
             InsightDigest.DailyPoint(day = date, costUSD = cost, totalTokens = 0L, sessionCount = 0)
@@ -88,7 +89,8 @@ class FirestoreInsightDataSource(
             models = models,
             projects = emptyList(),
             daily = daily,
-            quotaSnapshots = quotaSummaries
+            quotaSnapshots = quotaSummaries,
+            modelBenchmarks = modelBenchmarks
         )
     }
 }

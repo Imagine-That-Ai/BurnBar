@@ -43,13 +43,24 @@ public actor InsightAnalysisCache {
         self.decoder = decoder
     }
 
+    /// Schema version baked into every cache key. Bump whenever the
+    /// engine produces a meaningfully different result for the same
+    /// inputs (e.g., when widget data synthesis lands and previously
+    /// cached entries would render empty charts).
+    ///
+    /// v2 — 2026-05-13: rule-based engine now synthesizes widget data
+    /// for `barRanking`, `timeSeriesLine`, and `quotaPulse` straight
+    /// from the digest. Pre-fix cached entries have `data = nil` and
+    /// must be invalidated so the brief paints real charts.
+    public static let schemaVersion = "v2-engine-widget-data-synth"
+
     public static func key(
         prompt: String,
         digestContentHash: String,
         modelID: String,
         instruction: InsightAnalysisRequest.Instruction
     ) -> String {
-        let payload = "\(prompt)\u{1F}\(digestContentHash)\u{1F}\(modelID)\u{1F}\(instruction.rawValue)"
+        let payload = "\(schemaVersion)\u{1F}\(prompt)\u{1F}\(digestContentHash)\u{1F}\(modelID)\u{1F}\(instruction.rawValue)"
         return SHA256.hash(data: Data(payload.utf8))
             .map { String(format: "%02x", $0) }
             .joined()

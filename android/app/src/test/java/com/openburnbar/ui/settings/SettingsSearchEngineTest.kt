@@ -163,5 +163,6 @@ class SettingsSearchEngineTest {
     fun manifestFindsOpenCodeProviderEntry() {
         val ids = SettingsSearchEngine.search("opencode", SettingsManifest.all).map { it.id }
         assertTrue(ids.contains("root.providers"))
+        assertEquals(SettingsPageRoute.ROOT, SettingsManifest.anchorIndex[SettingsAnchor.PROVIDERS_ROW])
     }
 }

@@ -9,6 +9,7 @@ struct InlineLockScreenView: View {
         HStack(spacing: 4) {
             Image(systemName: "flame.fill")
                 .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(WidgetDesignSystem.Colors.amber)
                 .widgetAccentable()
 
             Text(snap?.heroTotalCost.formatAsCost() ?? "—")

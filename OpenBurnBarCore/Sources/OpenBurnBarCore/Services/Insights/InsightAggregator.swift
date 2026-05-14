@@ -75,6 +75,30 @@ public struct InsightAggregator: Sendable {
                 numericValue: model.costUSD
             ))
         }
+        for benchmark in digest.modelBenchmarks.prefix(12) {
+            let label = "\(benchmark.attribution ?? benchmark.source) \(benchmark.taskCategory) · \(benchmark.modelID)"
+            let citation = InsightCitation(kind: .benchmark(source: benchmark.source, modelID: benchmark.modelID, taskCategory: benchmark.taskCategory), label: label)
+            var parts: [String] = []
+            if let score = benchmark.score {
+                parts.append("score \(Int((score * 100).rounded()))/100")
+            }
+            if let rank = benchmark.rank {
+                parts.append("rank #\(rank)")
+            }
+            if let cost = benchmark.blendedCostPerMtoken {
+                parts.append(String(format: "$%.2f/MTok blended", cost))
+            } else if let costSignal = benchmark.costSignal {
+                parts.append("cost signal \(Int((costSignal * 100).rounded()))/100")
+            }
+            parts.append("freshness \(benchmark.freshness)")
+            evidence.append(.init(
+                id: "benchmark:\(benchmark.id)",
+                citation: citation,
+                source: "model_benchmarks",
+                summary: "\(benchmark.modelID) \(benchmark.taskCategory): \(parts.joined(separator: ", ")).",
+                numericValue: benchmark.score
+            ))
+        }
         for quota in digest.quotaSnapshots.prefix(8) {
             let citation = InsightCitation(kind: .quota(provider: quota.providerID, bucket: quota.bucketName),
                                            label: "\(quota.providerID) \(quota.bucketName)")

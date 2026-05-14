@@ -23,5 +23,6 @@ data class InsightCitation(
         @Serializable data class Anomaly(val id: String) : Kind()
         @Serializable data class Query(val text: String) : Kind()
         @Serializable data class Quota(val provider: String, val bucket: String) : Kind()
+        @Serializable data class Benchmark(val source: String, val modelID: String, val taskCategory: String) : Kind()
     }
 }

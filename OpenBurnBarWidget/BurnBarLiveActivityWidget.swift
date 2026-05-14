@@ -25,14 +25,16 @@ struct BurnBarLiveActivityWidget: Widget {
                     BurnBarLiveActivityExpandedBottom(context: context)
                 }
             } compactLeading: {
+                let color = providerColor(from: context.state.topProvider)
                 Image(systemName: "flame.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(color)
             } compactTrailing: {
                 Text(context.state.heroCost.formatAsCost())
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
             } minimal: {
+                let color = providerColor(from: context.state.topProvider)
                 Image(systemName: "flame.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(color)
             }
         }
     }
@@ -46,11 +48,7 @@ struct BurnBarLiveActivityLockScreenView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [Color.gray.opacity(0.1), Color.orange.opacity(0.05)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            WidgetDesignSystem.Colors.background
 
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -59,7 +57,7 @@ struct BurnBarLiveActivityLockScreenView: View {
                         .foregroundStyle(.secondary)
 
                     Text(context.state.heroCost.formatAsCost())
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
                         .foregroundStyle(.primary)
                         .widgetAccentable()
                 }
@@ -138,9 +136,10 @@ struct BurnBarLiveActivityExpandedCenter: View {
             UnifiedProviderLogoView(provider: providerEnum, size: 20)
                 .widgetAccentable()
         } else {
+            let color = providerColor(from: context.state.topProvider)
             Image(systemName: "flame.fill")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(color)
                 .widgetAccentable()
         }
     }
@@ -159,7 +158,7 @@ struct BurnBarLiveActivityExpandedBottom: View {
     }
 }
 
-// MARK: - Shared Subviews (Widget-safe, no MobileTheme dependency)
+// MARK: - Shared Subviews
 
 @available(iOS 16.1, *)
 struct ProviderBadgeWidget: View {
@@ -167,6 +166,11 @@ struct ProviderBadgeWidget: View {
 
     var providerEnum: AgentProvider? {
         AgentProvider.fromPersistedToken(provider)
+    }
+
+    var color: Color {
+        guard let p = providerEnum else { return WidgetDesignSystem.Colors.amber }
+        return DesignSystemColors.primary(for: p)
     }
 
     var body: some View {
@@ -178,13 +182,13 @@ struct ProviderBadgeWidget: View {
                 .font(.system(size: 11, weight: .medium, design: .rounded))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
-                .background(Color.gray.opacity(0.15))
-                .clipShape(Capsule())
+                .background(color.opacity(0.15))
+                .clipShape(Capsule(style: .continuous))
                 .overlay(
-                    Capsule()
-                        .stroke(Color.gray.opacity(0.25), lineWidth: 1)
+                    Capsule(style: .continuous)
+                        .stroke(color.opacity(0.30), lineWidth: 0.5)
                 )
-                .foregroundStyle(.secondary)
+                .foregroundStyle(color)
         }
     }
 }
@@ -203,9 +207,11 @@ struct SessionActivePillWidget: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
-        .background(sessionActive ? Color.green.opacity(0.15) : Color.gray.opacity(0.12))
-        .clipShape(Capsule())
-        .foregroundStyle(sessionActive ? .green : .secondary)
+        .background(
+            Capsule(style: .continuous)
+                .fill(sessionActive ? WidgetDesignSystem.Colors.success.opacity(0.15) : WidgetDesignSystem.Colors.border.opacity(0.15))
+        )
+        .foregroundStyle(sessionActive ? WidgetDesignSystem.Colors.success : .secondary)
     }
 }
 
@@ -215,7 +221,7 @@ struct PulsingDotWidget: View {
 
     var body: some View {
         Circle()
-            .fill(Color.green)
+            .fill(WidgetDesignSystem.Colors.success)
             .frame(width: 8, height: 8)
             .scaleEffect(isPulsing ? 1.3 : 1.0)
             .opacity(isPulsing ? 0.6 : 1.0)
@@ -225,4 +231,13 @@ struct PulsingDotWidget: View {
             )
             .onAppear { isPulsing = true }
     }
+}
+
+// MARK: - Helpers
+
+private func providerColor(from name: String) -> Color {
+    guard let p = AgentProvider.fromPersistedToken(name) else {
+        return WidgetDesignSystem.Colors.amber
+    }
+    return DesignSystemColors.primary(for: p)
 }

@@ -92,9 +92,7 @@ struct SettingsHubView: View {
                 CloudStoreView()
             }
         case .providerConnections:
-            SettingsDeepLinkScrollContainer(route: .providerConnections) { _ in
-                ProviderConnectionsView(showsDoneButton: false)
-            }
+            ProviderConnectionsView(showsDoneButton: false)
         case .hermes:
             SettingsDeepLinkScrollContainer(route: .hermes) { _ in
                 HermesSettingsView(

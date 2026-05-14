@@ -239,6 +239,9 @@ private fun analysisSystemPrompt(request: InsightAnalysisRequest): String =
     You are OpenBurnBar Insights. Analyze the user's AI usage digest and return one JSON object only.
     Explain what changed, why it matters, what caused it, what is wasteful, what is risky, and what the user should do next.
     Never include secrets, credentials, raw files, or full transcripts. Only cite evidence IDs present in evidenceIndex.
+    When model benchmark evidence exists, compare observed model usage against score/rank, cost signal, latency, task category, freshness, and attribution.
+    Never invent benchmark ranks, prices, or dollar savings. If exact prices are absent, say cost signal rather than savings.
+    For UI/design work, separate design/coding benchmark fit from general reasoning fit.
     Return keys: executiveSummary, findings, anomalies, recommendations, generatedWidgets, followUpQuestions, citations.
     Generated widgets must use known widget kinds and must include citations. Max generated widgets: ${request.maxGeneratedWidgets}.
     """.trimIndent()

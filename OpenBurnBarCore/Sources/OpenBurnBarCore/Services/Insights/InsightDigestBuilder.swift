@@ -22,6 +22,7 @@ public struct InsightDigestBuilder: Sendable {
     public var maxDailyPoints: Int
     public var maxActions: Int
     public var maxSummaryRuns: Int
+    public var maxModelBenchmarks: Int
     public var maxAnomalies: Int
 
     public init(taxonomy: InsightTaxonomy = .default,
@@ -33,6 +34,7 @@ public struct InsightDigestBuilder: Sendable {
                 maxDailyPoints: Int = 30,
                 maxActions: Int = 50,
                 maxSummaryRuns: Int = 25,
+                maxModelBenchmarks: Int = 36,
                 maxAnomalies: Int = 12) {
         self.taxonomy = taxonomy
         self.calendar = calendar
@@ -43,6 +45,7 @@ public struct InsightDigestBuilder: Sendable {
         self.maxDailyPoints = maxDailyPoints
         self.maxActions = maxActions
         self.maxSummaryRuns = maxSummaryRuns
+        self.maxModelBenchmarks = maxModelBenchmarks
         self.maxAnomalies = maxAnomalies
     }
 
@@ -95,6 +98,11 @@ public struct InsightDigestBuilder: Sendable {
         // 7. Operating actions / summary runs.
         let actions = makeActionDigests(actions: snapshot.operatingActions, limit: maxActions)
         let summaryRuns = makeSummaryRunDigests(runs: snapshot.summaryRuns, limit: maxSummaryRuns)
+        let benchmarks = makeModelBenchmarkSummaries(
+            benchmarks: snapshot.modelBenchmarks,
+            models: models,
+            limit: maxModelBenchmarks
+        )
 
         // 8. Precompute anomalies.
         let anomalies = makeAnomalies(daily: daily, limit: maxAnomalies)
@@ -118,6 +126,7 @@ public struct InsightDigestBuilder: Sendable {
             quotaSnapshots: quotas,
             operatingActions: actions,
             summaryRunsLog: summaryRuns,
+            modelBenchmarks: benchmarks,
             anomalies: anomalies,
             glossary: taxonomy
         )
@@ -517,6 +526,36 @@ public struct InsightDigestBuilder: Sendable {
             }
     }
 
+    private func makeModelBenchmarkSummaries(
+        benchmarks: [InsightDigest.ModelBenchmarkSummary],
+        models: [InsightDigest.ModelSnapshot],
+        limit: Int
+    ) -> [InsightDigest.ModelBenchmarkSummary] {
+        guard !benchmarks.isEmpty else { return [] }
+        let usedModels = Set(models.map { Self.normalizedModelID($0.id) })
+        let preferredCategories = ["coding", "design", "terminal", "agent", "analysis", "general"]
+        return benchmarks
+            .filter { benchmark in
+                guard benchmark.score != nil || benchmark.rank != nil || benchmark.costSignal != nil else { return false }
+                return usedModels.isEmpty || usedModels.contains(Self.normalizedModelID(benchmark.modelID))
+                    || preferredCategories.contains(benchmark.taskCategory)
+            }
+            .sorted { lhs, rhs in
+                let lhsUsed = usedModels.contains(Self.normalizedModelID(lhs.modelID))
+                let rhsUsed = usedModels.contains(Self.normalizedModelID(rhs.modelID))
+                if lhsUsed != rhsUsed { return lhsUsed }
+                let lhsScore = lhs.score ?? -1
+                let rhsScore = rhs.score ?? -1
+                if lhsScore != rhsScore { return lhsScore > rhsScore }
+                let lhsRank = lhs.rank ?? Int.max
+                let rhsRank = rhs.rank ?? Int.max
+                if lhsRank != rhsRank { return lhsRank < rhsRank }
+                return lhs.modelID < rhs.modelID
+            }
+            .prefix(limit)
+            .map { $0 }
+    }
+
     private func makeAnomalies(daily: [InsightDigest.DailyPoint], limit: Int) -> [InsightDigest.PrecomputedAnomaly] {
         guard daily.count >= 5 else { return [] }
         let costs = daily.map(\.costUSD)
@@ -590,11 +629,13 @@ public struct InsightDigestBuilder: Sendable {
             if d.operatingActions.count > 10 { d.operatingActions.removeLast() ; encoded = try encode(d) ; continue }
             if d.daily.count > 14 { d.daily.removeFirst() ; encoded = try encode(d) ; continue }
             if d.models.count > 4 { d.models.removeLast() ; encoded = try encode(d) ; continue }
+            if d.modelBenchmarks.count > 18 { d.modelBenchmarks.removeLast() ; encoded = try encode(d) ; continue }
             if d.projects.count > 3 { d.projects.removeLast() ; encoded = try encode(d) ; continue }
             if d.devices.count > 2 { d.devices.removeLast() ; encoded = try encode(d) ; continue }
             if d.providers.count > 4 { d.providers.removeLast() ; encoded = try encode(d) ; continue }
             if d.agentFocusSignals.count > 8 { d.agentFocusSignals.removeLast() ; encoded = try encode(d) ; continue }
             if d.modelFocusSignals.count > 8 { d.modelFocusSignals.removeLast() ; encoded = try encode(d) ; continue }
+            if d.modelBenchmarks.count > 8 { d.modelBenchmarks.removeLast() ; encoded = try encode(d) ; continue }
             if d.anomalies.count > 4 { d.anomalies.removeLast() ; encoded = try encode(d) ; continue }
             break
         }
@@ -607,5 +648,12 @@ public struct InsightDigestBuilder: Sendable {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]
         return try encoder.encode(digest)
+    }
+
+    private static func normalizedModelID(_ value: String) -> String {
+        value.lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+            .replacingOccurrences(of: ".", with: "-")
+            .replacingOccurrences(of: "/", with: "-")
     }
 }

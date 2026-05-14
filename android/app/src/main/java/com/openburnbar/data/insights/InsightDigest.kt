@@ -33,6 +33,7 @@ data class InsightDigest(
     val quotaSnapshots: List<QuotaSnapshotSummary> = emptyList(),
     val operatingActions: List<ActionDigest> = emptyList(),
     val summaryRunsLog: List<SummaryRunDigest> = emptyList(),
+    val modelBenchmarks: List<ModelBenchmarkSummary> = emptyList(),
     val anomalies: List<PrecomputedAnomaly> = emptyList(),
     val glossary: InsightTaxonomy = InsightTaxonomy.DEFAULT
 ) {
@@ -109,6 +110,29 @@ data class InsightDigest(
     data class SummaryRunDigest(
         val id: String, val providerID: String, val modelID: String,
         val costUSD: Double = 0.0, val ranAt: String
+    )
+
+    @Serializable
+    data class ModelBenchmarkSummary(
+        val id: String,
+        val source: String,
+        val sourceURL: String? = null,
+        val attribution: String? = null,
+        val fetchedAt: String,
+        val modelID: String,
+        val providerID: String? = null,
+        val taskCategory: String,
+        val score: Double? = null,
+        val rank: Int? = null,
+        val costSignal: Double? = null,
+        val latencySignal: Double? = null,
+        val contextWindowTokens: Int? = null,
+        val reliabilitySignal: Double? = null,
+        val confidence: Double? = null,
+        val freshness: String,
+        val inputCostPerMtoken: Double? = null,
+        val outputCostPerMtoken: Double? = null,
+        val blendedCostPerMtoken: Double? = null
     )
 
     @Serializable

@@ -30,6 +30,7 @@ object InsightDigestBuilder {
         projects: List<InsightDigest.ProjectSnapshot>,
         daily: List<InsightDigest.DailyPoint>,
         quotaSnapshots: List<InsightDigest.QuotaSnapshotSummary>,
+        modelBenchmarks: List<InsightDigest.ModelBenchmarkSummary> = emptyList(),
         anomalies: List<InsightDigest.PrecomputedAnomaly> = emptyList()
     ): InsightDigest {
         val window = filter.window
@@ -53,6 +54,12 @@ object InsightDigestBuilder {
             quotaSnapshots = quotaSnapshots.take(16),
             operatingActions = emptyList(), // macOS-only
             summaryRunsLog = emptyList(), // macOS-only
+            modelBenchmarks = modelBenchmarks
+                .filter { it.score != null || it.rank != null || it.costSignal != null }
+                .sortedWith(compareByDescending<InsightDigest.ModelBenchmarkSummary> { it.score ?: -1.0 }
+                    .thenBy { it.rank ?: Int.MAX_VALUE }
+                    .thenBy { it.modelID })
+                .take(36),
             anomalies = anomalies,
             glossary = InsightTaxonomy.DEFAULT
         )
@@ -87,6 +94,7 @@ object InsightDigestBuilder {
                             daily = digest.daily.takeLast(dailyLimit),
                             hourly = computeHourly(digest.daily.takeLast(dailyLimit)),
                             quotaSnapshots = digest.quotaSnapshots.take(quotaLimit),
+                            modelBenchmarks = digest.modelBenchmarks.take(18),
                             anomalies = digest.anomalies.take(6)
                         )
                         if (encodedSize(candidate) <= MAX_ENCODED_BYTES) return candidate
@@ -103,6 +111,7 @@ object InsightDigestBuilder {
             daily = digest.daily.takeLast(7),
             hourly = computeHourly(digest.daily.takeLast(7)),
             quotaSnapshots = emptyList(),
+            modelBenchmarks = digest.modelBenchmarks.take(6),
             anomalies = emptyList(),
             glossary = InsightTaxonomy()
         )

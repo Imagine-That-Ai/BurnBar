@@ -48,6 +48,61 @@ final class InsightAnalysisTests: XCTestCase {
         XCTAssertFalse(result.resultHash.isEmpty)
     }
 
+    /// Regression test: every generated widget surfaced by the
+    /// rule-based engine must carry a non-`nil` `data` payload so the
+    /// Editorial Observatory brief paints real charts on first render
+    /// (no empty chrome waiting for a canvas refresh).
+    func testRuleBasedAnalysisGeneratedWidgetsCarryDataForRendering() async throws {
+        let snapshot = InsightTestFixtures.twoWeeksOfUsage()
+        let context = try InsightAggregator().buildContext(
+            snapshot: snapshot,
+            filter: InsightFilter(window: .last7d),
+            includedDataSources: ["datastore_usage", "quota_snapshots", "provider_summaries"]
+        )
+        let request = InsightAnalysisRequest(
+            prompt: "Default brief, please.",
+            context: context,
+            selectedModel: .init(
+                providerKey: "local-rules",
+                modelID: "local-rules-v1",
+                displayName: "Local rules",
+                egressTier: .localOnly
+            ),
+            instruction: .defaultBrief
+        )
+        let result = try await RuleBasedInsightAnalysisEngine(platform: .macOS).analyze(request)
+
+        XCTAssertFalse(result.generatedWidgets.isEmpty)
+        for generated in result.generatedWidgets {
+            XCTAssertNotNil(
+                generated.widget.data,
+                "Generated widget '\(generated.widget.title)' (\(generated.widget.kind)) must include synthesized data so the brief renders content, not just chrome."
+            )
+        }
+
+        // The fixture includes provider, daily-cost and quota signal so
+        // we expect at least one ranking, one time series, and a quota
+        // pulse to be present and populated.
+        let kinds = Set(result.generatedWidgets.map(\.widget.kind))
+        XCTAssertTrue(kinds.contains(.barRanking) || kinds.contains(.timeSeriesLine) || kinds.contains(.quotaPulse),
+                      "Brief should include at least one chart-bearing widget for this fixture.")
+
+        for generated in result.generatedWidgets {
+            switch generated.widget.data {
+            case .ranking(let ranking):
+                XCTAssertFalse(ranking.rows.isEmpty, "Ranking widgets must have rows.")
+            case .timeSeries(let series):
+                XCTAssertFalse(series.series.isEmpty, "Time series widgets must have at least one series.")
+                XCTAssertGreaterThanOrEqual(series.series.first?.points.count ?? 0, 2,
+                                            "Time series widgets need ≥2 points to plot a line.")
+            case .quota(let quota):
+                XCTAssertFalse(quota.buckets.isEmpty, "Quota pulse widgets must have buckets.")
+            default:
+                break
+            }
+        }
+    }
+
     func testOrchestratedEngineWritesAuditAndCachesResult() async throws {
         let snapshot = InsightTestFixtures.twoWeeksOfUsage()
         let context = try InsightAggregator().buildContext(

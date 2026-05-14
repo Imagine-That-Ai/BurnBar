@@ -164,6 +164,7 @@ enum SettingsAnchor {
     static let providersAdd = "providers.add"
     static let providersCLI = "providers.cliAuth"
     static let providersLogSources = "providers.logSources"
+    static let providersOpenCode = "providers.openCode"
 
     // Routing pools
     static let routingPoolsOverview = "routingPools.overview"

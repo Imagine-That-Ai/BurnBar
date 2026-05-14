@@ -8,7 +8,7 @@ struct BurnBarWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: BurnBarProvider()) { entry in
             BurnBarWidgetView(entry: entry)
-                .containerBackground(.fill, for: .widget)
+                .containerBackground(WidgetDesignSystem.Colors.background, for: .widget)
         }
         .configurationDisplayName("BurnBar")
         .description("Track your AI token usage at a glance.")

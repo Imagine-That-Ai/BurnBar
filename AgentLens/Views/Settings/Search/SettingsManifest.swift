@@ -246,6 +246,15 @@ enum SettingsManifest {
             keywords: ["add", "account", "provider", "claude", "opencode", "open code", "opencode go", "factory", "openai", "anthropic"]
         ),
         SettingsItem(
+            id: "providers.openCode",
+            tab: .providers,
+            pageRoute: .providersRoot,
+            anchorID: SettingsAnchor.providersOpenCode,
+            title: "OpenCode",
+            subtitle: "OpenCode CLI auth, quota, logs, and routed-provider setup",
+            keywords: ["opencode", "open code", "opencode go", "cli", "quota", "logs", "routing", "gateway", "failover"]
+        ),
+        SettingsItem(
             id: "providers.cli",
             tab: .providers,
             pageRoute: .providersRoot,

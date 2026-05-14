@@ -42,6 +42,7 @@ public struct InsightDigest: Codable, Hashable, Sendable {
     public var quotaSnapshots: [QuotaSnapshotSummary]
     public var operatingActions: [ActionDigest]
     public var summaryRunsLog: [SummaryRunDigest]
+    public var modelBenchmarks: [ModelBenchmarkSummary]
     public var anomalies: [PrecomputedAnomaly]
     public var glossary: InsightTaxonomy
 
@@ -63,6 +64,7 @@ public struct InsightDigest: Codable, Hashable, Sendable {
         quotaSnapshots: [QuotaSnapshotSummary],
         operatingActions: [ActionDigest],
         summaryRunsLog: [SummaryRunDigest],
+        modelBenchmarks: [ModelBenchmarkSummary] = [],
         anomalies: [PrecomputedAnomaly],
         glossary: InsightTaxonomy = .default
     ) {
@@ -83,6 +85,7 @@ public struct InsightDigest: Codable, Hashable, Sendable {
         self.quotaSnapshots = quotaSnapshots
         self.operatingActions = operatingActions
         self.summaryRunsLog = summaryRunsLog
+        self.modelBenchmarks = modelBenchmarks
         self.anomalies = anomalies
         self.glossary = glossary
     }
@@ -258,6 +261,70 @@ public struct InsightDigest: Codable, Hashable, Sendable {
                     costUSD: Double, ranAt: Date) {
             self.id = id; self.providerID = providerID
             self.modelID = modelID; self.costUSD = costUSD; self.ranAt = ranAt
+        }
+    }
+
+    public struct ModelBenchmarkSummary: Codable, Hashable, Sendable, Identifiable {
+        public var id: String
+        public var source: String
+        public var sourceURL: String?
+        public var attribution: String?
+        public var fetchedAt: Date
+        public var modelID: String
+        public var providerID: String?
+        public var taskCategory: String
+        public var score: Double?
+        public var rank: Int?
+        public var costSignal: Double?
+        public var latencySignal: Double?
+        public var contextWindowTokens: Int?
+        public var reliabilitySignal: Double?
+        public var confidence: Double?
+        public var freshness: String
+        public var inputCostPerMtoken: Double?
+        public var outputCostPerMtoken: Double?
+        public var blendedCostPerMtoken: Double?
+
+        public init(
+            id: String,
+            source: String,
+            sourceURL: String? = nil,
+            attribution: String? = nil,
+            fetchedAt: Date,
+            modelID: String,
+            providerID: String? = nil,
+            taskCategory: String,
+            score: Double? = nil,
+            rank: Int? = nil,
+            costSignal: Double? = nil,
+            latencySignal: Double? = nil,
+            contextWindowTokens: Int? = nil,
+            reliabilitySignal: Double? = nil,
+            confidence: Double? = nil,
+            freshness: String,
+            inputCostPerMtoken: Double? = nil,
+            outputCostPerMtoken: Double? = nil,
+            blendedCostPerMtoken: Double? = nil
+        ) {
+            self.id = id
+            self.source = source
+            self.sourceURL = sourceURL
+            self.attribution = attribution
+            self.fetchedAt = fetchedAt
+            self.modelID = modelID
+            self.providerID = providerID
+            self.taskCategory = taskCategory
+            self.score = score
+            self.rank = rank
+            self.costSignal = costSignal
+            self.latencySignal = latencySignal
+            self.contextWindowTokens = contextWindowTokens
+            self.reliabilitySignal = reliabilitySignal
+            self.confidence = confidence
+            self.freshness = freshness
+            self.inputCostPerMtoken = inputCostPerMtoken
+            self.outputCostPerMtoken = outputCostPerMtoken
+            self.blendedCostPerMtoken = blendedCostPerMtoken
         }
     }
 

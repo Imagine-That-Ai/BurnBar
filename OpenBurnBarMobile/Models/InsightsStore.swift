@@ -218,6 +218,7 @@ final class InsightsStore {
                 "quota_snapshots",
                 "provider_summaries",
                 "model_summaries",
+                "model_benchmarks",
                 "chart_studio_refs",
                 "prior_insight_runs",
                 "audit_history"

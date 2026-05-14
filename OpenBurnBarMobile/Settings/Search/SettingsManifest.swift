@@ -190,6 +190,15 @@ enum SettingsManifest {
             keywords: ["add", "new", "provider", "account", "opencode", "open code", "opencode go"]
         ),
         SettingsItem(
+            id: "providers.openCode",
+            section: .providers,
+            pageRoute: .providerConnections,
+            anchorID: SettingsAnchor.providerOpenCode,
+            title: "OpenCode",
+            subtitle: "Connect OpenCode and review its local quota/auth path",
+            keywords: ["opencode", "open code", "opencode go", "cli", "quota", "auth", "provider"]
+        ),
+        SettingsItem(
             id: "providers.cliAuth",
             section: .providers,
             pageRoute: .providerConnections,
