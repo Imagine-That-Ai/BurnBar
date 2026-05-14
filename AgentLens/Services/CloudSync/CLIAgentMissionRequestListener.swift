@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
+import OSLog
 
 // MARK: - CLI Agent Mission Request Listener
 //
@@ -18,10 +19,12 @@ final class CLIAgentMissionRequestListener {
     private let accountManager: AccountManaging
     private let settingsManager: SettingsManager
     private let chatController: ChatSessionController
+    private let logger = Logger(subsystem: "com.openburnbar.app", category: "CLIAgentMissionRequestListener")
     private var listener: ListenerRegistration?
     private var listenerUID: String?
     private var attachTask: Task<Void, Never>?
     private var processingDocs = Set<String>()
+    private var lastAttachState: String?
 
     init(
         accountManager: AccountManaging,
@@ -34,6 +37,7 @@ final class CLIAgentMissionRequestListener {
     }
 
     func start() {
+        logger.info("mission listener start requested")
         if attachTask == nil {
             attachTask = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
@@ -46,6 +50,7 @@ final class CLIAgentMissionRequestListener {
     }
 
     func stop() {
+        logger.info("mission listener stopped")
         attachTask?.cancel()
         attachTask = nil
         listener?.remove()
@@ -56,6 +61,11 @@ final class CLIAgentMissionRequestListener {
 
     private func attachIfPossible() {
         guard accountManager.isFirebaseAvailable, let uid = accountManager.currentUID else {
+            let state = "waiting firebase=\(accountManager.isFirebaseAvailable) uid=\(accountManager.currentUID == nil ? "nil" : "present")"
+            if lastAttachState != state {
+                logger.warning("mission listener \(state, privacy: .public)")
+                lastAttachState = state
+            }
             listener?.remove()
             listener = nil
             listenerUID = nil
@@ -64,12 +74,21 @@ final class CLIAgentMissionRequestListener {
         guard listenerUID != uid else { return }
         listener?.remove()
         listenerUID = uid
+        lastAttachState = "attached"
+        logger.info("mission listener attaching uidSuffix=\(uid.suffix(6), privacy: .public) device=\(self.accountManager.deviceId, privacy: .public)")
         listener = Firestore.firestore().collection("users").document(uid)
             .collection("cli_agent_mission_requests")
             .whereField("status", isEqualTo: "pending")
             .addSnapshotListener { [weak self] snapshot, error in
-                guard error == nil, let docs = snapshot?.documents, !docs.isEmpty else { return }
+                if let error {
+                    Task { @MainActor [weak self] in
+                        self?.logger.error("mission listener snapshot failed: \(error.localizedDescription, privacy: .public)")
+                    }
+                    return
+                }
+                guard let docs = snapshot?.documents, !docs.isEmpty else { return }
                 Task { @MainActor [weak self] in
+                    self?.logger.info("mission listener received \(docs.count, privacy: .public) pending docs")
                     self?.processDocs(docs)
                 }
             }
@@ -100,16 +119,51 @@ final class CLIAgentMissionRequestListener {
             missionKind: data["missionKind"] as? String
         )
 
-        try? await document.reference.setData([
-            "status": "running",
-            "claimedBy": accountManager.deviceId,
-            "selectedRuntime": backend.rawValue,
-            "selectedRuntimeName": backend.displayName,
-            "startedAt": ISO8601DateFormatter().string(from: Date())
-        ], merge: true)
+        let requestedRuntime = (data["requestedRuntime"] as? String) ?? "auto"
+        let missionKind = (data["missionKind"] as? String) ?? "unknown"
+        logger.info("claiming mission id=\(document.documentID, privacy: .public) kind=\(missionKind, privacy: .public) requested=\(requestedRuntime, privacy: .public) selected=\(backend.rawValue, privacy: .public)")
+        do {
+            try await document.reference.setData([
+                "status": "running",
+                "claimedBy": accountManager.deviceId,
+                "selectedRuntime": backend.rawValue,
+                "selectedRuntimeName": backend.displayName,
+                "startedAt": ISO8601DateFormatter().string(from: Date()),
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+            logger.info("claimed mission id=\(document.documentID, privacy: .public)")
+        } catch {
+            logger.error("mission claim failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            await fail(document: document, message: "Mac could not claim the mission: \(error.localizedDescription)")
+            return
+        }
 
         if chatController.isStreaming {
+            logger.warning("mission id=\(document.documentID, privacy: .public) blocked because chat controller is already streaming")
             await fail(document: document, message: "Mac chat controller is already running another mission.")
+            return
+        }
+
+        logger.info("starting mission id=\(document.documentID, privacy: .public) backend=\(backend.rawValue, privacy: .public)")
+        if let directResult = await runDirectCLIMissionIfNeeded(title: title, prompt: prompt, backend: backend, data: data) {
+            var payload: [String: Any] = [
+                "status": directResult.status,
+                "selectedRuntime": backend.rawValue,
+                "selectedRuntimeName": backend.displayName,
+                "sessionId": directResult.sessionID,
+                "resultPreview": directResult.output.prefix(600).description,
+                "completedAt": ISO8601DateFormatter().string(from: Date()),
+                "updatedAt": FieldValue.serverTimestamp()
+            ]
+            if let errorMessage = directResult.errorMessage {
+                payload["errorMessage"] = errorMessage
+            }
+            do {
+                try await document.reference.setData(payload, merge: true)
+                logger.info("finished direct CLI mission id=\(document.documentID, privacy: .public) status=\(directResult.status, privacy: .public)")
+            } catch {
+                logger.error("direct CLI mission update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
             return
         }
 
@@ -137,16 +191,26 @@ final class CLIAgentMissionRequestListener {
         } else {
             payload["resultPreview"] = chatController.messages.last(where: { $0.role == .assistant })?.content.prefix(600).description ?? ""
         }
-        try? await document.reference.setData(payload, merge: true)
+        do {
+            try await document.reference.setData(payload, merge: true)
+            logger.info("finished mission id=\(document.documentID, privacy: .public) status=\(status, privacy: .public)")
+        } catch {
+            logger.error("mission final update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func fail(document: QueryDocumentSnapshot, message: String) async {
-        try? await document.reference.setData([
-            "status": "failed",
-            "errorMessage": message,
-            "completedAt": ISO8601DateFormatter().string(from: Date()),
-            "updatedAt": FieldValue.serverTimestamp()
-        ], merge: true)
+        do {
+            try await document.reference.setData([
+                "status": "failed",
+                "errorMessage": message,
+                "completedAt": ISO8601DateFormatter().string(from: Date()),
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+            logger.info("marked mission failed id=\(document.documentID, privacy: .public)")
+        } catch {
+            logger.error("mission failure update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func resolveBackend(requestedRuntime: String?, missionKind: String?) -> ChatBackendID {
@@ -156,16 +220,23 @@ final class CLIAgentMissionRequestListener {
             return direct
         }
 
+        let enabled = settingsManager.enabledChatBackends
+        func firstEnabled(_ ordered: [ChatBackendID]) -> ChatBackendID? {
+            ordered.first { enabled.contains($0) }
+        }
+
         switch missionKind {
         case "diligence":
-            return settingsManager.enabledChatBackends.contains(.claude) ? .claude : .codex
+            return firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw])
+                ?? .codex
         case "creative":
-            if settingsManager.enabledChatBackends.contains(.openclaw) { return .openclaw }
-            return settingsManager.enabledChatBackends.contains(.codex) ? .codex : .hermes
+            return firstEnabled([.openclaw, .codex, .hermes, .piAgent, .claude])
+                ?? .hermes
         case "debt":
-            return settingsManager.enabledChatBackends.contains(.codex) ? .codex : .claude
+            return firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw])
+                ?? .codex
         default:
-            return settingsManager.enabledChatBackends.first ?? .codex
+            return enabled.first ?? .codex
         }
     }
 
@@ -181,6 +252,139 @@ final class CLIAgentMissionRequestListener {
 
         \(prompt)
         """
+    }
+
+    private struct DirectCLIMissionResult {
+        let status: String
+        let output: String
+        let errorMessage: String?
+        let sessionID: String
+    }
+
+    private func runDirectCLIMissionIfNeeded(
+        title: String,
+        prompt: String,
+        backend: ChatBackendID,
+        data: [String: Any]
+    ) async -> DirectCLIMissionResult? {
+        switch backend {
+        case .piAgent:
+            let piPrompt = missionPrompt(title: title, prompt: prompt, backend: backend, data: data)
+            return await runDirectCLIMission(
+                executableName: "zsh",
+                arguments: [
+                    "-lic",
+                    "pi --no-session --no-tools -p \"$OPENBURNBAR_MISSION_PROMPT\""
+                ],
+                backend: backend,
+                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": piPrompt]
+            )
+        case .openclaw:
+            return await runDirectCLIMission(
+                executableName: "openclaude",
+                arguments: [
+                    "-p",
+                    missionPrompt(title: title, prompt: prompt, backend: backend, data: data),
+                    "--no-session-persistence",
+                    "--permission-mode", "auto"
+                ],
+                backend: backend,
+                extraEnvironment: [:]
+            )
+        case .codex, .claude, .hermes:
+            return nil
+        }
+    }
+
+    private func runDirectCLIMission(
+        executableName: String,
+        arguments: [String],
+        backend: ChatBackendID,
+        extraEnvironment: [String: String]
+    ) async -> DirectCLIMissionResult {
+        guard let executable = await CLIExecutableResolver().resolveExecutable(named: executableName) else {
+            return DirectCLIMissionResult(
+                status: "failed",
+                output: "",
+                errorMessage: "\(backend.displayName) CLI executable '\(executableName)' was not found on the Mac PATH.",
+                sessionID: "direct-\(backend.rawValue)-\(UUID().uuidString)"
+            )
+        }
+
+        do {
+            let output = try await runProcess(
+                executable: executable,
+                arguments: arguments,
+                timeoutSeconds: 180,
+                extraEnvironment: extraEnvironment
+            )
+            return DirectCLIMissionResult(
+                status: "completed",
+                output: output.trimmingCharacters(in: .whitespacesAndNewlines),
+                errorMessage: nil,
+                sessionID: "direct-\(backend.rawValue)-\(UUID().uuidString)"
+            )
+        } catch {
+            return DirectCLIMissionResult(
+                status: "failed",
+                output: "",
+                errorMessage: error.localizedDescription,
+                sessionID: "direct-\(backend.rawValue)-\(UUID().uuidString)"
+            )
+        }
+    }
+
+    private func runProcess(
+        executable: String,
+        arguments: [String],
+        timeoutSeconds: TimeInterval,
+        extraEnvironment: [String: String]
+    ) async throws -> String {
+        try await Task.detached(priority: .userInitiated) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = arguments
+            var environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
+            environment.merge(extraEnvironment) { _, new in new }
+            process.environment = environment
+            process.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            process.standardInput = FileHandle.nullDevice
+
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+
+            try process.run()
+
+            let deadline = Date().addingTimeInterval(timeoutSeconds)
+            while process.isRunning && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            if process.isRunning {
+                process.terminate()
+                throw NSError(
+                    domain: "OpenBurnBar.DirectCLIMission",
+                    code: 124,
+                    userInfo: [NSLocalizedDescriptionKey: "Direct \(URL(fileURLWithPath: executable).lastPathComponent) mission timed out after \(Int(timeoutSeconds)) seconds."]
+                )
+            }
+
+            let stdoutText = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            let stderrText = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            guard process.terminationStatus == 0 else {
+                let message = [stdoutText, stderrText]
+                    .joined(separator: "\n")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                throw NSError(
+                    domain: "OpenBurnBar.DirectCLIMission",
+                    code: Int(process.terminationStatus),
+                    userInfo: [NSLocalizedDescriptionKey: message.nilIfEmpty ?? "Direct CLI mission failed with exit \(process.terminationStatus)."]
+                )
+            }
+
+            return stdoutText.nilIfEmpty ?? stderrText
+        }.value
     }
 }
 

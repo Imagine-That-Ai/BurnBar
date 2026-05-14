@@ -11,7 +11,12 @@ class CLIAgentMissionDispatcher(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) {
-    suspend fun dispatch(title: String, prompt: String, missionKind: String): String {
+    suspend fun dispatch(
+        title: String,
+        prompt: String,
+        missionKind: String,
+        requestedRuntime: String = "auto",
+    ): String {
         val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
         val trimmedPrompt = prompt.trim()
         if (trimmedPrompt.isBlank()) throw DispatchException("Mission prompt was empty.")
@@ -22,7 +27,7 @@ class CLIAgentMissionDispatcher(
             "title" to title.trim().ifBlank { "Insights mission" },
             "prompt" to trimmedPrompt,
             "missionKind" to missionKind,
-            "requestedRuntime" to "auto",
+            "requestedRuntime" to requestedRuntime,
             "source" to "android-insights",
             "status" to "pending",
             "createdAt" to Instant.now().toString(),

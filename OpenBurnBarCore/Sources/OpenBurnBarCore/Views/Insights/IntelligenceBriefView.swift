@@ -23,7 +23,7 @@ public struct IntelligenceBriefView: View {
     public let result: InsightAnalysisResult
     public let onCitationTap: (InsightCitation) -> Void
     public let onFollowUpTap: (InsightFollowUpQuestion) -> Void
-    public let onMissionLaunchTap: (InsightFollowUpQuestion) -> Void
+    public let onMissionLaunchTap: (InsightFollowUpQuestion, String, String) -> Void
     public let onPinWidget: (InsightGeneratedWidget) -> Void
     public let onConfigureModel: (() -> Void)?
     public let onShowAudit: (() -> Void)?
@@ -53,7 +53,7 @@ public struct IntelligenceBriefView: View {
         result: InsightAnalysisResult,
         onCitationTap: @escaping (InsightCitation) -> Void = { _ in },
         onFollowUpTap: @escaping (InsightFollowUpQuestion) -> Void = { _ in },
-        onMissionLaunchTap: ((InsightFollowUpQuestion) -> Void)? = nil,
+        onMissionLaunchTap: ((InsightFollowUpQuestion, String, String) -> Void)? = nil,
         onPinWidget: @escaping (InsightGeneratedWidget) -> Void = { _ in },
         onConfigureModel: (() -> Void)? = nil,
         onShowAudit: (() -> Void)? = nil,
@@ -62,7 +62,7 @@ public struct IntelligenceBriefView: View {
         self.result = result
         self.onCitationTap = onCitationTap
         self.onFollowUpTap = onFollowUpTap
-        self.onMissionLaunchTap = onMissionLaunchTap ?? onFollowUpTap
+        self.onMissionLaunchTap = onMissionLaunchTap ?? { question, _, _ in onFollowUpTap(question) }
         self.onPinWidget = onPinWidget
         self.onConfigureModel = onConfigureModel
         self.onShowAudit = onShowAudit
@@ -130,8 +130,8 @@ public struct IntelligenceBriefView: View {
                 .id(Self.heroAnchorID)
                 .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
 
-            MissionLaunchpad { action in
-                onMissionLaunchTap(action.followUpQuestion)
+            MissionLaunchpad { action, runtime in
+                onMissionLaunchTap(action.followUpQuestion, action.kind.firestoreValue, runtime.firestoreValue)
             }
             .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
 
@@ -788,9 +788,10 @@ private struct FindingRow: View {
 // MARK: - Mission launchpad
 
 private struct MissionLaunchpad: View {
-    let onSelect: (MissionLaunchAction) -> Void
+    let onSelect: (MissionLaunchAction, MissionRuntimeTarget) -> Void
 
     private let actions = MissionLaunchAction.defaults
+    @State private var selectedRuntime: MissionRuntimeTarget = .auto
 
     var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
@@ -804,27 +805,29 @@ private struct MissionLaunchpad: View {
                 .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            AdaptiveMissionActionGrid(actions: actions, onSelect: onSelect)
+            RuntimeTargetPicker(selection: $selectedRuntime)
+            AdaptiveMissionActionGrid(actions: actions, selectedRuntime: selectedRuntime, onSelect: onSelect)
         }
     }
 }
 
 private struct AdaptiveMissionActionGrid: View {
     let actions: [MissionLaunchAction]
-    let onSelect: (MissionLaunchAction) -> Void
+    let selectedRuntime: MissionRuntimeTarget
+    let onSelect: (MissionLaunchAction, MissionRuntimeTarget) -> Void
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
                 ForEach(actions) { action in
-                    MissionLaunchButton(action: action, onSelect: onSelect)
+                    MissionLaunchButton(action: action, runtime: selectedRuntime, onSelect: onSelect)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
 
             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
                 ForEach(actions) { action in
-                    MissionLaunchButton(action: action, onSelect: onSelect)
+                    MissionLaunchButton(action: action, runtime: selectedRuntime, onSelect: onSelect)
                 }
             }
         }
@@ -833,11 +836,12 @@ private struct AdaptiveMissionActionGrid: View {
 
 private struct MissionLaunchButton: View {
     let action: MissionLaunchAction
-    let onSelect: (MissionLaunchAction) -> Void
+    let runtime: MissionRuntimeTarget
+    let onSelect: (MissionLaunchAction, MissionRuntimeTarget) -> Void
 
     var body: some View {
         Button {
-            onSelect(action)
+            onSelect(action, runtime)
         } label: {
             HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.sm) {
                 Image(systemName: action.symbolName)
@@ -848,7 +852,7 @@ private struct MissionLaunchButton: View {
                     Text(action.title)
                         .font(UnifiedDesignSystem.Typography.body.weight(.semibold))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                    Text(action.subtitle)
+                    Text("\(action.subtitle) Run on \(runtime.label).")
                         .font(UnifiedDesignSystem.Typography.caption)
                         .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                         .lineLimit(3)
@@ -869,6 +873,65 @@ private struct MissionLaunchButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel(action.title)
         .accessibilityHint("Create a dispatch-ready Insights mission prompt")
+    }
+}
+
+private struct RuntimeTargetPicker: View {
+    @Binding var selection: MissionRuntimeTarget
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
+                ForEach(MissionRuntimeTarget.allCases) { runtime in
+                    Button {
+                        selection = runtime
+                    } label: {
+                        Text(runtime.label)
+                            .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
+                            .foregroundStyle(selection == runtime ? UnifiedDesignSystem.Colors.background : UnifiedDesignSystem.Colors.textSecondary)
+                            .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
+                            .padding(.vertical, 7)
+                            .background(
+                                Capsule()
+                                    .fill(selection == runtime ? UnifiedDesignSystem.Colors.textPrimary : UnifiedDesignSystem.Colors.surfaceElevated)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Run mission on \(runtime.accessibilityLabel)")
+                }
+            }
+            .padding(.vertical, 1)
+        }
+    }
+}
+
+private enum MissionRuntimeTarget: String, CaseIterable, Identifiable {
+    case auto
+    case codex
+    case claude
+    case hermes
+    case openclaw
+    case piAgent
+
+    var id: String { rawValue }
+    var firestoreValue: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .auto: return "Auto"
+        case .codex: return "Codex"
+        case .claude: return "Claude"
+        case .hermes: return "Hermes"
+        case .openclaw: return "OpenClaw"
+        case .piAgent: return "Pi"
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .auto: return "best available local agent"
+        default: return label
+        }
     }
 }
 
@@ -934,6 +997,16 @@ private struct MissionLaunchAction: Identifiable {
             color: UnifiedDesignSystem.Colors.ember
         )
     ]
+}
+
+private extension MissionLaunchAction.Kind {
+    var firestoreValue: String {
+        switch self {
+        case .creative: return "creative"
+        case .diligence: return "diligence"
+        case .debt: return "debt"
+        }
+    }
 }
 
 // MARK: - Mission row

@@ -119,7 +119,7 @@ fun IntelligenceBriefScreen(
     modifier: Modifier = Modifier,
     onCitationTap: (InsightCitation) -> Unit = {},
     onFollowUpTap: (InsightFollowUpQuestion) -> Unit = {},
-    onMissionLaunchTap: (MissionLaunchAction) -> Unit = {},
+    onMissionLaunchTap: (MissionLaunchAction, MissionRuntimeTarget) -> Unit = { _, _ -> },
     onPinWidget: (InsightGeneratedWidget) -> Unit = {},
     onConfigureModel: (() -> Unit)? = null,
     onShowAudit: (() -> Unit)? = null,
@@ -170,8 +170,8 @@ fun IntelligenceBriefScreen(
         }
 
         AnimatedSection(visible = visibility[1], reduceMotion = reduceMotion) {
-            MissionLaunchpad(onSelect = { action ->
-                onMissionLaunchTap(action)
+            MissionLaunchpad(onSelect = { action, runtime ->
+                onMissionLaunchTap(action, runtime)
             })
         }
 
@@ -498,6 +498,24 @@ data class MissionLaunchAction(
 
 enum class MissionTone { CREATIVE, DILIGENCE, DEBT }
 
+enum class MissionRuntimeTarget(
+    val firestoreValue: String,
+    val label: String,
+) {
+    AUTO("auto", "Auto"),
+    CODEX("codex", "Codex"),
+    CLAUDE("claude", "Claude"),
+    HERMES("hermes", "Hermes"),
+    OPENCLAW("openclaw", "OpenClaw"),
+    PI_AGENT("piAgent", "Pi"),
+}
+
+fun MissionTone.firestoreValue(): String = when (this) {
+    MissionTone.CREATIVE -> "creative"
+    MissionTone.DILIGENCE -> "diligence"
+    MissionTone.DEBT -> "debt"
+}
+
 private val missionLaunchActions = listOf(
     MissionLaunchAction(
         title = "Creative Mission",
@@ -527,7 +545,8 @@ private val missionLaunchActions = listOf(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MissionLaunchpad(onSelect: (MissionLaunchAction) -> Unit) {
+private fun MissionLaunchpad(onSelect: (MissionLaunchAction, MissionRuntimeTarget) -> Unit) {
+    var selectedRuntime by remember { mutableStateOf(MissionRuntimeTarget.AUTO) }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
@@ -538,13 +557,37 @@ private fun MissionLaunchpad(onSelect: (MissionLaunchAction) -> Unit) {
             style = AuroraType.body,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            items(MissionRuntimeTarget.values().asList()) { runtime ->
+                val selected = runtime == selectedRuntime
+                TextButton(
+                    onClick = { selectedRuntime = runtime },
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(
+                            if (selected) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                        )
+                        .semantics { contentDescription = "Run mission on ${runtime.label}" },
+                ) {
+                    Text(
+                        text = runtime.label,
+                        style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (selected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
             verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
         ) {
             missionLaunchActions.forEach { action ->
-                MissionLaunchButton(action = action, onSelect = onSelect)
+                MissionLaunchButton(action = action, runtime = selectedRuntime, onSelect = onSelect)
             }
         }
     }
@@ -553,7 +596,8 @@ private fun MissionLaunchpad(onSelect: (MissionLaunchAction) -> Unit) {
 @Composable
 private fun MissionLaunchButton(
     action: MissionLaunchAction,
-    onSelect: (MissionLaunchAction) -> Unit,
+    runtime: MissionRuntimeTarget,
+    onSelect: (MissionLaunchAction, MissionRuntimeTarget) -> Unit,
 ) {
     val color = when (action.tone) {
         MissionTone.CREATIVE -> InsightsColors.kpiPositive
@@ -561,7 +605,7 @@ private fun MissionLaunchButton(
         MissionTone.DEBT -> AuroraColors.ember(isSystemInDarkTheme())
     }
     TextButton(
-        onClick = { onSelect(action) },
+        onClick = { onSelect(action, runtime) },
         modifier = Modifier
             .clip(RoundedCornerShape(AuroraRadius.sm.dp))
             .border(BorderStroke(0.75.dp, color.copy(alpha = 0.32f)), RoundedCornerShape(AuroraRadius.sm.dp))
@@ -577,7 +621,7 @@ private fun MissionLaunchButton(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = action.subtitle,
+                text = "${action.subtitle} Run on ${runtime.label}.",
                 style = AuroraType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

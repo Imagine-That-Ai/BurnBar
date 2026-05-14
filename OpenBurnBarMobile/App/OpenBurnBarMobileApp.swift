@@ -66,10 +66,7 @@ struct OpenBurnBarMobileApp: App {
         case "insights":
             // burnbar://insights/{slug} — open the Insights tab scoped to
             // the slug ("all" → aggregate, otherwise an agent persistedToken).
-            let slug = url.pathComponents
-                .dropFirst()
-                .first
-                .map(String.init) ?? ""
+            let slug = url.pathComponents.dropFirst().first ?? ""
             NotificationCenter.default.post(
                 name: .init("ShowInsightsTab"),
                 object: nil,

@@ -142,8 +142,13 @@ fun InsightsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             onCitationTap = { viewModel.ask(citationPrompt(it)) },
                             onFollowUpTap = { viewModel.ask(it.question) },
-                            onMissionLaunchTap = { action ->
-                                viewModel.launchMission(action.title, action.followUpQuestion().question)
+                            onMissionLaunchTap = { action, runtime ->
+                                viewModel.launchMission(
+                                    action.title,
+                                    action.followUpQuestion().question,
+                                    action.tone.firestoreValue(),
+                                    runtime.firestoreValue,
+                                )
                             },
                         )
                     }

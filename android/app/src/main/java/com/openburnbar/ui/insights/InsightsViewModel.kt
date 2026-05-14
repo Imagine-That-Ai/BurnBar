@@ -155,14 +155,22 @@ class InsightsViewModel(
         }
     }
 
-    fun launchMission(title: String, prompt: String) {
+    fun launchMission(
+        title: String,
+        prompt: String,
+        missionKind: String = missionKind(prompt),
+        requestedRuntime: String = "auto",
+    ) {
         val trimmedPrompt = prompt.trim()
         val trimmedTitle = title.trim().ifEmpty { "Insights mission" }
         if (trimmedPrompt.isEmpty()) return
         viewModelScope.launch {
             try {
-                missionDispatcher.dispatch(trimmedTitle, trimmedPrompt, missionKind(trimmedPrompt))
-                _missionStatus.value = MissionStatus.Dispatched(trimmedTitle, "Mac agent fleet")
+                missionDispatcher.dispatch(trimmedTitle, trimmedPrompt, missionKind, requestedRuntime)
+                _missionStatus.value = MissionStatus.Dispatched(
+                    trimmedTitle,
+                    if (requestedRuntime == "auto") "Mac agent fleet" else requestedRuntime,
+                )
             } catch (e: Exception) {
                 _missionStatus.value = MissionStatus.Failed(trimmedTitle, e.message ?: "Mission dispatch failed.")
             }

@@ -251,21 +251,28 @@ final class InsightsStore {
         await compose(prompt: prompt)
     }
 
-    func dispatchMission(_ question: InsightFollowUpQuestion, via hermesService: HermesService) {
+    func dispatchMission(
+        _ question: InsightFollowUpQuestion,
+        missionKind explicitMissionKind: String? = nil,
+        requestedRuntime: String = "auto",
+        via hermesService: HermesService
+    ) {
         let title = question.question
             .split(separator: "\n", omittingEmptySubsequences: true)
             .first
             .map(String.init) ?? "Insights mission"
-        let missionKind = Self.missionKind(for: question.question)
+        let missionKind = explicitMissionKind ?? Self.missionKind(for: question.question)
         Task {
             do {
                 let requestID = try await CLIAgentMissionDispatcher.shared.dispatch(
                     title: title,
                     prompt: question.question,
-                    missionKind: missionKind
+                    missionKind: missionKind,
+                    requestedRuntime: requestedRuntime
                 )
-                missionStatus = .dispatched(title: title, runtime: "Mac agent fleet")
-                Self.log.info("mission dispatch: requestID=\(requestID, privacy: .public) title=\"\(title, privacy: .public)\" runtime=Mac agent fleet")
+                let runtimeLabel = requestedRuntime == "auto" ? "Mac agent fleet" : requestedRuntime
+                missionStatus = .dispatched(title: title, runtime: runtimeLabel)
+                Self.log.info("mission dispatch: requestID=\(requestID, privacy: .public) title=\"\(title, privacy: .public)\" missionKind=\(missionKind, privacy: .public) runtime=\(runtimeLabel, privacy: .public)")
             } catch {
                 missionStatus = .failed(title: title, message: error.localizedDescription)
             }

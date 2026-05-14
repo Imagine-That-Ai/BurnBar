@@ -36,7 +36,7 @@ struct AgentInsightsTabScreen: View {
             .onReceive(NotificationCenter.default.publisher(for: .init("ShowInsightsTab"))) { note in
                 let slug = (note.userInfo?["slug"] as? String) ?? ""
                 guard let scope = AgentInsightsScope.from(routeSlug: slug) else { return }
-                select(scope: scope)
+                select(scope)
             }
     }
 
@@ -243,8 +243,13 @@ private struct AgentInsightsScopedDetail: View {
             onConfigureModel: onOpenWorkspace,
             onPickAgent: nil,
             onFollowUpTap: { _ in onOpenWorkspace() },
-            onMissionLaunchTap: { question in
-                store?.dispatchMission(question, via: hermesService)
+            onMissionLaunchTap: { question, missionKind, requestedRuntime in
+                store?.dispatchMission(
+                    question,
+                    missionKind: missionKind,
+                    requestedRuntime: requestedRuntime,
+                    via: hermesService
+                )
             },
             onCitationTap: { _ in onOpenWorkspace() },
             onPinWidget: { _ in onOpenWorkspace() }
@@ -272,4 +277,3 @@ private struct InsightsWorkspaceSheet: View {
         }
     }
 }
-

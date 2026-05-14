@@ -149,8 +149,13 @@ private struct AdaptiveInsightsLayout: View {
                     onFollowUpTap: { question in
                         Task { await store.compose(prompt: question.question) }
                     },
-                    onMissionLaunchTap: { question in
-                        store.dispatchMission(question, via: hermesService)
+                    onMissionLaunchTap: { question, missionKind, requestedRuntime in
+                        store.dispatchMission(
+                            question,
+                            missionKind: missionKind,
+                            requestedRuntime: requestedRuntime,
+                            via: hermesService
+                        )
                     },
                     onPinWidget: { generated in
                         Task { await store.pinGeneratedWidget(generated) }

@@ -13,7 +13,12 @@ final class CLIAgentMissionDispatcher {
         self.firestoreProvider = firestoreProvider
     }
 
-    func dispatch(title: String, prompt: String, missionKind: String) async throws -> String {
+    func dispatch(
+        title: String,
+        prompt: String,
+        missionKind: String,
+        requestedRuntime: String = "auto"
+    ) async throws -> String {
         guard FirebaseApp.app() != nil else {
             throw DispatchError.firebaseUnavailable
         }
@@ -32,7 +37,7 @@ final class CLIAgentMissionDispatcher {
             "title": trimmedTitle,
             "prompt": trimmedPrompt,
             "missionKind": missionKind,
-            "requestedRuntime": "auto",
+            "requestedRuntime": requestedRuntime,
             "source": "ios-insights",
             "status": "pending",
             "createdAt": ISO8601DateFormatter().string(from: Date()),

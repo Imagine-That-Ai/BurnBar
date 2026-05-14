@@ -41,7 +41,7 @@ public struct AgentInsightsView: View {
         public var onConfigureModel: (() -> Void)?
         public var onPickAgent: (() -> Void)?
         public var onFollowUpTap: ((InsightFollowUpQuestion) -> Void)?
-        public var onMissionLaunchTap: ((InsightFollowUpQuestion) -> Void)?
+        public var onMissionLaunchTap: ((InsightFollowUpQuestion, String, String) -> Void)?
         public var onCitationTap: ((InsightCitation) -> Void)?
         public var onPinWidget: ((InsightGeneratedWidget) -> Void)?
 
@@ -53,7 +53,7 @@ public struct AgentInsightsView: View {
             onConfigureModel: (() -> Void)? = nil,
             onPickAgent: (() -> Void)? = nil,
             onFollowUpTap: ((InsightFollowUpQuestion) -> Void)? = nil,
-            onMissionLaunchTap: ((InsightFollowUpQuestion) -> Void)? = nil,
+            onMissionLaunchTap: ((InsightFollowUpQuestion, String, String) -> Void)? = nil,
             onCitationTap: ((InsightCitation) -> Void)? = nil,
             onPinWidget: ((InsightGeneratedWidget) -> Void)? = nil
         ) {
@@ -120,7 +120,7 @@ public struct AgentInsightsView: View {
                         result: brief,
                         onCitationTap: { actions.onCitationTap?($0) },
                         onFollowUpTap: { actions.onFollowUpTap?($0) },
-                        onMissionLaunchTap: { actions.onMissionLaunchTap?($0) },
+                        onMissionLaunchTap: { actions.onMissionLaunchTap?($0, $1, $2) },
                         onPinWidget: { actions.onPinWidget?($0) },
                         onConfigureModel: actions.onConfigureModel,
                         onShowAudit: actions.onShowAudit,
