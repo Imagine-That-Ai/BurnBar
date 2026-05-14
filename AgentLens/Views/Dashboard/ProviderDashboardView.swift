@@ -10,102 +10,358 @@ struct ProviderCard: View {
     let onTap: () -> Void
 
     @Environment(SettingsManager.self) private var settingsManager
+    @State private var isHovered: Bool = false
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: summary.provider) }
 
     var body: some View {
         UnifiedGlassCard(interactive: true) {
-            HStack(spacing: UnifiedDesignSystem.Spacing.lg) {
-                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-                    Text(String(format: "%02d", rank))
-                            .font(UnifiedDesignSystem.Typography.mono)
-                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+            ZStack(alignment: .topTrailing) {
+                provideGlow
 
-                        ZStack {
-                            Circle()
-                                .fill(theme.primaryColor.opacity(0.15))
-                                .frame(width: 46, height: 46)
-
-                            UnifiedProviderLogoView(provider: summary.provider, size: 28, useFallbackColor: false)
-                        }
-                    }
-                    .frame(width: 54, alignment: .leading)
-
-                    VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
-                        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                                    Text(summary.provider.displayName)
-                                        .font(UnifiedDesignSystem.Typography.headline)
-                                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-
-                                    confidenceBadge(for: summary.provider.dataConfidence)
-                                }
-
-                                Text("\(summary.sessionCount) session\(summary.sessionCount == 1 ? "" : "s")")
-                                    .font(UnifiedDesignSystem.Typography.caption)
-                                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                            }
-
-                            Spacer()
-
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text(settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens))
-                                    .font(UnifiedDesignSystem.Typography.monoLarge)
-                                    .foregroundStyle(theme.gradient)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.72)
-                                    .allowsTightening(true)
-
-                                Text(settingsManager.usageDisplayMode == .currency ? "total spend" : "total tokens")
-                                    .font(UnifiedDesignSystem.Typography.tiny)
-                                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                            }
-                        }
-
-                        HStack(spacing: UnifiedDesignSystem.Spacing.xl) {
-                            UnifiedMiniStat(label: "Input", value: formatTokens(summary.totalInputTokens))
-                            UnifiedMiniStat(label: "Output", value: formatTokens(summary.totalOutputTokens))
-                            UnifiedMiniStat(label: "Cache R", value: formatTokens(summary.modelBreakdown.reduce(0) { $0 + $1.cacheReadTokens }))
-                        }
-
-                        if !rankedModelBreakdown.isEmpty {
-                            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-                                Text("Top Models")
-                                    .font(UnifiedDesignSystem.Typography.tiny)
-                                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                                    .textCase(.uppercase)
-
-                                ForEach(Array(rankedModelBreakdown.prefix(3).enumerated()), id: \.element.id) { index, model in
-                                    HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                                        Capsule()
-                                            .fill(theme.chartColors[index % theme.chartColors.count])
-                                            .frame(width: 14, height: 5)
-
-                                        Text(model.modelName)
-                                            .font(UnifiedDesignSystem.Typography.caption)
-                                            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
-                                            .lineLimit(1)
-
-                                        Spacer()
-
-                                        Text("\(modelSharePercentage(model), specifier: "%.0f")%")
-                                            .font(UnifiedDesignSystem.Typography.monoTiny)
-                                            .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-
-                                        Text(formatTokens(model.totalTokens))
-                                            .font(UnifiedDesignSystem.Typography.monoSmall)
-                                            .foregroundStyle(theme.primaryColor)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.xl) {
+                    heroColumn
+                    contentColumn
                 }
-                .padding(UnifiedDesignSystem.Spacing.lg)
+                .padding(.vertical, UnifiedDesignSystem.Spacing.xs)
+                .padding(.horizontal, UnifiedDesignSystem.Spacing.xs)
+            }
         }
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
         .onTapGesture(perform: onTap)
     }
+
+    // MARK: - Decorative theme glow
+
+    private var provideGlow: some View {
+        Circle()
+            .fill(theme.gradient.opacity(isHovered ? 0.22 : 0.14))
+            .frame(width: 180, height: 180)
+            .blur(radius: 60)
+            .offset(x: 60, y: -50)
+            .allowsHitTesting(false)
+            .animation(UnifiedDesignSystem.Animation.hover, value: isHovered)
+    }
+
+    // MARK: - Hero column
+
+    private var heroColumn: some View {
+        VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+            rankPill
+            logoMedallion
+        }
+        .frame(width: 96)
+    }
+
+    private var rankPill: some View {
+        Text(String(format: "%02d", rank))
+            .font(.system(size: 11, weight: .heavy, design: .monospaced))
+            .tracking(1.2)
+            .foregroundStyle(theme.primaryColor)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(theme.primaryColor.opacity(0.12))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(theme.primaryColor.opacity(0.35), lineWidth: 0.6)
+            )
+    }
+
+    private var logoMedallion: some View {
+        ZStack {
+            Circle()
+                .fill(theme.gradient.opacity(0.22))
+                .frame(width: 96, height: 96)
+                .blur(radius: 22)
+
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            theme.primaryColor.opacity(0.18),
+                            theme.accentColor.opacity(0.04)
+                        ],
+                        center: .center,
+                        startRadius: 4,
+                        endRadius: 44
+                    )
+                )
+                .frame(width: 80, height: 80)
+
+            Circle()
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            theme.primaryColor.opacity(0.6),
+                            theme.accentColor.opacity(0.18),
+                            theme.primaryColor.opacity(0.32)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.2
+                )
+                .frame(width: 80, height: 80)
+
+            UnifiedProviderLogoView(provider: summary.provider, size: 52, useFallbackColor: false)
+                .shadow(color: theme.primaryColor.opacity(0.18), radius: 8, x: 0, y: 4)
+        }
+        .scaleEffect(isHovered ? 1.04 : 1.0)
+        .animation(UnifiedDesignSystem.Animation.hover, value: isHovered)
+    }
+
+    // MARK: - Content column
+
+    private var contentColumn: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
+            headerRow
+            tokenMixSection
+            if !rankedModelBreakdown.isEmpty {
+                Divider()
+                    .overlay(UnifiedDesignSystem.Colors.border.opacity(0.4))
+                topModelsSection
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Header row
+
+    private var headerRow: some View {
+        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: UnifiedDesignSystem.Spacing.sm) {
+                    Text(summary.provider.displayName)
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+
+                    confidenceBadge(for: summary.provider.dataConfidence)
+                }
+
+                HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                    sessionsChip
+                    secondaryMetricChip
+                    if summary.cacheEfficiency.hasSignal {
+                        UnifiedCacheHitRateBadge(efficiency: summary.cacheEfficiency)
+                    }
+                }
+            }
+
+            Spacer(minLength: UnifiedDesignSystem.Spacing.md)
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(primaryMetric)
+                    .font(.system(size: 32, weight: .bold, design: .monospaced))
+                    .foregroundStyle(theme.gradient)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
+                    .allowsTightening(true)
+
+                Text(settingsManager.usageDisplayMode == .currency ? "TOTAL SPEND" : "TOTAL TOKENS")
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .tracking(1.4)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+            }
+        }
+    }
+
+    private var sessionsChip: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "rectangle.stack.fill")
+                .font(.system(size: 9, weight: .semibold))
+            Text("\(summary.sessionCount) session\(summary.sessionCount == 1 ? "" : "s")")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+        }
+        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.55))
+        )
+        .overlay(
+            Capsule()
+                .stroke(UnifiedDesignSystem.Colors.border.opacity(0.32), lineWidth: 0.5)
+        )
+    }
+
+    private var secondaryMetricChip: some View {
+        HStack(spacing: 5) {
+            Image(systemName: settingsManager.usageDisplayMode == .currency ? "number" : "dollarsign")
+                .font(.system(size: 9, weight: .semibold))
+            Text(secondaryMetricValue)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+        }
+        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(
+            Capsule()
+                .fill(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.55))
+        )
+        .overlay(
+            Capsule()
+                .stroke(UnifiedDesignSystem.Colors.border.opacity(0.32), lineWidth: 0.5)
+        )
+    }
+
+    private var primaryMetric: String {
+        settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens)
+    }
+
+    private var secondaryMetricValue: String {
+        switch settingsManager.usageDisplayMode {
+        case .currency:
+            return "\(ProviderCard.formatTokens(summary.totalTokens)) tokens"
+        case .tokens:
+            return summary.totalCost.formatAsCost()
+        }
+    }
+
+    // MARK: - Token Mix
+
+    private var tokenMixSection: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+            HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                Text("Token Mix")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .tracking(1.2)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+
+                Rectangle()
+                    .fill(UnifiedDesignSystem.Colors.border.opacity(0.25))
+                    .frame(height: 1)
+                    .frame(maxWidth: .infinity)
+
+                Text(ProviderCard.formatTokens(tokenMixBasis))
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+            }
+
+            segmentedTokenBar
+
+            tokenLegend
+        }
+    }
+
+    private var segmentedTokenBar: some View {
+        GeometryReader { geo in
+            HStack(spacing: 2) {
+                ForEach(tokenSegments) { segment in
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [segment.color, segment.color.opacity(0.7)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: max(3, geo.size.width * segment.share - 2))
+                        .shadow(color: segment.color.opacity(0.32), radius: 2, x: 0, y: 1)
+                }
+            }
+        }
+        .frame(height: 10)
+        .background(
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.55))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .stroke(UnifiedDesignSystem.Colors.border.opacity(0.25), lineWidth: 0.5)
+        )
+    }
+
+    private var tokenLegend: some View {
+        HStack(spacing: UnifiedDesignSystem.Spacing.md) {
+            ForEach(tokenSegments) { segment in
+                ProviderTokenLegendItem(segment: segment)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    // MARK: - Top Models
+
+    private var topModelsSection: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+            HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                Text("Top Models")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .tracking(1.2)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+
+                Rectangle()
+                    .fill(UnifiedDesignSystem.Colors.border.opacity(0.25))
+                    .frame(height: 1)
+                    .frame(maxWidth: .infinity)
+
+                Text("\(rankedModelBreakdown.count) tracked")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+            }
+
+            VStack(spacing: UnifiedDesignSystem.Spacing.xs) {
+                ForEach(Array(rankedModelBreakdown.prefix(3).enumerated()), id: \.element.id) { index, model in
+                    ProviderTopModelRow(
+                        rank: index + 1,
+                        model: model,
+                        share: modelSharePercentage(model),
+                        color: theme.chartColors[index % theme.chartColors.count],
+                        primaryDisplay: settingsManager.formatUsageMetric(cost: model.cost, tokens: model.totalTokens)
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Computed token segments
+
+    private var cacheCreationTokens: Int { summary.cacheEfficiency.cacheCreationTokens }
+    private var cacheReadTokens: Int { summary.cacheEfficiency.cacheReadTokens }
+
+    private var tokenMixBasis: Int {
+        max(
+            1,
+            max(0, summary.totalInputTokens)
+                + max(0, summary.totalOutputTokens)
+                + max(0, cacheCreationTokens)
+                + max(0, cacheReadTokens)
+        )
+    }
+
+    private var tokenSegments: [ProviderTokenSegment] {
+        let basis = Double(tokenMixBasis)
+        let palette = theme.chartColors
+        func paletteColor(_ i: Int, fallback: Color) -> Color {
+            palette.indices.contains(i) ? palette[i] : fallback
+        }
+
+        let raw: [(label: String, value: Int, color: Color)] = [
+            ("Input",   max(0, summary.totalInputTokens),  paletteColor(0, fallback: theme.primaryColor)),
+            ("Cache W", max(0, cacheCreationTokens),       paletteColor(2, fallback: theme.primaryColor.opacity(0.6))),
+            ("Cache R", max(0, cacheReadTokens),           paletteColor(1, fallback: theme.accentColor)),
+            ("Output",  max(0, summary.totalOutputTokens), paletteColor(3, fallback: theme.accentColor.opacity(0.6))),
+        ]
+
+        return raw
+            .filter { $0.value > 0 }
+            .map { entry in
+                ProviderTokenSegment(
+                    label: entry.label,
+                    value: entry.value,
+                    share: Double(entry.value) / basis,
+                    color: entry.color
+                )
+            }
+    }
+
+    // MARK: - Helpers
 
     private var rankedModelBreakdown: [ModelUsage] {
         DashboardUsageRanking.sortedModelUsages(
@@ -126,21 +382,26 @@ struct ProviderCard: View {
     private func confidenceBadge(for confidence: DataConfidence) -> some View {
         switch confidence {
         case .exact:
-            Text("Exact")
-                .font(UnifiedDesignSystem.Typography.tiny)
-                .foregroundStyle(UnifiedDesignSystem.Colors.success)
+            confidencePill(text: "Exact", color: UnifiedDesignSystem.Colors.success)
         case .estimated:
-            Text("Estimated")
-                .font(UnifiedDesignSystem.Typography.tiny)
-                .foregroundStyle(UnifiedDesignSystem.Colors.warning)
+            confidencePill(text: "Estimated", color: UnifiedDesignSystem.Colors.warning)
         case .unavailable:
-            Text("Unsupported")
-                .font(UnifiedDesignSystem.Typography.tiny)
-                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+            confidencePill(text: "Unsupported", color: UnifiedDesignSystem.Colors.textMuted)
         }
     }
 
-    private func formatTokens(_ tokens: Int) -> String {
+    private func confidencePill(text: String, color: Color) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 9, weight: .heavy, design: .rounded))
+            .tracking(1.0)
+            .foregroundStyle(color)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(color.opacity(0.12)))
+            .overlay(Capsule().stroke(color.opacity(0.32), lineWidth: 0.5))
+    }
+
+    fileprivate static func formatTokens(_ tokens: Int) -> String {
         if tokens >= 1_000_000_000 {
             return String(format: "%.2fB", Double(tokens) / 1_000_000_000)
         } else if tokens >= 1_000_000 {
@@ -149,6 +410,128 @@ struct ProviderCard: View {
             return String(format: "%.1fK", Double(tokens) / 1_000)
         }
         return "\(tokens)"
+    }
+}
+
+// MARK: - Token Mix Supporting Types
+
+private struct ProviderTokenSegment: Identifiable {
+    let label: String
+    let value: Int
+    let share: Double
+    let color: Color
+    var id: String { label }
+}
+
+private struct ProviderTokenLegendItem: View {
+    let segment: ProviderTokenSegment
+
+    var body: some View {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [segment.color, segment.color.opacity(0.65)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: 8, height: 8)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(segment.label.uppercased())
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .tracking(0.8)
+                    .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+
+                HStack(spacing: 4) {
+                    Text(ProviderCard.formatTokens(segment.value))
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+
+                    Text("\(Int((segment.share * 100).rounded()))%")
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(segment.color.opacity(0.85))
+                }
+            }
+        }
+        .lineLimit(1)
+    }
+}
+
+private struct ProviderTopModelRow: View {
+    let rank: Int
+    let model: ModelUsage
+    let share: Double
+    let color: Color
+    let primaryDisplay: String
+
+    private var clampedShare: Double { min(max(share, 0), 100) }
+
+    var body: some View {
+        HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+            Text("\(rank)")
+                .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                .frame(width: 12, alignment: .leading)
+
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [color, color.opacity(0.5)],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 4
+                    )
+                )
+                .frame(width: 7, height: 7)
+                .shadow(color: color.opacity(0.5), radius: 2)
+
+            Text(model.modelName)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(width: 140, alignment: .leading)
+
+            shareBar
+
+            Text("\(Int(clampedShare.rounded()))%")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                .frame(width: 38, alignment: .trailing)
+
+            Text(primaryDisplay)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(width: 72, alignment: .trailing)
+        }
+        .padding(.vertical, 3)
+    }
+
+    private var shareBar: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.55))
+                    .frame(height: 6)
+
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [color, color.opacity(0.55)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: geo.size.width * CGFloat(clampedShare / 100), height: 6)
+                    .shadow(color: color.opacity(0.45), radius: 3, x: 0, y: 1)
+            }
+        }
+        .frame(height: 6)
+        .frame(maxWidth: .infinity)
     }
 }
 
