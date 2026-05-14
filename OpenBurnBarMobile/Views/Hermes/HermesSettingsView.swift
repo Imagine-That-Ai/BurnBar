@@ -38,7 +38,9 @@ struct HermesSettingsView: View {
                     headerCard
 
                     connectionsSection
+                        .settingsAnchor(SettingsAnchor.hermesConnections)
                     modelsSection
+                        .settingsAnchor(SettingsAnchor.hermesModels)
                     displaySection
                     gatewaySection
                     securitySection
@@ -365,6 +367,7 @@ struct HermesSettingsView: View {
                     }
                 }
                 .tint(MobileTheme.hermesAureate)
+                .settingsAnchor(SettingsAnchor.hermesDisplayTPS)
 
                 Divider().background(MobileTheme.Colors.border.opacity(0.4))
 
@@ -380,6 +383,7 @@ struct HermesSettingsView: View {
                     }
                 }
                 .tint(MobileTheme.hermesAureate)
+                .settingsAnchor(SettingsAnchor.hermesPretext)
 
                 Button {
                     showPretextPlayground = true
@@ -416,11 +420,12 @@ struct HermesSettingsView: View {
                                 .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
                         )
                         .keyboardType(.URL)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                }
+	                        .autocorrectionDisabled()
+	                        .textInputAutocapitalization(.never)
+	                }
+                    .settingsAnchor(SettingsAnchor.hermesGatewayURL)
 
-                VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+	                VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
                     label("Bearer Token")
                     HStack {
                         SecureField("API_SERVER_KEY from ~/.hermes/.env", text: tokenBinding)
@@ -438,11 +443,12 @@ struct HermesSettingsView: View {
                     .background(
                         RoundedRectangle(cornerRadius: MobileTheme.Radius.sm)
                             .fill(MobileTheme.Colors.surfaceElevated)
-                            .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
-                    )
-                }
+	                            .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
+	                    )
+	                }
+                    .settingsAnchor(SettingsAnchor.hermesGatewayToken)
 
-                VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+	                VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
                     label("Model Override")
                     TextField("Leave empty for auto (e.g. gpt-5.5)", text: modelBinding)
                         .font(MobileTheme.Typography.body)

@@ -21,7 +21,9 @@ struct PiSettingsView: View {
                     headerCard
                     statusCard
                     hostsCard
+                        .settingsAnchor(SettingsAnchor.piHosts)
                     modelsCard
+                        .settingsAnchor(SettingsAnchor.piModels)
                     Spacer(minLength: MobileTheme.Spacing.xxxl)
                 }
                 .padding(.horizontal, MobileTheme.Spacing.lg)
