@@ -4181,6 +4181,7 @@
 				E9A9CE05EB1CB5A0032B0BF2 /* Frameworks */,
 				68093FD2CB89FFF33810DF23 /* Embed Foundation Extensions */,
 				2875AEE40D458AD8F56B813B /* Embed Frameworks */,
+				6F0324720AA2AC6306AF13C0 /* Inject Internal App Check Debug Token */,
 				2FF71114694A1CECACA080FE /* Block App Check Debug Token In Release */,
 			);
 			buildRules = (
@@ -4452,7 +4453,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\n\nSTAMP=\"${SCRIPT_OUTPUT_FILE_0:-}\"\nfinish() {\n  if [[ -n \"${STAMP}\" ]]; then\n    mkdir -p \"$(dirname \"${STAMP}\")\"\n    touch \"${STAMP}\"\n  fi\n}\ntrap finish EXIT\n\nif [[ \"${CONFIGURATION:-}\" == \"Debug\" ]]; then\n  exit 0\nfi\n\nSOURCE_PLIST=\"${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist\"\nif [[ ! -f \"${SOURCE_PLIST}\" ]]; then\n  exit 0\nfi\n\nfor KEY in FirebaseAppCheckDebugToken FIRAAppCheckDebugToken; do\n  if /usr/libexec/PlistBuddy -c \"Print :${KEY}\" \"${SOURCE_PLIST}\" >/dev/null 2>&1; then\n    echo \"error: ${KEY} must not be present in OpenBurnBarMobile/Resources/GoogleService-Info.plist for non-Debug builds.\"\n    exit 1\n  fi\ndone\n";
+			shellScript = "set -euo pipefail\n\nSTAMP=\"${SCRIPT_OUTPUT_FILE_0:-}\"\nfinish() {\n  if [[ -n \"${STAMP}\" ]]; then\n    mkdir -p \"$(dirname \"${STAMP}\")\"\n    touch \"${STAMP}\"\n  fi\n}\ntrap finish EXIT\n\nif [[ \"${CONFIGURATION:-}\" == \"Debug\" ]] || [[ \"${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}\" == \"YES\" ]]; then\n  exit 0\nfi\n\nSOURCE_PLIST=\"${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist\"\nif [[ ! -f \"${SOURCE_PLIST}\" ]]; then\n  exit 0\nfi\n\nfor KEY in FirebaseAppCheckDebugToken FIRAAppCheckDebugToken; do\n  if /usr/libexec/PlistBuddy -c \"Print :${KEY}\" \"${SOURCE_PLIST}\" >/dev/null 2>&1; then\n    echo \"error: ${KEY} must not be present in OpenBurnBarMobile/Resources/GoogleService-Info.plist for non-Debug builds.\"\n    exit 1\n  fi\ndone\n";
 		};
 		521470C163F4349FD4306702 /* Dedupe GRDB Link File Entries (Xcode 16) */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -4471,6 +4472,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# Xcode 16.4 can pass GRDB.o twice to libtool for this static target:\n# once via LinkFileList and once as an explicit linker argument.\n# Keep GRDB in the explicit arg path on 16.x by removing it from all\n# per-arch LinkFileLists only for 16.x toolchains.\nif [[ -n \"${XCODE_VERSION_MAJOR:-}\" && \"${XCODE_VERSION_MAJOR}\" -lt 1700 ]]; then\n  for candidate in \\\n    \"${LINK_FILE_LIST_normal_arm64:-}\" \\\n    \"${LINK_FILE_LIST_normal_x86_64:-}\" \\\n    \"${OBJECT_FILE_DIR_normal}/arm64/${PRODUCT_NAME}.LinkFileList\" \\\n    \"${OBJECT_FILE_DIR_normal}/x86_64/${PRODUCT_NAME}.LinkFileList\" \\\n    \"${OBJECT_FILE_DIR_normal}/${CURRENT_ARCH}/${PRODUCT_NAME}.LinkFileList\" \\\n    \"${OBJECT_FILE_DIR_normal}/${PRODUCT_NAME}.LinkFileList\"\n  do\n    if [[ -n \"${candidate}\" && -f \"${candidate}\" ]]; then\n      tmp_file=\"${candidate}.tmp\"\n      # Drop GRDB.o from each link file (it is added explicitly by Xcode)\n      # and collapse any accidental duplicate object entries.\n      awk '!/\\/GRDB\\.o$/ && !seen[$0]++' \"${candidate}\" > \"${tmp_file}\" || true\n      mv \"${tmp_file}\" \"${candidate}\"\n    fi\n  done\nfi\n";
+		};
+		6F0324720AA2AC6306AF13C0 /* Inject Internal App Check Debug Token */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist",
+			);
+			name = "Inject Internal App Check Debug Token";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/InjectInternalAppCheckDebugToken.stamp",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nSTAMP=\"${SCRIPT_OUTPUT_FILE_0:-}\"\nfinish() {\n  if [[ -n \"${STAMP}\" ]]; then\n    mkdir -p \"$(dirname \"${STAMP}\")\"\n    touch \"${STAMP}\"\n  fi\n}\ntrap finish EXIT\n\nif [[ \"${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}\" != \"YES\" ]]; then\n  exit 0\nfi\n\nif [[ -z \"${FIREBASE_APP_CHECK_DEBUG_TOKEN:-}\" ]]; then\n  echo \"error: FIREBASE_APP_CHECK_DEBUG_TOKEN is required when OPENBURNBAR_USE_DEBUG_APP_CHECK=YES.\"\n  exit 1\nfi\n\nBUILT_PLIST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist\"\nif [[ ! -f \"${BUILT_PLIST}\" ]]; then\n  echo \"error: Built GoogleService-Info.plist not found at ${BUILT_PLIST}.\"\n  exit 1\nfi\n\n/usr/libexec/PlistBuddy -c \"Delete :FirebaseAppCheckDebugToken\" \"${BUILT_PLIST}\" >/dev/null 2>&1 || true\n/usr/libexec/PlistBuddy -c \"Add :FirebaseAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}\" \"${BUILT_PLIST}\"\n/usr/libexec/PlistBuddy -c \"Delete :FIRAAppCheckDebugToken\" \"${BUILT_PLIST}\" >/dev/null 2>&1 || true\n/usr/libexec/PlistBuddy -c \"Add :FIRAAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}\" \"${BUILT_PLIST}\"\n";
 		};
 		A9E0A628A99EA48CA01A3B0C /* Copy Swift Objective-C Interface Header */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -5506,7 +5527,7 @@
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_C1139A58-E97E-44B6-9A3B-6C5985C1081B" /* OpenBurnBarCore */;
+			productRef = "TEMP_34A54304-ED1B-4234-9311-AB2309BB03B6" /* OpenBurnBarCore */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -5588,7 +5609,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Widget";
@@ -5615,12 +5636,13 @@
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenBurnBar;
 				INFOPLIST_KEY_CFBundleName = OpenBurnBar;
 				INFOPLIST_KEY_NSCameraUsageDescription = "OpenBurnBar uses the camera only when you choose Take Photo to attach an image to a Hermes chat.";
+				INFOPLIST_KEY_OpenBurnBarUseDebugAppCheck = "$(OPENBURNBAR_USE_DEBUG_APP_CHECK)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -5632,6 +5654,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OPENBURNBAR_USE_DEBUG_APP_CHECK = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.openburnbar.app;
 				PRODUCT_NAME = OpenBurnBarMobile;
 				SDKROOT = iphoneos;
@@ -5662,7 +5685,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenBurnBar Widget";
@@ -5916,12 +5939,13 @@
 				CODE_SIGN_ENTITLEMENTS = OpenBurnBarMobile/Resources/OpenBurnBarMobile.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEVELOPMENT_TEAM = 4Y367DF25B;
 				INFOPLIST_FILE = OpenBurnBarMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenBurnBar;
 				INFOPLIST_KEY_CFBundleName = OpenBurnBar;
 				INFOPLIST_KEY_NSCameraUsageDescription = "OpenBurnBar uses the camera only when you choose Take Photo to attach an image to a Hermes chat.";
+				INFOPLIST_KEY_OpenBurnBarUseDebugAppCheck = "$(OPENBURNBAR_USE_DEBUG_APP_CHECK)";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -5933,6 +5957,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OPENBURNBAR_USE_DEBUG_APP_CHECK = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.openburnbar.app;
 				PRODUCT_NAME = OpenBurnBarMobile;
 				SDKROOT = iphoneos;
@@ -6257,7 +6282,7 @@
 			package = F7ED8DA2789DCAFECCAE84D3 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAppCheck;
 		};
-		"TEMP_C1139A58-E97E-44B6-9A3B-6C5985C1081B" /* OpenBurnBarCore */ = {
+		"TEMP_34A54304-ED1B-4234-9311-AB2309BB03B6" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
 		};

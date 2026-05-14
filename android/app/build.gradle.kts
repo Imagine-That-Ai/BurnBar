@@ -37,9 +37,26 @@ android {
         applicationId = "com.openburnbar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.0.1"
+        versionCode = 12
+        versionName = "1.0.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // App Check: when this build is meant for Firebase App Distribution
+        // (where Play Integrity attestation fails because the app isn't on
+        // Play Console yet), the BurnBarApplication wires the Debug
+        // provider seeded with the registered DEBUG_APP_CHECK_TOKEN below.
+        // Real Play Store production builds leave the env var unset, which
+        // keeps Play Integrity in place. Enforcement on the server side
+        // stays ON in both cases.
+        val useDebugAppCheck = providers.environmentVariable("OPENBURNBAR_USE_DEBUG_APP_CHECK")
+            .map { it.equals("true", ignoreCase = true) }
+            .orElse(false)
+            .get()
+        buildConfigField("boolean", "USE_DEBUG_APP_CHECK", useDebugAppCheck.toString())
+        val debugAppCheckToken = providers.environmentVariable("OPENBURNBAR_APP_CHECK_DEBUG_TOKEN")
+            .orElse("")
+            .get()
+        buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"" + debugAppCheckToken + "\"")
     }
 
     buildTypes {
@@ -99,12 +116,22 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-appcheck-playintegrity")
-    debugImplementation("com.google.firebase:firebase-appcheck-debug")
+    // Bundled in release as well: BurnBarApplication switches to the Debug
+    // provider when this APK is built for Firebase App Distribution (env
+    // var OPENBURNBAR_USE_DEBUG_APP_CHECK=true), so Play Integrity-rejected
+    // builds can still pass enforced App Check via a registered token.
+    // Real Play Store builds simply leave the env var unset and use Play
+    // Integrity exclusively.
+    implementation("com.google.firebase:firebase-appcheck-debug")
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-functions-ktx")
     implementation("com.google.firebase:firebase-crashlytics-ktx")
-    // Auth
+    // Auth — legacy GoogleSignIn kept for backwards compat with existing code paths;
+    // Credential Manager is the new primary entry point.
     implementation("com.google.android.gms:play-services-auth:21.3.0")
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
 
     // OkHttp + WebSocket for Hermes

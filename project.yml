@@ -261,7 +261,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarMobile
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: 13
+        CURRENT_PROJECT_VERSION: 14
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         # Apple sign-in + iOS Keychain access group; see
@@ -273,9 +273,47 @@ targets:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
         INFOPLIST_KEY_UILaunchScreen_Generation: true
+        INFOPLIST_KEY_OpenBurnBarUseDebugAppCheck: "$(OPENBURNBAR_USE_DEBUG_APP_CHECK)"
+        OPENBURNBAR_USE_DEBUG_APP_CHECK: "NO"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
     postBuildScripts:
+      - name: Inject Internal App Check Debug Token
+        script: |
+          set -euo pipefail
+
+          STAMP="${SCRIPT_OUTPUT_FILE_0:-}"
+          finish() {
+            if [[ -n "${STAMP}" ]]; then
+              mkdir -p "$(dirname "${STAMP}")"
+              touch "${STAMP}"
+            fi
+          }
+          trap finish EXIT
+
+          if [[ "${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}" != "YES" ]]; then
+            exit 0
+          fi
+
+          if [[ -z "${FIREBASE_APP_CHECK_DEBUG_TOKEN:-}" ]]; then
+            echo "error: FIREBASE_APP_CHECK_DEBUG_TOKEN is required when OPENBURNBAR_USE_DEBUG_APP_CHECK=YES."
+            exit 1
+          fi
+
+          BUILT_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
+          if [[ ! -f "${BUILT_PLIST}" ]]; then
+            echo "error: Built GoogleService-Info.plist not found at ${BUILT_PLIST}."
+            exit 1
+          fi
+
+          /usr/libexec/PlistBuddy -c "Delete :FirebaseAppCheckDebugToken" "${BUILT_PLIST}" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Add :FirebaseAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}" "${BUILT_PLIST}"
+          /usr/libexec/PlistBuddy -c "Delete :FIRAAppCheckDebugToken" "${BUILT_PLIST}" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Add :FIRAAppCheckDebugToken string ${FIREBASE_APP_CHECK_DEBUG_TOKEN}" "${BUILT_PLIST}"
+        inputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist
+        outputFiles:
+          - $(DERIVED_FILE_DIR)/InjectInternalAppCheckDebugToken.stamp
       - name: Block App Check Debug Token In Release
         script: |
           set -euo pipefail
@@ -289,7 +327,7 @@ targets:
           }
           trap finish EXIT
 
-          if [[ "${CONFIGURATION:-}" == "Debug" ]]; then
+          if [[ "${CONFIGURATION:-}" == "Debug" ]] || [[ "${OPENBURNBAR_USE_DEBUG_APP_CHECK:-}" == "YES" ]]; then
             exit 0
           fi
 
@@ -377,7 +415,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarWidget
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.widget
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: 13
+        CURRENT_PROJECT_VERSION: 14
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements

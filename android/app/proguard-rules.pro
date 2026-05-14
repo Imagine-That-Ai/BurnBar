@@ -3,6 +3,12 @@
 -keepattributes *Annotation*
 -dontwarn com.google.firebase.**
 
+# BurnBarApplication loads DebugAppCheckProviderFactory via Class.forName
+# when this APK is built for Firebase App Distribution. R8 has no static
+# reference to walk, so keep the factory + its companion storage classes.
+-keep class com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory { *; }
+-keep class com.google.firebase.appcheck.debug.internal.** { *; }
+
 # Kotlin Serialization
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.AnnotationsKt

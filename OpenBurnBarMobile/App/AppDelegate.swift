@@ -29,6 +29,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// valid attestation token. Otherwise the project's App Check enforcement
     /// will block every read (`App Check blocked` in Sync diagnostics).
     ///
+    /// - Internal distribution builds: when `OpenBurnBarUseDebugAppCheck` is
+    ///   present in Info.plist, use the App Check debug provider with a
+    ///   pre-registered token. This keeps Firestore enforcement enabled for
+    ///   TestFlight/App Distribution channels while Apple/Play attestation is
+    ///   not available.
     /// - Production builds: DeviceCheck. App Attest is stronger, but it must
     ///   also be enabled on the Apple Bundle ID/provisioning profile before the
     ///   entitlement can be shipped. DeviceCheck keeps enforced Firestore App
@@ -45,11 +50,19 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             return
         }
 
+        let useDebugProvider = Self.useDebugAppCheckProvider()
+            || AppCheckDebugTokenEnvironment.token(inPlistAt: path) != nil
+        let factory: AppCheckProviderFactory
         #if DEBUG
         _ = AppCheckDebugTokenEnvironment.configureIfAvailable(firebasePlistPath: path)
-        let factory: AppCheckProviderFactory = AppCheckDebugProviderFactory()
+        factory = AppCheckDebugProviderFactory()
         #else
-        let factory = OpenBurnBarAppCheckProviderFactory()
+        if useDebugProvider {
+            _ = AppCheckDebugTokenEnvironment.configureIfAvailable(firebasePlistPath: path)
+            factory = AppCheckDebugProviderFactory()
+        } else {
+            factory = OpenBurnBarAppCheckProviderFactory()
+        }
         #endif
         AppCheck.setAppCheckProviderFactory(factory)
 
@@ -71,6 +84,27 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             of: #"^1:[0-9]+:ios:[A-Za-z0-9]+$"#,
             options: .regularExpression
         ) != nil
+    }
+
+    private static func useDebugAppCheckProvider(
+        infoDictionary: [String: Any]? = Bundle.main.infoDictionary,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        if truthy(environment["OPENBURNBAR_USE_DEBUG_APP_CHECK"]) {
+            return true
+        }
+        return truthy(infoDictionary?["OpenBurnBarUseDebugAppCheck"])
+    }
+
+    private static func truthy(_ raw: Any?) -> Bool {
+        switch raw {
+        case let value as Bool:
+            return value
+        case let value as String:
+            return ["1", "true", "yes", "y"].contains(value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        default:
+            return false
+        }
     }
 }
 
