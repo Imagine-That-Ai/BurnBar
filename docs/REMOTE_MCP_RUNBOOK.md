@@ -116,3 +116,8 @@ gcloud run services update-traffic openburnbar-hosted-mcp \
 
 If auth or privacy behavior is suspect, revoke the Cloud Run service account's
 Firestore/Storage permissions before debugging.
+
+Last rehearsal: 2026-05-15. Traffic was moved from
+`openburnbar-hosted-mcp-00005-ndq` to prior ready revision
+`openburnbar-hosted-mcp-00004-xf4`, `/readyz` returned healthy, and traffic was
+restored to `openburnbar-hosted-mcp-00005-ndq` at 100% with `/readyz` healthy.

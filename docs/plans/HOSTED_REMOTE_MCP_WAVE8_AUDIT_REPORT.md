@@ -119,8 +119,9 @@ Findings:
   read-budget revision is `openburnbar-hosted-mcp-00005-ndq` at 100% traffic.
 - P1: Alert coverage now includes hosted-MCP 5xx, 429, auth-denial, p95 latency,
   instance pressure, and project-level Firestore read spikes.
-- P1: Rollback command is documented but has not been rehearsed with a real
-  traffic shift and restore.
+- P1: Rollback command is documented and was rehearsed by moving traffic from
+  `openburnbar-hosted-mcp-00005-ndq` to `00004-xf4`, checking `/readyz`, and
+  restoring `00005-ndq` to 100% traffic.
 - P2: Cost dashboard separation for Cloud Run, Firestore, Storage, KMS, and
   Redis is not proven.
 
@@ -240,7 +241,7 @@ Evidence:
 | P0 | Final production launch proof is not on a branded endpoint. | Rerun live paid/unpaid/revoked/cross-tenant proof against the branded endpoint. |
 | P1 | Real subscriber proof is missing. | Use real paid and unpaid proof users instead of temporary entitlement documents. |
 | P1 | Real client compatibility matrix is incomplete. | Temp-profile config proof now passes for installed CLIs; prove login/tools/list/search/body against the branded endpoint. |
-| P1 | Rollback is documented but unrehearsed. | Perform controlled Cloud Run traffic rollback and restoration, then record revision names and timestamps. |
+| P1 | Branded-endpoint rollback proof is still pending. | Generated-URL Cloud Run rollback rehearsal passed; repeat after branded domain mapping if launch requires hostname-level proof. |
 | P1 | Large-corpus performance and cost proof is missing. | Controlled search read-budget proof passes; capture warm p50/p95 and cost/read behavior on representative production-scale data. |
 | P1 | macOS and Android connected-client list/revoke parity is not proven. | Implement or explicitly scope out platform parity with owner/date before launch. |
 | P2 | Cost dashboard separation is missing. | Add or verify a dashboard separating Cloud Run, Firestore, Storage, KMS, and Redis. |
