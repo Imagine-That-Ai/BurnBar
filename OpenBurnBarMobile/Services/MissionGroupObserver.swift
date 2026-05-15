@@ -60,13 +60,21 @@ final class MissionGroupObserver {
         return MissionGroupPhaseReducer.reduce(childStatuses: statuses, current: group.phase)
     }
 
-    /// Aggregate burn across all children (best-effort; nil children
-    /// contribute 0).
-    var aggregateBurnUSD: Double {
-        childSnapshots.values.reduce(0.0) { acc, snap in
-            acc + 0.0 // CLI mission snapshots don't carry burn directly today;
-                      // Phase B will compute via events. Stub.
+    /// Live-rolled child snapshot count by phase. Used by the
+    /// `MissionFanOutGroupCard` header for "2 of 3 done" affordances
+    /// without having to recompute on every render.
+    var childPhaseTally: (live: Int, terminal: Int, awaitingApproval: Int) {
+        var live = 0
+        var terminal = 0
+        var awaitingApproval = 0
+        for snap in childSnapshots.values {
+            if snap.isTerminal { terminal += 1 }
+            else if snap.isWaitingForApproval {
+                awaitingApproval += 1
+                live += 1
+            } else { live += 1 }
         }
+        return (live, terminal, awaitingApproval)
     }
 
     private func ensureChildObservations(for group: MissionGroupDocument) {

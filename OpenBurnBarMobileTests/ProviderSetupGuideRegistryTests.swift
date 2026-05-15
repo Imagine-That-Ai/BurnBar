@@ -45,7 +45,7 @@ final class ProviderSetupGuideRegistryTests: XCTestCase {
         XCTAssertTrue(codex.supportsSelfHosted, "Codex guide must advertise self-hosted sync")
 
         let claude = ProviderSetupGuide.guide(for: .claudeCode)
-        XCTAssertFalse(claude.supportsHosted, "Claude Code guide must not advertise hosted sync")
+        XCTAssertTrue(claude.supportsHosted, "Claude Code guide must advertise hosted sync")
         XCTAssertTrue(claude.supportsSelfHosted, "Claude Code guide must advertise self-hosted sync")
 
         let cursor = ProviderSetupGuide.guide(for: .cursor)

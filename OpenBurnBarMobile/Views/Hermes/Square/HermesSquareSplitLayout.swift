@@ -140,7 +140,7 @@ private struct HermesSquareLeftColumn: View {
         .task {
             inbox.bind(missionHost: missionHost)
             await inbox.refresh()
-            await registry.refresh(hermesService: hermesService)
+            await registry.refresh(hermesService: hermesService, missionHost: missionHost)
         }
     }
 }

@@ -15,6 +15,105 @@ class CLIAgentMissionDispatcher(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) {
+    /**
+     * Hermes Square §6.4 — fan-out dispatch. Writes one mission group
+     * parent + N child cli_agent_mission_requests linked by `groupID`.
+     * Mirrors the iOS `dispatchFanOut`. Throws DispatchException on
+     * malformed input or auth failure.
+     */
+    suspend fun dispatchFanOut(
+        title: String,
+        prompt: String,
+        missionKind: String,
+        runtimeTokens: List<String>,
+        targetProject: String? = null,
+        depth: String = "standard",
+        approvalMode: String = "existing_policy",
+        commandsAllowed: Boolean = false,
+        fileEditsAllowed: Boolean = false,
+        parallelismLimit: Int? = null,
+        mergeStrategy: String = "pick_one",
+    ): FanOutDispatchResult {
+        val uid = auth.currentUser?.uid
+            ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
+        if (runtimeTokens.size < 2) throw DispatchException("Fan-out dispatch needs at least 2 runtimes.")
+        val trimmedPrompt = prompt.trim()
+        if (trimmedPrompt.isBlank()) throw DispatchException("Mission prompt was empty.")
+
+        val groupID = "grp-${UUID.randomUUID()}"
+        val trimmedTitle = title.trim().ifBlank { "Fan-out mission" }
+        val childMissionIDs = runtimeTokens.map { UUID.randomUUID().toString() }
+        val plim = (parallelismLimit ?: runtimeTokens.size).coerceAtLeast(1)
+        val now = Instant.now().toString()
+
+        val groupRef = firestore.collection("users").document(uid)
+            .collection("mission_groups").document(groupID)
+        val batch = firestore.batch()
+
+        val groupPayload: Map<String, Any> = mapOf(
+            "id" to groupID,
+            "title" to trimmedTitle,
+            "prompt" to trimmedPrompt,
+            "missionKind" to missionKind,
+            "targetProject" to (targetProject ?: ""),
+            "childMissionIDs" to childMissionIDs,
+            "runtimeTokens" to runtimeTokens,
+            "parallelismLimit" to plim,
+            "mergeStrategy" to mergeStrategy,
+            "phase" to "queued",
+            "winnerMissionID" to "",
+            "forecast" to mapOf(
+                "tokensLow" to 0,
+                "tokensHigh" to 0,
+                "costLowUSD" to 0.0,
+                "costHighUSD" to 0.0,
+                "etaLow" to 0.0,
+                "etaHigh" to 0.0,
+            ),
+            "createdAt" to now,
+            "updatedAt" to now,
+            "schemaVersion" to 1,
+            "source" to "android-hermes-square",
+        )
+        batch.set(groupRef, groupPayload)
+
+        runtimeTokens.forEachIndexed { index, runtimeToken ->
+            val missionID = childMissionIDs[index]
+            val childPayload = CLIAgentMissionRequestPayloadFactory.build(
+                id = missionID,
+                title = "$trimmedTitle · $runtimeToken",
+                prompt = trimmedPrompt,
+                missionKind = missionKind,
+                requestedRuntime = runtimeToken,
+                targetProject = targetProject,
+                depth = depth,
+                approvalMode = approvalMode,
+                commandsAllowed = commandsAllowed,
+                fileEditsAllowed = fileEditsAllowed,
+            ).toMutableMap().apply {
+                put("groupID", groupID)
+                put("siblingIndex", index)
+                put("siblingCount", runtimeTokens.size)
+                put("isGroupChild", true)
+            }
+            val requestRef = firestore.collection("users").document(uid)
+                .collection("cli_agent_mission_requests").document(missionID)
+            batch.set(requestRef, childPayload.toMap())
+            batch.set(
+                requestRef.collection("events").document("000001"),
+                CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(),
+            )
+        }
+
+        batch.commit().await()
+        return FanOutDispatchResult(groupID = groupID, childMissionIDs = childMissionIDs)
+    }
+
+    data class FanOutDispatchResult(
+        val groupID: String,
+        val childMissionIDs: List<String>,
+    )
+
     suspend fun dispatch(
         title: String,
         prompt: String,

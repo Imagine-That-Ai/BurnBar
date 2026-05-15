@@ -79,15 +79,15 @@ extension ProviderSetupGuide {
                 labelSuggestion: "Claude",
                 dashboardURL: URL(string: "https://claude.ai/account"),
                 dashboardCTA: "Open Claude account",
-                oneLineHint: "Self-hosted runner only — keep credentials on your Mac.",
+                oneLineHint: "Hosted sync or self-hosted runner — Claude Code quota on any device.",
                 instructions: [
-                    GuideStep(1, "Run a Claude Code runner", detail: "Use the OpenBurnBar Mac app or the standalone runner image."),
-                    GuideStep(2, "Copy the runner URL", detail: "Use HTTPS for deployed runners, or http://localhost for testing.", codeSnippet: "https://your-runner.run.app"),
-                    GuideStep(3, "Add an optional secret", detail: "If your runner requires an access secret, paste it on the next step.")
+                    GuideStep(1, "Choose a sync mode", detail: "Hosted sync stores credentials encrypted server-side. Self-hosted keeps them on your runner."),
+                    GuideStep(2, "Paste your credential or runner URL", detail: "For hosted: paste your Claude Code auth JSON. For self-hosted: provide your runner URL."),
+                    GuideStep(3, "Quota refreshes automatically", detail: "Your Claude Code usage and remaining limits appear in real time.")
                 ],
-                credentialPlaceholder: "https://your-runner.run.app",
-                credentialFooterMarkdown: "Claude Code credentials stay on your runner. This device only stores the runner URL.",
-                supportsHosted: false,
+                credentialPlaceholder: "Paste credentials JSON or use a runner URL",
+                credentialFooterMarkdown: "Hosted sync stores your credentials encrypted server-side. Self-hosted keeps credentials on your runner only.",
+                supportsHosted: true,
                 supportsSelfHosted: true
             )
 
@@ -239,16 +239,16 @@ extension ProviderSetupGuide {
                 labelSuggestion: "Kimi",
                 dashboardURL: URL(string: "https://platform.moonshot.cn/console/api-keys"),
                 dashboardCTA: "Open Moonshot keys",
-                oneLineHint: "Bearer token from Moonshot AI's console.",
+                oneLineHint: "API key from Moonshot AI — live quota refresh on any device.",
                 instructions: [
                     GuideStep(1, "Open the Moonshot console", detail: "Sign in to platform.moonshot.cn."),
-                    GuideStep(2, "Create an API key", detail: "Console → API Keys → Create."),
+                    GuideStep(2, "Create an API key", detail: "Console → API Keys → Create. International users can also use api.kimi.ai keys."),
                     GuideStep(3, "Paste it below", detail: "Starts with `sk-`.")
                 ],
                 credentialPlaceholder: "sk-...",
-                credentialFooterMarkdown: "Kimi keys are encrypted at rest.",
-                supportsHosted: false,
-                supportsSelfHosted: false
+                credentialFooterMarkdown: "Kimi keys are encrypted at rest. We validate against /v1/models and try both api.kimi.ai and api.moonshot.cn automatically.",
+                supportsHosted: true,
+                supportsSelfHosted: true
             )
 
         case .cline:
@@ -681,6 +681,7 @@ extension ProviderSetupGuide {
     static let recommended: [AgentProvider] = [
         .claudeCode,
         .codex,
+        .kimi,
         .factory,
         .cursor,
         .minimax,

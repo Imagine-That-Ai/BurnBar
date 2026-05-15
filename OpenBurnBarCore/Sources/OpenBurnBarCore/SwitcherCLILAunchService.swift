@@ -1503,9 +1503,16 @@ public final class SwitcherCLILAunchService: Sendable {
                 displayLabel: existingMetadata.displayLabel,
                 configDirectory: existingMetadata.configDirectory,
                 accountDescription: existingMetadata.accountDescription,
+                providerID: existingMetadata.providerID,
+                runtimeAccountID: existingMetadata.runtimeAccountID,
+                subscriptionTierID: existingMetadata.subscriptionTierID,
+                modelCapabilityClassID: existingMetadata.modelCapabilityClassID,
+                linkedHarnessIDs: existingMetadata.linkedHarnessIDs,
+                neverAutoSwitch: existingMetadata.neverAutoSwitch,
                 lastQuotaExhaustedAt: now,
                 exhaustedUntil: exhaustedUntil,
-                lastQuotaExhaustionDetail: safeDetail
+                lastQuotaExhaustionDetail: safeDetail,
+                isDisabled: existingMetadata.isDisabled
             ),
             sortKey: profile.sortKey,
             createdAt: profile.createdAt
@@ -1534,7 +1541,14 @@ public final class SwitcherCLILAunchService: Sendable {
                 envKeysToPass: existingMetadata.envKeysToPass,
                 displayLabel: existingMetadata.displayLabel,
                 configDirectory: existingMetadata.configDirectory,
-                accountDescription: existingMetadata.accountDescription
+                accountDescription: existingMetadata.accountDescription,
+                providerID: existingMetadata.providerID,
+                runtimeAccountID: existingMetadata.runtimeAccountID,
+                subscriptionTierID: existingMetadata.subscriptionTierID,
+                modelCapabilityClassID: existingMetadata.modelCapabilityClassID,
+                linkedHarnessIDs: existingMetadata.linkedHarnessIDs,
+                neverAutoSwitch: existingMetadata.neverAutoSwitch,
+                isDisabled: existingMetadata.isDisabled
             ),
             sortKey: profile.sortKey,
             createdAt: profile.createdAt

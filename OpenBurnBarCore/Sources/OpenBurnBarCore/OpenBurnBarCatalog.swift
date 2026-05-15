@@ -84,6 +84,13 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
     public let aliases: [String]
     public let matchers: [BurnBarModelMatcher]
     public let pricing: BurnBarModelPricing
+    /// Optional same-tier failover class used to prevent silent downgrade
+    /// across account switches. Defaults to `id` when omitted by the catalog.
+    public let capabilityClassID: String?
+    /// Optional relative rank inside one provider's capability lattice.
+    /// Higher rank means more capable. Used only when explicit downgrade
+    /// policies are enabled by the user.
+    public let capabilityClassRank: Int?
 
     public init(
         id: String,
@@ -91,7 +98,9 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
         visibility: BurnBarCatalogVisibility,
         aliases: [String] = [],
         matchers: [BurnBarModelMatcher] = [],
-        pricing: BurnBarModelPricing
+        pricing: BurnBarModelPricing,
+        capabilityClassID: String? = nil,
+        capabilityClassRank: Int? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -99,6 +108,8 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
         self.aliases = aliases
         self.matchers = matchers
         self.pricing = pricing
+        self.capabilityClassID = capabilityClassID
+        self.capabilityClassRank = capabilityClassRank
     }
 
     public func matches(modelName: String) -> Bool {
@@ -245,6 +256,36 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
                 (includeHidden || model.visibility == .public) && model.matches(modelName: normalized)
             }
         }
+    }
+
+    /// Returns the normalized capability-class ID for a model when known.
+    /// Falls back to the resolved model ID so callers can still enforce
+    /// same-class retry policies even when the catalog omits explicit classes.
+    public func capabilityClassID(
+        forModelName modelName: String,
+        providerID: String? = nil
+    ) -> String? {
+        let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return nil }
+
+        let providersToSearch: [BurnBarCatalogProvider]
+        if let providerID, let provider = provider(id: providerID) {
+            providersToSearch = [provider]
+        } else {
+            providersToSearch = providers
+        }
+
+        for provider in providersToSearch {
+            for model in provider.models where model.matches(modelName: normalized) {
+                let classID = model.capabilityClassID?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let classID, !classID.isEmpty {
+                    return classID.lowercased()
+                }
+                return model.id.lowercased()
+            }
+        }
+
+        return nil
     }
 
     public func validate() throws {

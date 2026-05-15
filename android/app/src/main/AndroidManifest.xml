@@ -5,9 +5,24 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Hermes Square Phase D voice command surface. Requested at first
+         use via the in-app voice sheet's hold-to-talk affordance; no
+         background recording. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE"
         tools:node="remove" />
+
+    <queries>
+        <!-- Hermes Square Phase D — RecognizerIntent.ACTION_RECOGNIZE_SPEECH
+             requires the host app to declare it can resolve the speech-
+             recognition activity. Without this, SpeechRecognizer reports
+             "no recognition services found" on Android 11+. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 
     <application
         android:name=".BurnBarApplication"

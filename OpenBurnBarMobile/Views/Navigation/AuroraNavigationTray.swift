@@ -16,6 +16,11 @@ struct AuroraNavigationTray: View {
     /// Optional user identity that the `.you` tab renders as the avatar.
     var userPhotoURL: URL? = nil
     var userDisplayName: String? = nil
+    /// Cloud entitlement state. Free users see a breathing `ProBadgeDot`
+    /// at the corner of the `.you` tab; members see a tiny `MercuryCrest`.
+    /// The single dot/crest swap is the universal whisper-vs-status signal
+    /// across the app.
+    var isCloudMember: Bool = false
 
     @State private var dragOffset: CGFloat = 0
     @State private var pressedDestination: AuroraNavDestination?
@@ -47,7 +52,8 @@ struct AuroraNavigationTray: View {
                     isSelected: selection == dest,
                     isPressed: pressedDestination == dest,
                     userPhotoURL: dest == .you ? userPhotoURL : nil,
-                    userDisplayName: dest == .you ? userDisplayName : nil
+                    userDisplayName: dest == .you ? userDisplayName : nil,
+                    cloudIndicator: dest == .you ? (isCloudMember ? .member : .free) : .none
                 )
                 .frame(width: tabWidth, height: pillHeight - 6)
                 .contentShape(Capsule())
@@ -173,25 +179,37 @@ struct AuroraNavigationTray: View {
 // MARK: - Individual Tab Item
 
 struct AuroraTabItem: View {
+    enum CloudIndicator { case none, free, member }
+
     let destination: AuroraNavDestination
     let iconSize: CGFloat
     let isSelected: Bool
     let isPressed: Bool
     var userPhotoURL: URL? = nil
     var userDisplayName: String? = nil
+    var cloudIndicator: CloudIndicator = .none
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 4) {
-            AuroraNavIcon(
-                destination: destination,
-                size: iconSize,
-                isSelected: isSelected,
-                isPressed: isPressed,
-                userPhotoURL: userPhotoURL,
-                userDisplayName: userDisplayName
-            )
+            ZStack(alignment: .topTrailing) {
+                AuroraNavIcon(
+                    destination: destination,
+                    size: iconSize,
+                    isSelected: isSelected,
+                    isPressed: isPressed,
+                    userPhotoURL: userPhotoURL,
+                    userDisplayName: userDisplayName
+                )
+
+                // Pro vocabulary — the whisper. Free users see a small
+                // breathing dot; members see a tiny mercury crest. Same slot,
+                // different state. Sits in the top-right corner of the icon.
+                cloudIndicatorOverlay
+                    .offset(x: 6, y: -2)
+            }
+
             // Tiny accent dot under the active icon — replaces the heavy
             // capsule highlight so the icon, not the chrome, is the
             // emphasis when a tab is active.
@@ -204,8 +222,32 @@ struct AuroraTabItem: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(destination.label)
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+    }
+
+    @ViewBuilder
+    private var cloudIndicatorOverlay: some View {
+        switch cloudIndicator {
+        case .none:
+            EmptyView()
+        case .free:
+            ProBadgeDot(pulse: .breathing)
+        case .member:
+            MercuryCrest(size: .small, shimmer: true)
+                .scaleEffect(0.62)
+        }
+    }
+
+    private var accessibilityLabel: String {
+        switch cloudIndicator {
+        case .none:
+            return destination.label
+        case .free:
+            return "\(destination.label). OpenBurnBar Cloud available."
+        case .member:
+            return "\(destination.label). Cloud Member."
+        }
     }
 }
 

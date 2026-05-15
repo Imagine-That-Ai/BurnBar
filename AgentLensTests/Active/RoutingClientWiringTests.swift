@@ -301,6 +301,52 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertTrue(text.contains("id = \"vibeproxy\""))
     }
 
+    // MARK: - Droid (~/.factory/settings.local.json)
+
+    func test_wireDroid_writesCustomModelsIntoSettingsLocalJSON() throws {
+        let wiring = makeWiring()
+        let change = try wiring.wire(target: .droid, gateway: exampleGateway(token: "droid-token"))
+
+        XCTAssertEqual(change.target, .droid)
+        let configURL = tempHome.appendingPathComponent(".factory/settings.local.json")
+        XCTAssertEqual(change.configURL, configURL)
+
+        let root = try loadJSONObject(at: configURL)
+        let customModels = try XCTUnwrap(root["customModels"] as? [[String: Any]])
+        XCTAssertEqual(customModels.count, 3)
+        XCTAssertEqual(customModels.first?["model"] as? String, "gpt-5.5")
+        XCTAssertEqual(customModels.first?["baseUrl"] as? String, "http://127.0.0.1:8317/v1")
+        XCTAssertEqual(customModels.first?["apiKey"] as? String, "droid-token")
+        XCTAssertEqual(customModels.first?["provider"] as? String, "openai")
+        XCTAssertTrue(wiring.isWired(target: .droid))
+    }
+
+    func test_unwireDroid_removesOnlyOpenBurnBarCustomModels() throws {
+        let url = tempHome.appendingPathComponent(".factory/settings.local.json")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("""
+        {
+          "customModels": [
+            {"model": "existing-model", "provider": "openai", "baseUrl": "https://example.com/v1"},
+            {"model": "old-openburnbar", "id": "openburnbar:old-openburnbar", "provider": "openai"}
+          ]
+        }
+        """.utf8).write(to: url)
+
+        let wiring = makeWiring()
+        _ = try wiring.wire(target: .droid, gateway: exampleGateway(token: "tok"))
+        try wiring.unwire(target: .droid)
+
+        let root = try loadJSONObject(at: url)
+        let customModels = try XCTUnwrap(root["customModels"] as? [[String: Any]])
+        XCTAssertEqual(customModels.count, 1)
+        XCTAssertEqual(customModels.first?["model"] as? String, "existing-model")
+        XCTAssertFalse(wiring.isWired(target: .droid))
+    }
+
     // MARK: - Shell snippet escaping
 
     func test_shellSnippet_claudeCode_singleQuotesTokens() {
@@ -336,6 +382,16 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertTrue(snippet.contains("export OPENAI_BASE_URL='http://127.0.0.1:8317/v1'"))
     }
 
+    func test_shellSnippet_droid_includesProviderEnvVar() {
+        let wiring = makeWiring()
+        let snippet = wiring.shellSnippet(
+            target: .droid,
+            gateway: RoutingClientGateway(host: "127.0.0.1", port: 8317, authToken: "")
+        )
+        XCTAssertTrue(snippet.contains("export OPENBURNBAR_GATEWAY_TOKEN='openburnbar-local'"))
+        XCTAssertTrue(snippet.contains("export OPENAI_BASE_URL='http://127.0.0.1:8317/v1'"))
+    }
+
     func test_shellQuote_escapesEmbeddedSingleQuote() {
         XCTAssertEqual(RoutingClientWiring.shellQuote("a'b"), #"'a'\''b'"#)
     }
@@ -359,6 +415,10 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertEqual(
             wiring.configURL(for: .forge),
             tempHome.appendingPathComponent("forge/.forge.toml")
+        )
+        XCTAssertEqual(
+            wiring.configURL(for: .droid),
+            tempHome.appendingPathComponent(".factory/settings.local.json")
         )
     }
 

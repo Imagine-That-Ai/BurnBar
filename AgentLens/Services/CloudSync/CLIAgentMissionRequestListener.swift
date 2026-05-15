@@ -834,12 +834,19 @@ final class CLIAgentMissionRequestListener {
         requestID: String
     ) async -> DirectCLIMissionResult? {
         let workingDirectoryURL = workingDirectoryURL(from: data)
+        // Hermes Square §6.5 — merge any persona-scope env namespace the
+        // phone attached. Decoded once; nil-safe so missions without a
+        // scope keep using the plan's env verbatim.
+        let personaOverrides = (try? CLIAgentMissionPersonaScopeApplier.overrides(from: data))
+            ?? .empty
         if let plan = CLIAgentMissionRuntimePlanner.directLaunchPlan(title: title, prompt: prompt, backend: backend, data: data) {
+            var env = plan.extraEnvironment
+            for (k, v) in personaOverrides.extraEnvironment { env[k] = v }
             return await runDirectCLIMission(
                 executableName: plan.executableName,
                 arguments: plan.arguments,
                 backend: backend,
-                extraEnvironment: plan.extraEnvironment,
+                extraEnvironment: env,
                 workingDirectoryURL: workingDirectoryURL,
                 reference: reference,
                 requestID: requestID

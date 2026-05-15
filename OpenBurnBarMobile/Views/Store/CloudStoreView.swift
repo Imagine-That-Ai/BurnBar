@@ -17,24 +17,23 @@ private enum CloudSubscriptionDisclosure {
     static let billing = "Billed by Apple. Auto-renews until canceled at least 24 hours before renewal. Manage or cancel in Settings -> Apple ID."
 }
 
-// MARK: - Cloud Store View
+// MARK: - Cloud Store View — Pro Poster
 //
-// Premium paywall + member home for the OpenBurnBar Cloud subscription
-// (Apple-verified `com.openburnbar.hostedQuotaSync.cloud.monthly`). Branded as
-// "OpenBurnBar Cloud" in the chrome with the literal StoreKit product name
-// shown small near the plan tiles for receipt parity.
+// The Pro destination. Wears the "luxury island in utilitarian sea"
+// vocabulary — obsidian + mercury foil + serif display — deliberately
+// distinct from the daily-driver Aurora shell. The whole surface composes
+// from `ProTheme`, `ProPosterScaffold`, `MercuryFoilCard`, `MercuryCrest`,
+// and `FoilCTAButton` so members who land here from any whisper or moment
+// arrive in a coherent world.
 //
 // Surfaces:
-//   • Locked  — hero, plan picker (Monthly active, Yearly "Coming soon"),
-//               capability cards, comparison strip, trust footnote, action
-//               bar (Subscribe + Restore).
-//   • Member  — hero, member-status card with mercury shimmer + amber
-//               sparks, capability cards (with active checks), comparison
-//               strip, trust footnote, Manage + Restore.
+//   • Free   — serif hero, MercuryFoilCard plan tile, capability lineup,
+//              comparison, trust, foil CTA action bar.
+//   • Member — serif hero, MercuryCrest + member certificate card,
+//              capability lineup (with checks), comparison, trust, no CTA.
 //
-// Reads the shared store from `@Environment(\.cloudSubscriptionStore)` when
-// available; otherwise falls back to a screen-local instance (previews and
-// any deep-link case where the screen is mounted before root injection).
+// Reads the shared store from `@Environment(\.cloudSubscriptionStore)`;
+// falls back to a screen-local instance for previews and deep-link entry.
 
 struct CloudStoreView: View {
 
@@ -51,13 +50,11 @@ struct CloudStoreView: View {
     }
 
     var body: some View {
-        ZStack {
-            EmberSurfaceBackground()
-                .ignoresSafeArea()
-
+        ProPosterScaffold {
             ScrollView {
                 VStack(spacing: MobileTheme.Spacing.xl) {
-                    CloudStoreHeroSection(store: store)
+                    CloudStorePosterHero(store: store)
+                        .padding(.horizontal, MobileTheme.Spacing.lg)
                         .settingsAnchor(SettingsAnchor.cloudMembership)
                         .staggeredEntrance(delay: 0.0)
 
@@ -67,27 +64,35 @@ struct CloudStoreView: View {
                             .settingsAnchor(SettingsAnchor.cloudPlan)
                             .staggeredEntrance(delay: 0.05)
                     } else {
-                        CloudStorePlanPicker(store: store)
+                        CloudStorePlanTile(store: store)
                             .padding(.horizontal, MobileTheme.Spacing.lg)
                             .settingsAnchor(SettingsAnchor.cloudPlan)
                             .staggeredEntrance(delay: 0.05)
                     }
 
-                    CloudStoreCapabilitySection(isActive: store.isActive)
+                    CloudStoreCapabilityLineup(isActive: store.isActive)
                         .padding(.horizontal, MobileTheme.Spacing.lg)
                         .staggeredEntrance(delay: 0.10)
 
-                    RemoteMCPSetupCard(isActive: store.isActive, clientStore: remoteMCPClients)
+                    CloudStoreRemoteMCPCard(isActive: store.isActive, clientStore: remoteMCPClients)
                         .padding(.horizontal, MobileTheme.Spacing.lg)
-                        .staggeredEntrance(delay: 0.12)
+                        .staggeredEntrance(delay: 0.13)
 
                     CloudStoreComparisonCard()
                         .padding(.horizontal, MobileTheme.Spacing.lg)
-                        .staggeredEntrance(delay: 0.15)
+                        .staggeredEntrance(delay: 0.17)
 
                     CloudStoreTrustCard()
                         .padding(.horizontal, MobileTheme.Spacing.lg)
-                        .staggeredEntrance(delay: 0.20)
+                        .staggeredEntrance(delay: 0.21)
+
+                    if !store.isActive {
+                        CloudStoreSubscriptionDetails(
+                            priceText: store.product?.displayPrice ?? "$4.99"
+                        )
+                        .padding(.horizontal, MobileTheme.Spacing.lg)
+                        .staggeredEntrance(delay: 0.23)
+                    }
 
                     if let error = store.error {
                         CloudStoreErrorCard(message: error)
@@ -96,7 +101,7 @@ struct CloudStoreView: View {
                     }
                 }
                 .padding(.top, MobileTheme.Spacing.md)
-                .padding(.bottom, store.isActive ? MobileTheme.Spacing.xl : 140)
+                .padding(.bottom, store.isActive ? MobileTheme.Spacing.xl : 160)
             }
             .settingsAnchor(SettingsAnchor.cloudRow)
 
@@ -106,6 +111,7 @@ struct CloudStoreView: View {
                     .settingsAnchor(SettingsAnchor.cloudRestore)
             }
         }
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .navigationTitle("OpenBurnBar Cloud")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -118,17 +124,18 @@ struct CloudStoreView: View {
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .foregroundStyle(ProTheme.Palette.mercury.opacity(0.78))
                             .frame(width: 30, height: 30)
-                            .background(.ultraThinMaterial, in: Circle())
+                            .background(ProTheme.Palette.obsidianElevated, in: Circle())
+                            .overlay(
+                                Circle().stroke(ProTheme.Palette.aureateStroke, lineWidth: 0.7)
+                            )
                     }
                     .accessibilityLabel("Close")
                 }
             }
         }
         .task {
-            // Load only when we own the local instance; the shared store has
-            // already been hydrated at root.
             if sharedStore == nil, !didLoadLocal {
                 didLoadLocal = true
                 await localStore.load()
@@ -139,471 +146,288 @@ struct CloudStoreView: View {
     }
 }
 
-// MARK: - Hero Section
+// MARK: - Hero
 
-private struct CloudStoreHeroSection: View {
+private struct CloudStorePosterHero: View {
     let store: HostedQuotaSubscriptionStore
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        VStack(spacing: MobileTheme.Spacing.lg) {
-            CloudHeroAnimation(size: 220)
+        VStack(spacing: MobileTheme.Spacing.md) {
+            MercuryCrest(size: .large, shimmer: !reduceMotion)
                 .padding(.top, MobileTheme.Spacing.lg)
 
             VStack(spacing: MobileTheme.Spacing.xs) {
-                Text("OpenBurnBar")
-                    .font(MobileTheme.Typography.caption)
+                Text("OPENBURNBAR")
+                    .font(MobileTheme.Typography.tiny)
                     .fontWeight(.semibold)
-                    .tracking(2.4)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .tracking(3.6)
+                    .foregroundStyle(ProTheme.Palette.aureate)
 
                 Text("Cloud")
-                    .font(MobileTheme.Typography.displayLarge)
-                    .fontWeight(.bold)
-                    .foregroundStyle(MobileTheme.primaryGradient)
+                    .font(ProTheme.Typography.displaySerif)
+                    .foregroundStyle(ProTheme.Palette.mercury)
                     .accessibilityAddTraits(.isHeader)
 
-                Text(store.isActive
-                     ? "Quota in your pocket. Hermes anywhere. Backups for every byte."
-                     : "Quota in your pocket. Hermes anywhere. Backups for every byte.")
+                Text(tagline)
                     .font(MobileTheme.Typography.body)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .foregroundStyle(ProTheme.Palette.mercury.opacity(0.72))
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, MobileTheme.Spacing.xl)
+                    .padding(.horizontal, MobileTheme.Spacing.lg)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.horizontal, MobileTheme.Spacing.lg)
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
+    }
+
+    private var tagline: String {
+        if store.isActive {
+            return "Your agents, unbound. Renewing on schedule."
+        }
+        return "Your agents, unbound — hosted refresh, conversation backup, Hermes anywhere."
     }
 }
 
-// MARK: - Plan Picker
+// MARK: - Plan Tile (free state)
 
-private struct CloudStorePlanPicker: View {
+private struct CloudStorePlanTile: View {
     let store: HostedQuotaSubscriptionStore
 
     var body: some View {
-        VStack(spacing: MobileTheme.Spacing.sm) {
-            HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
-                CloudPlanTile(
-                    kind: .monthly,
-                    priceText: store.product?.displayPrice ?? "$4.99",
-                    cadence: "/ month",
-                    caption: "Most flexible",
-                    isSelected: true,
-                    isDisabled: false
-                )
-
-                CloudPlanTile(
-                    kind: .yearly,
-                    priceText: "—",
-                    cadence: "Coming soon",
-                    caption: "Save more, billed yearly",
-                    isSelected: false,
-                    isDisabled: true
-                )
-            }
-
-            Text("Billed monthly through Apple — Hosted Quota Sync · Monthly. Cancel anytime in Settings → Apple ID.")
-                .font(MobileTheme.Typography.tiny)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, MobileTheme.Spacing.sm)
-                .fixedSize(horizontal: false, vertical: true)
-
-            CloudStoreRequiredSubscriptionDisclosure(
-                priceText: store.product?.displayPrice ?? "$4.99"
-            )
-
-            CloudStoreLegalLinks()
-                .padding(.top, 2)
-        }
-    }
-}
-
-private struct CloudStoreRequiredSubscriptionDisclosure: View {
-    let priceText: String
-
-    private var rows: [(String, String)] {
-        [
-            ("Service", CloudSubscriptionDisclosure.title),
-            ("Length", CloudSubscriptionDisclosure.period),
-            ("Price", "\(priceText) per month"),
-            ("Includes", CloudSubscriptionDisclosure.included),
-            ("Billing", CloudSubscriptionDisclosure.billing)
-        ]
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
-            Text("SUBSCRIPTION DETAILS")
-                .font(MobileTheme.Typography.tiny)
-                .fontWeight(.semibold)
-                .tracking(1.4)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-
-            VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
-                ForEach(rows, id: \.0) { row in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(row.0)
-                            .font(MobileTheme.Typography.tiny)
-                            .fontWeight(.semibold)
-                            .tracking(0.8)
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
-                        Text(row.1)
-                            .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-        }
-        .padding(MobileTheme.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
-                .fill(MobileTheme.Colors.surface.opacity(0.55))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
-                .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
-        )
-        .accessibilityIdentifier("cloudStore.subscriptionDisclosure")
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Subscription details. \(CloudSubscriptionDisclosure.title). \(CloudSubscriptionDisclosure.period). \(priceText) per month. Includes \(CloudSubscriptionDisclosure.included) \(CloudSubscriptionDisclosure.billing)")
-    }
-}
-
-private struct CloudPlanTile: View {
-    enum Kind { case monthly, yearly }
-
-    let kind: Kind
-    let priceText: String
-    let cadence: String
-    let caption: String
-    let isSelected: Bool
-    let isDisabled: Bool
-
-    private var title: String {
-        switch kind {
-        case .monthly: return "Monthly"
-        case .yearly:  return "Yearly"
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
-            HStack(spacing: 6) {
-                Text(title)
-                    .font(MobileTheme.Typography.caption)
-                    .fontWeight(.semibold)
-                    .tracking(0.8)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("MEMBERSHIP")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.bold)
+                    .tracking(2.4)
+                    .foregroundStyle(ProTheme.Palette.aureate)
                 Spacer(minLength: 0)
-                if kind == .monthly {
-                    Text("CURRENT")
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .tracking(1.2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(MobileTheme.Colors.success.opacity(0.18))
-                        .foregroundStyle(MobileTheme.Colors.success)
-                        .clipShape(Capsule())
-                } else {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                }
-            }
-
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(priceText)
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                    .foregroundStyle(
-                        kind == .monthly
-                            ? AnyShapeStyle(MobileTheme.primaryGradient)
-                            : AnyShapeStyle(MobileTheme.Colors.textMuted)
+                Text("MONTHLY")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .tracking(1.4)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .foregroundStyle(ProTheme.Palette.mercury)
+                    .background(
+                        Capsule().fill(ProTheme.Palette.obsidianElevated)
                     )
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                if kind == .monthly {
-                    Text(cadence)
-                        .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .overlay(
+                        Capsule().stroke(ProTheme.Palette.aureateStroke, lineWidth: 0.7)
+                    )
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(store.product?.displayPrice ?? "$4.99")
+                        .font(ProTheme.Typography.priceMono)
+                        .foregroundStyle(ProTheme.Palette.mercury)
+                    Text("/ month")
+                        .font(MobileTheme.Typography.body)
+                        .foregroundStyle(ProTheme.Palette.mercury.opacity(0.65))
                 }
-            }
-
-            if kind == .yearly {
-                Text(cadence)
+                Text("OpenBurnBar Cloud — Apple-verified, billed monthly. Cancel anytime in Settings → Apple ID.")
                     .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .foregroundStyle(ProTheme.Palette.mercury.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            Text(caption)
-                .font(MobileTheme.Typography.tiny)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(MobileTheme.Spacing.md)
+        .padding(MobileTheme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(planBackground)
-        .overlay(planBorder)
-        .opacity(isDisabled ? 0.6 : 1.0)
+        .modifier(MercuryFoilCardModifier())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityText)
-        .accessibilityHint(kind == .yearly ? "Yearly plan coming soon" : "")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    private var accessibilityText: String {
-        switch kind {
-        case .monthly:
-            return "Monthly plan, \(priceText) per month, currently selected"
-        case .yearly:
-            return "Yearly plan, coming soon"
-        }
-    }
-
-    @ViewBuilder
-    private var planBackground: some View {
-        if kind == .monthly {
-            ZStack {
-                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .fill(MobileTheme.cardGradient)
-            }
-        } else {
-            ZStack {
-                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .fill(MobileTheme.Colors.surface.opacity(0.55))
-                DiagonalHashOverlay()
-                    .clipShape(RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous))
-                    .opacity(0.35)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var planBorder: some View {
-        if kind == .monthly {
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                .stroke(MobileTheme.primaryGradient, lineWidth: 1.2)
-        } else {
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
-        }
+        .accessibilityLabel("OpenBurnBar Cloud monthly plan, \(store.product?.displayPrice ?? "$4.99") per month. Billed by Apple, cancel anytime.")
     }
 }
 
-// MARK: - Diagonal Hash Overlay (yearly tile)
+/// Wraps any content in the MercuryFoilCard chrome without needing the
+/// generic view-builder closure — used here so we can attach a single
+/// background/border to the plan tile content.
+private struct MercuryFoilCardModifier: ViewModifier {
+    var cornerRadius: CGFloat = ProTheme.Layout.cardRadius
 
-private struct DiagonalHashOverlay: View {
-    var body: some View {
-        Canvas { ctx, size in
-            let stripeSpacing: CGFloat = 8
-            let count = Int((size.width + size.height) / stripeSpacing) + 4
-            ctx.opacity = 0.15
-            for i in 0..<count {
-                let x = CGFloat(i) * stripeSpacing - size.height
-                var path = Path()
-                path.move(to: CGPoint(x: x, y: size.height))
-                path.addLine(to: CGPoint(x: x + size.height, y: 0))
-                ctx.stroke(
-                    path,
-                    with: .color(UnifiedDesignSystem.Colors.textMuted),
-                    lineWidth: 1
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var specularPhase: CGFloat = -1.4
+    @State private var didFireSpecular = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(backgroundLayers)
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(ProTheme.Palette.aureateStroke, lineWidth: ProTheme.Layout.foilStroke)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .shadow(color: ProTheme.Palette.aureate.opacity(0.20), radius: 18, y: 8)
+            .onAppear(perform: fireSpecularIfNeeded)
+    }
+
+    @ViewBuilder
+    private var backgroundLayers: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(ProTheme.Palette.obsidian)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            ProTheme.Palette.aureate.opacity(0.10),
+                            Color.clear
+                        ],
+                        center: .topLeading,
+                        startRadius: 0,
+                        endRadius: 360
+                    )
                 )
+                .blendMode(.plusLighter)
+            if !reduceMotion {
+                MercuryShimmerOverlay()
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    .blendMode(.plusLighter)
+                    .opacity(0.5)
+                    .allowsHitTesting(false)
             }
         }
-        .accessibilityHidden(true)
+    }
+
+    private func fireSpecularIfNeeded() {
+        guard !reduceMotion, !didFireSpecular else { return }
+        didFireSpecular = true
+        specularPhase = -1.4
+        withAnimation(ProTheme.Motion.specular.delay(0.15)) {
+            specularPhase = 1.4
+        }
     }
 }
 
-// MARK: - Capability Section
+// MARK: - Capability Lineup
 
-private struct CloudStoreCapabilitySection: View {
+private struct CloudStoreCapabilityLineup: View {
     let isActive: Bool
+
+    private struct Capability {
+        let icon: String
+        let title: String
+        let detail: String
+    }
+
+    private let capabilities: [Capability] = [
+        .init(
+            icon: "cloud.fill",
+            title: "Hosted Codex quota",
+            detail: "Refresh Codex quota from any signed-in device. We run the runner; you get the dial."
+        ),
+        .init(
+            icon: "arrow.triangle.2.circlepath",
+            title: "Conversation backup & resume",
+            detail: "Encrypted in transit, restored across iPhone, iPad, and Mac. Pick up exactly where you left off."
+        ),
+        .init(
+            icon: "text.alignleft",
+            title: "Full session-log sync",
+            detail: "Every tool call, every chunk, every cost line — mirrored to the cloud and searchable on every device."
+        ),
+        .init(
+            icon: "antenna.radiowaves.left.and.right",
+            title: "Hermes remote relay",
+            detail: "Reach your Mac's Hermes from anywhere over a verified WebSocket. App Check + Apple JWS, end-to-end."
+        )
+    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
-            sectionHeader
+            HStack(alignment: .firstTextBaseline) {
+                Text("WHAT'S INCLUDED")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.bold)
+                    .tracking(2.4)
+                    .foregroundStyle(ProTheme.Palette.aureate)
+                Spacer()
+                if isActive {
+                    Label("Active", systemImage: "checkmark.seal.fill")
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(ProTheme.Palette.aureate)
+                }
+            }
 
             VStack(spacing: MobileTheme.Spacing.md) {
-                CloudCapabilityCard(
-                    icon: "cloud.fill",
-                    iconStyle: .ember,
-                    title: "Hosted Codex Quota",
-                    details: "Refresh Codex quota from any signed-in device with one tap. We run the runner; you get the dial.",
-                    isActive: isActive
-                )
-                CloudCapabilityCard(
-                    icon: "arrow.triangle.2.circlepath",
-                    iconStyle: .amber,
-                    title: "Conversation Backup & Resume",
-                    details: "Back up chat titles, previews, and message bodies — encrypted in transit, restored across iPhone, iPad, and Mac.",
-                    isActive: isActive
-                )
-                CloudCapabilityCard(
-                    icon: "text.alignleft",
-                    iconStyle: .blaze,
-                    title: "Full Session-Log Sync",
-                    details: "Mirror complete agent runs into the cloud — every tool call, every chunk, every cost line — searchable on every device.",
-                    isActive: isActive
-                )
-                CloudCapabilityCard(
-                    icon: "antenna.radiowaves.left.and.right",
-                    iconStyle: .mercury,
-                    title: "Hermes Remote Relay",
-                    details: "Reach your Mac's Hermes from anywhere over a verified WebSocket. App Check + Apple JWS gated end-to-end.",
-                    isActive: isActive
-                )
-                CloudCapabilityCard(
-                    icon: "point.3.connected.trianglepath.dotted",
-                    iconStyle: .ember,
-                    title: "Hosted Remote MCP",
-                    details: "Connect Codex, Claude Code, Droid, Kimi, Forge, or any MCP client to encrypted hosted session-memory search.",
-                    isActive: isActive
-                )
-            }
-        }
-    }
-
-    private var sectionHeader: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("WHAT'S INCLUDED")
-                .font(MobileTheme.Typography.tiny)
-                .fontWeight(.semibold)
-                .tracking(1.6)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-            Spacer()
-            if isActive {
-                Label("Active", systemImage: "checkmark.seal.fill")
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.success)
+                ForEach(Array(capabilities.enumerated()), id: \.offset) { _, cap in
+                    CloudStoreCapabilityCard(
+                        icon: cap.icon,
+                        title: cap.title,
+                        detail: cap.detail,
+                        isActive: isActive
+                    )
+                }
             }
         }
     }
 }
 
-private struct CloudCapabilityCard: View {
-    enum IconStyle { case ember, amber, blaze, mercury }
-
+private struct CloudStoreCapabilityCard: View {
     let icon: String
-    let iconStyle: IconStyle
     let title: String
-    let details: String
+    let detail: String
     let isActive: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
-            iconDisc
-                .frame(width: 44, height: 44)
+            ZStack {
+                Circle().fill(ProTheme.Palette.obsidianElevated)
+                Circle().stroke(ProTheme.Palette.aureateStroke, lineWidth: 0.9)
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(ProTheme.Palette.aureate)
+            }
+            .frame(width: 38, height: 38)
 
-            VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(title)
-                        .font(MobileTheme.Typography.headline)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .font(ProTheme.Typography.headlineSerif)
+                        .foregroundStyle(ProTheme.Palette.mercury)
                     if isActive {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(MobileTheme.Colors.success)
-                            .accessibilityHidden(true)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(ProTheme.Palette.aureate)
                     }
                 }
-                Text(details)
+                Text(detail)
                     .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .foregroundStyle(ProTheme.Palette.mercury.opacity(0.70))
                     .fixedSize(horizontal: false, vertical: true)
             }
-
             Spacer(minLength: 0)
         }
         .padding(MobileTheme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             ZStack {
-                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .fill(MobileTheme.cardGradient)
+                RoundedRectangle(cornerRadius: ProTheme.Layout.bandRadius, style: .continuous)
+                    .fill(ProTheme.Palette.obsidianElevated)
+                if !reduceMotion {
+                    MercuryShimmerOverlay()
+                        .clipShape(RoundedRectangle(cornerRadius: ProTheme.Layout.bandRadius, style: .continuous))
+                        .blendMode(.plusLighter)
+                        .opacity(0.30)
+                        .allowsHitTesting(false)
+                }
             }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                .stroke(borderStyle, lineWidth: 0.6)
+            RoundedRectangle(cornerRadius: ProTheme.Layout.bandRadius, style: .continuous)
+                .stroke(ProTheme.Palette.aureateStroke, lineWidth: 0.7)
         )
+        .clipShape(RoundedRectangle(cornerRadius: ProTheme.Layout.bandRadius, style: .continuous))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title)\(isActive ? ", active" : ""). \(details)")
-    }
-
-    @ViewBuilder
-    private var iconDisc: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(discFill)
-                .shadow(color: shadowTint, radius: 10, y: 4)
-            if iconStyle == .mercury {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(.clear)
-                    .overlay(MercuryShimmerOverlay())
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(
-                    iconStyle == .mercury
-                        ? AnyShapeStyle(.white)
-                        : AnyShapeStyle(.white)
-                )
-        }
-    }
-
-    private var discFill: AnyShapeStyle {
-        switch iconStyle {
-        case .ember:
-            return AnyShapeStyle(LinearGradient(
-                colors: [UnifiedDesignSystem.Colors.ember, UnifiedDesignSystem.Colors.ember.opacity(0.7)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ))
-        case .amber:
-            return AnyShapeStyle(LinearGradient(
-                colors: [UnifiedDesignSystem.Colors.amber, UnifiedDesignSystem.Colors.amber.opacity(0.7)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ))
-        case .blaze:
-            return AnyShapeStyle(LinearGradient(
-                colors: [UnifiedDesignSystem.Colors.blaze, UnifiedDesignSystem.Colors.blaze.opacity(0.7)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ))
-        case .mercury:
-            return AnyShapeStyle(UnifiedDesignSystem.mercuryGradient)
-        }
-    }
-
-    private var shadowTint: Color {
-        switch iconStyle {
-        case .ember:   return UnifiedDesignSystem.Colors.ember.opacity(0.45)
-        case .amber:   return UnifiedDesignSystem.Colors.amber.opacity(0.40)
-        case .blaze:   return UnifiedDesignSystem.Colors.blaze.opacity(0.35)
-        case .mercury: return UnifiedDesignSystem.Colors.hermesAureate.opacity(0.45)
-        }
-    }
-
-    private var borderStyle: AnyShapeStyle {
-        if iconStyle == .mercury {
-            return AnyShapeStyle(UnifiedDesignSystem.mercuryGradient)
-        }
-        return AnyShapeStyle(MobileTheme.Colors.border.opacity(0.6))
+        .accessibilityLabel("\(title)\(isActive ? ", active" : ""). \(detail)")
     }
 }
 
-// MARK: - Remote MCP Setup
+// MARK: - Remote MCP
 
 private struct RemoteMCPClientRecord: Identifiable, Hashable {
     let id: String
@@ -751,7 +575,7 @@ private final class RemoteMCPClientStore: ObservableObject {
     }
 }
 
-private struct RemoteMCPSetupCard: View {
+private struct CloudStoreRemoteMCPCard: View {
     let isActive: Bool
     @ObservedObject var clientStore: RemoteMCPClientStore
 
@@ -764,18 +588,19 @@ private struct RemoteMCPSetupCard: View {
             HStack(alignment: .firstTextBaseline) {
                 Label("REMOTE MCP", systemImage: "point.3.connected.trianglepath.dotted")
                     .font(MobileTheme.Typography.tiny)
-                    .fontWeight(.semibold)
-                    .tracking(1.6)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .fontWeight(.bold)
+                    .tracking(2.4)
+                    .foregroundStyle(ProTheme.Palette.aureate)
                 Spacer()
-                Label(isActive ? "Included" : "BurnBar Pro", systemImage: isActive ? "checkmark.seal.fill" : "lock.fill")
+                Label(isActive ? "Included" : "Cloud only",
+                      systemImage: isActive ? "checkmark.seal.fill" : "lock.fill")
                     .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(isActive ? MobileTheme.Colors.success : MobileTheme.Colors.textMuted)
+                    .foregroundStyle(isActive ? ProTheme.Palette.aureate : ProTheme.Palette.mercury.opacity(0.65))
             }
 
-            Text("Give coding agents controlled access to your encrypted hosted session memory. Direct HTTP MCP uses the hosted endpoint; stdio-only clients use the local shim so decrypted snippets stay on your device.")
+            Text("Connect Codex, Claude Code, Droid, Kimi, Forge, or any MCP client to encrypted hosted session-memory search. Direct HTTP for hosted clients; a local shim keeps decrypted snippets on-device for stdio.")
                 .font(MobileTheme.Typography.caption)
-                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                .foregroundStyle(ProTheme.Palette.mercury.opacity(0.72))
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
@@ -792,31 +617,20 @@ private struct RemoteMCPSetupCard: View {
                 Link(destination: URL(string: "https://openburnbar.com/docs/remote-mcp")!) {
                     Label("Setup", systemImage: "arrow.up.right.square.fill")
                         .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(MobileTheme.Colors.accent)
+                        .foregroundStyle(ProTheme.Palette.aureate)
                 }
                 Link(destination: URL(string: "https://openburnbar.com/docs/remote-mcp-runbook")!) {
                     Label("Runbook", systemImage: "stethoscope")
                         .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(MobileTheme.Colors.accent)
+                        .foregroundStyle(ProTheme.Palette.aureate)
                 }
             }
         }
         .padding(MobileTheme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .fill(MobileTheme.cardGradient)
-            }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                .stroke(isActive ? AnyShapeStyle(MobileTheme.primaryGradient) : AnyShapeStyle(MobileTheme.Colors.border), lineWidth: 0.6)
-        )
+        .modifier(MercuryFoilCardModifier())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Remote MCP. \(isActive ? "Included with your subscription." : "Requires BurnBar Pro.") Endpoint \(endpoint). Stdio shim \(stdioCommand). Doctor \(doctorCommand).")
+        .accessibilityLabel("Remote MCP. \(isActive ? "Included with your subscription." : "Requires OpenBurnBar Cloud.") Endpoint \(endpoint). Stdio shim \(stdioCommand). Doctor \(doctorCommand).")
         .onAppear {
             if isActive {
                 clientStore.startListening()
@@ -846,23 +660,24 @@ private struct RemoteMCPConnectedClientsSection: View {
                 Label("Connected clients", systemImage: "rectangle.connected.to.line.below")
                     .font(MobileTheme.Typography.caption)
                     .fontWeight(.semibold)
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    .foregroundStyle(ProTheme.Palette.mercury)
                 Spacer()
                 if store.isLoading {
                     ProgressView()
                         .controlSize(.small)
+                        .tint(ProTheme.Palette.aureate)
                 }
             }
 
             if let error = store.error {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.error)
+                    .foregroundStyle(.red.opacity(0.9))
                     .fixedSize(horizontal: false, vertical: true)
             } else if store.clients.isEmpty && !store.isLoading {
                 Text("No MCP clients are connected yet.")
                     .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .foregroundStyle(ProTheme.Palette.mercury.opacity(0.62))
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 ForEach(store.clients) { client in
@@ -905,22 +720,22 @@ private struct RemoteMCPClientRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
                 Image(systemName: client.isRevoked ? "xmark.seal.fill" : "checkmark.seal.fill")
-                    .foregroundStyle(client.isRevoked ? MobileTheme.Colors.textMuted : MobileTheme.Colors.success)
+                    .foregroundStyle(client.isRevoked ? ProTheme.Palette.mercury.opacity(0.42) : ProTheme.Palette.aureate)
                     .padding(.top, 2)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(client.displayName)
                         .font(MobileTheme.Typography.caption)
                         .fontWeight(.semibold)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .foregroundStyle(ProTheme.Palette.mercury)
                         .lineLimit(2)
                     Text("\(client.displayType) · \(client.modeSummary)")
                         .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .foregroundStyle(ProTheme.Palette.mercury.opacity(0.70))
                         .lineLimit(2)
                     Text(client.scopeSummary)
                         .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .foregroundStyle(ProTheme.Palette.mercury.opacity(0.54))
                         .lineLimit(2)
                 }
 
@@ -930,7 +745,7 @@ private struct RemoteMCPClientRow: View {
                     Text("Revoked")
                         .font(MobileTheme.Typography.tiny)
                         .fontWeight(.semibold)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .foregroundStyle(ProTheme.Palette.mercury.opacity(0.48))
                 } else {
                     Button(role: .destructive, action: onRevoke) {
                         if isRevoking {
@@ -941,7 +756,7 @@ private struct RemoteMCPClientRow: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(MobileTheme.Colors.error)
+                    .foregroundStyle(.red.opacity(0.88))
                     .accessibilityLabel("Revoke \(client.displayName)")
                     .disabled(isRevoking)
                 }
@@ -957,16 +772,21 @@ private struct RemoteMCPClientRow: View {
                 }
             }
             .font(MobileTheme.Typography.tiny)
-            .foregroundStyle(MobileTheme.Colors.textMuted)
+            .foregroundStyle(ProTheme.Palette.mercury.opacity(0.54))
         }
         .padding(MobileTheme.Spacing.sm)
         .background(
             RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
-                .fill(MobileTheme.Colors.surface.opacity(0.58))
+                .fill(ProTheme.Palette.obsidianElevated.opacity(0.74))
         )
         .overlay(
             RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
-                .stroke(client.isRevoked ? MobileTheme.Colors.border.opacity(0.5) : MobileTheme.Colors.success.opacity(0.24), lineWidth: 0.5)
+                .stroke(
+                    client.isRevoked
+                        ? AnyShapeStyle(ProTheme.Palette.aureateStroke.opacity(0.35))
+                        : AnyShapeStyle(ProTheme.Palette.aureate.opacity(0.28)),
+                    lineWidth: 0.5
+                )
         )
         .accessibilityElement(children: .combine)
     }
@@ -981,11 +801,11 @@ private struct RemoteMCPCommandRow: View {
             Text(label.uppercased())
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)
-                .tracking(1.0)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .tracking(1.4)
+                .foregroundStyle(ProTheme.Palette.mercury.opacity(0.55))
             Text(value)
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                .foregroundStyle(ProTheme.Palette.mercury)
                 .lineLimit(2)
                 .minimumScaleFactor(0.75)
                 .textSelection(.enabled)
@@ -994,13 +814,13 @@ private struct RemoteMCPCommandRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
-                        .fill(MobileTheme.Colors.surface.opacity(0.7))
+                        .fill(ProTheme.Palette.obsidianElevated.opacity(0.85))
                 )
         }
     }
 }
 
-// MARK: - Comparison Card
+// MARK: - Comparison
 
 private struct CloudStoreComparisonCard: View {
     private struct Row: Identifiable, Hashable {
@@ -1022,36 +842,26 @@ private struct CloudStoreComparisonCard: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("FREE VS CLOUD")
                 .font(MobileTheme.Typography.tiny)
-                .fontWeight(.semibold)
-                .tracking(1.6)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .fontWeight(.bold)
+                .tracking(2.4)
+                .foregroundStyle(ProTheme.Palette.aureate)
                 .padding(.horizontal, MobileTheme.Spacing.lg)
                 .padding(.top, MobileTheme.Spacing.lg)
                 .padding(.bottom, MobileTheme.Spacing.sm)
 
             VStack(spacing: 0) {
                 headerRow
-                Divider().background(MobileTheme.Colors.border.opacity(0.5))
+                Divider().background(ProTheme.Palette.aureate.opacity(0.35))
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                     comparisonRow(row)
                     if index < rows.count - 1 {
-                        Divider().background(MobileTheme.Colors.border.opacity(0.3))
+                        Divider().background(ProTheme.Palette.mercury.opacity(0.18))
                     }
                 }
             }
         }
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                    .fill(MobileTheme.cardGradient)
-            }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
-        )
+        .padding(.bottom, MobileTheme.Spacing.md)
+        .modifier(MercuryFoilCardModifier())
     }
 
     private var headerRow: some View {
@@ -1060,19 +870,19 @@ private struct CloudStoreComparisonCard: View {
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)
                 .tracking(1.0)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .foregroundStyle(ProTheme.Palette.mercury.opacity(0.55))
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text("FREE")
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.semibold)
                 .tracking(1.4)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .foregroundStyle(ProTheme.Palette.mercury.opacity(0.55))
                 .frame(width: 90, alignment: .trailing)
             Text("CLOUD")
                 .font(MobileTheme.Typography.tiny)
                 .fontWeight(.bold)
                 .tracking(1.4)
-                .foregroundStyle(MobileTheme.primaryGradient)
+                .foregroundStyle(ProTheme.Palette.aureate)
                 .frame(width: 110, alignment: .trailing)
         }
         .padding(.horizontal, MobileTheme.Spacing.lg)
@@ -1083,18 +893,18 @@ private struct CloudStoreComparisonCard: View {
         HStack {
             Text(row.label)
                 .font(MobileTheme.Typography.body)
-                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                .foregroundStyle(ProTheme.Palette.mercury)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(row.free)
                 .font(MobileTheme.Typography.caption)
-                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                .foregroundStyle(ProTheme.Palette.mercury.opacity(0.55))
                 .frame(width: 90, alignment: .trailing)
                 .lineLimit(2)
                 .multilineTextAlignment(.trailing)
             Text(row.cloud)
                 .font(MobileTheme.Typography.caption)
                 .fontWeight(.semibold)
-                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                .foregroundStyle(ProTheme.Palette.mercury)
                 .frame(width: 110, alignment: .trailing)
                 .lineLimit(2)
                 .multilineTextAlignment(.trailing)
@@ -1106,37 +916,36 @@ private struct CloudStoreComparisonCard: View {
     }
 }
 
-// MARK: - Trust Card
+// MARK: - Trust
 
 private struct CloudStoreTrustCard: View {
     private let bullets: [(String, String, String)] = [
         ("checkmark.shield.fill", "Apple-verified", "Every transaction JWS is checked against Apple's root certificates server-side."),
-        ("server.rack",            "UID-bound",     "Each purchase is bound to your Firebase UID via a signed `appAccountToken`."),
-        ("hand.raised.fill",       "Cancel anytime","Managed by Apple in Settings → Apple ID. We never store payment details."),
+        ("server.rack",            "UID-bound",     "Each purchase is bound to your Firebase UID via a signed appAccountToken."),
+        ("hand.raised.fill",       "Cancel anytime","Managed by Apple in Settings → Apple ID. We never store payment details.")
     ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
             Text("THE TRUST MODEL")
                 .font(MobileTheme.Typography.tiny)
-                .fontWeight(.semibold)
-                .tracking(1.6)
-                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .fontWeight(.bold)
+                .tracking(2.4)
+                .foregroundStyle(ProTheme.Palette.aureate)
 
             ForEach(bullets, id: \.1) { item in
                 HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
                     Image(systemName: item.0)
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(MobileTheme.Colors.success)
+                        .foregroundStyle(ProTheme.Palette.aureate)
                         .frame(width: 22)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.1)
-                            .font(MobileTheme.Typography.body)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                            .font(ProTheme.Typography.headlineSerif)
+                            .foregroundStyle(ProTheme.Palette.mercury)
                         Text(item.2)
                             .font(MobileTheme.Typography.caption)
-                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .foregroundStyle(ProTheme.Palette.mercury.opacity(0.70))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -1149,52 +958,98 @@ private struct CloudStoreTrustCard: View {
                         Image(systemName: "arrow.up.right.square.fill")
                     }
                     .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.accent)
+                    .foregroundStyle(ProTheme.Palette.aureate)
                 }
                 CloudStoreLegalLinks(alignment: .leading)
             }
         }
         .padding(MobileTheme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                .fill(MobileTheme.Colors.surface.opacity(0.55))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                .stroke(MobileTheme.Colors.border, lineWidth: 0.5)
-        )
+        .modifier(MercuryFoilCardModifier())
     }
 }
 
-// MARK: - Action Bar
+// MARK: - Subscription Details (free state — Apple disclosure)
+
+private struct CloudStoreSubscriptionDetails: View {
+    let priceText: String
+
+    private var rows: [(String, String)] {
+        [
+            ("Service", CloudSubscriptionDisclosure.title),
+            ("Length", CloudSubscriptionDisclosure.period),
+            ("Price", "\(priceText) per month"),
+            ("Includes", CloudSubscriptionDisclosure.included),
+            ("Billing", CloudSubscriptionDisclosure.billing)
+        ]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+            Text("SUBSCRIPTION DETAILS")
+                .font(MobileTheme.Typography.tiny)
+                .fontWeight(.bold)
+                .tracking(2.4)
+                .foregroundStyle(ProTheme.Palette.aureate)
+
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.xs) {
+                ForEach(rows, id: \.0) { row in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(row.0)
+                            .font(MobileTheme.Typography.tiny)
+                            .fontWeight(.semibold)
+                            .tracking(1.0)
+                            .foregroundStyle(ProTheme.Palette.mercury.opacity(0.55))
+                        Text(row.1)
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(ProTheme.Palette.mercury)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(MobileTheme.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(MercuryFoilCardModifier())
+        .accessibilityIdentifier("cloudStore.subscriptionDisclosure")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Subscription details. \(CloudSubscriptionDisclosure.title). \(CloudSubscriptionDisclosure.period). \(priceText) per month. Includes \(CloudSubscriptionDisclosure.included) \(CloudSubscriptionDisclosure.billing)")
+    }
+}
+
+// MARK: - Action Bar (free state)
 
 private struct CloudStoreActionBar: View {
     @Bindable var store: HostedQuotaSubscriptionStore
 
     var body: some View {
         VStack(spacing: MobileTheme.Spacing.sm) {
-            VStack(spacing: 2) {
-                Text(CloudSubscriptionDisclosure.title)
-                    .font(MobileTheme.Typography.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
-                Text("\(store.product?.displayPrice ?? "$4.99") per month · \(CloudSubscriptionDisclosure.period)")
-                    .font(MobileTheme.Typography.tiny)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+            FoilCTAButton(
+                title: "Become a Member",
+                subtitle: subtitleLine,
+                icon: "sparkles",
+                isLoading: store.isLoading
+            ) {
+                Task { await store.purchase() }
             }
-            CloudStoreLegalLinks()
-            subscribeButton
-            Button {
-                Task { await store.restorePurchases() }
-            } label: {
-                Text("Restore Purchases")
-                    .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+            .disabled(store.product == nil)
+
+            HStack(spacing: MobileTheme.Spacing.md) {
+                Button {
+                    Task { await store.restorePurchases() }
+                } label: {
+                    Text("Restore Purchases")
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(ProTheme.Palette.mercury.opacity(0.7))
+                }
+                .disabled(store.isLoading)
+                .accessibilityIdentifier("cloudStore.restoreLink")
+
+                Spacer(minLength: 0)
+
+                CloudStoreLegalLinks(alignment: .trailing)
             }
-            .disabled(store.isLoading)
         }
         .padding(.horizontal, MobileTheme.Spacing.lg)
         .padding(.top, MobileTheme.Spacing.md)
@@ -1202,9 +1057,9 @@ private struct CloudStoreActionBar: View {
         .background(
             LinearGradient(
                 colors: [
-                    MobileTheme.Colors.background.opacity(0.0),
-                    MobileTheme.Colors.background.opacity(0.85),
-                    MobileTheme.Colors.background.opacity(0.95)
+                    ProTheme.Palette.obsidian.opacity(0.0),
+                    ProTheme.Palette.obsidian.opacity(0.90),
+                    ProTheme.Palette.obsidian.opacity(0.98)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -1214,65 +1069,54 @@ private struct CloudStoreActionBar: View {
         )
     }
 
-    @ViewBuilder
-    private var subscribeButton: some View {
-        let priceCopy = store.product?.displayPrice ?? "$4.99"
-        Button {
-            Haptics.medium()
-            Task { await store.purchase() }
-        } label: {
-            HStack(spacing: MobileTheme.Spacing.sm) {
-                if store.isLoading {
-                    MiningPickLoader(.inline, tint: .white)
-                    Text("Processing…")
-                        .fontWeight(.semibold)
-                } else {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 14, weight: .bold))
-                    Text("Subscribe — \(priceCopy)/mo")
-                        .fontWeight(.semibold)
-                }
-            }
-            .font(MobileTheme.Typography.body)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, MobileTheme.Spacing.md)
-            .background(
-                Capsule()
-                    .fill(MobileTheme.primaryGradient)
-                    .shadow(color: UnifiedDesignSystem.Colors.ember.opacity(0.45), radius: 18, y: 8)
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(store.isLoading || store.product == nil)
+    private var subtitleLine: String {
+        let price = store.product?.displayPrice ?? "$4.99"
+        return "\(price) / month · Apple-verified, billed monthly"
     }
 }
+
+// MARK: - Legal Links
 
 private struct CloudStoreLegalLinks: View {
     enum AlignmentMode: Equatable {
         case center
         case leading
+        case trailing
     }
 
     var alignment: AlignmentMode = .center
 
     var body: some View {
         HStack(spacing: 8) {
-            Link("Privacy Policy", destination: CloudStoreLegalURLs.privacy)
+            Link("Privacy", destination: CloudStoreLegalURLs.privacy)
                 .accessibilityIdentifier("cloudStore.privacyPolicyLink")
-            Text("•")
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-            Link("Terms of Use", destination: CloudStoreLegalURLs.terms)
+            Text("·")
+                .foregroundStyle(ProTheme.Palette.mercury.opacity(0.5))
+            Link("Terms", destination: CloudStoreLegalURLs.terms)
                 .accessibilityIdentifier("cloudStore.termsOfUseLink")
         }
         .font(MobileTheme.Typography.tiny)
-        .foregroundStyle(MobileTheme.Colors.accent)
-        .frame(maxWidth: .infinity, alignment: alignment == .center ? .center : .leading)
+        .foregroundStyle(ProTheme.Palette.aureate)
+        .frame(maxWidth: alignment == .trailing ? nil : .infinity,
+               alignment: stackAlignment)
         .accessibilityElement(children: .contain)
+    }
+
+    private var stackAlignment: Alignment {
+        switch alignment {
+        case .center:   return .center
+        case .leading:  return .leading
+        case .trailing: return .trailing
+        }
     }
 }
 
 // MARK: - Member Card
+//
+// The "certificate" surface. Renders for active subscribers. Mercury foil
+// border, animated shimmer + amber sparks, member-since date, manage +
+// restore actions. Kept from the previous design — already lives in the
+// Pro vocabulary.
 
 private struct CloudStoreMemberCard: View {
     @Bindable var store: HostedQuotaSubscriptionStore
@@ -1291,12 +1135,12 @@ private struct CloudStoreMemberCard: View {
             }
             .padding(MobileTheme.Spacing.xl)
         }
-        .clipShape(RoundedRectangle(cornerRadius: MobileTheme.Radius.xl, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.xl, style: .continuous)
-                .stroke(UnifiedDesignSystem.mercuryGradient, lineWidth: 1.2)
+            RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous)
+                .stroke(ProTheme.Palette.aureateStroke, lineWidth: 1.2)
         )
-        .shadow(color: UnifiedDesignSystem.Colors.ember.opacity(0.18), radius: 24, y: 12)
+        .shadow(color: ProTheme.Palette.aureate.opacity(0.25), radius: 24, y: 12)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
     }
@@ -1305,21 +1149,20 @@ private struct CloudStoreMemberCard: View {
         HStack(spacing: MobileTheme.Spacing.md) {
             Image(systemName: "laurel.leading")
                 .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(UnifiedDesignSystem.mercuryGradient)
+                .foregroundStyle(ProTheme.Palette.aureateStroke)
             VStack(spacing: 2) {
                 Text("CLOUD")
                     .font(MobileTheme.Typography.tiny)
-                    .fontWeight(.semibold)
-                    .tracking(2.4)
-                    .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
-                Text("Member")
-                    .font(MobileTheme.Typography.display)
                     .fontWeight(.bold)
-                    .foregroundStyle(UnifiedDesignSystem.mercuryGradient)
+                    .tracking(3.0)
+                    .foregroundStyle(ProTheme.Palette.aureate)
+                Text("Member")
+                    .font(ProTheme.Typography.titleSerif)
+                    .foregroundStyle(ProTheme.Palette.mercury)
             }
             Image(systemName: "laurel.trailing")
                 .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(UnifiedDesignSystem.mercuryGradient)
+                .foregroundStyle(ProTheme.Palette.aureateStroke)
         }
     }
 
@@ -1329,19 +1172,19 @@ private struct CloudStoreMemberCard: View {
                 Label {
                     Text("Renews \(expiration, style: .relative)")
                         .font(MobileTheme.Typography.body)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .foregroundStyle(ProTheme.Palette.mercury)
                 } icon: {
                     Image(systemName: "clock.arrow.circlepath")
-                        .foregroundStyle(MobileTheme.Colors.success)
+                        .foregroundStyle(ProTheme.Palette.aureate)
                 }
             } else {
                 Label {
                     Text("Active")
                         .font(MobileTheme.Typography.body)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .foregroundStyle(ProTheme.Palette.mercury)
                 } icon: {
                     Image(systemName: "checkmark.seal.fill")
-                        .foregroundStyle(MobileTheme.Colors.success)
+                        .foregroundStyle(ProTheme.Palette.aureate)
                 }
             }
         }
@@ -1352,11 +1195,11 @@ private struct CloudStoreMemberCard: View {
             if let purchaseDate = store.purchaseDate {
                 Text("Member since \(purchaseDate, format: .dateTime.month(.abbreviated).year())")
                     .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .foregroundStyle(ProTheme.Palette.mercury.opacity(0.65))
             } else if let exp = store.expirationDate {
                 Text("Through \(exp, format: .dateTime.month(.abbreviated).day().year())")
                     .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .foregroundStyle(ProTheme.Palette.mercury.opacity(0.65))
             } else {
                 EmptyView()
             }
@@ -1372,11 +1215,11 @@ private struct CloudStoreMemberCard: View {
                         .fontWeight(.semibold)
                 }
                 .font(MobileTheme.Typography.caption)
-                .foregroundStyle(.white)
+                .foregroundStyle(ProTheme.Palette.obsidian)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(
-                    Capsule().fill(UnifiedDesignSystem.mercuryGradient)
+                    Capsule().fill(ProTheme.Palette.aureateStroke)
                 )
             }
             .accessibilityLabel("Manage subscription in App Store")
@@ -1386,7 +1229,7 @@ private struct CloudStoreMemberCard: View {
             } label: {
                 HStack(spacing: 6) {
                     if store.isLoading {
-                        MiningPickLoader(.inline, tint: MobileTheme.Colors.textPrimary)
+                        MiningPickLoader(.inline, tint: ProTheme.Palette.mercury)
                     } else {
                         Image(systemName: "arrow.clockwise")
                     }
@@ -1394,14 +1237,14 @@ private struct CloudStoreMemberCard: View {
                         .fontWeight(.semibold)
                 }
                 .font(MobileTheme.Typography.caption)
-                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                .foregroundStyle(ProTheme.Palette.mercury)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(
                     Capsule()
-                        .fill(MobileTheme.Colors.surface.opacity(0.85))
+                        .fill(ProTheme.Palette.obsidianElevated)
                         .overlay(
-                            Capsule().stroke(MobileTheme.Colors.border, lineWidth: 0.5)
+                            Capsule().stroke(ProTheme.Palette.aureateStroke, lineWidth: 0.7)
                         )
                 )
             }
@@ -1414,14 +1257,14 @@ private struct CloudStoreMemberCard: View {
     @ViewBuilder
     private var backgroundLayers: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.xl, style: .continuous)
-                .fill(.ultraThinMaterial)
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.xl, style: .continuous)
+            RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous)
+                .fill(ProTheme.Palette.obsidian)
+            RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
-                            UnifiedDesignSystem.Colors.ember.opacity(0.08),
-                            UnifiedDesignSystem.Colors.amber.opacity(0.06),
+                            ProTheme.Palette.aureate.opacity(0.16),
+                            UnifiedDesignSystem.Colors.ember.opacity(0.10),
                             .clear
                         ],
                         startPoint: .topLeading,
@@ -1430,23 +1273,23 @@ private struct CloudStoreMemberCard: View {
                 )
             RadialGradient(
                 colors: [
-                    UnifiedDesignSystem.Colors.amber.opacity(0.30),
+                    ProTheme.Palette.aureate.opacity(0.28),
                     .clear
                 ],
                 center: .topTrailing,
                 startRadius: 0,
-                endRadius: 220
+                endRadius: 240
             )
             .blendMode(.plusLighter)
 
             if !reduceMotion {
                 MercuryShimmerOverlay()
-                    .clipShape(RoundedRectangle(cornerRadius: MobileTheme.Radius.xl, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous))
                     .blendMode(.plusLighter)
                     .allowsHitTesting(false)
 
                 MemberSparksOverlay()
-                    .clipShape(RoundedRectangle(cornerRadius: MobileTheme.Radius.xl, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous))
                     .blendMode(.plusLighter)
                     .allowsHitTesting(false)
                     .opacity(0.55)
@@ -1492,7 +1335,7 @@ private struct MemberSparksOverlay: View {
                     ctx.opacity = (1.0 - phase) * 0.6
                     let color: Color = (i % 2 == 0)
                         ? UnifiedDesignSystem.Colors.amber
-                        : UnifiedDesignSystem.Colors.ember
+                        : ProTheme.Palette.aureate
                     ctx.fill(Path(ellipseIn: rect), with: .color(color))
                 }
             }
@@ -1520,11 +1363,11 @@ private struct CloudStoreErrorCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
-                .fill(MobileTheme.Colors.error.opacity(0.10))
+                .fill(MobileTheme.Colors.error.opacity(0.18))
         )
         .overlay(
             RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
-                .stroke(MobileTheme.Colors.error.opacity(0.35), lineWidth: 0.5)
+                .stroke(MobileTheme.Colors.error.opacity(0.45), lineWidth: 0.5)
         )
     }
 }

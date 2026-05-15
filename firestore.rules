@@ -680,7 +680,15 @@ service cloud.firestore {
           "resultPreview",
           "errorMessage",
           "lastEventSequence",
-          "schemaVersion"
+          "schemaVersion",
+          // Hermes Square Phase B — group + persona hints. All optional;
+          // server-side enforcement still pins the existing-field invariants.
+          "groupID",
+          "siblingIndex",
+          "siblingCount",
+          "isGroupChild",
+          "personaScopeJSON",
+          "personaID"
         ])
         && request.resource.data.id is string
         && request.resource.data.id.size() <= 512
@@ -712,7 +720,14 @@ service cloud.firestore {
         && (!("events" in request.resource.data) || (request.resource.data.events is list && request.resource.data.events.size() <= 300))
         && (!("resultPreview" in request.resource.data) || (request.resource.data.resultPreview is string && request.resource.data.resultPreview.size() <= 2048))
         && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 2048))
-        && (!("lastEventSequence" in request.resource.data) || request.resource.data.lastEventSequence is int);
+        && (!("lastEventSequence" in request.resource.data) || request.resource.data.lastEventSequence is int)
+        // Hermes Square Phase B — group/persona hint validators (all optional)
+        && (!("groupID" in request.resource.data) || (request.resource.data.groupID is string && request.resource.data.groupID.size() <= 128))
+        && (!("siblingIndex" in request.resource.data) || (request.resource.data.siblingIndex is int && request.resource.data.siblingIndex >= 0 && request.resource.data.siblingIndex < 16))
+        && (!("siblingCount" in request.resource.data) || (request.resource.data.siblingCount is int && request.resource.data.siblingCount > 0 && request.resource.data.siblingCount <= 16))
+        && (!("isGroupChild" in request.resource.data) || request.resource.data.isGroupChild is bool)
+        && (!("personaScopeJSON" in request.resource.data) || (request.resource.data.personaScopeJSON is string && request.resource.data.personaScopeJSON.size() <= 8192))
+        && (!("personaID" in request.resource.data) || (request.resource.data.personaID is string && request.resource.data.personaID.size() <= 128));
       }
 
       function validCliAgentMissionCreate() {
@@ -856,6 +871,122 @@ service cloud.firestore {
           && (!("changedFilePath" in request.resource.data) || (request.resource.data.changedFilePath is string && request.resource.data.changedFilePath.size() <= 512));
         allow update, delete: if false;
       }
+    }
+
+    // Hermes Square Phase B — mission groups (fan-out parent). Owner writes
+    // the parent document at dispatch, the Mac listener stamps phase
+    // transitions, the phone observes both.
+    match /users/{userId}/mission_groups/{groupId} {
+      function validMissionGroup() {
+        return request.resource.data.keys().hasOnly([
+          "id", "title", "prompt", "missionKind", "targetProject",
+          "childMissionIDs", "runtimeTokens", "parallelismLimit",
+          "mergeStrategy", "phase", "winnerMissionID",
+          "forecast", "createdAt", "updatedAt", "schemaVersion", "source",
+          "synthesisSummary"
+        ])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() <= 512
+        && request.resource.data.prompt is string
+        && request.resource.data.prompt.size() <= 20000
+        && request.resource.data.childMissionIDs is list
+        && request.resource.data.childMissionIDs.size() <= 16
+        && request.resource.data.runtimeTokens is list
+        && request.resource.data.runtimeTokens.size() <= 16
+        && request.resource.data.parallelismLimit is int
+        && request.resource.data.parallelismLimit >= 1
+        && request.resource.data.parallelismLimit <= 16
+        && request.resource.data.mergeStrategy in ["pick_one", "keep_all", "synthesize"]
+        && request.resource.data.phase in ["queued", "fanning_out", "awaiting_merge", "merged", "cancelled", "failed"]
+        && request.resource.data.schemaVersion is int;
+      }
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId) && validMissionGroup();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Hermes Square Phase B — class-based approval policies. Phone writes,
+    // phone reads. Synced across devices via the user namespace.
+    match /users/{userId}/approval_policies/{policyId} {
+      function validApprovalPolicy() {
+        return request.resource.data.keys().hasOnly([
+          "id", "displayLabel", "decision", "missionKind", "toolName",
+          "fileGlob", "runtimeID", "targetProject", "createdAt",
+          "expiresAt", "matchCount", "schemaVersion"
+        ])
+        && request.resource.data.decision in ["approve", "deny"]
+        && request.resource.data.displayLabel is string
+        && request.resource.data.displayLabel.size() <= 256
+        && (!("missionKind" in request.resource.data) || request.resource.data.missionKind is string)
+        && (!("toolName" in request.resource.data) || request.resource.data.toolName is string)
+        && (!("fileGlob" in request.resource.data) || (request.resource.data.fileGlob is string && request.resource.data.fileGlob.size() <= 256))
+        && (!("runtimeID" in request.resource.data) || request.resource.data.runtimeID is string)
+        && (!("targetProject" in request.resource.data) || (request.resource.data.targetProject is string && request.resource.data.targetProject.size() <= 512))
+        && (!("matchCount" in request.resource.data) || request.resource.data.matchCount is int);
+      }
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId) && validApprovalPolicy();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Hermes Square Phase C — rollback requests. Phone submits, Mac claims
+    // and resolves. Snapshots themselves live under cli_sessions/{id}/snapshots.
+    match /users/{userId}/rollback_requests/{requestId} {
+      function validRollbackRequest() {
+        return request.resource.data.keys().hasOnly([
+          "id", "sessionID", "scopeJSON", "requestedAt", "requestedBy",
+          "status", "resolvedAt", "errorMessage", "schemaVersion", "source"
+        ])
+        && request.resource.data.sessionID is string
+        && request.resource.data.sessionID.size() <= 256
+        && request.resource.data.scopeJSON is string
+        && request.resource.data.scopeJSON.size() <= 4096
+        && request.resource.data.status in ["pending", "in_flight", "completed", "failed"]
+        && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 2048));
+      }
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId) && validRollbackRequest();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Hermes Square Phase A — per-session rollback snapshot index. Mac
+    // writes (claimed device only); phone reads for the rollback picker.
+    match /users/{userId}/cli_sessions/{sessionId}/snapshots/{snapshotId} {
+      function validRollbackSnapshot() {
+        return request.resource.data.keys().hasOnly([
+          "id", "sessionID", "sequence", "takenAt", "actionLabel",
+          "touchedFiles", "macSnapshotPath", "restoredAt", "schemaVersion"
+        ])
+        && request.resource.data.sequence is int
+        && request.resource.data.sequence >= 0
+        && request.resource.data.actionLabel is string
+        && request.resource.data.actionLabel.size() <= 512
+        && request.resource.data.touchedFiles is list
+        && request.resource.data.touchedFiles.size() <= 64;
+      }
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId) && validRollbackSnapshot();
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Hermes Square Phase A/B — user-installed agent identities + persona
+    // overrides. Phone-only writes. Cached locally; cloud copy survives
+    // re-install.
+    match /users/{userId}/agent_identities/{identityId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().size() <= 24;
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Hermes Square Phase A — subscription topics with per-template consent.
+    match /users/{userId}/subscription_topics/{topicId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().size() <= 16
+        && (!("cadence" in request.resource.data) || request.resource.data.cadence in ["on_demand", "daily", "weekly", "monthly"])
+        && (!("deliveryCountThisMonth" in request.resource.data) || (request.resource.data.deliveryCountThisMonth is int && request.resource.data.deliveryCountThisMonth <= 64));
+      allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/session_logs/{logId} {

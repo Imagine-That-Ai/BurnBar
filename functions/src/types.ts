@@ -18,6 +18,7 @@ export const SUPPORTED_PROVIDERS = [
   "openai",
   "minimax",
   "zai",
+  "kimi",
   "factory",
   "cursor",
   "claude-code",
@@ -32,6 +33,7 @@ export const BACKEND_REFRESH_PROVIDERS: readonly Provider[] = [
   "openai",
   "minimax",
   "zai",
+  "kimi",
   "factory",
   "cursor",
 ];

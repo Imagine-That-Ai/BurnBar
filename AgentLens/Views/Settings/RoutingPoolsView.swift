@@ -111,19 +111,11 @@ private final class RoutingPoolsViewModel {
     var copiedSnippetTarget: RoutingClientWiringTarget?
 
     private let wiringFactory: () -> RoutingClientWiring
-    private let routedClientSyncFactory: () -> RoutedClientConfigSyncService
-    private static let defaultOpenAIModels = [
-        "glm-5-turbo",
-        "minimax-m2.7-highspeed",
-        "deepseek-v4-flash:cloud"
-    ]
 
     init(
-        wiringFactory: @escaping () -> RoutingClientWiring = { RoutingClientWiring() },
-        routedClientSyncFactory: @escaping () -> RoutedClientConfigSyncService = { RoutedClientConfigSyncService() }
+        wiringFactory: @escaping () -> RoutingClientWiring = { RoutingClientWiring() }
     ) {
         self.wiringFactory = wiringFactory
-        self.routedClientSyncFactory = routedClientSyncFactory
     }
 
     func isWired(for target: RoutingClientWiringTarget) -> Bool {
@@ -173,28 +165,6 @@ private final class RoutingPoolsViewModel {
 
     func snippet(for target: RoutingClientWiringTarget, gateway: RoutingClientGateway) -> String {
         wiringFactory().shellSnippet(target: target, gateway: gateway)
-    }
-
-    func isDroidSynced() -> Bool {
-        routedClientSyncFactory().isFactoryGatewayConfigPresent()
-    }
-
-    func syncDroidFactoryConfig(gateway: RoutingClientGateway) async {
-        isWiringChanging[.codex] = true
-        defer { isWiringChanging[.codex] = false }
-        do {
-            let config = RoutedClientGatewayConfig(
-                baseURL: "\(gateway.baseURL)/v1",
-                bearerToken: gateway.authToken,
-                models: Self.defaultOpenAIModels
-            )
-            let urls = try routedClientSyncFactory().applyFactoryGatewayConfig(config)
-            let paths = urls.map(\.path).joined(separator: ", ")
-            lastWireSummary[.codex] = "Synced Droid/Factory config: \(paths)"
-            lastWireError[.codex] = nil
-        } catch {
-            lastWireError[.codex] = error.localizedDescription
-        }
     }
 
     /// Copy a snippet to the system clipboard and surface a transient
@@ -528,7 +498,7 @@ struct RoutingPoolsView: View {
             case .openaiCompat:
                 wiringCard(target: .codex)
                 wiringCard(target: .opencode)
-                droidFactorySyncCard
+                wiringCard(target: .droid)
                 wiringCard(target: .forge)
             case .anthropic:
                 wiringCard(target: .claudeCode)
@@ -633,95 +603,6 @@ struct RoutingPoolsView: View {
         .sheet(item: snippetTargetBinding) { boxed in
             snippetSheet(target: boxed.target, gateway: viewModel.gateway(from: settingsManager))
         }
-    }
-
-    private var droidFactorySyncCard: some View {
-        let gateway = viewModel.gateway(from: settingsManager)
-        let isSynced = viewModel.isDroidSynced()
-        let isChanging = viewModel.isWiringChanging[.codex] == true
-        let isProbing = viewModel.isProbing[.codex] == true
-        let probeStatus = viewModel.probeStatus[.codex]
-        return VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                Image(systemName: "terminal.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(DesignSystem.Colors.ember)
-                Text("Sync Droid CLI (Factory)")
-                    .font(DesignSystem.Typography.headline)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Spacer()
-                wiredPill(isWired: isSynced)
-            }
-            Text("Writes VibeProxy-style Factory custom models into ~/.factory/settings.json and ~/.factory/config.json using provider \"openai\", base_url \(gateway.baseURL)/v1, and a local dummy key when gateway auth is off.")
-                .font(DesignSystem.Typography.body)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            gatewayReadinessCallout(gateway: gateway)
-
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(isSynced ? "Synced" : "Not synced")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Text("~/.factory/settings.json + ~/.factory/config.json")
-                        .font(DesignSystem.Typography.tiny.monospaced())
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
-                Spacer()
-                Button {
-                    Task { @MainActor in
-                        await viewModel.syncDroidFactoryConfig(gateway: gateway)
-                    }
-                } label: {
-                    if isChanging {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Label("Sync config", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(isChanging)
-
-                Button {
-                    Task { @MainActor in
-                        await viewModel.probe(target: .codex, gateway: gateway)
-                    }
-                } label: {
-                    if isProbing {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Label("Probe pool", systemImage: "wave.3.right")
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(isProbing || !settingsManager.gatewayEnabled)
-            }
-
-            if let probeStatus {
-                probeStatusRow(probeStatus)
-            }
-            if let summary = viewModel.lastWireSummary[.codex] {
-                statusLine(text: summary, isError: false)
-            }
-            if let error = viewModel.lastWireError[.codex] {
-                statusLine(text: error, isError: true)
-            }
-        }
-        .padding(DesignSystem.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .fill(DesignSystem.Colors.surface.opacity(0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .stroke(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
-        )
     }
 
     private var snippetTargetBinding: Binding<SnippetTargetBox?> {
@@ -883,6 +764,8 @@ struct RoutingPoolsView: View {
             return "Drops a sentinel-fenced [model_providers.openburnbar] block plus a [profiles.openburnbar] profile into ~/.codex/config.toml. Run `codex --profile openburnbar` after exporting OPENBURNBAR_GATEWAY_TOKEN from the snippet sheet. Codex's ChatGPT-auth mode is not routed; only the API-key path is."
         case .opencode:
             return "Adds provider.openburnbar to ~/.config/opencode/opencode.json using the OpenAI-compatible adapter and the local gateway. OpenCode can then use the same OpenAI-family provider pool and fall over across healthy upstream accounts."
+        case .droid:
+            return "Adds OpenBurnBar customModels to ~/.factory/settings.local.json so Droid sends selected OpenAI-family traffic through the local gateway while preserving your base Factory settings. After wiring, same-tier account failover happens in the gateway without editing Droid again."
         case .forge:
             return "Adds a VibeProxy-style [[providers]] entry named openburnbar to ~/forge/.forge.toml with a chat-completions URL, models URL, and OPENBURNBAR_GATEWAY_TOKEN env var. Your existing Forge session provider is left alone so you can opt in deliberately."
         }
@@ -893,6 +776,7 @@ struct RoutingPoolsView: View {
         case .claudeCode: return "~/.claude/settings.json"
         case .codex: return "~/.codex/config.toml"
         case .opencode: return "~/.config/opencode/opencode.json"
+        case .droid: return "~/.factory/settings.local.json"
         case .forge: return "~/forge/.forge.toml"
         }
     }

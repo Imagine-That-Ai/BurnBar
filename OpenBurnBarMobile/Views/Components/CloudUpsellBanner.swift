@@ -3,13 +3,12 @@ import OpenBurnBarCore
 
 // MARK: - Cloud Upsell Banner
 //
-// Compact glass strip rendered at the top of `PulseView` when the user
-// doesn't have an active OpenBurnBar Cloud subscription. Tap opens the
-// dedicated `CloudStoreView` as a sheet; the dismiss button stores a
-// session-scoped flag so it doesn't reappear until the user revisits.
+// Pro vocabulary — the whisper at the top of Pulse. Obsidian foil pill with
+// a continuous mercury shimmer. Tap opens `CloudStoreView` as a sheet;
+// dismiss stores a session flag so it doesn't reappear until the user
+// revisits.
 //
-// Hidden entirely once the entitlement is active or the banner has been
-// dismissed for the session.
+// Hidden entirely once the entitlement is active or the banner is dismissed.
 
 struct CloudUpsellBanner: View {
     let priceText: String?
@@ -20,36 +19,36 @@ struct CloudUpsellBanner: View {
 
     var body: some View {
         HStack(spacing: MobileTheme.Spacing.md) {
-            glyphTile
+            crestTile
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Quota and Hermes, anywhere")
-                    .font(MobileTheme.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                Text("OpenBurnBar Cloud")
+                    .font(ProTheme.Typography.headlineSerif)
+                    .foregroundStyle(ProTheme.Palette.mercury)
                     .lineLimit(1)
                 Text(subtitle)
                     .font(MobileTheme.Typography.caption)
-                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .foregroundStyle(ProTheme.Palette.mercury.opacity(0.68))
                     .lineLimit(1)
             }
 
             Spacer(minLength: 0)
 
-            Image(systemName: "chevron.right")
+            Image(systemName: "arrow.up.right")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .foregroundStyle(ProTheme.Palette.aureate)
 
             dismissButton
         }
         .padding(.horizontal, MobileTheme.Spacing.md)
-        .padding(.vertical, MobileTheme.Spacing.sm)
+        .padding(.vertical, MobileTheme.Spacing.sm + 2)
         .background(bannerBackground)
         .overlay(
             RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                .stroke(MobileTheme.primaryGradient.opacity(0.65), lineWidth: 0.8)
+                .stroke(ProTheme.Palette.aureateStroke, lineWidth: 0.9)
         )
         .clipShape(RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous))
+        .shadow(color: ProTheme.Palette.aureate.opacity(0.22), radius: 14, y: 5)
         .contentShape(RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous))
         .onTapGesture {
             Haptics.light()
@@ -64,21 +63,20 @@ struct CloudUpsellBanner: View {
 
     private var subtitle: String {
         if let priceText {
-            return "Try OpenBurnBar Cloud — \(priceText)/mo"
+            return "Your agents, unbound — \(priceText)/mo"
         }
-        return "Try OpenBurnBar Cloud"
+        return "Your agents, unbound"
     }
 
-    private var glyphTile: some View {
+    private var crestTile: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(MobileTheme.primaryGradient)
-                .frame(width: 36, height: 36)
-                .shadow(color: UnifiedDesignSystem.Colors.ember.opacity(0.45), radius: 8, y: 4)
-            Image(systemName: "cloud.fill")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.white)
+            Circle().fill(ProTheme.Palette.obsidian)
+            Circle().stroke(ProTheme.Palette.aureateStroke, lineWidth: 0.9)
+            Image(systemName: "sparkle")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(ProTheme.Palette.aureate)
         }
+        .frame(width: 30, height: 30)
     }
 
     private var dismissButton: some View {
@@ -87,10 +85,12 @@ struct CloudUpsellBanner: View {
             onDismiss()
         } label: {
             Image(systemName: "xmark")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(MobileTheme.Colors.textMuted)
-                .frame(width: 28, height: 28)
-                .background(.ultraThinMaterial, in: Circle())
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(ProTheme.Palette.mercury.opacity(0.6))
+                .frame(width: 24, height: 24)
+                .background(
+                    Circle().fill(ProTheme.Palette.obsidianElevated)
+                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Dismiss banner")
@@ -100,19 +100,15 @@ struct CloudUpsellBanner: View {
     private var bannerBackground: some View {
         ZStack {
             RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                .fill(.ultraThinMaterial)
-            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            UnifiedDesignSystem.Colors.ember.opacity(0.10),
-                            UnifiedDesignSystem.Colors.amber.opacity(0.06),
-                            .clear
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
+                .fill(ProTheme.Palette.obsidian)
+
+            if !reduceMotion {
+                MercuryShimmerOverlay()
+                    .clipShape(RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous))
+                    .blendMode(.plusLighter)
+                    .opacity(0.55)
+                    .allowsHitTesting(false)
+            }
         }
     }
 }

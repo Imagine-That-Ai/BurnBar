@@ -53,6 +53,12 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         XCTAssertEqual(invocations[0].environment["OPENAI_API_KEY"], "sk-work")
         XCTAssertEqual(invocations[1].environment["OPENAI_API_KEY"], "sk-personal")
         XCTAssertTrue(statusRecorder.snapshot().joined().contains("Trying Personal"))
+        XCTAssertEqual(store.fetchActiveProfileID(), fallback.id)
+        XCTAssertEqual(store.activeProfileHistory(), [fallback.id])
+        let updatedPrimary = try XCTUnwrap(store.fetchProfile(id: primary.id))
+        XCTAssertNotNil(updatedPrimary.cliMetadata?.lastQuotaExhaustedAt)
+        XCTAssertNotNil(updatedPrimary.cliMetadata?.exhaustedUntil)
+        XCTAssertTrue(updatedPrimary.cliMetadata?.lastQuotaExhaustionDetail?.contains("5-hour") == true)
     }
 
     func testShellExecutorHonorsRequestedProfileOverride() async throws {
@@ -87,6 +93,52 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         XCTAssertEqual(result.attemptedProfileIDs, [second.id])
         let invocations = await runner.invocationsSnapshot()
         XCTAssertEqual(invocations.first?.environment["ANTHROPIC_API_KEY"], nil)
+    }
+
+    func testShellExecutorClearsPersistedQuotaExhaustionAfterSuccessfulLaunch() async throws {
+        let executableURL = try makeExecutable(named: "codex-success")
+        CLILaunchAdapter.executableResolver = { _ in executableURL }
+
+        let exhaustedProfile = SwitcherProfileRecord(
+            id: "exhausted",
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: "Recovered",
+                lastQuotaExhaustedAt: Date().addingTimeInterval(-300),
+                exhaustedUntil: Date().addingTimeInterval(600),
+                lastQuotaExhaustionDetail: "5-hour limit reached"
+            ),
+            sortKey: 1,
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: Date(timeIntervalSince1970: 1)
+        )
+        let store = TestSwitcherProfileStore(profiles: [exhaustedProfile], activeProfileID: exhaustedProfile.id)
+        let runner = TestTerminalRunner(results: [
+            .init(terminationStatus: 0, quotaExhaustedDetail: nil, capturedOutput: "")
+        ])
+
+        let executor = BurnBarCLIShellExecutor(
+            profileStore: store,
+            credentialStore: TestCredentialStore(values: ["\(exhaustedProfile.id):codex": "sk-recovered"]),
+            terminalRunner: runner,
+            environmentProvider: { ["TERM": "xterm-256color"] },
+            statusWriter: { _ in }
+        )
+
+        _ = try await executor.execute(
+            BurnBarCLIShellLaunchRequest(
+                cliType: .codex,
+                forwardedArguments: ["chat", "--model", "gpt-5"],
+                requestedProfileID: exhaustedProfile.id
+            )
+        )
+
+        let updated = try XCTUnwrap(store.fetchProfile(id: exhaustedProfile.id))
+        XCTAssertNil(updated.cliMetadata?.lastQuotaExhaustedAt)
+        XCTAssertNil(updated.cliMetadata?.exhaustedUntil)
+        XCTAssertNil(updated.cliMetadata?.lastQuotaExhaustionDetail)
+        XCTAssertEqual(store.fetchActiveProfileID(), exhaustedProfile.id)
     }
 
     func testRunnerInvokeRoutesExecCommandThroughShellExecutor() async throws {
@@ -173,30 +225,58 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
     }
 }
 
-private final class TestSwitcherProfileStore: BurnBarSwitcherProfileStoreProviding, Sendable {
-    private let profiles: [SwitcherProfileRecord]
-    private let activeProfileIDValue: String?
+private final class TestSwitcherProfileStore: BurnBarSwitcherProfileStoreProviding, @unchecked Sendable {
+    private let lock = NSLock()
+    private var profilesByID: [String: SwitcherProfileRecord]
+    private var orderedProfileIDs: [String]
+    private var activeProfileIDValue: String?
+    private var activeProfileHistoryValue: [String?] = []
 
     init(profiles: [SwitcherProfileRecord], activeProfileID: String?) {
-        self.profiles = profiles
+        self.profilesByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+        self.orderedProfileIDs = profiles.map(\.id)
         self.activeProfileIDValue = activeProfileID
     }
 
     func fetchProfile(id: String) -> SwitcherProfileRecord? {
-        profiles.first(where: { $0.id == id })
+        lock.lock()
+        defer { lock.unlock() }
+        return profilesByID[id]
     }
 
     func fetchAllProfiles() -> [SwitcherProfileRecord] {
-        profiles
+        lock.lock()
+        defer { lock.unlock() }
+        return orderedProfileIDs.compactMap { profilesByID[$0] }
     }
 
     func fetchActiveProfileID() -> String? {
-        activeProfileIDValue
+        lock.lock()
+        defer { lock.unlock() }
+        return activeProfileIDValue
     }
 
-    func setActiveProfileID(_ profileID: String?) {}
+    func setActiveProfileID(_ profileID: String?) {
+        lock.lock()
+        activeProfileIDValue = profileID
+        activeProfileHistoryValue.append(profileID)
+        lock.unlock()
+    }
 
-    func updateProfile(_ profile: SwitcherProfileRecord) {}
+    func updateProfile(_ profile: SwitcherProfileRecord) {
+        lock.lock()
+        if profilesByID[profile.id] == nil {
+            orderedProfileIDs.append(profile.id)
+        }
+        profilesByID[profile.id] = profile
+        lock.unlock()
+    }
+
+    func activeProfileHistory() -> [String?] {
+        lock.lock()
+        defer { lock.unlock() }
+        return activeProfileHistoryValue
+    }
 }
 
 private struct TestCredentialStore: BurnBarSwitcherCredentialProviding {

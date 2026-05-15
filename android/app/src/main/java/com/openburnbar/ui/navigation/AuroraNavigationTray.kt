@@ -43,6 +43,7 @@ fun AuroraNavigationTray(
     onDestinationSelected: (AuroraNavDestination) -> Unit,
     userDisplayName: String? = null,
     userPhotoUrl: String? = null,
+    isCloudMember: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -115,6 +116,9 @@ fun AuroraNavigationTray(
                     isSelected = isSelected,
                     userDisplayName = if (dest == AuroraNavDestination.YOU) userDisplayName else null,
                     userPhotoUrl = if (dest == AuroraNavDestination.YOU) userPhotoUrl else null,
+                    cloudIndicator = if (dest == AuroraNavDestination.YOU) {
+                        if (isCloudMember) CloudIndicator.Member else CloudIndicator.Free
+                    } else CloudIndicator.None,
                     onSelected = {
                         if (!isSelected) {
                             onDestinationSelected(dest)
@@ -143,12 +147,18 @@ fun AuroraNavigationTray(
     }
 }
 
+/// Pro vocabulary — corner indicator for the `.you` tab. Free users see a
+/// breathing foil dot; members see a tiny mercury crest. Same slot, different
+/// state — the universal whisper-vs-status signal across the app.
+enum class CloudIndicator { None, Free, Member }
+
 @Composable
 private fun AuroraTabItem(
     destination: AuroraNavDestination,
     isSelected: Boolean,
     userDisplayName: String?,
     userPhotoUrl: String?,
+    cloudIndicator: CloudIndicator = CloudIndicator.None,
     onSelected: () -> Unit
 ) {
     val dotScale by animateFloatAsState(
@@ -174,13 +184,35 @@ private fun AuroraTabItem(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            AuroraNavIcon(
-                destination = destination,
-                size = IconSize.value.toInt(),
-                isSelected = isSelected,
-                userDisplayName = userDisplayName,
-                userPhotoUrl = userPhotoUrl
-            )
+            Box {
+                AuroraNavIcon(
+                    destination = destination,
+                    size = IconSize.value.toInt(),
+                    isSelected = isSelected,
+                    userDisplayName = userDisplayName,
+                    userPhotoUrl = userPhotoUrl
+                )
+
+                // Pro vocabulary corner indicator — only on the YOU tab.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 6.dp, y = (-2).dp)
+                ) {
+                    when (cloudIndicator) {
+                        CloudIndicator.None -> {}
+                        CloudIndicator.Free -> com.openburnbar.ui.pro.ProBadgeDot(
+                            pulse = com.openburnbar.ui.pro.ProBadgePulse.Breathing,
+                            diameter = 7.dp
+                        )
+                        CloudIndicator.Member -> com.openburnbar.ui.pro.MercuryCrest(
+                            size = com.openburnbar.ui.pro.MercuryCrestSize.Small,
+                            shimmer = true,
+                            modifier = Modifier.graphicsLayer { scaleX = 0.62f; scaleY = 0.62f }
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(4.dp))
 

@@ -23,6 +23,7 @@ import { hostedQuotaRunnerToken } from "./hostedRunnerConfig.js";
 import { retrieveCredential } from "./secrets.js";
 import { minimaxAdapter } from "./providers/minimax.js";
 import { zaiAdapter } from "./providers/zai.js";
+import { kimiAdapter } from "./providers/kimi.js";
 import { factoryAdapter } from "./providers/factory.js";
 import { cursorAdapter } from "./providers/cursor.js";
 import { openaiAdapter } from "./providers/openai.js";
@@ -31,6 +32,7 @@ const ADAPTERS = {
   openai: openaiAdapter,
   minimax: minimaxAdapter,
   zai: zaiAdapter,
+  kimi: kimiAdapter,
   factory: factoryAdapter,
   cursor: cursorAdapter,
 } as const;
@@ -561,3 +563,6 @@ export const __testing__ = {
   sanitizeBuckets,
   safeDocSegment,
 };
+// Claude Code is supported via the hosted runner when a credential is
+// provided — the runner writes the auth data and runs `claude /usage`.
+HOSTED_RUNNER_PROVIDERS.add("claude-code");

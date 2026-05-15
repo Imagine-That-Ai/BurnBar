@@ -27,13 +27,16 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
         let matchingProfiles = allProfiles.filter { profile in
             fallbackGroup(for: profile) == requestedGroup
         }
-
-        guard let requestedIndex = matchingProfiles.firstIndex(where: { $0.id == requestedProfile.id }) else {
-            return matchingProfiles
+        let compatibleProfiles = matchingProfiles.filter { profile in
+            isRuntimeCompatible(candidate: profile, requestedProfile: requestedProfile)
         }
 
-        return [matchingProfiles[requestedIndex]]
-            + matchingProfiles.enumerated()
+        guard let requestedIndex = compatibleProfiles.firstIndex(where: { $0.id == requestedProfile.id }) else {
+            return compatibleProfiles
+        }
+
+        return [compatibleProfiles[requestedIndex]]
+            + compatibleProfiles.enumerated()
                 .filter { $0.offset != requestedIndex }
                 .map(\.element)
     }
@@ -44,6 +47,14 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
            exhaustedUntil > Date() {
             let reason = metadata.lastQuotaExhaustionDetail
                 ?? "\(profile.displayName) is held in reserve until quota resets."
+            return .quotaExhausted(reason: reason)
+        }
+
+        if let cliType = profile.cliType,
+           let quotaStatus = await quotaLookup(cliType),
+           isDepleted(quotaStatus.fiveHourRemainingPercent) || isDepleted(quotaStatus.weeklyRemainingPercent) {
+            let reason = quotaStatus.statusMessage
+                ?? "\(profile.displayName) has no remaining quota in the current provider window."
             return .quotaExhausted(reason: reason)
         }
 
@@ -74,6 +85,59 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
         case .opencode:
             return .openCode
         }
+    }
+
+    private func isRuntimeCompatible(
+        candidate: SwitcherProfileRecord,
+        requestedProfile: SwitcherProfileRecord
+    ) -> Bool {
+        if candidate.id == requestedProfile.id {
+            return true
+        }
+
+        guard let requestedCLIType = requestedProfile.cliType,
+              candidate.cliType == requestedCLIType else {
+            return false
+        }
+
+        let requestedMetadata = requestedProfile.cliMetadata
+        let candidateMetadata = candidate.cliMetadata
+
+        if candidateMetadata?.neverAutoSwitch == true {
+            return false
+        }
+
+        if let requestedProviderID = requestedMetadata?.providerID {
+            guard candidateMetadata?.providerID == requestedProviderID else {
+                return false
+            }
+        }
+
+        if let requestedCapabilityClassID = normalized(requestedMetadata?.modelCapabilityClassID) {
+            guard normalized(candidateMetadata?.modelCapabilityClassID) == requestedCapabilityClassID else {
+                return false
+            }
+        }
+
+        if let requestedTierID = normalized(requestedMetadata?.subscriptionTierID) {
+            guard normalized(candidateMetadata?.subscriptionTierID) == requestedTierID else {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    private func normalized(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed.lowercased()
+    }
+
+    private func isDepleted(_ remainingPercent: Double?) -> Bool {
+        guard let remainingPercent else { return false }
+        return remainingPercent <= 0
     }
 }
 

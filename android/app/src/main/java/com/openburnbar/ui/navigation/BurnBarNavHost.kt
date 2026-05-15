@@ -1,5 +1,6 @@
 package com.openburnbar.ui.navigation
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +21,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navDeepLink
+import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
 import com.openburnbar.data.stores.UserStore
 import com.openburnbar.ui.auth.LoginScreen
 import com.openburnbar.ui.burn.BurnView
@@ -84,15 +86,55 @@ class FloatingChatState {
 @Composable
 fun rememberFloatingChatState(): FloatingChatState = remember { FloatingChatState() }
 
+/// Static glassy panes that suggest the Insights canvas without driving any
+/// data. The LockedFeatureVeil blurs them, so a free user only ever sees
+/// shape and color — enough to feel "I want what's behind this veil."
+@Composable
+private fun InsightsTeaserBackground() {
+    androidx.compose.foundation.layout.Column(
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(16.dp)
+    ) {
+        repeat(6) { idx ->
+            val firstAlpha = (0.16f - idx * 0.015f).coerceAtLeast(0f)
+            androidx.compose.foundation.layout.Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (idx == 0) 180.dp else 92.dp)
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                            colors = listOf(
+                                com.openburnbar.ui.theme.AuroraColors.ember.copy(alpha = firstAlpha),
+                                com.openburnbar.ui.theme.AuroraColors.amber.copy(alpha = 0.10f),
+                                com.openburnbar.ui.theme.AuroraColors.whimsy.copy(alpha = 0.08f)
+                            )
+                        ),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+                    )
+            )
+        }
+    }
+}
+
 @Composable
 fun BurnBarNavHost(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
     userStore: UserStore = viewModel(),
-    chatState: FloatingChatState = rememberFloatingChatState()
+    chatState: FloatingChatState = rememberFloatingChatState(),
+    subscriptionStore: HostedQuotaSubscriptionStore = viewModel()
 ) {
     val isDark = isSystemInDarkTheme()
     val currentUser by userStore.user.collectAsState()
+    val context = LocalContext.current
+    LaunchedEffect(context) {
+        subscriptionStore.initialize(context)
+        subscriptionStore.load()
+    }
+    val isCloudMember by subscriptionStore.isActive.collectAsState()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val currentTab = remember(currentRoute) {
@@ -156,7 +198,8 @@ fun BurnBarNavHost(
                         navController = navController,
                         navigateToBurn = { navigateTo(BurnBarTab.BURN) },
                         navigateToHermes = { navigateTo(BurnBarTab.HERMES) },
-                        navigateToStreams = { navigateTo(BurnBarTab.STREAMS) }
+                        navigateToStreams = { navigateTo(BurnBarTab.STREAMS) },
+                        isCloudMember = isCloudMember
                     )
                 }
                 Box(
@@ -172,7 +215,8 @@ fun BurnBarNavHost(
                             BurnBarTab.all.firstOrNull { it.destination == dest }?.let(navigateTo)
                         },
                         userDisplayName = currentUser.displayName,
-                        userPhotoUrl = currentUser.photoUrl
+                        userPhotoUrl = currentUser.photoUrl,
+                        isCloudMember = isCloudMember
                     )
                 }
             }
@@ -223,7 +267,8 @@ private fun BurnBarContent(
     navController: NavHostController,
     navigateToBurn: () -> Unit,
     navigateToHermes: () -> Unit,
-    navigateToStreams: () -> Unit
+    navigateToStreams: () -> Unit,
+    isCloudMember: Boolean = false
 ) {
     NavHost(
         navController = navController,
@@ -271,7 +316,22 @@ private fun BurnBarContent(
                 onBack = { navController.popBackStack() }
             )
         }
-        composable("insights_workspace") { InsightsScreen() }
+        composable("insights_workspace") {
+            // Pro vocabulary — gate Insights behind OpenBurnBar Cloud. Free
+            // users see a frosted mercury veil over a teaser; members see
+            // the live workspace.
+            if (isCloudMember) {
+                InsightsScreen()
+            } else {
+                com.openburnbar.ui.pro.LockedFeatureVeil(
+                    headline = "Insights, surfaced.",
+                    detail = "Cross-agent patterns, weekly retros, and forecast cohorts — included with OpenBurnBar Cloud.",
+                    onCta = { navController.navigate("cloud_store") }
+                ) {
+                    InsightsTeaserBackground()
+                }
+            }
+        }
         composable(
             BurnBarTab.STREAMS.route,
             deepLinks = listOf(
@@ -304,6 +364,14 @@ private fun BurnBarContent(
             BurnBarTab.YOU.route,
             deepLinks = listOf(navDeepLink { uriPattern = "burnbar://you" })
         ) { YouView() }
+        composable(
+            "cloud_store",
+            deepLinks = listOf(navDeepLink { uriPattern = "burnbar://cloud" })
+        ) {
+            com.openburnbar.ui.store.CloudStoreView(
+                onClose = { navController.popBackStack() }
+            )
+        }
         // Open Dashboard deep link → land on Pulse (closest analog to iOS dashboard).
         composable(
             "dashboard",

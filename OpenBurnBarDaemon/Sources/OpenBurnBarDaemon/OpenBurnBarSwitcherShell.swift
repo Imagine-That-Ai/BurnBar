@@ -491,6 +491,7 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             )
 
             if let quotaDetail = result.quotaExhaustedDetail {
+                persistQuotaExhaustion(for: profile, detail: quotaDetail)
                 lastError = .quotaExhausted(quotaDetail)
                 let remaining = candidates.count - index - 1
                 guard remaining > 0 else {
@@ -505,6 +506,8 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             }
 
             if result.terminationStatus == 0 {
+                clearQuotaExhaustion(for: profile)
+                profileStore.setActiveProfileID(profile.id)
                 return BurnBarCLIShellExecutionResult(
                     exitCode: 0,
                     launchedProfileID: profile.id,
@@ -611,6 +614,110 @@ public final class BurnBarCLIShellExecutor: BurnBarCLIShellExecuting, Sendable {
             }
             return argument
         }
+    }
+
+    private func persistQuotaExhaustion(for profile: SwitcherProfileRecord, detail: String) {
+        guard profile.targetKind == .cli,
+              let cliType = profile.cliType else {
+            return
+        }
+
+        let safeDetail = CLILaunchRedactor.redactSensitiveData(detail)
+        let now = Date()
+        let exhaustedUntil = exhaustionWindowEnd(from: safeDetail, now: now)
+        let existingMetadata = profile.cliMetadata ?? SwitcherCLIProfileMetadata()
+
+        let updatedProfile = SwitcherProfileRecord(
+            id: profile.id,
+            targetKind: .cli,
+            cliType: cliType,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                workingDirectory: existingMetadata.workingDirectory,
+                additionalArgs: existingMetadata.additionalArgs,
+                envKeysToPass: existingMetadata.envKeysToPass,
+                displayLabel: existingMetadata.displayLabel,
+                configDirectory: existingMetadata.configDirectory,
+                accountDescription: existingMetadata.accountDescription,
+                providerID: existingMetadata.providerID,
+                runtimeAccountID: existingMetadata.runtimeAccountID,
+                subscriptionTierID: existingMetadata.subscriptionTierID,
+                modelCapabilityClassID: existingMetadata.modelCapabilityClassID,
+                linkedHarnessIDs: existingMetadata.linkedHarnessIDs,
+                neverAutoSwitch: existingMetadata.neverAutoSwitch,
+                lastQuotaExhaustedAt: now,
+                exhaustedUntil: exhaustedUntil,
+                lastQuotaExhaustionDetail: safeDetail,
+                isDisabled: existingMetadata.isDisabled
+            ),
+            sortKey: profile.sortKey,
+            createdAt: profile.createdAt
+        )
+
+        profileStore.updateProfile(updatedProfile)
+    }
+
+    private func clearQuotaExhaustion(for profile: SwitcherProfileRecord) {
+        guard profile.targetKind == .cli,
+              let cliType = profile.cliType,
+              let existingMetadata = profile.cliMetadata else {
+            return
+        }
+
+        guard existingMetadata.lastQuotaExhaustedAt != nil
+            || existingMetadata.exhaustedUntil != nil
+            || existingMetadata.lastQuotaExhaustionDetail != nil else {
+            return
+        }
+
+        let updatedProfile = SwitcherProfileRecord(
+            id: profile.id,
+            targetKind: .cli,
+            cliType: cliType,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                workingDirectory: existingMetadata.workingDirectory,
+                additionalArgs: existingMetadata.additionalArgs,
+                envKeysToPass: existingMetadata.envKeysToPass,
+                displayLabel: existingMetadata.displayLabel,
+                configDirectory: existingMetadata.configDirectory,
+                accountDescription: existingMetadata.accountDescription,
+                providerID: existingMetadata.providerID,
+                runtimeAccountID: existingMetadata.runtimeAccountID,
+                subscriptionTierID: existingMetadata.subscriptionTierID,
+                modelCapabilityClassID: existingMetadata.modelCapabilityClassID,
+                linkedHarnessIDs: existingMetadata.linkedHarnessIDs,
+                neverAutoSwitch: existingMetadata.neverAutoSwitch,
+                isDisabled: existingMetadata.isDisabled
+            ),
+            sortKey: profile.sortKey,
+            createdAt: profile.createdAt
+        )
+
+        profileStore.updateProfile(updatedProfile)
+    }
+
+    private func exhaustionWindowEnd(from detail: String, now: Date) -> Date? {
+        let normalized = detail.lowercased()
+        if normalized.contains("weekly") || normalized.contains("week") {
+            return now.addingTimeInterval(7 * 24 * 60 * 60)
+        }
+        if normalized.contains("monthly")
+            || normalized.contains("month")
+            || normalized.contains("credit limit") {
+            let calendar = Calendar.current
+            let components = calendar.dateComponents([.year, .month], from: now)
+            if let monthStart = calendar.date(from: components),
+               let nextMonth = calendar.date(byAdding: .month, value: 1, to: monthStart) {
+                return nextMonth
+            }
+            return now.addingTimeInterval(30 * 24 * 60 * 60)
+        }
+        if normalized.contains("5-hour")
+            || normalized.contains("5 hour")
+            || normalized.contains("5h")
+            || normalized.contains("hour window") {
+            return now.addingTimeInterval(5 * 60 * 60)
+        }
+        return nil
     }
 
     private func authEnvironmentKey(for cliType: SwitcherCLIProfileType) -> String? {

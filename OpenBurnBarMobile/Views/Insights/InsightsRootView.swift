@@ -6,15 +6,23 @@ import FirebaseFirestore
 
 /// Top-level mobile Insights tab content. Adapts to iPhone vs iPad
 /// automatically via size classes.
+///
+/// **Pro gating:** free users see a `LockedFeatureVeil` over a static
+/// teaser — the I-WANT-THAT moment. Cloud members see the live layout.
 struct InsightsRootView: View {
 
     @State private var store: InsightsStore?
+    @State private var showCloudStore = false
     let dashboardStore: DashboardStore
     let hermesService: HermesService
 
+    @Environment(\.cloudSubscriptionStore) private var cloudStore
+
     var body: some View {
         Group {
-            if let store {
+            if let cloudStore, !cloudStore.isActive {
+                lockedInsightsTeaser
+            } else if let store {
                 AdaptiveInsightsLayout(store: store, hermesService: hermesService)
             } else {
                 ProgressView()
@@ -22,6 +30,7 @@ struct InsightsRootView: View {
             }
         }
         .task {
+            guard cloudStore?.isActive ?? true else { return }
             // Ensure the dashboard store is hydrated before any snapshot is
             // requested — otherwise the synthetic InsightUsageRows would be
             // empty until the user happened to visit another tab first.
@@ -48,6 +57,63 @@ struct InsightsRootView: View {
             guard let store else { return }
             Task { await store.attachHermesIfReachable(via: hermesService) }
         }
+        .sheet(isPresented: $showCloudStore) {
+            NavigationStack {
+                CloudStoreView(onClose: { showCloudStore = false })
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    // MARK: - Locked Teaser
+    //
+    // Pro vocabulary — frosted mercury veil over a stylized teaser of what
+    // Insights *would* show. The teaser is static (no Firebase, no
+    // dashboard load) so free users don't pay for work they can't see.
+
+    private var lockedInsightsTeaser: some View {
+        LockedFeatureVeil(
+            headline: "Insights, surfaced.",
+            detail: "Cross-agent patterns, weekly retros, forecast cohorts, and Hermes-narrated story cards — included with OpenBurnBar Cloud.",
+            ctaLabel: "Open Cloud"
+        ) {
+            showCloudStore = true
+        } background: {
+            InsightsTeaserBackground()
+        }
+    }
+}
+
+// MARK: - Insights Teaser Background
+//
+// Static glassy panes that suggest the Insights canvas without driving any
+// data — the veil blurs them, so all the user sees is shape and color.
+
+private struct InsightsTeaserBackground: View {
+    var body: some View {
+        VStack(spacing: MobileTheme.Spacing.md) {
+            ForEach(0..<6, id: \.self) { idx in
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                UnifiedDesignSystem.Colors.ember.opacity(0.16 - Double(idx) * 0.015),
+                                UnifiedDesignSystem.Colors.amber.opacity(0.10),
+                                UnifiedDesignSystem.Colors.whimsy.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(height: idx == 0 ? 180 : 92)
+                    .padding(.horizontal, MobileTheme.Spacing.lg)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, MobileTheme.Spacing.lg)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(MobileTheme.Colors.background)
     }
 }
 private struct AdaptiveInsightsLayout: View {

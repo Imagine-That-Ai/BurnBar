@@ -54,7 +54,8 @@ struct RootTabView: View {
                     destinations: destinations,
                     userPhotoURL: authStore.currentIdentity?.photoURL,
                     userDisplayName: authStore.currentIdentity?.displayName
-                                  ?? authStore.currentIdentity?.email
+                                  ?? authStore.currentIdentity?.email,
+                    isCloudMember: subscriptionStore.isActive
                 )
                 .opacity(isHermesKeyboardVisible ? 0 : 1)
                 .animation(.easeInOut(duration: 0.2), value: isHermesKeyboardVisible)
@@ -161,17 +162,27 @@ struct RootTabView: View {
 
     private var hermesStack: some View {
         NavigationStack {
-            // Hermes Square Phase A (plan §7) gates the new super-app
-            // surface behind `HermesSquareFeatureFlags.phaseA`. When on,
-            // we render `HermesSquareRoot`; when off, the legacy
-            // `AssistantsTabRoot` (runtime pill + per-runtime chat) remains
-            // the default. Both share the same hermesService /
-            // missionConsoleHost so state is preserved across the switch.
+            // Hermes Square gates per phase (plan §7):
+            //   • Phase A on  ⇒ `HermesSquareRoot` (compact single-column)
+            //   • Phase D on  ⇒ `HermesSquareSplitLayout` activates the
+            //     iPad two-column layout at width ≥ 720pt, otherwise it
+            //     falls back to `HermesSquareRoot`.
+            //   • All flags off ⇒ legacy `AssistantsTabRoot`.
+            //
+            // Both surfaces share the same hermesService / missionConsoleHost
+            // so state is preserved across the switch.
             if HermesSquareFeatureFlags.shared.phaseA {
-                HermesSquareRoot(
-                    hermesService: hermesService,
-                    missionHost: missionConsoleHost
-                )
+                if HermesSquareFeatureFlags.shared.phaseD {
+                    HermesSquareSplitLayout(
+                        hermesService: hermesService,
+                        missionHost: missionConsoleHost
+                    )
+                } else {
+                    HermesSquareRoot(
+                        hermesService: hermesService,
+                        missionHost: missionConsoleHost
+                    )
+                }
             } else {
                 AssistantsTabRoot(hermesService: hermesService, dashboardSnapshot: nil)
             }

@@ -307,7 +307,16 @@ final class SwitcherCLILaunchTests: XCTestCase {
             cliMetadata: SwitcherCLIProfileMetadata(
                 displayLabel: "Claude Primary",
                 configDirectory: configDirectory.path,
-                accountDescription: "old@example.com"
+                accountDescription: "old@example.com",
+                providerID: .anthropic,
+                runtimeAccountID: "runtime-123",
+                subscriptionTierID: "claude-max",
+                modelCapabilityClassID: "anthropic:sonnet",
+                linkedHarnessIDs: ["claude", "droid"],
+                neverAutoSwitch: true,
+                lastQuotaExhaustedAt: Date(timeIntervalSince1970: 1_700_000_000),
+                exhaustedUntil: Date(timeIntervalSince1970: 1_700_018_000),
+                lastQuotaExhaustionDetail: "5-hour limit reached"
             ),
             sortKey: 1
         )
@@ -320,6 +329,15 @@ final class SwitcherCLILaunchTests: XCTestCase {
         XCTAssertEqual(previousAccount, "old@example.com")
         XCTAssertEqual(detectedAccount, "new@example.com")
         XCTAssertEqual(updatedProfile.cliMetadata?.accountDescription, "new@example.com")
+        XCTAssertEqual(updatedProfile.cliMetadata?.providerID, .anthropic)
+        XCTAssertEqual(updatedProfile.cliMetadata?.linkedHarnessIDs, ["claude", "droid"])
+        XCTAssertTrue(updatedProfile.cliMetadata?.neverAutoSwitch == true)
+        XCTAssertNil(updatedProfile.cliMetadata?.runtimeAccountID)
+        XCTAssertNil(updatedProfile.cliMetadata?.subscriptionTierID)
+        XCTAssertNil(updatedProfile.cliMetadata?.modelCapabilityClassID)
+        XCTAssertNil(updatedProfile.cliMetadata?.lastQuotaExhaustedAt)
+        XCTAssertNil(updatedProfile.cliMetadata?.exhaustedUntil)
+        XCTAssertNil(updatedProfile.cliMetadata?.lastQuotaExhaustionDetail)
     }
 
     func test_cliAuthCoordinator_usesFreshConfigDirectoryWhenPreservingExistingAccount() async throws {

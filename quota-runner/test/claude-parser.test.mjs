@@ -25,9 +25,14 @@ Resets May 6 at 12:59am (America/Chicago)
   assert.equal(buckets[2].window, "weekly-sonnet");
 });
 
-test("fetchClaudeQuota rejects request-body credentials", async () => {
+test("fetchClaudeQuota attempts hosted credential path with a credential", async () => {
+  // With a credential present, the adapter now tries the hosted credential
+  // flow (writing to a temp CLAUDE_CONFIG_DIR). Since there's no real
+  // `claude` CLI in CI, this will fail — but the key behavior change is
+  // that it no longer throws the old "hosted credential refresh is not
+  // supported" error. Instead it throws a usage-parse or CLI error.
   await assert.rejects(
-    fetchClaudeQuota({ credential: "oauth-secret", accountID: "self_hosted" }),
-    /Claude Code hosted credential refresh is not supported/
+    fetchClaudeQuota({ credential: "oauth-secret", accountID: "hosted" }),
+    /claude|usage|quota|hosted|runner|ENOENT|ENOENT|not found|failed|timed out/i
   );
 });

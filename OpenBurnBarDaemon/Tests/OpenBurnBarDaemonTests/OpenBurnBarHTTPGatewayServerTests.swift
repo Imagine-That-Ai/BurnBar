@@ -241,6 +241,146 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
     }
 
+    func testGatewayDoesNotDowngradeAcrossCapabilityClassesDuringFailover() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 429,
+            body: #"{"error":{"message":"rate limited"}}"#
+        )
+
+        let harness = try GatewayHarness(
+            catalog: capabilityClassGatewayCatalog(),
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+        )
+        try await configureCapabilityClassProviders(harness: harness)
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"shared-code-model","messages":[{"role":"user","content":"hello"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 503)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("downgrade is disabled"))
+
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.count, 1, "Gateway must not jump to a lower capability class after a retryable failure.")
+    }
+
+    func testGatewayKeepsOriginalFailureForNonFailoverErrorsEvenWhenLowerTierExists() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 400,
+            body: #"{"error":{"message":"invalid request payload"}}"#
+        )
+
+        let harness = try GatewayHarness(
+            catalog: capabilityClassGatewayCatalog(),
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+        )
+        try await configureCapabilityClassProviders(harness: harness)
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"shared-code-model","messages":[{"role":"user","content":"hello"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 502)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("routing failed"))
+        XCTAssertFalse(bodyText.localizedCaseInsensitiveContains("downgrade is disabled"))
+        XCTAssertEqual(
+            GatewayUpstreamURLProtocol.recordedRequests().count,
+            1,
+            "Gateway should surface the original fatal provider error instead of reporting downgrade blocking."
+        )
+    }
+
+    func testGatewayAnthropicDoesNotDowngradeAcrossCapabilityClassesDuringFailover() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 429,
+            body: #"{"type":"error","error":{"type":"rate_limit_error","message":"quota exhausted"}}"#
+        )
+
+        let harness = try GatewayHarness(
+            catalog: anthropicCapabilityClassGatewayCatalog(),
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        try await configureAnthropicCapabilityClassProviders(harness: harness)
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"shared-claude-model","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 503)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("downgrade is disabled"))
+        XCTAssertEqual(
+            GatewayUpstreamURLProtocol.recordedRequests().count,
+            1,
+            "Anthropic gateway must stay in the selected capability class when primary quota is exhausted."
+        )
+    }
+
+    func testGatewayAnthropicKeepsOriginalFailureForNonFailoverErrors() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 400,
+            body: #"{"type":"error","error":{"type":"invalid_request_error","message":"invalid request payload"}}"#
+        )
+
+        let harness = try GatewayHarness(
+            catalog: anthropicCapabilityClassGatewayCatalog(),
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        try await configureAnthropicCapabilityClassProviders(harness: harness)
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"shared-claude-model","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 502)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("routing failed"))
+        XCTAssertFalse(bodyText.localizedCaseInsensitiveContains("downgrade is disabled"))
+        XCTAssertEqual(
+            GatewayUpstreamURLProtocol.recordedRequests().count,
+            1,
+            "Anthropic gateway should return the original fatal provider error without triggering downgrade messaging."
+        )
+    }
+
     func testGatewayRoutesOllamaCloudThroughNativeAPIAndFailsOverSlots() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
@@ -678,6 +818,160 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(slots.first(where: { $0.slotID == "backup" })?.status, .ready, clientName)
     }
 
+    private func capabilityClassGatewayCatalog() -> BurnBarCatalog {
+        let pro = BurnBarCatalogModel(
+            id: "alpha-shared-pro",
+            displayName: "Shared Pro",
+            visibility: .public,
+            aliases: ["shared-code-model"],
+            pricing: BurnBarModelPricing(inputPerMToken: 12, outputPerMToken: 24, cacheReadPerMToken: 1),
+            capabilityClassID: "openai:shared:pro",
+            capabilityClassRank: 100
+        )
+        let base = BurnBarCatalogModel(
+            id: "beta-shared-base",
+            displayName: "Shared Base",
+            visibility: .public,
+            aliases: ["shared-code-model"],
+            pricing: BurnBarModelPricing(inputPerMToken: 1, outputPerMToken: 2, cacheReadPerMToken: 0.1),
+            capabilityClassID: "openai:shared:base",
+            capabilityClassRank: 10
+        )
+        return BurnBarCatalog(
+            schemaVersion: 1,
+            providers: [
+                BurnBarCatalogProvider(
+                    id: "alpha",
+                    displayName: "Alpha",
+                    baseURL: "https://gateway-upstream.test/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [pro]
+                ),
+                BurnBarCatalogProvider(
+                    id: "beta",
+                    displayName: "Beta",
+                    baseURL: "https://gateway-upstream.test/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [base]
+                )
+            ]
+        )
+    }
+
+    private func anthropicCapabilityClassGatewayCatalog() -> BurnBarCatalog {
+        let pro = BurnBarCatalogModel(
+            id: "anth-shared-pro",
+            displayName: "Shared Claude Pro",
+            visibility: .public,
+            aliases: ["shared-claude-model"],
+            pricing: BurnBarModelPricing(inputPerMToken: 15, outputPerMToken: 75, cacheReadPerMToken: 1),
+            capabilityClassID: "anthropic:shared:pro",
+            capabilityClassRank: 100
+        )
+        let base = BurnBarCatalogModel(
+            id: "anth-shared-base",
+            displayName: "Shared Claude Base",
+            visibility: .public,
+            aliases: ["shared-claude-model"],
+            pricing: BurnBarModelPricing(inputPerMToken: 3, outputPerMToken: 15, cacheReadPerMToken: 0.5),
+            capabilityClassID: "anthropic:shared:base",
+            capabilityClassRank: 10
+        )
+        return BurnBarCatalog(
+            schemaVersion: 1,
+            providers: [
+                BurnBarCatalogProvider(
+                    id: "anth-alpha",
+                    displayName: "Anth Alpha",
+                    baseURL: "https://gateway-upstream.test/anthropic/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [pro],
+                    formatFamily: .anthropic
+                ),
+                BurnBarCatalogProvider(
+                    id: "anth-beta",
+                    displayName: "Anth Beta",
+                    baseURL: "https://gateway-upstream.test/anthropic/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [base],
+                    formatFamily: .anthropic
+                )
+            ]
+        )
+    }
+
+    private func configureCapabilityClassProviders(harness: GatewayHarness) async throws {
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "alpha",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["alpha-shared-pro"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "alpha",
+            slotID: "primary",
+            label: "Alpha Pro",
+            apiKey: "alpha-key"
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "beta",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["beta-shared-base"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "beta",
+            slotID: "primary",
+            label: "Beta Base",
+            apiKey: "beta-key"
+        )
+        try await harness.configStore.setRouterMode(.intelligentModelRouter)
+    }
+
+    private func configureAnthropicCapabilityClassProviders(harness: GatewayHarness) async throws {
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anth-alpha",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/anthropic/v1",
+                preferredModelIDs: ["anth-shared-pro"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "anth-alpha",
+            slotID: "primary",
+            label: "Anth Alpha Pro",
+            apiKey: "sk-ant-alpha-key"
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anth-beta",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/anthropic/v1",
+                preferredModelIDs: ["anth-shared-base"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "anth-beta",
+            slotID: "primary",
+            label: "Anth Beta Base",
+            apiKey: "sk-ant-beta-key"
+        )
+        try await harness.configStore.setRouterMode(.intelligentModelRouter)
+    }
+
     private func sendGatewayRequest(
         port: Int,
         method: String,
@@ -789,6 +1083,7 @@ private final class GatewayHarness {
     init(
         authToken: String? = nil,
         rateLimit: BurnBarRateLimitConfiguration? = nil,
+        catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog,
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor()
     ) throws {
@@ -800,7 +1095,7 @@ private final class GatewayHarness {
 
         self.configStore = BurnBarConfigStore(
             fileURL: tempDirectory.appendingPathComponent("provider-config.json"),
-            catalog: BurnBarCatalogLoader.bundledCatalog,
+            catalog: catalog,
             secretStore: BurnBarInMemorySecretStore(),
             logger: BurnBarDaemonLogger(category: "gateway-tests")
         )

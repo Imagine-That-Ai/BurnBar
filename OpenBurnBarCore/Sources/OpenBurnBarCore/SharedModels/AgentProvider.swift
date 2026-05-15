@@ -69,6 +69,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .minimax,
         .zai,
         .openAI,
+        .kimi,
     ]
 
     /// A stable, lowercased, space-stripped token for persisting provider identifiers.
@@ -87,6 +88,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .codex
         case .openCode:
             return .openCode
+        case .kimi:
+            return .kimi
         default:
             return ProviderID(rawValue: persistedToken)
         }

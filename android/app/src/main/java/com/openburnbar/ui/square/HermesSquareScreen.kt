@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
@@ -102,10 +103,14 @@ fun HermesSquareScreen(
         pinnedPrefs.edit().putString(PinnedAgentGridConfig.SHARED_PREFS_KEY, next.toJsonString()).apply()
     }
 
+    val flags = remember(context) { com.openburnbar.data.square.HermesSquareFeatureFlags.shared(context) }
     var query by remember { mutableStateOf("") }
     var showDiscover by remember { mutableStateOf(false) }
     var showSubscriptions by remember { mutableStateOf(false) }
     var showBrandZoneURI by remember { mutableStateOf<String?>(null) }
+    var showFanOut by remember { mutableStateOf(false) }
+    var showVoice by remember { mutableStateOf(false) }
+    var voiceBanner by remember { mutableStateOf<AndroidVoiceIntent?>(null) }
 
     // Phase A: hydrate availability for built-ins. (Mac-relay runtimes
     // remain UNKNOWN until the Android mission host publishes.)
@@ -144,6 +149,34 @@ fun HermesSquareScreen(
                     onQueryChange = { query = it },
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
+            }
+
+            if (flags.phaseB && query.isBlank()) {
+                item {
+                    PhaseBFanOutEntry(
+                        onTap = { showFanOut = true },
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+            }
+
+            if (flags.phaseD && query.isBlank()) {
+                item {
+                    PhaseDVoiceEntry(
+                        onTap = { showVoice = true },
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+            }
+
+            voiceBanner?.let { intent ->
+                item {
+                    VoiceIntentBanner(
+                        intent = intent,
+                        onDismiss = { voiceBanner = null },
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
             }
 
             if (query.isNotBlank()) {
@@ -258,6 +291,28 @@ fun HermesSquareScreen(
         )
     }
 
+    if (showFanOut) {
+        HermesSquareFanOutSheet(
+            registry = registry,
+            onDispatched = {
+                showFanOut = false
+            },
+            onDismiss = { showFanOut = false }
+        )
+    }
+
+    if (showVoice) {
+        HermesSquareVoiceSheet(
+            registry = registry,
+            currentThreadAgentURI = null,
+            onIntent = { intent ->
+                voiceBanner = intent
+                showVoice = false
+            },
+            onDismiss = { showVoice = false }
+        )
+    }
+
     if (showSubscriptions) {
         HermesSquareSubscriptionsSheet(onDismiss = { showSubscriptions = false })
     }
@@ -268,6 +323,153 @@ fun HermesSquareScreen(
             HermesSquareBrandZoneSheet(
                 identity = identity,
                 onDismiss = { showBrandZoneURI = null }
+            )
+        }
+    }
+}
+
+// MARK: - Phase D voice entry
+
+@Composable
+private fun PhaseDVoiceEntry(
+    onTap: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
+        tonalElevation = 0.5.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .clickableUnit(onClick = onTap)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Mic,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Voice command",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    "Hold to talk — \"open Claude\", \"what's important?\", or dispatch a brief.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun VoiceIntentBanner(
+    intent: AndroidVoiceIntent,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        tonalElevation = 1.dp,
+        modifier = modifier.fillMaxWidth().clickableUnit(onClick = onDismiss)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Text(
+                intent.displayLabel,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            val sub = when (intent) {
+                is AndroidVoiceIntent.OpenAgent -> intent.agentURI
+                is AndroidVoiceIntent.Search -> "“${intent.query}”"
+                is AndroidVoiceIntent.DispatchMission ->
+                    if (intent.runtimeHint != null) "→ ${intent.runtimeHint}: ${intent.prompt}"
+                    else intent.prompt
+                is AndroidVoiceIntent.SendMessageToCurrentThread -> intent.text
+                AndroidVoiceIntent.AmbientBriefing -> "Asking Hermes for the brief…"
+                is AndroidVoiceIntent.FallbackToHermes -> intent.text.ifBlank { "Heard nothing — try again." }
+            }
+            Text(
+                sub,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+// MARK: - Phase B fan-out entry
+
+@Composable
+private fun PhaseBFanOutEntry(
+    onTap: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+        tonalElevation = 0.5.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .clickableUnit(onClick = onTap)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Bolt,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Fan-out to multiple runtimes",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    "Dispatch the same brief to Claude + Codex + Hermes in parallel.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
             )
         }
     }

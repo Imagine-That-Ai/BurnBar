@@ -217,6 +217,24 @@ public struct SwitcherCLIProfileMetadata: Codable, Equatable, Sendable {
     /// Verified account identity for this CLI profile (for example, "name • email").
     public let accountDescription: String?
 
+    /// Canonical provider ID for runtime failover policy (for example: `openai`, `anthropic`).
+    public let providerID: ProviderID?
+
+    /// Canonical runtime account reference backing this profile.
+    public let runtimeAccountID: String?
+
+    /// Optional subscription tier marker used to avoid silent downgrades.
+    public let subscriptionTierID: String?
+
+    /// Capability class the profile is pinned to (for example, `openai:gpt-5.5:pro`).
+    public let modelCapabilityClassID: String?
+
+    /// Harness bindings this profile is allowed to serve (for example, `codex`, `droid`, `forge`).
+    public let linkedHarnessIDs: [String]
+
+    /// Excludes this profile from automatic failover while keeping it launchable manually.
+    public let neverAutoSwitch: Bool
+
     /// Most recent time this profile hit quota exhaustion.
     public let lastQuotaExhaustedAt: Date?
 
@@ -236,6 +254,12 @@ public struct SwitcherCLIProfileMetadata: Codable, Equatable, Sendable {
         displayLabel: String? = nil,
         configDirectory: String? = nil,
         accountDescription: String? = nil,
+        providerID: ProviderID? = nil,
+        runtimeAccountID: String? = nil,
+        subscriptionTierID: String? = nil,
+        modelCapabilityClassID: String? = nil,
+        linkedHarnessIDs: [String] = [],
+        neverAutoSwitch: Bool = false,
         lastQuotaExhaustedAt: Date? = nil,
         exhaustedUntil: Date? = nil,
         lastQuotaExhaustionDetail: String? = nil,
@@ -247,6 +271,12 @@ public struct SwitcherCLIProfileMetadata: Codable, Equatable, Sendable {
         self.displayLabel = displayLabel
         self.configDirectory = configDirectory
         self.accountDescription = accountDescription
+        self.providerID = providerID
+        self.runtimeAccountID = runtimeAccountID
+        self.subscriptionTierID = subscriptionTierID
+        self.modelCapabilityClassID = modelCapabilityClassID
+        self.linkedHarnessIDs = linkedHarnessIDs
+        self.neverAutoSwitch = neverAutoSwitch
         self.lastQuotaExhaustedAt = lastQuotaExhaustedAt
         self.exhaustedUntil = exhaustedUntil
         self.lastQuotaExhaustionDetail = lastQuotaExhaustionDetail
@@ -260,6 +290,12 @@ public struct SwitcherCLIProfileMetadata: Codable, Equatable, Sendable {
         case displayLabel
         case configDirectory
         case accountDescription
+        case providerID
+        case runtimeAccountID
+        case subscriptionTierID
+        case modelCapabilityClassID
+        case linkedHarnessIDs
+        case neverAutoSwitch
         case lastQuotaExhaustedAt
         case exhaustedUntil
         case lastQuotaExhaustionDetail
@@ -274,6 +310,12 @@ public struct SwitcherCLIProfileMetadata: Codable, Equatable, Sendable {
         self.displayLabel = try container.decodeIfPresent(String.self, forKey: .displayLabel)
         self.configDirectory = try container.decodeIfPresent(String.self, forKey: .configDirectory)
         self.accountDescription = try container.decodeIfPresent(String.self, forKey: .accountDescription)
+        self.providerID = try container.decodeIfPresent(ProviderID.self, forKey: .providerID)
+        self.runtimeAccountID = try container.decodeIfPresent(String.self, forKey: .runtimeAccountID)
+        self.subscriptionTierID = try container.decodeIfPresent(String.self, forKey: .subscriptionTierID)
+        self.modelCapabilityClassID = try container.decodeIfPresent(String.self, forKey: .modelCapabilityClassID)
+        self.linkedHarnessIDs = try container.decodeIfPresent([String].self, forKey: .linkedHarnessIDs) ?? []
+        self.neverAutoSwitch = try container.decodeIfPresent(Bool.self, forKey: .neverAutoSwitch) ?? false
         self.lastQuotaExhaustedAt = try container.decodeIfPresent(Date.self, forKey: .lastQuotaExhaustedAt)
         self.exhaustedUntil = try container.decodeIfPresent(Date.self, forKey: .exhaustedUntil)
         self.lastQuotaExhaustionDetail = try container.decodeIfPresent(String.self, forKey: .lastQuotaExhaustionDetail)

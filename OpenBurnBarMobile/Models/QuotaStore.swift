@@ -65,6 +65,35 @@ final class QuotaStore {
         }
     }
 
+    /// On-demand refresh for a specific provider account. Pro users can
+    /// trigger this at any time to get fresh quota numbers regardless of
+    /// staleness. The account must be cloud-refreshable or server-private.
+    func refreshAccountQuota(accountID: String) async throws -> ProviderQuotaSnapshot {
+        let refreshed = try await functions.refreshProviderAccountQuota(accountID: accountID)
+        let merged = snapshots
+            .filter { $0.accountID != refreshed.accountID || $0.sourceID != refreshed.sourceID }
+            + [refreshed]
+        applySnapshots(merged)
+        return refreshed
+    }
+
+    /// On-demand refresh for all accounts of a given provider. Pro users
+    /// can trigger this at any time to get fresh quota numbers.
+    func refreshAllAccounts(for providerID: ProviderID) async {
+        let providerAccounts = accounts.filter {
+            $0.providerID == providerID
+            && $0.status != .deleted
+            && ($0.storageScope == .cloudRefreshable || $0.storageScope == .serverPrivate)
+        }
+        for account in providerAccounts {
+            do {
+                _ = try await refreshAccountQuota(accountID: account.id)
+            } catch {
+                quotaStoreLogger.warning("On-demand refresh failed for \(account.providerID.rawValue, privacy: .public)/\(account.id, privacy: .private): \(error.localizedDescription)")
+            }
+        }
+    }
+
     /// Re-fetches the latest snapshots; used by pull-to-refresh.
     func refresh() async {
         if AppStoreScreenshotMode.isEnabled {

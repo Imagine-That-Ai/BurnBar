@@ -76,6 +76,22 @@ struct PulseView: View {
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .staggeredEntrance(delay: 0.10)
 
+                    // Pro vocabulary — forecast moment. Free users see a
+                    // foil band hinting at the extended cloud forecast.
+                    if shouldShowForecastBand {
+                        MembershipBand(
+                            title: "30-day forecast, on every device",
+                            detail: "Cloud syncs your full burn history — see your spend curve a month out, anywhere you sign in.",
+                            variant: .upsell,
+                            icon: "chart.line.uptrend.xyaxis",
+                            ctaLabel: "UNLOCK"
+                        ) {
+                            showCloudStore = true
+                        }
+                        .padding(.horizontal, AuroraDesign.Layout.cardInset)
+                        .staggeredEntrance(delay: 0.12)
+                    }
+
                     QuotaPulseCard(
                         snapshots: quotaStore.snapshots,
                         onSelect: { providerKey in
@@ -200,6 +216,15 @@ struct PulseView: View {
     private var shouldShowCloudBanner: Bool {
         guard let cloudStore else { return false }
         if cloudBannerDismissed { return false }
+        return !cloudStore.isActive
+    }
+
+    /// The inline forecast band shows for free users only. It complements
+    /// the top whisper without duplicating the same CTA — the whisper sells
+    /// Cloud as a whole; the band sells one specific moment (longer
+    /// forecast horizons).
+    private var shouldShowForecastBand: Bool {
+        guard let cloudStore else { return false }
         return !cloudStore.isActive
     }
 

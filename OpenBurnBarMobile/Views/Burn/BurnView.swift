@@ -83,7 +83,10 @@ struct BurnView: View {
                     QuotaDetailSheet(
                         provider: providerKey,
                         snapshots: quotaStore.sortedSnapshots(for: providerKey),
-                        routingState: quotaStore.routingState(for: ProviderID(rawValue: providerKey))
+                        routingState: quotaStore.routingState(for: ProviderID(rawValue: providerKey)),
+                        onRefresh: {
+                            await quotaStore.refreshAllAccounts(for: ProviderID(rawValue: providerKey))
+                        }
                     )
                 }
                 .presentationDetents([.large, .medium])

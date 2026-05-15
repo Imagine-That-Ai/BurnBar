@@ -27,10 +27,28 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Intent
+import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.openburnbar.data.stores.CloudSyncHealthStore
 import com.openburnbar.data.stores.DevicesStore
+import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
 import com.openburnbar.data.stores.UserStore
+import com.openburnbar.ui.pro.MembershipBand
+import com.openburnbar.ui.pro.MembershipBandVariant
+import com.openburnbar.ui.pro.MercuryCrest
+import com.openburnbar.ui.pro.MercuryCrestSize
+import com.openburnbar.ui.pro.ProLayout
+import com.openburnbar.ui.pro.ProPalette
+import com.openburnbar.ui.pro.ProTypography
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import java.text.SimpleDateFormat
+import java.util.Locale
 import com.openburnbar.menubar.SuppressionStore
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.components.AuroraSecondaryButton
@@ -49,7 +67,8 @@ private enum class YouSubScreen { Root, SmartDisplays, MenuBarPrefs, ChatTiles, 
 fun YouView(
     userStore: UserStore = viewModel(),
     syncStore: CloudSyncHealthStore = viewModel(),
-    devicesStore: DevicesStore = viewModel()
+    devicesStore: DevicesStore = viewModel(),
+    subscriptionStore: HostedQuotaSubscriptionStore = viewModel()
 ) {
     var subScreen by rememberSaveable { mutableStateOf(YouSubScreen.Root) }
 
@@ -63,6 +82,7 @@ fun YouView(
                 userStore = userStore,
                 syncStore = syncStore,
                 devicesStore = devicesStore,
+                subscriptionStore = subscriptionStore,
                 onOpenSmartDisplays = { subScreen = YouSubScreen.SmartDisplays },
                 onOpenMenuBarPrefs = { subScreen = YouSubScreen.MenuBarPrefs },
                 onOpenChatTiles = { subScreen = YouSubScreen.ChatTiles },
@@ -84,19 +104,34 @@ private fun YouRoot(
     userStore: UserStore,
     syncStore: CloudSyncHealthStore,
     devicesStore: DevicesStore,
+    subscriptionStore: HostedQuotaSubscriptionStore,
     onOpenSmartDisplays: () -> Unit,
     onOpenMenuBarPrefs: () -> Unit,
     onOpenChatTiles: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val isDark = isSystemInDarkTheme()
+    val context = LocalContext.current
     val user by userStore.user.collectAsState()
     val syncHealth by syncStore.health.collectAsState()
     val devices by devicesStore.devices.collectAsState()
+    val isCloudMember by subscriptionStore.isActive.collectAsState()
+    val cloudPurchaseDate by subscriptionStore.purchaseDate.collectAsState()
+    val cloudExpirationDate by subscriptionStore.expirationDate.collectAsState()
 
     LaunchedEffect(Unit) {
+        subscriptionStore.initialize(context)
+        subscriptionStore.load()
         syncStore.refresh()
         devicesStore.load()
+    }
+
+    val openCloud: () -> Unit = {
+        runCatching {
+            val intent = Intent(Intent.ACTION_VIEW, "burnbar://cloud".toUri())
+                .setPackage(context.packageName)
+            context.startActivity(intent)
+        }
     }
 
     Column(
@@ -116,6 +151,24 @@ private fun YouRoot(
             syncHealth = syncHealth,
             connectionsCount = devices.count { it.trustState == com.openburnbar.data.stores.DeviceTrustState.TRUSTED }
         )
+
+        // Pro vocabulary — Cloud membership row. Members see a MercuryCrest
+        // certificate; free users see a foil MembershipBand inviting them.
+        if (isCloudMember) {
+            CloudMemberCrestRow(
+                purchaseDateMs = cloudPurchaseDate,
+                expirationDateMs = cloudExpirationDate,
+                onTap = openCloud
+            )
+        } else {
+            MembershipBand(
+                title = "OpenBurnBar Cloud",
+                detail = "Your agents, unbound — hosted refresh, backup, Hermes anywhere.",
+                variant = MembershipBandVariant.Upsell,
+                ctaLabel = "BECOME A MEMBER",
+                onClick = openCloud
+            )
+        }
 
         SettingsRow(icon = Icons.Filled.Cloud, title = "Cloud Sync", subtitle = syncHealth.label) {}
 
@@ -257,5 +310,62 @@ private fun SettingsRow(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
             )
         }
+    }
+}
+
+@Composable
+private fun CloudMemberCrestRow(
+    purchaseDateMs: Long?,
+    expirationDateMs: Long?,
+    onTap: () -> Unit
+) {
+    val monthYear = SimpleDateFormat("MMM yyyy", Locale.getDefault())
+    val dayMonth = SimpleDateFormat("MMM d", Locale.getDefault())
+    val meta = when {
+        purchaseDateMs != null -> "Member since ${monthYear.format(java.util.Date(purchaseDateMs))}"
+        expirationDateMs != null -> "Through ${dayMonth.format(java.util.Date(expirationDateMs))}"
+        else -> "Active"
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 10.dp,
+                shape = RoundedCornerShape(ProLayout.cardRadiusDp.dp),
+                ambientColor = ProPalette.aureate,
+                spotColor = ProPalette.aureate
+            )
+            .clip(RoundedCornerShape(ProLayout.cardRadiusDp.dp))
+            .background(ProPalette.obsidian, RoundedCornerShape(ProLayout.cardRadiusDp.dp))
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(ProPalette.aureateStrokeStops),
+                shape = RoundedCornerShape(ProLayout.cardRadiusDp.dp)
+            )
+            .clickable(onClick = onTap)
+            .padding(horizontal = 12.dp, vertical = 14.dp)
+    ) {
+        MercuryCrest(size = MercuryCrestSize.Large, shimmer = true)
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Cloud Member",
+                style = ProTypography.titleSerif,
+                color = ProPalette.mercury
+            )
+            Text(
+                meta,
+                fontSize = 12.sp,
+                color = ProPalette.mercury.copy(alpha = 0.7f)
+            )
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.NavigateNext,
+            null,
+            tint = ProPalette.aureate,
+            modifier = Modifier.size(18.dp)
+        )
     }
 }

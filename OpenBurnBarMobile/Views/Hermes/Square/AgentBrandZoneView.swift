@@ -11,7 +11,18 @@ struct AgentBrandZoneView: View {
     let identity: AgentIdentity
     @Bindable var registry: AgentIdentityRegistry
 
+    @Environment(\.motionStore) private var motionStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private var accent: Color { Color(hex: identity.paletteHex) }
+
+    /// How much the hero avatar drifts at full device tilt. Subtle — we
+    /// want the parallax to be felt, not seen.
+    private let heroParallaxIntensity: CGFloat = 10
+
+    /// The gradient backdrop moves opposite to the avatar at half the
+    /// intensity for a layered, depth-of-field feel.
+    private let backdropParallaxIntensity: CGFloat = 6
 
     var body: some View {
         ScrollView {
@@ -29,6 +40,11 @@ struct AgentBrandZoneView: View {
         .background(EmberSurfaceBackground().ignoresSafeArea())
         .navigationTitle(identity.displayName)
         .navigationBarTitleDisplayMode(.inline)
+        // Acquire / release the motion stream while this brand zone is
+        // on-screen so the gyroscope only runs when we're actually
+        // rendering the parallax.
+        .onAppear { motionStore.acquire(reduceMotion: reduceMotion) }
+        .onDisappear { motionStore.release() }
     }
 
     // MARK: Hero
@@ -36,6 +52,20 @@ struct AgentBrandZoneView: View {
     private var hero: some View {
         HStack(spacing: 14) {
             ZStack {
+                // Backdrop gradient ring drifts opposite to the avatar
+                // for a depth-of-field layered feel. Honors Reduce
+                // Motion via the modifier.
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [accent.opacity(0.32), accent.opacity(0.06), .clear],
+                            center: .center,
+                            startRadius: 4,
+                            endRadius: 56
+                        )
+                    )
+                    .frame(width: 92, height: 92)
+                    .offset(parallaxOffset(intensity: -backdropParallaxIntensity))
                 Circle()
                     .fill(
                         LinearGradient(
@@ -45,10 +75,16 @@ struct AgentBrandZoneView: View {
                         )
                     )
                     .frame(width: 64, height: 64)
+                    .offset(parallaxOffset(intensity: heroParallaxIntensity))
                 Text(identity.glyph)
                     .font(.system(size: 30, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
+                    // The glyph drifts slightly more than the disc so it
+                    // reads as foreground — classic CSS-parallax depth
+                    // cue translated to SwiftUI.
+                    .offset(parallaxOffset(intensity: heroParallaxIntensity * 1.25))
             }
+            .frame(width: 92, height: 92)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(identity.displayName)
@@ -86,6 +122,16 @@ struct AgentBrandZoneView: View {
         case .offline:   return DesignSystemColors.error
         case .unknown:   return DesignSystemColors.textMuted
         }
+    }
+
+    /// CGSize derived from the shared `MotionStore`'s tilt. Reduce Motion
+    /// zeroes this out automatically.
+    private func parallaxOffset(intensity: CGFloat) -> CGSize {
+        guard !reduceMotion else { return .zero }
+        return CGSize(
+            width: motionStore.tilt.width * intensity,
+            height: motionStore.tilt.height * intensity
+        )
     }
 
     // MARK: Quick actions

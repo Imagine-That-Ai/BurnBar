@@ -169,6 +169,9 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
     public let resolvedModelID: String
     public let apiKey: String
     public let pricing: BurnBarModelPricing
+    /// Same-tier failover class. Retry attempts must stay inside this class
+    /// unless explicit downgrade policy is enabled.
+    public let modelCapabilityClassID: String
     /// Wire-format family this route serves. Determined by the upstream
     /// provider's catalog declaration. The gateway enforces that an incoming
     /// request only matches routes in the same family — Anthropic-shape
@@ -186,6 +189,7 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
         resolvedModelID: String,
         apiKey: String,
         pricing: BurnBarModelPricing,
+        modelCapabilityClassID: String? = nil,
         formatFamily: BurnBarProviderFormatFamily = .openaiCompat
     ) {
         self.providerID = providerID
@@ -197,7 +201,14 @@ public struct BurnBarProviderRoute: Hashable, Sendable {
         self.resolvedModelID = resolvedModelID
         self.apiKey = apiKey
         self.pricing = pricing
+        self.modelCapabilityClassID = Self.normalizedCapabilityClassID(
+            modelCapabilityClassID ?? resolvedModelID
+        )
         self.formatFamily = formatFamily
+    }
+
+    private static func normalizedCapabilityClassID(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }
 
@@ -244,6 +255,7 @@ public struct BurnBarProviderRouter: Sendable {
         preferredProviderID: String? = nil,
         excludedRouteKeys: Set<String> = [],
         requestedFormatFamily: BurnBarProviderFormatFamily? = nil,
+        requiredCapabilityClassID: String? = nil,
         routerMode: ProviderRouterMode? = nil,
         taskCategory: ProviderRoutingTaskCategory = .unknown,
         benchmarkSnapshots: [ProviderModelBenchmarkSnapshot] = [],
@@ -257,6 +269,7 @@ public struct BurnBarProviderRouter: Sendable {
             preferredProviderID: preferredProviderID,
             excludedRouteKeys: excludedRouteKeys,
             requestedFormatFamily: requestedFormatFamily,
+            requiredCapabilityClassID: requiredCapabilityClassID,
             routerMode: routerMode,
             taskCategory: taskCategory,
             benchmarkSnapshots: benchmarkSnapshots,
@@ -284,6 +297,7 @@ public struct BurnBarProviderRouter: Sendable {
         preferredProviderID: String? = nil,
         excludedRouteKeys: Set<String> = [],
         requestedFormatFamily: BurnBarProviderFormatFamily? = nil,
+        requiredCapabilityClassID: String? = nil,
         routerMode: ProviderRouterMode? = nil
     ) async throws -> [BurnBarProviderRoute] {
         let configurations = try await configStore.resolvedConfigurations()
@@ -301,6 +315,7 @@ public struct BurnBarProviderRouter: Sendable {
             preferredProviderID: effectivePreferredProviderID,
             excludedRouteKeys: excludedRouteKeys,
             requestedFormatFamily: requestedFormatFamily,
+            requiredCapabilityClassID: requiredCapabilityClassID,
             configurations: configurations,
             strictPreferredProvider: preferredProviderID != nil
         )
@@ -311,6 +326,7 @@ public struct BurnBarProviderRouter: Sendable {
         preferredProviderID: String?,
         excludedRouteKeys: Set<String>,
         requestedFormatFamily: BurnBarProviderFormatFamily?,
+        requiredCapabilityClassID: String?,
         configurations: [BurnBarResolvedProviderConfiguration],
         strictPreferredProvider: Bool = true
     ) throws -> [BurnBarProviderRoute] {
@@ -358,11 +374,21 @@ public struct BurnBarProviderRouter: Sendable {
         // Anthropic-shape endpoint (/v1/messages) we only consider Anthropic
         // family upstreams, and vice versa. This is the heart of "two
         // highways" routing — same-format failover, never cross-format.
-        let routes: [BurnBarProviderRoute]
+        let formatScopedRoutes: [BurnBarProviderRoute]
         if let requestedFormatFamily {
-            routes = allRoutes.filter { $0.formatFamily == requestedFormatFamily }
+            formatScopedRoutes = allRoutes.filter { $0.formatFamily == requestedFormatFamily }
         } else {
-            routes = allRoutes
+            formatScopedRoutes = allRoutes
+        }
+
+        let routes: [BurnBarProviderRoute]
+        if let requiredCapabilityClassID {
+            let normalizedClassID = requiredCapabilityClassID
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            routes = formatScopedRoutes.filter { $0.modelCapabilityClassID == normalizedClassID }
+        } else {
+            routes = formatScopedRoutes
         }
 
         if let route = routes.first {
@@ -503,6 +529,7 @@ public struct BurnBarProviderRouter: Sendable {
                             resolvedModelID: resolvedModel.id,
                             apiKey: key,
                             pricing: resolvedModel.pricing,
+                            modelCapabilityClassID: resolvedModel.capabilityClassID,
                             formatFamily: formatFamily
                         )
                     )
@@ -520,6 +547,7 @@ public struct BurnBarProviderRouter: Sendable {
                         resolvedModelID: resolvedModel.id,
                         apiKey: apiKey,
                         pricing: resolvedModel.pricing,
+                        modelCapabilityClassID: resolvedModel.capabilityClassID,
                         formatFamily: formatFamily
                     )
                 )
@@ -572,7 +600,9 @@ public struct BurnBarProviderRouter: Sendable {
                 visibility: .hidden,
                 aliases: [modelName],
                 matchers: [],
-                pricing: matchedModel.pricing
+                pricing: matchedModel.pricing,
+                capabilityClassID: matchedModel.capabilityClassID,
+                capabilityClassRank: matchedModel.capabilityClassRank
             )
         }
 
@@ -721,6 +751,7 @@ extension BurnBarProviderRouter {
         preferredProviderID: String? = nil,
         excludedRouteKeys: Set<String> = [],
         requestedFormatFamily: BurnBarProviderFormatFamily? = nil,
+        requiredCapabilityClassID: String? = nil,
         routerMode: ProviderRouterMode? = nil,
         taskCategory: ProviderRoutingTaskCategory = .unknown,
         benchmarkSnapshots: [ProviderModelBenchmarkSnapshot] = [],
@@ -741,6 +772,7 @@ extension BurnBarProviderRouter {
             preferredProviderID: effectivePreferredProviderID,
             excludedRouteKeys: excludedRouteKeys,
             requestedFormatFamily: requestedFormatFamily,
+            requiredCapabilityClassID: requiredCapabilityClassID,
             configurations: configurations,
             strictPreferredProvider: preferredProviderID != nil
         )
@@ -820,7 +852,8 @@ extension BurnBarProviderRouter {
     public func scoreBreakdowns(
         modelName: String,
         preferredProviderID: String? = nil,
-        requestedFormatFamily: BurnBarProviderFormatFamily? = nil
+        requestedFormatFamily: BurnBarProviderFormatFamily? = nil,
+        requiredCapabilityClassID: String? = nil
     ) async throws -> [BurnBarRouteScoreBreakdown] {
         let configurations = try await configStore.resolvedConfigurations()
         let candidates = try candidateRoutes(
@@ -828,6 +861,7 @@ extension BurnBarProviderRouter {
             preferredProviderID: preferredProviderID,
             excludedRouteKeys: [],
             requestedFormatFamily: requestedFormatFamily,
+            requiredCapabilityClassID: requiredCapabilityClassID,
             configurations: configurations
         )
 

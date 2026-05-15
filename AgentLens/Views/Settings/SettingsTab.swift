@@ -8,6 +8,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case general
     case daemon
     case account
+    case cloud
     case providers
     case routingPools
     case alerts
@@ -23,6 +24,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: return "General"
         case .daemon: return "Daemon"
         case .account: return "Account"
+        case .cloud: return "Cloud"
         case .providers: return "Providers"
         case .routingPools: return "Routing pools"
         case .alerts: return "Alerts"
@@ -43,6 +45,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "Lifecycle, HTTP gateway, controller runtime"
         case .account:
             return "Sign-in, subscription, account actions"
+        case .cloud:
+            return "OpenBurnBar Cloud — hosted refresh, backup, Hermes anywhere"
         case .providers:
             return "Routed plans, accounts, CLI auth, log sources"
         case .routingPools:
@@ -65,6 +69,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: return "gearshape.fill"
         case .daemon: return "cpu.fill"
         case .account: return "person.crop.circle.fill"
+        case .cloud: return "sparkles"
         case .providers: return "externaldrive.connected.to.line.below"
         case .routingPools: return "point.3.connected.trianglepath.dotted"
         case .alerts: return "bell.fill"
@@ -80,6 +85,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .general: return DesignSystem.Colors.amber
         case .daemon: return DesignSystem.Colors.teal
         case .account: return DesignSystem.Colors.whimsy
+        case .cloud: return DesignSystem.Colors.hermesAureate
         case .providers: return DesignSystem.Colors.ember
         case .routingPools: return DesignSystem.Colors.hermesMercury
         case .alerts: return DesignSystem.Colors.blaze

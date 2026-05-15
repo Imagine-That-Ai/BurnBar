@@ -2440,8 +2440,25 @@ struct HermesMessageBubble: View {
                 toolCallsStrip
             }
 
+            // Hermes Square §6.6 — typed UI cards the agent emitted on
+            // this turn render inline above the tpsFooter. Host-drawn:
+            // the agent never touches our view tree; the envelope decoder
+            // enforces the 2 MB per-card budget.
+            if !message.cards.isEmpty {
+                cardsStrip
+            }
+
             tpsFooter
         }
+    }
+
+    private var cardsStrip: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(message.cards) { envelope in
+                CardEnvelopeView(envelope: envelope, agentAccent: DesignSystemColors.ember)
+            }
+        }
+        .padding(.top, 4)
     }
 
     // MARK: - Tool Calls Strip

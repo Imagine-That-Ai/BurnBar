@@ -19,11 +19,14 @@ import Foundation
 ///   - `.forge` — OpenAI Chat Completions shape (`/v1/chat/completions`).
 ///     Reads a Forge `[[providers]]` entry at `~/forge/.forge.toml`, matching
 ///     the VibeProxy provider shape Forge already supports locally.
+///   - `.droid` — Factory Droid custom-model override in
+///     `~/.factory/settings.local.json` (`customModels` entries).
 enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
     case claudeCode
     case codex
     case opencode
     case forge
+    case droid
 
     var id: String { rawValue }
 
@@ -33,6 +36,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
         case .codex: return "Codex CLI"
         case .opencode: return "OpenCode CLI"
         case .forge: return "Forge CLI"
+        case .droid: return "Droid CLI"
         }
     }
 
@@ -40,7 +44,7 @@ enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
     var poolDisplayName: String {
         switch self {
         case .claudeCode: return "Anthropic-family"
-        case .codex, .opencode, .forge: return "OpenAI-family"
+        case .codex, .opencode, .forge, .droid: return "OpenAI-family"
         }
     }
 }
@@ -164,6 +168,7 @@ struct RoutingClientWiring {
 
     private static let sentinelStart = "# openburnbar:routing — start"
     private static let sentinelEnd = "# openburnbar:routing — end"
+    private static let droidDefaultModels = ["gpt-5.5", "gpt-5", "gpt-5.4-nano"]
 
     /// Probe model used by `probe(target: .claudeCode, …)`. Mirrors
     /// `AnthropicCredentialProbe.defaultProbeModel` — keep in lockstep.
@@ -200,6 +205,8 @@ struct RoutingClientWiring {
             return try wireOpenCode(gateway: gateway)
         case .forge:
             return try wireForge(gateway: gateway)
+        case .droid:
+            return try wireDroid(gateway: gateway)
         }
     }
 
@@ -213,6 +220,8 @@ struct RoutingClientWiring {
             try unwireOpenCode()
         case .forge:
             try unwireForge()
+        case .droid:
+            try unwireDroid()
         }
     }
 
@@ -228,6 +237,8 @@ struct RoutingClientWiring {
             return home.appendingPathComponent(".config/opencode/opencode.json")
         case .forge:
             return home.appendingPathComponent("forge/.forge.toml")
+        case .droid:
+            return home.appendingPathComponent(".factory/settings.local.json")
         }
     }
 
@@ -246,6 +257,10 @@ struct RoutingClientWiring {
             return text.contains("\"OPENBURNBAR_WIRED\"") || text.contains(Self.sentinelStart)
         case .opencode:
             return text.contains("\"openburnbar\"") && text.contains("OpenBurnBar Gateway")
+        case .droid:
+            return text.contains("\"customModels\"")
+                && (text.localizedCaseInsensitiveContains("openburnbar:")
+                    || text.localizedCaseInsensitiveContains("OpenBurnBar "))
         case .codex, .forge:
             return text.contains(Self.sentinelStart)
         }
@@ -305,6 +320,15 @@ struct RoutingClientWiring {
             export OPENAI_BASE_URL=\(openAIBaseURL)
             export OPENAI_API_KEY=\(token)
             """
+        case .droid:
+            return """
+            # OpenBurnBar — wire Droid CLI through the Hydrant
+            # The config-file toggle writes customModels into
+            # ~/.factory/settings.local.json.
+            export OPENBURNBAR_GATEWAY_TOKEN=\(token)
+            export OPENAI_BASE_URL=\(openAIBaseURL)
+            export OPENAI_API_KEY=\(token)
+            """
         }
     }
 
@@ -351,7 +375,7 @@ struct RoutingClientWiring {
                 "max_tokens": 1,
                 "messages": [["role": "user", "content": "ping"]]
             ]
-        case .codex, .opencode, .forge:
+        case .codex, .opencode, .forge, .droid:
             probeModel = "gpt-5.4-nano"
             // OpenAI Chat Completions deprecated `max_tokens` for reasoning-
             // capable models in favor of `max_completion_tokens`. The
@@ -406,7 +430,7 @@ struct RoutingClientWiring {
         switch target {
         case .claudeCode:
             return base?.appending(path: "v1/messages")
-        case .codex, .opencode, .forge:
+        case .codex, .opencode, .forge, .droid:
             return base?.appending(path: "v1/chat/completions")
         }
     }
@@ -622,6 +646,70 @@ struct RoutingClientWiring {
         response_type = "OpenAI"
         \(Self.sentinelEnd)
         """
+    }
+
+    // MARK: - Droid (~/.factory/settings.local.json)
+
+    private func wireDroid(gateway: RoutingClientGateway) throws -> RoutingClientWiringChange {
+        let url = configURL(for: .droid)
+        var (root, backupURL) = try loadJSONObjectWithBackup(at: url)
+        var customModels = (root["customModels"] as? [[String: Any]]) ?? []
+        customModels.removeAll(where: isOpenBurnBarDroidModel)
+        let startIndex = customModels.count
+        customModels.append(contentsOf: Self.droidDefaultModels.enumerated().map { offset, model in
+            [
+                "model": model,
+                "id": "openburnbar:\(model)",
+                "index": startIndex + offset,
+                "baseUrl": "\(gateway.baseURL)/v1",
+                "apiKey": gateway.effectiveClientToken,
+                "displayName": "OpenBurnBar \(model)",
+                "maxOutputTokens": 8192,
+                "provider": "openai",
+            ] as [String: Any]
+        })
+        root["customModels"] = customModels
+        try writeJSONObject(root, to: url)
+        return RoutingClientWiringChange(
+            target: .droid,
+            configURL: url,
+            backupURL: backupURL,
+            appliedAt: now()
+        )
+    }
+
+    private func unwireDroid() throws {
+        let url = configURL(for: .droid)
+        guard fileManager.fileExists(atPath: url.path) else {
+            throw RoutingClientWiringError.notEnabled
+        }
+        var (root, _) = try loadJSONObjectWithBackup(at: url)
+        guard var customModels = root["customModels"] as? [[String: Any]],
+              customModels.contains(where: isOpenBurnBarDroidModel) else {
+            throw RoutingClientWiringError.notEnabled
+        }
+        customModels.removeAll(where: isOpenBurnBarDroidModel)
+        if customModels.isEmpty {
+            root.removeValue(forKey: "customModels")
+        } else {
+            root["customModels"] = customModels
+        }
+        if root.isEmpty {
+            try? fileManager.removeItem(at: url)
+        } else {
+            try writeJSONObject(root, to: url)
+        }
+    }
+
+    private func isOpenBurnBarDroidModel(_ entry: [String: Any]) -> Bool {
+        let provider = (entry["provider"] as? String)?.lowercased()
+        let id = (entry["id"] as? String)?.lowercased()
+        let displayName = (entry["displayName"] as? String)?.lowercased()
+        let model = (entry["model"] as? String)?.lowercased()
+        return provider == "openburnbar"
+            || id?.hasPrefix("openburnbar:") == true
+            || displayName?.hasPrefix("openburnbar ") == true
+            || model?.hasPrefix("openburnbar:") == true
     }
 
     // MARK: - JSON file helpers

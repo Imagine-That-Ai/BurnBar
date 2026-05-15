@@ -12,6 +12,9 @@ struct YouView: View {
     @Bindable var devicesStore: DevicesStore
     @State private var account = AccountStore()
     @State private var showSignOutConfirm = false
+    @State private var showCloudStore = false
+
+    @Environment(\.cloudSubscriptionStore) private var cloudStore
 
     var body: some View {
         ZStack {
@@ -26,6 +29,9 @@ struct YouView: View {
                         connectionsCount: connectedProviderCount
                     )
                     .staggeredEntrance(delay: 0.0)
+
+                    cloudMembershipRow
+                        .staggeredEntrance(delay: 0.03)
 
                     syncDiagnosticsCard
                         .staggeredEntrance(delay: 0.05)
@@ -75,6 +81,39 @@ struct YouView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("You'll need to sign in again to access your data.")
+        }
+        .sheet(isPresented: $showCloudStore) {
+            NavigationStack {
+                CloudStoreView(onClose: { showCloudStore = false })
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    // MARK: - Cloud Membership Row
+    //
+    // Member: MercuryCrest medallion + "Cloud Member · Since {date}".
+    // Free:   `MembershipBand` upsell — tap opens `CloudStoreView`.
+
+    @ViewBuilder
+    private var cloudMembershipRow: some View {
+        if let cloudStore, cloudStore.isActive {
+            CloudMemberCrestRow(
+                purchaseDate: cloudStore.purchaseDate,
+                expirationDate: cloudStore.expirationDate,
+                onTap: { showCloudStore = true }
+            )
+        } else {
+            MembershipBand(
+                title: "OpenBurnBar Cloud",
+                detail: "Your agents, unbound — hosted refresh, backup, Hermes anywhere.",
+                variant: .upsell,
+                icon: "sparkle",
+                ctaLabel: "BECOME A MEMBER"
+            ) {
+                showCloudStore = true
+            }
         }
     }
 
@@ -259,6 +298,82 @@ enum YouRoute: Hashable, CaseIterable {
     case settings
     case devices
     case providers
+}
+
+// MARK: - Cloud Member Crest Row
+//
+// Pro vocabulary — member certificate row. Replaces the upsell band once a
+// user has an active OpenBurnBar Cloud entitlement. MercuryCrest medallion +
+// "Cloud Member · Since {date}" with foil edge.
+
+private struct CloudMemberCrestRow: View {
+    let purchaseDate: Date?
+    let expirationDate: Date?
+    let onTap: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: {
+            Haptics.light()
+            onTap()
+        }) {
+            HStack(spacing: MobileTheme.Spacing.md) {
+                MercuryCrest(size: .large, shimmer: !reduceMotion)
+                    .padding(.leading, 4)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Cloud Member")
+                        .font(ProTheme.Typography.titleSerif)
+                        .foregroundStyle(ProTheme.Palette.mercury)
+                    Text(metaLine)
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(ProTheme.Palette.mercury.opacity(0.7))
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(ProTheme.Palette.aureate)
+            }
+            .padding(.horizontal, MobileTheme.Spacing.md)
+            .padding(.vertical, MobileTheme.Spacing.md)
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous)
+                        .fill(ProTheme.Palette.obsidian)
+                    if !reduceMotion {
+                        MercuryShimmerOverlay()
+                            .clipShape(RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous))
+                            .blendMode(.plusLighter)
+                            .opacity(0.40)
+                            .allowsHitTesting(false)
+                    }
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous)
+                    .stroke(ProTheme.Palette.aureateStroke, lineWidth: 1.0)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous))
+            .shadow(color: ProTheme.Palette.aureate.opacity(0.20), radius: 14, y: 5)
+            .contentShape(RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("OpenBurnBar Cloud member. \(metaLine).")
+        .accessibilityHint("Opens your Cloud membership")
+    }
+
+    private var metaLine: String {
+        if let purchaseDate {
+            let f = purchaseDate.formatted(.dateTime.month(.abbreviated).year())
+            return "Member since \(f)"
+        }
+        if let expirationDate {
+            let f = expirationDate.formatted(.dateTime.month(.abbreviated).day().year())
+            return "Through \(f)"
+        }
+        return "Active"
+    }
 }
 
 // MARK: - Cloud Sync Details

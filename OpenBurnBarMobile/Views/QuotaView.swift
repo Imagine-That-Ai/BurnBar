@@ -50,7 +50,10 @@ struct QuotaView: View {
                 QuotaDetailSheet(
                     provider: provider,
                     snapshots: store.sortedSnapshots(for: provider),
-                    routingState: store.routingState(for: ProviderID(rawValue: provider))
+                    routingState: store.routingState(for: ProviderID(rawValue: provider)),
+                    onRefresh: {
+                        await store.refreshAllAccounts(for: ProviderID(rawValue: provider))
+                    }
                 )
             }
         }

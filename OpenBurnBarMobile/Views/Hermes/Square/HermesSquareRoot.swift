@@ -46,8 +46,12 @@ struct HermesSquareRoot: View {
     @State private var isShowingDiscover: Bool = false
     @State private var isShowingSubscriptions: Bool = false
     @State private var isShowingFanOut: Bool = false
+    @State private var isShowingVoice: Bool = false
+    @State private var isShowingDemoMiniProgram: Bool = false
     @State private var activeGroupObserver = MissionGroupObserver()
     @State private var approvalPolicyStore = ApprovalPolicyStore.shared
+    @State private var rollbackService = RollbackService.shared
+    @State private var voiceIntentBanner: VoiceIntent?
     private var flags: HermesSquareFeatureFlags { HermesSquareFeatureFlags.shared }
 
     private var pinnedGrid: PinnedAgentGridConfig {
@@ -123,6 +127,14 @@ struct HermesSquareRoot: View {
                         activeMissionsStrip
                             .padding(.leading, 16)
 
+                        // Phase C: rollback card surfaces for any active
+                        // session that has snapshots — gives the user one
+                        // tap to revert what an agent just did.
+                        if flags.phaseC {
+                            rollbackSections
+                                .padding(.horizontal, 16)
+                        }
+
                         threadInboxSection
                             .padding(.horizontal, 16)
 
@@ -140,9 +152,21 @@ struct HermesSquareRoot: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             inbox.bind(historyStore: historyStore, missionHost: missionHost)
-            await registry.refresh(hermesService: hermesService, piService: piService)
+            await registry.refresh(hermesService: hermesService, piService: piService, missionHost: missionHost)
             await inbox.refresh()
             await reindexSearch()
+            // Phase C: observe rollback snapshots for every active CLI
+            // session so the rollback card shows up the moment the Mac
+            // writes a snapshot.
+            if flags.phaseC {
+                rollbackService.startObservingRequests()
+                let sessionIDs = Set(missionHost.snapshot.activeTiles.compactMap { tile in
+                    tile.id.isEmpty ? nil : tile.id
+                })
+                for sessionID in sessionIDs {
+                    rollbackService.startObservingSession(sessionID)
+                }
+            }
         }
         .onChange(of: inbox.items) { _, _ in
             Task { await reindexSearch() }
@@ -166,9 +190,12 @@ struct HermesSquareRoot: View {
                 }
             )
         }
+        .sheet(isPresented: $isShowingVoice) {
+            voiceSheetContent
+        }
         .toolbar {
-            if flags.phaseB {
-                ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if flags.phaseB {
                     Button {
                         isShowingFanOut = true
                     } label: {
@@ -176,6 +203,22 @@ struct HermesSquareRoot: View {
                     }
                     .accessibilityLabel("Fan-out dispatch")
                 }
+                if flags.phaseD {
+                    Button {
+                        isShowingVoice = true
+                    } label: {
+                        Image(systemName: "mic.circle.fill")
+                    }
+                    .accessibilityLabel("Voice command")
+                }
+            }
+        }
+        .overlay(alignment: .top) {
+            if let intent = voiceIntentBanner {
+                VoiceIntentBanner(intent: intent, onDismiss: { voiceIntentBanner = nil })
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .sheet(isPresented: $isShowingSubscriptions) {
@@ -197,6 +240,37 @@ struct HermesSquareRoot: View {
     }
 
     // MARK: Subviews
+
+    @ViewBuilder
+    private var rollbackSections: some View {
+        let sessions = rollbackService.snapshotsBySession
+            .filter { !$0.value.isEmpty }
+            .sorted { lhs, rhs in
+                let lTop = lhs.value.map(\.takenAt).max() ?? .distantPast
+                let rTop = rhs.value.map(\.takenAt).max() ?? .distantPast
+                return lTop > rTop
+            }
+        if sessions.isEmpty {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Rollback")
+                    .font(.caption.bold())
+                    .foregroundStyle(DesignSystemColors.textSecondary)
+                ForEach(sessions, id: \.key) { sessionID, snapshots in
+                    RollbackCardView(sessionID: sessionID, snapshots: snapshots) { scope in
+                        Task {
+                            try? await rollbackService.submit(
+                                sessionID: sessionID,
+                                scope: scope,
+                                requestedBy: UIDevice.current.name
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     private var federatedSearchBar: some View {
         HStack(spacing: 8) {
@@ -522,21 +596,86 @@ struct HermesSquareRoot: View {
         }
     }
 
+    // MARK: - Phase C+D: voice + rollback wiring
+
+    @ViewBuilder
+    private var voiceSheetContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Voice command")
+                    .font(.title3.bold())
+                Spacer()
+                Button("Done") { isShowingVoice = false }
+            }
+            VoiceCommandSurface(
+                registry: registry,
+                currentThreadAgentURI: nil,
+                onIntent: { intent in
+                    handleVoiceIntent(intent)
+                    isShowingVoice = false
+                }
+            )
+            Spacer()
+        }
+        .padding(20)
+        .presentationDetents([.medium, .large])
+    }
+
+    private func handleVoiceIntent(_ intent: VoiceIntent) {
+        voiceIntentBanner = intent
+        Task {
+            try? await Task.sleep(nanoseconds: 4_500_000_000)
+            if voiceIntentBanner == intent { voiceIntentBanner = nil }
+        }
+        switch intent {
+        case .openAgent(let uri):
+            navTarget = .brandZone(uri)
+        case .search(let q):
+            query = q
+            Task { await runSearch() }
+        case .sendMessageToCurrentThread(let text):
+            AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: text)
+            navTarget = .runtimeNative(.hermes)
+        case .dispatchMission(let prompt, _):
+            AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: prompt)
+            navTarget = .runtimeNative(.hermes)
+        case .fallbackToHermes(let text):
+            AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: text)
+            navTarget = .runtimeNative(.hermes)
+        case .ambientBriefing:
+            AssistantPendingPrompt.shared.stash(
+                assistant: .hermes,
+                prompt: "What's important across my fleet right now? Summarize in 5 bullets."
+            )
+            navTarget = .runtimeNative(.hermes)
+        }
+    }
+
     private func childTilesForActiveGroup(_ group: MissionGroupDocument) -> [MissionConsoleActiveTile] {
         let snapshot = missionHost.snapshot
         let knownByID = Dictionary(uniqueKeysWithValues: snapshot.activeTiles.map { ($0.id, $0) })
+        let now = Date()
         return group.childMissionIDs.enumerated().map { (idx, id) -> MissionConsoleActiveTile in
             if let existing = knownByID[id] { return existing }
-            // Fall back to a synthetic tile until the mission console host
-            // observes this mission.
             let runtimeToken = idx < group.runtimeTokens.count ? group.runtimeTokens[idx] : nil
+            // Auto-rescue: a child that's been queued for > 120s without
+            // the mission console host observing it almost certainly means
+            // the paired Mac never came online. Surface a `.macOffline`
+            // phase explicitly so the merge bar and the tile colour
+            // honestly reflect "this isn't ever going to run."
+            let elapsedSinceGroupCreation = now.timeIntervalSince(group.createdAt)
+            let isStale = elapsedSinceGroupCreation > 120
+            let phase: MissionConsoleActiveTile.Phase = isStale ? .macOffline : .queued
+            let detail = isStale
+                ? "Paired Mac hasn't claimed this child. Wake your Mac and reopen BurnBar."
+                : "Queued in group"
             return MissionConsoleActiveTile(
                 id: id,
                 title: "\(group.title) · \(runtimeToken ?? "?")",
                 runtimeID: runtimeToken,
                 runtimeDisplayLabel: (runtimeToken ?? "auto").capitalized,
-                phase: .queued,
-                phaseDetail: "Queued in group",
+                phase: phase,
+                phaseDetail: detail,
                 currentToolName: nil,
                 lastEventSnippet: nil,
                 startedAt: group.createdAt,

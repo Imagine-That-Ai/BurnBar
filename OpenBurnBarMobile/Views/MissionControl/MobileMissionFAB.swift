@@ -41,6 +41,7 @@ struct MobileMissionFAB: View {
     @State private var orbitRotation: Double = 0
     @State private var glowPulse: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.cloudSubscriptionStore) private var cloudStore
 
     private let fabSize: CGFloat = 56
     private let orbitSize: CGFloat = 64
@@ -180,6 +181,14 @@ struct MobileMissionFAB: View {
                 centerContent(state: state)
             }
             .frame(width: fabSize, height: fabSize)
+            .overlay(alignment: .topTrailing) {
+                // Pro vocabulary — whisper at the orb corner. Free users see
+                // a breathing foil dot; members see a tiny mercury crest.
+                // Always-visible reminder that the Mission FAB lives in a
+                // world where Cloud unlocks remote orchestration.
+                proIndicator
+                    .offset(x: 2, y: -2)
+            }
             .scaleEffect(scaleFactor)
             .opacity(isDragging ? 0.75 : 1.0)
         }
@@ -190,6 +199,22 @@ struct MobileMissionFAB: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: hasAppeared)
         .animation(.spring(response: 0.25, dampingFraction: 0.78), value: isDragging)
         .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: glowPulse)
+    }
+
+    // MARK: - Pro indicator
+
+    @ViewBuilder
+    private var proIndicator: some View {
+        if let cloudStore {
+            if cloudStore.isActive {
+                MercuryCrest(size: .small, shimmer: !reduceMotion)
+                    .scaleEffect(0.55)
+            } else {
+                ProBadgeDot(pulse: .breathing, diameter: 7)
+            }
+        } else {
+            EmptyView()
+        }
     }
 
     // MARK: - Center content

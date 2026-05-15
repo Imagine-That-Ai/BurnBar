@@ -20,6 +20,7 @@ struct VoiceCommandSurface: View {
     @State private var transcript: String = ""
     @State private var lastError: String?
     @State private var session = VoiceCaptureSession()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 14) {
@@ -75,23 +76,47 @@ struct VoiceCommandSurface: View {
     // MARK: Capture button
 
     private var captureButton: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [DesignSystemColors.ember, DesignSystemColors.amber],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+        // Breathing pulse while idle: a low-frequency sin curve drives a
+        // gentle scale + glow halo so the button feels alive without
+        // shouting. Locked to a `TimelineView` so we don't run a CPU
+        // animation off-screen, and short-circuited when pressed (the
+        // active press scale takes over) and when Reduce Motion is on.
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            let breathPhase = breathPhase(at: timeline.date)
+            let breathScale: CGFloat = reduceMotion ? 1.0
+                : (isPressed ? 1.08 : (1.0 + 0.035 * breathPhase))
+            let breathGlow: CGFloat = reduceMotion ? 0
+                : (isPressed ? 0.45 : 0.10 + 0.10 * breathPhase)
+            ZStack {
+                // Outer breath halo: a faint ring that pulses with the
+                // same phase, so the breath reads even when the button
+                // itself is steady (helpful for static screenshots).
+                Circle()
+                    .stroke(
+                        DesignSystemColors.ember.opacity(reduceMotion ? 0 : 0.18 + 0.12 * breathPhase),
+                        lineWidth: 2
                     )
-                )
-                .frame(width: 96, height: 96)
-                .scaleEffect(isPressed ? 1.08 : 1.0)
-                .shadow(color: DesignSystemColors.ember.opacity(isPressed ? 0.4 : 0.0), radius: 14)
-            Image(systemName: isPressed ? "waveform" : "mic.fill")
-                .font(.system(size: 36, weight: .bold))
-                .foregroundStyle(.white)
+                    .frame(width: 116, height: 116)
+                    .scaleEffect(reduceMotion ? 1.0 : 1.0 + 0.04 * breathPhase)
+                    .opacity(isPressed ? 0 : 1)
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [DesignSystemColors.ember, DesignSystemColors.amber],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 96, height: 96)
+                    .scaleEffect(breathScale)
+                    .shadow(color: DesignSystemColors.ember.opacity(breathGlow), radius: 14)
+                Image(systemName: isPressed ? "waveform" : "mic.fill")
+                    .font(.system(size: 36, weight: .bold))
+                    .foregroundStyle(.white)
+                    .scaleEffect(breathScale)
+            }
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isPressed)
         }
-        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isPressed)
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
@@ -101,6 +126,15 @@ struct VoiceCommandSurface: View {
         )
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("Hold to talk")
+    }
+
+    /// 0…1 sin-driven breath cycle, period ≈ 3.4s. Pure function so
+    /// `TimelineView` re-renders at 30Hz without storing animation state.
+    private func breathPhase(at date: Date) -> CGFloat {
+        let t = date.timeIntervalSinceReferenceDate
+        let period: Double = 3.4
+        let normalized = (sin(2 * .pi * t / period) + 1) / 2 // 0…1
+        return CGFloat(normalized)
     }
 
     @ViewBuilder

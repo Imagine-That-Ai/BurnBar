@@ -357,8 +357,8 @@ public actor BurnBarHTTPGatewayServer {
                 requestedFormatFamily: .openaiCompat
             )
             await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
-            let routes = ranking.rankedRoutes.map(\.route)
-            guard routes.isEmpty == false else {
+            let rankedRoutes = ranking.rankedRoutes.map(\.route)
+            guard rankedRoutes.isEmpty == false else {
                 return jsonResponse(
                     status: 503,
                     body: errorBody(
@@ -366,6 +366,15 @@ public actor BurnBarHTTPGatewayServer {
                     )
                 )
             }
+            let selectedCapabilityClassID = rankedRoutes.first?.modelCapabilityClassID
+            let routes = selectedCapabilityClassID.map { capabilityClassID in
+                rankedRoutes.filter { $0.modelCapabilityClassID == capabilityClassID }
+            } ?? rankedRoutes
+            let blockedCapabilityAlternatives = selectedCapabilityClassID.map { capabilityClassID in
+                ranking.rankedRoutes
+                    .map(\.route)
+                    .filter { $0.modelCapabilityClassID != capabilityClassID }
+            } ?? []
 
             var lastError: Error?
             for (index, route) in routes.enumerated() {
@@ -394,6 +403,18 @@ public actor BurnBarHTTPGatewayServer {
                     }
                     break
                 }
+            }
+
+            if !blockedCapabilityAlternatives.isEmpty,
+               let lastError,
+               shouldFailOverProviderError(lastError) {
+                let classLabel = selectedCapabilityClassID ?? modelID
+                return jsonResponse(
+                    status: 503,
+                    body: errorBody(
+                        "all routed accounts in capability class \(classLabel) failed; no same-tier fallback remained and downgrade is disabled."
+                    )
+                )
             }
 
             let message = lastError?.localizedDescription ?? "no eligible route for \(modelID)"
@@ -438,8 +459,8 @@ public actor BurnBarHTTPGatewayServer {
                 requestedFormatFamily: .anthropic
             )
             await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
-            let routes = ranking.rankedRoutes.map(\.route)
-            guard routes.isEmpty == false else {
+            let rankedRoutes = ranking.rankedRoutes.map(\.route)
+            guard rankedRoutes.isEmpty == false else {
                 return jsonResponse(
                     status: 503,
                     body: errorBody(
@@ -447,6 +468,15 @@ public actor BurnBarHTTPGatewayServer {
                     )
                 )
             }
+            let selectedCapabilityClassID = rankedRoutes.first?.modelCapabilityClassID
+            let routes = selectedCapabilityClassID.map { capabilityClassID in
+                rankedRoutes.filter { $0.modelCapabilityClassID == capabilityClassID }
+            } ?? rankedRoutes
+            let blockedCapabilityAlternatives = selectedCapabilityClassID.map { capabilityClassID in
+                ranking.rankedRoutes
+                    .map(\.route)
+                    .filter { $0.modelCapabilityClassID != capabilityClassID }
+            } ?? []
 
             var lastError: Error?
             for (index, route) in routes.enumerated() {
@@ -475,6 +505,18 @@ public actor BurnBarHTTPGatewayServer {
                     }
                     break
                 }
+            }
+
+            if !blockedCapabilityAlternatives.isEmpty,
+               let lastError,
+               shouldFailOverProviderError(lastError) {
+                let classLabel = selectedCapabilityClassID ?? modelID
+                return jsonResponse(
+                    status: 503,
+                    body: errorBody(
+                        "all routed accounts in capability class \(classLabel) failed; no same-tier fallback remained and downgrade is disabled."
+                    )
+                )
             }
 
             let message = lastError?.localizedDescription ?? "no eligible route for \(modelID)"

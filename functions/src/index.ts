@@ -538,8 +538,17 @@ function assertHostedProvider(provider: string): asserts provider is Provider {
   if (!HOSTED_QUOTA_PROVIDERS.has(provider)) {
     throw new HttpsError(
       "invalid-argument",
-      "Hosted quota sync is currently available for Codex only."
+      `Hosted quota sync is currently available for ${Array.from(HOSTED_QUOTA_PROVIDERS).join(", ")} only.`
     );
+  }
+}
+
+function hostedProviderLabel(provider: string): string {
+  switch (provider) {
+    case "codex": return "Codex";
+    case "claude-code": return "Claude Code";
+    case "kimi": return "Kimi";
+    default: return provider;
   }
 }
 
@@ -548,7 +557,7 @@ function assertSelfHostedProvider(provider: string): asserts provider is Provide
   if (!SELF_HOSTED_QUOTA_PROVIDERS.has(provider)) {
     throw new HttpsError(
       "invalid-argument",
-      "Self-hosted quota sync is available for Claude Code, Codex, and OpenCode."
+      `Self-hosted quota sync is available for ${Array.from(SELF_HOSTED_QUOTA_PROVIDERS).join(", ")}.`
     );
   }
 }
@@ -993,15 +1002,15 @@ async function connectProviderAccountInternal(params: {
 
   const adapter = ADAPTERS[provider as keyof typeof ADAPTERS];
   if (!adapter) {
-    if (provider === "claude-code" || provider === "codex") {
+    if (provider === "codex") {
       throw new HttpsError(
         "failed-precondition",
-        "Claude Code and Codex are runner-based providers and don't support backend credential connections. Connect them through the OpenBurnBar Mac app instead."
+        "Codex is a runner-based provider and doesn't support backend credential connections. Connect it through hosted quota sync or the OpenBurnBar Mac app instead."
       );
     }
     throw new HttpsError(
       "unimplemented",
-      `OpenBurnBar doesn't have a server-side connector for ${provider} yet. Connect it on the macOS app, or pick a supported provider (OpenAI, Factory, Cursor, Z.ai, MiniMax).`
+      `OpenBurnBar doesn't have a server-side connector for ${provider} yet. Connect it on the macOS app, or pick a supported provider (OpenAI, Factory, Cursor, Z.ai, MiniMax, Kimi).`
     );
   }
 
@@ -1280,8 +1289,8 @@ export const connectHostedQuotaAccount = onCall(
 
     const credential = normalizeHostedCredential(provider, request.data.credential);
     const accountID = accountIDFor(provider, request.data.accountID);
-    const providerLabel = "Codex";
-    const accountRedactedLabel = "Codex auth.json stored in Secret Manager";
+    const providerLabel = hostedProviderLabel(provider);
+    const accountRedactedLabel = `${providerLabel} credential stored in Secret Manager`;
     const label = boundedTrimmedString(request.data.label, "label", 80) ?? `Hosted ${providerLabel}`;
     const now = nowISO();
     const accountRef = db.doc(`users/${uid}/provider_accounts/${accountID}`);
@@ -1366,8 +1375,8 @@ export const connectSelfHostedQuotaAccount = onCall(
 
     const accountID = accountIDFor(provider, request.data.accountID);
     const label =
-      boundedTrimmedString(request.data.label, "label", 80) ??
-      `${provider === "codex" ? "Codex" : provider === "opencode" ? "OpenCode" : "Claude Code"} self-hosted`;
+     boundedTrimmedString(request.data.label, "label", 80) ??
+      `${hostedProviderLabel(provider)} self-hosted`;
     const now = nowISO();
     const existing = await db.doc(`users/${uid}/provider_accounts/${accountID}`).get();
     const accountDoc: ProviderAccountDoc = {
@@ -3618,3 +3627,8 @@ export const backfillProviderAccountDeviceLinksScheduled = onSchedule(
     console.log("provider_account_device_links scheduled backfill", { usersScanned, writes });
   }
 );
+import { kimiAdapter } from "./providers/kimi.js";
+// Claude Code and Kimi are now supported via the hosted quota runner.
+HOSTED_QUOTA_PROVIDERS.add("claude-code");
+HOSTED_QUOTA_PROVIDERS.add("kimi");
+SELF_HOSTED_QUOTA_PROVIDERS.add("kimi");

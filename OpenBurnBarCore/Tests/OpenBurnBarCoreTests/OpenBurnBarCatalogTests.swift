@@ -31,4 +31,63 @@ final class BurnBarCatalogTests: XCTestCase {
         XCTAssertTrue(catalog.supportsModel(named: "MiniMax-M3-pro", providerID: "minimax"))
         XCTAssertFalse(catalog.supportsModel(named: "pony-alpha-2", providerID: "zai"))
     }
+
+    func test_capabilityClassID_prefersExplicitClassID() {
+        let catalog = BurnBarCatalog(
+            schemaVersion: 1,
+            providers: [
+                BurnBarCatalogProvider(
+                    id: "alpha",
+                    displayName: "Alpha",
+                    baseURL: "https://alpha.example/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [
+                        BurnBarCatalogModel(
+                            id: "alpha-pro",
+                            displayName: "Alpha Pro",
+                            visibility: .public,
+                            aliases: ["alpha-pro-latest"],
+                            pricing: BurnBarModelPricing(inputPerMToken: 10, outputPerMToken: 20, cacheReadPerMToken: 1),
+                            capabilityClassID: "openai:alpha:pro"
+                        )
+                    ]
+                )
+            ]
+        )
+
+        XCTAssertEqual(
+            catalog.capabilityClassID(forModelName: "alpha-pro-latest", providerID: "alpha"),
+            "openai:alpha:pro"
+        )
+    }
+
+    func test_capabilityClassID_fallsBackToModelIDWhenClassMissing() {
+        let catalog = BurnBarCatalog(
+            schemaVersion: 1,
+            providers: [
+                BurnBarCatalogProvider(
+                    id: "alpha",
+                    displayName: "Alpha",
+                    baseURL: "https://alpha.example/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [
+                        BurnBarCatalogModel(
+                            id: "alpha-base",
+                            displayName: "Alpha Base",
+                            visibility: .public,
+                            aliases: ["alpha-base-latest"],
+                            pricing: BurnBarModelPricing(inputPerMToken: 1, outputPerMToken: 2, cacheReadPerMToken: 0.1)
+                        )
+                    ]
+                )
+            ]
+        )
+
+        XCTAssertEqual(
+            catalog.capabilityClassID(forModelName: "alpha-base-latest", providerID: "alpha"),
+            "alpha-base"
+        )
+    }
 }

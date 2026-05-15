@@ -54,6 +54,13 @@ struct HermesChatMessage: Identifiable, Equatable {
     let role: HermesChatRole
     var text: String
     var toolCalls: [HermesToolCall]
+    /// Hermes Square §6.6 — typed UI cards the agent emitted on this
+    /// turn. Populated from SSE chunks that carry a `card` field (single
+    /// envelope) or a `cards` field (array). Rendered inline by
+    /// `HermesMessageBubble` via `CardEnvelopeView`. Empty for most
+    /// turns; agents only emit cards when they want a structured
+    /// surface (diff, approval, chart, mini-program).
+    var cards: [CardEnvelope] = []
     /// Files the user attached to this message. Persisted with the chat so
     /// attachments stay visible after a session is reopened.
     var attachments: [HermesAttachment]
@@ -1355,6 +1362,54 @@ final class HermesService {
         }
     }
 
+    /// Hermes Square §6.6 — extract any `card` / `cards` payloads from a
+    /// JSON object and append them to the in-flight message. Idempotent:
+    /// duplicate envelopes (matched by content hash via `CardEnvelope.id`)
+    /// are skipped so re-emitted chunks don't double-render.
+    private func absorbCards(from json: [String: Any], into message: inout HermesChatMessage) {
+        var newCards: [CardEnvelope] = []
+        if let single = json["card"] {
+            if let envelope = Self.cardEnvelope(from: single) {
+                newCards.append(envelope)
+            }
+        }
+        if let batch = json["cards"] as? [Any] {
+            for entry in batch {
+                if let envelope = Self.cardEnvelope(from: entry) {
+                    newCards.append(envelope)
+                }
+            }
+        }
+        guard !newCards.isEmpty else { return }
+        let existingIDs = Set(message.cards.map(\.id))
+        let appended = newCards.filter { !existingIDs.contains($0.id) }
+        if !appended.isEmpty {
+            message.cards.append(contentsOf: appended)
+            if let index = messages.firstIndex(where: { $0.id == message.id }) {
+                messages[index] = message
+            }
+        }
+    }
+
+    /// Best-effort decode of a single card-shaped JSON value into a
+    /// `CardEnvelope`. Accepts both the canonical
+    /// `{"kind": ..., "payload": ...}` shape and a bare dictionary the
+    /// envelope encoder produces. Returns nil when the value isn't a
+    /// dictionary; the 2 MB budget gate is enforced via
+    /// `CardEnvelope.fromJSON`.
+    private static func cardEnvelope(from value: Any) -> CardEnvelope? {
+        guard let dict = value as? [String: Any] else { return nil }
+        guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return nil }
+        let declaredKind = dict["kind"] as? String
+        let envelope = CardEnvelope.fromJSON(data, declaredKind: declaredKind)
+        // Filter the meaningless `.unknown(decode_failed)` so we don't
+        // pollute the bubble with parse errors.
+        if case .unknown(let label) = envelope, label == "decode_failed" {
+            return nil
+        }
+        return envelope
+    }
+
     nonisolated static func sseEvents(from payload: String) -> [String] {
         let normalized = payload
             .replacingOccurrences(of: "\r\n", with: "\n")
@@ -1453,8 +1508,23 @@ final class HermesService {
             return
         }
 
+        // Hermes Square §6.6 — typed UI card extraction. Agents emit
+        // `card: {...}` for a single envelope or `cards: [{...}]` for a
+        // batch. We decode through `CardEnvelope.fromJSON` so the 2 MB
+        // budget gate runs uniformly and oversized payloads collapse to
+        // a `.tooLarge` stub instead of corrupting the stream.
+        absorbCards(from: json, into: &message)
+
         guard let choices = json["choices"] as? [[String: Any]],
               let first = choices.first else { return }
+
+        // Some agents emit cards inside the choice/delta envelope (e.g.,
+        // when the runtime wraps everything in OpenAI's choices[] shape).
+        // Honour both placements.
+        absorbCards(from: first, into: &message)
+        if let delta_ = first["delta"] as? [String: Any] {
+            absorbCards(from: delta_, into: &message)
+        }
 
         let delta = first["delta"] as? [String: Any]
         let finalMessage = first["message"] as? [String: Any]

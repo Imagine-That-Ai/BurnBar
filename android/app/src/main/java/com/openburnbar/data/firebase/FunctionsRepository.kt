@@ -185,6 +185,12 @@ class FunctionsRepository {
         functions.getHttpsCallable("revokePiAgentConnection").call(payload).await()
     }
 
+    suspend fun revokeRemoteMcpClient(clientId: String) {
+        functions.getHttpsCallable("revokeRemoteMcpClient")
+            .call(mapOf("clientID" to clientId))
+            .await()
+    }
+
     suspend fun updatePiAgentConnectionStatus(
         connectionId: String,
         status: PiConnectionStatus,

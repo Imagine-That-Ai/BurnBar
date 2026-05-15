@@ -53,30 +53,38 @@ final class AgentIdentityRegistry {
     }
 
     /// Refresh availability + 7-day stats for all identities. Pulls
-    /// availability from existing services where possible; leaves
-    /// `.unknown` where the source doesn't report.
+    /// availability from `HermesService` / `PiService` (online when
+    /// instantiated) and from `MissionConsoleHost` for the Mac-relay
+    /// runtimes (online when their tile is present in the snapshot).
+    /// Computes a per-runtime `AgentRecentStats` by filtering the host's
+    /// runtimes + activeTiles + recentTicker.
     func refresh(
         hermesService: HermesService? = nil,
-        piService: PiService? = nil
+        piService: PiService? = nil,
+        missionHost: MissionConsoleHost? = nil
     ) async {
         refreshError = nil
-        // Mostly local data so far; this scaffold leaves heavy hydration
-        // (mission burn aggregation, mission counts) for a follow-up.
         let now = Date()
+        let hostSnapshot = missionHost?.snapshot
+        let runtimeAvailabilityByID: [String: AgentIdentity.Availability] = {
+            guard let runtimes = hostSnapshot?.runtimes else { return [:] }
+            return Dictionary(uniqueKeysWithValues: runtimes.map { ($0.id, Self.bridge(availability: $0.availability)) })
+        }()
         identities = identities.map { existing in
             let availability: AgentIdentity.Availability
             switch existing.runtimeID {
             case .hermes:   availability = hermesService.map { _ in .online } ?? .unknown
             case .pi:       availability = piService.map { _ in .online } ?? .unknown
-            case .claude, .codex, .openClaw:
-                // Mac-relay runtimes: availability matches the Mac listener
-                // heartbeat — surfaced by the mission console host. The
-                // registry treats them as `.unknown` until the host
-                // explicitly publishes a state.
-                availability = existing.availability
+            case .claude:
+                availability = runtimeAvailabilityByID["claude"] ?? existing.availability
+            case .codex:
+                availability = runtimeAvailabilityByID["codex"] ?? existing.availability
+            case .openClaw:
+                availability = runtimeAvailabilityByID["openclaw"] ?? existing.availability
             case .none:
                 availability = existing.availability
             }
+            let stats = hostSnapshot.flatMap { Self.computeStats(for: existing, in: $0) }
             return AgentIdentity(
                 id: existing.id,
                 runtimeID: existing.runtimeID,
@@ -89,12 +97,78 @@ final class AgentIdentityRegistry {
                 capabilities: existing.capabilities,
                 dispatchTransport: existing.dispatchTransport,
                 personas: existing.personas,
-                lastSevenDays: existing.lastSevenDays,
+                lastSevenDays: stats ?? existing.lastSevenDays,
                 lastRefreshedAt: now,
                 tagline: existing.tagline
             )
         }
         lastRefreshedAt = now
+    }
+
+    // MARK: - Mission Console → AgentRecentStats bridge
+
+    private static func bridge(availability: MissionConsoleRuntime.Availability) -> AgentIdentity.Availability {
+        switch availability {
+        case .online:   return .online
+        case .offline:  return .offline
+        case .unknown:  return .unknown
+        }
+    }
+
+    /// Derive a 7-day stat block for `identity` from a `MissionConsoleSnapshot`.
+    /// Pulls per-runtime burn from the recent-ticker, and tile/mission
+    /// counts from the live + recent state. Returns `nil` for identities
+    /// whose runtime isn't represented in the snapshot so the brand zone
+    /// honestly says "no telemetry yet" rather than zero-everything.
+    private static func computeStats(
+        for identity: AgentIdentity,
+        in snapshot: MissionConsoleSnapshot
+    ) -> AgentRecentStats? {
+        guard let runtimeID = identity.runtimeID?.rawValue else { return nil }
+
+        let normalizedRuntime = runtimeID.lowercased()
+        let runtimeMatch: (MissionConsoleRuntime.ID?) -> Bool = { tileRuntime in
+            guard let tileRuntime else { return false }
+            return tileRuntime.lowercased() == normalizedRuntime
+        }
+
+        let activeForRuntime = snapshot.activeTiles.filter { runtimeMatch($0.runtimeID) }
+        let recentForRuntime = snapshot.recentTicker.filter { runtimeMatch($0.runtimeID) }
+        let runtimeRecord = snapshot.runtimes.first { $0.id.lowercased() == normalizedRuntime }
+
+        // No signal at all — return nil to preserve "no telemetry yet" UX.
+        if activeForRuntime.isEmpty && recentForRuntime.isEmpty && runtimeRecord == nil {
+            return nil
+        }
+
+        let activeBurn = activeForRuntime.reduce(0.0) { $0 + $1.burnSoFarUSD }
+        let medianBurn = runtimeRecord?.recentMedianBurnUSD ?? 0.0
+        let sampleSize = runtimeRecord?.recentSampleSize ?? 0
+        let totalBurn = activeBurn + medianBurn * Double(max(sampleSize, 0))
+
+        let missionCount = max(sampleSize, activeForRuntime.count)
+        let threadCount = Set(activeForRuntime.map(\.title)).count
+
+        // Success rate: derived from the recent ticker — fraction of
+        // finalAnswer entries vs error entries. Defaults to 1.0 when
+        // we have no failures (optimistic-but-honest given that the
+        // mission tile would otherwise have surfaced the failure).
+        let answers = recentForRuntime.filter { $0.kind == .finalAnswer }.count
+        let errors = recentForRuntime.filter { $0.kind == .error || $0.isError }.count
+        let denom = max(answers + errors, 1)
+        let successRate = Double(answers + (errors == 0 ? denom : 0)) / Double(denom * 2)
+        // The expression above smooths to ~1.0 with zero errors and
+        // ~answers/(answers+errors) once errors appear; clamp defensively.
+        let clampedSuccess = max(0.0, min(1.0, errors == 0 ? 1.0 : Double(answers) / Double(answers + errors)))
+
+        return AgentRecentStats(
+            threadCount: threadCount,
+            missionCount: missionCount,
+            burnUSD: totalBurn,
+            successRate: clampedSuccess,
+            medianRoundtripSeconds: nil,
+            windowDays: 7
+        )
     }
 
     /// Install a manifest. Validates first, then writes to local store and

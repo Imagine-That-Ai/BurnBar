@@ -3446,7 +3446,7 @@ extension ProviderQuotaServiceTests {
         OpenBurnBarDaemonManager.shared.providerConfigurations = [
             OpenBurnBarDaemonProviderConfiguration(
                 providerID: "moonshot",
-                provider: .kimi,
+                provider: AgentProvider.kimi,
                 displayName: "Kimi (Moonshot)",
                 isEnabled: true,
                 baseURL: "https://api.moonshot.cn/v1",
@@ -3497,7 +3497,7 @@ extension ProviderQuotaServiceTests {
             appSupportRoot: appSupport,
             providerRuntimeKeyStore: runtimeSecrets,
             session: session,
-            refreshProviders: [.kimi]
+            refreshProviders: [AgentProvider.kimi]
         )
 
         let dataStore = try makeDataStore()
@@ -3506,7 +3506,7 @@ extension ProviderQuotaServiceTests {
         XCTAssertTrue(observedAuthorizations.read().contains("Bearer \(kimiJWT)"),
                       "Kimi adapter should authorize using daemon-slot Moonshot key. Saw: \(observedAuthorizations.read())")
 
-        let snapshots = service.snapshots(for: .kimi)
+        let snapshots = service.snapshots(for: AgentProvider.kimi)
         XCTAssertFalse(snapshots.isEmpty, "Expected Kimi snapshot from Moonshot daemon slot bleed-over")
 
         let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: ProviderID(rawValue: "moonshot"))

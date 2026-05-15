@@ -551,6 +551,42 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(ranking.benchmarkStatus?.freshness, .stale)
     }
 
+    func testCandidateRoutes_filtersByRequiredCapabilityClassID() async throws {
+        let harness = try makeHarness(name: "capability-class-filter", catalog: capabilityClassCatalog())
+        try await harness.configStore.setSecret("alpha-key", for: "alpha")
+        try await harness.configStore.setSecret("beta-key", for: "beta")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "alpha",
+                isEnabled: true,
+                baseURL: "https://alpha.example/v1",
+                preferredModelIDs: ["alpha-shared-pro"]
+            )
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "beta",
+                isEnabled: true,
+                baseURL: "https://beta.example/v1",
+                preferredModelIDs: ["beta-shared-base"]
+            )
+        )
+
+        let allCandidates = try await harness.router.candidateRoutes(
+            modelName: "shared-code-model",
+            routerMode: .intelligentModelRouter
+        )
+        XCTAssertEqual(Set(allCandidates.map(\.providerID)), Set(["alpha", "beta"]))
+
+        let filtered = try await harness.router.candidateRoutes(
+            modelName: "shared-code-model",
+            requiredCapabilityClassID: "openai:shared:pro",
+            routerMode: .intelligentModelRouter
+        )
+        XCTAssertEqual(filtered.map(\.providerID), ["alpha"])
+        XCTAssertTrue(filtered.allSatisfy { $0.modelCapabilityClassID == "openai:shared:pro" })
+    }
+
     private func makeHarness(
         name: String,
         catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog
@@ -610,6 +646,48 @@ final class BurnBarProviderRouterTests: XCTestCase {
                     visibility: .public,
                     capabilities: [.routing],
                     models: [cheap]
+                )
+            ]
+        )
+    }
+
+    private func capabilityClassCatalog() -> BurnBarCatalog {
+        let pro = BurnBarCatalogModel(
+            id: "alpha-shared-pro",
+            displayName: "Shared Pro",
+            visibility: .public,
+            aliases: ["shared-code-model"],
+            pricing: BurnBarModelPricing(inputPerMToken: 20, outputPerMToken: 40, cacheReadPerMToken: 1),
+            capabilityClassID: "openai:shared:pro",
+            capabilityClassRank: 100
+        )
+        let base = BurnBarCatalogModel(
+            id: "beta-shared-base",
+            displayName: "Shared Base",
+            visibility: .public,
+            aliases: ["shared-code-model"],
+            pricing: BurnBarModelPricing(inputPerMToken: 2, outputPerMToken: 4, cacheReadPerMToken: 0.2),
+            capabilityClassID: "openai:shared:base",
+            capabilityClassRank: 10
+        )
+        return BurnBarCatalog(
+            schemaVersion: 1,
+            providers: [
+                BurnBarCatalogProvider(
+                    id: "alpha",
+                    displayName: "Alpha",
+                    baseURL: "https://alpha.example/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [pro]
+                ),
+                BurnBarCatalogProvider(
+                    id: "beta",
+                    displayName: "Beta",
+                    baseURL: "https://beta.example/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [base]
                 )
             ]
         )

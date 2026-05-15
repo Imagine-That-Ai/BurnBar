@@ -6,6 +6,9 @@ struct QuotaDetailSheet: View {
     let snapshots: [ProviderQuotaSnapshot]
     let routingState: ProviderRoutingStateSnapshot?
 
+    @State private var isRefreshing = false
+    var onRefresh: (() async -> Void)?
+
     var providerEnum: AgentProvider? {
         AgentProvider.fromProviderID(ProviderID(rawValue: provider))
     }
@@ -35,6 +38,25 @@ struct QuotaDetailSheet: View {
         .background(emberBackground.ignoresSafeArea())
         .navigationTitle(providerEnum?.displayName ?? provider)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task {
+                        isRefreshing = true
+                        defer { isRefreshing = false }
+                        await onRefresh?()
+                    }
+                } label: {
+                    if isRefreshing {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .disabled(isRefreshing)
+                .accessibilityLabel("Refresh quota")
+            }
+        }
     }
 
     private var emberBackground: some View {

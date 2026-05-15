@@ -179,7 +179,7 @@ final class SwitcherCLIAuthCoordinator {
            detectedAccount != nil,
            previousAccount != detectedAccount {
             return .requiresConfirmation(
-                updatedProfile: updatedProfile,
+                updatedProfile: profileByClearingAccountScopedMetadata(updatedProfile),
                 previousAccount: previousAccount,
                 detectedAccount: detectedAccount
             )
@@ -245,10 +245,53 @@ final class SwitcherCLIAuthCoordinator {
                 displayLabel: existingMetadata.displayLabel,
                 configDirectory: configDirectory,
                 accountDescription: normalized(detectedAccountDescription) ?? existingMetadata.accountDescription,
+                providerID: existingMetadata.providerID,
+                runtimeAccountID: existingMetadata.runtimeAccountID,
+                subscriptionTierID: existingMetadata.subscriptionTierID,
+                modelCapabilityClassID: existingMetadata.modelCapabilityClassID,
+                linkedHarnessIDs: existingMetadata.linkedHarnessIDs,
+                neverAutoSwitch: existingMetadata.neverAutoSwitch,
+                lastQuotaExhaustedAt: existingMetadata.lastQuotaExhaustedAt,
+                exhaustedUntil: existingMetadata.exhaustedUntil,
+                lastQuotaExhaustionDetail: existingMetadata.lastQuotaExhaustionDetail,
                 isDisabled: existingMetadata.isDisabled
             ),
             sortKey: profile.sortKey,
             createdAt: profile.createdAt
+        )
+    }
+
+    private func profileByClearingAccountScopedMetadata(_ profile: SwitcherProfileRecord) -> SwitcherProfileRecord {
+        guard let cliType = profile.cliType,
+              let metadata = profile.cliMetadata else {
+            return profile
+        }
+
+        return SwitcherProfileRecord(
+            id: profile.id,
+            targetKind: .cli,
+            cliType: cliType,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                workingDirectory: metadata.workingDirectory,
+                additionalArgs: metadata.additionalArgs,
+                envKeysToPass: metadata.envKeysToPass,
+                displayLabel: metadata.displayLabel,
+                configDirectory: metadata.configDirectory,
+                accountDescription: metadata.accountDescription,
+                providerID: metadata.providerID,
+                runtimeAccountID: nil,
+                subscriptionTierID: nil,
+                modelCapabilityClassID: nil,
+                linkedHarnessIDs: metadata.linkedHarnessIDs,
+                neverAutoSwitch: metadata.neverAutoSwitch,
+                lastQuotaExhaustedAt: nil,
+                exhaustedUntil: nil,
+                lastQuotaExhaustionDetail: nil,
+                isDisabled: metadata.isDisabled
+            ),
+            sortKey: profile.sortKey,
+            createdAt: profile.createdAt,
+            updatedAt: profile.updatedAt
         )
     }
 

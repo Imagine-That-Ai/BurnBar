@@ -31,15 +31,19 @@ public struct MissionFanOutGroupCard: View {
         self.onOpenChild = onOpenChild
     }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
             tilesRow
             if group.phase == .awaitingMerge {
                 mergeBar
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
             if let summary = group.synthesisSummary, group.phase == .merged {
                 synthesisStrip(summary: summary)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
         }
         .padding(14)
@@ -51,6 +55,15 @@ public struct MissionFanOutGroupCard: View {
                         .stroke(DesignSystemColors.borderSubtle, lineWidth: 0.5)
                 )
         )
+        // The card enters from the top of the inbox with a spring slide +
+        // fade, leaves with a soft opacity. Honors Reduce Motion.
+        .transition(reduceMotion
+                    ? .opacity
+                    : .asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.97, anchor: .top)),
+                        removal: .opacity
+                      ))
+        .animation(reduceMotion ? .none : .spring(response: 0.48, dampingFraction: 0.82), value: group.phase)
     }
 
     // MARK: Header
@@ -89,12 +102,22 @@ public struct MissionFanOutGroupCard: View {
     private var tilesRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 10) {
-                ForEach(childTiles) { tile in
+                ForEach(Array(childTiles.enumerated()), id: \.element.id) { offset, tile in
                     Button {
                         onOpenChild(tile.id)
                     } label: {
-                        childTileView(tile)
-                            .frame(width: 220)
+                        StaggeredChildTile(
+                            tile: tile,
+                            isWinner: group.winnerMissionID == tile.id,
+                            reduceMotion: reduceMotion,
+                            staggerIndex: offset
+                        ) { phase in
+                            childTileView(tile)
+                                .frame(width: 220)
+                                .scaleEffect(phase.scale, anchor: .bottomLeading)
+                                .opacity(phase.opacity)
+                                .offset(y: phase.yOffset)
+                        }
                     }
                     .buttonStyle(.plain)
                 }
@@ -224,5 +247,76 @@ public struct MissionFanOutGroupCard: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(DesignSystemColors.whimsy.opacity(0.08))
         )
+    }
+}
+
+// MARK: - StaggeredChildTile (cascade-in animator)
+//
+// Wraps a child tile with a `PhaseAnimator` that runs through enter →
+// settled on first appearance, staggered by `staggerIndex`. When the
+// tile is the winner, an extra "celebrate" phase adds a quick scale
+// pulse. Pure presentation — no state mutation.
+
+private struct StaggeredChildTile<Content: View>: View {
+    let tile: MissionConsoleActiveTile
+    let isWinner: Bool
+    let reduceMotion: Bool
+    let staggerIndex: Int
+    let content: (CascadePhase) -> Content
+
+    @State private var hasAppeared: Bool = false
+    @State private var winnerCelebrationTick: Int = 0
+
+    enum CascadePhase: CaseIterable {
+        case enter, settle
+
+        var scale: CGFloat {
+            switch self {
+            case .enter:  return 0.94
+            case .settle: return 1.0
+            }
+        }
+
+        var opacity: Double {
+            switch self {
+            case .enter:  return 0.0
+            case .settle: return 1.0
+            }
+        }
+
+        var yOffset: CGFloat {
+            switch self {
+            case .enter:  return 18
+            case .settle: return 0
+            }
+        }
+    }
+
+    var body: some View {
+        if reduceMotion {
+            content(.settle)
+        } else {
+            content(hasAppeared ? .settle : .enter)
+                .animation(
+                    .spring(response: 0.55, dampingFraction: 0.78)
+                        .delay(Double(staggerIndex) * 0.08),
+                    value: hasAppeared
+                )
+                .onAppear {
+                    hasAppeared = true
+                }
+                .onChange(of: isWinner) { _, newValue in
+                    if newValue { winnerCelebrationTick &+= 1 }
+                }
+                .scaleEffect(winnerScale, anchor: .center)
+                .animation(.spring(response: 0.34, dampingFraction: 0.5), value: winnerCelebrationTick)
+        }
+    }
+
+    private var winnerScale: CGFloat {
+        // Quick pulse when the user picks this tile as winner: scale to
+        // 1.04 then settle back via the spring above.
+        guard isWinner else { return 1.0 }
+        return winnerCelebrationTick > 0 && winnerCelebrationTick % 2 == 1 ? 1.04 : 1.0
     }
 }
