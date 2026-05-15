@@ -12,7 +12,10 @@ export interface EntitlementState {
 const cache = new Map<string, { state: EntitlementState; expiresAtMs: number }>();
 
 export function firestore(): Firestore {
-  if (getApps().length === 0) initializeApp();
+  if (getApps().length === 0) {
+    const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || process.env.OPENBURNBAR_STORAGE_BUCKET;
+    initializeApp(storageBucket ? { storageBucket } : undefined);
+  }
   return getFirestore();
 }
 

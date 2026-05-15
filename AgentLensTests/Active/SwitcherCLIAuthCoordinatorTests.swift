@@ -601,6 +601,83 @@ final class SwitcherCLIFallbackPlannerTests: XCTestCase {
         XCTAssertEqual(eligibility, .quotaExhausted(reason: "No quota remaining."))
     }
 
+    func testOrderedCandidates_returnsOnlySelfWhenNoSameProviderProfilesExist() async {
+        let planner = SwitcherCLIFallbackPlanner { _ in nil }
+        let requested = makeCLIProfile(
+            id: "codex-pro-1",
+            cliType: .codex,
+            label: "Codex Pro 1",
+            providerID: .openAI,
+            capabilityClassID: "openai:gpt-pro",
+            subscriptionTierID: "openai-gpt-pro"
+        )
+        let differentProvider = makeCLIProfile(
+            id: "codex-anth-1",
+            cliType: .codex,
+            label: "Codex Anthropic",
+            providerID: .anthropic,
+            capabilityClassID: "anthropic:sonnet",
+            subscriptionTierID: "claude-max"
+        )
+
+        let ordered = await planner.orderedCandidates(
+            for: requested,
+            allProfiles: [requested, differentProvider]
+        )
+
+        XCTAssertEqual(ordered.map(\.id), ["codex-pro-1"],
+                       "Must not fall over to a different provider's profile.")
+    }
+
+    func testOrderedCandidates_sameTierButDifferentClass_isRejected() async {
+        let planner = SwitcherCLIFallbackPlanner { _ in nil }
+        let requested = makeCLIProfile(
+            id: "codex-pro-1",
+            cliType: .codex,
+            label: "Codex Pro",
+            providerID: .openAI,
+            capabilityClassID: "openai:gpt-pro",
+            subscriptionTierID: "openai-gpt-pro"
+        )
+        let sameTierDifferentClass = makeCLIProfile(
+            id: "codex-base-1",
+            cliType: .codex,
+            label: "Codex Base",
+            providerID: .openAI,
+            capabilityClassID: "openai:gpt-base",
+            subscriptionTierID: "openai-gpt-pro"
+        )
+
+        let ordered = await planner.orderedCandidates(
+            for: requested,
+            allProfiles: [requested, sameTierDifferentClass]
+        )
+
+        XCTAssertEqual(ordered.map(\.id), ["codex-pro-1"],
+                       "Same tier but different capability class must not be a failover candidate.")
+    }
+
+    func testEligibility_eligibleWhenNoExhaustionOrQuotaDepletion() async {
+        let planner = SwitcherCLIFallbackPlanner { _ in
+            CLIFallbackQuotaStatus(
+                fiveHourRemainingPercent: 50,
+                weeklyRemainingPercent: 80,
+                statusMessage: nil
+            )
+        }
+        let profile = makeCLIProfile(
+            id: "profile-ok",
+            cliType: .codex,
+            label: "OK Profile",
+            providerID: .openAI,
+            capabilityClassID: "openai:gpt-pro",
+            subscriptionTierID: "openai-gpt-pro"
+        )
+
+        let eligibility = await planner.eligibility(for: profile)
+        XCTAssertEqual(eligibility, .eligible)
+    }
+
     private func makeCLIProfile(
         id: String,
         cliType: SwitcherCLIProfileType,

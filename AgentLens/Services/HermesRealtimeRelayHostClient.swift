@@ -4,7 +4,16 @@ import Foundation
 import OpenBurnBarCore
 
 @MainActor
-final class HermesRealtimeRelayHostClient {
+protocol HermesRealtimeRelayHosting: AnyObject {
+    var publishableRelayURLString: String? { get }
+
+    @discardableResult
+    func start(uid: String, connectionID: String) async -> Bool
+    func stop()
+}
+
+@MainActor
+final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
     private let accountManager: AccountManager
     private let settingsManager: SettingsManager
     private let relayKeyStore: HermesRelayKeyStore

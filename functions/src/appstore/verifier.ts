@@ -113,8 +113,8 @@ export function loadAppleRootCertificates(): Buffer[] {
 // Environment mapping
 // ---------------------------------------------------------------------------
 
-export function toLibEnvironment(env: AppStoreEnvironment): Environment {
-  switch (env) {
+export function toLibEnvironment(env: AppStoreEnvironment | string): Environment {
+  switch (normalizeAppleEnvironment(env)) {
     case "Production":
       return Environment.PRODUCTION;
     case "Sandbox":
@@ -129,21 +129,42 @@ export function toLibEnvironment(env: AppStoreEnvironment): Environment {
 export function fromLibEnvironment(
   env: Environment | string | undefined
 ): AppStoreEnvironment | undefined {
+  if (env === undefined) return undefined;
+  try {
+    return normalizeAppleEnvironment(env);
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeAppleEnvironment(env: AppStoreEnvironment | string): AppStoreEnvironment {
   switch (env) {
     case Environment.PRODUCTION:
     case "Production":
+    case "PRODUCTION":
+    case "production":
       return "Production";
     case Environment.SANDBOX:
     case "Sandbox":
+    case "SANDBOX":
+    case "sandbox":
+    case "InternalTest":
+    case "INTERNAL_TEST":
+    case "internal_test":
       return "Sandbox";
     case Environment.XCODE:
     case "Xcode":
+    case "XCODE":
+    case "xcode":
       return "Xcode";
     case Environment.LOCAL_TESTING:
     case "LocalTesting":
+    case "LOCAL_TESTING":
+    case "local_testing":
+    case "localTesting":
       return "LocalTesting";
     default:
-      return undefined;
+      throw new Error(`Unsupported App Store environment: ${env}`);
   }
 }
 

@@ -358,20 +358,16 @@ private struct MacRemoteMCPClientRecord: Identifiable, Hashable {
     }
 
     var activitySummary: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
         if let lastUsedAt {
-            return "Used \(Self.relativeFormatter.localizedString(for: lastUsedAt, relativeTo: Date()))"
+            return "Used \(formatter.localizedString(for: lastUsedAt, relativeTo: Date()))"
         }
         if let createdAt {
-            return "Added \(Self.relativeFormatter.localizedString(for: createdAt, relativeTo: Date()))"
+            return "Added \(formatter.localizedString(for: createdAt, relativeTo: Date()))"
         }
         return "Awaiting first use"
     }
-
-    private static let relativeFormatter: RelativeDateTimeFormatter = {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter
-    }()
 }
 
 @MainActor
@@ -552,42 +548,20 @@ private struct MacRemoteMCPClientRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: client.isRevoked ? "xmark.seal.fill" : "checkmark.seal.fill")
-                    .foregroundColor(client.isRevoked ? ProTheme.Palette.mercury.opacity(0.42) : ProTheme.Palette.aureate)
-                    .padding(.top, 2)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(client.displayName)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(ProTheme.Palette.mercury)
-                    Text("\(client.displayType) · \(client.modeSummary)")
-                        .font(.system(size: 11))
-                        .foregroundColor(ProTheme.Palette.mercury.opacity(0.70))
-                    Text(client.scopeSummary)
-                        .font(.system(size: 10))
-                        .foregroundColor(ProTheme.Palette.mercury.opacity(0.54))
-                }
+                MacRemoteMCPClientStatusIcon(isRevoked: client.isRevoked)
+                MacRemoteMCPClientDetails(client: client)
 
                 Spacer(minLength: 8)
 
-                if client.isRevoked {
-                    Text("Revoked")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(ProTheme.Palette.mercury.opacity(0.48))
-                } else {
-                    Button(action: onRevoke) {
-                        revokeButtonContent
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundColor(.red.opacity(0.88))
-                    .disabled(isRevoking)
-                    .accessibilityLabel("Revoke \(client.displayName)")
-                }
+                MacRemoteMCPClientRevokeAction(
+                    displayName: client.displayName,
+                    isRevoked: client.isRevoked,
+                    isRevoking: isRevoking,
+                    onRevoke: onRevoke
+                )
             }
 
-            Text(client.activitySummary)
-                .font(.system(size: 10))
-                .foregroundColor(ProTheme.Palette.mercury.opacity(0.54))
+            MacRemoteMCPClientActivityText(text: client.activitySummary)
         }
         .padding(10)
         .background(
@@ -596,18 +570,83 @@ private struct MacRemoteMCPClientRow: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(client.isRevoked ? ProTheme.Palette.aureateStroke.opacity(0.35) : ProTheme.Palette.aureate.opacity(0.28), lineWidth: 0.5)
+                .stroke(rowStrokeColor, lineWidth: 0.5)
         )
     }
 
+    private var rowStrokeColor: Color {
+        client.isRevoked ? ProTheme.Palette.mercury.opacity(0.24) : ProTheme.Palette.aureate.opacity(0.28)
+    }
+}
+
+private struct MacRemoteMCPClientStatusIcon: View {
+    let isRevoked: Bool
+
+    var body: some View {
+        Image(systemName: isRevoked ? "xmark.seal.fill" : "checkmark.seal.fill")
+            .foregroundColor(isRevoked ? ProTheme.Palette.mercury.opacity(0.42) : ProTheme.Palette.aureate)
+            .padding(.top, 2)
+    }
+}
+
+private struct MacRemoteMCPClientDetails: View {
+    let client: MacRemoteMCPClientRecord
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(client.displayName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(ProTheme.Palette.mercury)
+            Text("\(client.displayType) · \(client.modeSummary)")
+                .font(.system(size: 11))
+                .foregroundColor(ProTheme.Palette.mercury.opacity(0.70))
+            Text(client.scopeSummary)
+                .font(.system(size: 10))
+                .foregroundColor(ProTheme.Palette.mercury.opacity(0.54))
+        }
+    }
+}
+
+private struct MacRemoteMCPClientRevokeAction: View {
+    let displayName: String
+    let isRevoked: Bool
+    let isRevoking: Bool
+    let onRevoke: () -> Void
+
+    var body: some View {
+        if isRevoked {
+            Text("Revoked")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(ProTheme.Palette.mercury.opacity(0.48))
+        } else {
+            Button(action: onRevoke) {
+                buttonContent
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.red.opacity(0.88))
+            .disabled(isRevoking)
+            .accessibilityLabel("Revoke \(displayName)")
+        }
+    }
+
     @ViewBuilder
-    private var revokeButtonContent: some View {
+    private var buttonContent: some View {
         if isRevoking {
             ProgressView()
                 .controlSize(.small)
         } else {
             Image(systemName: "xmark.circle.fill")
         }
+    }
+}
+
+private struct MacRemoteMCPClientActivityText: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10))
+            .foregroundColor(ProTheme.Palette.mercury.opacity(0.54))
     }
 }
 

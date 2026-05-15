@@ -851,6 +851,7 @@ final class HermesRelayHostService {
     private let settingsManager: SettingsManager
     private let urlSession: URLSession
     private let relayKeyStore: HermesRelayKeyStore
+    private let realtimeRelayClient: HermesRealtimeRelayHosting
     private var heartbeatTask: Task<Void, Never>?
     private var listener: ListenerRegistration?
     private var listenerUID: String?
@@ -862,13 +863,20 @@ final class HermesRelayHostService {
         accountManager: AccountManager = .shared,
         settingsManager: SettingsManager = .shared,
         urlSession: URLSession = .shared,
-        relayKeyStore: HermesRelayKeyStore = HermesRelayKeyStore()
+        relayKeyStore: HermesRelayKeyStore = HermesRelayKeyStore(),
+        realtimeRelayClient: HermesRealtimeRelayHosting? = nil
     ) {
         self.db = db
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.urlSession = urlSession
         self.relayKeyStore = relayKeyStore
+        self.realtimeRelayClient = realtimeRelayClient ?? HermesRealtimeRelayHostClient(
+            accountManager: accountManager,
+            settingsManager: settingsManager,
+            relayKeyStore: relayKeyStore,
+            urlSession: urlSession
+        )
     }
 
     var connectionID: String {
@@ -896,6 +904,7 @@ final class HermesRelayHostService {
         }
         requestTasks.removeAll()
         processingRequestIDs.removeAll()
+        realtimeRelayClient.stop()
     }
 
     private func refreshRelayHost() async {
@@ -910,6 +919,7 @@ final class HermesRelayHostService {
                 task.cancel()
             }
             requestTasks.removeAll()
+            realtimeRelayClient.stop()
             return
         }
 
@@ -921,6 +931,7 @@ final class HermesRelayHostService {
                 task.cancel()
             }
             requestTasks.removeAll()
+            realtimeRelayClient.stop()
             await publishRelayOffline(uid: uid)
             return
         }
@@ -941,6 +952,10 @@ final class HermesRelayHostService {
                 "status": HermesConnectionStatus.offline.rawValue,
                 "capabilities": ["chat_completions", "remote_relay"],
                 "advertisedModel": FieldValue.delete(),
+                "realtimeRelayURL": FieldValue.delete(),
+                "realtimeRelayStatus": "offline",
+                "realtimeRelayLastSeenAt": FieldValue.delete(),
+                "realtimeRelayProtocolVersion": FieldValue.delete(),
                 "updatedAt": now,
                 "schemaVersion": 2
             ]
@@ -975,18 +990,44 @@ final class HermesRelayHostService {
             bearerToken: settingsManager.hermesBearerToken
         )
         let now = Self.iso8601.string(from: Date())
+        let realtimeRegistered: Bool
+        if probe.available {
+            realtimeRegistered = await realtimeRelayClient.start(uid: uid, connectionID: connectionID)
+        } else {
+            realtimeRelayClient.stop()
+            realtimeRegistered = false
+        }
+        let realtimeRelayURL = realtimeRegistered ? realtimeRelayClient.publishableRelayURLString : nil
+        let realtimeReady = realtimeRelayURL != nil
+        if realtimeRegistered && !realtimeReady {
+            realtimeRelayClient.stop()
+        }
+        var capabilities = ["chat_completions", "remote_relay"]
+        if realtimeReady {
+            capabilities.append(HermesRealtimeRelayProtocol.capability)
+        }
         var data: [String: Any] = [
             "id": connectionID,
             "displayName": Host.current().localizedName.map { "\($0) Hermes Relay" } ?? "Mac Hermes Relay",
             "mode": HermesConnectionMode.relayLink.rawValue,
             "status": probe.available ? HermesConnectionStatus.online.rawValue : HermesConnectionStatus.offline.rawValue,
-            "capabilities": ["chat_completions", "remote_relay"],
+            "capabilities": capabilities,
             "relayPublicKey": relayPrivateKey.publicKeyBase64,
             "relayKeyVersion": HermesRelayCrypto.keyVersion,
             "relayEncryption": HermesRelayCrypto.algorithm,
+            "realtimeRelayStatus": realtimeReady ? "online" : "offline",
             "updatedAt": now,
             "schemaVersion": 2
         ]
+        if let relayURL = realtimeRelayURL {
+            data["realtimeRelayURL"] = relayURL
+            data["realtimeRelayLastSeenAt"] = now
+            data["realtimeRelayProtocolVersion"] = HermesRealtimeRelayProtocol.version
+        } else {
+            data["realtimeRelayURL"] = FieldValue.delete()
+            data["realtimeRelayLastSeenAt"] = FieldValue.delete()
+            data["realtimeRelayProtocolVersion"] = FieldValue.delete()
+        }
         if probe.available, let modelName = probe.modelName {
             data["advertisedModel"] = modelName
             data["lastSeenAt"] = now

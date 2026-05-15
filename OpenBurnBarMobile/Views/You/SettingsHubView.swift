@@ -284,8 +284,9 @@ struct SettingsHubView: View {
 
                 Section {
                     HermesSquarePhaseAToggle()
+                    MissionFABResurrectToggle()
                 } header: { groupHeader("Experimental") } footer: {
-                    Text("Hermes Square is the unified inbox + pinned grid + federated search surface that replaces the runtime pill. Phase A is the foundation; later phases ship dispatch fan-out, mini-program cards, and voice.")
+                    Text("Hermes Square is the unified inbox + pinned grid + federated search surface that replaces the runtime pill. Phase A is the foundation; later phases ship dispatch fan-out, mini-program cards, and voice. The Mission Console orb toggle controls the floating action button — auto-restores when an approval is waiting or a mission fails, regardless of this setting.")
                         .font(MobileTheme.Typography.tiny)
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                 }

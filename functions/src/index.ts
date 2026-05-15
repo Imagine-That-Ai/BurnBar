@@ -81,6 +81,7 @@ import { openaiAdapter } from "./providers/openai.js";
 import type {
   Provider,
   SUPPORTED_PROVIDERS,
+  CredentialKind,
   ProviderAccountDoc,
   ProviderAccountSecretRefDoc,
   ProviderConnectionDoc,
@@ -112,7 +113,11 @@ export { insightsHostedAnswer } from "./insightsHostedAnswer.js";
 // ---------------------------------------------------------------------------
 // Admin initialization
 // ---------------------------------------------------------------------------
-initializeApp();
+const configuredStorageBucket =
+  process.env.OPENBURNBAR_STORAGE_BUCKET ||
+  process.env.FIREBASE_STORAGE_BUCKET ||
+  undefined;
+initializeApp(configuredStorageBucket ? { storageBucket: configuredStorageBucket } : undefined);
 const db = getFirestore();
 const auth = getAuth();
 // Allow optional fields (e.g. identityHint, sourceDeviceID) to be set to
@@ -549,6 +554,16 @@ function hostedProviderLabel(provider: string): string {
     case "claude-code": return "Claude Code";
     case "kimi": return "Kimi";
     default: return provider;
+  }
+}
+
+function hostedCredentialKind(provider: string): CredentialKind {
+  switch (provider) {
+    case "codex":
+    case "claude-code":
+      return "session";
+    default:
+      return "bearer";
   }
 }
 
@@ -1307,7 +1322,7 @@ export const connectHostedQuotaAccount = onCall(
       label,
       identityHint: undefined,
       status: "connected",
-      credentialKind: "session",
+      credentialKind: hostedCredentialKind(provider),
       storageScope: "server_private",
       redactedLabel: accountRedactedLabel,
       sourceDeviceID: boundedTrimmedString(request.data.sourceDeviceID, "sourceDeviceID", 128),
@@ -3020,8 +3035,14 @@ export const commitEncryptedSearchIndexBatch = onCall(
             hash,
             chunkID,
             documentID,
+            sourceKind: chunk.sourceKind,
+            sourceID: chunk.sourceID,
             provider: chunk.provider,
             projectName: chunk.projectName,
+            ordinal: chunk.ordinal,
+            bodyHash: chunk.bodyHash,
+            storagePath: chunk.storagePath,
+            sealedSnippet: chunk.sealedSnippet,
             updatedAt: now,
             indexVersion,
             commitID,
@@ -3628,7 +3649,5 @@ export const backfillProviderAccountDeviceLinksScheduled = onSchedule(
   }
 );
 import { kimiAdapter } from "./providers/kimi.js";
-// Claude Code and Kimi are now supported via the hosted quota runner.
+// Claude Code is now supported via the hosted quota runner.
 HOSTED_QUOTA_PROVIDERS.add("claude-code");
-HOSTED_QUOTA_PROVIDERS.add("kimi");
-SELF_HOSTED_QUOTA_PROVIDERS.add("kimi");

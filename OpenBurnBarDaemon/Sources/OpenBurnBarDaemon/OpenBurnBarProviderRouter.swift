@@ -98,10 +98,17 @@ public struct BurnBarRankedRoute: Hashable, Sendable {
 /// Result of scoring and ranking routes.
 public struct BurnBarRouteRankingResult: Hashable, Sendable {
     /// All candidate routes ranked by composite score (highest first).
+    /// When `requiredCapabilityClassID` was provided, this contains only same-class routes.
     public let rankedRoutes: [BurnBarRankedRoute]
     public let routerMode: ProviderRouterMode
     public let taskCategory: ProviderRoutingTaskCategory
     public let benchmarkStatus: ProviderModelBenchmarkStatus?
+
+    /// Routes that were excluded because they belong to a different capability class
+    /// than the requested one. Non-empty only when `requiredCapabilityClassID` filtering
+    /// was applied. Used by callers (e.g., the gateway) to report "downgrade disabled"
+    /// when the same-class pool is exhausted.
+    public let blockedCapabilityClassRoutes: [BurnBarProviderRoute]
 
     /// The winning route (same as rankedRoutes.first?.route).
     public var winner: BurnBarProviderRoute? {
@@ -112,12 +119,14 @@ public struct BurnBarRouteRankingResult: Hashable, Sendable {
         rankedRoutes: [BurnBarRankedRoute],
         routerMode: ProviderRouterMode = .providerFamilyFailover,
         taskCategory: ProviderRoutingTaskCategory = .unknown,
-        benchmarkStatus: ProviderModelBenchmarkStatus? = nil
+        benchmarkStatus: ProviderModelBenchmarkStatus? = nil,
+        blockedCapabilityClassRoutes: [BurnBarProviderRoute] = []
     ) {
         self.rankedRoutes = rankedRoutes
         self.routerMode = routerMode
         self.taskCategory = taskCategory
         self.benchmarkStatus = benchmarkStatus
+        self.blockedCapabilityClassRoutes = blockedCapabilityClassRoutes
     }
 }
 
@@ -777,12 +786,33 @@ extension BurnBarProviderRouter {
             strictPreferredProvider: preferredProviderID != nil
         )
 
+        // When capability-class filtering is active, also fetch the unfiltered candidates
+        // to compute which lower-class routes were excluded. Used by callers (gateway)
+        // to report "downgrade disabled" when the same-class pool is exhausted.
+        let blockedByCapabilityClass: [BurnBarProviderRoute]
+        if let requiredCapabilityClassID {
+            let unfilteredCandidates = try candidateRoutes(
+                modelName: modelName,
+                preferredProviderID: effectivePreferredProviderID,
+                excludedRouteKeys: excludedRouteKeys,
+                requestedFormatFamily: requestedFormatFamily,
+                requiredCapabilityClassID: nil,
+                configurations: configurations,
+                strictPreferredProvider: preferredProviderID != nil
+            )
+            let sameClassIDs = Set(candidates.map(\.modelCapabilityClassID))
+            blockedByCapabilityClass = unfilteredCandidates.filter { !sameClassIDs.contains($0.modelCapabilityClassID) }
+        } else {
+            blockedByCapabilityClass = []
+        }
+
         guard !candidates.isEmpty else {
             return BurnBarRouteRankingResult(
                 rankedRoutes: [],
                 routerMode: effectiveRouterMode,
                 taskCategory: taskCategory,
-                benchmarkStatus: benchmarkStatus
+                benchmarkStatus: benchmarkStatus,
+                blockedCapabilityClassRoutes: blockedByCapabilityClass
             )
         }
 
@@ -844,7 +874,8 @@ extension BurnBarProviderRouter {
             rankedRoutes: rankedRoutes,
             routerMode: effectiveRouterMode,
             taskCategory: taskCategory,
-            benchmarkStatus: benchmarkStatus
+            benchmarkStatus: benchmarkStatus,
+            blockedCapabilityClassRoutes: blockedByCapabilityClass
         )
     }
 

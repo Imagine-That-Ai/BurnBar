@@ -47,6 +47,7 @@ typealias HostedQuotaProductPurchaseExecutor = @MainActor (
 ) async throws -> HostedQuotaPurchaseOutcome
 
 typealias HostedQuotaAppStoreSync = @MainActor () async throws -> Void
+typealias HostedQuotaProductCatalogFetcher = @MainActor ([String]) async throws -> [Product]
 typealias HostedQuotaAuthStateReader = @MainActor () -> Bool
 
 /// StoreKit 2 surface for the Apple-verified hosted-quota entitlement.
@@ -70,11 +71,19 @@ typealias HostedQuotaAuthStateReader = @MainActor () -> Bool
 @MainActor
 final class HostedQuotaSubscriptionStore {
     static let productID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
+    static let legacyHostedQuotaProductID = "com.openburnbar.hostedQuotaSync.monthly"
+    static let burnBarProProductID = "com.openburnbar.pro.monthly"
+    private static let entitlementProductIDs: Set<String> = [
+        "com.openburnbar.hostedQuotaSync.cloud.monthly",
+        "com.openburnbar.hostedQuotaSync.monthly",
+        "com.openburnbar.pro.monthly"
+    ]
 
     private let functions: any HostedQuotaEntitlementServicing
     private let directReader: (any HostedQuotaEntitlementDirectReading)?
     private let purchaseProduct: HostedQuotaProductPurchaseExecutor
     private let syncAppStore: HostedQuotaAppStoreSync
+    private let fetchProducts: HostedQuotaProductCatalogFetcher
     private let isSignedIn: HostedQuotaAuthStateReader
 
     private(set) var product: Product?
@@ -107,12 +116,14 @@ final class HostedQuotaSubscriptionStore {
         directReader: (any HostedQuotaEntitlementDirectReading)? = FirestoreRepository.shared,
         purchaseProduct: @escaping HostedQuotaProductPurchaseExecutor = HostedQuotaSubscriptionStore.purchaseProduct,
         syncAppStore: @escaping HostedQuotaAppStoreSync = HostedQuotaSubscriptionStore.syncAppStore,
+        fetchProducts: @escaping HostedQuotaProductCatalogFetcher = HostedQuotaSubscriptionStore.fetchProducts,
         isSignedIn: @escaping HostedQuotaAuthStateReader = { AuthRepository.shared.isSignedIn }
     ) {
         self.functions = functions
         self.directReader = directReader
         self.purchaseProduct = purchaseProduct
         self.syncAppStore = syncAppStore
+        self.fetchProducts = fetchProducts
         self.isSignedIn = isSignedIn
     }
 
@@ -124,18 +135,23 @@ final class HostedQuotaSubscriptionStore {
         isLoading = true
         error = nil
         defer { isLoading = false }
-        do {
-            product = try await Product.products(for: [Self.productID]).first
-            if isSignedIn() {
-                try await refreshEntitlement()
-            } else {
-                isActive = false
-                expirationDate = nil
-            }
-            startObservingTransactionUpdates()
-        } catch {
-            self.error = error.localizedDescription
+        startObservingTransactionUpdates()
+        guard isSignedIn() else {
+            isActive = false
+            expirationDate = nil
+            purchaseDate = nil
+            latestTransactionID = nil
+            await loadProductMetadataIfAvailable()
+            return
         }
+        do {
+            try await refreshEntitlement()
+        } catch {
+            if self.error == nil {
+                self.error = error.localizedDescription
+            }
+        }
+        await loadProductMetadataIfAvailable()
     }
 
     /// Buy the hosted-quota subscription. The pre-purchase
@@ -148,7 +164,7 @@ final class HostedQuotaSubscriptionStore {
         defer { isLoading = false }
         do {
             if product == nil {
-                product = try await Product.products(for: [Self.productID]).first
+                product = try await fetchProducts([Self.productID]).first
             }
             guard let product else {
                 throw HostedQuotaSubscriptionError.productUnavailable
@@ -165,8 +181,16 @@ final class HostedQuotaSubscriptionStore {
             switch result {
             case .success(let signedTransactionJWS, let finish):
                 if signedInAtPurchaseStart {
-                    try await verifyOnServer(jws: signedTransactionJWS)
-                    await finish()
+                    do {
+                        try await verifyOnServer(jws: signedTransactionJWS)
+                        await finish()
+                    } catch {
+                        if await recoverEntitlementAfterVerificationFailure(jws: signedTransactionJWS) {
+                            await finish()
+                        } else {
+                            throw error
+                        }
+                    }
                 } else {
                     await finish()
                     self.error = Self.signedOutPurchaseMessage
@@ -201,15 +225,15 @@ final class HostedQuotaSubscriptionStore {
             // 2) Walk local entitlements. The first matching active JWS
             //    wins; we forward only the raw JWS so the server is the
             //    sole arbiter of activation.
-            let matchedJWS = await findCurrentEntitlementJWS()
+            let matchedEntitlement = await findCurrentEntitlement()
             guard isSignedIn() else {
                 self.error = Self.signedOutRestoreMessage
                 return
             }
-            if let matchedJWS {
+            if let matchedEntitlement {
                 let response = try await functions.restoreHostedQuotaEntitlement(
-                    productID: Self.productID,
-                    signedTransactionJWS: matchedJWS
+                    productID: matchedEntitlement.productID,
+                    signedTransactionJWS: matchedEntitlement.jws
                 )
                 apply(response: response)
                 return
@@ -243,8 +267,8 @@ final class HostedQuotaSubscriptionStore {
             return
         }
 
-        if let matchedJWS = await findCurrentEntitlementJWS() {
-            try await verifyOnServer(jws: matchedJWS)
+        if let matchedEntitlement = await findCurrentEntitlement() {
+            try await verifyOnServer(jws: matchedEntitlement.jws, productID: matchedEntitlement.productID)
             if !isActive {
                 await applyDirectReadIfActive()
             }
@@ -284,7 +308,7 @@ final class HostedQuotaSubscriptionStore {
                 return false
             }
             guard response.active,
-                  response.productID == Self.productID,
+                  Self.entitlementProductIDs.contains(response.productID),
                   let expires = response.expiresAt,
                   expires > Date() else {
                 return false
@@ -302,18 +326,18 @@ final class HostedQuotaSubscriptionStore {
     /// present locally. As a side-effect, captures `purchaseDate` and
     /// `latestTransactionID` from the matched transaction for display in
     /// the member card.
-    private func findCurrentEntitlementJWS() async -> String? {
+    private func findCurrentEntitlement() async -> CurrentEntitlement? {
         for await result in Transaction.currentEntitlements {
             do {
                 let transaction = try Self.checked(result)
-                guard transaction.productID == Self.productID else { continue }
+                guard Self.entitlementProductIDs.contains(transaction.productID) else { continue }
                 guard transaction.revocationDate == nil else { continue }
                 if let expires = transaction.expirationDate, expires <= Date() {
                     continue
                 }
                 purchaseDate = transaction.originalPurchaseDate
                 latestTransactionID = transaction.id
-                return result.jwsRepresentation
+                return CurrentEntitlement(productID: transaction.productID, jws: result.jwsRepresentation)
             } catch {
                 // Skip unverified entitlements — the server is the
                 // source of truth, but there's no point sending a
@@ -339,9 +363,17 @@ final class HostedQuotaSubscriptionStore {
     private func handleTransactionUpdate(_ update: VerificationResult<Transaction>) async {
         do {
             let transaction = try Self.checked(update)
-            guard transaction.productID == Self.productID else { return }
-            try await verifyOnServer(jws: update.jwsRepresentation)
-            await transaction.finish()
+            guard Self.entitlementProductIDs.contains(transaction.productID) else { return }
+            do {
+                try await verifyOnServer(jws: update.jwsRepresentation, productID: transaction.productID)
+                await transaction.finish()
+            } catch {
+                if await recoverEntitlementAfterVerificationFailure(jws: update.jwsRepresentation, productID: transaction.productID) {
+                    await transaction.finish()
+                } else {
+                    throw error
+                }
+            }
         } catch {
             self.error = error.localizedDescription
         }
@@ -362,7 +394,7 @@ final class HostedQuotaSubscriptionStore {
     /// JWS share a single in-flight Task, so a `purchase()` outcome
     /// racing a `Transaction.updates` event won't double-call the
     /// callable nor cause UI flicker on the entitlement state.
-    private func verifyOnServer(jws: String) async throws {
+    private func verifyOnServer(jws: String, productID: String = HostedQuotaSubscriptionStore.productID) async throws {
         if let existing = inFlightVerifyByJWS[jws] {
             try await existing.value
             return
@@ -372,7 +404,7 @@ final class HostedQuotaSubscriptionStore {
             let response = try await self.functions.verifyHostedQuotaEntitlement(
                 signedTransactionJWS: jws,
                 signedRenewalInfoJWS: nil,
-                productID: Self.productID
+                productID: productID
             )
             await MainActor.run { self.apply(response: response) }
         }
@@ -381,9 +413,29 @@ final class HostedQuotaSubscriptionStore {
         try await task.value
     }
 
+    @discardableResult
+    private func recoverEntitlementAfterVerificationFailure(jws: String, productID: String = HostedQuotaSubscriptionStore.productID) async -> Bool {
+        do {
+            let response = try await functions.restoreHostedQuotaEntitlement(
+                productID: productID,
+                signedTransactionJWS: jws
+            )
+            apply(response: response)
+            if isActive { return true }
+        } catch {
+            // Fall through to the Firestore read used by relay security rules.
+        }
+        return await applyDirectReadIfActive()
+    }
+
     private func apply(response: HostedQuotaEntitlementResponse) {
         isActive = response.active
         expirationDate = response.expiresAt
+    }
+
+    private struct CurrentEntitlement {
+        let productID: String
+        let jws: String
     }
 
     private static func purchaseProduct(
@@ -409,6 +461,20 @@ final class HostedQuotaSubscriptionStore {
 
     private static func syncAppStore() async throws {
         try await AppStore.sync()
+    }
+
+    private static func fetchProducts(for identifiers: [String]) async throws -> [Product] {
+        try await Product.products(for: identifiers)
+    }
+
+    private func loadProductMetadataIfAvailable() async {
+        do {
+            product = try await fetchProducts([Self.productID]).first
+        } catch {
+            if self.error == nil {
+                self.error = error.localizedDescription
+            }
+        }
     }
 
     private static func checked<T>(_ result: VerificationResult<T>) throws -> T {

@@ -625,9 +625,13 @@ final class FirestoreRepository {
 
     func fetchUsageSince(_ startDate: Date) async throws -> [TokenUsage] {
         let uid = try uid()
-        let cutoff = isoFirestoreCutoff(startDate)
+        // `startTime` is written everywhere as a Firestore `Timestamp` (see
+        // `UsageSyncService.swift` and `CloudSyncService.swift`). Comparing
+        // against an ISO-8601 string here would cross Firestore's type-order
+        // boundary and match zero documents, surfacing as an empty Pulse
+        // hero card for the 1M / 1H / 1D scopes.
         let snapshot = try await db.collection("users/\(uid)/usage")
-            .whereField("startTime", isGreaterThanOrEqualTo: cutoff)
+            .whereField("startTime", isGreaterThanOrEqualTo: Timestamp(date: startDate))
             .order(by: "startTime", descending: true)
             .getDocuments()
         return snapshot.documents.compactMap { doc -> TokenUsage? in
@@ -643,9 +647,8 @@ final class FirestoreRepository {
             Task { @MainActor in onUpdate(.failure(FirestoreError.notAuthenticated)) }
             return nil
         }
-        let cutoff = isoFirestoreCutoff(startDate)
         return db.collection("users/\(uid)/usage")
-            .whereField("startTime", isGreaterThanOrEqualTo: cutoff)
+            .whereField("startTime", isGreaterThanOrEqualTo: Timestamp(date: startDate))
             .order(by: "startTime", descending: true)
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self else { return }
@@ -660,12 +663,6 @@ final class FirestoreRepository {
                     onUpdate(.success(rows))
                 }
             }
-    }
-
-    private func isoFirestoreCutoff(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.string(from: date)
     }
 
     // MARK: - Stream Detail
@@ -882,21 +879,38 @@ final class FirestoreRepository {
 
     // MARK: - Hosted quota entitlement direct read
 
-    /// Read the canonical entitlement doc at
-    /// `users/{uid}/entitlements/hosted_quota_sync` directly. The same doc is
-    /// consulted by Firestore security rules to gate the Hermes relay, so if
-    /// it's active the iOS UI should treat the user as a paid subscriber even
-    /// when the App Store Server API roundtrip in
-    /// `restoreHostedQuotaEntitlement` cannot replay the transaction (e.g.
-    /// owner-seeded test entitlements that predate StoreKit).
+    /// Read the hosted-cloud entitlement docs directly. Firestore rules accept
+    /// either the legacy `hosted_quota_sync` document or the BurnBar Pro mirror,
+    /// so the iOS UI must reconcile both before deciding a paid user is blocked.
     func fetchHostedQuotaEntitlement() async throws -> HostedQuotaEntitlementResponse? {
         let uid = try uid()
-        let snapshot = try await db
-            .document("users/\(uid)/entitlements/hosted_quota_sync")
-            .getDocument()
-        guard let data = snapshot.data() else { return nil }
+        var inactiveResponse: HostedQuotaEntitlementResponse?
+        for entitlementID in ["hosted_quota_sync", "burnbar_pro"] {
+            let snapshot = try await db
+                .document("users/\(uid)/entitlements/\(entitlementID)")
+                .getDocument()
+            guard let data = snapshot.data() else { continue }
+            let fallbackProductID = entitlementID == "burnbar_pro"
+                ? "com.openburnbar.pro.monthly"
+                : "com.openburnbar.hostedQuotaSync.cloud.monthly"
+            let response = Self.hostedQuotaEntitlementResponse(
+                from: data,
+                fallbackProductID: fallbackProductID
+            )
+            if response.active {
+                return response
+            }
+            inactiveResponse = inactiveResponse ?? response
+        }
+        return inactiveResponse
+    }
+
+    private static func hostedQuotaEntitlementResponse(
+        from data: [String: Any],
+        fallbackProductID: String
+    ) -> HostedQuotaEntitlementResponse {
         let active = data["active"] as? Bool ?? false
-        let productID = (data["productID"] as? String) ?? ""
+        let productID = (data["productID"] as? String) ?? fallbackProductID
         let transactionID = data["transactionID"] as? String
         let originalTransactionID = data["originalTransactionID"] as? String
         let environment = data["environment"] as? String

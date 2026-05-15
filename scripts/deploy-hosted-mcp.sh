@@ -8,6 +8,11 @@ REGION="${REGION:-us-central1}"
 SERVICE="${SERVICE:-openburnbar-hosted-mcp}"
 SECRET_NAME="${REMOTE_MCP_TOKEN_HMAC_SECRET_NAME:-REMOTE_MCP_TOKEN_HMAC_SECRET}"
 IMAGE="gcr.io/${GOOGLE_CLOUD_PROJECT}/${SERVICE}:$(git rev-parse --short HEAD)"
+ENV_VARS="MCP_RESOURCE=https://mcp.openburnbar.com/mcp,MCP_AUTH_ISSUER=https://openburnbar.com"
+
+if [[ -n "${OPENBURNBAR_STORAGE_BUCKET:-}" ]]; then
+  ENV_VARS="${ENV_VARS},OPENBURNBAR_STORAGE_BUCKET=${OPENBURNBAR_STORAGE_BUCKET}"
+fi
 
 if [[ -n "${REMOTE_MCP_TOKEN_HMAC_SECRET:-}" ]]; then
   if ! gcloud secrets describe "$SECRET_NAME" --project "$GOOGLE_CLOUD_PROJECT" >/dev/null 2>&1; then
@@ -35,7 +40,7 @@ gcloud run deploy "$SERVICE" \
   --allow-unauthenticated \
   --min-instances "${MIN_INSTANCES:-0}" \
   --max-instances "${MAX_INSTANCES:-20}" \
-  --set-env-vars "MCP_RESOURCE=https://mcp.openburnbar.com/mcp,MCP_AUTH_ISSUER=https://openburnbar.com" \
+  --set-env-vars "$ENV_VARS" \
   --set-secrets "MCP_TOKEN_HMAC_SECRET=${SECRET_NAME}:latest"
 
 gcloud run services describe "$SERVICE" --region "$REGION" --project "$GOOGLE_CLOUD_PROJECT" --format='value(status.url)'

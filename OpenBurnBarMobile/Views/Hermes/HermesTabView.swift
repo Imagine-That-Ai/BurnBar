@@ -66,6 +66,29 @@ enum HermesMobileSetupWizardState {
     static let completionKey = "com.openburnbar.mobile.hermesSetupWizardCompleted"
 }
 
+enum HermesMobileSetupWizardGate {
+    static func hasUsableSetup(
+        isReachable: Bool,
+        selectedConnection: HermesConnectionRecord,
+        suggestedRelayConnection: HermesConnectionRecord?
+    ) -> Bool {
+        if isReachable { return true }
+        if selectedConnection.mode == .relayLink && selectedConnection.status == .online {
+            return true
+        }
+        return suggestedRelayConnection != nil
+    }
+
+    static func shouldAutoPresent(
+        isScreenshotMode: Bool,
+        hasCompletedSetup: Bool,
+        didAutoPresent: Bool,
+        hasUsableSetup: Bool
+    ) -> Bool {
+        !isScreenshotMode && !hasCompletedSetup && !didAutoPresent && !hasUsableSetup
+    }
+}
+
 enum HermesMobileChatPreferences {
     /// `@AppStorage` key for the opt-in tokens-per-second footer on assistant
     /// bubbles. Defaults to `false` so existing chat surfaces stay unchanged
@@ -333,6 +356,7 @@ struct HermesConversationListView: View {
             async let reachability: Void = service.checkReachability()
             async let library: Void = libraryStore.refresh()
             _ = await (reachability, library)
+            reconcileSetupWizardCompletion()
         }
         // Pending-prompt consumer — picks up prompts stashed by the
         // "Ask Hermes" widget chip AppIntent or a `burnbar://hermes?prompt=…`
@@ -346,14 +370,44 @@ struct HermesConversationListView: View {
         .onAppear {
             presentSetupWizardIfNeeded()
         }
+        .onChange(of: service.isReachable) { _, _ in
+            reconcileSetupWizardCompletion()
+        }
+        .onChange(of: service.selectedConnection.id) { _, _ in
+            reconcileSetupWizardCompletion()
+        }
+        .onChange(of: service.suggestedRelayConnection?.id) { _, _ in
+            reconcileSetupWizardCompletion()
+        }
     }
 
     private func presentSetupWizardIfNeeded() {
-        guard !AppStoreScreenshotMode.isEnabled else { return }
-        guard !hasCompletedHermesSetupWizard else { return }
-        guard !didAutoPresentSetupWizard else { return }
+        if hasUsableHermesSetup {
+            reconcileSetupWizardCompletion()
+            return
+        }
+        guard HermesMobileSetupWizardGate.shouldAutoPresent(
+            isScreenshotMode: AppStoreScreenshotMode.isEnabled,
+            hasCompletedSetup: hasCompletedHermesSetupWizard,
+            didAutoPresent: didAutoPresentSetupWizard,
+            hasUsableSetup: hasUsableHermesSetup
+        ) else { return }
         didAutoPresentSetupWizard = true
         showSetupWizard = true
+    }
+
+    private var hasUsableHermesSetup: Bool {
+        HermesMobileSetupWizardGate.hasUsableSetup(
+            isReachable: service.isReachable,
+            selectedConnection: service.selectedConnection,
+            suggestedRelayConnection: service.suggestedRelayConnection
+        )
+    }
+
+    private func reconcileSetupWizardCompletion() {
+        guard hasUsableHermesSetup else { return }
+        hasCompletedHermesSetupWizard = true
+        showSetupWizard = false
     }
 
     @MainActor
@@ -1231,6 +1285,7 @@ struct HermesChatView: View {
             // Idempotent: refreshRuntime coalesces concurrent callers and loads
             // both remote relay discovery and selected-host reachability.
             await service.refreshRuntime()
+            reconcileSetupWizardCompletion()
             // Warm the offscreen Pretext WKWebView so the first assistant
             // turn doesn't stall on initial load. Idempotent.
             PretextEngine.shared.start()
@@ -1254,14 +1309,44 @@ struct HermesChatView: View {
         .onAppear {
             presentSetupWizardIfNeeded()
         }
+        .onChange(of: service.isReachable) { _, _ in
+            reconcileSetupWizardCompletion()
+        }
+        .onChange(of: service.selectedConnection.id) { _, _ in
+            reconcileSetupWizardCompletion()
+        }
+        .onChange(of: service.suggestedRelayConnection?.id) { _, _ in
+            reconcileSetupWizardCompletion()
+        }
     }
 
     private func presentSetupWizardIfNeeded() {
-        guard !AppStoreScreenshotMode.isEnabled else { return }
-        guard !hasCompletedHermesSetupWizard else { return }
-        guard !didAutoPresentSetupWizard else { return }
+        if hasUsableHermesSetup {
+            reconcileSetupWizardCompletion()
+            return
+        }
+        guard HermesMobileSetupWizardGate.shouldAutoPresent(
+            isScreenshotMode: AppStoreScreenshotMode.isEnabled,
+            hasCompletedSetup: hasCompletedHermesSetupWizard,
+            didAutoPresent: didAutoPresentSetupWizard,
+            hasUsableSetup: hasUsableHermesSetup
+        ) else { return }
         didAutoPresentSetupWizard = true
         showSetupWizard = true
+    }
+
+    private var hasUsableHermesSetup: Bool {
+        HermesMobileSetupWizardGate.hasUsableSetup(
+            isReachable: service.isReachable,
+            selectedConnection: service.selectedConnection,
+            suggestedRelayConnection: service.suggestedRelayConnection
+        )
+    }
+
+    private func reconcileSetupWizardCompletion() {
+        guard hasUsableHermesSetup else { return }
+        hasCompletedHermesSetupWizard = true
+        showSetupWizard = false
     }
 
     // MARK: - Route Binding

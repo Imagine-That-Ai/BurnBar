@@ -587,6 +587,67 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertTrue(filtered.allSatisfy { $0.modelCapabilityClassID == "openai:shared:pro" })
     }
 
+    func testScoreAndRankReportsBlockedCapabilityClassRoutes() async throws {
+        let harness = try makeHarness(name: "blocked-class-report", catalog: capabilityClassCatalog())
+        try await harness.configStore.setSecret("alpha-key", for: "alpha")
+        try await harness.configStore.setSecret("beta-key", for: "beta")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "alpha",
+                isEnabled: true,
+                baseURL: "https://alpha.example/v1",
+                preferredModelIDs: ["alpha-shared-pro"]
+            )
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "beta",
+                isEnabled: true,
+                baseURL: "https://beta.example/v1",
+                preferredModelIDs: ["beta-shared-base"]
+            )
+        )
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "shared-code-model",
+            requiredCapabilityClassID: "openai:shared:pro",
+            routerMode: .intelligentModelRouter
+        )
+        XCTAssertTrue(ranking.rankedRoutes.allSatisfy { $0.route.modelCapabilityClassID == "openai:shared:pro" })
+        XCTAssertFalse(ranking.blockedCapabilityClassRoutes.isEmpty,
+                       "Must report the filtered-out lower-class routes.")
+        XCTAssertTrue(ranking.blockedCapabilityClassRoutes.allSatisfy { $0.modelCapabilityClassID != "openai:shared:pro" })
+    }
+
+    func testScoreAndRank_noBlockedRoutesWhenNoClassFilter() async throws {
+        let harness = try makeHarness(name: "no-class-filter-blocked", catalog: capabilityClassCatalog())
+        try await harness.configStore.setSecret("alpha-key", for: "alpha")
+        try await harness.configStore.setSecret("beta-key", for: "beta")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "alpha",
+                isEnabled: true,
+                baseURL: "https://alpha.example/v1",
+                preferredModelIDs: ["alpha-shared-pro"]
+            )
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "beta",
+                isEnabled: true,
+                baseURL: "https://beta.example/v1",
+                preferredModelIDs: ["beta-shared-base"]
+            )
+        )
+
+        let ranking = try await harness.router.scoreAndRankRoutes(
+            modelName: "shared-code-model",
+            routerMode: .intelligentModelRouter
+        )
+        XCTAssertTrue(ranking.blockedCapabilityClassRoutes.isEmpty,
+                       "Must not report blocked routes when no class filter was applied.")
+    }
+
     private func makeHarness(
         name: String,
         catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog

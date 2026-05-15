@@ -196,8 +196,7 @@ export const kimiAdapter: ProviderAdapter = {
   ): Promise<QuotaRefreshResult> {
     const trimmed = (credential ?? "").trim();
 
-    // Re-validate the credential via /v1/models so we can detect auth
-    // failures and provide a meaningful error.
+    // Validate the credential via /v1/models first.
     const result = await tryEachHost<KimiModelsPayload>(VALIDATE_PATH, trimmed);
     if (!result.ok) {
       return {
@@ -207,22 +206,90 @@ export const kimiAdapter: ProviderAdapter = {
       };
     }
 
-    // Kimi has no public usage or balance endpoint. Surface a single
-    // placeholder bucket so the dashboard shows a "connected" tile with
-    // an explicit "unknown limit" signal rather than a blank state.
     const modelCount = result.data?.data?.length ?? 0;
-    const buckets: QuotaBucket[] = [
-      {
-        name: "api_access",
+    const buckets: QuotaBucket[] = [];
+
+    // Attempt the /v1/users/me/balance endpoint. Moonshot exposes account
+    // balance on some plan tiers. If it works, we get real usage/limit data.
+    // If it fails (404 or auth error), we gracefully fall back to a
+    // usage-only signal.
+    // Use the host that successfully validated the credential for the
+    // balance probe. We can't tell which host succeeded from tryEachHost's
+    // return value alone, so try both in order — the balance endpoint
+    // must be on the same host that accepted the key.
+    let confidence: "high" | "medium" | "low" = "low";
+    let source = "Kimi /v1/models";
+    let statusMessage =
+      "Kimi credential validated; balance endpoint unavailable — usage limits are unknown.";
+
+    const balanceResult = await tryEachHost<KimiBalancePayload>(
+      "/v1/users/me/balance",
+      trimmed
+    );
+
+    if (balanceResult.ok && balanceResult.data) {
+      const balance = balanceResult.data;
+      const available = finiteNumber(balance.available_balance ?? balance.availableBalance ?? balance.balance);
+      const used = finiteNumber(balance.used_balance ?? balance.usedBalance ?? balance.used);
+      const total = finiteNumber(balance.total_balance ?? balance.totalBalance ?? balance.total);
+
+      if (available != null && total != null && total > 0) {
+        const usedAmount = used != null ? used : Math.max(0, total - available);
+        buckets.push({
+          name: "account_balance",
+          used: usedAmount,
+          limit: total,
+          remaining: available,
+          window: "monthly",
+          meta: { currency: balance.currency ?? "CNY" },
+        });
+        confidence = "high";
+        source = "Kimi balance API";
+        statusMessage = "Fetched account balance from Kimi.";
+      } else if (available != null && available > 0) {
+        buckets.push({
+          name: "remaining_balance",
+          used: 0,
+          limit: available,
+          remaining: available,
+          window: "monthly",
+          meta: { currency: balance.currency ?? "CNY" },
+        });
+        confidence = "medium";
+        source = "Kimi balance API";
+        statusMessage = "Fetched remaining balance from Kimi; total limit unavailable.";
+      }
+    }
+
+    // Always include a models-accessible bucket. Use a positive synthetic
+    // limit so the iOS `isDisplayableQuotaSignal` filter (which rejects
+    // limit <= 0) doesn't strip this bucket.
+    if (modelCount > 0) {
+      buckets.push({
+        name: "models",
         used: 0,
-        limit: -1,
-        remaining: -1,
+        limit: modelCount,
+        remaining: modelCount,
+        window: "static",
+        meta: { unit: "models", modelsAccessible: modelCount },
+      });
+      if (confidence === "low") {
+        confidence = "medium";
+        statusMessage = "Kimi key verified; balance endpoint did not return usable quota data.";
+      }
+    }
+
+    if (buckets.length === 0) {
+      // Last resort: a minimal connected-signal bucket so the dashboard
+      // doesn't show a blank tile. Use limit=1 so it passes the iOS filter.
+      buckets.push({
+        name: "connected",
+        used: 0,
+        limit: 1,
+        remaining: 1,
         window: "account",
-        meta: {
-          modelsAccessible: modelCount,
-        },
-      },
-    ];
+      });
+    }
 
     return {
       ok: true,
@@ -231,16 +298,38 @@ export const kimiAdapter: ProviderAdapter = {
         sourceId,
         provider: PROVIDER,
         fetchedAt: new Date().toISOString(),
-        source: "Kimi /v1/models",
-        confidence: "low",
-        statusMessage:
-          "Kimi does not expose a public quota or usage endpoint. " +
-          "Credential validated successfully; usage limits are unknown.",
+        source,
+        confidence,
+        statusMessage,
         buckets,
       },
     };
   },
 };
+
+// ---------------------------------------------------------------------------
+// Balance payload
+// ---------------------------------------------------------------------------
+
+interface KimiBalancePayload {
+  available_balance?: number;
+  availableBalance?: number;
+  balance?: number;
+  used_balance?: number;
+  usedBalance?: number;
+  used?: number;
+  total_balance?: number;
+  totalBalance?: number;
+  total?: number;
+  currency?: string;
+  data?: KimiBalancePayload;
+  [k: string]: unknown;
+}
+
+function finiteNumber(raw: unknown): number | undefined {
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
 
 // ---------------------------------------------------------------------------
 // Utilities

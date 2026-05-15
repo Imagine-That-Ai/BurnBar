@@ -67,12 +67,13 @@ export function getAppStoreServerAPIClient(
   const ck = cacheKey(key);
   const cached = cache.get(ck);
   if (cached) return cached;
+  const libEnvironment = toLibEnvironment(environment);
   const client = new AppStoreServerAPIClient(
     cfg.asc.privateKeyP8,
     cfg.asc.keyId,
     cfg.asc.issuerId,
     cfg.bundleId,
-    toLibEnvironment(environment)
+    libEnvironment
   );
   cache.set(ck, client);
   return client;

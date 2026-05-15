@@ -90,4 +90,20 @@ final class BurnBarCatalogTests: XCTestCase {
             "alpha-base"
         )
     }
+
+    func test_bundledCatalog_hasCapabilityClassesForAnthropicModels() {
+        let catalog = BurnBarCatalogLoader.bundledCatalog
+        XCTAssertEqual(catalog.capabilityClassID(forModelName: "claude-opus-4-7", providerID: "anthropic"), "anthropic:opus")
+        XCTAssertEqual(catalog.capabilityClassID(forModelName: "claude-sonnet-4-6", providerID: "anthropic"), "anthropic:sonnet")
+        XCTAssertEqual(catalog.capabilityClassID(forModelName: "claude-haiku-4-5", providerID: "anthropic"), "anthropic:haiku")
+    }
+
+    func test_bundledCatalog_hasCapabilityClassesForOpenAIModels() {
+        let catalog = BurnBarCatalogLoader.bundledCatalog
+        XCTAssertEqual(catalog.capabilityClassID(forModelName: "gpt-5.4-pro", providerID: "openai"), "openai:pro")
+        XCTAssertEqual(catalog.capabilityClassID(forModelName: "gpt-5.4", providerID: "openai"), "openai:standard")
+        XCTAssertEqual(catalog.capabilityClassID(forModelName: "gpt-5.4-mini", providerID: "openai"), "openai:mini")
+        XCTAssertEqual(catalog.capabilityClassID(forModelName: "o3-pro", providerID: "openai"), "openai:pro")
+        XCTAssertEqual(catalog.capabilityClassID(forModelName: "o1-pro", providerID: "openai"), "openai:pro")
+    }
 }

@@ -13,17 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from any signed-in device at any time.
   - **Kimi (Moonshot AI):** Full Cloud Functions adapter with multi-host fallback
     (`api.kimi.ai` → `api.moonshot.cn`), credential validation via `/v1/models`,
-    and automatic scheduled quota refresh. Kimi API keys are now connectable from
-    iOS through the provider wizard.
+    balance endpoint probing, and automatic scheduled quota refresh. Kimi API
+    keys are connectable from iOS through the provider wizard (cloud refresh,
+    not hosted runner — API keys don't need a CLI).
   - **Claude Code:** Hosted quota runner support. Claude Code accounts can now be
     connected via hosted sync (credentials stored encrypted server-side) in
     addition to the existing self-hosted runner path. The hosted runner writes the
-    auth bundle and runs `claude /usage` on behalf of the user.
-  - **On-demand refresh:** Added a refresh button (⟳) to the quota detail sheet,
-    allowing pro users to force-refresh any provider's quota at any time without
-    waiting for the 15-minute scheduled cycle.
+    auth bundle to a temp `CLAUDE_CONFIG_DIR` and runs `claude /usage` on behalf
+    of the user.
+  - **On-demand refresh:** Added a refresh button (⟳) to the quota detail sheet
+    with haptic feedback, allowing pro users to force-refresh any provider's
+    quota at any time without waiting for the 15-minute scheduled cycle.
   - **Provider setup guides updated:** Claude Code guide now shows hosted sync
     option; Kimi guide updated with cloud refresh and multi-host details.
+  - **Hosted credential kind:** `connectHostedQuotaAccount` now uses
+    provider-appropriate credential kinds (`session` for Codex/Claude,
+    `bearer` for API-key-based providers) instead of hardcoding `"session"`.
 
 - **Hosted Remote MCP service scaffold for BurnBar Pro.** Added a dedicated
   `services/hosted-mcp` Cloud Run service implementing MCP Streamable HTTP
@@ -103,6 +108,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `HostedFallbackTests.swift`.
 
 ### Fixed
+- **Pulse 1M / 1H / 1D hero stopped showing $0.00 on iOS, iPad, and Android.**
+  `FirestoreRepository.fetchUsageSince` and `listenToUsageSince` (Swift + Kotlin)
+  filtered `startTime` against an ISO-8601 *string* cutoff, but every writer
+  (`UsageSyncService.swift`, `CloudSyncService.swift`) stores `startTime` as a
+  Firestore `Timestamp`. Firestore's type-order rules placed every Timestamp
+  before every string, so the live `usage` query matched zero rows and the
+  Pulse hero — which derives 1M/1H/1D from `liveUsages` — rendered as
+  "Awaiting today's first burn" even when the daily rollup had real cost.
+  Both platforms now pass `Timestamp(date:)` / `Timestamp(Date(...))` so the
+  comparison stays in the same Firestore type lattice.
 - **Pulse live-window totals are now raw-event accurate.** The iOS and Android
   Pulse hero now computes `1M`, `1H`, and `1D` from the live
   `usage` stream instead of reusing coarse rollup documents. `1D` is pinned to

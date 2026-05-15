@@ -23,7 +23,9 @@
             "inputPerMToken": 5,
             "outputPerMToken": 25,
             "cacheReadPerMToken": 0.5
-          }
+          },
+          "capabilityClassID": "anthropic:opus",
+          "capabilityClassRank": 100
         },
         {
           "id": "claude-opus-4-6-family",
@@ -38,7 +40,9 @@
             "inputPerMToken": 5,
             "outputPerMToken": 25,
             "cacheReadPerMToken": 0.5
-          }
+          },
+          "capabilityClassID": "anthropic:opus",
+          "capabilityClassRank": 100
         },
         {
           "id": "claude-opus-4-5-family",
@@ -53,7 +57,9 @@
             "inputPerMToken": 5,
             "outputPerMToken": 25,
             "cacheReadPerMToken": 0.5
-          }
+          },
+          "capabilityClassID": "anthropic:opus",
+          "capabilityClassRank": 100
         },
         {
           "id": "claude-opus-4-1-family",
@@ -68,7 +74,9 @@
             "inputPerMToken": 15,
             "outputPerMToken": 75,
             "cacheReadPerMToken": 1.5
-          }
+          },
+          "capabilityClassID": "anthropic:opus",
+          "capabilityClassRank": 100
         },
         {
           "id": "claude-opus-4-family",
@@ -84,7 +92,9 @@
             "inputPerMToken": 15,
             "outputPerMToken": 75,
             "cacheReadPerMToken": 1.5
-          }
+          },
+          "capabilityClassID": "anthropic:opus",
+          "capabilityClassRank": 100
         },
         {
           "id": "claude-opus-3-family",
@@ -99,7 +109,9 @@
             "inputPerMToken": 15,
             "outputPerMToken": 75,
             "cacheReadPerMToken": 1.5
-          }
+          },
+          "capabilityClassID": "anthropic:opus",
+          "capabilityClassRank": 100
         },
         {
           "id": "claude-sonnet-4-6-family",
@@ -114,7 +126,9 @@
             "inputPerMToken": 3,
             "outputPerMToken": 15,
             "cacheReadPerMToken": 0.3
-          }
+          },
+          "capabilityClassID": "anthropic:sonnet",
+          "capabilityClassRank": 50
         },
         {
           "id": "claude-sonnet-4-5-family",
@@ -129,7 +143,9 @@
             "inputPerMToken": 3,
             "outputPerMToken": 15,
             "cacheReadPerMToken": 0.3
-          }
+          },
+          "capabilityClassID": "anthropic:sonnet",
+          "capabilityClassRank": 50
         },
         {
           "id": "claude-sonnet-4-family",
@@ -145,7 +161,9 @@
             "inputPerMToken": 3,
             "outputPerMToken": 15,
             "cacheReadPerMToken": 0.3
-          }
+          },
+          "capabilityClassID": "anthropic:sonnet",
+          "capabilityClassRank": 50
         },
         {
           "id": "claude-sonnet-3-7-family",
@@ -160,7 +178,9 @@
             "inputPerMToken": 3,
             "outputPerMToken": 15,
             "cacheReadPerMToken": 0.3
-          }
+          },
+          "capabilityClassID": "anthropic:sonnet",
+          "capabilityClassRank": 50
         },
         {
           "id": "claude-sonnet-3-5-family",
@@ -176,7 +196,9 @@
             "inputPerMToken": 3,
             "outputPerMToken": 15,
             "cacheReadPerMToken": 0.3
-          }
+          },
+          "capabilityClassID": "anthropic:sonnet",
+          "capabilityClassRank": 50
         },
         {
           "id": "claude-haiku-4-5-family",
@@ -191,7 +213,9 @@
             "inputPerMToken": 1,
             "outputPerMToken": 5,
             "cacheReadPerMToken": 0.1
-          }
+          },
+          "capabilityClassID": "anthropic:haiku",
+          "capabilityClassRank": 10
         },
         {
           "id": "claude-haiku-3-5-family",
@@ -206,7 +230,9 @@
             "inputPerMToken": 0.8,
             "outputPerMToken": 4,
             "cacheReadPerMToken": 0.08
-          }
+          },
+          "capabilityClassID": "anthropic:haiku",
+          "capabilityClassRank": 10
         },
         {
           "id": "claude-haiku-3-family",
@@ -221,7 +247,9 @@
             "inputPerMToken": 0.25,
             "outputPerMToken": 1.25,
             "cacheReadPerMToken": 0.03
-          }
+          },
+          "capabilityClassID": "anthropic:haiku",
+          "capabilityClassRank": 10
         },
         {
           "id": "claude-default-family",
@@ -235,7 +263,9 @@
             "inputPerMToken": 3,
             "outputPerMToken": 15,
             "cacheReadPerMToken": 0.3
-          }
+          },
+          "capabilityClassID": "anthropic:sonnet",
+          "capabilityClassRank": 50
         }
       ]
     },
@@ -260,7 +290,9 @@
             "inputPerMToken": 2.5,
             "outputPerMToken": 15,
             "cacheReadPerMToken": 0.25
-          }
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 50
         },
         {
           "id": "gpt-5.4-mini",
@@ -274,7 +306,9 @@
             "inputPerMToken": 0.75,
             "outputPerMToken": 4.5,
             "cacheReadPerMToken": 0.075
-          }
+          },
+          "capabilityClassID": "openai:mini",
+          "capabilityClassRank": 10
         },
         {
           "id": "gpt-5.4-nano",
@@ -288,7 +322,9 @@
             "inputPerMToken": 0.2,
             "outputPerMToken": 1.25,
             "cacheReadPerMToken": 0.02
-          }
+          },
+          "capabilityClassID": "openai:mini",
+          "capabilityClassRank": 10
         },
         {
           "id": "gpt-5.4-pro",
@@ -302,7 +338,9 @@
             "inputPerMToken": 30,
             "outputPerMToken": 180,
             "cacheReadPerMToken": 3
-          }
+          },
+          "capabilityClassID": "openai:pro",
+          "capabilityClassRank": 100
         },
         {
           "id": "gpt-5.3-codex",
@@ -317,7 +355,9 @@
             "inputPerMToken": 1.75,
             "outputPerMToken": 14,
             "cacheReadPerMToken": 0.175
-          }
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 50
         },
         {
           "id": "gpt-5.2-codex",
@@ -331,7 +371,9 @@
             "inputPerMToken": 1.75,
             "outputPerMToken": 14,
             "cacheReadPerMToken": 0.175
-          }
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 50
         },
         {
           "id": "gpt-5.2-pro",
@@ -345,7 +387,9 @@
             "inputPerMToken": 10.5,
             "outputPerMToken": 84,
             "cacheReadPerMToken": 1.05
-          }
+          },
+          "capabilityClassID": "openai:pro",
+          "capabilityClassRank": 100
         },
         {
           "id": "gpt-5.1-codex",
@@ -360,7 +404,9 @@
             "inputPerMToken": 1.25,
             "outputPerMToken": 10,
             "cacheReadPerMToken": 0.125
-          }
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 50
         },
         {
           "id": "gpt-5.1-codex-mini",
@@ -374,7 +420,9 @@
             "inputPerMToken": 0.25,
             "outputPerMToken": 2,
             "cacheReadPerMToken": 0.025
-          }
+          },
+          "capabilityClassID": "openai:mini",
+          "capabilityClassRank": 10
         },
         {
           "id": "gpt-5.1-codex-max",
@@ -388,7 +436,9 @@
             "inputPerMToken": 1.25,
             "outputPerMToken": 10,
             "cacheReadPerMToken": 0.125
-          }
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 50
         },
         {
           "id": "gpt-5-family",
@@ -402,7 +452,9 @@
             "inputPerMToken": 1.25,
             "outputPerMToken": 10,
             "cacheReadPerMToken": 0.125
-          }
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 50
         },
         {
           "id": "gpt-5-mini",
@@ -416,7 +468,9 @@
             "inputPerMToken": 0.25,
             "outputPerMToken": 2,
             "cacheReadPerMToken": 0.025
-          }
+          },
+          "capabilityClassID": "openai:mini",
+          "capabilityClassRank": 10
         },
         {
           "id": "gpt-5-nano",
@@ -430,7 +484,9 @@
             "inputPerMToken": 0.05,
             "outputPerMToken": 0.4,
             "cacheReadPerMToken": 0.005
-          }
+          },
+          "capabilityClassID": "openai:mini",
+          "capabilityClassRank": 10
         },
         {
           "id": "gpt-5-pro",
@@ -444,7 +500,9 @@
             "inputPerMToken": 15,
             "outputPerMToken": 120,
             "cacheReadPerMToken": 1.5
-          }
+          },
+          "capabilityClassID": "openai:pro",
+          "capabilityClassRank": 100
         },
         {
           "id": "codex-mini-family",
@@ -458,7 +516,9 @@
             "inputPerMToken": 0.75,
             "outputPerMToken": 3,
             "cacheReadPerMToken": 0.025
-          }
+          },
+          "capabilityClassID": "openai:mini",
+          "capabilityClassRank": 10
         },
         {
           "id": "codex-pro-family",
@@ -473,7 +533,9 @@
             "inputPerMToken": 3,
             "outputPerMToken": 12,
             "cacheReadPerMToken": 0.3
-          }
+          },
+          "capabilityClassID": "openai:pro",
+          "capabilityClassRank": 100
         },
         {
           "id": "gpt-4.1",
@@ -487,7 +549,9 @@
             "inputPerMToken": 2,
             "outputPerMToken": 8,
             "cacheReadPerMToken": 0.5
-          }
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 50
         },
         {
           "id": "gpt-4.1-mini",
@@ -501,7 +565,9 @@
             "inputPerMToken": 0.4,
             "outputPerMToken": 1.6,
             "cacheReadPerMToken": 0.1
-          }
+          },
+          "capabilityClassID": "openai:mini",
+          "capabilityClassRank": 10
         },
         {
           "id": "gpt-4.1-nano",
@@ -515,7 +581,9 @@
             "inputPerMToken": 0.1,
             "outputPerMToken": 0.4,
             "cacheReadPerMToken": 0.025
-          }
+          },
+          "capabilityClassID": "openai:mini",
+          "capabilityClassRank": 10
         },
         {
           "id": "gpt-4o-family",
@@ -529,7 +597,9 @@
             "inputPerMToken": 2.5,
             "outputPerMToken": 10,
             "cacheReadPerMToken": 1.25
-          }
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 50
         },
         {
           "id": "gpt-4o-mini-family",
@@ -543,7 +613,9 @@
             "inputPerMToken": 0.15,
             "outputPerMToken": 0.6,
             "cacheReadPerMToken": 0.075
-          }
+          },
+          "capabilityClassID": "openai:mini",
+          "capabilityClassRank": 10
         },
         {
           "id": "gpt-4-turbo-family",
@@ -557,7 +629,9 @@
             "inputPerMToken": 10,
             "outputPerMToken": 30,
             "cacheReadPerMToken": 5
-          }
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 50
         },
         {
           "id": "gpt-4-family",
@@ -571,7 +645,9 @@
             "inputPerMToken": 30,
             "outputPerMToken": 60,
             "cacheReadPerMToken": 15
-          }
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 50
         },
         {
           "id": "gpt-3.5-family",
@@ -585,7 +661,9 @@
             "inputPerMToken": 0.5,
             "outputPerMToken": 1.5,
             "cacheReadPerMToken": 0.25
-          }
+          },
+          "capabilityClassID": "openai:mini",
+          "capabilityClassRank": 10
         },
         {
           "id": "o4-mini-family",
@@ -599,7 +677,9 @@
             "inputPerMToken": 1.1,
             "outputPerMToken": 4.4,
             "cacheReadPerMToken": 0.275
-          }
+          },
+          "capabilityClassID": "openai:mini",
+          "capabilityClassRank": 10
         },
         {
           "id": "o3-pro-family",
@@ -613,7 +693,9 @@
             "inputPerMToken": 20,
             "outputPerMToken": 80,
             "cacheReadPerMToken": 5
-          }
+          },
+          "capabilityClassID": "openai:pro",
+          "capabilityClassRank": 100
         },
         {
           "id": "o3-family",
@@ -627,7 +709,9 @@
             "inputPerMToken": 2,
             "outputPerMToken": 8,
             "cacheReadPerMToken": 0.5
-          }
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 50
         },
         {
           "id": "o3-mini-family",
@@ -641,7 +725,9 @@
             "inputPerMToken": 1.1,
             "outputPerMToken": 4.4,
             "cacheReadPerMToken": 0.55
-          }
+          },
+          "capabilityClassID": "openai:mini",
+          "capabilityClassRank": 10
         },
         {
           "id": "o1-pro-family",
@@ -655,7 +741,9 @@
             "inputPerMToken": 150,
             "outputPerMToken": 600,
             "cacheReadPerMToken": 75
-          }
+          },
+          "capabilityClassID": "openai:pro",
+          "capabilityClassRank": 100
         },
         {
           "id": "o1-family",
@@ -669,7 +757,9 @@
             "inputPerMToken": 15,
             "outputPerMToken": 60,
             "cacheReadPerMToken": 7.5
-          }
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 50
         },
         {
           "id": "o1-mini-family",
@@ -683,7 +773,9 @@
             "inputPerMToken": 0.55,
             "outputPerMToken": 2.2,
             "cacheReadPerMToken": 0.275
-          }
+          },
+          "capabilityClassID": "openai:mini",
+          "capabilityClassRank": 10
         }
       ]
     },

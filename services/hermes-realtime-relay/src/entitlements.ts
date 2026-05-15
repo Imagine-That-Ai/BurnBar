@@ -21,6 +21,7 @@ interface EntitlementCacheEntry {
 
 export interface FirestoreEntitlementVerifierOptions {
   productIDs: string[];
+  entitlementIDs?: string[];
   cacheTTLSeconds: number;
   negativeCacheTTLSeconds: number;
   firestore?: Pick<Firestore, "doc">;
@@ -28,6 +29,7 @@ export interface FirestoreEntitlementVerifierOptions {
 
 export class FirestoreEntitlementVerifier implements EntitlementVerifier {
   private readonly productIDs: Set<string>;
+  private readonly entitlementIDs: string[];
   private readonly cacheTTLMillis: number;
   private readonly negativeCacheTTLMillis: number;
   private readonly cache = new Map<string, EntitlementCacheEntry>();
@@ -35,6 +37,9 @@ export class FirestoreEntitlementVerifier implements EntitlementVerifier {
 
   constructor(options: FirestoreEntitlementVerifierOptions) {
     this.productIDs = new Set(options.productIDs);
+    this.entitlementIDs = options.entitlementIDs?.length
+      ? options.entitlementIDs
+      : ["hosted_quota_sync", "burnbar_pro"];
     this.cacheTTLMillis = Math.max(1, options.cacheTTLSeconds) * 1_000;
     this.negativeCacheTTLMillis = Math.max(1, options.negativeCacheTTLSeconds) * 1_000;
     this.firestore = options.firestore ?? getFirestore();
@@ -50,35 +55,34 @@ export class FirestoreEntitlementVerifier implements EntitlementVerifier {
       throw entitlementDenied(cached.reason ?? "Hosted Hermes subscription is inactive.");
     }
 
-    const snap = await this.firestore
-      .doc(`users/${uid}/entitlements/hosted_quota_sync`)
-      .get();
-    if (!snap.exists) {
-      this.cacheDeny(uid, "Hosted Hermes subscription required.");
-      throw entitlementDenied("Hosted Hermes subscription required.");
+    for (const entitlementID of this.entitlementIDs) {
+      const snap = await this.firestore
+        .doc(`users/${uid}/entitlements/${entitlementID}`)
+        .get();
+      if (!snap.exists) continue;
+
+      const data = snap.data() ?? {};
+      const productID = entitlementProductID(entitlementID, data);
+      const expiresAtMs = entitlementExpiryMillis(data);
+      const active = data.active === true
+        && this.productIDs.has(productID)
+        && Number.isFinite(expiresAtMs)
+        && expiresAtMs > now;
+
+      if (!active) continue;
+
+      const cachedUntilMs = Math.min(now + this.cacheTTLMillis, expiresAtMs);
+      this.cache.set(uid, {
+        ok: true,
+        productID,
+        expiresAtMs,
+        cachedUntilMs,
+      });
+      return { productID, expiresAtMs, source: "firestore" };
     }
 
-    const data = snap.data() ?? {};
-    const productID = typeof data.productID === "string" ? data.productID : "";
-    const expiresAtMs = entitlementExpiryMillis(data);
-    const active = data.active === true
-      && this.productIDs.has(productID)
-      && Number.isFinite(expiresAtMs)
-      && expiresAtMs > now;
-
-    if (!active) {
-      this.cacheDeny(uid, "Hosted Hermes subscription is inactive.");
-      throw entitlementDenied("Hosted Hermes subscription is inactive.");
-    }
-
-    const cachedUntilMs = Math.min(now + this.cacheTTLMillis, expiresAtMs);
-    this.cache.set(uid, {
-      ok: true,
-      productID,
-      expiresAtMs,
-      cachedUntilMs,
-    });
-    return { productID, expiresAtMs, source: "firestore" };
+    this.cacheDeny(uid, "Hosted Hermes subscription required.");
+    throw entitlementDenied("Hosted Hermes subscription required.");
   }
 
   private cacheDeny(uid: string, reason: string): void {
@@ -92,6 +96,14 @@ export class FirestoreEntitlementVerifier implements EntitlementVerifier {
 
 function entitlementDenied(message: string): RelayHttpError {
   return new RelayHttpError(403, "entitlement_required", message);
+}
+
+function entitlementProductID(entitlementID: string, data: Record<string, unknown>): string {
+  const productID = typeof data.productID === "string" ? data.productID : "";
+  if (productID) return productID;
+  if (entitlementID === "burnbar_pro") return "com.openburnbar.pro.monthly";
+  if (entitlementID === "hosted_quota_sync") return "com.openburnbar.hostedQuotaSync.cloud.monthly";
+  return "";
 }
 
 function entitlementExpiryMillis(data: Record<string, unknown>): number {

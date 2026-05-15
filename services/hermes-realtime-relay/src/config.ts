@@ -35,7 +35,11 @@ export function loadRelayConfig(env: NodeJS.ProcessEnv = process.env): RelayConf
     verifyRevokedIdTokens: boolEnv(env.VERIFY_REVOKED_ID_TOKENS, false),
     hostedRelayProductIDs: listEnv(
       env.HOSTED_RELAY_PRODUCT_IDS ?? env.HOSTED_QUOTA_PRODUCT_ID,
-      ["com.openburnbar.hostedQuotaSync.cloud.monthly"]
+      [
+        "com.openburnbar.hostedQuotaSync.cloud.monthly",
+        "com.openburnbar.hostedQuotaSync.monthly",
+        "com.openburnbar.pro.monthly",
+      ]
     ),
     entitlementCacheTTLSeconds: numberEnv(env.ENTITLEMENT_CACHE_TTL_SECONDS, 60),
     entitlementNegativeCacheTTLSeconds: numberEnv(env.ENTITLEMENT_NEGATIVE_CACHE_TTL_SECONDS, 15),

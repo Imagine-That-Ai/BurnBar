@@ -34,14 +34,20 @@ struct MobileMissionFAB: View {
     @State private var dragOffset: CGSize = .zero
     @State private var isDragging = false
     @State private var hasAppeared = false
-    @State private var isDismissed = false
     @State private var showTooltip = false
     @State private var tooltipTask: Task<Void, Never>?
     @State private var flickExitPosition: CGSize = .zero
     @State private var orbitRotation: Double = 0
     @State private var glowPulse: Bool = false
+    @State private var resurrection = MissionFABResurrectionController.shared
+    @State private var showResurrectToast: Bool = false
+    @State private var resurrectToastTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.cloudSubscriptionStore) private var cloudStore
+
+    /// Convenience accessor — reads from the resurrection controller so
+    /// dismiss/restore state is shared across the view tree.
+    private var isDismissed: Bool { resurrection.isDismissed }
 
     private let fabSize: CGFloat = 56
     private let orbitSize: CGFloat = 64
@@ -76,6 +82,21 @@ struct MobileMissionFAB: View {
                         .position(restoreDotPosition(bounds: bounds, safeArea: safeArea))
                         .transition(.scale(scale: 0.4).combined(with: .opacity))
                 }
+
+                // One-shot "I'm back because…" toast when the orb
+                // auto-resurrects (approval ask appeared, mission
+                // failed, etc.). Anchors above the orb's resting
+                // position so it doesn't collide with the tooltip.
+                if showResurrectToast,
+                   let reason = resurrection.autoResurrectReason,
+                   !isDismissed {
+                    resurrectToast(reason: reason)
+                        .position(
+                            x: positionFor(bounds: bounds, safeArea: safeArea).x,
+                            y: positionFor(bounds: bounds, safeArea: safeArea).y - 60
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .ignoresSafeArea(.keyboard)
         }
@@ -84,6 +105,70 @@ struct MobileMissionFAB: View {
         .onAppear {
             hasAppeared = true
             startOrbitalAnimation()
+            // Catch up any approval that landed while we were on a
+            // different tab — auto-resurrect immediately if needed.
+            resurrection.reconcile(against: host.snapshot)
+            consumeAutoResurrectIfNeeded()
+        }
+        .onChange(of: host.snapshot.approvalAsks) { _, _ in
+            resurrection.reconcile(against: host.snapshot)
+            consumeAutoResurrectIfNeeded()
+        }
+        .onChange(of: host.snapshot.activeTiles) { _, _ in
+            resurrection.reconcile(against: host.snapshot)
+            consumeAutoResurrectIfNeeded()
+        }
+    }
+
+    // MARK: - Auto-resurrect toast
+
+    private func resurrectToast(reason: MissionFABResurrectionController.AutoResurrectReason) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: glyph(for: reason))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(UnifiedDesignSystem.Colors.amber)
+            Text(reason.displayMessage)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Capsule().stroke(UnifiedDesignSystem.Colors.amber.opacity(0.40), lineWidth: 0.6)
+                )
+        )
+        .shadow(color: Color.black.opacity(0.18), radius: 8, y: 3)
+        .accessibilityLabel(reason.displayMessage)
+    }
+
+    private func glyph(for reason: MissionFABResurrectionController.AutoResurrectReason) -> String {
+        switch reason {
+        case .approvalAsk:       return "hand.raised.fill"
+        case .missionFailed:     return "exclamationmark.triangle.fill"
+        case .settingsToggle:    return "gearshape.fill"
+        case .longPressTab:      return "hand.tap.fill"
+        case .manualRestoreDot:  return "circle.dotted"
+        }
+    }
+
+    private func consumeAutoResurrectIfNeeded() {
+        guard resurrection.wasAutoResurrected, !isDismissed else { return }
+        resurrectToastTask?.cancel()
+        withAnimation(.spring(response: 0.40, dampingFraction: 0.78)) {
+            showResurrectToast = true
+        }
+        resurrectToastTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_200_000_000)
+            withAnimation(.easeOut(duration: 0.22)) {
+                showResurrectToast = false
+            }
+            // Allow the dismiss animation to finish before clearing
+            // the signal so the toast text doesn't blank mid-fade.
+            try? await Task.sleep(nanoseconds: 240_000_000)
+            resurrection.consumeAutoResurrectSignal()
         }
     }
 
@@ -257,22 +342,48 @@ struct MobileMissionFAB: View {
     }
 
     // MARK: - Restore dot
+    //
+    // Bigger than before (16pt visual, 32pt hit target via padding so the
+    // user can find it with a thumb), gently breathing so it doesn't
+    // disappear into the background, and haloed when an approval is
+    // waiting so the user knows there's a reason to look at it.
 
     private var restoreDot: some View {
         let state = currentState
+        let hasPendingApproval = !host.snapshot.approvalAsks.isEmpty
         return Button {
+            HapticBus.tabChange()
             withAnimation(.spring(response: 0.40, dampingFraction: 0.78)) {
-                isDismissed = false
+                resurrection.restoreFromDot()
                 flickExitPosition = .zero
             }
         } label: {
-            Circle()
-                .fill(state.accent.opacity(0.55))
-                .frame(width: 12, height: 12)
-                .shadow(color: state.accent.opacity(0.30), radius: 6, x: 0, y: 2)
+            ZStack {
+                // Halo — only when an approval is waiting. Loud enough to
+                // attract a glance, calm enough to stay editorial.
+                if hasPendingApproval && !reduceMotion {
+                    Circle()
+                        .stroke(state.accent.opacity(glowPulse ? 0.55 : 0.20), lineWidth: 1.5)
+                        .frame(width: 36, height: 36)
+                        .scaleEffect(glowPulse ? 1.08 : 0.9)
+                        .opacity(0.85)
+                }
+                // Visible disc — 16pt, breath ±10% scale when idle.
+                Circle()
+                    .fill(state.accent.opacity(hasPendingApproval ? 0.85 : 0.62))
+                    .frame(width: 16, height: 16)
+                    .scaleEffect(reduceMotion ? 1.0 : (glowPulse ? 1.06 : 0.96))
+                    .shadow(color: state.accent.opacity(hasPendingApproval ? 0.50 : 0.30), radius: 8, x: 0, y: 2)
+            }
+            // 32pt tap target — comfortably thumb-sized on every device.
+            .frame(width: 32, height: 32)
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Restore Mission Console orb")
+        .accessibilityLabel(hasPendingApproval
+                            ? "Restore Mission Console orb — approval waiting"
+                            : "Restore Mission Console orb")
+        .accessibilityHint("Tap to bring the floating orb back. Also restorable from Settings or by long-pressing the Assistants tab.")
     }
 
     // MARK: - Combined gesture (drag + long-press tooltip)
@@ -356,7 +467,7 @@ struct MobileMissionFAB: View {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 350_000_000)
             withAnimation(.easeOut(duration: 0.15)) {
-                isDismissed = true
+                resurrection.dismiss()
                 flickExitPosition = .zero
                 dragOffset = .zero
             }

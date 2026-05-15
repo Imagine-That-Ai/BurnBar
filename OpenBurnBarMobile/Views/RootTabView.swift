@@ -96,7 +96,7 @@ struct RootTabView: View {
         .environment(\.motionStore, motionStore)
         .environment(\.chartStudioPresenter, studioPresenter)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
-        .task { await subscriptionStore.load() }
+        .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
         .task { missionActivityCenter.start() }
         .task { missionConsoleHost.start() }
         .sheet(isPresented: $isMissionConsolePresented) {

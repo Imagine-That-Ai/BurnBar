@@ -312,65 +312,186 @@ private struct CloudMemberCrestRow: View {
     let onTap: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var ribbonPhase: CGFloat = 0
+    @State private var isPressed = false
 
     var body: some View {
         Button(action: {
             Haptics.light()
             onTap()
         }) {
-            HStack(spacing: MobileTheme.Spacing.md) {
-                MercuryCrest(size: .large, shimmer: !reduceMotion)
-                    .padding(.leading, 4)
+            HStack(spacing: MobileTheme.Spacing.lg) {
+                FirefighterHelmet(size: .medium)
+
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Cloud Member")
-                        .font(ProTheme.Typography.titleSerif)
-                        .foregroundStyle(ProTheme.Palette.mercury)
+                    HStack(spacing: 6) {
+                        Text("PRO")
+                            .font(.system(size: 9, weight: .heavy, design: .rounded))
+                            .tracking(1.6)
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule().fill(
+                                    LinearGradient(
+                                        colors: [MobileTheme.ember, MobileTheme.amber],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                            )
+                        Text("CLOUD MEMBER")
+                            .font(MobileTheme.Typography.tiny)
+                            .fontWeight(.heavy)
+                            .tracking(1.8)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                    }
+                    Text(headlineLine)
+                        .font(MobileTheme.Typography.display)
+                        .foregroundStyle(MobileTheme.primaryGradient)
                     Text(metaLine)
                         .font(MobileTheme.Typography.caption)
-                        .foregroundStyle(ProTheme.Palette.mercury.opacity(0.7))
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
                 }
+
                 Spacer(minLength: 0)
+
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(ProTheme.Palette.aureate)
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundStyle(MobileTheme.amber)
             }
-            .padding(.horizontal, MobileTheme.Spacing.md)
-            .padding(.vertical, MobileTheme.Spacing.md)
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous)
-                        .fill(ProTheme.Palette.obsidian)
-                    if !reduceMotion {
-                        MercuryShimmerOverlay()
-                            .clipShape(RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous))
-                            .blendMode(.plusLighter)
-                            .opacity(0.40)
-                            .allowsHitTesting(false)
-                    }
-                }
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous)
-                    .stroke(ProTheme.Palette.aureateStroke, lineWidth: 1.0)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous))
-            .shadow(color: ProTheme.Palette.aureate.opacity(0.20), radius: 14, y: 5)
-            .contentShape(RoundedRectangle(cornerRadius: ProTheme.Layout.cardRadius, style: .continuous))
+            .padding(.horizontal, MobileTheme.Spacing.lg)
+            .padding(.vertical, MobileTheme.Spacing.lg)
+            .background(membershipBackdrop)
+            .overlay(membershipBorder)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .shadow(color: MobileTheme.ember.opacity(0.40), radius: 22, y: 10)
+            .shadow(color: MobileTheme.amber.opacity(0.20), radius: 30, y: 0)
+            .scaleEffect(isPressed ? 0.985 : 1.0)
+            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in if !isPressed { isPressed = true } }
+                .onEnded { _ in
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) { isPressed = false }
+                }
+        )
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 18).repeatForever(autoreverses: true)) {
+                ribbonPhase = 1
+            }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("OpenBurnBar Cloud member. \(metaLine).")
         .accessibilityHint("Opens your Cloud membership")
     }
 
-    private var metaLine: String {
-        if let purchaseDate {
-            let f = purchaseDate.formatted(.dateTime.month(.abbreviated).year())
-            return "Member since \(f)"
+    // MARK: - Backdrop
+    //
+    // Multi-stop aurora burst: ember → amber → blaze → a kiss of whimsy
+    // for color contrast. Topped with an animated aurora ribbon along the
+    // upper edge so the card visibly *moves*. Wrapped in ultraThinMaterial
+    // so it lifts off the dark You-tab background without going flat.
+
+    @ViewBuilder
+    private var membershipBackdrop: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(.ultraThinMaterial)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            MobileTheme.ember.opacity(0.42),
+                            MobileTheme.amber.opacity(0.34),
+                            MobileTheme.blaze.opacity(0.30),
+                            MobileTheme.whimsy.opacity(0.20)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            // Aurora ribbon highlight along the top — drifts horizontally.
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            MobileTheme.amber.opacity(0.0),
+                            MobileTheme.amber.opacity(0.45),
+                            UnifiedDesignSystem.Colors.hermesAureate.opacity(0.35),
+                            MobileTheme.ember.opacity(0.40),
+                            MobileTheme.amber.opacity(0.0)
+                        ],
+                        startPoint: UnitPoint(x: ribbonPhase, y: 0),
+                        endPoint: UnitPoint(x: ribbonPhase + 0.6, y: 0.3)
+                    )
+                )
+                .frame(height: 50)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .blendMode(.plusLighter)
+                .allowsHitTesting(false)
+            // Soft radial halo around the helmet to anchor the eye.
+            RadialGradient(
+                colors: [
+                    MobileTheme.amber.opacity(0.45),
+                    Color.clear
+                ],
+                center: UnitPoint(x: 0.14, y: 0.5),
+                startRadius: 0,
+                endRadius: 140
+            )
+            .blendMode(.plusLighter)
         }
-        if let expirationDate {
-            let f = expirationDate.formatted(.dateTime.month(.abbreviated).day().year())
-            return "Through \(f)"
+    }
+
+    private var membershipBorder: some View {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .stroke(
+                LinearGradient(
+                    colors: [
+                        UnifiedDesignSystem.Colors.hermesAureate.opacity(0.95),
+                        MobileTheme.amber.opacity(0.7),
+                        MobileTheme.ember.opacity(0.6),
+                        UnifiedDesignSystem.Colors.hermesAureate.opacity(0.95)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1.2
+            )
+    }
+
+    // MARK: - Copy
+
+    private var headlineLine: String {
+        "Cloud Member"
+    }
+
+    /// Human-readable status. Sentinel/far-future expirations show monthly
+    /// recurrence + absolute date; near-term renewals show relative time.
+    private var metaLine: String {
+        if let expiration = expirationDate {
+            let interval = expiration.timeIntervalSinceNow
+            if interval > 0, interval < 90 * 24 * 60 * 60 {
+                let rel = expiration.formatted(.relative(presentation: .named))
+                if let purchaseDate {
+                    let p = purchaseDate.formatted(.dateTime.month(.abbreviated).year())
+                    return "Member since \(p) · renews \(rel)"
+                }
+                return "Active · renews \(rel)"
+            }
+            if let purchaseDate {
+                let p = purchaseDate.formatted(.dateTime.month(.abbreviated).year())
+                return "Member since \(p) · renews monthly"
+            }
+            return "Active · renews monthly"
+        }
+        if let purchaseDate {
+            let p = purchaseDate.formatted(.dateTime.month(.abbreviated).year())
+            return "Member since \(p)"
         }
         return "Active"
     }

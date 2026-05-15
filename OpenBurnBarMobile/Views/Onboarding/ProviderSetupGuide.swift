@@ -239,16 +239,16 @@ extension ProviderSetupGuide {
                 labelSuggestion: "Kimi",
                 dashboardURL: URL(string: "https://platform.moonshot.cn/console/api-keys"),
                 dashboardCTA: "Open Moonshot keys",
-                oneLineHint: "API key from Moonshot AI — live quota refresh on any device.",
+                oneLineHint: "API key from Moonshot AI — live quota refresh from any device.",
                 instructions: [
                     GuideStep(1, "Open the Moonshot console", detail: "Sign in to platform.moonshot.cn."),
                     GuideStep(2, "Create an API key", detail: "Console → API Keys → Create. International users can also use api.kimi.ai keys."),
                     GuideStep(3, "Paste it below", detail: "Starts with `sk-`.")
                 ],
                 credentialPlaceholder: "sk-...",
-                credentialFooterMarkdown: "Kimi keys are encrypted at rest. We validate against /v1/models and try both api.kimi.ai and api.moonshot.cn automatically.",
-                supportsHosted: true,
-                supportsSelfHosted: true
+                credentialFooterMarkdown: "Kimi API keys are encrypted at rest and refreshed automatically. We validate against /v1/models and try both api.kimi.ai and api.moonshot.cn.",
+                supportsHosted: false,
+                supportsSelfHosted: false
             )
 
         case .cline:

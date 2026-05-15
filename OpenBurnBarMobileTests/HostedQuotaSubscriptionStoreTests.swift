@@ -1,9 +1,11 @@
 import StoreKit
 import StoreKitTest
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBarMobile
 
 private let hostedQuotaProductID = "com.openburnbar.hostedQuotaSync.cloud.monthly"
+private let burnBarProProductID = "com.openburnbar.pro.monthly"
 
 @MainActor
 final class HostedQuotaSubscriptionStoreTests: XCTestCase {
@@ -73,6 +75,48 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertNil(service.restoreRequests.first?.signedTransactionJWS)
     }
 
+    func testLoadRefreshesEntitlementWhenProductCatalogFails() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let expiresAt = Date(timeIntervalSince1970: 2_000_000_000)
+        let service = FakeHostedQuotaEntitlementService(
+            restoreResponse: .hostedQuota(active: true, expiresAt: expiresAt)
+        )
+        let store = HostedQuotaSubscriptionStore(
+            functions: service,
+            fetchProducts: { _ in throw TestHostedQuotaError.productCatalogUnavailable },
+            isSignedIn: { true }
+        )
+
+        await store.load()
+
+        XCTAssertTrue(store.isActive)
+        XCTAssertEqual(store.expirationDate, expiresAt)
+        XCTAssertEqual(service.restoreRequests.count, 1)
+    }
+
+    func testRefreshFallsBackToBurnBarProDirectEntitlementWhenServerReplayFails() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let expiresAt = Date(timeIntervalSince1970: 2_000_000_000)
+        let service = FakeHostedQuotaEntitlementService(restoreError: TestHostedQuotaError.replayUnavailable)
+        let directReader = FakeHostedQuotaDirectReader(
+            response: .burnBarPro(active: true, expiresAt: expiresAt)
+        )
+        let store = HostedQuotaSubscriptionStore(
+            functions: service,
+            directReader: directReader,
+            isSignedIn: { true }
+        )
+
+        try await store.refreshEntitlement()
+
+        XCTAssertTrue(store.isActive)
+        XCTAssertEqual(store.expirationDate, expiresAt)
+        XCTAssertEqual(directReader.fetchCount, 1)
+        XCTAssertEqual(service.restoreRequests.count, 1)
+    }
+
     func testRestoreFallsBackToServerWhenStoreKitHasNoCurrentEntitlement() async throws {
         let session = try makeCleanStoreKitSession()
         defer { session.clearTransactions() }
@@ -136,6 +180,81 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
     }
 }
 
+final class HermesMobileSetupWizardGateTests: XCTestCase {
+    func testDoesNotAutoPresentWhenHermesIsAlreadyReachable() {
+        let shouldPresent = HermesMobileSetupWizardGate.shouldAutoPresent(
+            isScreenshotMode: false,
+            hasCompletedSetup: false,
+            didAutoPresent: false,
+            hasUsableSetup: true
+        )
+
+        XCTAssertFalse(shouldPresent)
+    }
+
+    func testAutoPresentsOnlyForFirstUnconfiguredVisit() {
+        XCTAssertTrue(HermesMobileSetupWizardGate.shouldAutoPresent(
+            isScreenshotMode: false,
+            hasCompletedSetup: false,
+            didAutoPresent: false,
+            hasUsableSetup: false
+        ))
+        XCTAssertFalse(HermesMobileSetupWizardGate.shouldAutoPresent(
+            isScreenshotMode: false,
+            hasCompletedSetup: true,
+            didAutoPresent: false,
+            hasUsableSetup: false
+        ))
+        XCTAssertFalse(HermesMobileSetupWizardGate.shouldAutoPresent(
+            isScreenshotMode: false,
+            hasCompletedSetup: false,
+            didAutoPresent: true,
+            hasUsableSetup: false
+        ))
+    }
+
+    func testUsableSetupIncludesReachabilitySelectedRelayOrSuggestedRelay() {
+        let selectedRelay = HermesConnectionRecord(
+            id: "relay-selected",
+            displayName: "Selected Relay",
+            mode: .relayLink,
+            status: .online
+        )
+        let suggestedRelay = HermesConnectionRecord(
+            id: "relay-suggested",
+            displayName: "Suggested Relay",
+            mode: .relayLink,
+            status: .online
+        )
+
+        XCTAssertTrue(HermesMobileSetupWizardGate.hasUsableSetup(
+            isReachable: true,
+            selectedConnection: .localDefault,
+            suggestedRelayConnection: nil
+        ))
+        XCTAssertTrue(HermesMobileSetupWizardGate.hasUsableSetup(
+            isReachable: false,
+            selectedConnection: selectedRelay,
+            suggestedRelayConnection: nil
+        ))
+        XCTAssertTrue(HermesMobileSetupWizardGate.hasUsableSetup(
+            isReachable: false,
+            selectedConnection: .localDefault,
+            suggestedRelayConnection: suggestedRelay
+        ))
+        XCTAssertFalse(HermesMobileSetupWizardGate.hasUsableSetup(
+            isReachable: false,
+            selectedConnection: .localDefault,
+            suggestedRelayConnection: nil
+        ))
+    }
+}
+
+private enum TestHostedQuotaError: Error {
+    case replayUnavailable
+    case productCatalogUnavailable
+}
+
 @MainActor
 private final class FakeHostedQuotaEntitlementService: HostedQuotaEntitlementServicing {
     struct BindingRequest: Equatable {
@@ -157,6 +276,7 @@ private final class FakeHostedQuotaEntitlementService: HostedQuotaEntitlementSer
     private let bindingToken: String
     private let verifyResponse: HostedQuotaEntitlementResponse
     private let restoreResponse: HostedQuotaEntitlementResponse
+    private let restoreError: Error?
 
     private(set) var bindingRequests: [BindingRequest] = []
     private(set) var verifyRequests: [VerifyRequest] = []
@@ -165,11 +285,13 @@ private final class FakeHostedQuotaEntitlementService: HostedQuotaEntitlementSer
     init(
         bindingToken: String = "00000000-0000-4000-8000-000000000001",
         verifyResponse: HostedQuotaEntitlementResponse = .hostedQuota(active: false),
-        restoreResponse: HostedQuotaEntitlementResponse = .hostedQuota(active: false)
+        restoreResponse: HostedQuotaEntitlementResponse = .hostedQuota(active: false),
+        restoreError: Error? = nil
     ) {
         self.bindingToken = bindingToken
         self.verifyResponse = verifyResponse
         self.restoreResponse = restoreResponse
+        self.restoreError = restoreError
     }
 
     func beginEntitlementBinding(
@@ -205,7 +327,25 @@ private final class FakeHostedQuotaEntitlementService: HostedQuotaEntitlementSer
                 signedTransactionJWS: signedTransactionJWS
             )
         )
+        if let restoreError {
+            throw restoreError
+        }
         return restoreResponse
+    }
+}
+
+@MainActor
+private final class FakeHostedQuotaDirectReader: HostedQuotaEntitlementDirectReading {
+    private let response: HostedQuotaEntitlementResponse?
+    private(set) var fetchCount = 0
+
+    init(response: HostedQuotaEntitlementResponse?) {
+        self.response = response
+    }
+
+    func fetchHostedQuotaEntitlement() async throws -> HostedQuotaEntitlementResponse? {
+        fetchCount += 1
+        return response
     }
 }
 
@@ -216,6 +356,19 @@ private extension HostedQuotaEntitlementResponse {
             productID: hostedQuotaProductID,
             transactionID: active ? "test-transaction" : nil,
             originalTransactionID: active ? "test-original-transaction" : nil,
+            environment: "Xcode",
+            expiresAt: expiresAt,
+            revokedAt: nil,
+            revocationReason: nil
+        )
+    }
+
+    static func burnBarPro(active: Bool, expiresAt: Date? = nil) -> HostedQuotaEntitlementResponse {
+        HostedQuotaEntitlementResponse(
+            active: active,
+            productID: burnBarProProductID,
+            transactionID: active ? "test-pro-transaction" : nil,
+            originalTransactionID: active ? "test-pro-original-transaction" : nil,
             environment: "Xcode",
             expiresAt: expiresAt,
             revokedAt: nil,

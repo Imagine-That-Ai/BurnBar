@@ -22,6 +22,7 @@ struct RootNavigationView: View {
     @State private var insightsDashboardStore = DashboardStore()
     @State private var missionActivityCenter = MobileMissionActivityCenter()
     @State private var showHermesSheet = false
+    @State private var subscriptionStore = HostedQuotaSubscriptionStore()
 
     enum SidebarDestination: Hashable, Identifiable {
         case pulse, burn, insights, streams, hermes, you, settings, devices, providers
@@ -87,6 +88,8 @@ struct RootNavigationView: View {
 
         }
         .environment(\.motionStore, motionStore)
+        .environment(\.cloudSubscriptionStore, subscriptionStore)
+        .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
         .task { missionActivityCenter.start() }
         .onAppear {
             applyScreenshotRouteIfNeeded()

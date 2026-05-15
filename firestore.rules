@@ -176,6 +176,7 @@ service cloud.firestore {
       return entitlement.active == true
         && entitlement.productID in [
           "com.openburnbar.hostedQuotaSync.cloud.monthly",
+          "com.openburnbar.hostedQuotaSync.monthly",
           "com.openburnbar.pro.monthly"
         ]
         && entitlement.expireAt is timestamp
@@ -291,6 +292,8 @@ service cloud.firestore {
           "relayEncryption",
           "realtimeRelayURL",
           "realtimeRelayStatus",
+          "realtimeRelayLastSeenAt",
+          "realtimeRelayProtocolVersion",
           "capabilities",
           "lastSeenAt",
           "createdAt",
@@ -305,6 +308,8 @@ service cloud.firestore {
         && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm")
         && (!("realtimeRelayURL" in request.resource.data) || (request.resource.data.realtimeRelayURL is string && request.resource.data.realtimeRelayURL.matches("^wss://.+")))
         && (!("realtimeRelayStatus" in request.resource.data) || request.resource.data.realtimeRelayStatus in ["online", "offline", "degraded"])
+        && (!("realtimeRelayLastSeenAt" in request.resource.data) || (request.resource.data.realtimeRelayLastSeenAt is string && request.resource.data.realtimeRelayLastSeenAt.size() <= 64))
+        && (!("realtimeRelayProtocolVersion" in request.resource.data) || request.resource.data.realtimeRelayProtocolVersion is int)
         && request.resource.data.id is string
         && request.resource.data.id == connectionId
         && request.resource.data.displayName is string

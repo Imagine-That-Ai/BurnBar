@@ -100,6 +100,18 @@ test("fromLibEnvironment returns undefined for unknown values", () => {
   assert.equal(fromLibEnvironment(undefined), undefined);
 });
 
+test("environment mapping accepts Apple payload casing", () => {
+  assert.equal(fromLibEnvironment("PRODUCTION"), "Production");
+  assert.equal(fromLibEnvironment("SANDBOX"), "Sandbox");
+  assert.equal(toLibEnvironment("PRODUCTION"), Environment.PRODUCTION);
+  assert.equal(toLibEnvironment("SANDBOX"), Environment.SANDBOX);
+});
+
+test("environment mapping routes internal test entitlements through Sandbox", () => {
+  assert.equal(fromLibEnvironment("InternalTest"), "Sandbox");
+  assert.equal(toLibEnvironment("InternalTest"), Environment.SANDBOX);
+});
+
 test("toLibEnvironment matches Environment constants", () => {
   assert.equal(toLibEnvironment("Production"), Environment.PRODUCTION);
   assert.equal(toLibEnvironment("Sandbox"), Environment.SANDBOX);

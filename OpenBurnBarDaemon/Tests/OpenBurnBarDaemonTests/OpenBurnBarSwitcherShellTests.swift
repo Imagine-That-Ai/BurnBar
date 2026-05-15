@@ -200,6 +200,63 @@ final class OpenBurnBarSwitcherShellTests: XCTestCase {
         XCTAssertTrue(contents.contains("exec \"/tmp/OpenBurnBarCLI\" exec codex \"$@\""))
     }
 
+    func testShellExecutorRapidSwitchDoesNotCorruptExhaustionState() async throws {
+        let executableURL = try makeExecutable(named: "codex-rapid")
+        CLILaunchAdapter.executableResolver = { _ in executableURL }
+
+        let primary = cliProfile(id: "primary", label: "Work", sortKey: 1, cliType: .codex)
+        let fallback = cliProfile(id: "fallback", label: "Personal", sortKey: 2, cliType: .codex)
+        let store = TestSwitcherProfileStore(profiles: [primary, fallback], activeProfileID: primary.id)
+
+        let runner = TestTerminalRunner(results: [
+            .init(terminationStatus: 1, quotaExhaustedDetail: "weekly limit reached", capturedOutput: "weekly limit reached"),
+            .init(terminationStatus: 0, quotaExhaustedDetail: nil, capturedOutput: ""),
+            .init(terminationStatus: 0, quotaExhaustedDetail: nil, capturedOutput: ""),
+        ])
+
+        let executor = BurnBarCLIShellExecutor(
+            profileStore: store,
+            credentialStore: TestCredentialStore(values: [
+                "\(primary.id):codex": "sk-work",
+                "\(fallback.id):codex": "sk-personal",
+            ]),
+            terminalRunner: runner,
+            environmentProvider: { ["TERM": "xterm-256color"] },
+            statusWriter: { _ in }
+        )
+
+        let result1 = try await executor.execute(
+            BurnBarCLIShellLaunchRequest(
+                cliType: .codex,
+                forwardedArguments: ["chat"],
+                requestedProfileID: nil
+            )
+        )
+        XCTAssertEqual(result1.exitCode, 0)
+        XCTAssertEqual(result1.launchedProfileID, fallback.id)
+        XCTAssertTrue(result1.fallbackTriggered)
+
+        let exhaustedPrimary = try XCTUnwrap(store.fetchProfile(id: primary.id))
+        XCTAssertNotNil(exhaustedPrimary.cliMetadata?.lastQuotaExhaustedAt)
+        XCTAssertNotNil(exhaustedPrimary.cliMetadata?.exhaustedUntil)
+
+        let result2 = try await executor.execute(
+            BurnBarCLIShellLaunchRequest(
+                cliType: .codex,
+                forwardedArguments: ["chat"],
+                requestedProfileID: primary.id
+            )
+        )
+        XCTAssertEqual(result2.exitCode, 0)
+        XCTAssertEqual(result2.launchedProfileID, primary.id)
+
+        let recoveredPrimary = try XCTUnwrap(store.fetchProfile(id: primary.id))
+        XCTAssertNil(recoveredPrimary.cliMetadata?.lastQuotaExhaustedAt,
+                      "Successful re-launch must clear exhaustion metadata even after previous failover.")
+        XCTAssertNil(recoveredPrimary.cliMetadata?.exhaustedUntil)
+        XCTAssertEqual(store.fetchActiveProfileID(), primary.id)
+    }
+
     private func cliProfile(
         id: String,
         label: String,

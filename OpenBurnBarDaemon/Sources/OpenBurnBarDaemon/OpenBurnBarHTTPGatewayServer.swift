@@ -352,9 +352,13 @@ public actor BurnBarHTTPGatewayServer {
                 logger: BurnBarDaemonLogger(category: "gateway-router"),
                 routingEventStore: BurnBarProviderRoutingDecisionEventStore()
             )
+            let catalog = await configStore.catalogSupport.catalog
+            let resolvedCapabilityClassID = catalog
+                .capabilityClassID(forModelName: modelID)
             let ranking = try await router.scoreAndRankRoutes(
                 modelName: modelID,
-                requestedFormatFamily: .openaiCompat
+                requestedFormatFamily: .openaiCompat,
+                requiredCapabilityClassID: resolvedCapabilityClassID
             )
             await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
             let rankedRoutes = ranking.rankedRoutes.map(\.route)
@@ -366,15 +370,24 @@ public actor BurnBarHTTPGatewayServer {
                     )
                 )
             }
-            let selectedCapabilityClassID = rankedRoutes.first?.modelCapabilityClassID
-            let routes = selectedCapabilityClassID.map { capabilityClassID in
-                rankedRoutes.filter { $0.modelCapabilityClassID == capabilityClassID }
-            } ?? rankedRoutes
-            let blockedCapabilityAlternatives = selectedCapabilityClassID.map { capabilityClassID in
-                ranking.rankedRoutes
-                    .map(\.route)
-                    .filter { $0.modelCapabilityClassID != capabilityClassID }
-            } ?? []
+
+            // When the router pre-filtered by capability class, use its reported
+            // blocked routes. Otherwise, discover the class from the top-ranked
+            // route and compute blocked alternatives post-hoc.
+            let selectedCapabilityClassID = resolvedCapabilityClassID ?? rankedRoutes.first?.modelCapabilityClassID
+            let routes: [BurnBarProviderRoute]
+            let blockedCapabilityAlternatives: [BurnBarProviderRoute]
+            if let classID = selectedCapabilityClassID {
+                routes = rankedRoutes.filter { $0.modelCapabilityClassID == classID }
+                if !ranking.blockedCapabilityClassRoutes.isEmpty {
+                    blockedCapabilityAlternatives = ranking.blockedCapabilityClassRoutes
+                } else {
+                    blockedCapabilityAlternatives = rankedRoutes.filter { $0.modelCapabilityClassID != classID }
+                }
+            } else {
+                routes = rankedRoutes
+                blockedCapabilityAlternatives = []
+            }
 
             var lastError: Error?
             for (index, route) in routes.enumerated() {
@@ -454,9 +467,13 @@ public actor BurnBarHTTPGatewayServer {
                 logger: BurnBarDaemonLogger(category: "gateway-router-anthropic"),
                 routingEventStore: BurnBarProviderRoutingDecisionEventStore()
             )
+            let catalog = await configStore.catalogSupport.catalog
+            let resolvedCapabilityClassID = catalog
+                .capabilityClassID(forModelName: modelID)
             let ranking = try await router.scoreAndRankRoutes(
                 modelName: modelID,
-                requestedFormatFamily: .anthropic
+                requestedFormatFamily: .anthropic,
+                requiredCapabilityClassID: resolvedCapabilityClassID
             )
             await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
             let rankedRoutes = ranking.rankedRoutes.map(\.route)
@@ -468,18 +485,24 @@ public actor BurnBarHTTPGatewayServer {
                     )
                 )
             }
-            let selectedCapabilityClassID = rankedRoutes.first?.modelCapabilityClassID
-            let routes = selectedCapabilityClassID.map { capabilityClassID in
-                rankedRoutes.filter { $0.modelCapabilityClassID == capabilityClassID }
-            } ?? rankedRoutes
-            let blockedCapabilityAlternatives = selectedCapabilityClassID.map { capabilityClassID in
-                ranking.rankedRoutes
-                    .map(\.route)
-                    .filter { $0.modelCapabilityClassID != capabilityClassID }
-            } ?? []
+
+            let anthropicSelectedCapabilityClassID = resolvedCapabilityClassID ?? rankedRoutes.first?.modelCapabilityClassID
+            let anthropicRoutes: [BurnBarProviderRoute]
+            let anthropicBlockedAlternatives: [BurnBarProviderRoute]
+            if let classID = anthropicSelectedCapabilityClassID {
+                anthropicRoutes = rankedRoutes.filter { $0.modelCapabilityClassID == classID }
+                if !ranking.blockedCapabilityClassRoutes.isEmpty {
+                    anthropicBlockedAlternatives = ranking.blockedCapabilityClassRoutes
+                } else {
+                    anthropicBlockedAlternatives = rankedRoutes.filter { $0.modelCapabilityClassID != classID }
+                }
+            } else {
+                anthropicRoutes = rankedRoutes
+                anthropicBlockedAlternatives = []
+            }
 
             var lastError: Error?
-            for (index, route) in routes.enumerated() {
+            for (index, route) in anthropicRoutes.enumerated() {
                 if let slotID = route.credentialSlotID {
                     try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
                 }
@@ -499,7 +522,7 @@ public actor BurnBarHTTPGatewayServer {
                 } catch {
                     lastError = error
                     await router.markRouteFailure(route, error: error)
-                    let hasMoreCandidates = index < routes.count - 1
+                    let hasMoreCandidates = index < anthropicRoutes.count - 1
                     if shouldFailOverProviderError(error), hasMoreCandidates {
                         continue
                     }
@@ -507,10 +530,10 @@ public actor BurnBarHTTPGatewayServer {
                 }
             }
 
-            if !blockedCapabilityAlternatives.isEmpty,
+            if !anthropicBlockedAlternatives.isEmpty,
                let lastError,
                shouldFailOverProviderError(lastError) {
-                let classLabel = selectedCapabilityClassID ?? modelID
+                let classLabel = anthropicSelectedCapabilityClassID ?? modelID
                 return jsonResponse(
                     status: 503,
                     body: errorBody(

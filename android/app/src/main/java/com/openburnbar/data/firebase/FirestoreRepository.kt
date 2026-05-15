@@ -13,10 +13,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import java.time.Instant
 import java.time.format.DateTimeParseException
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
 
 class FirestoreRepository {
     private val db = Firebase.firestore
@@ -200,21 +197,18 @@ class FirestoreRepository {
     }
 
     fun listenToUsageSince(startDate: Long): Flow<List<TokenUsage>> = callbackFlow {
-        val cutoff = isoFirestoreCutoff(startDate)
+        // `startTime` is written as a Firestore `Timestamp` (see iOS
+        // `UsageSyncService.swift`). Querying with an ISO-8601 string
+        // cutoff crosses Firestore's type-order boundary and matches zero
+        // documents, surfacing as empty Pulse live data for 1M / 1H / 1D.
         val listener = usageCollection
-            .whereGreaterThanOrEqualTo("startTime", cutoff)
+            .whereGreaterThanOrEqualTo("startTime", Timestamp(Date(startDate)))
             .orderBy("startTime", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) { close(error); return@addSnapshotListener }
                 trySend(snapshot?.documents?.mapNotNull { it.toTokenUsage() } ?: emptyList())
             }
         awaitClose { listener.remove() }
-    }
-
-    private fun isoFirestoreCutoff(millis: Long): String {
-        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
-        }.format(Date(millis))
     }
 
     // ── Quota Snapshots ──

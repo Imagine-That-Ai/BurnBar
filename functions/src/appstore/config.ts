@@ -167,10 +167,25 @@ function normalizeEnvironment(
 ): AppStoreConfig["environment"] {
   switch (raw) {
     case "Production":
+    case "PRODUCTION":
+    case "production":
+      return "Production";
     case "Sandbox":
+    case "SANDBOX":
+    case "sandbox":
+    case "InternalTest":
+    case "INTERNAL_TEST":
+    case "internal_test":
+      return "Sandbox";
     case "Xcode":
+    case "XCODE":
+    case "xcode":
+      return "Xcode";
     case "LocalTesting":
-      return raw;
+    case "LOCAL_TESTING":
+    case "local_testing":
+    case "localTesting":
+      return "LocalTesting";
     default:
       return fallback;
   }

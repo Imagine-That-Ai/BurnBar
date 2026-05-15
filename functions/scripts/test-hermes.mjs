@@ -75,10 +75,12 @@ for (const collection of ["hermes_pairings", "hermes_session_cache", "hermes_aud
   assert.match(rules, /entitlement\.expireAt > request\.time/);
   assert.match(rules, /request\.resource\.data\.mode == "relayLink"/);
   assert.match(rules, /request\.resource\.data\.id == connectionId/);
-  assert.match(rules, /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"advertisedModel"[\s\S]*"relayPublicKey"[\s\S]*"relayEncryption"[\s\S]*"realtimeRelayURL"[\s\S]*\]\)/);
+  assert.match(rules, /request\.resource\.data\.keys\(\)\.hasOnly\(\[[\s\S]*"advertisedModel"[\s\S]*"relayPublicKey"[\s\S]*"relayEncryption"[\s\S]*"realtimeRelayURL"[\s\S]*"realtimeRelayLastSeenAt"[\s\S]*"realtimeRelayProtocolVersion"[\s\S]*\]\)/);
   assert.match(rules, /request\.resource\.data\.relayEncryption == "p256-hkdf-sha256-aesgcm"/);
   assert.match(rules, /request\.resource\.data\.realtimeRelayURL\.matches\("\^wss:\/\/\.\+"\)/);
   assert.match(rules, /request\.resource\.data\.realtimeRelayStatus in \["online", "offline", "degraded"\]/);
+  assert.match(rules, /request\.resource\.data\.realtimeRelayLastSeenAt is string/);
+  assert.match(rules, /request\.resource\.data\.realtimeRelayProtocolVersion is int/);
   assert.doesNotMatch(block, /ownerWritableNonSecret\(userId\);/, "direct Hermes URLs must not become broadly client-writable");
 }
 for (const collection of ["hermes_relay_requests"]) {

@@ -818,6 +818,162 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(slots.first(where: { $0.slotID == "backup" })?.status, .ready, clientName)
     }
 
+    func testGatewayResolvesCapabilityClassFromCatalogBeforeRouting() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 429,
+            body: #"{"error":{"message":"rate limit exceeded","type":"rate_limit_error","code":"rate_limit_exceeded"}}"#
+        )
+
+        let harness = try GatewayHarness(
+            catalog: capabilityClassGatewayCatalog(),
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+        )
+        try await configureCapabilityClassProviders(harness: harness)
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"shared-code-model","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 503)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(
+            bodyText.localizedCaseInsensitiveContains("downgrade is disabled"),
+            "Gateway must report downgrade disabled when catalog-resolved capability class is exhausted."
+        )
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(
+            upstreamRequests.count, 1,
+            "Gateway must only attempt the catalog-resolved same-class route (pro), not fall through to base."
+        )
+    }
+
+    func testGatewayRoutesWithinSameClassWhenCatalogDeclaresMultipleSameClassProviders() async throws {
+        let pro = BurnBarCatalogModel(
+            id: "alpha-pro",
+            displayName: "Alpha Pro",
+            visibility: .public,
+            aliases: ["shared-pro-model"],
+            pricing: BurnBarModelPricing(inputPerMToken: 12, outputPerMToken: 24, cacheReadPerMToken: 1),
+            capabilityClassID: "openai:pro",
+            capabilityClassRank: 100
+        )
+        let altPro = BurnBarCatalogModel(
+            id: "alt-pro",
+            displayName: "Alt Pro",
+            visibility: .public,
+            aliases: ["shared-pro-model"],
+            pricing: BurnBarModelPricing(inputPerMToken: 10, outputPerMToken: 20, cacheReadPerMToken: 0.8),
+            capabilityClassID: "openai:pro",
+            capabilityClassRank: 100
+        )
+        let base = BurnBarCatalogModel(
+            id: "alpha-base",
+            displayName: "Alpha Base",
+            visibility: .public,
+            aliases: ["shared-pro-model"],
+            pricing: BurnBarModelPricing(inputPerMToken: 1, outputPerMToken: 2, cacheReadPerMToken: 0.1),
+            capabilityClassID: "openai:base",
+            capabilityClassRank: 10
+        )
+        let catalog = BurnBarCatalog(
+            schemaVersion: 1,
+            providers: [
+                BurnBarCatalogProvider(
+                    id: "alpha",
+                    displayName: "Alpha",
+                    baseURL: "https://gateway-upstream.test/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [pro, base]
+                ),
+                BurnBarCatalogProvider(
+                    id: "alt",
+                    displayName: "Alt",
+                    baseURL: "https://gateway-upstream.test/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [altPro]
+                )
+            ]
+        )
+
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 429,
+            body: #"{"error":{"message":"rate limit exceeded","type":"rate_limit_error","code":"rate_limit_exceeded"}}"#
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"chatcmpl-ok","object":"chat.completion","model":"shared-pro-model","choices":[{"index":0,"message":{"role":"assistant","content":"alt pro answered"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}"#
+        )
+
+        let harness = try GatewayHarness(
+            catalog: catalog,
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "alpha",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["alpha-pro"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "alpha",
+            slotID: "primary",
+            label: "Alpha Pro",
+            apiKey: "sk-alpha-key"
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "alt",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["alt-pro"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "alt",
+            slotID: "primary",
+            label: "Alt Pro",
+            apiKey: "sk-alt-key"
+        )
+        try await harness.configStore.setRouterMode(.intelligentModelRouter)
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, _) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"shared-pro-model","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200, "Gateway must succeed by failing over to same-class alt provider.")
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.count, 2, "Gateway must try alpha-pro first, then alt-pro on 429.")
+        let requestPaths = upstreamRequests.map(\.path)
+        XCTAssertTrue(
+            requestPaths.allSatisfy { !$0.contains("alpha-base") },
+            "Gateway must not try the base-tier route when same-class pro alternatives exist."
+        )
+    }
+
     private func capabilityClassGatewayCatalog() -> BurnBarCatalog {
         let pro = BurnBarCatalogModel(
             id: "alpha-shared-pro",

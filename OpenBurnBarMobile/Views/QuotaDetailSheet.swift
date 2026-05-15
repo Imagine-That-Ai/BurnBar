@@ -42,9 +42,11 @@ struct QuotaDetailSheet: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Task {
+                        HapticBus.refreshStarted()
                         isRefreshing = true
                         defer { isRefreshing = false }
                         await onRefresh?()
+                        HapticBus.refreshFinished()
                     }
                 } label: {
                     if isRefreshing {
