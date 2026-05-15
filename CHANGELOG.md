@@ -169,6 +169,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `HostedFallbackTests.swift`.
 
 ### Fixed
+- **Hermes iroh Phase A build path is reproducible across local and CI builds.**
+  The xcframework script now uses the rustup toolchain explicitly, generates a
+  pinned UniFFI Swift helper instead of installing a non-existent global crate,
+  and normalizes the generated modulemap for static-library xcframework slices.
+  `OpenBurnBarCore` conditionally wires the UniFFI binary target only when
+  `Vendor/OpenBurnBarIroh.xcframework` exists, so fresh checkouts still compile
+  the relay package while release/local artifact builds use the real iroh FFI.
+  macOS, iOS device, iOS Simulator, SwiftPM, and Functions gates are green
+  locally; the final Phase A gate is the GitHub xcframework workflow after push.
 - **Pulse 1M / 1H / 1D hero stopped showing $0.00 on iOS, iPad, and Android.**
   `FirestoreRepository.fetchUsageSince` and `listenToUsageSince` (Swift + Kotlin)
   filtered `startTime` against an ISO-8601 *string* cutoff, but every writer

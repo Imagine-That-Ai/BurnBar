@@ -1,29 +1,60 @@
 // swift-tools-version: 5.10
 
 import PackageDescription
+import Foundation
+
+let hasIrohXCFramework = FileManager.default.fileExists(
+    atPath: "../Vendor/OpenBurnBarIroh.xcframework"
+)
+
+let packageProducts: [Product] = [
+    .library(
+        name: "OpenBurnBarCore",
+        type: .dynamic,
+        targets: ["OpenBurnBarCore"]
+    ),
+    // Transport-agnostic iroh relay protocol + pairing + loopback
+    // transport. When `Vendor/OpenBurnBarIroh.xcframework` exists, this
+    // product also links the UniFFI-backed iroh QUIC bridge.
+    .library(
+        name: "OpenBurnBarIrohRelay",
+        targets: ["OpenBurnBarIrohRelay"]
+    )
+] + (hasIrohXCFramework ? [
+    .library(
+        name: "OpenBurnBarIrohFFI",
+        targets: ["OpenBurnBarIrohFFI"]
+    )
+] : [])
+
+let irohRelayDependencies: [Target.Dependency] = hasIrohXCFramework
+    ? ["OpenBurnBarCore", "OpenBurnBarIrohFFI"]
+    : ["OpenBurnBarCore"]
+
+let irohBinaryTargets: [Target] = hasIrohXCFramework ? [
+    .binaryTarget(
+        name: "openburnbar_irohFFI",
+        path: "../Vendor/OpenBurnBarIroh.xcframework"
+    ),
+    .target(
+        name: "OpenBurnBarIrohFFI",
+        dependencies: ["openburnbar_irohFFI"],
+        path: "Sources/OpenBurnBarIroh/Generated",
+        exclude: [
+            "openburnbar_iroh.modulemap",
+            "openburnbar_irohFFI.h"
+        ],
+        linkerSettings: [
+            .linkedFramework("SystemConfiguration")
+        ]
+    )
+] : []
 
 let package = Package(
     name: "OpenBurnBarCore",
     platforms: [.macOS(.v14), .iOS(.v17)],
-    products: [
-        .library(
-            name: "OpenBurnBarCore",
-            type: .dynamic,
-            targets: ["OpenBurnBarCore"]
-        ),
-        // Transport-agnostic iroh relay protocol + pairing + loopback
-        // transport. The actual iroh QUIC transport lives behind the
-        // `OpenBurnBarIrohTransport` Swift package (added once the
-        // `OpenBurnBarIroh.xcframework` build lands in `Vendor/`).
-        // This target is pure Swift and ships today so iOS + Mac can wire
-        // the spine in their respective transport adapters and tests.
-        .library(
-            name: "OpenBurnBarIrohRelay",
-            type: .dynamic,
-            targets: ["OpenBurnBarIrohRelay"]
-        )
-    ],
-    targets: [
+    products: packageProducts,
+    targets: irohBinaryTargets + [
         .target(
             name: "OpenBurnBarCore",
             resources: [
@@ -40,7 +71,10 @@ let package = Package(
         ),
         .target(
             name: "OpenBurnBarIrohRelay",
-            dependencies: ["OpenBurnBarCore"]
+            dependencies: irohRelayDependencies,
+            linkerSettings: [
+                .linkedFramework("SystemConfiguration")
+            ]
         ),
         .testTarget(
             name: "OpenBurnBarCoreTests",

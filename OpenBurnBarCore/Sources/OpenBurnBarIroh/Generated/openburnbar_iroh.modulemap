@@ -1,0 +1,4 @@
+module openburnbar_irohFFI {
+    header "openburnbar_irohFFI.h"
+    export *
+}

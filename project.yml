@@ -122,7 +122,7 @@ targets:
         link: false
         embed: false
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
+        product: OpenBurnBarIrohRelay
       - package: GRDB
         product: GRDB
       - package: Firebase
@@ -365,8 +365,7 @@ targets:
     dependencies:
       - target: OpenBurnBarWidget
       - package: OpenBurnBarCore
-        product: OpenBurnBarCore
-        embed: true
+        product: OpenBurnBarIrohRelay
       - package: Firebase
         product: FirebaseAuth
       - package: Firebase

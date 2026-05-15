@@ -274,11 +274,14 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         )
         let text = String(data: plaintext, encoding: .utf8)
         return HermesRelayChunkRecord(
+            id: String(format: "%08d", sequence),
+            requestId: requestID,
             sequence: sequence,
             kind: kind,
             data: text,
             text: text,
-            error: nil
+            error: nil,
+            schemaVersion: 2
         )
     }
 

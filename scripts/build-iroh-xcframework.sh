@@ -8,7 +8,7 @@
 #
 # Requires:
 #   * rustup with the targets installed (we install on demand)
-#   * uniffi-bindgen-swift on PATH (we install on demand into ~/.cargo/bin)
+#   * Rust/Cargo; the script builds a pinned UniFFI Swift bindgen helper on demand
 #   * Xcode command-line tools (xcodebuild, lipo)
 #
 # Output:
@@ -24,6 +24,7 @@ XCFRAMEWORK="${VENDOR_DIR}/OpenBurnBarIroh.xcframework"
 SWIFT_PKG_DIR="${ROOT_DIR}/OpenBurnBarCore/Sources/OpenBurnBarIroh"
 GENERATED_DIR="${SWIFT_PKG_DIR}/Generated"
 HEADERS_DIR="${ROOT_DIR}/build/iroh-xcframework-headers"
+UNIFFI_HELPER_DIR="${ROOT_DIR}/build/uniffi-bindgen-swift-helper"
 
 PROFILE="${IROH_BUILD_PROFILE:-release}"
 PROFILE_FLAG=""
@@ -49,27 +50,81 @@ fi
 
 log() { printf '[iroh-xcframework] %s\n' "$*"; }
 
+if [[ -x "${HOME}/.cargo/bin/rustup" ]]; then
+  RUSTUP_BIN="${HOME}/.cargo/bin/rustup"
+else
+  RUSTUP_BIN="$(command -v rustup)"
+fi
+
+if [[ -x "${HOME}/.cargo/bin/cargo" ]]; then
+  CARGO_BIN="${HOME}/.cargo/bin/cargo"
+else
+  CARGO_BIN="$(command -v cargo)"
+fi
+
 ensure_rust_target() {
   local target="$1"
-  if ! rustup target list --installed | grep -q "^${target}$"; then
+  if ! "${RUSTUP_BIN}" target list --installed | grep -q "^${target}$"; then
     log "installing rust target ${target}"
-    rustup target add "${target}"
+    "${RUSTUP_BIN}" target add "${target}"
   fi
 }
 
-ensure_uniffi_bindgen_swift() {
-  if command -v uniffi-bindgen-swift >/dev/null 2>&1; then
-    return
-  fi
-  log "installing uniffi-bindgen-swift (one-time)"
-  cargo install uniffi_bindgen_swift --locked
+ensure_uniffi_bindgen_swift_helper() {
+  mkdir -p "${UNIFFI_HELPER_DIR}/src"
+  cat > "${UNIFFI_HELPER_DIR}/Cargo.toml" <<'EOF'
+[package]
+name = "openburnbar-uniffi-bindgen-swift-helper"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+camino = "1"
+uniffi_bindgen = "=0.28.3"
+EOF
+  cat > "${UNIFFI_HELPER_DIR}/src/main.rs" <<'EOF'
+use anyhow::Context;
+use camino::Utf8PathBuf;
+use uniffi_bindgen::bindings::{generate_swift_bindings, SwiftBindingsOptions};
+
+fn main() -> anyhow::Result<()> {
+    let library_path = Utf8PathBuf::from(
+        std::env::var("UNIFFI_LIBRARY_PATH").context("UNIFFI_LIBRARY_PATH is required")?,
+    );
+    let out_dir = Utf8PathBuf::from(
+        std::env::var("UNIFFI_OUT_DIR").context("UNIFFI_OUT_DIR is required")?,
+    );
+    let module_name = std::env::var("UNIFFI_MODULE_NAME").ok();
+
+    generate_swift_bindings(SwiftBindingsOptions {
+        generate_swift_sources: true,
+        generate_headers: true,
+        generate_modulemap: true,
+        library_path,
+        out_dir,
+        xcframework: true,
+        module_name,
+        modulemap_filename: None,
+        metadata_no_deps: false,
+    })
+}
+EOF
 }
 
 build_target() {
   local target="$1"
   ensure_rust_target "${target}"
   log "cargo build ${PROFILE} ${target}"
-  (cd "${CRATE_DIR}" && cargo build ${PROFILE_FLAG} --target "${target}")
+  (
+    cd "${CRATE_DIR}"
+    MACOSX_DEPLOYMENT_TARGET=14.0 \
+    IPHONEOS_DEPLOYMENT_TARGET=17.0 \
+    IPHONE_SIMULATOR_DEPLOYMENT_TARGET=17.0 \
+    PATH="${HOME}/.cargo/bin:${PATH}" \
+      "${CARGO_BIN}" build ${PROFILE_FLAG} --target "${target}"
+  )
 }
 
 mkdir -p "${VENDOR_DIR}" "${GENERATED_DIR}" "${HEADERS_DIR}"
@@ -81,22 +136,25 @@ done
 # Generate Swift bindings from one host-built dylib so the .swift output is
 # identical across CI hosts. The dylib is byte-equivalent to the staticlib
 # from the iroh-introspection point of view.
-log "generating swift bindings via uniffi-bindgen-swift"
-ensure_uniffi_bindgen_swift
+log "generating swift bindings via pinned UniFFI helper"
+ensure_uniffi_bindgen_swift_helper
 HOST_DYLIB="${CRATE_DIR}/target/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_iroh.dylib"
 if [[ ! -f "${HOST_DYLIB}" ]]; then
   HOST_DYLIB="${CRATE_DIR}/target/${TARGETS[0]}/${PROFILE_DIR}/libopenburnbar_iroh.a"
 fi
 rm -rf "${GENERATED_DIR}"
 mkdir -p "${GENERATED_DIR}"
-uniffi-bindgen-swift \
-  --module-name OpenBurnBarIroh \
-  --swift-sources \
-  --headers \
-  --modulemap \
-  --xcframework \
-  --out-dir "${GENERATED_DIR}" \
-  "${HOST_DYLIB}"
+(
+  cd "${CRATE_DIR}"
+  UNIFFI_LIBRARY_PATH="${HOST_DYLIB}" \
+  UNIFFI_OUT_DIR="${GENERATED_DIR}" \
+  UNIFFI_MODULE_NAME="openburnbar_irohFFI" \
+  PATH="${HOME}/.cargo/bin:${PATH}" \
+    "${CARGO_BIN}" run --manifest-path "${UNIFFI_HELPER_DIR}/Cargo.toml" --release --quiet
+)
+if compgen -G "${GENERATED_DIR}/*.modulemap" >/dev/null; then
+  perl -0pi -e 's/framework module /module /g' "${GENERATED_DIR}/"*.modulemap
+fi
 
 # Tear down any prior xcframework so the recipe is hermetic.
 rm -rf "${XCFRAMEWORK}"
@@ -130,6 +188,7 @@ package_static_for_target() {
   fi
   if compgen -G "${GENERATED_DIR}/*.modulemap" >/dev/null; then
     cp "${GENERATED_DIR}/"*.modulemap "${out_dir}/Headers/module.modulemap"
+    perl -0pi -e 's/framework module /module /g' "${out_dir}/Headers/module.modulemap"
   fi
   build_xcframework_args+=(-library "${out_dir}/libopenburnbar_iroh.a" -headers "${out_dir}/Headers")
 }
@@ -149,6 +208,7 @@ if printf '%s\n' "${TARGETS[@]}" | grep -q "aarch64-apple-ios-sim" \
   fi
   if compgen -G "${GENERATED_DIR}/*.modulemap" >/dev/null; then
     cp "${GENERATED_DIR}/"*.modulemap "${SIM_DIR}/Headers/module.modulemap"
+    perl -0pi -e 's/framework module /module /g' "${SIM_DIR}/Headers/module.modulemap"
   fi
   build_xcframework_args+=(-library "${SIM_DIR}/libopenburnbar_iroh.a" -headers "${SIM_DIR}/Headers")
 

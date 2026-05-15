@@ -14,6 +14,7 @@
 
 # Build
 build/
+Vendor/OpenBurnBarIroh.xcframework/
 build_ios/
 DerivedData/
 *.ipa

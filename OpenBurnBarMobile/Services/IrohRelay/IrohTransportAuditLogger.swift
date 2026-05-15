@@ -1,9 +1,11 @@
 import Foundation
-@preconcurrency import FirebaseAuth
 @preconcurrency import FirebaseFirestore
-import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 
+/// Append-only audit logger for iroh transport events. Mirrors the
+/// `IrohTransportAuditEventDoc` schema in `functions/src/types.ts`.
+/// Writes to `/users/{uid}/iroh_audit_events/{eventId}`. Read-only from the
+/// client side (rules deny update + delete).
 final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, @unchecked Sendable {
     static let shared = FirestoreIrohAuditLogger()
 
@@ -60,7 +62,9 @@ final class FirestoreIrohAuditLogger: IrohTransportAuditLogging, @unchecked Send
                 .document(eventId)
                 .setData(payload, merge: false)
         } catch {
-            AppLogger.network.silentFailure("hermes_iroh_audit_write_failed", error: error)
+            #if DEBUG
+            NSLog("hermes_iroh_audit_write_failed: \(error.localizedDescription)")
+            #endif
         }
     }
 }

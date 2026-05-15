@@ -1,16 +1,15 @@
 # Hermes Realtime Relay → iroh peer-to-peer transport
 
-> **Status (Phases 1-7, May 2026):** **All phases shipped.** Foundation +
-> xcframework transport + Firestore pairing + Mac/iOS adapters + audit
-> telemetry + hosted-relay cutover + retirement runbook are all in place.
-> 27 unit tests cover the wire format, pairing signatures, transport
-> primitives, the xcframework adapter, the Firestore-backed publisher,
-> and an end-to-end encrypted echo round trip; all green on macOS arm64.
+> **Status (production rollout, May 15, 2026):** Phase A local proof is
+> green. The Rust crate checks in debug + release, all packaged Apple Rust
+> targets cross-compile, the xcframework recipe produces local artifacts,
+> `OpenBurnBarCore` builds/tests with and without the local binary artifact,
+> macOS + iOS device + iOS Simulator app builds pass, and Functions
+> type-checks.
 >
-> The next steps live outside this codebase: provisioning the n0 hosted
-> relay via `scripts/cutover-n0-hosted-relay.sh provision`, flipping
-> `hermesIrohTransportEnabled` per cohort, and running the Phase 7
-> retirement runbook in `HERMES_IROH_RETIREMENT.md` once the gates clear.
+> The remaining Phase A gate is the GitHub `OpenBurnBarIroh xcframework`
+> workflow on the latest pushed commit. Hosted n0 relay provisioning and
+> Remote Config cutover remain later rollout phases.
 
 This document is the engineering reference for migrating
 [`HERMES_REALTIME_RELAY.md`](HERMES_REALTIME_RELAY.md) off Cloud Run +
@@ -71,11 +70,12 @@ reused byte-for-byte.
 | Path | Role |
 | --- | --- |
 | `crates/openburnbar-iroh/` | Rust crate that wraps `iroh-net` + `iroh-blobs` and exposes a UniFFI surface (`bootstrap`, `identity`, `connect`, `accept_one`, `send_frame`, `recv_frame`, `shutdown`, `close`). |
-| `scripts/build-iroh-xcframework.sh` | Builds the crate as an xcframework for `macos-arm64`, `ios-arm64`, and `ios-arm64-simulator + ios-x86_64-simulator`. |
-| `.github/workflows/iroh-xcframework.yml` | CI: builds + caches the xcframework, attaches it to a release tag. |
+| `scripts/build-iroh-xcframework.sh` | Builds the crate as an xcframework for `macos-arm64`, `ios-arm64`, and `ios-arm64-simulator + ios-x86_64-simulator`. It generates a pinned UniFFI Swift helper locally instead of relying on a global `uniffi-bindgen-swift` install. |
+| `.github/workflows/iroh-xcframework.yml` | CI: builds + caches the xcframework and uploads it as a workflow artifact. |
 | `scripts/ci/iroh-services.env.example` | Template for the n0 services API secret used by Phase 6+ (owned hosted relay). |
 | `scripts/ci/load-iroh-services-secret.sh` | Loader that materializes `.secrets/iroh-services.env` from CI secrets. |
-| `OpenBurnBarCore/Sources/OpenBurnBarIrohRelay/` | SwiftPM target. Contains the wire codec, transport protocol, in-process loopback transport, pairing helpers, and the encrypted echo path. |
+| `OpenBurnBarCore/Sources/OpenBurnBarIrohRelay/` | SwiftPM target. Contains the wire codec, transport protocol, in-process loopback transport, pairing helpers, audit contract, and the encrypted echo path. |
+| `OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/` | UniFFI-generated Swift/C/modulemap bindings. Used only when `Vendor/OpenBurnBarIroh.xcframework` exists locally or in CI. |
 | `OpenBurnBarCore/Tests/OpenBurnBarIrohRelayTests/` | XCTest suite (18 tests, all green on macOS arm64). |
 | `services/hermes-realtime-relay/` | Existing Cloud Run relay. Stays in place while we burn down WSS traffic, then is decommissioned in Milestone 7. |
 

@@ -10,11 +10,13 @@ on:
       - "crates/openburnbar-iroh/**"
       - "scripts/build-iroh-xcframework.sh"
       - ".github/workflows/iroh-xcframework.yml"
+      - "OpenBurnBarCore/Package.swift"
   pull_request:
     paths:
       - "crates/openburnbar-iroh/**"
       - "scripts/build-iroh-xcframework.sh"
       - ".github/workflows/iroh-xcframework.yml"
+      - "OpenBurnBarCore/Package.swift"
   workflow_dispatch:
 
 concurrency:
@@ -53,12 +55,6 @@ jobs:
           key: iroh-xcframework-${{ runner.os }}-${{ hashFiles('crates/openburnbar-iroh/Cargo.toml') }}
           restore-keys: |
             iroh-xcframework-${{ runner.os }}-
-
-      - name: Install uniffi-bindgen-swift
-        run: |
-          if ! command -v uniffi-bindgen-swift >/dev/null 2>&1; then
-            cargo install --locked uniffi_bindgen_swift
-          fi
 
       - name: Host-side cargo check (sanity)
         run: cargo check -p openburnbar-iroh

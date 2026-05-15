@@ -17,7 +17,7 @@
 import Foundation
 
 #if canImport(OpenBurnBarIrohFFI)
-import OpenBurnBarIrohFFI
+@preconcurrency import OpenBurnBarIrohFFI
 
 /// Adapts the UniFFI-generated `IrohEndpointHandle` + `IrohStream` to our
 /// transport-level protocols. Every Rust call is wrapped in
@@ -35,7 +35,7 @@ public final class OpenBurnBarIrohFFIBackend: IrohEndpointBackend, @unchecked Se
     public func bootstrap(secret: Data, relayURL: String?) async throws -> IrohEndpointIdentity {
         try await withFFI { [handle] in
             let identity = try handle.bootstrap(
-                secret: IrohSecretKeyMaterial(raw: Array(secret)),
+                secret: OpenBurnBarIrohFFI.IrohSecretKeyMaterial(raw: secret),
                 relayUrl: relayURL ?? ""
             )
             return IrohEndpointIdentity(
@@ -128,7 +128,7 @@ public final class OpenBurnBarIrohFFIStream: IrohBackendStream, @unchecked Senda
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             queue.async { [stream] in
                 do {
-                    try stream.sendFrame(frame: Array(envelope))
+                    try stream.sendFrame(frame: envelope)
                     continuation.resume()
                 } catch let ffiError as IrohFfiError {
                     continuation.resume(throwing: OpenBurnBarIrohFFIBackend.translate(ffiError))
@@ -144,7 +144,7 @@ public final class OpenBurnBarIrohFFIStream: IrohBackendStream, @unchecked Senda
             queue.async { [stream] in
                 do {
                     if let bytes = try stream.recvFrame() {
-                        continuation.resume(returning: Data(bytes))
+                        continuation.resume(returning: bytes)
                     } else {
                         continuation.resume(returning: nil)
                     }
