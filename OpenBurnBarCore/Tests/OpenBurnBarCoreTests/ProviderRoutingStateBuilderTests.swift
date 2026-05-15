@@ -104,7 +104,7 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            ProviderRoutingStateBuilder.quotaState(for: acc, snapshot: exhausted),
+            ProviderRoutingStateBuilder.quotaState(for: acc, snapshot: exhausted, now: now),
             .exhausted
         )
     }
@@ -131,7 +131,7 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            ProviderRoutingStateBuilder.quotaState(for: acc, snapshot: snapshot),
+            ProviderRoutingStateBuilder.quotaState(for: acc, snapshot: snapshot, now: now),
             .pressure
         )
     }
@@ -173,7 +173,7 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            ProviderRoutingStateBuilder.quotaState(for: acc, snapshot: stale),
+            ProviderRoutingStateBuilder.quotaState(for: acc, snapshot: stale, now: now),
             .pressure
         )
     }
@@ -196,7 +196,7 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            ProviderRoutingStateBuilder.quotaState(for: acc, snapshot: old),
+            ProviderRoutingStateBuilder.quotaState(for: acc, snapshot: old, now: Date()),
             .pressure
         )
     }
