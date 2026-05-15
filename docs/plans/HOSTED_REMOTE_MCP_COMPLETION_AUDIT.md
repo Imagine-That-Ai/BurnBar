@@ -78,7 +78,16 @@ node functions/scripts/prove-hosted-mcp-live.mjs \
   --project burnbar \
   --region us-central1 \
   --endpoint https://openburnbar-hosted-mcp-cjrjb5ckqq-uc.a.run.app/mcp
-# missingAuthStatus: 401; skippedLivePaidProof: true because OPENBURNBAR_MCP_PROOF_TOKEN is not set
+# with OPENBURNBAR_MCP_TOKEN_HMAC_SECRET set from Secret Manager:
+# missingAuthStatus: 401
+# paidCapabilitiesStatus: 200
+# unpaidCapabilitiesStatus: 403
+# revokedCapabilitiesStatus: 403
+# paidBListStatus: 200
+# crossTenantReadStatus: 404
+# missingScopeStatus: 403
+# proofId: remote-mcp-proof-1778822270407
+# Temporary proof users were removed after the run.
 
 # Controlled live proof with temporary Firestore users and short-lived HMAC
 # tokens against https://openburnbar-hosted-mcp-cjrjb5ckqq-uc.a.run.app/mcp.
