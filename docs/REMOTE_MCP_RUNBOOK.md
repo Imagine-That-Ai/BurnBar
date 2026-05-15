@@ -57,6 +57,25 @@ node functions/scripts/prove-hosted-mcp-live.mjs \
 Set `OPENBURNBAR_MCP_PROOF_TOKEN` for the paid-user tool-list proof. Without it,
 the script proves missing-auth denial and exits with a skipped-live-proof code.
 
+## Client Compatibility
+
+Hermetic installer/config smoke:
+
+```bash
+./scripts/test-hosted-mcp-compatibility.sh
+```
+
+Local real-client config proof, using a temporary `HOME` and leaving real user
+client configs untouched:
+
+```bash
+OPENBURNBAR_MCP_REAL_CLIENTS=1 ./scripts/test-hosted-mcp-compatibility.sh
+```
+
+This proves that the installed Codex, Claude Code, Droid/Factory, Kimi, and
+Forge CLIs accept the OpenBurnBar stdio shim configuration. It does not replace
+the final branded-endpoint OAuth/search/body compatibility proof.
+
 ## Monitor
 
 Configured Cloud Monitoring policies:

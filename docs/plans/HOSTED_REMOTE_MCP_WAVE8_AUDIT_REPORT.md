@@ -40,8 +40,9 @@ Findings:
 - P1: The standards-first service shape exists, but the public production
   resource URL is still generated Cloud Run, not a branded endpoint.
 - P1: Source and tests show deny-by-default tool metadata and resource-route
-  auth enforcement, but real client compatibility is still config-output level
-  rather than login/list/search/body proof across all target clients.
+  auth enforcement, and temp-profile real CLI config proof now passes for
+  Codex, Claude Code, Droid/Factory, Kimi, and Forge. Final client proof is
+  still missing login/list/search/body against the branded endpoint.
 - P2: The local shim and hosted service are separated cleanly, but launch proof
   still depends on temporary Firestore proof users, not a real subscriber.
 
@@ -148,9 +149,9 @@ Findings:
   passed during implementation.
 - P1: Full app gate is not green because of unrelated existing failures; the
   hosted-MCP iOS Cloud Store source compiled in a targeted mobile build.
-- P1: Real client matrix remains incomplete. The current compatibility script
-  verifies deterministic installer output, not actual client login/list/search
-  and body fetch.
+- P1: Real client matrix remains incomplete. The compatibility script now
+  verifies deterministic installer output and installed-client temp-profile
+  configuration, but not actual client login/list/search and body fetch.
 - P2: Missing-data and stale-index behavior have source/test coverage, but
   large-corpus warm p50/p95 performance proof is still missing.
 
@@ -236,7 +237,7 @@ Evidence:
 | P0 | Branded hosted endpoint is blocked by unverified domain ownership. | Verify `burnbar.ai` or `openburnbar.com` in Google, create Cloud Run domain mapping, add DNS records, prove `/readyz` and `/mcp`. |
 | P0 | Final production launch proof is not on a branded endpoint. | Rerun live paid/unpaid/revoked/cross-tenant proof against the branded endpoint. |
 | P1 | Real subscriber proof is missing. | Use real paid and unpaid proof users instead of temporary entitlement documents. |
-| P1 | Real client compatibility matrix is incomplete. | Configure Codex, Claude Code, Droid/Factory, Kimi, Forge, and generic MCP in isolated profiles and prove login/tools/list/search/body. |
+| P1 | Real client compatibility matrix is incomplete. | Temp-profile config proof now passes for installed CLIs; prove login/tools/list/search/body against the branded endpoint. |
 | P1 | Rollback is documented but unrehearsed. | Perform controlled Cloud Run traffic rollback and restoration, then record revision names and timestamps. |
 | P1 | MCP-specific Firestore read-budget proof is missing. | Capture read counts or service audit counters for representative search/body fetches and compare to launch budgets. |
 | P1 | macOS and Android connected-client list/revoke parity is not proven. | Implement or explicitly scope out platform parity with owner/date before launch. |

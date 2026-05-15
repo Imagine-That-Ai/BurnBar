@@ -29,7 +29,7 @@ still missing.
 | Required tools: search, body, index status, facets, recent usage, capabilities | `services/hosted-mcp/src/toolRegistry.ts` | Source present |
 | Firestore data additions and rules | `firestore.rules`, `firestore.indexes.json`, `functions/scripts/test-firestore-rules.mjs` | Rules tests passed |
 | Local shim for stdio clients and local decrypt | `tools/openburnbar-mcp-remote/src/*` | Tests/lint passed |
-| Installer output for Codex, Claude Code, Droid/Factory, Kimi, Forge, generic | `tools/openburnbar-mcp-remote/src/installers.ts`, `src/installers.test.ts`, `scripts/test-hosted-mcp-compatibility.sh` | Hermetic verification only |
+| Installer output for Codex, Claude Code, Droid/Factory, Kimi, Forge, generic | `tools/openburnbar-mcp-remote/src/installers.ts`, `src/installers.test.ts`, `scripts/test-hosted-mcp-compatibility.sh` | Hermetic verification plus temp-profile real CLI config proof passed; live OAuth/search/body proof still missing |
 | Doctor command | `tools/openburnbar-mcp-remote/src/doctor.ts` | Source present; live doctor proof missing |
 | App UX for setup/status/revoke | `OpenBurnBarMobile/Views/Store/CloudStoreView.swift` shows setup/status copy, lists `remote_mcp_clients`, displays scopes/last-used/decrypt mode/status, and calls `revokeRemoteMcpClient`; targeted iOS build passed | iOS/iPadOS member UI implemented; macOS/Android parity not verified |
 | Production deploy | `scripts/deploy-hosted-mcp.sh` deployed `openburnbar-hosted-mcp-00004-xf4` from commit `04f30b8f0` | Cloud Run deployed at generated URL |
@@ -52,6 +52,7 @@ npm --prefix functions test:firestore-rules
 npm --prefix functions test
 ./scripts/test-hosted-mcp-security.sh
 ./scripts/test-hosted-mcp-compatibility.sh
+OPENBURNBAR_MCP_REAL_CLIENTS=1 ./scripts/test-hosted-mcp-compatibility.sh
 ./scripts/test-openburnbar-swift.sh
 xcodebuild -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
 ```
@@ -112,6 +113,13 @@ gcloud alpha monitoring policies list --project burnbar \
   --format='value(displayName,enabled)' | grep 'OpenBurnBar Firestore read spike'
 # OpenBurnBar Firestore read spike          True
 
+OPENBURNBAR_MCP_REAL_CLIENTS=1 ./scripts/test-hosted-mcp-compatibility.sh
+# npm warns that the package declares Node 22 while the local shell is Node
+# v20.20.2, but the TypeScript build and real-client temp-profile config proof
+# pass. Codex emits a temp-HOME helper-binary warning, then continues.
+# hosted MCP real client config proof passed
+# hosted MCP compatibility config smoke passed
+
 # Controlled live proof with temporary Firestore users and short-lived HMAC
 # tokens against https://openburnbar-hosted-mcp-cjrjb5ckqq-uc.a.run.app/mcp.
 # Temporary proof id: remote-mcp-proof-1778821006
@@ -160,8 +168,10 @@ but the full app gate is not green.
 1. Verify ownership of `openburnbar.com` or `burnbar.ai` in the `burnbar` Google
    account, create the Cloud Run domain mapping, and update DNS.
 2. Run real subscriber proof on the final branded endpoint.
-3. Run real client compatibility for Codex, Claude Code, Droid/Factory, Kimi,
-   Forge, and generic MCP.
+3. Run final real client compatibility for Codex, Claude Code, Droid/Factory,
+   Kimi, Forge, and generic MCP against the branded endpoint with OAuth,
+   tools/list, search, and body fetch. Temp-profile local config proof now
+   passes but does not prove authenticated live tool use.
 4. Add or verify macOS and Android parity for connected-client list/revoke UI,
    or explicitly scope those surfaces out with a follow-up owner/date.
 5. Verify Firestore contains no plaintext query/session/body/token leakage.
