@@ -237,6 +237,18 @@ enum SettingsManifest {
             keywords: ["delete", "remove", "wipe", "gdpr"]
         ),
 
+        // MARK: Cloud
+
+        SettingsItem(
+            id: "cloud.overview",
+            tab: .cloud,
+            pageRoute: .cloudRoot,
+            anchorID: SettingsAnchor.cloudOverview,
+            title: "OpenBurnBar Cloud",
+            subtitle: "Hosted refresh, backup, remote MCP clients, and member status",
+            keywords: ["cloud", "member", "pro", "hosted", "backup", "remote mcp", "subscription", "billing", "relay"]
+        ),
+
         // MARK: Providers
 
         SettingsItem(
@@ -496,6 +508,7 @@ enum SettingsManifest {
         SettingsAnchor.accountSignIn,
         SettingsAnchor.accountSubscription,
         SettingsAnchor.accountDelete,
+        SettingsAnchor.cloudOverview,
         SettingsAnchor.providersAdd,
         SettingsAnchor.providersCLI,
         SettingsAnchor.providersLogSources,

@@ -11,6 +11,9 @@ func openBurnBarIsGitHubActionsRunner(sourceFile: StaticString = #filePath) -> B
     return environment["CI"] == "true"
         || environment["GITHUB_ACTIONS"] == "true"
         || environment["RUNNER_OS"] != nil
+        || environment["TEST_RUNNER_CI"] == "true"
+        || environment["TEST_RUNNER_GITHUB_ACTIONS"] == "true"
+        || environment["TEST_RUNNER_RUNNER_OS"] != nil
         || sourcePath.contains("/Users/runner/work/")
         || currentDirectory.contains("/Users/runner/work/")
 }

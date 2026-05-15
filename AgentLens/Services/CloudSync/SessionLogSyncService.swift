@@ -16,9 +16,10 @@ import OpenBurnBarCore
 @MainActor
 final class SessionLogSyncService: CloudSyncDomain {
     private let context: CloudSyncContext
-    private let functions: Functions
-    private let urlSession: URLSession
-    private let vaultKeyStore: CloudVaultKeyStore
+    private let encryptedCloudClient: SessionLogEncryptedCloudClient
+    private let vaultKeyStore: SessionLogVaultKeyProviding
+    private let vaultKeyPublisher: SessionLogVaultKeyPublishing
+    private let archivedSessionMirror: SessionLogArchivedSessionMirroring
 
     private(set) var isSyncing = false
     private(set) var lastSyncError: String?
@@ -26,14 +27,16 @@ final class SessionLogSyncService: CloudSyncDomain {
 
     init(
         context: CloudSyncContext,
-        functions: Functions = Functions.functions(region: "us-central1"),
-        urlSession: URLSession = .shared,
-        vaultKeyStore: CloudVaultKeyStore = CloudVaultKeyStore()
+        encryptedCloudClient: SessionLogEncryptedCloudClient = FirebaseSessionLogEncryptedCloudClient(),
+        vaultKeyStore: SessionLogVaultKeyProviding = CloudVaultKeyStore(),
+        vaultKeyPublisher: SessionLogVaultKeyPublishing = FirebaseSessionLogVaultKeyPublisher(),
+        archivedSessionMirror: SessionLogArchivedSessionMirroring = CLIAgentSessionMirror.shared
     ) {
         self.context = context
-        self.functions = functions
-        self.urlSession = urlSession
+        self.encryptedCloudClient = encryptedCloudClient
         self.vaultKeyStore = vaultKeyStore
+        self.vaultKeyPublisher = vaultKeyPublisher
+        self.archivedSessionMirror = archivedSessionMirror
     }
 
     /// Upload session-log manifests and search metadata to Firestore.
@@ -77,22 +80,22 @@ final class SessionLogSyncService: CloudSyncDomain {
                    existing["chunkMetadataVersion"] as? Int == Self.chunkMetadataVersion,
                    existing["cloudSearchIndexVersion"] as? Int == Self.cloudSearchIndexVersion,
                    existing["bodyStorage"] as? String == "firebase_storage_encrypted" {
-                    await CLIAgentSessionMirror.shared.mirrorArchivedLog(record, cloudLogDocumentID: docId)
+                    await archivedSessionMirror.mirrorArchivedLog(record, cloudLogDocumentID: docId)
                     try context.dataStore.markSessionLogsSynced(ids: [record.id])
                     continue
                 }
 
                 let vaultKey = try vaultKeyStore.getOrCreateKey(uid: uid)
-                try await publishCloudVaultKey(uid: uid, vaultKey: vaultKey)
+                try await vaultKeyPublisher.publishCloudVaultKey(uid: uid, vaultKey: vaultKey, context: context)
                 let sealedBody = try CloudVaultCrypto.sealBlob(Data(markdown.utf8), keyData: vaultKey)
                 let sealedBodyData = try Self.jsonData(sealedBody)
-                let uploadTicket = try await beginEncryptedSessionBlobUpload(
+                let uploadTicket = try await encryptedCloudClient.beginEncryptedSessionBlobUpload(
                     documentID: docId,
                     bodyHash: bodyHash,
                     byteCount: sealedBodyData.count
                 )
 
-                try await uploadEncryptedBody(data: sealedBodyData, ticket: uploadTicket)
+                try await encryptedCloudClient.uploadEncryptedBody(data: sealedBodyData, ticket: uploadTicket)
                 let chunks = Self.chunkUTF8String(markdown, maxBytes: 64_000)
                 let sealedTitle = try CloudVaultCrypto.sealText(record.summaryTitle ?? record.inferredTaskTitle, keyData: vaultKey)
                 let previewText = String(markdown.prefix(500))
@@ -194,7 +197,9 @@ final class SessionLogSyncService: CloudSyncDomain {
                     ])
                 }
 
-                try await commitEncryptedSearchIndex(
+                try await encryptedCloudClient.commitEncryptedSearchIndex(
+                    deviceId: context.deviceId,
+                    indexVersion: Self.cloudSearchIndexVersion,
                     document: [
                         "documentID": docId,
                         "sourceKind": "conversation",
@@ -225,7 +230,7 @@ final class SessionLogSyncService: CloudSyncDomain {
                         try await batch.commit()
                     }
                 }
-                await CLIAgentSessionMirror.shared.mirrorArchivedLog(record, cloudLogDocumentID: docId)
+                await archivedSessionMirror.mirrorArchivedLog(record, cloudLogDocumentID: docId)
             }
 
             let ids = unsynced.map(\.id)
@@ -273,51 +278,6 @@ final class SessionLogSyncService: CloudSyncDomain {
     private static let chunkMetadataVersion = 1
     private static let cloudSearchIndexVersion = 2
 
-    private struct EncryptedUploadTicket {
-        let storagePath: String
-        let uploadURL: URL
-    }
-
-    private func beginEncryptedSessionBlobUpload(
-        documentID: String,
-        bodyHash: String,
-        byteCount: Int
-    ) async throws -> EncryptedUploadTicket {
-        let result = try await functions.httpsCallable("beginEncryptedSessionBlobUpload").call([
-            "documentID": documentID,
-            "bodyHash": bodyHash,
-            "encryptedByteCount": byteCount,
-            "contentType": "application/octet-stream"
-        ])
-        guard let dict = result.data as? [String: Any],
-              let storagePath = dict["storagePath"] as? String,
-              let uploadURLString = dict["uploadURL"] as? String,
-              let uploadURL = URL(string: uploadURLString) else {
-            throw CloudSessionLogUploadError.invalidUploadTicket
-        }
-        return EncryptedUploadTicket(storagePath: storagePath, uploadURL: uploadURL)
-    }
-
-    private func uploadEncryptedBody(data: Data, ticket: EncryptedUploadTicket) async throws {
-        var request = URLRequest(url: ticket.uploadURL)
-        request.httpMethod = "PUT"
-        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-        let (_, response) = try await urlSession.upload(for: request, from: data)
-        guard let http = response as? HTTPURLResponse,
-              (200...299).contains(http.statusCode) else {
-            throw CloudSessionLogUploadError.storageUploadFailed
-        }
-    }
-
-    private func commitEncryptedSearchIndex(document: [String: Any], chunks: [[String: Any]]) async throws {
-        _ = try await functions.httpsCallable("commitEncryptedSearchIndexBatch").call([
-            "deviceId": context.deviceId,
-            "indexVersion": Self.cloudSearchIndexVersion,
-            "documents": [document],
-            "chunks": chunks
-        ])
-    }
-
     func uploadProjectMemorySnapshot(_ snapshot: ProjectMemorySnapshot) async throws {
         guard context.accountManager.isFirebaseAvailable,
               context.accountManager.isSignedIn,
@@ -327,24 +287,24 @@ final class SessionLogSyncService: CloudSyncDomain {
               let uid = context.currentUID else { return }
 
         let vaultKey = try vaultKeyStore.getOrCreateKey(uid: uid)
-        try await publishCloudVaultKey(uid: uid, vaultKey: vaultKey)
+        try await vaultKeyPublisher.publishCloudVaultKey(uid: uid, vaultKey: vaultKey, context: context)
 
         let payload = try Self.jsonData(snapshot)
         let sealedSnapshot = try CloudVaultCrypto.sealBlob(payload, keyData: vaultKey)
         let visualKinds = Array(Set(snapshot.visuals.map(\.kind.rawValue))).sorted()
 
         do {
-            _ = try await functions.httpsCallable("commitEncryptedProjectMemorySnapshot").call([
-                "projectSlug": snapshot.projectSlug,
-                "projectDisplayName": snapshot.projectDisplayName,
-                "contentHash": snapshot.contentHash,
-                "sourceSessionCount": snapshot.sourceSessionCount,
-                "sourceConversationCount": snapshot.sourceConversationCount,
-                "generatedAt": Self.iso8601.string(from: snapshot.generatedAt),
-                "freshness": snapshot.freshness.rawValue,
-                "visualKinds": visualKinds,
-                "sealedSnapshot": try Self.dictionary(sealedSnapshot)
-            ])
+            try await encryptedCloudClient.commitEncryptedProjectMemorySnapshot([
+                    "projectSlug": snapshot.projectSlug,
+                    "projectDisplayName": snapshot.projectDisplayName,
+                    "contentHash": snapshot.contentHash,
+                    "sourceSessionCount": snapshot.sourceSessionCount,
+                    "sourceConversationCount": snapshot.sourceConversationCount,
+                    "generatedAt": Self.iso8601.string(from: snapshot.generatedAt),
+                    "freshness": snapshot.freshness.rawValue,
+                    "visualKinds": visualKinds,
+                    "sealedSnapshot": try Self.dictionary(sealedSnapshot)
+                ])
         } catch {
             if Self.isPermissionDeniedFunctionsError(error) { return }
             throw error
@@ -360,17 +320,16 @@ final class SessionLogSyncService: CloudSyncDomain {
               let uid = context.currentUID else { return nil }
 
         guard let vaultKey = try vaultKeyStore.loadKey(uid: uid) else { return nil }
-        let result: HTTPSCallableResult
+        let payload: [String: Any]
         do {
-            result = try await functions.httpsCallable("getEncryptedProjectMemorySnapshot").call([
+            payload = try await encryptedCloudClient.getEncryptedProjectMemorySnapshot([
                 "projectSlug": projectSlug
             ])
         } catch {
             if Self.isPermissionDeniedFunctionsError(error) { return nil }
             throw error
         }
-        guard let payload = result.data as? [String: Any],
-              let snapshotPayload = payload["snapshot"] as? [String: Any],
+        guard let snapshotPayload = payload["snapshot"] as? [String: Any],
               let sealedSnapshot = snapshotPayload["sealedSnapshot"] else {
             return nil
         }
@@ -382,7 +341,31 @@ final class SessionLogSyncService: CloudSyncDomain {
         return try decoder.decode(ProjectMemorySnapshot.self, from: plaintext)
     }
 
-    private func publishCloudVaultKey(uid: String, vaultKey: Data) async throws {
+}
+
+@MainActor
+protocol SessionLogVaultKeyProviding {
+    func loadKey(uid: String) throws -> Data?
+    func getOrCreateKey(uid: String) throws -> Data
+}
+
+extension CloudVaultKeyStore: SessionLogVaultKeyProviding {}
+
+@MainActor
+protocol SessionLogArchivedSessionMirroring {
+    func mirrorArchivedLog(_ conversation: ConversationRecord, cloudLogDocumentID: String?) async
+}
+
+extension CLIAgentSessionMirror: SessionLogArchivedSessionMirroring {}
+
+@MainActor
+protocol SessionLogVaultKeyPublishing {
+    func publishCloudVaultKey(uid: String, vaultKey: Data, context: CloudSyncContext) async throws
+}
+
+@MainActor
+struct FirebaseSessionLogVaultKeyPublisher: SessionLogVaultKeyPublishing {
+    func publishCloudVaultKey(uid: String, vaultKey: Data, context: CloudSyncContext) async throws {
         let keypair = try CloudVaultDeviceKeypair(account: "cloud-vault-device:\(context.deviceId)")
         let userRef = context.firestoreGateway.collection("users").document(uid)
         let deviceRef = userRef.collection("escrow_devices").document(context.deviceId)
@@ -445,8 +428,11 @@ final class SessionLogSyncService: CloudSyncDomain {
                 ], merge: true)
         }
     }
+}
 
-    private static func dictionary<T: Encodable>(_ value: T) throws -> [String: Any] {
+private extension SessionLogSyncService {
+
+    static func dictionary<T: Encodable>(_ value: T) throws -> [String: Any] {
         let data = try JSONEncoder().encode(value)
         guard let dictionary = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw CloudSessionLogUploadError.encodingFailed
@@ -454,19 +440,19 @@ final class SessionLogSyncService: CloudSyncDomain {
         return dictionary
     }
 
-    private static func jsonData<T: Encodable>(_ value: T) throws -> Data {
+    static func jsonData<T: Encodable>(_ value: T) throws -> Data {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         return try encoder.encode(value)
     }
 
-    private static let iso8601: ISO8601DateFormatter = {
+    static let iso8601: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
 
-    private static func isPermissionDeniedFunctionsError(_ error: Error) -> Bool {
+    static func isPermissionDeniedFunctionsError(_ error: Error) -> Bool {
         let nsError = error as NSError
         guard nsError.domain == FunctionsErrorDomain,
               let code = FunctionsErrorCode(rawValue: nsError.code) else {
@@ -475,7 +461,7 @@ final class SessionLogSyncService: CloudSyncDomain {
         return code == .permissionDenied || code == .unauthenticated || code == .failedPrecondition
     }
 
-    private static func normalizedTerms(from text: String) -> [String] {
+    static func normalizedTerms(from text: String) -> [String] {
         let stopwords: Set<String> = ["the", "and", "for", "with", "that", "this", "from", "how", "what", "where", "when", "why", "are", "was"]
         let parts = text
             .lowercased()
@@ -490,9 +476,100 @@ final class SessionLogSyncService: CloudSyncDomain {
         return terms
     }
 
-    private static func sha256Hex(_ text: String) -> String {
+    static func sha256Hex(_ text: String) -> String {
         let digest = SHA256.hash(data: Data(text.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+struct EncryptedSessionBlobUploadTicket {
+    let storagePath: String
+    let uploadURL: URL
+}
+
+@MainActor
+protocol SessionLogEncryptedCloudClient {
+    func beginEncryptedSessionBlobUpload(
+        documentID: String,
+        bodyHash: String,
+        byteCount: Int
+    ) async throws -> EncryptedSessionBlobUploadTicket
+    func uploadEncryptedBody(data: Data, ticket: EncryptedSessionBlobUploadTicket) async throws
+    func commitEncryptedSearchIndex(
+        deviceId: String,
+        indexVersion: Int,
+        document: [String: Any],
+        chunks: [[String: Any]]
+    ) async throws
+    func commitEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws
+    func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any]
+}
+
+@MainActor
+final class FirebaseSessionLogEncryptedCloudClient: SessionLogEncryptedCloudClient {
+    private let functions: Functions
+    private let urlSession: URLSession
+
+    init(
+        functions: Functions = Functions.functions(region: "us-central1"),
+        urlSession: URLSession = .shared
+    ) {
+        self.functions = functions
+        self.urlSession = urlSession
+    }
+
+    func beginEncryptedSessionBlobUpload(
+        documentID: String,
+        bodyHash: String,
+        byteCount: Int
+    ) async throws -> EncryptedSessionBlobUploadTicket {
+        let result = try await functions.httpsCallable("beginEncryptedSessionBlobUpload").call([
+            "documentID": documentID,
+            "bodyHash": bodyHash,
+            "encryptedByteCount": byteCount,
+            "contentType": "application/octet-stream"
+        ])
+        guard let dict = result.data as? [String: Any],
+              let storagePath = dict["storagePath"] as? String,
+              let uploadURLString = dict["uploadURL"] as? String,
+              let uploadURL = URL(string: uploadURLString) else {
+            throw CloudSessionLogUploadError.invalidUploadTicket
+        }
+        return EncryptedSessionBlobUploadTicket(storagePath: storagePath, uploadURL: uploadURL)
+    }
+
+    func uploadEncryptedBody(data: Data, ticket: EncryptedSessionBlobUploadTicket) async throws {
+        var request = URLRequest(url: ticket.uploadURL)
+        request.httpMethod = "PUT"
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        let (_, response) = try await urlSession.upload(for: request, from: data)
+        guard let http = response as? HTTPURLResponse,
+              (200...299).contains(http.statusCode) else {
+            throw CloudSessionLogUploadError.storageUploadFailed
+        }
+    }
+
+    func commitEncryptedSearchIndex(
+        deviceId: String,
+        indexVersion: Int,
+        document: [String: Any],
+        chunks: [[String: Any]]
+    ) async throws {
+        _ = try await functions.httpsCallable("commitEncryptedSearchIndexBatch").call([
+            "deviceId": deviceId,
+            "indexVersion": indexVersion,
+            "documents": [document],
+            "chunks": chunks
+        ])
+    }
+
+    func commitEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws {
+        _ = try await functions.httpsCallable("commitEncryptedProjectMemorySnapshot").call(payload)
+    }
+
+    func getEncryptedProjectMemorySnapshot(_ payload: [String: Any]) async throws -> [String: Any] {
+        let result = try await functions.httpsCallable("getEncryptedProjectMemorySnapshot").call(payload)
+        return result.data as? [String: Any] ?? [:]
     }
 }
 

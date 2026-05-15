@@ -10,7 +10,6 @@ let hasIrohXCFramework = FileManager.default.fileExists(
 let packageProducts: [Product] = [
     .library(
         name: "OpenBurnBarCore",
-        type: .dynamic,
         targets: ["OpenBurnBarCore"]
     ),
     // Transport-agnostic iroh relay protocol + pairing + loopback

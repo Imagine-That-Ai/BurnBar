@@ -122,6 +122,8 @@ targets:
         link: false
         embed: false
       - package: OpenBurnBarCore
+        product: OpenBurnBarCore
+      - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
       - package: GRDB
         product: GRDB
@@ -220,6 +222,7 @@ targets:
       - target: OpenBurnBar
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
+        link: false
       - package: ViewInspector
         product: ViewInspector
       - package: SnapshotTesting
@@ -364,6 +367,8 @@ targets:
               - com.googleusercontent.apps.246956661961-h48alif674cr67ojj4li9og8gbcjinbv
     dependencies:
       - target: OpenBurnBarWidget
+      - package: OpenBurnBarCore
+        product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
       - package: Firebase

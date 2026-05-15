@@ -100,6 +100,9 @@ enum SettingsPageRoute: Hashable, Codable {
     // Account
     case accountRoot
 
+    // Cloud
+    case cloudRoot
+
     // Providers
     case providersRoot
 
@@ -171,6 +174,9 @@ enum SettingsAnchor {
     static let accountSignIn = "account.signIn"
     static let accountSubscription = "account.subscription"
     static let accountDelete = "account.delete"
+
+    // Cloud
+    static let cloudOverview = "cloud.overview"
 
     // Providers
     static let providersAdd = "providers.add"

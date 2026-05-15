@@ -206,7 +206,7 @@ struct SettingsView: View {
             RemoteRelayDetailView(settingsManager: settingsManager)
         case .hermesPiRelay:
             RemoteRelayPiDetailView(settingsManager: settingsManager)
-        case .generalRoot, .daemonRoot, .accountRoot, .providersRoot,
+        case .generalRoot, .daemonRoot, .accountRoot, .cloudRoot, .providersRoot,
              .routingPoolsRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,
              .switcherRoot, .hermesRoot:

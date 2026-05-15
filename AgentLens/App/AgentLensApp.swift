@@ -27,6 +27,22 @@ enum OpenBurnBarRuntime {
         return environment["XCTestConfigurationFilePath"] != nil
             || environment["XCTestSessionIdentifier"] != nil
             || environment["XCTestBundlePath"] != nil
+            || environment["TEST_RUNNER_CI"] == "true"
+            || environment["TEST_RUNNER_GITHUB_ACTIONS"] == "true"
+            || environment["TEST_RUNNER_RUNNER_OS"] != nil
+            || Bundle.allBundles.contains { $0.bundlePath.hasSuffix(".xctest") }
+            || mainBundleContainsXCTestPlugin()
+    }
+
+    private static func mainBundleContainsXCTestPlugin() -> Bool {
+        guard let plugInsURL = Bundle.main.builtInPlugInsURL,
+              let contents = try? FileManager.default.contentsOfDirectory(
+                at: plugInsURL,
+                includingPropertiesForKeys: nil
+              ) else {
+            return false
+        }
+        return contents.contains { $0.pathExtension == "xctest" }
     }
 
     /// Allows tests / harnesses to opt **in** to the live menu-bar scene by setting

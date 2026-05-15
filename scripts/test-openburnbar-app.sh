@@ -214,6 +214,16 @@ populate_xcodebuild_args() {
     fi
 }
 
+if [[ "${CI:-}" == "true" ]]; then
+    export TEST_RUNNER_CI=true
+fi
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+    export TEST_RUNNER_GITHUB_ACTIONS=true
+fi
+if [[ -n "${RUNNER_OS:-}" ]]; then
+    export TEST_RUNNER_RUNNER_OS="${RUNNER_OS}"
+fi
+
 # Canonical coverage xcresult location consumed by extract-coverage.sh
 canonical_xcresult_path="$artifact_root/OpenBurnBar_TestCoverage.xcresult"
 if [[ "${OPENBURNBAR_ENABLE_COVERAGE:-}" == "YES" ]]; then
