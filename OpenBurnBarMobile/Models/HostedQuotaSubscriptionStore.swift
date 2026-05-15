@@ -273,6 +273,15 @@ final class HostedQuotaSubscriptionStore {
                 await applyDirectReadIfActive()
             }
         } else {
+            // Server-seeded and pro-mirrored members may not have a local
+            // StoreKit transaction on this device. Read the canonical
+            // Firestore entitlement first so membership chrome matches the
+            // same doc the relay/rules already trust, then use the callable
+            // restore path only as a reconciliation fallback.
+            if await applyDirectReadIfActive() {
+                return
+            }
+
             // No local entitlement to surface. Try the server-side
             // restore path so users who previously paid (and have a
             // doc on file) still see their entitlement on this device.

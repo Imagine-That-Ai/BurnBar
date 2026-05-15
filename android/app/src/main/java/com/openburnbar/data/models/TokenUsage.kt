@@ -315,8 +315,8 @@ val ProviderQuotaSnapshot.isExplicitlyStale: Boolean
 
 fun ProviderQuotaSnapshot.isStale(now: java.time.Instant = java.time.Instant.now()): Boolean {
     if (isExplicitlyStale) return true
-    val fetched = fetchedAt
-        ?.takeIf { it.isNotBlank() }
+    val fetched = listOf(fetchedAt, updatedAt)
+        .firstOrNull { !it.isNullOrBlank() }
         ?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
         ?: return true
     return java.time.Duration.between(fetched, now) > java.time.Duration.ofHours(12)

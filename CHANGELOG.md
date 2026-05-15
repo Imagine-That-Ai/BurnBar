@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   session-log store. The Hermes Square search bar now merges local Square hits,
   live chats, missions, and encrypted hosted session-log results, with a
   decrypting detail view for cloud archive matches.
+- **Mobile Codex, Claude Code, and OpenClaw chat/import parity.** The mobile `+`
+  flow now opens a blank Mac-backed chat composer instead of a setup blocker,
+  Android has the same remote composer and import progress surface as iOS, and
+  trusted macOS devices claim `agent_import_jobs` transactionally before
+  scanning local harness histories.
 - **Real-time quota refresh for Codex, Claude Code, Kimi, MiniMax, and Z.ai on iOS/iPadOS.**
   Pro users can now get accurate and fresh quota numbers for all five providers
   from any signed-in device at any time.

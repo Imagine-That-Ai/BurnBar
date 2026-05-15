@@ -50,7 +50,7 @@ final class RemoteMCPConnectedClientsUITests: XCTestCase {
         XCTAssertTrue(revokeButton.isHittable, "The revoke button for \(displayName) was not hittable.")
         revokeButton.tap()
 
-        let confirmButton = app.buttons["cloudStore.remoteMCP.confirmRevoke"]
+        let confirmButton = app.buttons["cloudStore.remoteMCP.confirmRevoke"].firstMatch
         let fallbackConfirmButton = app.buttons["Revoke \(displayName)"]
         if confirmButton.waitForExistence(timeout: 5) {
             confirmButton.tap()
@@ -107,29 +107,25 @@ final class RemoteMCPConnectedClientsUITests: XCTestCase {
     }
 
     private func scrollUntilHittable(_ element: XCUIElement, in app: XCUIApplication) {
-        let scrollView = app.scrollViews.firstMatch
         for _ in 0..<8 where !element.isHittable {
-            if scrollView.exists {
-                scrollView.swipeUp()
-            } else {
-                app.swipeUp()
-            }
+            dragUp(in: app)
         }
     }
 
     private func waitForExistence(_ element: XCUIElement, timeout: TimeInterval, scrollingIn app: XCUIApplication) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
-        let scrollView = app.scrollViews.firstMatch
         while Date() < deadline {
             if element.exists { return true }
-            if scrollView.exists {
-                scrollView.swipeUp()
-            } else {
-                app.swipeUp()
-            }
+            dragUp(in: app)
             RunLoop.current.run(until: Date().addingTimeInterval(0.35))
         }
         return element.exists
+    }
+
+    private func dragUp(in app: XCUIApplication) {
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.82))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.28))
+        start.press(forDuration: 0.02, thenDragTo: end)
     }
 
     private func forwardIfPresent(_ key: String, from environment: [String: String], to app: XCUIApplication) {

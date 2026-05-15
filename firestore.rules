@@ -896,7 +896,7 @@ service cloud.firestore {
             && request.resource.data.messageLength <= 24000
           ))
           && (!("messageTruncated" in request.resource.data) || request.resource.data.messageTruncated is bool)
-          && request.resource.data.source in ["ios", "android", "mac"]
+          && request.resource.data.source in ["ios", "android", "ios-chat", "android-chat", "mac"]
           && validCliAgentMissionEventSource(userId, requestId, eventId)
           && request.resource.data.isError is bool
           && (!("runtime" in request.resource.data) || request.resource.data.runtime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "auto"])
@@ -905,6 +905,65 @@ service cloud.firestore {
           && (!("changedFilePath" in request.resource.data) || (request.resource.data.changedFilePath is string && request.resource.data.changedFilePath.size() <= 512));
         allow update, delete: if false;
       }
+    }
+
+    // Mobile-triggered agent history imports. Phones create pending jobs;
+    // only a trusted macOS escrow device can claim/update scan progress and
+    // results. Imported transcript bodies still flow through session_logs.
+    match /users/{userId}/agent_import_jobs/{jobId} {
+      function trustedAgentImportMac(userId) {
+        return ("claimedBy" in request.resource.data)
+          && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.claimedBy))
+          && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.claimedBy)).data.trustState == "trusted"
+          && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.claimedBy)).data.platform == "macOS";
+      }
+
+      function validAgentImportJob() {
+        return request.resource.data.keys().hasOnly([
+          "id", "selectedHarnesses", "status", "source", "createdAt",
+          "updatedAt", "startedAt", "completedAt", "claimedBy",
+          "progressMessage", "scannedCount", "importedCount",
+          "mirroredSessionCount", "uploadedSessionLogCount",
+          "errorMessage", "schemaVersion"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id.size() <= 512
+        && request.resource.data.selectedHarnesses is list
+        && request.resource.data.selectedHarnesses.size() > 0
+        && request.resource.data.selectedHarnesses.size() <= 32
+        && request.resource.data.status in ["pending", "claimed", "scanning", "uploading", "completed", "failed", "canceled", "cancelled"]
+        && request.resource.data.source in ["ios-import", "android-import", "mac-import"]
+        && request.resource.data.schemaVersion is int
+        && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
+        && (!("progressMessage" in request.resource.data) || (request.resource.data.progressMessage is string && request.resource.data.progressMessage.size() <= 2048))
+        && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 2048))
+        && (!("scannedCount" in request.resource.data) || request.resource.data.scannedCount is int)
+        && (!("importedCount" in request.resource.data) || request.resource.data.importedCount is int)
+        && (!("mirroredSessionCount" in request.resource.data) || request.resource.data.mirroredSessionCount is int)
+        && (!("uploadedSessionLogCount" in request.resource.data) || request.resource.data.uploadedSessionLogCount is int);
+      }
+
+      function validAgentImportCreate() {
+        return request.resource.data.status == "pending"
+          && !("claimedBy" in request.resource.data)
+          && !("startedAt" in request.resource.data)
+          && !("completedAt" in request.resource.data)
+          && !("errorMessage" in request.resource.data);
+      }
+
+      function validTrustedAgentImportUpdate(userId) {
+        return trustedAgentImportMac(userId)
+          && (!("claimedBy" in resource.data) || request.resource.data.claimedBy == resource.data.claimedBy);
+      }
+
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && validAgentImportJob()
+        && validAgentImportCreate();
+      allow update: if ownerWritableNonSecret(userId)
+        && validAgentImportJob()
+        && validTrustedAgentImportUpdate(userId);
+      allow delete: if ownsUserNamespace(userId);
     }
 
     // Hermes Square Phase B — mission groups (fan-out parent). Owner writes

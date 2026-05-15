@@ -109,6 +109,9 @@ struct AuthGateView: View {
 private struct MobileE2ECloudStoreRouteView: View {
     @State private var isSignedIn = Auth.auth().currentUser != nil
     @State private var authHandle: AuthStateDidChangeListenerHandle?
+    @State private var subscriptionStore = HostedQuotaSubscriptionStore(
+        isSignedIn: { Auth.auth().currentUser != nil }
+    )
 
     var body: some View {
         Group {
@@ -116,6 +119,7 @@ private struct MobileE2ECloudStoreRouteView: View {
                 NavigationStack {
                     CloudStoreView()
                 }
+                .environment(\.cloudSubscriptionStore, subscriptionStore)
             } else {
                 ProgressView()
                     .accessibilityIdentifier("cloudStore.e2e.waitingForAuth")
@@ -127,6 +131,11 @@ private struct MobileE2ECloudStoreRouteView: View {
                 Task { @MainActor in
                     isSignedIn = user != nil
                 }
+            }
+        }
+        .task(id: isSignedIn) {
+            if isSignedIn {
+                await subscriptionStore.load()
             }
         }
         .onDisappear {

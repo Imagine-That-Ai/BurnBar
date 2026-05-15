@@ -32,12 +32,12 @@ private fun List<ProviderQuotaSnapshot>.mergeQuotaSnapshotGroup(): ProviderQuota
     val latest = ordered.first()
     if (ordered.size == 1) return latest
 
-    if (latest.isExplicitlyStale || latest.isStale()) {
+    if (latest.isExplicitlyStale) {
         return latest.copy(buckets = emptyList())
     }
 
     val buckets = ordered
-        .filter { !it.isExplicitlyStale && !it.isStale() }
+        .filter { !it.isExplicitlyStale }
         .flatMap { snapshot ->
             snapshot.buckets.map { bucket -> bucket.bucketDedupKey() to bucket }
         }

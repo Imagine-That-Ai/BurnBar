@@ -55,6 +55,14 @@ struct PiChatMessage: Identifiable, Equatable {
     /// For `role == .tool`, the upstream `tool_calls[].id` this reply
     /// answers. Required when role is `.tool`; always nil otherwise.
     var toolCallID: String?
+    /// Transient SSE state — accumulated `delta.refusal` text. See
+    /// `HermesChatMessage.streamedRefusal` for the rationale; Pi shares
+    /// the same OpenAI-compatible streaming contract.
+    var streamedRefusal: String = ""
+    /// Transient SSE state — accumulated reasoning channel text.
+    var streamedReasoning: String = ""
+    /// Last `choices[].finish_reason` observed for this turn.
+    var lastFinishReason: String?
 
     init(
         id: String = UUID().uuidString,
@@ -76,6 +84,51 @@ struct PiChatMessage: Identifiable, Equatable {
         self.isError = isError
         self.toolCalls = toolCalls
         self.toolCallID = toolCallID
+    }
+
+    /// Body + error styling to use when the upstream Pi stream finished
+    /// without producing any visible `content` or executable
+    /// `tool_calls`. Mirrors `HermesChatMessage.emptyResponseFallback`:
+    /// refusal first, reasoning second (with a clear marker), then a
+    /// `finish_reason`-keyed message. Kept duplicated rather than
+    /// shared because Pi messages aren't Hermes messages and we want
+    /// the runtime label in the user-facing copy.
+    static func emptyResponseFallback(
+        refusal: String,
+        reasoning: String,
+        finishReason: String?
+    ) -> (text: String, isError: Bool) {
+        let trimmedRefusal = refusal.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedRefusal.isEmpty {
+            return (trimmedRefusal, false)
+        }
+        let trimmedReasoning = reasoning.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedReasoning.isEmpty {
+            let prefix = "_(Pi only emitted reasoning. Showing it below — this isn't a final answer.)_\n\n"
+            return (prefix + trimmedReasoning, false)
+        }
+        switch finishReason?.lowercased() {
+        case "length":
+            return (
+                "Pi hit its output budget before finishing. Try a shorter prompt or switch to a model with a larger reply ceiling.",
+                true
+            )
+        case "content_filter":
+            return (
+                "Pi blocked this reply for content safety. Try rewording the prompt or switch models.",
+                true
+            )
+        case "tool_calls":
+            return (
+                "Pi asked to use a tool but didn't follow up with a reply. Try again or switch models.",
+                true
+            )
+        default:
+            return (
+                "Pi finished without returning text. Try again or switch models.",
+                true
+            )
+        }
     }
 }
 
@@ -336,6 +389,38 @@ final class PiService {
                         PiService.mergeToolCalls(calls, into: &msg)
                         self.messages[idx] = msg
                     }
+                },
+                onRefusalDelta: { [weak self] chunk in
+                    guard let self else { return }
+                    if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
+                        var msg = self.messages[idx]
+                        if msg.streamedRefusal.isEmpty || chunk.hasPrefix(msg.streamedRefusal) {
+                            msg.streamedRefusal = chunk
+                        } else if chunk != msg.streamedRefusal {
+                            msg.streamedRefusal += chunk
+                        }
+                        self.messages[idx] = msg
+                    }
+                },
+                onReasoningDelta: { [weak self] chunk in
+                    guard let self else { return }
+                    if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
+                        var msg = self.messages[idx]
+                        if msg.streamedReasoning.isEmpty || chunk.hasPrefix(msg.streamedReasoning) {
+                            msg.streamedReasoning = chunk
+                        } else if chunk != msg.streamedReasoning {
+                            msg.streamedReasoning += chunk
+                        }
+                        self.messages[idx] = msg
+                    }
+                },
+                onFinishReason: { [weak self] reason in
+                    guard let self else { return }
+                    if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
+                        var msg = self.messages[idx]
+                        msg.lastFinishReason = reason
+                        self.messages[idx] = msg
+                    }
                 }
             )
         } catch {
@@ -360,6 +445,17 @@ final class PiService {
                     arguments: tc.arguments,
                     detail: tc.detail ?? PiService.summarizeToolArguments(tc.arguments)
                 )
+            }
+            // Rescue empty turns the same way Hermes does — refusal,
+            // then reasoning hoist, then a finish-reason-keyed message.
+            if msg.text.isEmpty && msg.toolCalls.isEmpty {
+                let fallback = PiChatMessage.emptyResponseFallback(
+                    refusal: msg.streamedRefusal,
+                    reasoning: msg.streamedReasoning,
+                    finishReason: msg.lastFinishReason
+                )
+                msg.text = fallback.text
+                msg.isError = fallback.isError
             }
             messages[idx] = msg
             finalMessage = msg
@@ -574,7 +670,10 @@ final class PiService {
         bearerToken: String?,
         model: String?,
         onTextDelta: @escaping (String) -> Void,
-        onToolCallDelta: @escaping ([[String: Any]]) -> Void
+        onToolCallDelta: @escaping ([[String: Any]]) -> Void,
+        onRefusalDelta: @escaping (String) -> Void = { _ in },
+        onReasoningDelta: @escaping (String) -> Void = { _ in },
+        onFinishReason: @escaping (String) -> Void = { _ in }
     ) async throws {
         guard let endpoint = URL(string: "v1/chat/completions", relativeTo: baseURL) else {
             throw NSError(domain: "PiService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid base URL"])
@@ -624,11 +723,49 @@ final class PiService {
                 }
             }
 
+            // Mirror Hermes — capture refusal / reasoning / finish_reason
+            // so we can rescue an empty turn instead of leaving the
+            // assistant bubble silent.
+            if let refusal = Self.refusalString(from: delta)
+                ?? Self.refusalString(from: finalMessage) {
+                await MainActor.run { onRefusalDelta(refusal) }
+            }
+            if let reasoning = Self.reasoningString(from: delta)
+                ?? Self.reasoningString(from: finalMessage) {
+                await MainActor.run { onReasoningDelta(reasoning) }
+            }
+            if let finishRaw = first["finish_reason"] ?? first["finishReason"],
+               let finish = Self.nonBlankString(finishRaw) {
+                await MainActor.run { onFinishReason(finish) }
+            }
+
             if let calls = Self.toolCallsArray(from: delta)
                 ?? Self.toolCallsArray(from: finalMessage) {
                 await MainActor.run { onToolCallDelta(calls) }
             }
         }
+    }
+
+    private static func refusalString(from item: [String: Any]?) -> String? {
+        guard let item else { return nil }
+        guard let raw = item["refusal"] else { return nil }
+        return contentString(from: ["content": raw])
+    }
+
+    private static func reasoningString(from item: [String: Any]?) -> String? {
+        guard let item else { return nil }
+        for key in ["reasoning_content", "reasoningContent", "reasoning", "thinking"] {
+            if let value = item[key],
+               let extracted = contentString(from: ["content": value]) {
+                return extracted
+            }
+        }
+        return nil
+    }
+
+    private static func nonBlankString(_ value: Any) -> String? {
+        guard let s = value as? String else { return nil }
+        return s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : s
     }
 
     private static func contentString(from item: [String: Any]?) -> String? {

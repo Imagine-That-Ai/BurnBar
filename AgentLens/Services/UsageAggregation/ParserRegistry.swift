@@ -24,6 +24,7 @@ enum ParserRegistry {
         parsers[.hermes] = HermesParser()
         parsers[.geminiCLI] = GeminiCLIParser()
         parsers[.goose] = GooseParser()
+        parsers[.openClaw] = OpenClawParser()
         parsers[.windsurf] = WindsurfParser()
         parsers[.warp] = WarpParser()
         parsers[.ollama] = ModelFilterParser(modelPattern: "ollama", provider: .ollama)

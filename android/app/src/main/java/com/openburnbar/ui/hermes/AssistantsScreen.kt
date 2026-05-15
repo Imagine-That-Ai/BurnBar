@@ -7,16 +7,25 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,7 +42,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.data.assistants.AgentImportJobSnapshot
 import com.openburnbar.MainActivity
+import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
 import com.openburnbar.data.assistants.AssistantChatHistoryStore
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.hermes.ChatTilePreferences
@@ -41,13 +52,14 @@ import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.hermes.PiService
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
+import kotlinx.coroutines.launch
 
 // Android Assistants surface. Hosts up to five runtimes (Hermes / Pi /
 // Codex / Claude / OpenClaw) behind a single tab. The pill renders only the
 // runtimes the user has enabled in `ChatTilePreferences` (Settings → Chat
-// tiles). Hermes + Pi have first-class Android chat surfaces; the rest
-// surface a `AssistantTileBridgeView` placeholder pointing the user at the
-// macOS host until a native Android runtime ships.
+// tiles). Hermes + Pi have first-class Android chat surfaces. Codex, Claude,
+// and OpenClaw use the same remote-composer and Mac-backed import contract as
+// iOS so the flow is usable before native Android runtimes ship.
 
 @Composable
 fun AssistantsScreen() {
@@ -143,10 +155,31 @@ fun AssistantRuntimePill(
 
 @Composable
 private fun AssistantTileBridgeView(runtime: AssistantRuntimeID) {
+    val dispatcher = remember { CLIAgentMissionDispatcher() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var message by rememberSaveable { mutableStateOf("") }
+    var queued by rememberSaveable { mutableStateOf<String?>(null) }
+    var error by rememberSaveable { mutableStateOf<String?>(null) }
+    var importStatus by rememberSaveable { mutableStateOf<String?>(null) }
+    var importJobID by rememberSaveable { mutableStateOf<String?>(null) }
+    var showImportSheet by rememberSaveable { mutableStateOf(false) }
+    var sending by rememberSaveable { mutableStateOf(false) }
+    var importing by rememberSaveable { mutableStateOf(false) }
+    var clientThreadID by rememberSaveable { mutableStateOf("android-${java.util.UUID.randomUUID()}") }
+    var importSnapshot by remember { mutableStateOf<AgentImportJobSnapshot?>(null) }
+
+    LaunchedEffect(importJobID) {
+        val id = importJobID ?: return@LaunchedEffect
+        dispatcher.observeImportJob(id).collect { snapshot ->
+            importSnapshot = snapshot
+            importStatus = snapshot.progressMessage.ifBlank { "Import ${snapshot.status}" }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(32.dp),
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -177,7 +210,212 @@ private fun AssistantTileBridgeView(runtime: AssistantRuntimeID) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 8.dp)
         )
+        OutlinedTextField(
+            value = message,
+            onValueChange = { message = it },
+            label = { Text("Message ${runtime.displayName}") },
+            minLines = 3,
+            maxLines = 6,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 20.dp)
+        )
+        Button(
+            enabled = message.isNotBlank() && !sending,
+            onClick = {
+                val body = message
+                sending = true
+                error = null
+                scope.launch {
+                    try {
+                        val requestID = dispatcher.dispatch(
+                            title = "New ${runtime.displayName} chat",
+                            prompt = body,
+                            missionKind = "chat",
+                            requestedRuntime = runtime.token,
+                            approvalMode = "existing_policy",
+                            commandsAllowed = false,
+                            fileEditsAllowed = false,
+                            clientThreadID = clientThreadID,
+                            resumeAction = "new",
+                        )
+                        queued = requestID.take(8)
+                        message = ""
+                        clientThreadID = "android-${java.util.UUID.randomUUID()}"
+                    } catch (t: Throwable) {
+                        error = t.message ?: t::class.java.simpleName
+                    } finally {
+                        sending = false
+                    }
+                }
+            },
+            modifier = Modifier.padding(top = 12.dp)
+        ) {
+            Text(if (sending) "Queueing..." else "Start chat")
+        }
+        Button(
+            enabled = !importing,
+            onClick = { showImportSheet = true },
+            modifier = Modifier.padding(top = 8.dp)
+        ) {
+            Text(if (importing) "Queueing import..." else "Import Mac history")
+        }
+        queued?.let {
+            Text(
+                text = "Queued on your Mac account #$it",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 10.dp)
+            )
+        }
+        importStatus?.let {
+            Text(
+                text = it,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+        error?.let {
+            Text(
+                text = it,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 10.dp)
+            )
+        }
     }
+
+    if (showImportSheet) {
+        AgentImportSheet(
+            importing = importing,
+            snapshot = importSnapshot,
+            onDismiss = { showImportSheet = false },
+            onStart = { harnesses ->
+                importing = true
+                error = null
+                importStatus = null
+                importSnapshot = null
+                scope.launch {
+                    try {
+                        val jobID = dispatcher.createImportJob(selectedHarnesses = harnesses)
+                        importJobID = jobID
+                        importStatus = "Import queued on your Mac account #${jobID.take(8)}"
+                    } catch (t: Throwable) {
+                        error = t.message ?: t::class.java.simpleName
+                    } finally {
+                        importing = false
+                    }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun AgentImportSheet(
+    importing: Boolean,
+    snapshot: AgentImportJobSnapshot?,
+    onDismiss: () -> Unit,
+    onStart: (List<String>) -> Unit,
+) {
+    val harnesses = remember {
+        listOf(
+            "codex" to "Codex",
+            "claude" to "Claude Code",
+            "openclaw" to "OpenClaw",
+            "hermes" to "Hermes",
+            "opencode" to "OpenCode",
+            "factory" to "Factory",
+            "cursor" to "Cursor",
+            "aider" to "Aider",
+            "cline" to "Cline",
+            "kilo" to "Kilo Code",
+            "roo" to "Roo Code",
+            "forge" to "Forge",
+            "gemini" to "Gemini CLI",
+            "goose" to "Goose",
+            "windsurf" to "Windsurf",
+            "warp" to "Warp",
+            "kimi" to "Kimi",
+            "ollama" to "Ollama",
+        )
+    }
+    var selected by rememberSaveable {
+        mutableStateOf(setOf("codex", "claude", "openclaw", "hermes", "opencode"))
+    }
+    val scrollState = rememberScrollState()
+    val progressText = snapshot?.progressMessage?.takeIf { it.isNotBlank() }
+        ?: "Waiting for a trusted Mac."
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                enabled = selected.isNotEmpty() && !importing,
+                onClick = { onStart(selected.toList()) },
+            ) {
+                Text(if (importing) "Starting..." else "Start import")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        },
+        title = { Text("Import Mac history") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(scrollState),
+            ) {
+                Text(
+                    text = progressText,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (snapshot != null && !snapshot.isTerminal) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
+                }
+                snapshot?.let {
+                    Text(
+                        text = "Scanned ${it.scannedCount} · Imported ${it.importedCount} · Mirrored ${it.mirroredSessionCount}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    it.errorMessage?.let { message ->
+                        Text(
+                            text = message,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                harnesses.forEach { (id, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selected = if (selected.contains(id)) selected - id else selected + id
+                            }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = selected.contains(id),
+                            onCheckedChange = { checked ->
+                                selected = if (checked) selected + id else selected - id
+                            },
+                        )
+                        Text(text = label, fontSize = 14.sp)
+                    }
+                }
+            }
+        },
+    )
 }
 
 private fun bridgeCopy(runtime: AssistantRuntimeID): String = when (runtime) {

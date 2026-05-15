@@ -230,6 +230,80 @@ class CLIAgentMissionDispatcher(
             )
             .await()
     }
+
+    suspend fun createImportJob(
+        selectedHarnesses: List<String>,
+        source: String = "android-import",
+    ): String {
+        val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before importing Mac agent history.")
+        val normalized = selectedHarnesses.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct()
+        if (normalized.isEmpty()) throw DispatchException("Choose at least one agent history source.")
+        val id = "import-${UUID.randomUUID()}"
+        firestore.collection("users").document(uid)
+            .collection("agent_import_jobs").document(id)
+            .set(
+                mapOf(
+                    "id" to id,
+                    "selectedHarnesses" to normalized,
+                    "status" to "pending",
+                    "source" to source,
+                    "progressMessage" to "Waiting for a trusted Mac.",
+                    "scannedCount" to 0,
+                    "importedCount" to 0,
+                    "mirroredSessionCount" to 0,
+                    "uploadedSessionLogCount" to 0,
+                    "createdAt" to Instant.now().toString(),
+                    "updatedAt" to FieldValue.serverTimestamp(),
+                    "schemaVersion" to 1,
+                ),
+            )
+            .await()
+        return id
+    }
+
+    fun observeImportJob(jobID: String): Flow<AgentImportJobSnapshot> = callbackFlow {
+        val uid = auth.currentUser?.uid
+        if (uid == null) {
+            close(DispatchException("Sign in before watching Mac agent imports."))
+            return@callbackFlow
+        }
+        val registration = firestore.collection("users").document(uid)
+            .collection("agent_import_jobs").document(jobID)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                val data = snapshot?.data.orEmpty()
+                trySend(
+                    AgentImportJobSnapshot(
+                        id = snapshot?.id ?: jobID,
+                        status = data["status"] as? String ?: "pending",
+                        progressMessage = data["progressMessage"] as? String ?: "",
+                        scannedCount = (data["scannedCount"] as? Number)?.toInt() ?: 0,
+                        importedCount = (data["importedCount"] as? Number)?.toInt() ?: 0,
+                        mirroredSessionCount = (data["mirroredSessionCount"] as? Number)?.toInt() ?: 0,
+                        uploadedSessionLogCount = (data["uploadedSessionLogCount"] as? Number)?.toInt() ?: 0,
+                        errorMessage = data["errorMessage"] as? String,
+                    )
+                )
+            }
+        awaitClose { registration.remove() }
+    }
+}
+
+data class AgentImportJobSnapshot(
+    val id: String,
+    val status: String,
+    val progressMessage: String,
+    val scannedCount: Int,
+    val importedCount: Int,
+    val mirroredSessionCount: Int,
+    val uploadedSessionLogCount: Int,
+    val errorMessage: String?,
+) {
+    val isTerminal: Boolean
+        get() = status == "completed" || status == "failed"
 }
 
 object CLIAgentMissionRequestPayloadFactory {

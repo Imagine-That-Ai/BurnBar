@@ -550,7 +550,12 @@ final class HermesServiceTests: XCTestCase {
             reasoning: "Reasoning channel response.",
             finishReason: "stop"
         )
-        XCTAssertEqual(result.text, "Reasoning channel response.")
+        XCTAssertTrue(result.text.hasSuffix("Reasoning channel response."))
+        // The marker is the user-visible signal that they're reading the
+        // reasoning channel rather than a polished answer; without it
+        // raw "I should think about…" preambles look like the model's
+        // intended reply.
+        XCTAssertTrue(result.text.contains("only emitted reasoning"), "Reasoning hoist must include a marker so users know it's not a final answer. Got: \(result.text)")
         XCTAssertFalse(result.isError)
     }
 
@@ -603,7 +608,8 @@ final class HermesServiceTests: XCTestCase {
 
         let last = try XCTUnwrap(service.messages.last)
         XCTAssertEqual(last.role, .assistant)
-        XCTAssertEqual(last.text, "The answer is 42.")
+        XCTAssertTrue(last.text.hasSuffix("The answer is 42."))
+        XCTAssertTrue(last.text.contains("only emitted reasoning"))
         XCTAssertFalse(last.isError)
     }
 
@@ -648,6 +654,43 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(last.role, .assistant)
         XCTAssertTrue(last.isError)
         XCTAssertTrue(last.text.contains("output budget"), "Expected length-cap message, got: \(last.text)")
+    }
+
+    // MARK: - Pi parallel coverage
+
+    func testPiEmptyResponseFallbackPrefersRefusal() {
+        let result = PiChatMessage.emptyResponseFallback(
+            refusal: "Pi declined.",
+            reasoning: "internal",
+            finishReason: "content_filter"
+        )
+        XCTAssertEqual(result.text, "Pi declined.")
+        XCTAssertFalse(result.isError)
+    }
+
+    func testPiEmptyResponseFallbackHoistsReasoningWithMarker() {
+        let result = PiChatMessage.emptyResponseFallback(
+            refusal: "",
+            reasoning: "Reasoning channel only.",
+            finishReason: "stop"
+        )
+        XCTAssertTrue(result.text.contains("Reasoning channel only."))
+        XCTAssertTrue(result.text.contains("only emitted reasoning"))
+        XCTAssertFalse(result.isError)
+    }
+
+    func testPiEmptyResponseFallbackKeysOffFinishReason() {
+        let length = PiChatMessage.emptyResponseFallback(refusal: "", reasoning: "", finishReason: "length")
+        XCTAssertTrue(length.text.contains("output budget"))
+        XCTAssertTrue(length.isError)
+
+        let filter = PiChatMessage.emptyResponseFallback(refusal: "", reasoning: "", finishReason: "content_filter")
+        XCTAssertTrue(filter.text.contains("content safety"))
+        XCTAssertTrue(filter.isError)
+
+        let generic = PiChatMessage.emptyResponseFallback(refusal: "", reasoning: "", finishReason: nil)
+        XCTAssertTrue(generic.text.contains("Pi finished without"))
+        XCTAssertTrue(generic.isError)
     }
 
     func testRelayStreamingExposesResponseModelName() async {

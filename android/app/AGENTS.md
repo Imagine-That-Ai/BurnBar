@@ -39,7 +39,7 @@ Android build requires **JDK 21** (Gradle 8.9 + AGP 8.7.3). On macOS:
 
 ```bash
 brew install openjdk@21
-export JAVA_HOME="/opt/homebrew/opt/openjdk@21"
+export JAVA_HOME="$HOME/.homebrew/opt/openjdk@21" # or /opt/homebrew/opt/openjdk@21 on system Homebrew installs
 ```
 
 Verify: `java -version` should show `21.x.x`.

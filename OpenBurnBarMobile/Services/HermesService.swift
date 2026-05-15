@@ -366,7 +366,13 @@ struct HermesChatMessage: Identifiable, Equatable {
         }
         let trimmedReasoning = reasoning.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedReasoning.isEmpty {
-            return (trimmedReasoning, false)
+            // Prepend a subtle marker so the user knows this is the raw
+            // reasoning channel — they may be reading internal monologue
+            // ("I should answer X because…") rather than a polished
+            // reply. Italics + parens keep the marker quiet while still
+            // distinguishing it from the model's substantive prose.
+            let prefix = "_(Hermes only emitted reasoning. Showing it below — this isn't a final answer.)_\n\n"
+            return (prefix + trimmedReasoning, false)
         }
         switch finishReason?.lowercased() {
         case "length":

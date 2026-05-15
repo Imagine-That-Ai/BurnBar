@@ -1624,6 +1624,49 @@ final class ConversationRecordTests: XCTestCase {
     }
 }
 
+// MARK: - OpenClawParser Tests
+
+final class OpenClawParserTests: XCTestCase {
+    func test_parseWholeSessionJSONArray_importsConversation() async throws {
+        let fileManager = FileManager.default
+        let tempRoot = fileManager.temporaryDirectory
+            .appendingPathComponent("openburnbar-openclaw-parser-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: tempRoot) }
+
+        let fixture = """
+        [
+          {
+            "role": "user",
+            "content": "Summarize the current import queue.",
+            "timestamp": "2026-05-15T12:00:00Z",
+            "model": "openclaw-test"
+          },
+          {
+            "role": "assistant",
+            "content": "The import queue is empty.",
+            "timestamp": "2026-05-15T12:00:03Z",
+            "usage": {
+              "input_tokens": 12,
+              "output_tokens": 6
+            }
+          }
+        ]
+        """
+        try fixture.data(using: .utf8)?.write(to: tempRoot.appendingPathComponent("session-1.json"))
+
+        let parser = OpenClawParser(fileManager: fileManager, sessionsDirectory: tempRoot)
+        let result = try await parser.parse()
+
+        XCTAssertEqual(result.conversations.count, 1)
+        XCTAssertEqual(result.usages.count, 1)
+        XCTAssertEqual(result.conversations.first?.provider, .openClaw)
+        XCTAssertEqual(result.conversations.first?.messageCount, 2)
+        XCTAssertEqual(result.usages.first?.inputTokens, 12)
+        XCTAssertEqual(result.usages.first?.outputTokens, 6)
+    }
+}
+
 // MARK: - SummaryQueueItem Tests
 
 final class SummaryQueueItemTests: XCTestCase {

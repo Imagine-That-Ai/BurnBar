@@ -9,15 +9,45 @@ ANDROID_DIR="android"
 echo "🔎 Checking Android dev environment…"
 
 # Java 21
-JAVA_VER=$(java -version 2>&1 | grep "version" | sed 's/.*version "\([0-9]*\)\.[0-9.]*".*/\1/' || echo "0")
+resolve_java_home() {
+    if [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/java" ]; then
+        echo "${JAVA_HOME}"
+        return
+    fi
+    for candidate in \
+        "${HOME}/.homebrew/opt/openjdk@21" \
+        "/opt/homebrew/opt/openjdk@21" \
+        "/usr/local/opt/openjdk@21"; do
+        if [ -x "${candidate}/bin/java" ]; then
+            echo "${candidate}"
+            return
+        fi
+    done
+    if command -v java >/dev/null 2>&1; then
+        java_bin="$(command -v java)"
+        java_bin="$(readlink -f "${java_bin}" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "${java_bin}")"
+        echo "$(dirname "$(dirname "${java_bin}")")"
+        return
+    fi
+    echo ""
+}
+
+JAVA_HOME="$(resolve_java_home)"
+if [ -n "${JAVA_HOME}" ]; then
+    export JAVA_HOME
+fi
+
+JAVA_VER=$("${JAVA_HOME:-}/bin/java" -version 2>&1 | grep "version" | sed 's/.*version "\([0-9]*\)\.[0-9.]*".*/\1/' || echo "0")
 if [ "$JAVA_VER" -lt 17 ]; then
     echo "❌ Java 21+ required (found Java $JAVA_VER). Install: brew install openjdk@21"
-    if [ -d "/opt/homebrew/opt/openjdk@21" ]; then
+    if [ -d "${HOME}/.homebrew/opt/openjdk@21" ]; then
+        echo "   → Found Homebrew openjdk@21. Run: export JAVA_HOME=$HOME/.homebrew/opt/openjdk@21"
+    elif [ -d "/opt/homebrew/opt/openjdk@21" ]; then
         echo "   → Found Homebrew openjdk@21. Run: export JAVA_HOME=/opt/homebrew/opt/openjdk@21"
     fi
     exit 1
 fi
-echo "   ✓ Java $JAVA_VER"
+echo "   ✓ Java $JAVA_VER at $JAVA_HOME"
 
 # Android SDK
 if [ -z "${ANDROID_HOME:-}" ] && [ -z "${ANDROID_SDK_ROOT:-}" ]; then

@@ -1012,6 +1012,243 @@ final class CodexParser: LogParser, Sendable {
 
 }
 
+// MARK: - OpenClaw Parser
+
+/// Parses OpenClaw JSON/JSONL session history from `~/.openclaw/sessions`.
+///
+/// OpenClaw is intentionally treated as a provider-log source, not a live
+/// runtime bridge. The live OpenClaw chat path remains `ChatSessionController`;
+/// this parser only gives mobile and cloud search a durable archive surface.
+final class OpenClawParser: LogParser, Sendable {
+    let provider: AgentProvider = .openClaw
+
+    private let fileManager: FileManager
+    private let sessionsDirectory: URL
+
+    init(
+        fileManager: FileManager = .default,
+        sessionsDirectory: URL = URL(fileURLWithPath: (AgentProvider.openClaw.logDirectory as NSString).expandingTildeInPath)
+    ) {
+        self.fileManager = fileManager
+        self.sessionsDirectory = sessionsDirectory
+    }
+
+    func parse() async throws -> ParseResult {
+        guard fileManager.fileExists(atPath: sessionsDirectory.path) else {
+            return ParseResult(usages: [], conversations: [])
+        }
+
+        let files = sessionFiles(in: sessionsDirectory)
+        var conversations: [ConversationRecord] = []
+        var usages: [TokenUsage] = []
+
+        for file in files {
+            guard let parsed = parseSession(file: file) else { continue }
+            conversations.append(parsed.conversation)
+            if let usage = parsed.usage {
+                usages.append(usage)
+            }
+        }
+
+        return ParseResult(usages: usages, conversations: conversations)
+    }
+
+    private func sessionFiles(in directory: URL) -> [URL] {
+        guard let enumerator = fileManager.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        var files: [URL] = []
+        while let url = enumerator.nextObject() as? URL {
+            let ext = url.pathExtension.lowercased()
+            guard ext == "jsonl" || ext == "json" || ext == "log" else { continue }
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
+            guard values?.isRegularFile == true else { continue }
+            files.append(url)
+        }
+        return files.sorted { lhs, rhs in
+            let lm = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let rm = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            return lm > rm
+        }
+    }
+
+    private func parseSession(file: URL) -> (usage: TokenUsage?, conversation: ConversationRecord)? {
+        let data: Data
+        if file.pathExtension.lowercased() == "jsonl" || file.pathExtension.lowercased() == "log" {
+            guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
+            defer { try? handle.close() }
+            data = handle.readDataToEndOfFile()
+        } else {
+            guard let fileData = try? Data(contentsOf: file) else { return nil }
+            data = fileData
+        }
+
+        var turns: [(role: String, text: String, timestamp: Date?)] = []
+        var inputTokens = 0
+        var outputTokens = 0
+        var cacheReadTokens = 0
+        var model = "openclaw"
+        var startTime: Date?
+        var endTime: Date?
+
+        for object in Self.sessionObjects(from: data) {
+            let timestamp = Self.timestamp(in: object)
+            if startTime == nil { startTime = timestamp }
+            endTime = timestamp ?? endTime
+            if let discoveredModel = Self.nonBlank(Self.firstString(in: object, keys: ["model", "modelName", "model_name"])) {
+                model = discoveredModel
+            }
+            let usage = TokenExtractionUtility.extractUsageTokens(object["usage"] as? [String: Any] ?? object["tokenUsage"] as? [String: Any] ?? [:])
+            inputTokens += usage.input
+            outputTokens += usage.output
+            cacheReadTokens += usage.cacheRead
+
+            if let role = Self.role(in: object), let text = Self.nonBlank(Self.content(in: object)) {
+                turns.append((role: role, text: text, timestamp: timestamp))
+            } else if let message = object["message"] as? [String: Any],
+                      let role = Self.role(in: message),
+                      let text = Self.nonBlank(Self.content(in: message)) {
+                turns.append((role: role, text: text, timestamp: timestamp ?? Self.timestamp(in: message)))
+            }
+        }
+
+        guard !turns.isEmpty else { return nil }
+
+        let sessionId = file.deletingPathExtension().lastPathComponent
+        let modifiedAt = (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
+        let effectiveStart = startTime ?? turns.compactMap(\.timestamp).min() ?? modifiedAt
+        let effectiveEnd = endTime ?? turns.compactMap(\.timestamp).max() ?? modifiedAt
+        let userText = turns.filter { $0.role == "user" }.map(\.text)
+        let assistantText = turns.filter { $0.role == "assistant" }.map(\.text)
+        let fullText: String = turns.map { turn in
+            let heading: String = turn.role == "user" ? "## User" : turn.role == "assistant" ? "## Assistant" : "## \(turn.role.capitalized)"
+            return "\(heading)\n\n\(turn.text)"
+        }.joined(separator: "\n\n")
+        let firstUser = userText.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lastAssistant = assistantText.last ?? ""
+        let title = firstUser.map { String($0.prefix(120)) } ?? "OpenClaw Session"
+
+        if inputTokens == 0 && outputTokens == 0 {
+            inputTokens = TokenExtractionUtility.estimatedTokenCount(for: userText.joined(separator: "\n").count, charsPerToken: 3.5)
+            outputTokens = TokenExtractionUtility.estimatedTokenCount(for: assistantText.joined(separator: "\n").count, charsPerToken: 3.5)
+        }
+
+        let usage: TokenUsage? = (inputTokens > 0 || outputTokens > 0) ? TokenUsage(
+            provider: .openClaw,
+            sessionId: sessionId,
+            projectName: "OpenClaw",
+            model: model,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: 0,
+            cacheReadTokens: cacheReadTokens,
+            costUSD: ModelPricing.lookup(model: model).cost(inputTokens: inputTokens, outputTokens: outputTokens, cacheReadTokens: cacheReadTokens),
+            startTime: effectiveStart,
+            endTime: effectiveEnd,
+            provenanceMethod: cacheReadTokens > 0 ? .providerLog : .heuristicEstimate,
+            provenanceConfidence: cacheReadTokens > 0 ? .exact : .lowConfidenceEstimate,
+            estimatorVersion: cacheReadTokens > 0 ? "" : TokenExtractionUtility.currentEstimatorVersion
+        ) : nil
+
+        let conversation = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .openClaw, sessionId: sessionId),
+            provider: .openClaw,
+            sessionId: sessionId,
+            projectName: "OpenClaw",
+            startTime: effectiveStart,
+            endTime: effectiveEnd,
+            messageCount: turns.count,
+            userWordCount: userText.joined(separator: " ").split(separator: " ").count,
+            assistantWordCount: assistantText.joined(separator: " ").split(separator: " ").count,
+            keyFiles: [],
+            keyCommands: [],
+            keyTools: [],
+            inferredTaskTitle: title,
+            lastAssistantMessage: lastAssistant,
+            fullText: fullText,
+            indexedAt: Date(),
+            fileModifiedAt: modifiedAt,
+            summary: nil
+        )
+        return (usage, conversation)
+    }
+
+    private static func sessionObjects(from data: Data) -> [[String: Any]] {
+        let jsonLineObjects = String(data: data, encoding: .utf8)?
+            .components(separatedBy: .newlines)
+            .compactMap { line -> [String: Any]? in
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty, let lineData = trimmed.data(using: .utf8) else { return nil }
+                return try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
+            } ?? []
+        if !jsonLineObjects.isEmpty {
+            return jsonLineObjects
+        }
+
+        guard let root = try? JSONSerialization.jsonObject(with: data) else {
+            return []
+        }
+        return flattenSessionObjects(root)
+    }
+
+    private static func flattenSessionObjects(_ value: Any) -> [[String: Any]] {
+        if let array = value as? [Any] {
+            return array.flatMap(flattenSessionObjects)
+        }
+        guard let object = value as? [String: Any] else { return [] }
+
+        let nestedKeys = ["messages", "turns", "events", "conversation", "history", "items"]
+        let nested = nestedKeys.flatMap { key -> [[String: Any]] in
+            guard let value = object[key] else { return [] }
+            return flattenSessionObjects(value)
+        }
+        return nested.isEmpty ? [object] : nested
+    }
+
+    private static func role(in object: [String: Any]) -> String? {
+        firstString(in: object, keys: ["role", "author", "speaker"])?.lowercased()
+    }
+
+    private static func content(in object: [String: Any]) -> String? {
+        if let text = firstString(in: object, keys: ["content", "text", "message", "delta"]) {
+            return text
+        }
+        if let content = object["content"] as? [[String: Any]] {
+            return content.compactMap { firstString(in: $0, keys: ["text", "content"]) }.joined(separator: "\n")
+        }
+        return nil
+    }
+
+    private static func firstString(in object: [String: Any], keys: [String]) -> String? {
+        for key in keys {
+            if let value = object[key] as? String { return value }
+        }
+        return nil
+    }
+
+    private static func nonBlank(_ string: String?) -> String? {
+        guard let trimmed = string?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private static func timestamp(in object: [String: Any]) -> Date? {
+        for key in ["timestamp", "createdAt", "created_at", "time"] {
+            if let string = object[key] as? String {
+                if let date = ISO8601DateFormatter().date(from: string) { return date }
+                if let seconds = Double(string) { return Date(timeIntervalSince1970: seconds) }
+            }
+            if let seconds = object[key] as? Double { return Date(timeIntervalSince1970: seconds) }
+            if let seconds = object[key] as? Int { return Date(timeIntervalSince1970: TimeInterval(seconds)) }
+        }
+        return nil
+    }
+}
+
 private struct CodexTokenUsage: Codable, Equatable {
     let input: Int
     let output: Int

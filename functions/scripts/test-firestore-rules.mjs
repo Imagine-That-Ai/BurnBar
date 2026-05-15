@@ -256,6 +256,41 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       isError: false,
     })
   );
+  const chatRequestPath = "users/ivy/cli_agent_mission_requests/chat-ios";
+  await assertSucceeds(
+    setDoc(doc(phoneDb, chatRequestPath), {
+      id: "chat-ios",
+      title: "New Codex chat",
+      prompt: "Start a normal mobile chat.",
+      missionKind: "chat",
+      requestedRuntime: "codex",
+      targetProject: "",
+      depth: "standard",
+      approvalMode: "existing_policy",
+      commandsAllowed: false,
+      fileEditsAllowed: false,
+      source: "ios-chat",
+      status: "pending",
+      liveSummary: "Chat queued from this device.",
+      clientThreadID: "mobile-thread-1",
+      resumeAction: "new",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 2,
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, `${chatRequestPath}/events/000001`), {
+      sequence: 1,
+      timestamp: "2026-05-13T00:00:00.000Z",
+      kind: "status",
+      phase: "queued",
+      title: "Queued",
+      message: "Chat queued from this device.",
+      source: "ios-chat",
+      isError: false,
+    })
+  );
   await assertFails(
     setDoc(doc(phoneDb, `${androidRequestPath}/events/000002`), {
       sequence: 2,
@@ -401,6 +436,62 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       {
         trustState: "trusted",
         approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  const importJobPath = "users/ivy/agent_import_jobs/import-1";
+  await assertSucceeds(
+    setDoc(doc(phoneDb, importJobPath), {
+      id: "import-1",
+      selectedHarnesses: ["codex", "claude", "openclaw"],
+      status: "pending",
+      source: "ios-import",
+      progressMessage: "Waiting for a trusted Mac.",
+      scannedCount: 0,
+      importedCount: 0,
+      mirroredSessionCount: 0,
+      uploadedSessionLogCount: 0,
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+  await assertFails(
+    setDoc(
+      doc(phoneDb, importJobPath),
+      {
+        status: "completed",
+        importedCount: 3,
+        completedAt: "2026-05-13T00:00:02.000Z",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(phoneDb, importJobPath),
+      {
+        status: "scanning",
+        claimedBy: "mac-1",
+        progressMessage: "Scanning Codex, Claude Code, and OpenClaw history.",
+        scannedCount: 2,
+        startedAt: "2026-05-13T00:00:01.000Z",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(phoneDb, importJobPath),
+      {
+        status: "completed",
+        claimedBy: "phone-1",
+        importedCount: 99,
+        completedAt: "2026-05-13T00:00:03.000Z",
         updatedAt: serverTimestamp(),
       },
       { merge: true }

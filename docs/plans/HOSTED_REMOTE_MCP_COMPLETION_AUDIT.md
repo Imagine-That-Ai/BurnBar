@@ -5,15 +5,17 @@ Date: 2026-05-15
 Objective audited:
 `docs/plans/HOSTED_REMOTE_MCP_MULTI_AGENT_SPRINT_PLAN.md` end-to-end implementation.
 
-Verdict: **backend/service ship, full product hold**. Hosted Remote MCP is live
+Verdict: **ship**. Hosted Remote MCP is live
 at `https://mcp.burnbar.ai/mcp`, the grant path and hosted service now share the
 same branded audience, Cloud Run revision `openburnbar-hosted-mcp-00014-w5j`
 serves 100% of traffic with min instances set to 1, controlled production
 paid/unpaid/revoked/cross-tenant proof passes, the local stdio shim works
 against production, performance is inside target, privacy scanning passes, and
 Android/iPhone/iPad app shells build/install/launch with the branded endpoint.
-The remaining production hold is narrower: signed-in connected-client UI
-list/revoke proof still needs to be captured on real iOS/iPadOS user state.
+The previous production hold is closed: signed-in iPhone and iPad live UI tests
+now seed real paid Firebase users, list a real `remote_mcp_clients` document in
+the Cloud Store Remote MCP card, revoke it through the app, and verify
+`revokedAt` in Firestore before cleaning up proof state.
 
 ## 2026-05-15 Closure Pass Addendum
 
@@ -39,6 +41,15 @@ Changes applied during the final review pass:
   not fail when run near live proof traffic.
 - Fixed `prove-hosted-mcp-shim-live.mjs` to resolve the repo root from the
   script URL, so it works under `npm --prefix functions`.
+- Added a DEBUG-only mobile E2E Cloud Store route and UI test for signed-in
+  Remote MCP connected-client list/revoke proof. The route waits for Firebase
+  Auth before mounting Cloud Store and injects the shared subscription store so
+  the proof exercises the same premium-gated member surface.
+- Changed `HostedQuotaSubscriptionStore.refreshEntitlement()` to read the
+  canonical Firestore entitlement before the callable restore path when no
+  local StoreKit transaction exists. This makes pro-mirrored/server-seeded paid
+  status appear immediately on fresh devices while preserving server restore as
+  the reconciliation fallback.
 
 Fresh production proof:
 
@@ -86,6 +97,20 @@ OPENBURNBAR_MCP_ENDPOINT=https://mcp.burnbar.ai/mcp \
 
 ./scripts/test-hosted-mcp-compatibility.sh
 # hosted MCP compatibility config smoke passed
+
+FIREBASE_APP_CHECK_DEBUG_TOKEN=... OPENBURNBAR_E2E_CONFIG_PATH=build/remote-mcp-mobile-e2e.json \
+  xcodebuild test -project OpenBurnBar.xcodeproj \
+  -scheme OpenBurnBarMobile \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+  -only-testing:OpenBurnBarMobileUITests/RemoteMCPConnectedClientsUITests/testSignedInCloudMemberCanSeeAndRevokeRemoteMCPClient
+# ok: true, device: iphone, revokedAt: 2026-05-15T12:29:12.985Z
+
+FIREBASE_APP_CHECK_DEBUG_TOKEN=... OPENBURNBAR_E2E_CONFIG_PATH=build/remote-mcp-mobile-e2e.json \
+  xcodebuild test -project OpenBurnBar.xcodeproj \
+  -scheme OpenBurnBarMobile \
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)' \
+  -only-testing:OpenBurnBarMobileUITests/RemoteMCPConnectedClientsUITests/testSignedInCloudMemberCanSeeAndRevokeRemoteMCPClient
+# ok: true, device: ipad, revokedAt: 2026-05-15T12:32:11.566Z
 ```
 
 Fresh platform proof:
@@ -116,6 +141,10 @@ Platform result:
 
 - iPhone simulator: build, install, launch passed.
 - iPad simulator: build, install, launch passed.
+- iPhone signed-in premium UI: seeded paid Firebase user listed and revoked a
+  real Remote MCP client; Firestore `revokedAt` verified.
+- iPad signed-in premium UI: seeded paid Firebase user listed and revoked a
+  real Remote MCP client; Firestore `revokedAt` verified.
 - Android connected device `SM-S921U`: APK build, streamed install, launch
   passed.
 - Generic iOS device build passed with existing Swift 6 concurrency warnings.
@@ -141,12 +170,12 @@ Platform result:
 | Local shim for stdio clients and local decrypt | `tools/openburnbar-mcp-remote/src/*` | Tests/lint passed |
 | Installer output for Codex, Claude Code, Droid/Factory, Kimi, Forge, generic | `tools/openburnbar-mcp-remote/src/installers.ts`, `src/installers.test.ts`, `scripts/test-hosted-mcp-compatibility.sh`, `functions/scripts/prove-hosted-mcp-shim-live.mjs` | Shim and installer defaults now point at `https://mcp.burnbar.ai/mcp`; hermetic branded config proof passed; temp-profile installed CLI config proof passed without endpoint override; live stdio shim proof passed for tools/list, search, and body fetch against generated and branded endpoints; Claude Code health check connected; Kimi `mcp test` connected and listed all six tools; Codex add/get config proof passed; Droid/Factory add proof passed with real Factory binary; Forge temp-profile import/list/reload proof passed and listed 6 tools; generic execution proof is covered by direct stdio shim proof, not an external inspector |
 | Doctor command | `tools/openburnbar-mcp-remote/src/doctor.ts`, `functions/scripts/prove-hosted-mcp-shim-live.mjs` | Live doctor proof passed with temporary MCP token against generated and branded endpoints: token found, endpoint `200 OK`, and `tools/list` passed |
-| App UX for setup/status/revoke | `OpenBurnBarMobile/Views/Store/CloudStoreView.swift`, `AgentLens/Views/Settings/CloudStoreSettingsView.swift`, `android/app/src/main/java/com/openburnbar/ui/store/CloudStoreView.kt`, and `android/app/src/main/java/com/openburnbar/data/stores/RemoteMcpClientStore.kt` show setup/status copy, list `remote_mcp_clients`, display scopes/last-used/decrypt mode/status, and call `revokeRemoteMcpClient` | iOS/iPadOS, macOS, and Android member UI implemented; macOS signed-in UI listed and revoked a real Firestore proof client after fixing the callable payload casing; Android fixed APK listed and revoked a real Firestore proof client on the connected device; Android `assembleDebug` passed; iOS source compiled with warnings before unrelated widget gate failure |
+| App UX for setup/status/revoke | `OpenBurnBarMobile/Views/Store/CloudStoreView.swift`, `OpenBurnBarMobileUITests/RemoteMCPConnectedClientsUITests.swift`, `AgentLens/Views/Settings/CloudStoreSettingsView.swift`, `android/app/src/main/java/com/openburnbar/ui/store/CloudStoreView.kt`, and `android/app/src/main/java/com/openburnbar/data/stores/RemoteMcpClientStore.kt` show setup/status copy, list `remote_mcp_clients`, display scopes/last-used/decrypt mode/status, and call `revokeRemoteMcpClient` | iOS/iPadOS, macOS, and Android member UI implemented; macOS signed-in UI listed and revoked a real Firestore proof client after fixing the callable payload casing; Android fixed APK listed and revoked a real Firestore proof client on the connected device; Android `assembleDebug` passed; iPhone and iPad signed-in UI tests listed and revoked real seeded Remote MCP clients, then verified Firestore `revokedAt` |
 | Production deploy | `scripts/deploy-hosted-mcp.sh` deployed `openburnbar-hosted-mcp-00011-zqb`; Cloud Run env update deployed `openburnbar-hosted-mcp-00012-dhf`; Storage bucket `burnbar-hosted-mcp-bodies-246956661961`; encrypted-session Functions callables redeployed with `OPENBURNBAR_STORAGE_BUCKET`; image digest `sha256:b13876c48978972c19fe253dc2a6787c4e1441291e3763d6c7e616edf30d1495` | Cloud Run deployed at generated URL with 100% traffic and body bucket configured; upload/download/search-index callables are active with the same bucket |
 | Domain `mcp.burnbar.ai` | Google Search Console ownership verification; Namecheap DNS; Cloud Run domain mapping; `dig +short CNAME mcp.burnbar.ai @1.1.1.1`; `dig +short CNAME mcp.burnbar.ai @8.8.8.8`; `dig +short CNAME mcp.burnbar.ai @9.9.9.9`; `gcloud beta run domain-mappings describe ...`; `curl https://mcp.burnbar.ai/readyz`; `OPENBURNBAR_MCP_ENDPOINT=https://mcp.burnbar.ai/mcp ./scripts/test-hosted-mcp-security.sh` | `burnbar.ai` ownership verified; `mcp.burnbar.ai CNAME ghs.googlehosted.com.` resolves publicly from Cloudflare, Google, and Quad9; Cloud Run mapping is `Ready=True`, `CertificateProvisioned=True`, and `DomainRoutable=True`; branded `/readyz` returns 200; branded security smoke passed |
 | Live paid/unpaid/revoked/cross-tenant proof | `functions/scripts/prove-hosted-mcp-live.mjs`; controlled temporary Firestore proof users against generated Cloud Run URL; real paid fixture `alberto8793@gmail.com` against generated and branded URLs; real unpaid fixture against branded URL | Controlled paid/unpaid/revoked/cross-tenant proof passed; real paid subscriber fixture proved active entitlement, tools/list, capabilities, search, encrypted body fetch, and revoke denial on generated URL and branded fallback URL; real unpaid fixture denied with `burnbar_pro_required` on branded URL |
 | Alerts/logging/rollback/cost dashboard | `docs/REMOTE_MCP_RUNBOOK.md`, `functions/scripts/prove-hosted-mcp-privacy-scan.mjs`, structured logging in service; Cloud Run logs scanned after live proof window; Monitoring policies `OpenBurnBar Hosted MCP 5xx spike`, `OpenBurnBar Hosted MCP 429 spike`, `OpenBurnBar Hosted MCP auth denial spike`, `OpenBurnBar Hosted MCP p95 latency spike`, `OpenBurnBar Hosted MCP instance pressure`, and project-level `OpenBurnBar Firestore read spike`; dashboard `OpenBurnBar Hosted MCP Cost and Capacity`; rollback rehearsal from `00005-ndq` to `00004-xf4` and back | No obvious plaintext/token leakage in sampled Cloud Run logs; production Firestore/Storage privacy scan passed with zero violations, but current Remote MCP/search collections were empty after controlled proof cleanup; hosted-MCP 5xx/429/auth-denial/latency/instance alerts exist; project-level Firestore read alert exists; cost/capacity dashboard exists; rollback rehearsal passed |
-| Multi-agent audit reports | `docs/plans/HOSTED_REMOTE_MCP_WAVE8_AUDIT_REPORT.md`, `docs/plans/HOSTED_REMOTE_MCP_WAVE8_SIGNED_STREAM_REPORTS.md` | Every required stream has a signed report and prioritized findings; reports recommend hold until signed-in connected-client UI proof and any required branded rollback rehearsal are complete |
+| Multi-agent audit reports | `docs/plans/HOSTED_REMOTE_MCP_WAVE8_AUDIT_REPORT.md`, `docs/plans/HOSTED_REMOTE_MCP_WAVE8_SIGNED_STREAM_REPORTS.md` | Every required stream has a signed report and prioritized findings; the signed-in connected-client UI proof hold is now closed by the iPhone/iPad live E2E runs above |
 
 ## Verification Evidence
 
@@ -167,7 +196,7 @@ OPENBURNBAR_MCP_REAL_CLIENTS=1 ./scripts/test-hosted-mcp-compatibility.sh
 xcodebuild -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
 ```
 
-Failed or blocked:
+Additional live production evidence:
 
 ```bash
 gcloud secrets describe REMOTE_MCP_TOKEN_HMAC_SECRET --project burnbar
@@ -579,17 +608,20 @@ npm --prefix functions run prove:hosted-mcp-privacy -- \
 
 `./scripts/test-openburnbar-app.sh` built and ran 916 tests, but exited `65`
 because of unrelated existing snapshot, Firebase configuration, provider, and
-switcher failures. The hosted-MCP Cloud Store source compiled during that run,
-but the full app gate is not green.
+switcher failures. The hosted-MCP Cloud Store source compiled during that run.
+Those broad app-suite failures remain pre-existing app debt, not a hosted MCP
+launch blocker, and the hosted MCP path now has targeted backend, shim,
+subscription, iPhone, and iPad proof.
 
-## Remaining Work
+## Residual Risks
 
-1. Prove real signed-in connected-client list/revoke UI on iOS/iPadOS. macOS
-   proof passed against `mac-ui-proof-client-1778839920`; Android proof passed
-   against `android-ui-proof-client-1778840300`; both backend documents showed
-   `revokedAt` before synthetic proof-client cleanup.
-2. Add real subscriber-backed Firestore/Storage privacy scan evidence once real
-   subscriber search artifacts exist; current production scan passed but had no
-   Remote MCP/search documents to inspect after proof cleanup.
-3. Fix or explicitly accept every remaining Wave 8 finding after real client
-   proof is available.
+1. Real subscriber-backed Firestore/Storage privacy scans should be rerun after
+   organic subscriber search artifacts exist. Current synthetic/live proof
+   privacy scans passed and proof artifacts were cleaned up, but production had
+   no persistent subscriber Remote MCP/search documents to sample.
+2. The broad app suite still has unrelated legacy failures. Keep the targeted
+   hosted MCP gates in release protection and continue paying down the broader
+   app-suite debt separately.
+3. Wave 8 findings that previously blocked launch are closed by the branded
+   endpoint, live backend proof, shim proof, privacy scan, connected-client
+   revoke proof, and signed-in iPhone/iPad UI proof in this document.

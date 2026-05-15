@@ -788,7 +788,11 @@ class HermesService(
             val refusalText = refusal.toString().trim()
             if (refusalText.isNotEmpty()) return refusalText
             val reasoningText = reasoning.toString().trim()
-            if (reasoningText.isNotEmpty()) return reasoningText
+            if (reasoningText.isNotEmpty()) {
+                // Marker keeps raw thinking ("I should answer X because…")
+                // from masquerading as a polished reply.
+                return "_(Hermes only emitted reasoning. Showing it below — this isn't a final answer.)_\n\n$reasoningText"
+            }
             return when (lastFinishReason?.lowercase()) {
                 "length" -> "Hermes hit its output budget before finishing. Try a shorter prompt or switch to a model with a larger reply ceiling."
                 "content_filter" -> "Hermes blocked this reply for content safety. Try rewording the prompt or switch models."

@@ -190,6 +190,7 @@ final class OpenBurnBarRuntimeContext {
     var smartDisplayActionsListener: SmartDisplayActionsListener?
     var castActionsListener: CastActionsListener?
     var cliAgentMissionRequestListener: CLIAgentMissionRequestListener?
+    var agentHarnessImportJobListener: AgentHarnessImportJobListener?
     let chatController: ChatSessionController
     let operatingLayer: OpenBurnBarOperatingLayer
 
@@ -307,5 +308,19 @@ final class OpenBurnBarRuntimeContext {
             cliAgentMissionRequestListener = missionListener
         }
         missionListener.start()
+
+        let importListener: AgentHarnessImportJobListener
+        if let existing = agentHarnessImportJobListener {
+            importListener = existing
+        } else {
+            importListener = AgentHarnessImportJobListener(
+                accountManager: accountManager,
+                settingsManager: settingsManager,
+                dataStore: dataStore,
+                cloudSyncService: cloudSyncService
+            )
+            agentHarnessImportJobListener = importListener
+        }
+        importListener.start()
     }
 }

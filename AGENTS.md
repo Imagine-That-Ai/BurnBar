@@ -103,7 +103,7 @@ All scripts follow `set -euo pipefail`, use absolute paths with `cd "$(dirname "
 
 Environment variables for Android:
 ```bash
-export JAVA_HOME="/opt/homebrew/opt/openjdk@21"
+export JAVA_HOME="$HOME/.homebrew/opt/openjdk@21" # or /opt/homebrew/opt/openjdk@21 on system Homebrew installs
 export ANDROID_HOME="$HOME/Library/Android"
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 ```

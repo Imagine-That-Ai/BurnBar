@@ -95,7 +95,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertEqual(service.restoreRequests.count, 1)
     }
 
-    func testRefreshFallsBackToBurnBarProDirectEntitlementWhenServerReplayFails() async throws {
+    func testRefreshUsesBurnBarProDirectEntitlementBeforeServerReplay() async throws {
         let session = try makeCleanStoreKitSession()
         defer { session.clearTransactions() }
         let expiresAt = Date(timeIntervalSince1970: 2_000_000_000)
@@ -114,7 +114,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertTrue(store.isActive)
         XCTAssertEqual(store.expirationDate, expiresAt)
         XCTAssertEqual(directReader.fetchCount, 1)
-        XCTAssertEqual(service.restoreRequests.count, 1)
+        XCTAssertEqual(service.restoreRequests.count, 0)
     }
 
     func testRestoreFallsBackToServerWhenStoreKitHasNoCurrentEntitlement() async throws {

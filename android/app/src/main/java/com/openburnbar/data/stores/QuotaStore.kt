@@ -19,8 +19,10 @@ import java.time.Instant
 
 class QuotaStore(
     private val repo: FirestoreRepository = FirestoreRepository(),
-    private val functions: FunctionsRepository = FunctionsRepository()
+    functions: FunctionsRepository? = null
 ) : ViewModel() {
+    private val functions: FunctionsRepository by lazy { functions ?: FunctionsRepository() }
+
     private val _snapshots = MutableStateFlow<List<ProviderQuotaSnapshot>>(emptyList())
     val snapshots = _snapshots.asStateFlow()
 
