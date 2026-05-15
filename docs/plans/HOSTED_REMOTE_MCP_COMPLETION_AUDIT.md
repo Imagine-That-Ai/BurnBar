@@ -35,7 +35,7 @@ still missing.
 | Production deploy | `scripts/deploy-hosted-mcp.sh` deployed `openburnbar-hosted-mcp-00004-xf4` from commit `04f30b8f0` | Cloud Run deployed at generated URL |
 | Domain `mcp.openburnbar.com` or fallback `mcp.burnbar.ai` | `curl https://mcp.openburnbar.com/readyz`; `gcloud beta run domain-mappings create ...`; `gcloud domains list-user-verified` | Fails DNS resolution; both domain mappings blocked because neither `openburnbar.com` nor `burnbar.ai` is verified in this Google account |
 | Live paid/unpaid/revoked/cross-tenant proof | `functions/scripts/prove-hosted-mcp-live.mjs`; controlled temporary Firestore proof users against generated Cloud Run URL | Controlled paid/unpaid/revoked/cross-tenant proof passed; real subscriber proof still missing |
-| Alerts/logging/rollback | `docs/REMOTE_MCP_RUNBOOK.md`, structured logging in service | Docs/source present; live alerts not verified |
+| Alerts/logging/rollback | `docs/REMOTE_MCP_RUNBOOK.md`, structured logging in service; Cloud Run logs scanned after live proof window | No obvious plaintext/token leakage in sampled Cloud Run logs; live alerts still not verified |
 | Multi-agent audit reports | Required by Wave 8 | Missing |
 
 ## Verification Evidence
@@ -89,6 +89,17 @@ node functions/scripts/prove-hosted-mcp-live.mjs \
 # proofId: remote-mcp-proof-1778822270407
 # Temporary proof users were removed after the run.
 
+gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="openburnbar-hosted-mcp" AND timestamp>="2026-05-15T05:00:00Z"' \
+  --project burnbar --limit 100 --format=json
+# 39 entries scanned. No bearer token shape, proof body hash, proof session
+# title, raw query/body value, or signed URL marker found.
+
+gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="openburnbar-hosted-mcp" AND severity>=ERROR AND timestamp>="2026-05-15T05:00:00Z"' \
+  --project burnbar --limit 20
+# no ERROR-or-higher entries returned
+
 # Controlled live proof with temporary Firestore users and short-lived HMAC
 # tokens against https://openburnbar-hosted-mcp-cjrjb5ckqq-uc.a.run.app/mcp.
 # Temporary proof id: remote-mcp-proof-1778821006
@@ -141,7 +152,6 @@ but the full app gate is not green.
    Forge, and generic MCP.
 4. Add or verify macOS and Android parity for connected-client list/revoke UI,
    or explicitly scope those surfaces out with a follow-up owner/date.
-5. Verify Cloud logs and Firestore contain no plaintext query/session/body/token
-   leakage.
+5. Verify Firestore contains no plaintext query/session/body/token leakage.
 6. Create/rehearse alerts and rollback.
 7. Produce Wave 8 audit reports and fix or explicitly accept every finding.
