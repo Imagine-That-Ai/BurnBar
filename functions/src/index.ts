@@ -112,6 +112,7 @@ import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
 import { issueRemoteMcpGrantForSignedInUser } from "./remoteMcpOAuth.js";
 import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc } from "./remoteMcpGrant.js";
 export { insightsHostedAnswer } from "./insightsHostedAnswer.js";
+export { rollupIrohTransportDaily } from "./irohMonitoring.js";
 
 // ---------------------------------------------------------------------------
 // Admin initialization

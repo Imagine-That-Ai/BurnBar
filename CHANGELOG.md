@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Hermes iroh production monitoring rollups.** Added the scheduled
+  `rollupIrohTransportDaily` Function to summarize daily
+  `iroh_audit_events` into operator telemetry for rollout gates, with focused
+  Functions test coverage and a secrets/rotation runbook.
 - **Hermes Realtime Relay → iroh peer-to-peer transport (all 7 phases).**
   Migrates the Hermes relay off Cloud Run + Memorystore + WSS onto an
   [iroh](https://www.iroh.computer/) QUIC mesh between the Mac and

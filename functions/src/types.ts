@@ -392,6 +392,35 @@ export interface IrohTransportAuditEventDoc {
   expireAt?: import("firebase-admin/firestore").Timestamp;
 }
 
+/** Daily operator rollup of `users/{uid}/iroh_audit_events/*`. */
+export interface IrohTransportDailyRollupDoc {
+  id: string;
+  date: string;
+  windowStart: string;
+  windowEnd: string;
+  generatedAt: string;
+  totalEvents: number;
+  uniqueUsers: number;
+  uniqueConnections: number;
+  eventCounts: Record<IrohTransportAuditEventDoc["eventType"], number>;
+  transportCounts: Record<NonNullable<IrohTransportAuditEventDoc["transport"]>, number>;
+  streamOpens: number;
+  streamCloses: number;
+  streamFailures: number;
+  wssFallbacks: number;
+  successRate: number;
+  fallbackRate: number;
+  directShare: number;
+  relayShare: number;
+  rttMillis: {
+    count: number;
+    p50?: number;
+    p95?: number;
+    p99?: number;
+  };
+  schemaVersion: number;
+}
+
 export type HermesRelayOperation =
   | "chatCompletions"
   | "models"

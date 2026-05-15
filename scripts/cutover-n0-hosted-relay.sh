@@ -2,24 +2,24 @@
 # Cuts the OpenBurnBar iroh transport over from n0's public relay mesh to a
 # paid n0 hosted relay (Phase 6 of the migration plan).
 #
-# The hosted tier is provisioned through the n0 services API
-# (https://docs.iroh.computer/services/) using the secret stashed in
-# `.secrets/iroh-services.env`. Output: a single relay URL we ship through
-# Firebase Remote Config so all Macs + iOS devices pick it up on next boot.
+# The hosted tier is provisioned through the Iroh Services dashboard:
+# https://services.iroh.computer/alberto8793/burnbar/relays
+#
+# Output: a single relay URL we ship through Firebase Remote Config so all
+# Macs + iOS devices pick it up on next boot.
 #
 # Usage:
-#   ./scripts/cutover-n0-hosted-relay.sh provision      # create a fresh relay
-#   ./scripts/cutover-n0-hosted-relay.sh status         # describe the existing relay
+#   ./scripts/cutover-n0-hosted-relay.sh provision      # print dashboard steps
+#   ./scripts/cutover-n0-hosted-relay.sh status         # print dashboard URL
 #   ./scripts/cutover-n0-hosted-relay.sh publish <url>  # push to Remote Config
 #   ./scripts/cutover-n0-hosted-relay.sh rollback       # clear Remote Config (back to public relay)
 #
 # Required environment (sourced from .secrets/iroh-services.env if present):
-#   IROH_SERVICES_API_SECRET   token for the n0 services API
+#   IROH_SERVICES_API_SECRET   Iroh Services endpoint metrics API key
 #   PROJECT_ID                 Firebase project id for the Remote Config push
 #
 # Optional environment:
-#   IROH_HOSTED_RELAY_REGION   defaults to "us-east"
-#   IROH_HOSTED_RELAY_TIER     defaults to "team-200" ($200/mo SLA)
+#   IROH_SERVICES_RELAYS_URL   defaults to the BurnBar dashboard relays URL
 
 set -euo pipefail
 
@@ -34,8 +34,7 @@ if [[ -f "${SECRET_FILE}" ]]; then
 fi
 
 IROH_SERVICES_API_SECRET="${IROH_SERVICES_API_SECRET:-}"
-IROH_HOSTED_RELAY_REGION="${IROH_HOSTED_RELAY_REGION:-us-east}"
-IROH_HOSTED_RELAY_TIER="${IROH_HOSTED_RELAY_TIER:-team-200}"
+IROH_SERVICES_RELAYS_URL="${IROH_SERVICES_RELAYS_URL:-https://services.iroh.computer/alberto8793/burnbar/relays}"
 PROJECT_ID="${PROJECT_ID:-}"
 FIREBASE_TOKEN="${FIREBASE_TOKEN:-}"
 
@@ -59,29 +58,31 @@ require_project() {
 
 provision() {
   require_secret
-  echo "→ provisioning n0 hosted relay (region=${IROH_HOSTED_RELAY_REGION}, tier=${IROH_HOSTED_RELAY_TIER})"
-  local response
-  response=$(curl -sS -X POST \
-    -H "Authorization: Bearer ${IROH_SERVICES_API_SECRET}" \
-    -H "Content-Type: application/json" \
-    -d "{\"region\":\"${IROH_HOSTED_RELAY_REGION}\",\"tier\":\"${IROH_HOSTED_RELAY_TIER}\"}" \
-    https://api.iroh.computer/v1/relays)
-  echo "${response}" | jq .
-  local url
-  url=$(echo "${response}" | jq -r '.relay_url // empty')
-  if [[ -z "${url}" ]]; then
-    echo "cutover-n0-hosted-relay: response did not include relay_url" >&2
-    exit 1
-  fi
-  echo "✓ provisioned relay URL: ${url}"
-  echo "${url}"
+  cat <<EOF
+Iroh Services does not expose a documented relay provisioning REST API.
+
+Provision the hosted relay in the dashboard:
+  ${IROH_SERVICES_RELAYS_URL}
+
+Recommended BurnBar production config:
+  Region: US East (use1)
+  Version: v1.0.0-rc.0 or the dashboard default promoted by Iroh Services
+  Plan: Pro managed relay (~\$199/month)
+
+After the dashboard reports a stable relay URL, publish it with:
+  PROJECT_ID=burnbar ./scripts/cutover-n0-hosted-relay.sh publish <relay-url>
+EOF
 }
 
 status() {
   require_secret
-  curl -sS \
-    -H "Authorization: Bearer ${IROH_SERVICES_API_SECRET}" \
-    https://api.iroh.computer/v1/relays | jq .
+  cat <<EOF
+Check Iroh Services relay status in the dashboard:
+  ${IROH_SERVICES_RELAYS_URL}
+
+The dashboard must show the target relay URL as running before Phase D can
+publish it to Firebase Remote Config.
+EOF
 }
 
 publish() {
