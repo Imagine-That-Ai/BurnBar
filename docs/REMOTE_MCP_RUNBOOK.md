@@ -99,11 +99,19 @@ Firestore read policy is project-level Firestore read-spike coverage; use
 per-request audit events and live proof output for MCP-specific read-budget
 verification.
 
+Configured Cloud Monitoring dashboard:
+
+- `OpenBurnBar Hosted MCP Cost and Capacity`
+  (`projects/246956661961/dashboards/4df51728-d486-44a0-a11f-bc3dc0eeea2b`)
+
+The dashboard separates Cloud Run request rate, Cloud Run p95 latency, Cloud Run
+instance count, Firestore document reads, Cloud Storage API requests, Cloud KMS
+requests, and Redis memory pressure.
+
 Still required before launch:
 
 - MCP-specific Firestore read-budget proof for representative search and body
   fetches.
-- Cost dashboard separating Cloud Run, Firestore, Storage, KMS, and Redis.
 
 ## Rollback
 

@@ -122,8 +122,8 @@ Findings:
 - P1: Rollback command is documented and was rehearsed by moving traffic from
   `openburnbar-hosted-mcp-00005-ndq` to `00004-xf4`, checking `/readyz`, and
   restoring `00005-ndq` to 100% traffic.
-- P2: Cost dashboard separation for Cloud Run, Firestore, Storage, KMS, and
-  Redis is not proven.
+- P2: Cost/capacity dashboard separation now exists for Cloud Run, Firestore,
+  Storage, KMS, and Redis.
 
 Evidence:
 
@@ -138,6 +138,9 @@ Evidence:
   - `OpenBurnBar Hosted MCP p95 latency spike`
   - `OpenBurnBar Hosted MCP instance pressure`
   - `OpenBurnBar Firestore read spike`
+- Monitoring dashboard:
+  - `OpenBurnBar Hosted MCP Cost and Capacity`
+    (`projects/246956661961/dashboards/4df51728-d486-44a0-a11f-bc3dc0eeea2b`)
 
 ### QA Lead
 
@@ -244,7 +247,7 @@ Evidence:
 | P1 | Branded-endpoint rollback proof is still pending. | Generated-URL Cloud Run rollback rehearsal passed; repeat after branded domain mapping if launch requires hostname-level proof. |
 | P1 | Large-corpus performance and cost proof is missing. | Controlled search read-budget proof passes; capture warm p50/p95 and cost/read behavior on representative production-scale data. |
 | P1 | macOS and Android connected-client list/revoke parity is not proven. | Implement or explicitly scope out platform parity with owner/date before launch. |
-| P2 | Cost dashboard separation is missing. | Add or verify a dashboard separating Cloud Run, Firestore, Storage, KMS, and Redis. |
+| P2 | Body-fetch read-budget proof is still thin. | Search read-budget proof passes; add live body fetch with a proof Storage object or real subscriber fixture. |
 | P2 | Firestore plaintext leakage scan is weak. | Run a production-safe scan over relevant remote MCP/search collections and document exact redaction checks. |
 
 ## Final Recommendation
