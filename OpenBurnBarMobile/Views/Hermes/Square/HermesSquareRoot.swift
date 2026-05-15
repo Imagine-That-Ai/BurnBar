@@ -52,6 +52,7 @@ struct HermesSquareRoot: View {
     @State private var approvalPolicyStore = ApprovalPolicyStore.shared
     @State private var rollbackService = RollbackService.shared
     @State private var voiceIntentBanner: VoiceIntent?
+    @State private var subscriptionTopicStore = AgentSubscriptionTopicStore.shared
 
     private var pinnedGrid: PinnedAgentGridConfig {
         PinnedAgentGridConfig.from(jsonString: pinnedJSON)
@@ -152,6 +153,8 @@ struct HermesSquareRoot: View {
             await registry.refresh(hermesService: hermesService, piService: piService, missionHost: missionHost)
             await inbox.refresh()
             await reindexSearch()
+            subscriptionTopicStore.bootstrap()
+            await subscriptionTopicStore.refresh()
             // Observe rollback snapshots for every active CLI session so
             // the rollback card shows up the moment the Mac writes one.
             rollbackService.startObservingRequests()
@@ -218,13 +221,25 @@ struct HermesSquareRoot: View {
             switch target {
             case .brandZone(let uri):
                 if let identity = registry.identity(for: uri) {
-                    AgentBrandZoneView(identity: identity, registry: registry)
+                    AgentBrandZoneView(
+                        identity: identity,
+                        registry: registry,
+                        missionHost: missionHost,
+                        onOpenRuntimeThread: { runtime in
+                            navTarget = .runtimeThread(runtime)
+                        },
+                        onOpenRuntimeList: { runtime in
+                            navTarget = .runtimeNative(runtime)
+                        }
+                    )
                 } else {
                     Text("Agent unavailable")
                         .foregroundStyle(DesignSystemColors.textMuted)
                 }
             case .runtimeNative(let runtime):
                 runtimeNativeView(for: runtime)
+            case .runtimeThread(let runtime):
+                runtimeThreadView(for: runtime)
             }
         }
     }
@@ -399,6 +414,7 @@ struct HermesSquareRoot: View {
 
     private var subscriptionsSection: some View {
         let (_, subscription) = inbox.items.splitForInbox()
+        let count = max(subscription.count, subscriptionTopicStore.topics.count)
         return VStack(alignment: .leading, spacing: 0) {
             Button {
                 isShowingSubscriptions = true
@@ -410,7 +426,7 @@ struct HermesSquareRoot: View {
                         .font(.caption.bold())
                         .foregroundStyle(DesignSystemColors.textSecondary)
                     Spacer()
-                    Text("\(subscription.count)")
+                    Text("\(count)")
                         .font(.caption.monospaced())
                         .foregroundStyle(DesignSystemColors.textMuted)
                     Image(systemName: "chevron.right")
@@ -572,6 +588,7 @@ struct HermesSquareRoot: View {
     enum NavTarget: Hashable {
         case brandZone(String)        // agent URI
         case runtimeNative(AssistantRuntimeID)
+        case runtimeThread(AssistantRuntimeID)
     }
 
     // MARK: - Phase B helpers
@@ -703,6 +720,18 @@ struct HermesSquareRoot: View {
             } else {
                 AssistantTileBridgeView(runtime: runtime) { }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func runtimeThreadView(for runtime: AssistantRuntimeID) -> some View {
+        switch runtime {
+        case .hermes:
+            HermesChatView(service: hermesService, dashboardSnapshot: nil, route: .new)
+        case .pi:
+            PiChatThreadView(service: piService, route: .new)
+        case .claude, .codex, .openClaw:
+            runtimeNativeView(for: runtime)
         }
     }
 }

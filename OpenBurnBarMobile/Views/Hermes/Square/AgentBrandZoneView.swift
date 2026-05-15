@@ -10,9 +10,22 @@ import OpenBurnBarCore
 struct AgentBrandZoneView: View {
     let identity: AgentIdentity
     @Bindable var registry: AgentIdentityRegistry
+    let missionHost: MobileMissionConsoleHost
+    let onOpenRuntimeThread: ((AssistantRuntimeID) -> Void)?
+    let onOpenRuntimeList: ((AssistantRuntimeID) -> Void)?
 
     @Environment(\.motionStore) private var motionStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var showDispatchSheet = false
+    @State private var showForwardSheet = false
+    @State private var showSubscribeSheet = false
+    @State private var dispatchPreset: DispatchPreset = .manual
+    @State private var forwardContext: AgentForwardContextSnapshot?
+    @State private var isPreparingForward = false
+    @State private var statusMessage: String?
+    @State private var cliReader = CLIAgentChatReader.shared
+    @State private var subscriptionTopicStore = AgentSubscriptionTopicStore.shared
 
     private var accent: Color { Color(hex: identity.paletteHex) }
 
@@ -45,6 +58,50 @@ struct AgentBrandZoneView: View {
         // rendering the parallax.
         .onAppear { motionStore.acquire(reduceMotion: reduceMotion) }
         .onDisappear { motionStore.release() }
+        .task {
+            subscriptionTopicStore.bootstrap()
+            await subscriptionTopicStore.refresh()
+        }
+        .sheet(isPresented: $showDispatchSheet) {
+            AgentBrandDispatchSheet(
+                identity: identity,
+                missionHost: missionHost,
+                preset: dispatchPreset
+            ) { message in
+                statusMessage = message
+            }
+        }
+        .sheet(isPresented: $showForwardSheet) {
+            AgentBrandForwardSheet(
+                source: identity,
+                registry: registry,
+                context: forwardContext
+            ) { destination, note in
+                Task {
+                    let message = await performForward(to: destination, note: note)
+                    statusMessage = message
+                }
+            }
+        }
+        .sheet(isPresented: $showSubscribeSheet) {
+            AgentBrandSubscribeSheet(
+                identity: identity,
+                existingTopic: subscriptionTopicStore.topic(agentURI: identity.id)
+            ) { action in
+                Task {
+                    let message = await performSubscriptionAction(action)
+                    statusMessage = message
+                }
+            }
+        }
+        .alert("Agent action", isPresented: Binding(
+            get: { statusMessage != nil },
+            set: { if !$0 { statusMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { statusMessage = nil }
+        } message: {
+            Text(statusMessage ?? "")
+        }
     }
 
     // MARK: Hero
@@ -133,10 +190,14 @@ struct AgentBrandZoneView: View {
 
     private var quickActions: some View {
         HStack(spacing: 8) {
-            quickAction(label: "New thread", systemImage: "plus.bubble") { }
-            quickAction(label: "Dispatch", systemImage: "paperplane.fill") { }
-            quickAction(label: "Forward", systemImage: "arrowshape.turn.up.right.fill") { }
-            quickAction(label: "Subscribe", systemImage: "bell.fill") { }
+            quickAction(label: "New thread", systemImage: "plus.bubble", action: handleNewThread)
+            quickAction(label: "Dispatch", systemImage: "paperplane.fill", action: handleDispatch)
+            quickAction(
+                label: isPreparingForward ? "Loading…" : "Forward",
+                systemImage: "arrowshape.turn.up.right.fill",
+                action: handleForward
+            )
+            quickAction(label: "Subscribe", systemImage: "bell.fill", action: handleSubscribe)
         }
     }
 
