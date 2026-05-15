@@ -24,7 +24,7 @@ still missing.
 | Token signing/verifier secret in Secret Manager | `REMOTE_MCP_TOKEN_HMAC_SECRET` declared via Firebase `defineSecret`; `scripts/deploy-hosted-mcp.sh` uses Cloud Run `--set-secrets`; Secret Manager version `1` created | Verified |
 | Hosted MCP never receives provider credentials | Tool surface is session-memory only; docs and threat model state no provider credentials | Source/docs present |
 | Default privacy mode is sealed/local decrypt | `tools/openburnbar-mcp-remote/src/decrypt.ts`, `docs/HOSTED_REMOTE_MCP.md`, `docs/REMOTE_MCP_THREAT_MODEL.md` | Source/docs present |
-| Search does zero Storage reads and uses manifest/postings | `services/hosted-mcp/src/search.ts`, `src/resources.ts`, `functions/src/cloudSearchCore.ts` | Source present; large/live corpus perf proof missing |
+| Search does zero Storage reads and uses manifest/postings | `services/hosted-mcp/src/search.ts`, `src/resources.ts`, `functions/src/cloudSearchCore.ts`, `functions/scripts/prove-hosted-mcp-live.mjs` | Controlled live search proof reports `firestoreDocumentReads: 4`, `storageReads: 0`, `withinSearchReadBudget: true`; large/live corpus perf proof still missing |
 | Deny-by-default tool registry | `services/hosted-mcp/src/toolRegistry.ts` declares scopes, entitlement, input/output caps, cost class, rate bucket, audit kind, redaction policy | Source present |
 | Required tools: search, body, index status, facets, recent usage, capabilities | `services/hosted-mcp/src/toolRegistry.ts` | Source present |
 | Firestore data additions and rules | `firestore.rules`, `firestore.indexes.json`, `functions/scripts/test-firestore-rules.mjs` | Rules tests passed |
@@ -32,7 +32,7 @@ still missing.
 | Installer output for Codex, Claude Code, Droid/Factory, Kimi, Forge, generic | `tools/openburnbar-mcp-remote/src/installers.ts`, `src/installers.test.ts`, `scripts/test-hosted-mcp-compatibility.sh` | Hermetic verification plus temp-profile real CLI config proof passed; live OAuth/search/body proof still missing |
 | Doctor command | `tools/openburnbar-mcp-remote/src/doctor.ts` | Source present; live doctor proof missing |
 | App UX for setup/status/revoke | `OpenBurnBarMobile/Views/Store/CloudStoreView.swift` shows setup/status copy, lists `remote_mcp_clients`, displays scopes/last-used/decrypt mode/status, and calls `revokeRemoteMcpClient`; targeted iOS build passed | iOS/iPadOS member UI implemented; macOS/Android parity not verified |
-| Production deploy | `scripts/deploy-hosted-mcp.sh` deployed `openburnbar-hosted-mcp-00004-xf4` from commit `04f30b8f0` | Cloud Run deployed at generated URL |
+| Production deploy | `scripts/deploy-hosted-mcp.sh` deployed `openburnbar-hosted-mcp-00005-ndq` from commit `9434352c6` | Cloud Run deployed at generated URL |
 | Domain `mcp.openburnbar.com` or fallback `mcp.burnbar.ai` | `curl https://mcp.openburnbar.com/readyz`; `gcloud beta run domain-mappings create ...`; `gcloud domains list-user-verified` | Fails DNS resolution; both domain mappings blocked because neither `openburnbar.com` nor `burnbar.ai` is verified in this Google account |
 | Live paid/unpaid/revoked/cross-tenant proof | `functions/scripts/prove-hosted-mcp-live.mjs`; controlled temporary Firestore proof users against generated Cloud Run URL | Controlled paid/unpaid/revoked/cross-tenant proof passed; real subscriber proof still missing |
 | Alerts/logging/rollback | `docs/REMOTE_MCP_RUNBOOK.md`, structured logging in service; Cloud Run logs scanned after live proof window; Monitoring policies `OpenBurnBar Hosted MCP 5xx spike`, `OpenBurnBar Hosted MCP 429 spike`, `OpenBurnBar Hosted MCP auth denial spike`, `OpenBurnBar Hosted MCP p95 latency spike`, `OpenBurnBar Hosted MCP instance pressure`, and project-level `OpenBurnBar Firestore read spike` | No obvious plaintext/token leakage in sampled Cloud Run logs; hosted-MCP 5xx/429/auth-denial/latency/instance alerts exist; project-level Firestore read alert exists; MCP-specific read-budget proof and rollback rehearsal still missing |
@@ -64,7 +64,7 @@ gcloud secrets describe REMOTE_MCP_TOKEN_HMAC_SECRET --project burnbar
 # Secret exists; version 1 was created during deploy.
 
 gcloud run services describe openburnbar-hosted-mcp --region us-central1 --project burnbar
-# latestReadyRevisionName: openburnbar-hosted-mcp-00004-xf4
+# latestReadyRevisionName: openburnbar-hosted-mcp-00005-ndq
 # traffic: 100
 # Service URL: https://openburnbar-hosted-mcp-cjrjb5ckqq-uc.a.run.app
 
@@ -87,7 +87,13 @@ node functions/scripts/prove-hosted-mcp-live.mjs \
 # paidBListStatus: 200
 # crossTenantReadStatus: 404
 # missingScopeStatus: 403
-# proofId: remote-mcp-proof-1778822270407
+# proofId: remote-mcp-proof-1778823222426
+# paidSearchStatus: 200
+# paidSearchReadBudget:
+#   firestoreDocumentReads: 4
+#   storageReads: 0
+#   searchReadCap: 150
+#   withinSearchReadBudget: true
 # Temporary proof users were removed after the run.
 
 gcloud logging read \
@@ -175,7 +181,7 @@ but the full app gate is not green.
 4. Add or verify macOS and Android parity for connected-client list/revoke UI,
    or explicitly scope those surfaces out with a follow-up owner/date.
 5. Verify Firestore contains no plaintext query/session/body/token leakage.
-6. Add MCP-specific Firestore read-budget proof, cost dashboard coverage, and
-   rehearse rollback.
+6. Add large-corpus performance proof, cost dashboard coverage, and rehearse
+   rollback.
 7. Produce independent Wave 8 reviewer reports if required beyond the
    primary-integrator role audit, then fix or explicitly accept every finding.

@@ -18,7 +18,7 @@ read-budget evidence.
 
 - Branch: `chore/router-brand-coherent-rail`
 - Latest committed hosted-MCP deploy revision:
-  `openburnbar-hosted-mcp-00004-xf4`
+  `openburnbar-hosted-mcp-00005-ndq`
 - Live generated Cloud Run URL:
   `https://openburnbar-hosted-mcp-cjrjb5ckqq-uc.a.run.app`
 - Verified service traffic: `openburnbar-hosted-mcp-00004-xf4`, `100%`
@@ -115,7 +115,8 @@ Findings:
 
 - P0: Domain mapping is blocked until `burnbar.ai` or `openburnbar.com` is
   verified in Google.
-- P1: Cloud Run service is deployed and healthy on the generated URL.
+- P1: Cloud Run service is deployed and healthy on the generated URL. The latest
+  read-budget revision is `openburnbar-hosted-mcp-00005-ndq` at 100% traffic.
 - P1: Alert coverage now includes hosted-MCP 5xx, 429, auth-denial, p95 latency,
   instance pressure, and project-level Firestore read spikes.
 - P1: Rollback command is documented but has not been rehearsed with a real
@@ -152,8 +153,9 @@ Findings:
 - P1: Real client matrix remains incomplete. The compatibility script now
   verifies deterministic installer output and installed-client temp-profile
   configuration, but not actual client login/list/search and body fetch.
-- P2: Missing-data and stale-index behavior have source/test coverage, but
-  large-corpus warm p50/p95 performance proof is still missing.
+- P2: Controlled live search read-budget proof now reports 4 Firestore document
+  reads, zero Storage reads, and `withinSearchReadBudget: true`; large-corpus
+  warm p50/p95 performance proof is still missing.
 
 Evidence:
 
@@ -239,7 +241,7 @@ Evidence:
 | P1 | Real subscriber proof is missing. | Use real paid and unpaid proof users instead of temporary entitlement documents. |
 | P1 | Real client compatibility matrix is incomplete. | Temp-profile config proof now passes for installed CLIs; prove login/tools/list/search/body against the branded endpoint. |
 | P1 | Rollback is documented but unrehearsed. | Perform controlled Cloud Run traffic rollback and restoration, then record revision names and timestamps. |
-| P1 | MCP-specific Firestore read-budget proof is missing. | Capture read counts or service audit counters for representative search/body fetches and compare to launch budgets. |
+| P1 | Large-corpus performance and cost proof is missing. | Controlled search read-budget proof passes; capture warm p50/p95 and cost/read behavior on representative production-scale data. |
 | P1 | macOS and Android connected-client list/revoke parity is not proven. | Implement or explicitly scope out platform parity with owner/date before launch. |
 | P2 | Cost dashboard separation is missing. | Add or verify a dashboard separating Cloud Run, Firestore, Storage, KMS, and Redis. |
 | P2 | Firestore plaintext leakage scan is weak. | Run a production-safe scan over relevant remote MCP/search collections and document exact redaction checks. |
