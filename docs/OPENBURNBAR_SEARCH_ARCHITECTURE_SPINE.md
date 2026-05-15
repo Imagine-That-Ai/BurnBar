@@ -56,10 +56,12 @@ logs without changing the local search authority:
   callable; direct client writes to `cloud_search_*` are denied, and the
   callable rejects top-level plaintext `title`, `snippet`, `body`, and `text`
   fields before Admin SDK writes occur.
-- `tools/openburnbar-mcp` exposes both local deterministic semantic search over
-  SQLite embeddings and an opt-in hosted encrypted MCP path. Hosted MCP search
-  derives search hashes locally, sends only opaque hashes to Firebase Functions,
-  and decrypts returned snippets/bodies on the MCP host.
+- `tools/openburnbar-mcp` exposes local deterministic semantic search over
+  SQLite embeddings. `services/hosted-mcp` exposes the BurnBar Pro Streamable
+  HTTP MCP service, while `tools/openburnbar-mcp-remote` is the stdio/local
+  decrypt shim. Hosted MCP search derives search hashes locally, sends only
+  opaque hashes to the hosted service, and decrypts returned snippets/bodies on
+  the MCP host.
 
 This is a privacy-preserving hosted index, not a replacement for local hybrid
 retrieval. Local `SearchService` remains the hot path for local corpus search;

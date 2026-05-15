@@ -134,12 +134,12 @@ struct ProfileRowView: View {
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(accountIdentityColor)
 
-                    if let cliQuotaSummaryText {
-                        Text(cliQuotaSummaryText)
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                    if !cliQuotaWindows.isEmpty {
+                        HStack(spacing: DesignSystem.Spacing.xs) {
+                            ForEach(cliQuotaWindows) { window in
+                                quotaWindowPill(window)
+                            }
+                        }
                     }
 
                     if !browserServiceStatusLines.isEmpty {
@@ -353,5 +353,35 @@ struct ProfileRowView: View {
 
     private var cliQuotaSummaryText: String? {
         cliQuotaStatusText(for: profile, quotaLookup: quotaLookup)
+    }
+
+    private var cliQuotaWindows: [SwitcherQuotaWindowDisplay] {
+        cliQuotaWindowDisplays(for: profile, quotaLookup: quotaLookup) ?? []
+    }
+
+    private func quotaWindowPill(_ window: SwitcherQuotaWindowDisplay) -> some View {
+        HStack(spacing: DesignSystem.Spacing.xxs) {
+            Text("\(window.label) left")
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Text(window.remaining)
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.success)
+            Text("· \(window.resetText)")
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.xs)
+        .padding(.vertical, 4)
+        .background(
+            Capsule(style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.66))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(DesignSystem.Colors.borderSubtle, lineWidth: 1)
+        )
     }
 }

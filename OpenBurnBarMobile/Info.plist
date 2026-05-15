@@ -35,5 +35,9 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>OpenBurnBar uses the camera only when you choose Take Photo to attach an image to a Hermes chat.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>OpenBurnBar uses the microphone when you hold to talk in Hermes Square — voice never leaves the device until you release.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>OpenBurnBar transcribes your hold-to-talk voice prompt on-device for Hermes Square. Audio is not retained.</string>
 </dict>
 </plist>

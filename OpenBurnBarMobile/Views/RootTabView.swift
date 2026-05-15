@@ -77,10 +77,6 @@ struct RootTabView: View {
                 isMissionConsolePresented = true
             }
 
-            MobileMissionActivityOverlay(center: missionActivityCenter)
-                .padding(.bottom, 86)
-                .zIndex(8)
-
             // Full-screen Studio overlay. We host it here (not as a
             // `.fullScreenCover` on an individual card) so the user can
             // minimize it and keep navigating.

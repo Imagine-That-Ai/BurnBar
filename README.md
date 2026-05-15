@@ -34,7 +34,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 |------|----------|--------|
 | **Core** | macOS app (`AgentLens/`), `OpenBurnBarCore`, local daemon (`OpenBurnBarDaemon/`), Cursor/VS Code extension (`extensions/openburnbar/`), `OpenBurnBarCLI` | Built and exercised in CI where configured; local-first + daemon RPC are the product spine. |
 | **Experimental** | Optional Firestore sync, iCloud mirroring, Cursor connector + tunnel, optional cloud collaboration | Best-effort; opt-in; not canonical vs local SQLite/daemon state. |
-| **Adjacent tooling** | [`tools/openburnbar-mcp/`](tools/openburnbar-mcp/README.md) (local SQLite MCP helper plus opt-in hosted encrypted semantic search) | Developer convenience; not required to run OpenBurnBar. |
+| **Adjacent tooling** | [`tools/openburnbar-mcp/`](tools/openburnbar-mcp/README.md) (local SQLite MCP helper plus opt-in hosted encrypted semantic search), [`tools/openburnbar-mcp-remote/`](tools/openburnbar-mcp-remote/) (BurnBar Pro hosted Remote MCP stdio shim) | Developer convenience; not required to run OpenBurnBar. |
 | **Quarantined tests** | `AgentLensTests/Quarantine/` | Stale suites kept as migration reference only; **not compiled** in the active `OpenBurnBarTests` bundle until fixed and moved back to `Active/` — see [AgentLensTests/README.md](AgentLensTests/README.md) and [CONTRIBUTING.md](CONTRIBUTING.md). |
 
 **Cursor deep dives** (for humans and agents):
@@ -61,6 +61,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - **Daily digest** — optional notification at a time you pick, because future-you deserves a single sentence of truth instead of a billing surprise.
 - **Chat panel** — ask questions about *your* usage data inside the dashboard. Meta? A little. Useful? Also a little. Delightful? We think so.
 - **Optional cloud sync** — sign in with **Google or Apple** (Firebase under the hood), and selected OpenBurnBar data can follow you across Macs. Today that can include usage rows, in-app OpenBurnBar chat-thread metadata for cross-device resume, and any separately enabled conversation/session-log backups. Chat message bodies require their own explicit setting. Fully opt-in; flip it off anytime and your local world keeps spinning.
+- **Hosted Remote MCP for BurnBar Pro** — paid users can connect coding agents to OpenBurnBar's hosted MCP endpoint for encrypted hosted session-memory search, with a local shim for stdio-only clients and device-side decrypt.
 - **Optional routed-provider gateway** — route selected **Z.ai**, **MiniMax**, and **Ollama Cloud** models through a local OpenAI-shaped router for Cursor, Factory, and OpenCode. Cursor gets a tunnel because it is picky about BYOK targets; local clients use the loopback gateway directly. OpenBurnBar logs those requests so you know where the bits actually went.
 - **Daemon-backed controller runtime** — project registry, questions, followups, missions, scheduled reviews, simulator replay, mission provenance, and auto-takeover now live behind the local daemon instead of a UI-only mirror.
 - **Operational tool plane** — OpenBurnBar exposes daemon-owned connector status/actions for GitHub, Slack, Linear, PostHog, Sentry, and Gmail, plus browser tooling status/actions for the system browser and daemon-side fetch/link extraction.

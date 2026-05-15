@@ -179,6 +179,93 @@ final class SwitcherCLILaunchTests: XCTestCase {
 
         XCTAssertTrue(capturedScriptContents.value?.contains("export CODEX_HOME=") == true)
         XCTAssertTrue(capturedScriptContents.value?.contains("export CODEX_CONFIG_PATH=") == true)
+        XCTAssertTrue(capturedScriptContents.value?.contains("OpenBurnBar is adding Codex") == true)
+        XCTAssertTrue(capturedScriptContents.value?.contains("choose a DIFFERENT Codex account") == true)
+    }
+
+    func test_cliAuthCoordinator_classifiesBrokenCodexWrapperBeforeOpeningTerminal() async throws {
+        let openedTerminal = MutableBox(false)
+        let coordinator = SwitcherCLIAuthCoordinator(
+            dependencies: .init(
+                openScriptInTerminal: { _ in
+                    openedTerminal.value = true
+                },
+                discoverAuthState: { cliType, _ in
+                    CLIAuthInfo(
+                        cliType: cliType,
+                        isInstalled: true,
+                        executablePath: "/tmp/codex",
+                        authState: .notAuthenticated,
+                        accountDescription: nil
+                    )
+                },
+                executablePathResolver: { cliType in
+                    cliType == .codex ? "/tmp/codex" : nil
+                },
+                executableHealthChecker: { _, _ in
+                    .broken("Error: spawn /tmp/vendor/codex ENOENT")
+                }
+            )
+        )
+
+        let profile = SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex"),
+            sortKey: 0
+        )
+
+        let result = await coordinator.reconnect(profile: profile)
+        guard case .failed(let message) = result else {
+            return XCTFail("Expected broken executable failure")
+        }
+
+        XCTAssertFalse(openedTerminal.value)
+        XCTAssertTrue(message.contains("native binary is missing"))
+        XCTAssertTrue(message.contains("npm uninstall -g @openai/codex"))
+    }
+
+    func test_cliAuthCoordinator_readsTerminalLogForBrokenCodexWrapper() async throws {
+        let executableURL = URL(fileURLWithPath: "/tmp/test-codex-log-broken")
+        let cleanup = makeTempExecutable(at: executableURL.path)
+        defer { cleanup() }
+
+        let coordinator = SwitcherCLIAuthCoordinator(
+            dependencies: .init(
+                openScriptInTerminal: { scriptURL in
+                    let directory = scriptURL.deletingLastPathComponent()
+                    let markerURL = directory.appendingPathComponent("exit.status")
+                    let logURL = directory.appendingPathComponent("terminal.log")
+                    try "Error: spawn /tmp/vendor/codex ENOENT".write(to: logURL, atomically: true, encoding: .utf8)
+                    try "1".write(to: markerURL, atomically: true, encoding: .utf8)
+                },
+                discoverAuthState: { cliType, configDirectory in
+                    CLIAuthInfo(
+                        cliType: cliType,
+                        isInstalled: true,
+                        executablePath: executableURL.path,
+                        authState: .notAuthenticated,
+                        configDirectory: configDirectory,
+                        accountDescription: nil
+                    )
+                },
+                executablePathResolver: { _ in executableURL.path },
+                executableHealthChecker: { _, _ in .healthy }
+            )
+        )
+
+        let profile = SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: .codex,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: "Codex"),
+            sortKey: 0
+        )
+
+        let result = await coordinator.reconnect(profile: profile)
+        guard case .failed(let message) = result else {
+            return XCTFail("Expected failed result")
+        }
+        XCTAssertTrue(message.contains("native binary is missing"))
     }
 
     func test_cliAuthCoordinator_requestsConfirmationWhenDetectedAccountChanges() async throws {

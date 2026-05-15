@@ -2,6 +2,7 @@ import FirebaseAuth
 import FirebaseCore
 import FirebaseFirestore
 import Foundation
+import OpenBurnBarCore
 
 @MainActor
 final class CLIAgentMissionDispatcher {
@@ -124,6 +125,192 @@ final class CLIAgentMissionDispatcher {
         return CLIAgentMissionObservation(registrations: [requestRegistration, eventsRegistration])
     }
 
+    // MARK: - Fan-out dispatch (Hermes Square §6.4)
+    //
+    // Writes one MissionGroupDocument parent + N child cli_agent_mission_requests
+    // linked by groupID. The Mac listener claims children independently
+    // but respects `parallelismLimit` so a single Mac doesn't spawn 5
+    // simultaneous Codex sessions. Per-child personaScopeJSON is propagated
+    // when present.
+    //
+    // Returns the groupID so the caller can subscribe to the group + every
+    // child mission for the side-by-side UI in `MissionFanOutGroup`.
+    func dispatchFanOut(
+        title: String,
+        prompt: String,
+        missionKind: String,
+        runtimeTokens: [String],
+        targetProject: String? = nil,
+        depth: String = "standard",
+        approvalMode: String = "existing_policy",
+        commandsAllowed: Bool = false,
+        fileEditsAllowed: Bool = false,
+        parallelismLimit: Int? = nil,
+        mergeStrategy: MissionGroupMergeStrategy = .pickOne,
+        personaScopeByRuntime: [String: PersonaScopeEnvelope] = [:]
+    ) async throws -> FanOutDispatchResult {
+        guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
+        guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
+        guard runtimeTokens.count >= 2 else { throw DispatchError.tooFewRuntimes }
+        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedPrompt.isEmpty else { throw DispatchError.emptyPrompt }
+
+        let groupID = "grp-\(UUID().uuidString)"
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? "Fan-out mission"
+
+        // Build child mission IDs up front so the group doc can list them.
+        let childMissionIDs: [String] = runtimeTokens.map { _ in UUID().uuidString }
+
+        // Forecast band: derive per-runtime forecast using
+        // `MissionConsoleForecastComputer`, then aggregate via
+        // `MissionGroupForecastComputer.combine`. We use the standard
+        // depth + kind defaults so callers don't need to supply a forecast.
+        let consoleKind = MissionConsoleKind(rawValue: missionKind) ?? .diligence
+        let consoleDepth = MissionConsoleDepth(rawValue: depth) ?? .standard
+        let consoleApproval = MissionConsoleApprovalMode(rawValue: approvalMode) ?? .existingPolicy
+        let childForecasts: [MissionConsoleForecast] = runtimeTokens.map { token in
+            let draft = MissionConsoleDispatchRequest(
+                title: trimmedTitle,
+                prompt: trimmedPrompt,
+                kind: consoleKind,
+                runtimeID: token,
+                targetProject: targetProject,
+                depth: consoleDepth,
+                approvalMode: consoleApproval,
+                commandsAllowed: commandsAllowed,
+                fileEditsAllowed: fileEditsAllowed
+            )
+            let runtime = MissionConsoleRuntime(
+                id: token,
+                displayName: token.capitalized,
+                callSign: String(token.prefix(3)).uppercased(),
+                provider: .factory
+            )
+            return MissionConsoleForecastComputer.forecast(for: draft, runtime: runtime)
+        }
+        let plim = max(1, parallelismLimit ?? runtimeTokens.count)
+        let aggregated = MissionGroupForecastComputer.combine(
+            children: childForecasts,
+            parallelismLimit: plim
+        )
+
+        let db = firestoreProvider()
+        let groupRef = db
+            .collection("users").document(uid)
+            .collection("mission_groups").document(groupID)
+        let batch = db.batch()
+
+        let groupPayload = MissionGroupPayloadFactory.buildGroupPayload(
+            id: groupID,
+            title: trimmedTitle,
+            prompt: trimmedPrompt,
+            missionKind: missionKind,
+            targetProject: targetProject,
+            childMissionIDs: childMissionIDs,
+            runtimeTokens: runtimeTokens,
+            parallelismLimit: plim,
+            mergeStrategy: mergeStrategy,
+            forecast: aggregated
+        )
+        batch.setData(groupPayload, forDocument: groupRef, merge: false)
+
+        // Child missions: each gets the existing payload plus group hints +
+        // optional persona scope.
+        for (index, runtimeToken) in runtimeTokens.enumerated() {
+            let missionID = childMissionIDs[index]
+            var payload = CLIAgentMissionRequestPayloadFactory.build(
+                id: missionID,
+                title: "\(trimmedTitle) · \(runtimeToken)",
+                prompt: trimmedPrompt,
+                missionKind: missionKind,
+                requestedRuntime: runtimeToken,
+                targetProject: targetProject,
+                depth: depth,
+                approvalMode: approvalMode,
+                commandsAllowed: commandsAllowed,
+                fileEditsAllowed: fileEditsAllowed
+            )
+            let overlay = MissionGroupPayloadFactory.childPayloadOverlay(
+                groupID: groupID,
+                siblingIndex: index,
+                siblingCount: runtimeTokens.count
+            )
+            for (k, v) in overlay { payload[k] = v }
+            if let envelope = personaScopeByRuntime[runtimeToken] {
+                if let scopeJSON = try? envelope.jsonString() {
+                    payload["personaScopeJSON"] = scopeJSON
+                    payload["personaID"] = envelope.personaID
+                }
+            }
+            let requestRef = db
+                .collection("users").document(uid)
+                .collection("cli_agent_mission_requests").document(missionID)
+            batch.setData(payload, forDocument: requestRef, merge: false)
+            batch.setData(
+                CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(now: Date()),
+                forDocument: requestRef.collection("events").document("000001"),
+                merge: false
+            )
+        }
+
+        try await batch.commit()
+        return FanOutDispatchResult(groupID: groupID, childMissionIDs: childMissionIDs)
+    }
+
+    struct FanOutDispatchResult: Sendable, Equatable {
+        let groupID: String
+        let childMissionIDs: [String]
+    }
+
+    // MARK: - Mission group observation
+
+    /// Subscribe to live updates of a mission group document. Returns an
+    /// observation handle the caller stores for cancellation. Hits the
+    /// `users/{uid}/mission_groups/{id}` doc.
+    func observeMissionGroup(
+        groupID: String,
+        onUpdate: @escaping @MainActor (MissionGroupDocument) -> Void,
+        onError: @escaping @MainActor (String) -> Void
+    ) throws -> CLIAgentMissionObservation {
+        guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
+        guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
+        let ref = firestoreProvider()
+            .collection("users").document(uid)
+            .collection("mission_groups").document(groupID)
+        let registration = ref.addSnapshotListener { snapshot, error in
+            if let error {
+                Task { @MainActor in onError(error.localizedDescription) }
+                return
+            }
+            guard let data = snapshot?.data() else { return }
+            guard let doc = MissionGroupDocument(documentID: groupID, data: data) else { return }
+            Task { @MainActor in onUpdate(doc) }
+        }
+        return CLIAgentMissionObservation(registrations: [registration])
+    }
+
+    /// Apply the user's merge choice. Sets `phase = merged`, records
+    /// `winnerMissionID`, and optionally writes a synthesisSummary.
+    func mergeMissionGroup(
+        groupID: String,
+        winnerMissionID: String?,
+        synthesisSummary: String?
+    ) async throws {
+        guard FirebaseApp.app() != nil else { throw DispatchError.firebaseUnavailable }
+        guard let uid = Auth.auth().currentUser?.uid else { throw DispatchError.notSignedIn }
+        var update: [String: Any] = [
+            "phase": MissionGroupPhase.merged.rawValue,
+            "updatedAt": FieldValue.serverTimestamp()
+        ]
+        if let winnerMissionID { update["winnerMissionID"] = winnerMissionID }
+        if let synthesisSummary { update["synthesisSummary"] = synthesisSummary }
+        try await firestoreProvider()
+            .collection("users").document(uid)
+            .collection("mission_groups").document(groupID)
+            .setData(update, merge: true)
+    }
+
     func respondToApproval(
         requestID: String,
         approve: Bool
@@ -149,6 +336,7 @@ final class CLIAgentMissionDispatcher {
         case firebaseUnavailable
         case notSignedIn
         case emptyPrompt
+        case tooFewRuntimes
 
         var errorDescription: String? {
             switch self {
@@ -158,6 +346,8 @@ final class CLIAgentMissionDispatcher {
                 return "Sign in before dispatching Mac agent missions."
             case .emptyPrompt:
                 return "Mission prompt was empty."
+            case .tooFewRuntimes:
+                return "Fan-out dispatch needs at least 2 runtimes."
             }
         }
     }

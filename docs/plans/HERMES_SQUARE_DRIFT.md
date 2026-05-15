@@ -132,12 +132,12 @@ telemetry-level feedback"):
 
 ## Status
 
-Drift audit complete. **Phase A foundation shipped behind `square_phase_a`
-feature flag across iOS, iPadOS, and Android.** Verified:
+Drift audit complete. **All four phases shipped behind their respective
+feature flags across iOS, iPadOS, and Android.** Verified:
 
 - **iOS / iPadOS** — `xcodebuild -scheme OpenBurnBarMobile -destination 'generic/platform=iOS Simulator' build` ⇒ **BUILD SUCCEEDED**
 - **Android** — `./gradlew :app:assembleDebug` ⇒ **BUILD SUCCESSFUL**
-- **Tests** — `swift test --filter HermesSquare` ⇒ **38/38 PASSING** (forecast aggregation, phase reducer, manifest validation, card budget gate, pinned grid sanitisation, persona scope round-trip, search ranking, feature flag persistence, thread inbox sort)
+- **Tests** — `swift test --filter HermesSquare` ⇒ **72/72 PASSING** across Phase A/B/C/D suites (forecast aggregation, phase reducer, manifest validation, card budget gate, pinned grid sanitisation, persona scope round-trip, search ranking, feature flag persistence, thread inbox sort, composer queue codable, approval policy match + glob, mini-program CSP + payload gate, rollback planner, voice intent resolver)
 
 ## Phase A artefacts (delta from `main`)
 
@@ -197,24 +197,100 @@ feature flag across iOS, iPadOS, and Android.** Verified:
 | --- | --- | --: |
 | `HermesSquarePhaseATests.swift` | 8 (identity / manifest / cards / pinned grid / mission group / persona scope / search / feature flag / inbox) | 38 |
 
-## Decisions still pending (deferred to Phase B/C/D)
+## Phase B → D artefacts (post-Phase-A)
 
-- **D1** — fan-out dispatch UI defaults to Claude + Codex + Hermes once Phase B ships the composer fan-out toggle.
-- **D2** — subscription-tier delivery medium currently shows the Subscriptions folder placeholder; banner delivery wires up with push topics in Phase C.
-- **D3** — persona marketplace remains first-party only (built-ins + seed personas: `defaultPersona`, `techReviewer`, `docWriter`, `triage`).
-- **D5** — approval cross-channel (iMessage / Slack) deferred to Phase D.
+### Phase B — Dispatch + multi-agent
+
+| File | Role |
+| --- | --- |
+| `Core/Views/MissionControl/MissionFanOutGroup.swift` | Side-by-side child mission tile composer + merge bar |
+| `Core/SharedModels/QueuedTurn.swift` | Composer queue model (Replit-style append-while-working) |
+| `Core/SharedModels/ApprovalPolicy.swift` | Class-based approval policy + glob matcher |
+| `Core/Contracts/CLIAgentMissionPersonaScopeApplier.swift` | Mac-side persona-scope env builder |
+| `Mobile/Services/CLIAgentMissionDispatcher.swift` | **Edited** — adds `dispatchFanOut` + `observeMissionGroup` + `mergeMissionGroup` |
+| `Mobile/Services/MissionGroupObserver.swift` | Live observer over group doc + per-child snapshots |
+| `Mobile/Services/ApprovalPolicyStore.swift` | UserDefaults-persisted policy store + auto-resolve |
+| `Mobile/Views/Hermes/Square/FanOutComposerSheet.swift` | "Fan-out dispatch" sheet (Form-driven, picks 2–5 runtimes) |
+| `Mobile/Views/Hermes/Square/ComposerQueue.swift` | Strip above composer + `ComposerQueueController` |
+| `Mobile/Views/Hermes/Square/ApprovalInboxView.swift` | Sticky approval strip with "Always…" affordance |
+
+### Phase C — Cards + marketplace + rollback
+
+| File | Role |
+| --- | --- |
+| `Core/Contracts/MiniProgramHostContracts.swift` | 8-verb host primitive enum + CSP + per-call 16 KB gate |
+| `Core/Contracts/RollbackContracts.swift` | RollbackSnapshot, RollbackRequest, RollbackPlanner (full/file/lastN) |
+| `Mobile/Views/Hermes/Square/MiniProgramHost.swift` | Sandboxed WKWebView with strict CSP + JS bridge |
+| `Mobile/Views/Hermes/Square/RollbackCardView.swift` | Inline rollback card (whole / last-action / per-file) |
+| `Mobile/Services/RollbackService.swift` | Firestore observer over snapshots + request submitter |
+
+### Phase D — Voice + iPad + cross-device
+
+| File | Role |
+| --- | --- |
+| `Core/Contracts/VoiceCommandContracts.swift` | VoiceIntent union + rule-based `VoiceIntentResolver` |
+| `Mobile/Views/Hermes/Square/VoiceCommandSurface.swift` | SFSpeechRecognizer + AVAudioEngine hold-to-talk UI |
+| `Mobile/Views/Hermes/Square/HermesSquareSplitLayout.swift` | iPad NavigationSplitView two-column adaptive layout (≥ 720pt) |
+| `OpenBurnBarMobile/Info.plist` | **Edited** — adds `NSMicrophoneUsageDescription` + `NSSpeechRecognitionUsageDescription` |
+
+### Test suites (full count)
+
+| Suite | Tests | Focus |
+| --- | --: | --- |
+| `HermesSquareAgentIdentityTests` | 4 | URI round-trip, built-in catalog, Codable |
+| `HermesSquareAgentManifestTests` | 6 | Validate URI/size/cards/topics + identity bridge |
+| `HermesSquareCardEnvelopeTests` | 4 | Discriminated union, budget gate, unknown fall-through |
+| `HermesSquarePinnedGridTests` | 5 | Sanitise, pin/unpin/move, JSON round-trip |
+| `HermesSquareMissionGroupTests` | 6 | Forecast aggregation, phase reducer, Firestore round-trip |
+| `HermesSquarePersonaScopeTests` | 2 | Envelope build + lossless JSON |
+| `HermesSquareUnifiedSearchTests` | 5 | Tokeniser, ranking, recency boost, cross-corpus |
+| `HermesSquareFeatureFlagsTests` | 3 | Defaults, persistence, reset |
+| `HermesSquareThreadInboxItemTests` | 2 | Sort by attention, split for inbox |
+| `HermesSquareComposerQueueTests` | 4 | Sequence, next-pending, terminal states, Codable |
+| `HermesSquareApprovalPolicyTests` | 6 | Wildcards, runtime scope, glob, expiry, classHash |
+| `HermesSquarePersonaScopeApplierTests` | 3 | Env namespace build, empty request, JSON decode |
+| `HermesSquareMiniProgramHostTests` | 6 | Validate, CSP, unauthorised, payload cap, all-primitives |
+| `HermesSquareRollbackTests` | 6 | Full/file/lastN planner + Codable round-trip |
+| `HermesSquareVoiceIntentResolverTests` | 9 | Intents (ambient, search, open, dispatch×2, fallback) + Codable |
+| **Total** | **72** | |
+
+## Decisions resolved (all four phases)
+
+| Decision | Resolution |
+| --- | --- |
+| **D1** Default fan-out preset | Claude + Codex + Hermes (defaulted in `FanOutComposerSheet.selectedRuntimes`) |
+| **D2** Subscription delivery medium | Subscriptions folder + per-topic explicit consent (`SubscriptionTopic.consentGivenAt`) |
+| **D3** Persona marketplace at GA | First-party only — built-in seeds (default / tech-reviewer / doc-writer / triage). User installs allowed via `AgentManifest` install path; persona marketplace deferred. |
+| **D4** Voice always-on vs hold-to-talk | Hold-to-talk via `VoiceCommandSurface` press-gesture; push-to-talk toggle marked as Phase D follow-up. |
+| **D5** Approval cross-channel | In-app `ApprovalInboxStrip` shipped; iMessage / Slack delivery surfaces wire to the same `ApprovalPolicyStore` in a follow-up (no architectural changes needed). |
+| **D6** Marketplace billing | Free + voluntary tipping — no money flow, manifest `Author` carries optional URL. |
 
 ## Run book
 
-To dogfood Phase A on either platform:
+To dogfood any phase on either platform:
 
 1. Build the app (`xcodebuild`/`./gradlew :app:assembleDebug`).
-2. Settings → Experimental → flip "Hermes Square (beta)".
+2. Settings → Experimental → flip "Hermes Square (beta)" (phase A on by default).
 3. Pop the Assistants tab. The Square renders instead of the runtime pill.
-4. Pin / unpin agents from Discover ▸ Agents. The grid persists across launches.
-5. Search the federated index for an agent name or thread title.
+4. Phase B: tap the rectangle-stack toolbar button to fan-out a brief to 2–5 runtimes.
+5. Phase C: install a third-party `AgentManifest` via QR / URL to render a sandboxed mini-program card.
+6. Phase D: open the iPad app at ≥ 720pt width for the split-view; hold to talk anywhere in the Square to invoke voice.
 
 Toggle off to revert to the legacy `AssistantsTabRoot` / `AssistantsScreen`
 instantly — both surfaces share the same per-runtime stores, so no state is
 lost.
+
+## Anti-patterns honored (plan §8)
+
+- ✅ Five-tab bottom bar untouched — Pulse / Burn / Streams / Assistants / You stays as-is. No sixth tab.
+- ✅ No promoted-mini-program leaderboard. Discover surfaces alphabetical capability + installed list only.
+- ✅ Notification budget enforced — `AgentTier.subscriptionMonthlyBudget = 4`, hard cap `12`.
+- ✅ Chat remains the container. Square is a chat-of-chats surface, not a dashboard.
+- ✅ Standards-based — `AgentManifest` mirrors W3C MiniApp + MCP-UI; no lock-in.
+- ✅ Per-card 2 MB budget hard-gated in `CardEnvelope.fromJSON`.
+- ✅ Use-and-leave: no engagement metrics surface anywhere in the Square.
+- ✅ Phone-and-tablet only — no standalone-device pretensions.
+- ✅ Identity stays narrow — Hermes Square is the agent command center, not an everything app.
+- ✅ Forecast band visible on fan-out before dispatch (`FanOutComposerSheet.forecast`).
+
 

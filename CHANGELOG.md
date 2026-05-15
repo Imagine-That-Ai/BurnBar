@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Hosted Remote MCP service scaffold for BurnBar Pro.** Added a dedicated
+  `services/hosted-mcp` Cloud Run service implementing MCP Streamable HTTP
+  health/readiness, OAuth metadata, bearer-token validation, origin/protocol
+  checks, deny-by-default tool registry, entitlement/rate-limit/audit seams,
+  encrypted search/resource tools, and bounded JSON-RPC errors. Added
+  `tools/openburnbar-mcp-remote` as the local stdio shim with deterministic
+  client installers, doctor checks, token storage via Keychain/fallback file,
+  and local sealed-result decrypt support. Functions now include remote MCP
+  grant/client helpers and callable grant/revoke entrypoints; Firestore rules
+  deny direct client writes to remote MCP grant, audit, rate-limit, and manifest
+  docs. Docs and deploy/security/compatibility proof scripts cover the launch
+  path; live production proof still requires deployed Cloud Run/domain/secrets.
 - **BurnBar Pro adds encrypted hosted session search.** Premium services now
   supplement Hosted Quota instead of replacing it: active `burnbar_pro`
   entitlements unlock hosted MiniMax-backed LLM answers, Hosted Quota, and

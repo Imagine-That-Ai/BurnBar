@@ -65,6 +65,20 @@ struct SwitcherOnboardingScanAddStep: View {
                 .transition(.opacity)
             }
 
+            if let latestError = discoveryService.scanErrors.last {
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                    Text(latestError)
+                        .font(DesignSystem.Typography.tiny)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundStyle(DesignSystem.Colors.warning)
+                .padding(DesignSystem.Spacing.sm)
+                .background(DesignSystem.Colors.warning.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+            }
+
             // Provider-guided sections
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
@@ -505,11 +519,14 @@ struct SwitcherOnboardingScanAddStep: View {
 
         guard enforceCap(for: kind) else { return }
         connectingCLIType = cliType
+        withAnimation(DesignSystem.Animation.snappy) {
+            capMessage = "Terminal opened for \(cliType.displayName). Finish login there; BurnBar will verify which account was added."
+        }
         defer { connectingCLIType = nil }
 
         if let profile = await discoveryService.addDifferentCLIAccount(cliType: cliType, dataStore: dataStore) {
             withAnimation(DesignSystem.Animation.snappy) {
-                capMessage = "Connected \(profile.displayName). Add another if you want a deeper reserve."
+                capMessage = "Connected \(profile.displayName) as \(profile.cliMetadata?.accountDescription ?? "a verified account"). Add another if you want a deeper reserve."
             }
         }
     }
@@ -799,13 +816,13 @@ private struct IdentityCard: View {
 
     private func quotaSummaryView(_ summary: IdentityQuotaSummary) -> some View {
         HStack(spacing: DesignSystem.Spacing.xs) {
-            quotaPill(label: "5h", value: summary.fiveHourRemaining ?? "--")
-            quotaPill(label: "Weekly", value: summary.weeklyRemaining ?? "--")
+            quotaPill(label: "5h left", value: summary.fiveHourRemaining ?? "--", reset: summary.fiveHourReset)
+            quotaPill(label: "7d left", value: summary.weeklyRemaining ?? "--", reset: summary.weeklyReset)
         }
         .padding(.top, DesignSystem.Spacing.xxs)
     }
 
-    private func quotaPill(label: String, value: String) -> some View {
+    private func quotaPill(label: String, value: String, reset: String?) -> some View {
         HStack(spacing: DesignSystem.Spacing.xxs) {
             Text(label)
                 .font(DesignSystem.Typography.monoTiny)
@@ -814,6 +831,12 @@ private struct IdentityCard: View {
             Text(value)
                 .font(DesignSystem.Typography.monoTiny)
                 .foregroundStyle(DesignSystem.Colors.success)
+            if let reset {
+                Text("· \(reset)")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+            }
         }
         .padding(.horizontal, DesignSystem.Spacing.xs)
         .padding(.vertical, 4)

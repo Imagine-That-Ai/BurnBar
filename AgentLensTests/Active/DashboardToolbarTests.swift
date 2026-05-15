@@ -1,6 +1,7 @@
 import XCTest
 import SwiftUI
 import ViewInspector
+import GRDB
 @testable import OpenBurnBar
 
 // MARK: - DashboardToolbarTests
@@ -13,14 +14,21 @@ final class DashboardToolbarTests: XCTestCase {
         isScanning: Bool = false,
         canRunRecount: Bool = true
     ) -> DashboardToolbar {
-        DashboardToolbar(
+        let settingsManager = SettingsManager(defaults: UserDefaults(suiteName: #file)!)
+        let store = try! DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false)
+        let chatController = ChatSessionController(dataStore: store, settingsManager: settingsManager)
+        return DashboardToolbar(
             navigationModel: navigationModel,
-            settingsManager: .shared,
+            settingsManager: settingsManager,
+            chatController: chatController,
+            navigationCoordinator: NavigationCoordinator(),
             totalCost: 12.34,
             totalTokens: 5678,
+            deltaPercent: nil,
+            sparkline: [],
+            isLive: false,
             isScanning: isScanning,
             canRunRecount: canRunRecount,
-            backButtonHelpText: "Back to Overview",
             onBack: {},
             onViewModeChange: { _ in },
             onScan: {},

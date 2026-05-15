@@ -1,6 +1,6 @@
 package com.openburnbar.ui.insights
 
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -9,26 +9,21 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.animation.with
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
@@ -40,6 +35,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TextSnippet
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -47,21 +43,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import kotlin.math.hypot
+import kotlin.math.roundToInt
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -70,13 +72,11 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
-import com.openburnbar.data.assistants.CLIAgentMissionEvent
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraSpacing
 import com.openburnbar.ui.theme.AuroraType
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
@@ -198,18 +198,11 @@ class MissionActivityViewModel : ViewModel() {
     }
 }
 
-// ── Honest Mission Live Capsule ──
+// ── Small Elegant Mission Orb ──
 //
-// Replaces the generic ExtendedFloatingActionButton with a custom animated
-// pill that shows actual tools, file paths, and LLM response snippets.
-//
-// Design:
-//   • Left: runtime call-sign badge in provider color
-//   • Center: tool/LLM icon + honest mono text (cross-fades on new events)
-//   • Right: mini progress ring or status dot
-//   • Background: Surface with ultra-thin material + animated gradient border
-//   • Motion: breathing scale pulse on new events, spring expand/collapse,
-//     text slides vertically with fade on content change.
+// A 56dp living orb. Circular, compact, beautiful. When idle: quiet
+// compass-like icon. When live: soft radial glow + icon + one-word label.
+// Color shifts by activity type. Detail lives in the sheet, not on the orb.
 
 @Composable
 fun MissionActivityOverlay(
@@ -218,30 +211,49 @@ fun MissionActivityOverlay(
 ) {
     val status by viewModel.status.collectAsState()
     var showMissionDetail by remember { mutableStateOf(false) }
+    var isDismissed by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.start() }
 
-    Box(modifier = modifier, contentAlignment = Alignment.BottomEnd) {
+    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
         when (val current = status) {
             InsightsViewModel.MissionStatus.Idle -> Unit
             is InsightsViewModel.MissionStatus.Tracking -> {
                 val mission = current.mission
-                if (mission.isTerminal) {
-                    MissionDoneCapsule(
-                        mission = mission,
-                        onClick = { showMissionDetail = true }
-                    )
+                if (!isDismissed) {
+                    if (mission.isTerminal) {
+                        MissionDoneOrb(
+                            onClick = { showMissionDetail = true },
+                            onDismiss = { isDismissed = true }
+                        )
+                    } else {
+                        MissionLiveOrb(
+                            mission = mission,
+                            onClick = { showMissionDetail = true },
+                            onDismiss = { isDismissed = true }
+                        )
+                    }
                 } else {
-                    MissionLiveCapsule(
-                        mission = mission,
-                        onClick = { showMissionDetail = true }
+                    val accent = if (mission.isTerminal) AuroraColors.success
+                        else missionAccentColor(mission)
+                    RestoreDot(
+                        accent = accent,
+                        onRestore = { isDismissed = false }
                     )
                 }
             }
             is InsightsViewModel.MissionStatus.Failed -> {
-                MissionAlertCapsule(
-                    onClick = { showMissionDetail = true }
-                )
+                if (!isDismissed) {
+                    MissionAlertOrb(
+                        onClick = { showMissionDetail = true },
+                        onDismiss = { isDismissed = true }
+                    )
+                } else {
+                    RestoreDot(
+                        accent = MaterialTheme.colorScheme.error,
+                        onRestore = { isDismissed = false }
+                    )
+                }
             }
             is InsightsViewModel.MissionStatus.Dispatched -> Unit
         }
@@ -259,321 +271,414 @@ fun MissionActivityOverlay(
 }
 
 @Composable
-private fun MissionLiveCapsule(
+private fun MissionLiveOrb(
     mission: CLIAgentMissionSnapshot,
     onClick: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
-    val accent = missionAccentColor(mission, isDark)
-    val frame = rememberLiveFrame(mission)
+    val accent = missionAccentColor(mission)
+    val state = rememberOrbState(mission)
+    val isActive = !mission.isTerminal
 
-    // Breathing animation triggered by event count changes
-    val eventCount = mission.events.size
-    var lastEventCount by remember { mutableIntStateOf(eventCount) }
-    var breath by remember { mutableStateOf(false) }
-    LaunchedEffect(eventCount) {
-        if (eventCount > lastEventCount) {
-            breath = true
-            delay(300)
-            breath = false
-        }
-        lastEventCount = eventCount
-    }
+    var showTooltip by remember { mutableStateOf(false) }
+    var tooltipTask by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var orbOffset by remember { mutableStateOf(IntOffset.Zero) }
+    var isDragging by remember { mutableStateOf(false) }
 
-    val transition = rememberInfiniteTransition(label = "capsule-glow")
+    val orbSize = 56.dp
+    val transition = rememberInfiniteTransition(label = "orb-pulse")
     val glowAlpha by transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.65f,
+        initialValue = 0.20f,
+        targetValue = 0.40f,
         animationSpec = infiniteRepeatable(
             animation = tween(2000, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "glow-alpha"
+        label = "orb-glow"
     )
 
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-        tonalElevation = 2.dp,
-        shadowElevation = 6.dp,
-        modifier = Modifier
-            .padding(AuroraSpacing.lg.dp)
-            .graphicsLayer {
-                scaleX = if (breath) 1.02f else 1f
-                scaleY = if (breath) 1.02f else 1f
-            }
+    Box(
+        contentAlignment = Alignment.BottomEnd,
+        modifier = Modifier.padding(AuroraSpacing.lg.dp)
     ) {
-        Box(
+        // Tooltip above the orb
+        AnimatedVisibility(
+            visible = showTooltip,
+            enter = scaleIn() + fadeIn(),
+            exit = scaleOut() + fadeOut(),
             modifier = Modifier
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            accent.copy(alpha = glowAlpha * 0.3f),
-                            Color.Transparent,
-                            accent.copy(alpha = glowAlpha * 0.15f)
-                        )
-                    )
-                )
-                .padding(horizontal = 14.dp, vertical = 11.dp)
+                .align(Alignment.TopCenter)
+                .offset(y = (-44).dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.height(IntrinsicSize.Min)
-            ) {
-                // Runtime call-sign badge
-                val callSign = runtimeCallSign(mission)
-                RuntimeBadge(callSign = callSign, accent = accent)
+            TooltipPill()
+        }
 
-                // Divider
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight(0.65f)
-                        .width(1.dp)
-                        .background(accent.copy(alpha = 0.25f))
-                )
-
-                // Honest icon + text with cross-fade
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = frame.icon,
-                        contentDescription = null,
-                        tint = accent,
-                        modifier = Modifier.size(16.dp)
-                    )
-
-                    AnimatedContent(
-                        targetState = frame.text,
-                        transitionSpec = {
-                            (slideInVertically { it / 4 } + fadeIn())
-                                .togetherWith(slideOutVertically { -it / 4 } + fadeOut())
+        // The orb with drag + tap
+        Surface(
+            shape = CircleShape,
+            color = Color.Transparent,
+            shadowElevation = 0.dp,
+            modifier = Modifier
+                .offset { orbOffset }
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = {
+                            isDragging = true
+                            showTooltip = false
+                            tooltipTask?.cancel()
                         },
-                        label = "honest-text"
-                    ) { text ->
-                        Text(
-                            text = text,
-                            style = AuroraType.tiny.copy(
-                                fontWeight = FontWeight.Medium,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        onDragEnd = {
+                            isDragging = false
+                            // Check for flick dismiss
+                            val flickThreshold = 600f
+                            val velocity = hypot(
+                                orbOffset.x.toFloat(),
+                                orbOffset.y.toFloat()
+                            )
+                            if (velocity > flickThreshold) {
+                                onDismiss()
+                            } else {
+                                orbOffset = IntOffset.Zero
+                            }
+                        },
+                        onDragCancel = {
+                            isDragging = false
+                            orbOffset = IntOffset.Zero
+                        }
+                    ) { change, dragAmount ->
+                        change.consume()
+                        orbOffset += IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt())
                     }
                 }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onLongPress = {
+                            showTooltip = true
+                            tooltipTask?.cancel()
+                            tooltipTask = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                kotlinx.coroutines.delay(2500)
+                                showTooltip = false
+                            }
+                        },
+                        onTap = { onClick() }
+                    )
+                }
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(orbSize)
+            ) {
+                // Soft glow when active
+                if (isActive) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        accent.copy(alpha = glowAlpha),
+                                        Color.Transparent
+                                    )
+                                ),
+                                CircleShape
+                            )
+                            .blur(6.dp)
+                    )
+                }
 
-                Spacer(modifier = Modifier.weight(1f, fill = false))
-
-                // Mini progress ring
-                MiniProgressRing(
-                    progress = frame.progress,
-                    color = accent,
-                    size = 18.dp
+                // Material disc
+                Box(
+                    modifier = Modifier
+                        .size(orbSize)
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                            CircleShape
+                        )
+                        .border(
+                            width = if (isActive) 1.5.dp else 0.8.dp,
+                            color = if (isActive) accent.copy(alpha = 0.75f)
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                            shape = CircleShape
+                        )
+                        .graphicsLayer {
+                            scaleX = if (isDragging) 0.92f else 1f
+                            scaleY = if (isDragging) 0.92f else 1f
+                            alpha = if (isDragging) 0.75f else 1f
+                        }
                 )
+
+                // Center content
+                if (isActive && state.label != null) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = state.icon,
+                            contentDescription = null,
+                            tint = accent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = state.label,
+                            style = AuroraType.tiny.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            ),
+                            color = accent.copy(alpha = 0.92f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                } else {
+                    Icon(
+                        imageVector = state.icon,
+                        contentDescription = null,
+                        tint = if (isActive) accent
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun MissionDoneCapsule(
-    mission: CLIAgentMissionSnapshot,
+private fun MissionDoneOrb(
     onClick: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
     val accent = AuroraColors.success
+    var orbOffset by remember { mutableStateOf(IntOffset.Zero) }
+    var isDragging by remember { mutableStateOf(false) }
+
     Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(28.dp),
-        color = accent.copy(alpha = 0.12f),
-        tonalElevation = 0.dp,
-        shadowElevation = 4.dp,
-        modifier = Modifier.padding(AuroraSpacing.lg.dp)
+        shape = CircleShape,
+        color = Color.Transparent,
+        shadowElevation = 0.dp,
+        modifier = Modifier
+            .padding(AuroraSpacing.lg.dp)
+            .offset { orbOffset }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { isDragging = true },
+                    onDragEnd = {
+                        isDragging = false
+                        val flickThreshold = 600f
+                        val velocity = hypot(
+                            orbOffset.x.toFloat(),
+                            orbOffset.y.toFloat()
+                        )
+                        if (velocity > flickThreshold) {
+                            onDismiss()
+                        } else {
+                            orbOffset = IntOffset.Zero
+                        }
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                        orbOffset = IntOffset.Zero
+                    }
+                ) { change, dragAmount ->
+                    change.consume()
+                    orbOffset += IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt())
+                }
+            }
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp)
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(56.dp)
         ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                        CircleShape
+                    )
+                    .border(
+                        width = 1.5.dp,
+                        color = accent.copy(alpha = 0.6f),
+                        shape = CircleShape
+                    )
+                    .graphicsLayer {
+                        scaleX = if (isDragging) 0.92f else 1f
+                        scaleY = if (isDragging) 0.92f else 1f
+                        alpha = if (isDragging) 0.75f else 1f
+                    }
+            )
             Icon(
                 imageVector = Icons.Filled.CheckCircle,
                 contentDescription = null,
                 tint = accent,
-                modifier = Modifier.size(18.dp)
-            )
-            Text(
-                text = mission.resultPreview?.takeIf { it.isNotBlank() }
-                    ?.let { "Done · \${it.take(24)}" }
-                    ?: "Mission done",
-                style = AuroraType.tiny.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.size(22.dp)
             )
         }
     }
 }
 
 @Composable
-private fun MissionAlertCapsule(
+private fun MissionAlertOrb(
     onClick: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
     val accent = MaterialTheme.colorScheme.error
+    var orbOffset by remember { mutableStateOf(IntOffset.Zero) }
+    var isDragging by remember { mutableStateOf(false) }
+
     Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(28.dp),
-        color = accent.copy(alpha = 0.12f),
-        tonalElevation = 0.dp,
-        shadowElevation = 4.dp,
-        modifier = Modifier.padding(AuroraSpacing.lg.dp)
+        shape = CircleShape,
+        color = Color.Transparent,
+        shadowElevation = 0.dp,
+        modifier = Modifier
+            .padding(AuroraSpacing.lg.dp)
+            .offset { orbOffset }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { isDragging = true },
+                    onDragEnd = {
+                        isDragging = false
+                        val flickThreshold = 600f
+                        val velocity = hypot(
+                            orbOffset.x.toFloat(),
+                            orbOffset.y.toFloat()
+                        )
+                        if (velocity > flickThreshold) {
+                            onDismiss()
+                        } else {
+                            orbOffset = IntOffset.Zero
+                        }
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                        orbOffset = IntOffset.Zero
+                    }
+                ) { change, dragAmount ->
+                    change.consume()
+                    orbOffset += IntOffset(dragAmount.x.roundToInt(), dragAmount.y.roundToInt())
+                }
+            }
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp)
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(56.dp)
         ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                        CircleShape
+                    )
+                    .border(
+                        width = 1.5.dp,
+                        color = accent.copy(alpha = 0.75f),
+                        shape = CircleShape
+                    )
+                    .graphicsLayer {
+                        scaleX = if (isDragging) 0.92f else 1f
+                        scaleY = if (isDragging) 0.92f else 1f
+                        alpha = if (isDragging) 0.75f else 1f
+                    }
+            )
             Icon(
                 imageVector = Icons.Filled.WarningAmber,
                 contentDescription = null,
                 tint = accent,
-                modifier = Modifier.size(18.dp)
-            )
-            Text(
-                text = "Mission alert",
-                style = AuroraType.tiny.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface
+                modifier = Modifier.size(22.dp)
             )
         }
     }
 }
 
-// ── Helpers ──
-
 @Composable
-private fun RuntimeBadge(callSign: String, accent: Color) {
-    Text(
-        text = callSign,
-        style = AuroraType.tiny.copy(
-            fontWeight = FontWeight.Bold,
-            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-        ),
-        color = accent,
+private fun TooltipPill() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .background(accent.copy(alpha = 0.14f), CircleShape)
-            .padding(horizontal = 6.dp, vertical = 3.dp)
-    )
-}
-
-@Composable
-private fun MiniProgressRing(
-    progress: Float,
-    color: Color,
-    size: androidx.compose.ui.unit.Dp,
-) {
-    val lineWidth = size / 8
-    Box(contentAlignment = Alignment.Center) {
-        androidx.compose.foundation.Canvas(modifier = Modifier.size(size)) {
-            drawCircle(
-                color = color.copy(alpha = 0.18f),
-                radius = (size.toPx() - lineWidth.toPx()) / 2,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = lineWidth.toPx())
+            .background(
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                CircleShape
             )
-            val sweep = progress * 360f
-            drawArc(
-                color = color,
-                startAngle = -90f,
-                sweepAngle = sweep,
-                useCenter = false,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(
-                    width = lineWidth.toPx(),
-                    cap = androidx.compose.ui.graphics.StrokeCap.Round
-                )
+            .border(
+                width = 0.5.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                shape = CircleShape
             )
-        }
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Filled.GraphicEq,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            modifier = Modifier.size(12.dp)
+        )
+        Text(
+            text = "Drag to move · flick to dismiss",
+            style = AuroraType.tiny.copy(
+                fontWeight = FontWeight.Medium
+            ),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            modifier = Modifier.padding(start = 4.dp)
+        )
     }
 }
 
-private data class LiveFrame(
+@Composable
+private fun RestoreDot(
+    accent: Color,
+    onRestore: () -> Unit,
+) {
+    val transition = rememberInfiniteTransition(label = "restore-pulse")
+    val pulseAlpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.75f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "restore-alpha"
+    )
+
+    IconButton(
+        onClick = onRestore,
+        modifier = Modifier
+            .padding(AuroraSpacing.lg.dp)
+            .size(24.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(12.dp)
+                .background(accent.copy(alpha = pulseAlpha), CircleShape)
+        )
+    }
+}
+
+// ── State ──
+
+private data class OrbState(
     val icon: ImageVector,
-    val text: String,
-    val progress: Float,
+    val label: String?,
 )
 
 @Composable
-private fun rememberLiveFrame(mission: CLIAgentMissionSnapshot): LiveFrame {
+private fun rememberOrbState(mission: CLIAgentMissionSnapshot): OrbState {
     val latest = mission.events.lastOrNull()
-    val progress = when (mission.displayStatus) {
-        "queued", "pending" -> 0.05f
-        "starting" -> 0.15f
-        "running" -> 0.5f
-        "waiting_for_approval" -> 0.55f
-        "completed" -> 1.0f
-        else -> 0.5f
-    }
-
-    val frame = when {
-        latest == null -> LiveFrame(
-            icon = Icons.Filled.GraphicEq,
-            text = mission.currentStepLabel,
-            progress = progress
-        )
-        latest.isError || latest.kind == "error" -> LiveFrame(
-            icon = Icons.Filled.Error,
-            text = "Error · \${latest.message.take(24)}",
-            progress = progress
-        )
-        latest.kind == "tool_call" || latest.phase == "tool_use" -> {
+    return when {
+        mission.isTerminal -> OrbState(Icons.Filled.CheckCircle, null)
+        latest == null -> OrbState(Icons.Filled.GraphicEq, null)
+        latest.isError || latest.kind == "error" ->
+            OrbState(Icons.Filled.Error, "Error")
+        latest.kind == "approval_request" || latest.phase?.contains("approval") == true ->
+            OrbState(Icons.Filled.Gavel, "Approve")
+        latest.kind in setOf("tool_call", "tool_result") || latest.phase in setOf("tool_use", "tool_result") -> {
             val name = latest.toolName?.takeIf { it.isNotBlank() } ?: latest.title ?: "Tool"
-            val detail = latest.changedFilePath?.split("/")?.last()
-                ?: latest.artifactPath?.split("/")?.last()
-                ?: latest.message.take(20)
-            LiveFrame(
-                icon = toolIcon(name),
-                text = "$name · $detail",
-                progress = progress
-            )
+            OrbState(toolIcon(name), name)
         }
-        latest.kind == "tool_result" || latest.phase == "tool_result" -> {
-            val name = latest.toolName?.takeIf { it.isNotBlank() } ?: "Tool"
-            val detail = latest.changedFilePath?.split("/")?.last() ?: "done"
-            LiveFrame(
-                icon = Icons.Filled.CheckCircle,
-                text = "$name · $detail",
-                progress = progress
-            )
-        }
-        latest.kind in setOf("llm_response", "assistant_message", "final_answer") -> {
-            val preview = latest.message.replace("\n", " ").take(28)
-            LiveFrame(
-                icon = Icons.Filled.TextSnippet,
-                text = "\"$preview\"",
-                progress = progress
-            )
-        }
-        latest.kind == "approval_request" || "approval" in latest.phase -> LiveFrame(
-            icon = Icons.Filled.Gavel,
-            text = "Approval · ${latest.message.take(24)}",
-            progress = progress
-        )
-        latest.kind == "changed_file" || latest.changedFilePath != null -> {
-            val file = latest.changedFilePath?.split("/")?.last() ?: "file"
-            LiveFrame(
-                icon = Icons.Filled.Edit,
-                text = "Edited · $file",
-                progress = progress
-            )
-        }
-        else -> LiveFrame(
-            icon = Icons.Filled.GraphicEq,
-            text = mission.currentStepLabel,
-            progress = progress
-        )
+        latest.kind in setOf("llm_response", "assistant_message", "final_answer") ->
+            OrbState(Icons.Filled.TextSnippet, "LLM")
+        else -> OrbState(Icons.Filled.GraphicEq, null)
     }
-    return frame
 }
 
 private fun toolIcon(name: String): ImageVector = when {
@@ -584,7 +689,7 @@ private fun toolIcon(name: String): ImageVector = when {
     name.contains("grep", ignoreCase = true) -> Icons.Filled.Search
     name.contains("build", ignoreCase = true) -> Icons.Filled.Build
     name.contains("test", ignoreCase = true) -> Icons.Filled.Handyman
-    else -> Icons.Filled.AutoAwesome
+    else -> Icons.Filled.Build
 }
 
 private fun runtimeCallSign(mission: CLIAgentMissionSnapshot): String {
@@ -601,17 +706,13 @@ private fun runtimeCallSign(mission: CLIAgentMissionSnapshot): String {
     }
 }
 
-private fun missionAccentColor(mission: CLIAgentMissionSnapshot, isDark: Boolean): Color {
+private fun missionAccentColor(mission: CLIAgentMissionSnapshot): Color {
     val latest = mission.events.lastOrNull()
     return when {
-        latest?.isError == true || latest?.kind == "error" ->
-            if (isDark) AuroraColors.emberDark else AuroraColors.ember
-        latest?.kind == "approval_request" || latest?.phase?.contains("approval") == true ->
-            if (isDark) AuroraColors.hermesAureateDark else AuroraColors.hermesAureate
-        latest?.kind in setOf("tool_call", "tool_result") || latest?.phase in setOf("tool_use", "tool_result") ->
-            if (isDark) AuroraColors.amberDark else AuroraColors.amber
-        latest?.kind in setOf("llm_response", "assistant_message") ->
-            if (isDark) AuroraColors.tealDark else AuroraColors.teal
-        else -> if (isDark) AuroraColors.amberDark else AuroraColors.amber
+        latest?.isError == true || latest?.kind == "error" -> AuroraColors.ember
+        latest?.kind == "approval_request" || latest?.phase?.contains("approval") == true -> AuroraColors.hermesAureate
+        latest?.kind in setOf("tool_call", "tool_result") || latest?.phase in setOf("tool_use", "tool_result") -> AuroraColors.amber
+        latest?.kind in setOf("llm_response", "assistant_message") -> AuroraColors.purple
+        else -> AuroraColors.amber
     }
 }

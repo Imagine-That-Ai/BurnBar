@@ -90,6 +90,30 @@
       ]
     },
     {
+      "collectionGroup": "remote_mcp_grants",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "clientId", "order": "ASCENDING"},
+        {"fieldPath": "revokedAt", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "remote_mcp_audit_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "eventKind", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "remote_mcp_rate_limits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "bucket", "order": "ASCENDING"},
+        {"fieldPath": "windowStart", "order": "DESCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "entitlements",
       "queryScope": "COLLECTION_GROUP",
       "fields": [

@@ -66,6 +66,25 @@ extension AccountSwitcherSettingsView {
                             )
                         }
                     }
+                    .sheet(item: $pendingCLIAddRequest) { request in
+                        CLIReserveAddSheet(
+                            request: request,
+                            quotaLookup: { provider in
+                                quotaService.snapshot(for: provider)
+                            },
+                            resultMessage: cliAddResultMessage,
+                            isLaunching: connectingProviderKey == request.providerKey,
+                            onLaunch: {
+                                Task { @MainActor in
+                                    await addConfirmedCLIAccount(request)
+                                }
+                            },
+                            onCancel: {
+                                pendingCLIAddRequest = nil
+                                cliAddResultMessage = nil
+                            }
+                        )
+                    }
                 )
             )
         )
@@ -583,8 +602,12 @@ extension AccountSwitcherSettingsView {
 
                     HStack(spacing: DesignSystem.Spacing.sm) {
                         Button {
-                            Task { @MainActor in
-                                await addAccount(for: group)
+                            if let cliType = group.cliType, cliType == .codex || cliType == .claude {
+                                beginCLIAdd(for: group)
+                            } else {
+                                Task { @MainActor in
+                                    await addAccount(for: group)
+                                }
                             }
                         } label: {
                             HStack(spacing: DesignSystem.Spacing.xs) {
@@ -674,6 +697,19 @@ extension AccountSwitcherSettingsView {
         return "One account is live. Add another to keep a reserve ready."
     }
 
+    func beginCLIAdd(for group: ProfileGroup) {
+        guard let cliType = group.cliType else { return }
+        cliAddResultMessage = nil
+        pendingCLIAddRequest = PendingCLIAddRequest(
+            id: "\(group.key)-\(UUID().uuidString)",
+            providerKey: group.key,
+            providerLabel: group.label,
+            cliType: cliType,
+            providerColor: group.color,
+            existingProfiles: group.profiles.map(\.profile)
+        )
+    }
+
     func toggleProviderExpansion(_ key: String) {
         if expandedProviderKeys.contains(key) {
             expandedProviderKeys.remove(key)
@@ -753,5 +789,202 @@ extension AccountSwitcherSettingsView {
             .navigationTitle("Edit Profile")
         }
         .frame(width: 480, height: 520)
+    }
+}
+
+private struct CLIReserveAddSheet: View {
+    let request: AccountSwitcherSettingsView.PendingCLIAddRequest
+    let quotaLookup: (AgentProvider) -> ProviderQuotaSnapshot?
+    let resultMessage: String?
+    let isLaunching: Bool
+    let onLaunch: () -> Void
+    let onCancel: () -> Void
+
+    private var provider: AgentProvider? { request.cliType.agentProvider }
+    private var existingAccounts: [String] {
+        request.existingProfiles.map { profile in
+            profile.cliMetadata?.accountDescription?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                ? profile.cliMetadata!.accountDescription!
+                : profile.displayName
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+            header
+            existingAccountsPanel
+            instructionCallout
+
+            if let resultMessage {
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                    Image(systemName: resultMessage.localizedCaseInsensitiveContains("failed") || resultMessage.localizedCaseInsensitiveContains("couldn’t") ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                        .foregroundStyle(resultMessage.localizedCaseInsensitiveContains("failed") || resultMessage.localizedCaseInsensitiveContains("couldn’t") ? DesignSystem.Colors.warning : DesignSystem.Colors.success)
+                    Text(resultMessage)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(DesignSystem.Spacing.md)
+                .background(DesignSystem.Colors.surface.opacity(0.8))
+                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+            }
+
+            Spacer()
+
+            HStack {
+                Button("Cancel") {
+                    onCancel()
+                }
+                .buttonStyle(.plain)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+
+                Spacer()
+
+                Button {
+                    onLaunch()
+                } label: {
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        if isLaunching {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .frame(width: 14, height: 14)
+                        } else {
+                            Image(systemName: "terminal")
+                        }
+                        Text("Launch \(request.providerLabel) login for \(request.nextSlotLabel)")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(request.providerColor)
+                .font(DesignSystem.Typography.caption)
+                .disabled(isLaunching)
+            }
+        }
+        .padding(DesignSystem.Spacing.xl)
+        .frame(width: 520, height: 520)
+        .background(DesignSystem.Colors.background)
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+            ProviderLogoView(provider: provider ?? .codex, size: 42, useFallbackColor: true)
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Add \(request.nextSlotLabel)")
+                    .font(DesignSystem.Typography.title)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                Text("BurnBar will create an isolated auth directory for this slot and verify the account Terminal logs in to.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var instructionCallout: some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+            Image(systemName: "person.crop.circle.badge.plus")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(request.providerColor)
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                Text("Use a different account")
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                Text("If Terminal opens already logged in as one of the accounts below, sign out or switch accounts before completing login. Otherwise BurnBar will report that the account is already added.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(request.providerColor.opacity(0.10))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(request.providerColor.opacity(0.22), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+    }
+
+    private var existingAccountsPanel: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack {
+                Text("Existing \(request.providerLabel) accounts")
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Spacer()
+                Text("\(request.existingProfiles.count) connected")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.success)
+            }
+
+            if request.existingProfiles.isEmpty {
+                Text("No accounts yet. This will become the primary \(request.providerLabel) profile.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .padding(DesignSystem.Spacing.md)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(DesignSystem.Colors.surface.opacity(0.7))
+                    .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
+            } else {
+                VStack(spacing: DesignSystem.Spacing.xs) {
+                    ForEach(Array(request.existingProfiles.enumerated()), id: \.element.id) { index, profile in
+                        existingAccountRow(profile: profile, index: index)
+                    }
+                }
+            }
+        }
+    }
+
+    private func existingAccountRow(profile: SwitcherProfileRecord, index: Int) -> some View {
+        let account = profile.cliMetadata?.accountDescription?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? profile.cliMetadata!.accountDescription!
+            : "Account label unavailable"
+        let windows = cliQuotaWindowDisplays(for: profile, quotaLookup: quotaLookup) ?? []
+
+        return VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Text(index == 0 ? "PRIMARY" : "RESERVE \(index)")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(request.providerColor)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(request.providerColor.opacity(0.12))
+                    .clipShape(Capsule())
+
+                Text(account)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Spacer()
+            }
+
+            if windows.isEmpty {
+                Text("Quota signal unavailable until the provider reports usage for this account.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            } else {
+                ForEach(windows) { window in
+                    Text("\(window.label) left \(window.remaining) · \(window.resetText)")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+        }
+        .padding(DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.surface.opacity(0.78))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
     }
 }

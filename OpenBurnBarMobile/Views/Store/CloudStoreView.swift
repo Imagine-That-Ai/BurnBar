@@ -10,7 +10,7 @@ private enum CloudStoreLegalURLs {
 private enum CloudSubscriptionDisclosure {
     static let title = "OpenBurnBar Cloud Monthly"
     static let period = "1 month, auto-renews monthly"
-    static let included = "Hosted Codex quota refresh, Conversation Backup & Resume, Full Session-Log Sync, and Hermes Remote Relay."
+    static let included = "Hosted Codex quota refresh, Conversation Backup & Resume, Full Session-Log Sync, Hermes Remote Relay, and Hosted Remote MCP."
     static let billing = "Billed by Apple. Auto-renews until canceled at least 24 hours before renewal. Manage or cancel in Settings -> Apple ID."
 }
 
@@ -72,6 +72,10 @@ struct CloudStoreView: View {
                     CloudStoreCapabilitySection(isActive: store.isActive)
                         .padding(.horizontal, MobileTheme.Spacing.lg)
                         .staggeredEntrance(delay: 0.10)
+
+                    RemoteMCPSetupCard(isActive: store.isActive)
+                        .padding(.horizontal, MobileTheme.Spacing.lg)
+                        .staggeredEntrance(delay: 0.12)
 
                     CloudStoreComparisonCard()
                         .padding(.horizontal, MobileTheme.Spacing.lg)
@@ -452,6 +456,13 @@ private struct CloudStoreCapabilitySection: View {
                     details: "Reach your Mac's Hermes from anywhere over a verified WebSocket. App Check + Apple JWS gated end-to-end.",
                     isActive: isActive
                 )
+                CloudCapabilityCard(
+                    icon: "point.3.connected.trianglepath.dotted",
+                    iconStyle: .ember,
+                    title: "Hosted Remote MCP",
+                    details: "Connect Codex, Claude Code, Droid, Kimi, Forge, or any MCP client to encrypted hosted session-memory search.",
+                    isActive: isActive
+                )
             }
         }
     }
@@ -588,6 +599,100 @@ private struct CloudCapabilityCard: View {
     }
 }
 
+// MARK: - Remote MCP Setup
+
+private struct RemoteMCPSetupCard: View {
+    let isActive: Bool
+
+    private let endpoint = "https://mcp.openburnbar.com/mcp"
+    private let stdioCommand = "openburnbar-mcp-remote mcp serve"
+    private let doctorCommand = "openburnbar mcp doctor"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            HStack(alignment: .firstTextBaseline) {
+                Label("REMOTE MCP", systemImage: "point.3.connected.trianglepath.dotted")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .tracking(1.6)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                Spacer()
+                Label(isActive ? "Included" : "BurnBar Pro", systemImage: isActive ? "checkmark.seal.fill" : "lock.fill")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(isActive ? MobileTheme.Colors.success : MobileTheme.Colors.textMuted)
+            }
+
+            Text("Give coding agents controlled access to your encrypted hosted session memory. Direct HTTP MCP uses the hosted endpoint; stdio-only clients use the local shim so decrypted snippets stay on your device.")
+                .font(MobileTheme.Typography.caption)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+                RemoteMCPCommandRow(label: "Endpoint", value: endpoint)
+                RemoteMCPCommandRow(label: "Stdio shim", value: stdioCommand)
+                RemoteMCPCommandRow(label: "Doctor", value: doctorCommand)
+            }
+
+            HStack(spacing: MobileTheme.Spacing.md) {
+                Link(destination: URL(string: "https://openburnbar.com/docs/remote-mcp")!) {
+                    Label("Setup", systemImage: "arrow.up.right.square.fill")
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.accent)
+                }
+                Link(destination: URL(string: "https://openburnbar.com/docs/remote-mcp-runbook")!) {
+                    Label("Runbook", systemImage: "stethoscope")
+                        .font(MobileTheme.Typography.caption)
+                        .foregroundStyle(MobileTheme.Colors.accent)
+                }
+            }
+        }
+        .padding(MobileTheme.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                    .fill(MobileTheme.cardGradient)
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .stroke(isActive ? AnyShapeStyle(MobileTheme.primaryGradient) : AnyShapeStyle(MobileTheme.Colors.border), lineWidth: 0.6)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Remote MCP. \(isActive ? "Included with your subscription." : "Requires BurnBar Pro.") Endpoint \(endpoint). Stdio shim \(stdioCommand). Doctor \(doctorCommand).")
+    }
+}
+
+private struct RemoteMCPCommandRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased())
+                .font(MobileTheme.Typography.tiny)
+                .fontWeight(.semibold)
+                .tracking(1.0)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+            Text(value)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.75)
+                .textSelection(.enabled)
+                .padding(.horizontal, MobileTheme.Spacing.sm)
+                .padding(.vertical, 7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                        .fill(MobileTheme.Colors.surface.opacity(0.7))
+                )
+        }
+    }
+}
+
 // MARK: - Comparison Card
 
 private struct CloudStoreComparisonCard: View {
@@ -602,7 +707,8 @@ private struct CloudStoreComparisonCard: View {
         Row(label: "Quota refresh",       free: "Local-only",       cloud: "On-demand, anywhere"),
         Row(label: "Chat backup",         free: "Metadata only",    cloud: "Full content"),
         Row(label: "Session logs",        free: "Manifest only",    cloud: "Search metadata"),
-        Row(label: "Hermes Remote Relay", free: "Local network",    cloud: "Anywhere")
+        Row(label: "Hermes Remote Relay", free: "Local network",    cloud: "Anywhere"),
+        Row(label: "Remote MCP",          free: "Local helper",     cloud: "Hosted endpoint")
     ]
 
     var body: some View {

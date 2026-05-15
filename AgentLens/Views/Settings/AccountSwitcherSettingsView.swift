@@ -28,6 +28,8 @@ struct AccountSwitcherSettingsView: View {
     @State var reconnectProfile: SwitcherProfileRecord?
     @State var expandedProviderKeys: Set<String> = []
     @State var connectingProviderKey: String?
+    @State var pendingCLIAddRequest: PendingCLIAddRequest?
+    @State var cliAddResultMessage: String?
     @State var quotaService = ProviderQuotaService.shared
     @Environment(\.colorScheme) var colorScheme
 
@@ -59,6 +61,20 @@ struct AccountSwitcherSettingsView: View {
         let previousAccount: String?
         let detectedAccount: String?
         let canSaveAsNew: Bool
+    }
+
+    struct PendingCLIAddRequest: Identifiable {
+        let id: String
+        let providerKey: String
+        let providerLabel: String
+        let cliType: SwitcherCLIProfileType
+        let providerColor: Color
+        let existingProfiles: [SwitcherProfileRecord]
+
+        var nextSlotNumber: Int { existingProfiles.count + 1 }
+        var nextSlotLabel: String {
+            nextSlotNumber == 1 ? "\(providerLabel) primary" : "\(providerLabel) reserve #\(nextSlotNumber - 1)"
+        }
     }
 
     init(dataStore: DataStore, settingsManager: SettingsManager = .shared) {

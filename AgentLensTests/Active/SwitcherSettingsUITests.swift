@@ -940,7 +940,39 @@ final class SwitcherSettingsUITests: XCTestCase {
             provider == .codex ? snapshot : nil
         }
 
-        XCTAssertEqual(text, "Quota left · 5h 74% · 7d 58%")
+        XCTAssertEqual(text, "Quota left · 5h 74% · reset unavailable · 7d 58% · reset unavailable")
+    }
+
+    func test_switcherQuotaWindowDisplays_includeResetTiming() {
+        let resetAt = Date().addingTimeInterval(60 * 60)
+        let snapshot = ProviderQuotaSnapshot(
+            provider: .codex,
+            fetchedAt: Date(),
+            source: .localCLI,
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "5h",
+                    label: "5h",
+                    windowKind: .rollingHours,
+                    usedValue: nil,
+                    limitValue: nil,
+                    remainingValue: 42,
+                    usedPercent: nil,
+                    resetsAt: resetAt,
+                    unit: .percent,
+                    isEstimated: false
+                )
+            ]
+        )
+
+        let displays = switcherQuotaWindowDisplays(snapshot: snapshot)
+
+        XCTAssertEqual(displays.first?.label, "5h")
+        XCTAssertEqual(displays.first?.remaining, "42%")
+        XCTAssertTrue(displays.first?.resetText.contains("resets") == true)
     }
 
     func test_refreshedBrowserProfileRecord_appliesDetectedChromeSessionDetails() {

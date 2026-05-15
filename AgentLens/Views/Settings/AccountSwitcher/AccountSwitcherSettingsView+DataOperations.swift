@@ -217,7 +217,13 @@ extension AccountSwitcherSettingsView {
         )
 
         let coordinator = SwitcherCLIAuthCoordinator()
-        switch await coordinator.reconnect(profile: placeholder) {
+        switch await coordinator.reconnect(
+            profile: placeholder,
+            context: SwitcherCLIAuthCoordinator.ReconnectContext(
+                providerSlotLabel: "\(group.label) reserve #\(group.profiles.count)",
+                existingAccountLabels: group.profiles.map { $0.profile.cliMetadata?.accountDescription ?? $0.profile.displayName }
+            )
+        ) {
         case .readyToPersist(let updatedProfile):
             persistNewCLIAccount(updatedProfile, for: cliType)
         case .requiresConfirmation(let updatedProfile, _, _):
@@ -229,8 +235,60 @@ extension AccountSwitcherSettingsView {
         }
     }
 
-    func persistNewCLIAccount(_ updatedProfile: SwitcherProfileRecord, for cliType: SwitcherCLIProfileType) {
-        guard let metadata = updatedProfile.cliMetadata else { return }
+    func addConfirmedCLIAccount(_ request: PendingCLIAddRequest) async {
+        connectingProviderKey = request.providerKey
+        cliAddResultMessage = "Terminal opened — finish \(request.providerLabel) login for \(request.nextSlotLabel). BurnBar will verify the detected account when Terminal exits."
+        defer {
+            connectingProviderKey = nil
+            expandedProviderKeys.insert(request.providerKey)
+        }
+
+        let placeholder = SwitcherProfileRecord(
+            targetKind: .cli,
+            cliType: request.cliType,
+            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: request.nextSlotLabel),
+            sortKey: 0
+        )
+
+        let coordinator = SwitcherCLIAuthCoordinator()
+        let result = await coordinator.reconnect(
+            profile: placeholder,
+            context: SwitcherCLIAuthCoordinator.ReconnectContext(
+                providerSlotLabel: request.nextSlotLabel,
+                existingAccountLabels: request.existingProfiles.map { $0.cliMetadata?.accountDescription ?? $0.displayName }
+            )
+        )
+
+        switch result {
+        case .readyToPersist(let updatedProfile), .requiresConfirmation(let updatedProfile, _, _):
+            guard let detected = normalizedAccountLabel(updatedProfile.cliMetadata?.accountDescription) else {
+                cliAddResultMessage = "\(request.providerLabel) login finished, but BurnBar could not identify which account was logged in. No profile was added."
+                return
+            }
+            if let duplicate = duplicateCLIProfile(cliType: request.cliType, accountDescription: detected) {
+                cliAddResultMessage = "Already added: \(duplicate.displayName) is connected to \(detected). Sign into a different \(request.providerLabel) account to create \(request.nextSlotLabel)."
+                return
+            }
+            if persistNewCLIAccount(updatedProfile, for: request.cliType) {
+                cliAddResultMessage = "Added \(request.nextSlotLabel): \(detected). Quota will refresh automatically."
+                pendingCLIAddRequest = nil
+            } else if cliAddResultMessage == nil {
+                cliAddResultMessage = "Failed to save \(request.nextSlotLabel)."
+            }
+        case .cancelled:
+            cliAddResultMessage = "\(request.providerLabel) login was cancelled. No profile was added."
+        case .failed(let message):
+            cliAddResultMessage = message
+            error = message
+        }
+
+        enrichAndReload()
+        refreshQuotaSnapshotsIfNeeded()
+    }
+
+    @discardableResult
+    func persistNewCLIAccount(_ updatedProfile: SwitcherProfileRecord, for cliType: SwitcherCLIProfileType) -> Bool {
+        guard let metadata = updatedProfile.cliMetadata else { return false }
 
         let preferredLabel: String?
         if let accountDescription = metadata.accountDescription?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -238,6 +296,12 @@ extension AccountSwitcherSettingsView {
             preferredLabel = accountDescription
         } else {
             preferredLabel = metadata.displayLabel
+        }
+
+        if let accountDescription = normalizedAccountLabel(metadata.accountDescription),
+           duplicateCLIProfile(cliType: cliType, accountDescription: accountDescription) != nil {
+            self.error = "Already added: \(accountDescription) is already connected as a \(cliType.displayName) profile."
+            return false
         }
 
         do {
@@ -259,8 +323,22 @@ extension AccountSwitcherSettingsView {
                 sortKey: 0
             )
             _ = try dataStore.switcherStore.create(newProfile)
+            return true
         } catch {
             self.error = "Failed to add \(cliType.displayName) account: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    func duplicateCLIProfile(cliType: SwitcherCLIProfileType, accountDescription: String) -> SwitcherProfileRecord? {
+        let normalizedTarget = normalizedAccountLabel(accountDescription)
+        return profiles.first { profile in
+            guard profile.targetKind == .cli,
+                  profile.cliType == cliType,
+                  let existing = normalizedAccountLabel(profile.cliMetadata?.accountDescription) else {
+                return false
+            }
+            return existing.caseInsensitiveCompare(normalizedTarget ?? "") == .orderedSame
         }
     }
 
@@ -422,6 +500,12 @@ extension AccountSwitcherSettingsView {
         }
 
         return "This profile was connected to \(previousAccount), but Terminal login detected \(detectedAccount). Replace this profile to use the newly connected account?"
+    }
+
+    func normalizedAccountLabel(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     var deleteProfileMessage: String {

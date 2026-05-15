@@ -15,6 +15,70 @@ struct BrowserServiceStatusDisplay: Identifiable, Equatable {
     }
 }
 
+struct SwitcherQuotaWindowDisplay: Identifiable, Equatable {
+    let id: String
+    let label: String
+    let remaining: String
+    let resetText: String
+
+    var inlineText: String {
+        "\(label) \(remaining) · \(resetText)"
+    }
+}
+
+func switcherQuotaWindowDisplays(
+    snapshot: ProviderQuotaSnapshot?
+) -> [SwitcherQuotaWindowDisplay] {
+    guard let snapshot else { return [] }
+
+    var displays: [SwitcherQuotaWindowDisplay] = []
+    if let hourly = snapshot.hourlyBucket {
+        displays.append(switcherQuotaWindowDisplay(bucket: hourly, fallbackLabel: "5h"))
+    }
+    if let weekly = snapshot.weeklyBucket {
+        displays.append(switcherQuotaWindowDisplay(bucket: weekly, fallbackLabel: "7d"))
+    }
+
+    if displays.isEmpty, let fallback = snapshot.primaryDisplayableBucket {
+        displays.append(switcherQuotaWindowDisplay(bucket: fallback, fallbackLabel: fallback.label))
+    }
+
+    return displays
+}
+
+func switcherQuotaWindowDisplay(
+    bucket: ProviderQuotaBucket,
+    fallbackLabel: String
+) -> SwitcherQuotaWindowDisplay {
+    let label: String
+    switch bucket.windowKind {
+    case .rollingHours:
+        label = "5h"
+    case .rollingDays, .weekly:
+        label = "7d"
+    case .daily:
+        label = "24h"
+    case .monthly:
+        label = "30d"
+    case .lifetime, .custom:
+        label = fallbackLabel
+    }
+
+    let resetText: String
+    if let reset = bucket.resetsAtDisplay {
+        resetText = "resets \(reset.relative) · \(reset.absolute)"
+    } else {
+        resetText = "reset unavailable"
+    }
+
+    return SwitcherQuotaWindowDisplay(
+        id: bucket.key,
+        label: label,
+        remaining: bucket.remainingText,
+        resetText: resetText
+    )
+}
+
 func browserServiceStatusDisplays(
     for serviceIdentities: [BrowserServiceIdentity],
     quotaLookup: (BrowserServiceProvider) -> ProviderQuotaSnapshot?
@@ -37,18 +101,27 @@ func cliQuotaStatusText(
     for profile: SwitcherProfileRecord,
     quotaLookup: (AgentProvider) -> ProviderQuotaSnapshot?
 ) -> String? {
+    guard let windows = cliQuotaWindowDisplays(for: profile, quotaLookup: quotaLookup),
+          !windows.isEmpty else {
+        return nil
+    }
+
+    return "Quota left · " + windows.map(\.inlineText).joined(separator: " · ")
+}
+
+func cliQuotaWindowDisplays(
+    for profile: SwitcherProfileRecord,
+    quotaLookup: (AgentProvider) -> ProviderQuotaSnapshot?
+) -> [SwitcherQuotaWindowDisplay]? {
     guard profile.targetKind == .cli,
           !profile.isDisabled,
           profile.cliMetadata?.accountDescription?.isEmpty == false,
           let cliType = profile.cliType,
-          let provider = cliType.agentProvider,
-          let snapshot = quotaLookup(provider) else {
+          let provider = cliType.agentProvider else {
         return nil
     }
 
-    let fiveHour = snapshot.hourlyBucket?.remainingText ?? "--"
-    let sevenDay = snapshot.weeklyBucket?.remainingText ?? "--"
-    return "Quota left · 5h \(fiveHour) · 7d \(sevenDay)"
+    return switcherQuotaWindowDisplays(snapshot: quotaLookup(provider))
 }
 
 func refreshedBrowserProfileRecord(

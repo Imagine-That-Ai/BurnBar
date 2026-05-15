@@ -23,6 +23,20 @@ enum IdentityAuthState: Equatable {
 struct IdentityQuotaSummary: Equatable {
     let fiveHourRemaining: String?
     let weeklyRemaining: String?
+    let fiveHourReset: String?
+    let weeklyReset: String?
+
+    init(
+        fiveHourRemaining: String?,
+        weeklyRemaining: String?,
+        fiveHourReset: String? = nil,
+        weeklyReset: String? = nil
+    ) {
+        self.fiveHourRemaining = fiveHourRemaining
+        self.weeklyRemaining = weeklyRemaining
+        self.fiveHourReset = fiveHourReset
+        self.weeklyReset = weeklyReset
+    }
 }
 
 /// A discovered identity that can be one-click added as a profile.
@@ -514,17 +528,29 @@ final class SwitcherDiscoveryService: ObservableObject {
         cliType: SwitcherCLIProfileType,
         dataStore: DataStore
     ) async -> SwitcherProfileRecord? {
+        let existingProfiles = ((try? dataStore.switcherStore.fetchAllProfiles()) ?? [])
+            .filter { $0.targetKind == .cli && $0.cliType == cliType }
         let placeholder = SwitcherProfileRecord(
             targetKind: .cli,
             cliType: cliType,
-            cliMetadata: SwitcherCLIProfileMetadata(displayLabel: cliType.displayName),
+            cliMetadata: SwitcherCLIProfileMetadata(
+                displayLabel: existingProfiles.isEmpty
+                    ? "\(cliType.displayName) primary"
+                    : "\(cliType.displayName) reserve #\(existingProfiles.count)"
+            ),
             sortKey: 0
         )
 
         let coordinator = SwitcherCLIAuthCoordinator()
         let updatedProfile: SwitcherProfileRecord
 
-        switch await coordinator.reconnect(profile: placeholder) {
+        switch await coordinator.reconnect(
+            profile: placeholder,
+            context: SwitcherCLIAuthCoordinator.ReconnectContext(
+                providerSlotLabel: placeholder.cliMetadata?.displayLabel,
+                existingAccountLabels: existingProfiles.map { $0.cliMetadata?.accountDescription ?? $0.displayName }
+            )
+        ) {
         case .readyToPersist(let profile), .requiresConfirmation(let profile, _, _):
             updatedProfile = profile
         case .cancelled:
@@ -535,6 +561,11 @@ final class SwitcherDiscoveryService: ObservableObject {
         }
 
         guard let metadata = updatedProfile.cliMetadata else { return nil }
+        if let detected = normalized(metadata.accountDescription),
+           existingProfiles.contains(where: { normalized($0.cliMetadata?.accountDescription)?.caseInsensitiveCompare(detected) == .orderedSame }) {
+            scanErrors.append("Already added: \(detected) is already connected as a \(cliType.displayName) profile. Sign into a different account to add another reserve.")
+            return nil
+        }
 
         let record = SwitcherProfileRecord(
             targetKind: .cli,
@@ -751,6 +782,8 @@ final class SwitcherDiscoveryService: ObservableObject {
     private func quotaSummary(from snapshot: ProviderQuotaSnapshot) -> IdentityQuotaSummary? {
         let fiveHourRemaining = snapshot.hourlyBucket?.remainingText
         let weeklyRemaining = snapshot.weeklyBucket?.remainingText
+        let fiveHourReset = snapshot.hourlyBucket?.resetsAtDisplay.map { "resets \($0.relative)" }
+        let weeklyReset = snapshot.weeklyBucket?.resetsAtDisplay.map { "resets \($0.relative)" }
 
         guard fiveHourRemaining != nil || weeklyRemaining != nil else {
             return nil
@@ -758,7 +791,9 @@ final class SwitcherDiscoveryService: ObservableObject {
 
         return IdentityQuotaSummary(
             fiveHourRemaining: fiveHourRemaining,
-            weeklyRemaining: weeklyRemaining
+            weeklyRemaining: weeklyRemaining,
+            fiveHourReset: fiveHourReset,
+            weeklyReset: weeklyReset
         )
     }
 
@@ -787,6 +822,13 @@ final class SwitcherDiscoveryService: ObservableObject {
             return "Default"
         }
     }
+
+    private func normalized(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     // MARK: - Cap Helpers
 
     /// Returns the count of identities added during this session for a given provider kind.

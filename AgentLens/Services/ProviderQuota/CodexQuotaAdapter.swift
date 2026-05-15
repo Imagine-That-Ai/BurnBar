@@ -6,9 +6,10 @@ struct CodexQuotaAdapter: ProviderQuotaAdapter {
             return oauthSnapshot
         }
 
+        let codexConfigURL = Self.codexConfigURL(context: context)
         let candidateDirectories = [
-            context.homeDirectoryURL.appendingPathComponent(".codex/sessions", isDirectory: true),
-            context.homeDirectoryURL.appendingPathComponent(".codex/archived_sessions", isDirectory: true),
+            codexConfigURL.appendingPathComponent("sessions", isDirectory: true),
+            codexConfigURL.appendingPathComponent("archived_sessions", isDirectory: true),
         ]
 
         let freshnessCutoff = Date().addingTimeInterval(-CodexQuotaScanPolicy.freshnessWindow)
@@ -83,6 +84,16 @@ struct CodexQuotaAdapter: ProviderQuotaAdapter {
     }
 
     // MARK: - Codex Helpers
+
+    static func codexConfigURL(context: ProviderQuotaAdapterContext) -> URL {
+        for key in ["CODEX_HOME", "CODEX_CONFIG_PATH"] {
+            if let raw = context.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !raw.isEmpty {
+                return URL(fileURLWithPath: raw, isDirectory: true)
+            }
+        }
+        return context.homeDirectoryURL.appendingPathComponent(".codex", isDirectory: true)
+    }
 
     enum CodexWindowRole {
         case session
@@ -168,17 +179,18 @@ private enum CodexOAuthQuotaFetcher {
     private static let authRefreshGrace: TimeInterval = 8 * 24 * 60 * 60
 
     static func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        let authURL = context.homeDirectoryURL.appendingPathComponent(".codex/auth.json")
+        let configURL = CodexQuotaAdapter.codexConfigURL(context: context)
+        let authURL = configURL.appendingPathComponent("auth.json")
         var auth = try loadAuth(from: authURL)
         if shouldNudgeCodexAuthRefresh(auth: auth) {
-            await nudgeCodexAuthRefresh(environment: context.environment, homeDirectoryURL: context.homeDirectoryURL)
+            await nudgeCodexAuthRefresh(environment: context.environment, configURL: configURL)
             auth = try loadAuth(from: authURL)
         }
 
         do {
             return try await fetchUsageSnapshot(accessToken: auth.accessToken, session: context.session)
         } catch CodexOAuthQuotaError.unauthorized {
-            await nudgeCodexAuthRefresh(environment: context.environment, homeDirectoryURL: context.homeDirectoryURL)
+            await nudgeCodexAuthRefresh(environment: context.environment, configURL: configURL)
             auth = try loadAuth(from: authURL)
             return try await fetchUsageSnapshot(accessToken: auth.accessToken, session: context.session)
         }
@@ -328,13 +340,14 @@ private enum CodexOAuthQuotaFetcher {
         return Date().timeIntervalSince(lastRefresh) > authRefreshGrace
     }
 
-    private static func nudgeCodexAuthRefresh(environment: [String: String], homeDirectoryURL: URL) async {
+    private static func nudgeCodexAuthRefresh(environment: [String: String], configURL: URL) async {
         await Task.detached(priority: .utility) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.arguments = ["codex", "login", "status"]
             var env = environment
-            env["HOME"] = homeDirectoryURL.path
+            env["CODEX_HOME"] = configURL.path
+            env["CODEX_CONFIG_PATH"] = configURL.path
             process.environment = env
             process.standardOutput = Pipe()
             process.standardError = Pipe()

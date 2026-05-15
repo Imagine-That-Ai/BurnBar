@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 import OpenBurnBarCore
 
@@ -9,6 +10,21 @@ final class SwitcherCLIAuthCoordinator {
         case requiresConfirmation(updatedProfile: SwitcherProfileRecord, previousAccount: String?, detectedAccount: String?)
         case cancelled
         case failed(String)
+    }
+
+    struct ReconnectContext: Equatable {
+        var providerSlotLabel: String?
+        var existingAccountLabels: [String]
+
+        init(providerSlotLabel: String? = nil, existingAccountLabels: [String] = []) {
+            self.providerSlotLabel = providerSlotLabel
+            self.existingAccountLabels = existingAccountLabels
+        }
+    }
+
+    enum CLIExecutableHealth: Equatable {
+        case healthy
+        case broken(String)
     }
 
     struct Dependencies {
@@ -44,6 +60,10 @@ final class SwitcherCLIAuthCoordinator {
         var executablePathResolver: @Sendable (SwitcherCLIProfileType) -> String? = { cliType in
             CLILaunchAdapter.executablePath(for: cliType)
         }
+
+        var executableHealthChecker: @Sendable (SwitcherCLIProfileType, String) async -> CLIExecutableHealth = { cliType, executablePath in
+            await SwitcherCLIAuthCoordinator.defaultExecutableHealth(cliType: cliType, executablePath: executablePath)
+        }
     }
 
     private let dependencies: Dependencies
@@ -52,7 +72,10 @@ final class SwitcherCLIAuthCoordinator {
         self.dependencies = dependencies
     }
 
-    func reconnect(profile: SwitcherProfileRecord) async -> ReconnectResult {
+    func reconnect(
+        profile: SwitcherProfileRecord,
+        context: ReconnectContext = ReconnectContext()
+    ) async -> ReconnectResult {
         guard profile.targetKind == .cli,
               let cliType = profile.cliType else {
             return .failed("Only Codex and Claude Code CLI profiles can reconnect.")
@@ -64,6 +87,17 @@ final class SwitcherCLIAuthCoordinator {
 
         guard let executablePath = dependencies.executablePathResolver(cliType) else {
             return .failed("\(cliType.displayName) is not installed.")
+        }
+
+        switch await dependencies.executableHealthChecker(cliType, executablePath) {
+        case .healthy:
+            break
+        case .broken(let detail):
+            return .failed(Self.actionableBrokenExecutableMessage(
+                cliType: cliType,
+                executablePath: executablePath,
+                detail: detail
+            ))
         }
 
         let preservesExistingAccount = normalized(profile.cliMetadata?.accountDescription) != nil
@@ -86,16 +120,19 @@ final class SwitcherCLIAuthCoordinator {
             .appendingPathComponent("openburnbar-cli-auth-\(UUID().uuidString)", isDirectory: true)
         let scriptURL = tempDirectory.appendingPathComponent("\(cliType.rawValue)-login.command")
         let markerURL = tempDirectory.appendingPathComponent("exit.status")
+        let logURL = tempDirectory.appendingPathComponent("terminal.log")
 
         do {
             try dependencies.fileManager.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
             try writeScript(
                 to: scriptURL,
                 markerURL: markerURL,
+                logURL: logURL,
                 executablePath: executablePath,
                 cliType: cliType,
                 configDirectory: configDirectory,
-                workingDirectory: profile.cliMetadata?.workingDirectory
+                workingDirectory: profile.cliMetadata?.workingDirectory,
+                context: context
             )
             try await dependencies.openScriptInTerminal(scriptURL)
         } catch {
@@ -114,8 +151,17 @@ final class SwitcherCLIAuthCoordinator {
 
         let authInfo = dependencies.discoverAuthState(cliType, configDirectory)
         guard isConnected(authInfo) else {
+            let logTail = terminalLogTail(logURL: logURL)
+            if let brokenDetail = Self.detectBrokenExecutableDetail(in: logTail) {
+                return .failed(Self.actionableBrokenExecutableMessage(
+                    cliType: cliType,
+                    executablePath: executablePath,
+                    detail: brokenDetail
+                ))
+            }
             if terminationStatus != 0 {
-                return .failed("\(cliType.displayName) login did not complete successfully.")
+                let detail = logTail.map { " Last Terminal output: \($0)" } ?? ""
+                return .failed("\(cliType.displayName) login did not complete successfully.\(detail)")
             }
             return .failed("\(cliType.displayName) login completed, but BurnBar could not verify the connected account.")
         }
@@ -209,21 +255,48 @@ final class SwitcherCLIAuthCoordinator {
     private func writeScript(
         to scriptURL: URL,
         markerURL: URL,
+        logURL: URL,
         executablePath: String,
         cliType: SwitcherCLIProfileType,
         configDirectory: String,
-        workingDirectory: String?
+        workingDirectory: String?,
+        context: ReconnectContext
     ) throws {
         let commands = loginCommands(for: cliType, executablePath: executablePath)
         let configEnvKeys = configEnvironmentKeys(for: cliType)
+        let slotLabel = normalized(context.providerSlotLabel) ?? "\(cliType.displayName) reserve"
+        let existingAccounts = context.existingAccountLabels
+            .compactMap(normalized)
+            .prefix(6)
 
         var lines: [String] = [
             "#!/bin/zsh",
             "set +e",
             "STATUS=1",
             "trap 'printf \"%s\" \"$STATUS\" > \(shellEscape(markerURL.path))' EXIT",
-            "mkdir -p \(shellEscape(configDirectory))"
+            "exec > >(tee -a \(shellEscape(logURL.path))) 2>&1",
+            "mkdir -p \(shellEscape(configDirectory))",
+            "clear",
+            "echo 'OpenBurnBar is adding \(shellSingleLine(slotLabel))'",
+            "echo 'Provider: \(shellSingleLine(cliType.displayName))'",
+            "echo 'Auth directory: \(shellSingleLine(configDirectory))'",
+            "echo ''",
+            "echo 'Important: choose a DIFFERENT \(shellSingleLine(cliType.displayName)) account if you want to add a new reserve.'"
         ]
+
+        if !existingAccounts.isEmpty {
+            lines.append("echo 'Already added accounts:'")
+            for account in existingAccounts {
+                lines.append("echo '  - \(shellSingleLine(account))'")
+            }
+        }
+
+        lines.append(contentsOf: [
+            "echo ''",
+            "echo 'When the login finishes, close this Terminal window or let it exit. BurnBar will verify the detected account.'",
+            "echo '------------------------------------------------------------'",
+            "echo ''"
+        ])
 
         if let workingDirectory = normalized(workingDirectory) {
             lines.append("cd \(shellEscape(workingDirectory)) || exit 1")
@@ -234,17 +307,28 @@ final class SwitcherCLIAuthCoordinator {
         }
 
         if let first = commands.first {
+            lines.append("echo 'Running: \(shellSingleLine(first))'")
             lines.append(first)
             lines.append("STATUS=$?")
         }
 
         if commands.count > 1, let second = commands.dropFirst().first {
             lines.append("if [[ $STATUS -ne 0 && $STATUS -ne 130 && $STATUS -ne 143 ]]; then")
+            lines.append("  echo ''")
+            lines.append("  echo 'First login command failed; trying fallback command.'")
+            lines.append("  echo 'Running: \(shellSingleLine(second))'")
             lines.append("  \(second)")
             lines.append("  STATUS=$?")
             lines.append("fi")
         }
 
+        lines.append("if [[ $STATUS -ne 0 && $STATUS -ne 130 && $STATUS -ne 143 ]]; then")
+        lines.append("  echo ''")
+        lines.append("  echo 'OpenBurnBar could not complete \(shellSingleLine(cliType.displayName)) login.'")
+        lines.append("  echo 'If this says spawn ENOENT or macOS blocked malware, reinstall \(shellSingleLine(cliType.displayName)) and retry.'")
+        lines.append("fi")
+        lines.append("echo ''")
+        lines.append("echo 'Login command exited with status:' $STATUS")
         lines.append("exit $STATUS")
 
         let contents = lines.joined(separator: "\n")
@@ -303,5 +387,118 @@ final class SwitcherCLIAuthCoordinator {
 
     func shellEscape(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
+    }
+
+    func terminalLogTail(logURL: URL, maxBytes: Int = 8_192) -> String? {
+        guard let data = dependencies.fileManager.contents(atPath: logURL.path), !data.isEmpty else {
+            return nil
+        }
+        let tailData: Data
+        if data.count > maxBytes {
+            tailData = data.suffix(maxBytes)
+        } else {
+            tailData = data
+        }
+        guard let text = String(data: tailData, encoding: .utf8) else { return nil }
+        let lines = text
+            .split(whereSeparator: \.isNewline)
+            .suffix(12)
+            .map(String.init)
+        let redacted = lines.joined(separator: " ")
+            .replacingOccurrences(of: #"Bearer\s+[A-Za-z0-9._\-]+"#, with: "Bearer [redacted]", options: .regularExpression)
+            .replacingOccurrences(of: #"sk-[A-Za-z0-9_\-]+"#, with: "sk-[redacted]", options: .regularExpression)
+        return redacted.isEmpty ? nil : redacted
+    }
+
+    private func shellSingleLine(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "'", with: "'\"'\"'")
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+    }
+
+    nonisolated private static func defaultExecutableHealth(
+        cliType: SwitcherCLIProfileType,
+        executablePath: String
+    ) async -> CLIExecutableHealth {
+        await Task.detached(priority: .utility) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executablePath)
+            process.arguments = ["--version"]
+            process.standardInput = FileHandle.nullDevice
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+
+            do {
+                try process.run()
+            } catch {
+                return .broken(error.localizedDescription)
+            }
+
+            let deadline = Date().addingTimeInterval(3)
+            while process.isRunning && Date() < deadline {
+                Darwin.usleep(50_000)
+            }
+            if process.isRunning {
+                process.terminate()
+                return .healthy
+            }
+            process.waitUntilExit()
+
+            let output = [
+                String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8),
+                String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+            ]
+                .compactMap { $0 }
+                .joined(separator: "\n")
+
+            if let detail = detectBrokenExecutableDetail(in: output) {
+                return .broken(detail)
+            }
+
+            // Some CLIs return non-zero for --version under unusual install
+            // modes, but only known wrapper/native-binary failures block login.
+            _ = cliType
+            return .healthy
+        }.value
+    }
+
+    nonisolated static func detectBrokenExecutableDetail(in output: String?) -> String? {
+        guard let output, !output.isEmpty else { return nil }
+        let lowercased = output.lowercased()
+        if lowercased.contains(" enoent")
+            || lowercased.contains("code: 'enoent'")
+            || lowercased.contains("spawn ") && lowercased.contains("enoent")
+            || lowercased.contains("malware blocked") {
+            return output
+        }
+        return nil
+    }
+
+    nonisolated static func actionableBrokenExecutableMessage(
+        cliType: SwitcherCLIProfileType,
+        executablePath: String,
+        detail: String
+    ) -> String {
+        let installHint: String
+        switch cliType {
+        case .codex:
+            installHint = "Reinstall Codex with `npm uninstall -g @openai/codex && npm install -g @openai/codex`, then retry Add Account."
+        case .claude:
+            installHint = "Reinstall Claude Code from its official installer or npm package, then retry Add Account."
+        case .opencode:
+            installHint = "Reinstall OpenCode, then retry Add Account."
+        }
+
+        let reason: String
+        if detail.localizedCaseInsensitiveContains("malware") {
+            reason = "macOS blocked or removed the native \(cliType.displayName) binary."
+        } else {
+            reason = "the \(cliType.displayName) wrapper is present, but its native binary is missing."
+        }
+
+        return "\(cliType.displayName) cannot open its login prompt because \(reason) Resolved wrapper: \(executablePath). \(installHint)"
     }
 }

@@ -1134,6 +1134,60 @@ test("burnbar pro cloud search index writes are server-only while vault wrappers
   );
 });
 
+test("remote MCP client grant audit and rate-limit docs are server-written only", async () => {
+  const db = authedDb("mcp-user");
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/mcp-user/remote_mcp_clients/client-1"), {
+      clientId: "client-1",
+      displayName: "Codex",
+      clientType: "codex",
+      allowedScopes: ["search:read", "conversation:read"],
+      grantMode: "local_decrypt_shim",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    });
+    await setDoc(doc(context.firestore(), "users/mcp-user/remote_mcp_audit_events/event-1"), {
+      eventKind: "tools_call",
+      hashedClientID: "abc",
+      createdAt: serverTimestamp(),
+      schemaVersion: 1,
+    });
+  });
+
+  await assertSucceeds(getDoc(doc(db, "users/mcp-user/remote_mcp_clients/client-1")));
+  await assertSucceeds(getDoc(doc(db, "users/mcp-user/remote_mcp_audit_events/event-1")));
+
+  await assertFails(
+    setDoc(doc(db, "users/mcp-user/remote_mcp_clients/client-2"), {
+      clientId: "client-2",
+      displayName: "Self-written client",
+      allowedScopes: ["search:read"],
+      grantMode: "local_decrypt_shim",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/mcp-user/remote_mcp_grants/grant-1"), {
+      refreshTokenHash: "hash",
+      clientId: "client-1",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/mcp-user/remote_mcp_audit_events/event-2"), {
+      eventKind: "client-written",
+      query: "plaintext query should not be client logged",
+    })
+  );
+  await assertFails(
+    setDoc(doc(db, "users/mcp-user/remote_mcp_rate_limits/client-search-window"), {
+      bucket: "search:standard",
+      count: 1,
+    })
+  );
+  await assertFails(getDoc(doc(authedDb("other-user"), "users/mcp-user/remote_mcp_clients/client-1")));
+});
+
 test("owners can read derived project summaries but clients cannot write them", async () => {
   const ownerDb = authedDb("erin");
   const otherDb = authedDb("mallory");

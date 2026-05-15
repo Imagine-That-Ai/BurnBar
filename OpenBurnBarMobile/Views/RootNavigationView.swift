@@ -85,10 +85,6 @@ struct RootNavigationView: View {
                 detail
             }
 
-            MobileMissionActivityOverlay(center: missionActivityCenter)
-                .padding(.trailing, 24)
-                .padding(.bottom, 24)
-                .zIndex(8)
         }
         .environment(\.motionStore, motionStore)
         .task { missionActivityCenter.start() }

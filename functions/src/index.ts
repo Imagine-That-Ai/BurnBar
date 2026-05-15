@@ -105,6 +105,8 @@ import {
 import { seedAndroidDemoAccount as seedAndroidDemoAccountForUser } from "./demoSeed.js";
 import { latestRouterRundown } from "./routerRundown.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
+import { issueRemoteMcpGrantForSignedInUser } from "./remoteMcpOAuth.js";
+import { revokeRemoteMcpClient as revokeRemoteMcpClientDoc } from "./remoteMcpGrant.js";
 export { insightsHostedAnswer } from "./insightsHostedAnswer.js";
 
 // ---------------------------------------------------------------------------
@@ -3232,6 +3234,69 @@ export const searchEncryptedConversationIndex = onCall(
       if (hits.length >= limit) break;
     }
     return { hits };
+  }
+);
+
+export const issueRemoteMcpGrant = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 50,
+  },
+  async (
+    request: CallableRequest<{
+      clientId?: unknown;
+      displayName?: unknown;
+      clientType?: unknown;
+      installFingerprint?: unknown;
+      scopes?: unknown;
+      grantMode?: unknown;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before connecting OpenBurnBar MCP.");
+    enforceAuthAndAppCheck(request, uid);
+    await assertActiveBurnBarProEntitlement(uid);
+    const tokenSecret = process.env.REMOTE_MCP_TOKEN_HMAC_SECRET;
+    if (!tokenSecret) {
+      throw new HttpsError("failed-precondition", "Remote MCP token signing secret is not configured.");
+    }
+    const scopes = Array.isArray(request.data.scopes)
+      ? request.data.scopes.filter((scope): scope is "search:read" | "conversation:read" | "usage:read" | "index:status" =>
+        ["search:read", "conversation:read", "usage:read", "index:status"].includes(String(scope))
+      )
+      : undefined;
+    const grantModeRaw = typeof request.data.grantMode === "string" ? request.data.grantMode : "local_decrypt_shim";
+    const grantMode = grantModeRaw === "sealed_only" || grantModeRaw === "remote_readable_explicit_opt_in"
+      ? grantModeRaw
+      : "local_decrypt_shim";
+    return issueRemoteMcpGrantForSignedInUser(db, uid, {
+      clientId: boundedTrimmedString(request.data.clientId, "clientId", 160, false),
+      displayName: boundedTrimmedString(request.data.displayName, "displayName", 120, false),
+      clientType: boundedTrimmedString(request.data.clientType, "clientType", 80, false),
+      installFingerprint: boundedTrimmedString(request.data.installFingerprint, "installFingerprint", 512, false),
+      scopes,
+      grantMode,
+      entitlementFamily: "burnbar_pro",
+      tokenSecret,
+      audience: process.env.REMOTE_MCP_AUDIENCE ?? "https://mcp.openburnbar.com/mcp",
+    });
+  }
+);
+
+export const revokeRemoteMcpClient = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 50,
+  },
+  async (request: CallableRequest<{ clientId?: unknown }>) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before revoking OpenBurnBar MCP clients.");
+    enforceAuthAndAppCheck(request, uid);
+    const clientId = boundedTrimmedString(request.data.clientId, "clientId", 160, true)!;
+    await revokeRemoteMcpClientDoc(db, uid, clientId);
+    return { ok: true, clientId };
   }
 );
 

@@ -45,6 +45,10 @@ struct HermesSquareRoot: View {
     @State private var navTarget: NavTarget?
     @State private var isShowingDiscover: Bool = false
     @State private var isShowingSubscriptions: Bool = false
+    @State private var isShowingFanOut: Bool = false
+    @State private var activeGroupObserver = MissionGroupObserver()
+    @State private var approvalPolicyStore = ApprovalPolicyStore.shared
+    private var flags: HermesSquareFeatureFlags { HermesSquareFeatureFlags.shared }
 
     private var pinnedGrid: PinnedAgentGridConfig {
         PinnedAgentGridConfig.from(jsonString: pinnedJSON)
@@ -81,6 +85,38 @@ struct HermesSquareRoot: View {
                         searchResults
                             .padding(.horizontal, 16)
                     } else {
+                        // Phase B approval inbox — shows pending approvals
+                        // at the top of the inbox until handled.
+                        if flags.phaseB {
+                            ApprovalInboxStrip(
+                                asks: missionHost.snapshot.approvalAsks,
+                                onApprove: { ask in
+                                    Task { await missionHost.respond(to: ask, approve: true) }
+                                },
+                                onDeny: { ask in
+                                    Task { await missionHost.respond(to: ask, approve: false) }
+                                },
+                                onApproveAlways: { ask in recordApprovalPolicy(ask, decision: .approve) },
+                                onDenyAlways: { ask in recordApprovalPolicy(ask, decision: .deny) }
+                            )
+                            .padding(.horizontal, 16)
+                        }
+
+                        // Phase B fan-out group card — when an observer is
+                        // active, render the side-by-side child tiles.
+                        if flags.phaseB, let group = activeGroupObserver.group {
+                            let tiles = childTilesForActiveGroup(group)
+                            MissionFanOutGroupCard(
+                                group: group,
+                                childTiles: tiles,
+                                onMerge: { action in
+                                    Task { await activeGroupObserver.applyMerge(action) }
+                                },
+                                onOpenChild: { _ in /* drilldown deferred */ }
+                            )
+                            .padding(.horizontal, 16)
+                        }
+
                         pinnedGridSection
                             .padding(.horizontal, 16)
 
@@ -121,6 +157,26 @@ struct HermesSquareRoot: View {
                 onPin: { uri in pin(uri) },
                 onUnpin: { uri in unpin(uri) }
             )
+        }
+        .sheet(isPresented: $isShowingFanOut) {
+            FanOutComposerSheet(
+                registry: registry,
+                onDispatched: { result in
+                    activeGroupObserver.start(groupID: result.groupID)
+                }
+            )
+        }
+        .toolbar {
+            if flags.phaseB {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isShowingFanOut = true
+                    } label: {
+                        Image(systemName: "rectangle.stack.badge.plus")
+                    }
+                    .accessibilityLabel("Fan-out dispatch")
+                }
+            }
         }
         .sheet(isPresented: $isShowingSubscriptions) {
             HermesSquareSubscriptionsFolder(registry: registry)
@@ -442,6 +498,53 @@ struct HermesSquareRoot: View {
     enum NavTarget: Hashable {
         case brandZone(String)        // agent URI
         case runtimeNative(AssistantRuntimeID)
+    }
+
+    // MARK: - Phase B helpers
+
+    private func recordApprovalPolicy(_ ask: MissionConsoleApprovalAsk, decision: ApprovalPolicy.Decision) {
+        // Phase B: derive a class hash from the ask metadata. Phase B is
+        // intentionally conservative — we class by (runtime, decision)
+        // only when the ask doesn't carry richer fields. Approve the ask
+        // immediately too.
+        let policy = ApprovalPolicy(
+            missionKind: nil,
+            toolName: nil,
+            fileGlob: nil,
+            runtimeID: ask.runtimeID,
+            targetProject: nil,
+            decision: decision,
+            displayLabel: "\(decision == .approve ? "Always approve" : "Always deny") for \(ask.runtimeDisplayLabel)"
+        )
+        approvalPolicyStore.record(policy)
+        Task {
+            await missionHost.respond(to: ask, approve: decision == .approve)
+        }
+    }
+
+    private func childTilesForActiveGroup(_ group: MissionGroupDocument) -> [MissionConsoleActiveTile] {
+        let snapshot = missionHost.snapshot
+        let knownByID = Dictionary(uniqueKeysWithValues: snapshot.activeTiles.map { ($0.id, $0) })
+        return group.childMissionIDs.enumerated().map { (idx, id) -> MissionConsoleActiveTile in
+            if let existing = knownByID[id] { return existing }
+            // Fall back to a synthetic tile until the mission console host
+            // observes this mission.
+            let runtimeToken = idx < group.runtimeTokens.count ? group.runtimeTokens[idx] : nil
+            return MissionConsoleActiveTile(
+                id: id,
+                title: "\(group.title) · \(runtimeToken ?? "?")",
+                runtimeID: runtimeToken,
+                runtimeDisplayLabel: (runtimeToken ?? "auto").capitalized,
+                phase: .queued,
+                phaseDetail: "Queued in group",
+                currentToolName: nil,
+                lastEventSnippet: nil,
+                startedAt: group.createdAt,
+                burnSoFarUSD: 0,
+                progressFraction: nil,
+                approvalPending: false
+            )
+        }
     }
 
     @ViewBuilder

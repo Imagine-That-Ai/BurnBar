@@ -5,9 +5,10 @@ BurnBar Pro cloud-services bundle.
 
 The short version: Hosted Quota is not being replaced. BurnBar Pro adds more
 premium services on top of it: Hosted Quota, hosted MiniMax-backed Intelligence
-Brief answers, and encrypted searchable hosted session logs. Existing Hosted
-Quota users remain compatible through the legacy entitlement; new bundled
-premium access uses `burnbar_pro`.
+Brief answers, encrypted searchable hosted session logs, and hosted Remote MCP
+access to that sealed session memory. Existing Hosted Quota users remain
+compatible through the legacy entitlement; new bundled premium access uses
+`burnbar_pro`.
 
 There is one important compliance distinction:
 
@@ -68,6 +69,10 @@ BurnBar Pro supplements Hosted Quota with two additional hosted services:
   callable validation path. Firestore rules deny direct client writes to
   `cloud_search_*`, while still allowing users to read and delete their own
   mirrored data.
+- **Hosted Remote MCP.** BurnBar Pro users can connect coding agents to
+  `https://mcp.openburnbar.com/mcp` or use the local `openburnbar-mcp-remote`
+  stdio shim. MCP access uses OpenBurnBar-issued short-lived bearer tokens,
+  not Firebase ID tokens, and defaults to local device-side decrypt.
 
 The cloud search index is intentionally not a plaintext Firestore transcript
 database. It is a premium, encrypted mirror for signed-in users who want their

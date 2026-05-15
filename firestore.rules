@@ -7,6 +7,7 @@ rules_version = '2';
 // - users/{uid}/pi_agent_connections, pi_agent_pairings, pi_agent_relay_requests, pi_agent_audit_events
 // - users/{uid}/provider_account_device_links, runtime_connection_preferences
 // - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
+// - users/{uid}/cloud_search_index_manifest, remote_mcp_clients, remote_mcp_grants, remote_mcp_audit_events, remote_mcp_rate_limits
 // - users/{uid}/cli_sessions, cli_agent_mission_requests
 // - users/{uid}/escrow_devices, escrow_public_keys, escrow_grants, escrow_envelopes, escrow_audit_events
 // - server-only: provider_account_secret_refs, users/{uid}/_rate_limits, users/{uid}/rollup_jobs
@@ -997,6 +998,11 @@ service cloud.firestore {
       allow delete: if ownsUserNamespace(userId);
     }
 
+    match /users/{userId}/cloud_search_index_manifest/{manifestId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
     match /users/{userId}/cloud_vault_key_wrappers/{wrapperId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableHostedCloudBackup(userId)
@@ -1287,6 +1293,24 @@ service cloud.firestore {
     }
 
     match /users/{userId}/_rate_limits/{limitId} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/remote_mcp_clients/{clientId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/remote_mcp_grants/{grantId} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/remote_mcp_audit_events/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/remote_mcp_rate_limits/{limitId} {
       allow read, write: if false;
     }
 

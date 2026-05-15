@@ -12,8 +12,16 @@ import OpenBurnBarCore
 // pulses gently behind the orb. Color speaks: amber for tooling,
 // whimsy for LLM streams, hermes-aureate for approvals, ember for errors.
 //
-// Drag: shrinks to 0.92, dims to 0.7, ring pauses. Spring snap on release.
-// Tap: opens the Mission Console sheet where full detail lives.
+// Interactions:
+//   • Tap          → opens Mission Console sheet
+//   • Press & hold → elegant tooltip fades in above the orb:
+//                    "Drag to move · flick to dismiss"
+//   • Drag         → orb shrinks to 0.92, dims to 0.7, ring pauses.
+//                    Spring snap on release within bounds.
+//   • Flick        → rapid drag release with velocity > 600 pt/s
+//                    sends the orb flying off-screen in that direction,
+//                    then hidden. A tiny 12 pt restore dot appears at
+//                    the nearest edge — tap to summon the orb back.
 //
 // Hidden when Chart Studio is fullscreen.
 
@@ -26,23 +34,46 @@ struct MobileMissionFAB: View {
     @State private var dragOffset: CGSize = .zero
     @State private var isDragging = false
     @State private var hasAppeared = false
+    @State private var isDismissed = false
+    @State private var showTooltip = false
+    @State private var tooltipTask: Task<Void, Never>?
+    @State private var flickExitPosition: CGSize = .zero
     @State private var orbitRotation: Double = 0
     @State private var glowPulse: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let fabSize: CGFloat = 56
     private let orbitSize: CGFloat = 64
+    private let flickVelocityThreshold: CGFloat = 600
+    private let tooltipHoldDuration: Double = 0.45
 
     var body: some View {
         GeometryReader { geo in
             let safeArea = geo.safeAreaInsets
             let bounds = geo.size
             ZStack {
-                if isVisible {
+                if isVisible && !isDismissed {
+                    tooltipOverlay
+                        .position(
+                            x: positionFor(bounds: bounds, safeArea: safeArea).x,
+                            y: positionFor(bounds: bounds, safeArea: safeArea).y - 42
+                        )
+                        .opacity(showTooltip ? 1 : 0)
+                        .scaleEffect(showTooltip ? 1 : 0.85)
+                        .animation(.spring(response: 0.30, dampingFraction: 0.72), value: showTooltip)
+
                     orbButton
-                        .position(positionFor(bounds: bounds, safeArea: safeArea))
-                        .gesture(dragGesture(bounds: bounds, safeArea: safeArea))
+                        .position(flickPositionFor(bounds: bounds, safeArea: safeArea))
+                        .gesture(
+                            combinedGesture(bounds: bounds, safeArea: safeArea)
+                        )
                         .transition(.scale(scale: 0.6).combined(with: .opacity))
+                }
+
+                if isDismissed && isVisible {
+                    restoreDot
+                        .position(restoreDotPosition(bounds: bounds, safeArea: safeArea))
+                        .transition(.scale(scale: 0.4).combined(with: .opacity))
                 }
             }
             .ignoresSafeArea(.keyboard)
@@ -53,6 +84,30 @@ struct MobileMissionFAB: View {
             hasAppeared = true
             startOrbitalAnimation()
         }
+    }
+
+    // MARK: - Tooltip
+
+    private var tooltipOverlay: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "hand.tap.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+            Text("Drag to move · flick to dismiss")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Capsule()
+                        .stroke(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.5), lineWidth: 0.5)
+                )
+        )
+        .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 3)
     }
 
     // MARK: - The Orb
@@ -80,35 +135,41 @@ struct MobileMissionFAB: View {
                 }
 
                 // Main disc
-                Circle()
-                    .fill(.ultraThinMaterial)
-                    .frame(width: fabSize, height: fabSize)
-                    .overlay(
+                ZStack {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: fabSize, height: fabSize)
+                        .shadow(
+                            color: state.isActive
+                                ? state.accent.opacity(0.25)
+                                : Color.black.opacity(0.25),
+                            radius: state.isActive ? 16 : 10,
+                            x: 0,
+                            y: state.isActive ? 6 : 4
+                        )
+
+                    if state.isActive {
                         Circle()
                             .stroke(
-                                state.isActive
-                                    ? AngularGradient(
-                                        gradient: Gradient(colors: [
-                                            state.accent.opacity(0.9),
-                                            state.accent.opacity(0.3),
-                                            state.accent.opacity(0.9)
-                                        ]),
-                                        center: .center,
-                                        startAngle: .degrees(-90),
-                                        endAngle: .degrees(270)
-                                    )
-                                    : Color.white.opacity(0.12),
-                                lineWidth: state.isActive ? 1.5 : 0.8
+                                AngularGradient(
+                                    gradient: Gradient(colors: [
+                                        state.accent.opacity(0.9),
+                                        state.accent.opacity(0.3),
+                                        state.accent.opacity(0.9)
+                                    ]),
+                                    center: .center,
+                                    startAngle: .degrees(-90),
+                                    endAngle: .degrees(270)
+                                ),
+                                lineWidth: 1.5
                             )
-                    )
-                    .shadow(
-                        color: state.isActive
-                            ? state.accent.opacity(0.25)
-                            : Color.black.opacity(0.25),
-                        radius: state.isActive ? 16 : 10,
-                        x: 0,
-                        y: state.isActive ? 6 : 4
-                    )
+                            .frame(width: fabSize, height: fabSize)
+                    } else {
+                        Circle()
+                            .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+                            .frame(width: fabSize, height: fabSize)
+                    }
+                }
 
                 // Orbiting dashed ring when active
                 if state.isActive && !isDragging && !reduceMotion {
@@ -170,6 +231,159 @@ struct MobileMissionFAB: View {
             .rotationEffect(.degrees(orbitRotation))
     }
 
+    // MARK: - Restore dot
+
+    private var restoreDot: some View {
+        let state = currentState
+        return Button {
+            withAnimation(.spring(response: 0.40, dampingFraction: 0.78)) {
+                isDismissed = false
+                flickExitPosition = .zero
+            }
+        } label: {
+            Circle()
+                .fill(state.accent.opacity(0.55))
+                .frame(width: 12, height: 12)
+                .shadow(color: state.accent.opacity(0.30), radius: 6, x: 0, y: 2)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Restore Mission Console orb")
+    }
+
+    // MARK: - Combined gesture (drag + long-press tooltip)
+
+    private func combinedGesture(bounds: CGSize, safeArea: EdgeInsets) -> some Gesture {
+        SimultaneousGesture(
+            dragGesture(bounds: bounds, safeArea: safeArea),
+            LongPressGesture(minimumDuration: tooltipHoldDuration)
+                .onEnded { _ in
+                    guard !isDragging else { return }
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) {
+                        showTooltip = true
+                    }
+                    // Auto-hide after 2.5s if finger is still down
+                    tooltipTask?.cancel()
+                    tooltipTask = Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 2_500_000_000)
+                        withAnimation(.easeOut(duration: 0.20)) {
+                            showTooltip = false
+                        }
+                    }
+                }
+        )
+        .onEnded { _ in
+            tooltipTask?.cancel()
+            withAnimation(.easeOut(duration: 0.20)) {
+                showTooltip = false
+            }
+        }
+    }
+
+    // MARK: - Drag
+
+    private func dragGesture(bounds: CGSize, safeArea: EdgeInsets) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                isDragging = true
+                showTooltip = false
+                tooltipTask?.cancel()
+                dragOffset = value.translation
+            }
+            .onEnded { value in
+                isDragging = false
+
+                // Flick-to-dismiss: high velocity release
+                let velocity = hypot(value.velocity.width, value.velocity.height)
+                if velocity > flickVelocityThreshold {
+                    dismissWithFlick(velocity: value.velocity, bounds: bounds, safeArea: safeArea)
+                    return
+                }
+
+                // Normal snap
+                let newOffset = clampedOffset(
+                    candidate: CGSize(
+                        width: anchorOffset.wrappedValue.width + value.translation.width,
+                        height: anchorOffset.wrappedValue.height + value.translation.height
+                    ),
+                    bounds: bounds,
+                    safeArea: safeArea
+                )
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+                    anchorOffset.wrappedValue = newOffset
+                    dragOffset = .zero
+                }
+            }
+    }
+
+    private func dismissWithFlick(velocity: CGSize, bounds: CGSize, safeArea: EdgeInsets) {
+        let speed = hypot(velocity.width, velocity.height)
+        let unitX = velocity.width / speed
+        let unitY = velocity.height / speed
+
+        // Fly off-screen in the flick direction
+        let exitDx = unitX * bounds.width * 0.6
+        let exitDy = unitY * bounds.height * 0.6
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
+            flickExitPosition = CGSize(width: exitDx, height: exitDy)
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            withAnimation(.easeOut(duration: 0.15)) {
+                isDismissed = true
+                flickExitPosition = .zero
+                dragOffset = .zero
+            }
+        }
+    }
+
+    // MARK: - Position math
+
+    private func positionFor(bounds: CGSize, safeArea: EdgeInsets) -> CGPoint {
+        let baseX = safeArea.leading + fabSize / 2 + 16
+        let baseY = bounds.height - safeArea.bottom - fabSize / 2 - 96
+        let candidate = CGSize(
+            width: anchorOffset.wrappedValue.width + dragOffset.width,
+            height: anchorOffset.wrappedValue.height + dragOffset.height
+        )
+        let clamped = clampedOffset(candidate: candidate, bounds: bounds, safeArea: safeArea)
+        return CGPoint(x: baseX + clamped.width, y: baseY + clamped.height)
+    }
+
+    private func flickPositionFor(bounds: CGSize, safeArea: EdgeInsets) -> CGPoint {
+        let base = positionFor(bounds: bounds, safeArea: safeArea)
+        return CGPoint(
+            x: base.x + flickExitPosition.width,
+            y: base.y + flickExitPosition.height
+        )
+    }
+
+    private func restoreDotPosition(bounds: CGSize, safeArea: EdgeInsets) -> CGPoint {
+        let normal = positionFor(bounds: bounds, safeArea: safeArea)
+        // Clamp to nearest edge
+        let x = min(max(normal.x, safeArea.leading + 14), bounds.width - safeArea.trailing - 14)
+        let y = min(max(normal.y, safeArea.top + 14), bounds.height - safeArea.bottom - 14)
+        return CGPoint(x: x, y: y)
+    }
+
+    private func clampedOffset(candidate: CGSize, bounds: CGSize, safeArea: EdgeInsets) -> CGSize {
+        let baseX = safeArea.leading + fabSize / 2 + 16
+        let baseY = bounds.height - safeArea.bottom - fabSize / 2 - 96
+        let resolvedX = baseX + candidate.width
+        let resolvedY = baseY + candidate.height
+
+        let minX = safeArea.leading + fabSize / 2 + 8
+        let maxX = bounds.width - safeArea.trailing - fabSize / 2 - 8
+        let minY = safeArea.top + fabSize / 2 + 60
+        let maxY = bounds.height - safeArea.bottom - fabSize / 2 - 88
+
+        let clampedX = min(max(resolvedX, minX), maxX)
+        let clampedY = min(max(resolvedY, minY), maxY)
+
+        return CGSize(width: clampedX - baseX, height: clampedY - baseY)
+    }
+
     // MARK: - State
 
     private var currentState: OrbState {
@@ -198,7 +412,6 @@ struct MobileMissionFAB: View {
     private func state(for tile: MissionConsoleActiveTile) -> OrbState {
         let latest = host.snapshot.recentTicker.first { $0.missionID == tile.id }
 
-        // Derive honest one-word label from actual event or tile
         var label: String? = nil
         var icon = "sparkles"
         var accent = UnifiedDesignSystem.Colors.amber
@@ -251,7 +464,6 @@ struct MobileMissionFAB: View {
             }
         }
 
-        // Clamp label to one word / short phrase that fits
         let clean = label?.trimmingCharacters(in: .whitespacesAndNewlines)
             .components(separatedBy: .whitespacesAndNewlines)
             .first?
@@ -283,61 +495,6 @@ struct MobileMissionFAB: View {
         withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
             glowPulse = true
         }
-    }
-
-    // MARK: - Drag
-
-    private func dragGesture(bounds: CGSize, safeArea: EdgeInsets) -> some Gesture {
-        DragGesture()
-            .onChanged { value in
-                isDragging = true
-                dragOffset = value.translation
-            }
-            .onEnded { value in
-                isDragging = false
-                let newOffset = clampedOffset(
-                    candidate: CGSize(
-                        width: anchorOffset.wrappedValue.width + value.translation.width,
-                        height: anchorOffset.wrappedValue.height + value.translation.height
-                    ),
-                    bounds: bounds,
-                    safeArea: safeArea
-                )
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
-                    anchorOffset.wrappedValue = newOffset
-                    dragOffset = .zero
-                }
-            }
-    }
-
-    // MARK: - Position math
-
-    private func positionFor(bounds: CGSize, safeArea: EdgeInsets) -> CGPoint {
-        let baseX = safeArea.leading + fabSize / 2 + 16
-        let baseY = bounds.height - safeArea.bottom - fabSize / 2 - 96
-        let candidate = CGSize(
-            width: anchorOffset.wrappedValue.width + dragOffset.width,
-            height: anchorOffset.wrappedValue.height + dragOffset.height
-        )
-        let clamped = clampedOffset(candidate: candidate, bounds: bounds, safeArea: safeArea)
-        return CGPoint(x: baseX + clamped.width, y: baseY + clamped.height)
-    }
-
-    private func clampedOffset(candidate: CGSize, bounds: CGSize, safeArea: EdgeInsets) -> CGSize {
-        let baseX = safeArea.leading + fabSize / 2 + 16
-        let baseY = bounds.height - safeArea.bottom - fabSize / 2 - 96
-        let resolvedX = baseX + candidate.width
-        let resolvedY = baseY + candidate.height
-
-        let minX = safeArea.leading + fabSize / 2 + 8
-        let maxX = bounds.width - safeArea.trailing - fabSize / 2 - 8
-        let minY = safeArea.top + fabSize / 2 + 60
-        let maxY = bounds.height - safeArea.bottom - fabSize / 2 - 88
-
-        let clampedX = min(max(resolvedX, minX), maxX)
-        let clampedY = min(max(resolvedY, minY), maxY)
-
-        return CGSize(width: clampedX - baseX, height: clampedY - baseY)
     }
 
     private var accessibilityValue: String {

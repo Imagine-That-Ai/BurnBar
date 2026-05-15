@@ -848,115 +848,101 @@ struct MobileMissionActivityOverlay: View {
     }
 
     private func missionButton(for mission: CLIAgentMissionSnapshot) -> some View {
-        let frame = honestFrame(for: mission)
+        let state = orbState(for: mission)
         return Button {
             showMissionDetail = true
         } label: {
-            HStack(spacing: 10) {
-                // Runtime badge
-                Text(runtimeCallSign(for: mission))
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(frame.accentColor)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background {
-                        Capsule()
-                            .fill(frame.accentColor.opacity(0.16))
-                            .overlay(
-                                Capsule()
-                                    .stroke(frame.accentColor.opacity(0.45), lineWidth: 0.5)
+            ZStack {
+                // Glow when active
+                if state.isActive {
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    state.accent.opacity(0.30),
+                                    state.accent.opacity(0.0)
+                                ],
+                                center: .center,
+                                startRadius: 16,
+                                endRadius: 36
                             )
+                        )
+                        .frame(width: 72, height: 72)
+                        .blur(radius: 5)
+                }
+
+                // Disc
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: 48, height: 48)
+                    .overlay(
+                        Circle()
+                            .stroke(state.accent.opacity(state.isActive ? 0.75 : 0.25), lineWidth: state.isActive ? 1.5 : 0.8)
+                    )
+                    .shadow(
+                        color: state.isActive ? state.accent.opacity(0.20) : Color.black.opacity(0.20),
+                        radius: state.isActive ? 12 : 8,
+                        x: 0,
+                        y: state.isActive ? 4 : 3
+                    )
+
+                // Center
+                if state.isActive, let label = state.label {
+                    VStack(spacing: 0) {
+                        Image(systemName: state.icon)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(state.accent)
+                        Text(label)
+                            .font(.system(size: 7, weight: .bold, design: .monospaced))
+                            .foregroundStyle(state.accent.opacity(0.92))
+                            .lineLimit(1)
                     }
-
-                // Divider
-                Rectangle()
-                    .fill(frame.accentColor.opacity(0.25))
-                    .frame(width: 1, height: 20)
-
-                // Honest icon + text
-                HStack(spacing: 6) {
-                    Image(systemName: frame.iconName)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(frame.accentColor)
-                    Text(frame.honestText)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Color.white)
-                        .lineLimit(1)
+                } else {
+                    Image(systemName: state.icon)
+                        .font(.system(size: 16, weight: .light))
+                        .foregroundStyle(state.isActive ? state.accent : UnifiedDesignSystem.Colors.textSecondary.opacity(0.6))
                 }
             }
-            .foregroundStyle(Color.white)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background(
-                Capsule()
-                    .fill(mission.isTerminal ? UnifiedDesignSystem.Colors.success : frame.accentColor)
-            )
-            .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 10)
+            .frame(width: 48, height: 48)
         }
-        .accessibilityLabel("Open live mission window. \(frame.honestText)")
+        .accessibilityLabel("Open live mission window. \(state.label ?? state.icon)")
         .padding(.trailing, 18)
     }
 
-    private func honestFrame(for mission: CLIAgentMissionSnapshot) -> HonestFrame {
-        let accent = missionAccentColor(mission)
-
+    private func orbState(for mission: CLIAgentMissionSnapshot) -> OrbState {
         if mission.isTerminal {
-            let preview = mission.resultPreview?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let preview, !preview.isEmpty {
-                return HonestFrame(
-                    accentColor: UnifiedDesignSystem.Colors.success,
-                    iconName: "checkmark.circle.fill",
-                    honestText: preview.prefix(32).description
-                )
-            }
+            return OrbState(accent: UnifiedDesignSystem.Colors.success, icon: "checkmark.circle.fill", label: nil, isActive: false)
         }
 
-        guard let event = mission.events.last else {
-            return HonestFrame(
-                accentColor: accent,
-                iconName: "dot.radiowaves.left.and.right",
-                honestText: "\(mission.runtimeLabel) · \(mission.currentStepLabel)"
-            )
+        let latest = mission.events.last
+        let accent = missionAccentColor(mission)
+
+        guard let event = latest else {
+            return OrbState(accent: accent, icon: "dot.radiowaves.left.and.right", label: nil, isActive: true)
         }
 
         let kind = event.kind
         if kind == "tool_call" || kind == "tool_use" {
-            let toolName = event.toolName?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let title = event.title?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let name = toolName ?? title ?? "Tool"
-            let path1 = event.changedFilePath?.split(separator: "/").last.map(String.init)
-            let path2 = event.artifactPath?.split(separator: "/").last.map(String.init)
-            let words = event.message.split(separator: " ").prefix(4).joined(separator: " ")
-            let detail = path1 ?? path2 ?? words
-            return HonestFrame(accentColor: accent, iconName: "hammer.fill", honestText: "\(name) · \(detail)")
-        }
-        if kind == "tool_result" {
-            let name = event.toolName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Tool"
-            let path = event.changedFilePath?.split(separator: "/").last.map(String.init)
-            let detail = path ?? "done"
-            return HonestFrame(accentColor: accent, iconName: "checkmark.circle.fill", honestText: "\(name) · \(detail)")
+            let name = event.toolName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? event.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Tool"
+            return OrbState(accent: accent, icon: "hammer.fill", label: name, isActive: true)
         }
         if kind == "llm_response" || kind == "assistant_message" || kind == "final_answer" {
-            let preview = event.message.replacingOccurrences(of: "\n", with: " ").prefix(28).description
-            return HonestFrame(accentColor: accent, iconName: "quote.bubble.fill", honestText: "\"\(preview)\"")
+            return OrbState(accent: accent, icon: "quote.bubble.fill", label: "LLM", isActive: true)
         }
         if kind == "approval_request" || kind == "approval" {
-            return HonestFrame(accentColor: UnifiedDesignSystem.Colors.hermesAureate, iconName: "hand.raised.fill", honestText: "Approval · \(event.message.prefix(24))")
+            return OrbState(accent: UnifiedDesignSystem.Colors.hermesAureate, icon: "hand.raised.fill", label: "Approve", isActive: true)
         }
         if kind == "error" {
-            return HonestFrame(accentColor: UnifiedDesignSystem.Colors.ember, iconName: "exclamationmark.triangle.fill", honestText: "Error · \(event.message.prefix(24))")
+            return OrbState(accent: UnifiedDesignSystem.Colors.ember, icon: "exclamationmark.triangle.fill", label: "Error", isActive: true)
         }
-        if kind == "changed_file" {
-            let file = event.changedFilePath?.split(separator: "/").last.map(String.init) ?? "file"
-            return HonestFrame(accentColor: accent, iconName: "doc.badge.gearshape.fill", honestText: "Edited · \(file)")
-        }
-        return HonestFrame(accentColor: accent, iconName: "dot.radiowaves.left.and.right", honestText: "\(mission.runtimeLabel) · \(mission.currentStepLabel)")
+        return OrbState(accent: accent, icon: "sparkles", label: nil, isActive: true)
     }
 
-    private struct HonestFrame {
-        let accentColor: Color
-        let iconName: String
-        let honestText: String
+    private struct OrbState {
+        let accent: Color
+        let icon: String
+        let label: String?
+        let isActive: Bool
     }
 
     private func missionAccentColor(_ mission: CLIAgentMissionSnapshot) -> Color {
@@ -969,34 +955,27 @@ struct MobileMissionActivityOverlay: View {
         return UnifiedDesignSystem.Colors.amber
     }
 
-    private func runtimeCallSign(for mission: CLIAgentMissionSnapshot) -> String {
-        let raw = mission.selectedRuntime?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            ?? mission.requestedRuntime.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        switch raw {
-        case _ where raw.contains("claude"): return "CLD"
-        case _ where raw.contains("codex"): return "CDX"
-        case _ where raw.contains("hermes"): return "HRM"
-        case _ where raw == "pi" || raw.contains("piagent"): return "PI"
-        case _ where raw.contains("openclaw"): return "OCL"
-        case _ where raw.contains("ollama"): return "OLL"
-        case "auto": return "AUTO"
-        default: return raw.uppercased().prefix(3).description
-        }
-    }
-
     private var alertButton: some View {
         Button {
             showMissionDetail = true
         } label: {
-            Label("Mission alert", systemImage: "exclamationmark.triangle.fill")
-                .font(UnifiedDesignSystem.Typography.tiny.weight(.semibold))
-                .foregroundStyle(Color.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 11)
-                .background(UnifiedDesignSystem.Colors.warning)
-                .clipShape(Capsule())
-                .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 10)
+            ZStack {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: 48, height: 48)
+                    .overlay(
+                        Circle()
+                            .stroke(UnifiedDesignSystem.Colors.ember.opacity(0.75), lineWidth: 1.5)
+                    )
+                    .shadow(color: UnifiedDesignSystem.Colors.ember.opacity(0.20), radius: 12, x: 0, y: 4)
+
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(UnifiedDesignSystem.Colors.ember)
+            }
+            .frame(width: 48, height: 48)
         }
+        .accessibilityLabel("Mission alert")
         .padding(.trailing, 18)
     }
 }
