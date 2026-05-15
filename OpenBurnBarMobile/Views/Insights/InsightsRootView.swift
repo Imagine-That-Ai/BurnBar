@@ -848,29 +848,140 @@ struct MobileMissionActivityOverlay: View {
     }
 
     private func missionButton(for mission: CLIAgentMissionSnapshot) -> some View {
-        Button {
+        let frame = honestFrame(for: mission)
+        return Button {
             showMissionDetail = true
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: mission.isTerminal ? "checkmark.circle.fill" : "dot.radiowaves.left.and.right")
-                    .symbolEffect(.pulse, options: .repeating, value: mission.events.count)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(mission.isTerminal ? "Mission done" : "Mission live")
-                        .font(UnifiedDesignSystem.Typography.tiny.weight(.semibold))
-                    Text("\(mission.runtimeLabel) · \(mission.currentStepLabel)")
-                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                // Runtime badge
+                Text(runtimeCallSign(for: mission))
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(frame.accentColor)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background {
+                        Capsule()
+                            .fill(frame.accentColor.opacity(0.16))
+                            .overlay(
+                                Capsule()
+                                    .stroke(frame.accentColor.opacity(0.45), lineWidth: 0.5)
+                            )
+                    }
+
+                // Divider
+                Rectangle()
+                    .fill(frame.accentColor.opacity(0.25))
+                    .frame(width: 1, height: 20)
+
+                // Honest icon + text
+                HStack(spacing: 6) {
+                    Image(systemName: frame.iconName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(frame.accentColor)
+                    Text(frame.honestText)
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.white)
                         .lineLimit(1)
                 }
             }
             .foregroundStyle(Color.white)
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
-            .background(mission.isTerminal ? UnifiedDesignSystem.Colors.success : UnifiedDesignSystem.Colors.ember)
-            .clipShape(Capsule())
+            .background(
+                Capsule()
+                    .fill(mission.isTerminal ? UnifiedDesignSystem.Colors.success : frame.accentColor)
+            )
             .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 10)
         }
-        .accessibilityLabel("Open live mission window")
+        .accessibilityLabel("Open live mission window. \(frame.honestText)")
         .padding(.trailing, 18)
+    }
+
+    private func honestFrame(for mission: CLIAgentMissionSnapshot) -> HonestFrame {
+        let accent = missionAccentColor(mission)
+
+        if mission.isTerminal {
+            let preview = mission.resultPreview?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let preview, !preview.isEmpty {
+                return HonestFrame(
+                    accentColor: UnifiedDesignSystem.Colors.success,
+                    iconName: "checkmark.circle.fill",
+                    honestText: preview.prefix(32).description
+                )
+            }
+        }
+
+        guard let event = mission.events.last else {
+            return HonestFrame(
+                accentColor: accent,
+                iconName: "dot.radiowaves.left.and.right",
+                honestText: "\(mission.runtimeLabel) · \(mission.currentStepLabel)"
+            )
+        }
+
+        let kind = event.kind
+        if kind == "tool_call" || kind == "tool_use" {
+            let toolName = event.toolName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = event.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let name = toolName ?? title ?? "Tool"
+            let path1 = event.changedFilePath?.split(separator: "/").last.map(String.init)
+            let path2 = event.artifactPath?.split(separator: "/").last.map(String.init)
+            let words = event.message.split(separator: " ").prefix(4).joined(separator: " ")
+            let detail = path1 ?? path2 ?? words
+            return HonestFrame(accentColor: accent, iconName: "hammer.fill", honestText: "\(name) · \(detail)")
+        }
+        if kind == "tool_result" {
+            let name = event.toolName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Tool"
+            let path = event.changedFilePath?.split(separator: "/").last.map(String.init)
+            let detail = path ?? "done"
+            return HonestFrame(accentColor: accent, iconName: "checkmark.circle.fill", honestText: "\(name) · \(detail)")
+        }
+        if kind == "llm_response" || kind == "assistant_message" || kind == "final_answer" {
+            let preview = event.message.replacingOccurrences(of: "\n", with: " ").prefix(28).description
+            return HonestFrame(accentColor: accent, iconName: "quote.bubble.fill", honestText: "\"\(preview)\"")
+        }
+        if kind == "approval_request" || kind == "approval" {
+            return HonestFrame(accentColor: UnifiedDesignSystem.Colors.hermesAureate, iconName: "hand.raised.fill", honestText: "Approval · \(event.message.prefix(24))")
+        }
+        if kind == "error" {
+            return HonestFrame(accentColor: UnifiedDesignSystem.Colors.ember, iconName: "exclamationmark.triangle.fill", honestText: "Error · \(event.message.prefix(24))")
+        }
+        if kind == "changed_file" {
+            let file = event.changedFilePath?.split(separator: "/").last.map(String.init) ?? "file"
+            return HonestFrame(accentColor: accent, iconName: "doc.badge.gearshape.fill", honestText: "Edited · \(file)")
+        }
+        return HonestFrame(accentColor: accent, iconName: "dot.radiowaves.left.and.right", honestText: "\(mission.runtimeLabel) · \(mission.currentStepLabel)")
+    }
+
+    private struct HonestFrame {
+        let accentColor: Color
+        let iconName: String
+        let honestText: String
+    }
+
+    private func missionAccentColor(_ mission: CLIAgentMissionSnapshot) -> Color {
+        let latest = mission.events.last
+        guard let event = latest else { return UnifiedDesignSystem.Colors.amber }
+        if event.isError || event.kind == "error" { return UnifiedDesignSystem.Colors.ember }
+        if event.kind == "approval_request" || event.phase.contains("approval") { return UnifiedDesignSystem.Colors.hermesAureate }
+        if event.kind == "tool_call" || event.phase == "tool_use" { return UnifiedDesignSystem.Colors.amber }
+        if event.kind == "llm_response" || event.phase == "assistant_response" { return UnifiedDesignSystem.Colors.whimsy }
+        return UnifiedDesignSystem.Colors.amber
+    }
+
+    private func runtimeCallSign(for mission: CLIAgentMissionSnapshot) -> String {
+        let raw = mission.selectedRuntime?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            ?? mission.requestedRuntime.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch raw {
+        case _ where raw.contains("claude"): return "CLD"
+        case _ where raw.contains("codex"): return "CDX"
+        case _ where raw.contains("hermes"): return "HRM"
+        case _ where raw == "pi" || raw.contains("piagent"): return "PI"
+        case _ where raw.contains("openclaw"): return "OCL"
+        case _ where raw.contains("ollama"): return "OLL"
+        case "auto": return "AUTO"
+        default: return raw.uppercased().prefix(3).description
+        }
     }
 
     private var alertButton: some View {

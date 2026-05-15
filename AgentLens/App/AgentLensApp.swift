@@ -1048,6 +1048,7 @@ struct OpenBurnBarApp: App {
                         context.operatingLayer.chatController = context.chatController
                         context.daemonManager.attach(dataStore: context.dataStore)
                         context.cursorConnectorManager.attach(dataStore: context.dataStore)
+                        context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
                         if !hasShownInitialDashboard {
                             hasShownInitialDashboard = true
                             windowManager.openDashboard(

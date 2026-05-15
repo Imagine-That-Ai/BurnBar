@@ -24,6 +24,7 @@ final class QuotaStore {
     private var listener: ListenerRegistration?
     private var lastAccountRefreshAt: Date?
     private var staleRefreshInFlight: Set<String> = []
+    private var automaticRefreshTask: Task<Void, Never>?
 
     init(
         firestore: FirestoreRepository = FirestoreRepository(),
@@ -77,6 +78,7 @@ final class QuotaStore {
     /// one listener stays attached at any moment.
     func startListening() {
         guard !AppStoreScreenshotMode.isEnabled else { return }
+        startAutomaticRefresh()
         listener?.remove()
         captureCurrentUser()
         listener = firestore.listenToQuotaSnapshotUpdates { [weak self] result in
@@ -111,6 +113,8 @@ final class QuotaStore {
     func stopListening() {
         listener?.remove()
         listener = nil
+        automaticRefreshTask?.cancel()
+        automaticRefreshTask = nil
     }
 
     private func captureCurrentUser() {
@@ -206,6 +210,17 @@ final class QuotaStore {
                 applySnapshots(merged)
             } catch {
                 quotaStoreLogger.warning("Failed to refresh stale quota for \(account.providerID.rawValue, privacy: .public)/\(account.id, privacy: .private): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func startAutomaticRefresh() {
+        guard automaticRefreshTask == nil else { return }
+        automaticRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15 * 60))
+                guard !Task.isCancelled else { return }
+                await self?.refreshStaleCloudQuotaIfPossible(maxRefreshes: 10)
             }
         }
     }

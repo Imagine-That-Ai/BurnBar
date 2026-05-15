@@ -11,7 +11,7 @@
  */
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, type QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { getConfig } from "./config.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
@@ -109,18 +109,11 @@ export const refreshAllProviderQuotas = onSchedule(
     const db = getFirestore();
     const { quotaRefreshBatchSize } = getConfig();
 
-    const accountQuery = db
-      .collectionGroup("provider_accounts")
-      .where("status", "==", "connected")
-      .where("storageScope", "in", ["cloud_refreshable", "server_private"])
-      .orderBy("lastRefreshAt", "asc")
-      .limit(quotaRefreshBatchSize);
-
-    const accountSnapshot = await accountQuery.get();
+    const refreshableStatuses = ["connected", "stale", "error"] as const;
     const refreshedLegacyKeys = new Set<string>();
     const refreshedAccountRefs = new Set<string>();
 
-    for (const doc of accountSnapshot.docs) {
+    async function refreshAccountDoc(doc: QueryDocumentSnapshot): Promise<void> {
       // Path: users/{uid}/provider_accounts/{accountID}
       const parts = doc.ref.path.split("/");
       const uid = parts[1];
@@ -142,35 +135,41 @@ export const refreshAllProviderQuotas = onSchedule(
       }
     }
 
-    const missingRefreshAtRemaining = Math.max(0, quotaRefreshBatchSize - refreshedAccountRefs.size);
-    if (missingRefreshAtRemaining > 0) {
-      const missingRefreshAtSnapshot = await db
+    for (const status of refreshableStatuses) {
+      if (refreshedAccountRefs.size >= quotaRefreshBatchSize) {
+        break;
+      }
+      const accountSnapshot = await db
         .collectionGroup("provider_accounts")
-        .where("status", "==", "connected")
+        .where("status", "==", status)
         .where("storageScope", "in", ["cloud_refreshable", "server_private"])
-        .limit(missingRefreshAtRemaining)
+        .orderBy("lastRefreshAt", "asc")
+        .limit(quotaRefreshBatchSize - refreshedAccountRefs.size)
         .get();
 
-      for (const doc of missingRefreshAtSnapshot.docs) {
-        if (refreshedAccountRefs.has(doc.ref.path) || doc.get("lastRefreshAt") != null) {
-          continue;
+      for (const doc of accountSnapshot.docs) {
+        await refreshAccountDoc(doc);
+      }
+    }
+
+    const missingRefreshAtRemaining = Math.max(0, quotaRefreshBatchSize - refreshedAccountRefs.size);
+    if (missingRefreshAtRemaining > 0) {
+      for (const status of refreshableStatuses) {
+        if (refreshedAccountRefs.size >= quotaRefreshBatchSize) {
+          break;
         }
+        const missingRefreshAtSnapshot = await db
+          .collectionGroup("provider_accounts")
+          .where("status", "==", status)
+          .where("storageScope", "in", ["cloud_refreshable", "server_private"])
+          .limit(quotaRefreshBatchSize - refreshedAccountRefs.size)
+          .get();
 
-        const parts = doc.ref.path.split("/");
-        const uid = parts[1];
-        const accountID = parts[3];
-        const data = doc.data();
-        refreshedAccountRefs.add(doc.ref.path);
-        refreshedLegacyKeys.add(`${uid}/${data.providerID}`);
-
-        try {
-          await refreshUserProviderAccountQuota(db, uid, accountID);
-        } catch (err) {
-          console.error(`Quota refresh failed for ${uid}/${accountID}:`, err);
-          await doc.ref.update({
-            lastErrorCode: (err as Error).message,
-            lastRefreshAt: new Date().toISOString(),
-          });
+        for (const doc of missingRefreshAtSnapshot.docs) {
+          if (refreshedAccountRefs.has(doc.ref.path) || doc.get("lastRefreshAt") != null) {
+            continue;
+          }
+          await refreshAccountDoc(doc);
         }
       }
     }

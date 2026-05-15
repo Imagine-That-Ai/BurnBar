@@ -551,16 +551,17 @@ final class CLIAgentMissionRequestListener {
             )
             if Date().timeIntervalSince(lastStreamingEvent) >= 2 {
                 lastStreamingEvent = Date()
-                let assistantPreview = assistantMessage?
-                    .content
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let streamingMessage = deriveStreamingStatusMessage(
+                    assistantMessage: assistantMessage,
+                    backend: backend
+                )
                 await recordEvent(
                     reference: document.reference,
                     requestID: document.documentID,
                     phase: "streaming",
                     kind: "status",
                     title: "Streaming",
-                    message: assistantPreview?.prefix(420).description.nilIfEmpty ?? "\(backend.displayName) is still working on the mission.",
+                    message: streamingMessage,
                     backend: backend
                 )
             }
@@ -577,12 +578,15 @@ final class CLIAgentMissionRequestListener {
         let status = chatController.streamError == nil ? "completed" : "failed"
         let finalSummary = chatController.messages.last(where: { $0.role == .assistant })?.content ?? ""
         let safeFinalSummary = CLIAgentMissionEventFactory.mobileSafeText(finalSummary)
+        let liveSummary = status == "completed"
+            ? (safeFinalSummary.nilIfEmpty.map { "\(backend.displayName): \($0.prefix(180).description)" } ?? "\(backend.displayName) returned a result.")
+            : "\(backend.displayName) mission failed."
         var payload: [String: Any] = [
             "status": status,
             "selectedRuntime": backend.rawValue,
             "selectedRuntimeName": backend.displayName,
             "sessionId": threadID,
-            "liveSummary": status == "completed" ? "\(backend.displayName) returned a result." : "\(backend.displayName) mission failed.",
+            "liveSummary": liveSummary,
             "completedAt": ISO8601DateFormatter().string(from: Date()),
             "updatedAt": FieldValue.serverTimestamp()
         ]
@@ -1162,6 +1166,25 @@ final class CLIAgentMissionRequestListener {
         } catch {
             logger.warning("mission event update failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    private func deriveStreamingStatusMessage(
+        assistantMessage: ChatMessageRecord?,
+        backend: CLIAgentMissionBackend
+    ) -> String {
+        let assistantPreview = assistantMessage?
+            .content
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let preview = assistantPreview, !preview.isEmpty {
+            let clipped = preview.prefix(420).description
+            return clipped
+        }
+        let latestTool = assistantMessage?.displayTranscript.last(where: { $0.kind == .toolUse })
+        if let tool = latestTool {
+            let detail = tool.detail?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            return detail.map { "\(tool.value): \($0)" } ?? tool.value
+        }
+        return "\(backend.displayName) is composing a response…"
     }
 
     private func resultSummary(from output: String) -> String {

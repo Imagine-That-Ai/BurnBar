@@ -307,6 +307,40 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(firstFetchedAt, secondFetchedAt)
     }
 
+    func test_automaticRefreshRunsWhenQuotaKeyChanges() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let keyStore = ProviderAPIKeyStore(
+            keychain: KeychainStore(service: "tests.\(UUID().uuidString)", legacyServices: [], backend: TestKeychainBackend())
+        )
+        let dataStore = try makeDataStore()
+        let warpDirectory = home
+            .appendingPathComponent("Library/Application Support/dev.warp.Warp-Stable", isDirectory: true)
+        try FileManager.default.createDirectory(at: warpDirectory, withIntermediateDirectories: true)
+        try Data("Body {\"batch\":[]}".utf8).write(to: warpDirectory.appendingPathComponent("warp_network.log"))
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            keyStore: keyStore,
+            refreshProviders: [.warp]
+        )
+        service.startAutomaticRefresh(
+            dataStore: dataStore,
+            initialDelay: .seconds(60),
+            interval: .seconds(60)
+        )
+        defer { service.stopAutomaticRefresh() }
+
+        try keyStore.setAPIKey("not-used-by-warp", for: "warp")
+
+        let deadline = Date().addingTimeInterval(2)
+        while service.snapshot(for: .warp) == nil && Date() < deadline {
+            try await Task.sleep(nanoseconds: 25_000_000)
+        }
+
+        XCTAssertNotNil(service.snapshot(for: .warp))
+    }
+
     func test_codexRefresh_readsLatestLocalQuotaSnapshot() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()

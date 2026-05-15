@@ -86,6 +86,8 @@ struct ProviderUsageRecord: Sendable, Equatable {
 @MainActor
 final class ProviderAPIKeyStore {
     static let shared = ProviderAPIKeyStore()
+    static let didChangeNotification = Notification.Name("ProviderAPIKeyStore.didChange")
+    static let providerUserInfoKey = "provider"
 
     private let keychain: KeychainStore
 
@@ -102,10 +104,20 @@ final class ProviderAPIKeyStore {
 
     func setAPIKey(_ key: String, for provider: String) throws {
         try keychain.set(key, for: provider)
+        NotificationCenter.default.post(
+            name: Self.didChangeNotification,
+            object: self,
+            userInfo: [Self.providerUserInfoKey: provider]
+        )
     }
 
     func removeAPIKey(for provider: String) throws {
         try keychain.delete(account: provider)
+        NotificationCenter.default.post(
+            name: Self.didChangeNotification,
+            object: self,
+            userInfo: [Self.providerUserInfoKey: provider]
+        )
     }
 
     func hasKey(for provider: String) -> Bool {

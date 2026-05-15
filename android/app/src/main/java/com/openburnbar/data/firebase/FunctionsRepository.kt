@@ -96,6 +96,14 @@ class FunctionsRepository {
         return result.getData() as? Map<String, Any> ?: emptyMap()
     }
 
+    suspend fun refreshProviderAccountQuota(accountId: String): Map<String, Any> {
+        val result = functions.getHttpsCallable("refreshProviderAccountQuota")
+            .call(mapOf("accountID" to accountId))
+            .await()
+        @Suppress("UNCHECKED_CAST")
+        return result.getData() as? Map<String, Any> ?: emptyMap()
+    }
+
     suspend fun deleteProviderAccount(accountId: String) {
         functions.getHttpsCallable("deleteProviderAccount")
             .call(mapOf("accountId" to accountId))

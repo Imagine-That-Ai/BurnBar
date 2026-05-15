@@ -44,6 +44,8 @@ final class ProviderQuotaService {
     private var connectedQuotaProviderIDsCache: (fetchedAt: Date, ids: Set<ProviderID>)?
     private var suppressRoutingEventPersistence = false
     private var routingEventsDirty = false
+    private nonisolated(unsafe) var automaticRefreshTask: Task<Void, Never>?
+    private nonisolated(unsafe) var apiKeyChangeObserver: NSObjectProtocol?
 
     init(
         settingsManager: SettingsManager = .shared,
@@ -105,6 +107,13 @@ final class ProviderQuotaService {
         loadPersistedRoutingEvents()
         loadPersistedCodexRolloutScanCache()
         refreshClaudeBridgeStatus()
+    }
+
+    deinit {
+        automaticRefreshTask?.cancel()
+        if let apiKeyChangeObserver {
+            NotificationCenter.default.removeObserver(apiKeyChangeObserver)
+        }
     }
 
     func snapshot(for provider: AgentProvider) -> ProviderQuotaSnapshot? {
@@ -316,6 +325,50 @@ final class ProviderQuotaService {
             return
         }
         await refreshAll(dataStore: dataStore)
+    }
+
+    func startAutomaticRefresh(
+        dataStore: DataStore,
+        initialDelay: Duration = .seconds(10),
+        interval: Duration = .seconds(15 * 60)
+    ) {
+        automaticRefreshTask?.cancel()
+        automaticRefreshTask = Task(priority: .utility) { [weak self, weak dataStore] in
+            guard let self, let dataStore else { return }
+            try? await Task.sleep(for: initialDelay)
+            while !Task.isCancelled {
+                await self.refreshIfNeeded(dataStore: dataStore, maxAge: 15 * 60)
+                try? await Task.sleep(for: interval)
+            }
+        }
+
+        guard apiKeyChangeObserver == nil else { return }
+        apiKeyChangeObserver = NotificationCenter.default.addObserver(
+            forName: ProviderAPIKeyStore.didChangeNotification,
+            object: keyStore,
+            queue: nil
+        ) { [weak self, weak dataStore] notification in
+            guard let providerKey = notification.userInfo?[ProviderAPIKeyStore.providerUserInfoKey] as? String else {
+                return
+            }
+            Task { @MainActor [weak self, weak dataStore] in
+                guard let self, let dataStore else { return }
+                if let provider = self.quotaProvider(forKeyIdentifier: providerKey) {
+                    await self.refresh(provider: provider, dataStore: dataStore)
+                } else {
+                    await self.refreshIfNeeded(dataStore: dataStore, maxAge: 0)
+                }
+            }
+        }
+    }
+
+    func stopAutomaticRefresh() {
+        automaticRefreshTask?.cancel()
+        automaticRefreshTask = nil
+        if let apiKeyChangeObserver {
+            NotificationCenter.default.removeObserver(apiKeyChangeObserver)
+            self.apiKeyChangeObserver = nil
+        }
     }
 
     func refreshAll(dataStore: DataStore) async {
@@ -738,6 +791,26 @@ final class ProviderQuotaService {
 
         var seen = Set<String>()
         return identifiers.filter { seen.insert($0).inserted }
+    }
+
+    private func quotaProvider(forKeyIdentifier key: String) -> AgentProvider? {
+        let normalized = key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return nil }
+        for provider in Self.supportedProviders where quotaKeyIdentifiers(for: provider).contains(normalized) {
+            return provider
+        }
+        switch normalized {
+        case "cursor_cookie":
+            return .cursor
+        case "factory_cookie_header", "factory_cookie":
+            return .factory
+        case "ollama_cookie_header", "ollama_cookie":
+            return .ollama
+        case "kimi_auth_token":
+            return .kimi
+        default:
+            return nil
+        }
     }
 
     private func handleCodexRolloutScanCacheUpdate(_ cache: CodexRolloutScanCache, didChange: Bool) {

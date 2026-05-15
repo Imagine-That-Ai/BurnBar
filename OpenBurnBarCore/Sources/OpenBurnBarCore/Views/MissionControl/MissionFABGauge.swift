@@ -75,6 +75,9 @@ public struct MissionFABGauge: View {
         public var burnSweep: Double  // 0..1 — fraction of the day's burn budget
         public var burnPerHourUSD: Double
         public var macOnline: Bool
+        /// A short honest snippet of what the agent is doing right now.
+        /// Shown inside the gauge face when live missions are active.
+        public var liveSnippet: String?
 
         public init(
             size: Size,
@@ -84,7 +87,8 @@ public struct MissionFABGauge: View {
             hasCompletedSinceLastOpen: Bool,
             burnSweep: Double,
             burnPerHourUSD: Double,
-            macOnline: Bool
+            macOnline: Bool,
+            liveSnippet: String? = nil
         ) {
             self.size = size
             self.activeMissionCount = activeMissionCount
@@ -94,6 +98,7 @@ public struct MissionFABGauge: View {
             self.burnSweep = min(max(burnSweep, 0), 1)
             self.burnPerHourUSD = burnPerHourUSD
             self.macOnline = macOnline
+            self.liveSnippet = liveSnippet
         }
 
         public static let idle = Configuration(
@@ -140,12 +145,27 @@ public struct MissionFABGauge: View {
             // Per-mission perimeter ticks
             tickGeometry
 
-            // Center glyph
-            Image(systemName: glyphName)
-                .font(.system(size: configuration.size.glyphSize, weight: .semibold))
-                .foregroundStyle(glyphForeground)
-                .scaleEffect(heartbeat && configuration.activeMissionCount > 0 ? 1.04 : 1.0)
-                .symbolEffect(.pulse, options: .repeating, isActive: configuration.approvalPendingCount > 0 && !reduceMotion)
+            // Center: live snippet when active, otherwise glyph
+            if let snippet = configuration.liveSnippet, configuration.activeMissionCount > 0 {
+                GeometryReader { proxy in
+                    let width = proxy.size.width * 0.72
+                    Text(snippet)
+                        .font(.system(size: max(7, configuration.size.glyphSize * 0.36), weight: .medium, design: .monospaced))
+                        .foregroundStyle(primaryArcColor)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .frame(width: width)
+                        .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                        .opacity(heartbeat ? 0.92 : 0.70)
+                }
+                .frame(width: configuration.size.diameter, height: configuration.size.diameter)
+            } else {
+                Image(systemName: glyphName)
+                    .font(.system(size: configuration.size.glyphSize, weight: .semibold))
+                    .foregroundStyle(glyphForeground)
+                    .scaleEffect(heartbeat && configuration.activeMissionCount > 0 ? 1.04 : 1.0)
+                    .symbolEffect(.pulse, options: .repeating, isActive: configuration.approvalPendingCount > 0 && !reduceMotion)
+            }
 
             // Tiny mono burn-rate readout (hero only)
             if configuration.size == .hero {

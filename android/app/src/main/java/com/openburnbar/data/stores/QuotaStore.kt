@@ -2,6 +2,7 @@ package com.openburnbar.data.stores
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.ProviderAccount
@@ -9,6 +10,7 @@ import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.isExplicitlyStale
 import com.openburnbar.data.models.isStale
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
@@ -16,7 +18,8 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 
 class QuotaStore(
-    private val repo: FirestoreRepository = FirestoreRepository()
+    private val repo: FirestoreRepository = FirestoreRepository(),
+    private val functions: FunctionsRepository = FunctionsRepository()
 ) : ViewModel() {
     private val _snapshots = MutableStateFlow<List<ProviderQuotaSnapshot>>(emptyList())
     val snapshots = _snapshots.asStateFlow()
@@ -31,6 +34,8 @@ class QuotaStore(
     val error = _error.asStateFlow()
 
     private var listenJob: Job? = null
+    private var automaticRefreshJob: Job? = null
+    private val staleRefreshInFlight = mutableSetOf<String>()
 
     fun load() {
         viewModelScope.launch {
@@ -38,6 +43,7 @@ class QuotaStore(
             try {
                 _snapshots.value = repo.fetchQuotaSnapshots().dedupeFresh()
                 _accounts.value = repo.fetchProviderAccounts()
+                refreshStaleCloudQuotaIfPossible()
             } catch (e: Exception) {
                 _error.value = e.message
             } finally {
@@ -52,6 +58,7 @@ class QuotaStore(
             try {
                 _snapshots.value = repo.fetchQuotaSnapshots().dedupeFresh()
                 _accounts.value = repo.fetchProviderAccounts()
+                refreshStaleCloudQuotaIfPossible()
                 _error.value = null
             } catch (e: Exception) {
                 _error.value = e.message
@@ -63,19 +70,68 @@ class QuotaStore(
 
     fun startListening() {
         listenJob?.cancel()
+        startAutomaticRefresh()
         listenJob = viewModelScope.launch {
             // See ActivityStore.startListening for the rationale —
             // Firestore listener errors must NEVER reach
             // Dispatchers.Main.immediate as unhandled exceptions.
             repo.listenToQuotaSnapshots()
                 .catch { e -> _error.value = e.message ?: e::class.simpleName }
-                .collect { snapshots -> _snapshots.value = snapshots.dedupeFresh() }
+                .collect { snapshots ->
+                    _snapshots.value = snapshots.dedupeFresh()
+                    refreshStaleCloudQuotaIfPossible()
+                }
         }
     }
 
     fun stopListening() {
         listenJob?.cancel()
         listenJob = null
+        automaticRefreshJob?.cancel()
+        automaticRefreshJob = null
+    }
+
+    private fun startAutomaticRefresh() {
+        if (automaticRefreshJob != null) return
+        automaticRefreshJob = viewModelScope.launch {
+            while (true) {
+                delay(15 * 60 * 1000L)
+                refreshStaleCloudQuotaIfPossible(maxRefreshes = 10)
+            }
+        }
+    }
+
+    private fun refreshStaleCloudQuotaIfPossible(maxRefreshes: Int = 3) {
+        val snapshotByAccount = _snapshots.value
+            .filter { !it.accountId.isNullOrBlank() }
+            .groupBy { it.accountId.orEmpty() }
+        val accountsToRefresh = _accounts.value
+            .filter { it.status in setOf("connected", "stale", "error") }
+            .filter { it.storageScope in setOf("cloud_refreshable", "server_private") }
+            .filter { account ->
+                val accountSnapshots = snapshotByAccount[account.id].orEmpty()
+                accountSnapshots.isEmpty() || accountSnapshots.any { it.isStale() }
+            }
+            .filter { staleRefreshInFlight.add(it.id) }
+            .take(maxRefreshes)
+
+        if (accountsToRefresh.isEmpty()) return
+        viewModelScope.launch {
+            for (account in accountsToRefresh) {
+                try {
+                    functions.refreshProviderAccountQuota(account.id)
+                } catch (_: Exception) {
+                    // Firestore remains the source of truth; refresh failures
+                    // are reflected by provider account and snapshot docs.
+                } finally {
+                    staleRefreshInFlight.remove(account.id)
+                }
+            }
+            runCatching {
+                _snapshots.value = repo.fetchQuotaSnapshots().dedupeFresh()
+                _accounts.value = repo.fetchProviderAccounts()
+            }
+        }
     }
 }
 

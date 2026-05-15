@@ -152,7 +152,7 @@ export async function refreshUserProviderAccountQuota(
   if (account.id !== accountID) {
     throw new Error(`Provider account ID mismatch for ${accountID}`);
   }
-  if (account.status !== "connected") {
+  if (!["connected", "stale", "error"].includes(account.status)) {
     throw new Error(`Provider account ${accountID} is not active (${account.status})`);
   }
   if (

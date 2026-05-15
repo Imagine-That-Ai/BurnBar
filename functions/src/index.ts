@@ -23,6 +23,7 @@ import { getFirestore, Timestamp, type DocumentData, type DocumentSnapshot, type
 import { getStorage } from "firebase-admin/storage";
 import { HttpsError, onCall, onRequest, type CallableRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { defineSecret } from "firebase-functions/params";
 import type { Firestore } from "firebase-admin/firestore";
 import { createHash, randomBytes } from "node:crypto";
 import { google } from "googleapis";
@@ -153,6 +154,10 @@ const PI_AGENT_MAX_FAILED_PAIRING_ATTEMPTS = 5;
 const HOSTED_QUOTA_PROVIDERS = new Set<string>(["codex"]);
 const SELF_HOSTED_QUOTA_PROVIDERS = new Set<string>(["claude-code", "codex", "opencode"]);
 const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
+const STRIPE_SECRET_KEY = defineSecret("STRIPE_SECRET_KEY");
+const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
+const STRIPE_API_SECRETS = [STRIPE_SECRET_KEY];
+const STRIPE_WEBHOOK_SECRETS = [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET];
 const GOOGLE_PLAY_ACTIVE_STATES = new Set<string>([
   "SUBSCRIPTION_STATE_ACTIVE",
   "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
@@ -658,10 +663,19 @@ async function writeBurnBarProEntitlement(args: {
 
 function requireConfiguredStripe(): Stripe {
   const cfg = getConfig();
-  if (!cfg.stripeSecretKey || !cfg.stripeBurnBarProPriceID) {
+  const secretKey = STRIPE_SECRET_KEY.value() || cfg.stripeSecretKey;
+  if (!secretKey || !cfg.stripeBurnBarProPriceID) {
     throw new HttpsError("failed-precondition", "Stripe BurnBar Pro checkout is not configured.");
   }
-  return new Stripe(cfg.stripeSecretKey);
+  return new Stripe(secretKey);
+}
+
+function requireConfiguredStripeWebhookSecret(): string {
+  const secret = STRIPE_WEBHOOK_SECRET.value() || getConfig().stripeWebhookSecret;
+  if (!secret) {
+    throw new HttpsError("failed-precondition", "Stripe BurnBar Pro webhook is not configured.");
+  }
+  return secret;
 }
 
 function boundedHttpsURL(raw: unknown, fieldName: string): string {
@@ -1843,7 +1857,7 @@ export const refreshProviderQuota = onCall(
     const accountSnapshot = await db
       .collection(`users/${uid}/provider_accounts`)
       .where("providerID", "==", provider)
-      .where("status", "==", "connected")
+      .where("status", "in", ["connected", "stale", "error"])
       .get();
 
     if (!accountSnapshot.empty) {
@@ -1853,7 +1867,7 @@ export const refreshProviderQuota = onCall(
 
       for (const doc of accountSnapshot.docs) {
         const account = doc.data() as ProviderAccountDoc;
-        if (account.storageScope !== "cloud_refreshable") {
+        if (account.storageScope !== "cloud_refreshable" && account.storageScope !== "server_private") {
           skippedAccountIDs.push(account.id);
           continue;
         }
@@ -2589,6 +2603,7 @@ export const createStripeBurnBarProCheckoutSession = onCall(
     region: "us-central1",
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
+    secrets: STRIPE_API_SECRETS,
   },
   async (
     request: CallableRequest<{
@@ -2635,6 +2650,7 @@ export const createStripeBurnBarProPortalSession = onCall(
     region: "us-central1",
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
+    secrets: STRIPE_API_SECRETS,
   },
   async (
     request: CallableRequest<{
@@ -2733,10 +2749,15 @@ export const stripeBurnBarProWebhook = onRequest(
   {
     region: "us-central1",
     maxInstances: 20,
+    secrets: STRIPE_WEBHOOK_SECRETS,
   },
   async (req, res): Promise<void> => {
-    const cfg = getConfig();
-    if (!cfg.stripeSecretKey || !cfg.stripeWebhookSecret) {
+    let stripe: Stripe;
+    let webhookSecret: string;
+    try {
+      stripe = requireConfiguredStripe();
+      webhookSecret = requireConfiguredStripeWebhookSecret();
+    } catch {
       res.status(503).send("Stripe webhook is not configured.");
       return;
     }
@@ -2745,11 +2766,10 @@ export const stripeBurnBarProWebhook = onRequest(
       res.status(400).send("Missing Stripe signature.");
       return;
     }
-    const stripe = new Stripe(cfg.stripeSecretKey);
     let event: Stripe.Event;
     try {
       const rawBody = Buffer.isBuffer(req.rawBody) ? req.rawBody : Buffer.from(JSON.stringify(req.body ?? {}));
-      event = stripe.webhooks.constructEvent(rawBody, signature, cfg.stripeWebhookSecret);
+      event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
     } catch (err) {
       res.status(400).send(`Webhook Error: ${err instanceof Error ? err.message : "invalid signature"}`);
       return;

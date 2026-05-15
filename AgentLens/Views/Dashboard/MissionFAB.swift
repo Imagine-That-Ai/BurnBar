@@ -176,20 +176,65 @@ struct MissionFAB: View {
 
     private func peekTile(_ tile: MissionConsoleActiveTile) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(tile.phase.displayLabel.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .tracking(1.0)
-                .foregroundStyle(DesignSystem.Colors.amber)
+            HStack(spacing: 6) {
+                Text(tile.phase.displayLabel.uppercased())
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .tracking(1.0)
+                    .foregroundStyle(DesignSystem.Colors.amber)
+                if let callSign = runtimeCallSign(for: tile.runtimeID) {
+                    Text(callSign)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(runtimeColor(for: tile.runtimeID))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background {
+                            Capsule()
+                                .fill(runtimeColor(for: tile.runtimeID).opacity(0.14))
+                                .overlay(
+                                    Capsule()
+                                        .stroke(runtimeColor(for: tile.runtimeID).opacity(0.45), lineWidth: 0.5)
+                                )
+                        }
+                }
+            }
             Text(tile.title)
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .lineLimit(2)
+            if let tool = tile.currentToolName {
+                HStack(spacing: 4) {
+                    Image(systemName: "hammer.fill")
+                        .font(.system(size: 8, weight: .bold))
+                    Text(tool)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                }
+                .foregroundStyle(DesignSystem.Colors.amber)
+            }
             if let snippet = tile.lastEventSnippet {
                 Text(snippet)
                     .font(.system(size: 10, weight: .regular, design: .monospaced))
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
             }
+        }
+    }
+
+    private func runtimeCallSign(for runtimeID: MissionConsoleRuntime.ID?) -> String? {
+        guard let id = runtimeID else { return nil }
+        let runtime = host.snapshot.runtimes.first { $0.id == id }
+        return runtime?.callSign ?? id.uppercased().prefix(3).description
+    }
+
+    private func runtimeColor(for runtimeID: MissionConsoleRuntime.ID?) -> Color {
+        guard let id = runtimeID else { return DesignSystem.Colors.textMuted }
+        let runtime = host.snapshot.runtimes.first { $0.id == id }
+        guard let runtime else { return DesignSystem.Colors.amber }
+        switch runtime.provider {
+        case .claudeCode: return DesignSystem.Colors.coral
+        case .codex:      return DesignSystem.Colors.purple
+        case .hermes:     return DesignSystem.Colors.teal
+        case .piAgent:    return DesignSystem.Colors.gold
+        default:          return DesignSystem.Colors.amber
         }
     }
 
