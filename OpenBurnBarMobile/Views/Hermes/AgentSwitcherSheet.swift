@@ -60,6 +60,20 @@ extension AssistantRuntimeID {
         case .openClaw: return "Local agent"
         }
     }
+
+    /// Reverse of `agentProvider`. Maps the five harness brand providers
+    /// back to their runtime ID. Returns nil for any other provider
+    /// (e.g. raw model brands like OpenAI, Anthropic, Ollama).
+    static func fromHarnessProvider(_ provider: AgentProvider) -> AssistantRuntimeID? {
+        switch provider {
+        case .hermes:     return .hermes
+        case .piAgent:    return .pi
+        case .codex:      return .codex
+        case .claudeCode: return .claude
+        case .openClaw:   return .openClaw
+        default:          return nil
+        }
+    }
 }
 
 // MARK: - Runtime Status
@@ -192,49 +206,33 @@ struct HermesModelSummary {
 struct AgentIdentityChip: View {
     let runtime: AssistantRuntimeID
     let runtimeStatus: RuntimeStatus
-    /// Only set for Hermes — the underlying model the harness is routed to.
-    let modelSummary: HermesModelSummary?
+    /// Underlying model the harness is currently routed to, resolved by
+    /// `AssistantModelLens`. Every harness has one — Hermes/Pi advertise
+    /// it live, the three CLI runtimes pick it up from the user's
+    /// preference (or last-session fallback).
+    let modelSnapshot: AssistantModelLens.ModelSnapshot
     let onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 8) {
-                ZStack(alignment: .bottomTrailing) {
-                    UnifiedProviderLogoView(provider: runtime.agentProvider, size: 26)
-                    Circle()
-                        .fill(runtimeStatus.color)
-                        .frame(width: 9, height: 9)
-                        .overlay(
-                            Circle()
-                                .stroke(MobileTheme.Colors.background, lineWidth: 1.5)
-                        )
-                        .offset(x: 2, y: 2)
-                }
+            HStack(spacing: 10) {
+                HarnessModelBadge(
+                    harness: runtime.agentProvider,
+                    model: modelSnapshot.provider,
+                    size: 28,
+                    availability: runtimeStatus
+                )
+                .frame(width: 36, height: 36, alignment: .topLeading)
 
                 VStack(alignment: .leading, spacing: 0) {
                     Text(runtime.displayName)
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(MobileTheme.Colors.textPrimary)
                         .lineLimit(1)
-
-                    if let modelSummary {
-                        HStack(spacing: 3) {
-                            UnifiedProviderLogoView(
-                                provider: modelSummary.provider,
-                                size: 10,
-                                useFallbackColor: true
-                            )
-                            Text(modelSummary.displayName)
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(MobileTheme.Colors.textSecondary)
-                                .lineLimit(1)
-                        }
-                    } else {
-                        Text(runtime.kindLabel)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(MobileTheme.Colors.textMuted)
-                            .lineLimit(1)
-                    }
+                    Text(modelSnapshot.displayName)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .lineLimit(1)
                 }
 
                 Image(systemName: "chevron.down")
@@ -254,7 +252,7 @@ struct AgentIdentityChip: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Switch agent. Current: \(runtime.displayName), \(runtimeStatus.label)" + (modelSummary.map { ", routed to \($0.displayName)" } ?? ""))
+        .accessibilityLabel("Switch agent. Current: \(runtime.displayName), \(runtimeStatus.label), running \(modelSnapshot.displayName)")
         .accessibilityHint("Opens the agent and model switcher")
     }
 }
@@ -316,14 +314,14 @@ struct AgentSwitcherSheet: View {
     let onManageConnections: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var showHermesModelPicker = false
+    @State private var pickerRuntime: AssistantRuntimeID? = nil
 
     private var resolver: AssistantStatusResolver {
         AssistantStatusResolver(hermesService: hermesService, piService: piService)
     }
 
-    private var hermesSummary: HermesModelSummary {
-        HermesModelSummary(service: hermesService)
+    private var lens: AssistantModelLens {
+        AssistantModelLens(hermesService: hermesService, piService: piService)
     }
 
     var body: some View {
@@ -334,11 +332,7 @@ struct AgentSwitcherSheet: View {
                 ScrollView {
                     VStack(spacing: MobileTheme.Spacing.lg) {
                         agentSection
-                        if runtime == .hermes {
-                            hermesModelSection
-                        } else {
-                            nonHermesModelHint
-                        }
+                        modelSection
                         connectionFooter
                     }
                     .padding(MobileTheme.Spacing.lg)
@@ -355,8 +349,12 @@ struct AgentSwitcherSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
-        .sheet(isPresented: $showHermesModelPicker) {
-            HermesModelPickerSheet(service: hermesService)
+        .sheet(item: $pickerRuntime) { target in
+            AssistantModelPickerSheet(
+                runtime: target,
+                hermesService: hermesService,
+                piService: piService
+            )
         }
     }
 
@@ -368,12 +366,13 @@ struct AgentSwitcherSheet: View {
                 sectionHeader("Agent", systemName: "person.2.crop.square.stack")
 
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 14) {
                         ForEach(visibleRuntimes, id: \.self) { r in
                             AgentTile(
                                 runtime: r,
                                 isActive: r == runtime,
                                 status: resolver.status(for: r),
+                                modelSnapshot: lens.snapshot(for: r),
                                 onTap: {
                                     if r != runtime {
                                         runtime = r
@@ -383,37 +382,39 @@ struct AgentSwitcherSheet: View {
                             )
                         }
                     }
-                    .padding(.horizontal, 2)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 6)
                 }
             }
         }
     }
 
-    // MARK: Hermes model section
+    // MARK: Model section (works for every runtime)
 
-    private var hermesModelSection: some View {
-        AuroraGlassCard(variant: .hermes, cornerRadius: MobileTheme.Radius.lg) {
+    private var modelSection: some View {
+        let snapshot = lens.snapshot(for: runtime)
+        return AuroraGlassCard(variant: .hermes, cornerRadius: MobileTheme.Radius.lg) {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
                 sectionHeader("Powered by", systemName: "cpu")
 
                 Button {
-                    showHermesModelPicker = true
+                    pickerRuntime = runtime
                 } label: {
                     HStack(spacing: MobileTheme.Spacing.md) {
-                        UnifiedProviderLogoView(
-                            provider: hermesSummary.provider,
-                            size: 38,
-                            useFallbackColor: true
+                        HarnessModelBadge(
+                            harness: runtime.agentProvider,
+                            model: snapshot.provider,
+                            size: 40
                         )
+                        .frame(width: 52, height: 52, alignment: .topLeading)
 
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(hermesSummary.displayName)
+                            Text(snapshot.displayName)
                                 .font(MobileTheme.Typography.body)
                                 .fontWeight(.semibold)
                                 .foregroundStyle(MobileTheme.Colors.textPrimary)
                                 .lineLimit(1)
-                            Text("Hermes is an agent harness — tap to change the underlying model")
+                            Text(modelExplanation(for: runtime, origin: snapshot.origin))
                                 .font(MobileTheme.Typography.tiny)
                                 .foregroundStyle(MobileTheme.Colors.textMuted)
                                 .multilineTextAlignment(.leading)
@@ -433,27 +434,28 @@ struct AgentSwitcherSheet: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint("Opens the Hermes model picker")
+                .accessibilityHint("Opens the \(runtime.displayName) model picker")
             }
         }
     }
 
-    private var nonHermesModelHint: some View {
-        AuroraGlassCard(variant: .compact, cornerRadius: MobileTheme.Radius.md) {
-            HStack(alignment: .top, spacing: MobileTheme.Spacing.md) {
-                UnifiedProviderLogoView(provider: runtime.agentProvider, size: 28)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("\(runtime.displayName) runs on its own model")
-                        .font(MobileTheme.Typography.body)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(MobileTheme.Colors.textPrimary)
-                    Text("Model selection for \(runtime.displayName) is managed by the runtime itself. Use Manage connections to point it at a different host.")
-                        .font(MobileTheme.Typography.tiny)
-                        .foregroundStyle(MobileTheme.Colors.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
-            }
+    private func modelExplanation(for runtime: AssistantRuntimeID,
+                                  origin: AssistantModelLens.ModelSnapshot.Origin) -> String {
+        let kindCopy: String
+        switch runtime {
+        case .hermes:   kindCopy = "Hermes is an agent harness — pick the underlying model"
+        case .pi:       kindCopy = "Pi is an empathy harness — pick the underlying model"
+        case .codex:    kindCopy = "Codex CLI — pick the OpenAI model it runs on"
+        case .claude:   kindCopy = "Claude Code — pick the Anthropic model it runs on"
+        case .openClaw: kindCopy = "OpenClaw — pick the local model it runs on"
+        }
+        switch origin {
+        case .live, .preference:
+            return kindCopy
+        case .lastSession:
+            return "\(kindCopy). Last session ran this model — your pick applies next."
+        case .fallback:
+            return "\(kindCopy). No preference saved yet — tap to choose."
         }
     }
 
@@ -527,25 +529,27 @@ struct AgentTile: View {
     let runtime: AssistantRuntimeID
     let isActive: Bool
     let status: RuntimeStatus
+    let modelSnapshot: AssistantModelLens.ModelSnapshot
     let onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 8) {
                 ZStack(alignment: .topTrailing) {
-                    UnifiedProviderLogoView(
-                        provider: runtime.agentProvider,
-                        size: 44,
-                        useFallbackColor: true
+                    HarnessModelBadge(
+                        harness: runtime.agentProvider,
+                        model: modelSnapshot.provider,
+                        size: 44
                     )
+                    .frame(width: 56, height: 56, alignment: .topLeading)
                     .padding(10)
                     .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .fill(isActive
                                   ? runtime.brandTint.opacity(0.18)
                                   : MobileTheme.Colors.surfaceElevated.opacity(0.55))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
                                     .stroke(isActive
                                             ? runtime.brandTint.opacity(0.75)
                                             : MobileTheme.Colors.border.opacity(0.4),
@@ -567,24 +571,23 @@ struct AgentTile: View {
                         )
                         .offset(x: 3, y: -3)
                 }
-                .frame(width: 64, height: 64)
 
                 VStack(spacing: 1) {
                     Text(runtime.displayName)
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(isActive ? runtime.brandTint : MobileTheme.Colors.textPrimary)
                         .lineLimit(1)
-                    Text(status.label)
+                    Text(modelSnapshot.displayName)
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(MobileTheme.Colors.textMuted)
                         .lineLimit(1)
                 }
             }
-            .frame(width: 84)
+            .frame(width: 96)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(runtime.displayName), \(runtime.kindLabel), \(status.label)" + (isActive ? ", selected" : ""))
+        .accessibilityLabel("\(runtime.displayName), \(runtime.kindLabel), running \(modelSnapshot.displayName), \(status.label)" + (isActive ? ", selected" : ""))
         .accessibilityAddTraits(isActive ? [.isSelected, .isButton] : .isButton)
     }
 }

@@ -347,18 +347,9 @@ private fun BurnBarContent(
                 navDeepLink { uriPattern = "burnbar://assistants" }
             )
         ) {
-            // Hermes Square Phase A (plan §7): when the feature flag is on,
-            // route through the new super-app surface; otherwise the legacy
-            // runtime-pill AssistantsScreen. Both share the same deep links
-            // above so existing widget chips and external routers keep
-            // landing here.
-            val context = LocalContext.current
-            val flags = remember(context) { HermesSquareFeatureFlags.shared(context) }
-            if (flags.phaseA) {
-                HermesSquareScreen()
-            } else {
-                AssistantsScreen()
-            }
+            // Hermes Square is the only Assistants surface. Deep links
+            // and widget chips route here directly.
+            HermesSquareScreen()
         }
         composable(
             BurnBarTab.YOU.route,

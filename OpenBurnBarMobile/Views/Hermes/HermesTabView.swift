@@ -265,11 +265,14 @@ struct HermesConversationListView: View {
         ZStack {
             AuroraBackdrop()
 
-            Group {
-                if service.sessions.isEmpty && libraryStore.sessions.isEmpty && onDeviceThreads.isEmpty {
-                    emptyState
-                } else {
-                    conversationList
+            VStack(spacing: 0) {
+                brandHeader
+                Group {
+                    if service.sessions.isEmpty && libraryStore.sessions.isEmpty && onDeviceThreads.isEmpty {
+                        emptyState
+                    } else {
+                        conversationList
+                    }
                 }
             }
 
@@ -283,8 +286,8 @@ struct HermesConversationListView: View {
                 }
             }
         }
-        .navigationTitle("Hermes")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -426,6 +429,54 @@ struct HermesConversationListView: View {
         service.sendMessage(pending)
     }
 
+    // MARK: - Brand Header
+
+    private var brandHeader: some View {
+        let lens = AssistantModelLens(hermesService: service, piService: PiService.shared)
+        let snapshot = lens.snapshot(for: .hermes)
+        return HStack(spacing: 12) {
+            Button {
+                showModelPicker = true
+            } label: {
+                ZStack(alignment: .bottomTrailing) {
+                    UnifiedProviderLogoView(provider: hermesAgentProvider(for: "hermes"), size: 34)
+                    Circle()
+                        .fill(service.isReachable ? MobileTheme.success : MobileTheme.warning)
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(MobileTheme.Colors.background, lineWidth: 1.5))
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Switch Hermes model")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(AssistantRuntimeID.hermes.displayName)
+                    .font(MobileTheme.Typography.headline)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                Text(snapshot.displayName)
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Button {
+                showConnectionSheet = true
+            } label: {
+                Image(systemName: "network")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(MobileTheme.hermesAureate)
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(MobileTheme.Colors.surface.opacity(0.65)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Manage Hermes connection")
+        }
+        .padding(.horizontal, MobileTheme.Spacing.md)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+    }
+
     // MARK: - Conversation List
 
     private var conversationList: some View {
@@ -443,9 +494,6 @@ struct HermesConversationListView: View {
                             .buttonStyle(.plain)
                             .simultaneousGesture(TapGesture().onEnded {
                                 HapticBus.sheetOpen()
-                                // Synchronously restore the thread so the detail
-                                // view's first paint shows the right messages.
-                                service.loadMobileThread(id: thread.id)
                             })
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {

@@ -163,30 +163,13 @@ struct RootTabView: View {
 
     private var hermesStack: some View {
         NavigationStack(path: $hermesPath) {
-            // Hermes Square gates per phase (plan §7):
-            //   • Phase A on  ⇒ `HermesSquareRoot` (compact single-column)
-            //   • Phase D on  ⇒ `HermesSquareSplitLayout` activates the
-            //     iPad two-column layout at width ≥ 720pt, otherwise it
-            //     falls back to `HermesSquareRoot`.
-            //   • All flags off ⇒ legacy `AssistantsTabRoot`.
-            //
-            // Both surfaces share the same hermesService / missionConsoleHost
-            // so state is preserved across the switch.
-            if HermesSquareFeatureFlags.shared.phaseA {
-                if HermesSquareFeatureFlags.shared.phaseD {
-                    HermesSquareSplitLayout(
-                        hermesService: hermesService,
-                        missionHost: missionConsoleHost
-                    )
-                } else {
-                    HermesSquareRoot(
-                        hermesService: hermesService,
-                        missionHost: missionConsoleHost
-                    )
-                }
-            } else {
-                AssistantsTabRoot(hermesService: hermesService, dashboardSnapshot: nil)
-            }
+            // Hermes Square is the only Assistants surface. The split-
+            // view automatically falls back to the single-column root on
+            // compact widths (< 720pt) — same code path, no flag.
+            HermesSquareSplitLayout(
+                hermesService: hermesService,
+                missionHost: missionConsoleHost
+            )
         }
     }
 

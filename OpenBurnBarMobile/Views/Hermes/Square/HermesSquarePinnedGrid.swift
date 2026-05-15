@@ -17,6 +17,11 @@ import OpenBurnBarCore
 struct HermesSquarePinnedGrid: View {
     let config: PinnedAgentGridConfig
     let registry: AgentIdentityRegistry
+    /// Resolves the current model provider for a given pinned identity so
+    /// each tile can render a harness + model composite. Closure-based so
+    /// the grid stays stateless; the caller supplies an
+    /// `AssistantModelLens` from the parent view.
+    var modelProvider: (AgentIdentity) -> AgentProvider? = { _ in nil }
     let onTap: (String) -> Void
     let onLongPress: (String) -> Void
 
@@ -30,6 +35,7 @@ struct HermesSquarePinnedGrid: View {
                 if let identity = registry.identity(for: uri) {
                     PinnedCell(
                         identity: identity,
+                        modelProvider: modelProvider(identity),
                         cellHeight: cellHeight,
                         onTap: { onTap(uri) },
                         onLongPress: { onLongPress(uri) }
@@ -44,6 +50,7 @@ struct HermesSquarePinnedGrid: View {
 
 private struct PinnedCell: View {
     let identity: AgentIdentity
+    let modelProvider: AgentProvider?
     let cellHeight: CGFloat
     let onTap: () -> Void
     let onLongPress: () -> Void
@@ -135,7 +142,8 @@ private struct PinnedCell: View {
                 identity: identity,
                 size: 38,
                 showAvailability: true,
-                ringStroke: true
+                ringStroke: true,
+                modelProvider: modelProvider
             )
             Text(identity.displayName)
                 .font(.caption2.bold())

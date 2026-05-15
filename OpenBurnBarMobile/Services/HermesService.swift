@@ -478,6 +478,12 @@ final class FirestoreHermesConnectionRepository: HermesConnectionListing {
 @Observable
 @MainActor
 final class HermesService {
+    /// Shared instance for views that need to read Hermes state but don't
+    /// own the lifecycle (notably the Pi conversation list brand header
+    /// which needs an `AssistantModelLens` but isn't otherwise wired to
+    /// Hermes). Long-running views still inject their own instance.
+    static let shared = HermesService()
+
     var messages: [HermesChatMessage] = []
     var connections: [HermesConnectionRecord] = [HermesConnectionRecord.localDefault]
     var selectedConnection: HermesConnectionRecord = .localDefault

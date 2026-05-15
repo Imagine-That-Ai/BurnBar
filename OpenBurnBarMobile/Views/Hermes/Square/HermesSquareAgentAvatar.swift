@@ -25,15 +25,24 @@ struct HermesSquareAgentAvatar: View {
     var size: CGFloat = 38
     var showAvailability: Bool = true
     var ringStroke: Bool = false
+    /// When non-nil, renders a smaller model-provider logo in the
+    /// bottom-right corner of the harness avatar. The model logo doubles
+    /// as the carrier for the availability dot, so the corner stays a
+    /// single composite glance.
+    var modelProvider: AgentProvider? = nil
 
     private var accent: Color { Color(hex: identity.paletteHex) }
     private var hasLogo: Bool { identity.resolvedProvider != nil }
     private var availabilityDotSize: CGFloat { max(6, size * 0.20) }
+    private var modelBadgeSize: CGFloat { size * 0.50 }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .bottomTrailing) {
             avatar
-            if showAvailability && identity.availability != .unknown {
+
+            if let modelProvider {
+                modelBadge(for: modelProvider)
+            } else if showAvailability && identity.availability != .unknown {
                 Circle()
                     .fill(availabilityColor)
                     .frame(width: availabilityDotSize, height: availabilityDotSize)
@@ -45,8 +54,35 @@ struct HermesSquareAgentAvatar: View {
                     .offset(x: size * 0.37, y: size * 0.37)
             }
         }
-        .frame(width: size, height: size)
+        .frame(width: size, height: size, alignment: .topLeading)
         .accessibilityLabel(accessibilityDescription)
+    }
+
+    @ViewBuilder
+    private func modelBadge(for provider: AgentProvider) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            UnifiedProviderLogoView(provider: provider, size: modelBadgeSize, useFallbackColor: true)
+                .padding(modelBadgeSize * 0.07)
+                .background(
+                    RoundedRectangle(cornerRadius: modelBadgeSize * 0.27, style: .continuous)
+                        .fill(DesignSystemColors.background)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: modelBadgeSize * 0.27, style: .continuous)
+                        .stroke(DesignSystemColors.border.opacity(0.55), lineWidth: 0.6)
+                )
+
+            if showAvailability && identity.availability != .unknown {
+                Circle()
+                    .fill(availabilityColor)
+                    .frame(width: modelBadgeSize * 0.28, height: modelBadgeSize * 0.28)
+                    .overlay(
+                        Circle().stroke(DesignSystemColors.background, lineWidth: 1.2)
+                    )
+                    .offset(x: modelBadgeSize * 0.18, y: modelBadgeSize * 0.18)
+            }
+        }
+        .offset(x: modelBadgeSize * 0.30, y: modelBadgeSize * 0.30)
     }
 
     @ViewBuilder

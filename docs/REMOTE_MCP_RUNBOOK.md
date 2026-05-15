@@ -69,7 +69,9 @@ gcloud beta run domain-mappings describe \
   --project burnbar \
   --format='yaml(status.conditions,status.resourceRecords)'
 # DomainRoutable=True
-# CertificateProvisioned=Unknown, reason=CertificatePending
+# Ready=True
+# CertificateProvisioned=True
+# DomainRoutable=True
 ```
 
 If the first certificate attempt started before DNS propagated, recreate the
@@ -89,13 +91,9 @@ gcloud beta run domain-mappings create \
   --project burnbar
 ```
 
-This was done on 2026-05-15 after DNS was visible. The fresh mapping is
-`DomainRoutable=True`, `CertificateProvisioned=Unknown`, and
-`http://mcp.burnbar.ai/readyz` reaches Google Frontend and redirects to HTTPS.
-The retry at `2026-05-15T07:25:09Z` still reported `CertificatePending`, with
-the next Cloud Run polling interval set to one hour. Until Google finishes
-provisioning the managed certificate, `https://mcp.burnbar.ai/readyz` fails at
-TLS with `LibreSSL SSL_connect: SSL_ERROR_SYSCALL`.
+This was done on 2026-05-15 after DNS was visible. Google provisioned the
+managed certificate at `2026-05-15T07:44:11.108493Z`, and
+`https://mcp.burnbar.ai/readyz` now returns HTTP 200.
 
 ## Live Proof
 
@@ -158,7 +156,7 @@ OPENBURNBAR_MCP_REAL_CLIENTS=1 ./scripts/test-hosted-mcp-compatibility.sh
 
 This proves that the installed Codex, Claude Code, Droid/Factory, Kimi, and
 Forge CLIs accept the OpenBurnBar stdio shim configuration. It does not replace
-the final branded-endpoint OAuth/search/body compatibility proof.
+the final real target-client OAuth/search/body compatibility proof.
 
 Live stdio shim proof:
 
@@ -243,8 +241,8 @@ npm --prefix functions run prove:hosted-mcp-privacy -- \
 
 Still required before launch:
 
-- Repeat body fetch proof against a real subscriber fixture after the branded
-  HTTPS endpoint is live.
+- Add a real unpaid/non-subscriber fixture denial proof.
+- Prove authenticated real target-client flows against the branded endpoint.
 
 ## Rollback
 

@@ -46,7 +46,8 @@ public struct MissionRuntimeConstellation: View {
                         runtimeCard(for: runtime, isAuto: false)
                     }
                 }
-                .padding(.horizontal, 1)
+                .padding(.leading, 1)
+                .padding(.trailing, UnifiedDesignSystem.Spacing.xl)
             }
         }
     }

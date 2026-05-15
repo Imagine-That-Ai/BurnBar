@@ -45,3 +45,24 @@ extension AgentIdentity {
         }
     }
 }
+
+// MARK: - Reverse bridge (provider → runtime)
+
+extension AssistantRuntimeID {
+
+    /// Provider this runtime ships as in `UnifiedProviderLogoView`. Same
+    /// mapping as `AgentIdentity.builtInProvider(for:)` — exposed on the
+    /// enum directly so callers reaching for "what's the brand mark for
+    /// this harness?" don't have to construct a full identity first.
+    public var agentProvider: AgentProvider {
+        AgentIdentity.builtInProvider(for: self)
+    }
+
+    /// Reverse lookup — find the runtime whose bundled brand is the
+    /// given provider. Returns nil for providers that aren't a built-in
+    /// harness (e.g., `.kimi`, `.warp` — those are sub-providers used
+    /// inside Hermes, not first-class harnesses).
+    public static func fromHarnessProvider(_ provider: AgentProvider) -> AssistantRuntimeID? {
+        AssistantRuntimeID.allCases.first { $0.agentProvider == provider }
+    }
+}

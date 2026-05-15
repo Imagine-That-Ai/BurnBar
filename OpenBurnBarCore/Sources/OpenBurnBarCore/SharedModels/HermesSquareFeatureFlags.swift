@@ -53,13 +53,30 @@ public final class HermesSquareFeatureFlags {
     }
 
     // MARK: Init
+    //
+    // Hermes Square is now the default Assistants surface. Every phase
+    // defaults to **true** on a fresh install. UserDefaults bool reads
+    // return `false` for missing keys, so we read with an explicit
+    // existence check and seed `true` when the key has never been set.
+    // Existing installs that previously stored an explicit value (true or
+    // false) are honored verbatim — including users who once dogfooded
+    // with the flag set to false. They can flip it back via host code
+    // calling `resetAll()` or by uninstalling.
 
     private init() {
         let defaults = UserDefaults.standard
-        self.phaseA = defaults.bool(forKey: Key.phaseA.rawValue)
-        self.phaseB = defaults.bool(forKey: Key.phaseB.rawValue)
-        self.phaseC = defaults.bool(forKey: Key.phaseC.rawValue)
-        self.phaseD = defaults.bool(forKey: Key.phaseD.rawValue)
+        self.phaseA = Self.loadFlag(defaults: defaults, key: .phaseA, defaultValue: true)
+        self.phaseB = Self.loadFlag(defaults: defaults, key: .phaseB, defaultValue: true)
+        self.phaseC = Self.loadFlag(defaults: defaults, key: .phaseC, defaultValue: true)
+        self.phaseD = Self.loadFlag(defaults: defaults, key: .phaseD, defaultValue: true)
+    }
+
+    private static func loadFlag(defaults: UserDefaults, key: Key, defaultValue: Bool) -> Bool {
+        if defaults.object(forKey: key.rawValue) == nil {
+            defaults.set(defaultValue, forKey: key.rawValue)
+            return defaultValue
+        }
+        return defaults.bool(forKey: key.rawValue)
     }
 
     /// Test/preview seed: an instance with all flags off.

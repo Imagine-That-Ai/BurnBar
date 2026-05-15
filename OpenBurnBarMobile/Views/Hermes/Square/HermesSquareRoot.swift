@@ -52,7 +52,6 @@ struct HermesSquareRoot: View {
     @State private var approvalPolicyStore = ApprovalPolicyStore.shared
     @State private var rollbackService = RollbackService.shared
     @State private var voiceIntentBanner: VoiceIntent?
-    private var flags: HermesSquareFeatureFlags { HermesSquareFeatureFlags.shared }
 
     private var pinnedGrid: PinnedAgentGridConfig {
         PinnedAgentGridConfig.from(jsonString: pinnedJSON)
@@ -89,9 +88,9 @@ struct HermesSquareRoot: View {
                         searchResults
                             .padding(.horizontal, 16)
                     } else {
-                        // Phase B approval inbox — shows pending approvals
-                        // at the top of the inbox until handled.
-                        if flags.phaseB {
+                        // Approval inbox — always visible. Pending
+                        // approvals stick at the top until handled.
+                        if !missionHost.snapshot.approvalAsks.isEmpty {
                             ApprovalInboxStrip(
                                 asks: missionHost.snapshot.approvalAsks,
                                 onApprove: { ask in
@@ -106,9 +105,9 @@ struct HermesSquareRoot: View {
                             .padding(.horizontal, 16)
                         }
 
-                        // Phase B fan-out group card — when an observer is
-                        // active, render the side-by-side child tiles.
-                        if flags.phaseB, let group = activeGroupObserver.group {
+                        // Fan-out group card — when an observer is active,
+                        // render the side-by-side child tiles.
+                        if let group = activeGroupObserver.group {
                             let tiles = childTilesForActiveGroup(group)
                             MissionFanOutGroupCard(
                                 group: group,
@@ -127,13 +126,11 @@ struct HermesSquareRoot: View {
                         activeMissionsStrip
                             .padding(.leading, 16)
 
-                        // Phase C: rollback card surfaces for any active
-                        // session that has snapshots — gives the user one
-                        // tap to revert what an agent just did.
-                        if flags.phaseC {
-                            rollbackSections
-                                .padding(.horizontal, 16)
-                        }
+                        // Rollback card surfaces for any active session
+                        // that has snapshots — gives the user one tap to
+                        // revert what an agent just did.
+                        rollbackSections
+                            .padding(.horizontal, 16)
 
                         threadInboxSection
                             .padding(.horizontal, 16)
@@ -155,17 +152,14 @@ struct HermesSquareRoot: View {
             await registry.refresh(hermesService: hermesService, piService: piService, missionHost: missionHost)
             await inbox.refresh()
             await reindexSearch()
-            // Phase C: observe rollback snapshots for every active CLI
-            // session so the rollback card shows up the moment the Mac
-            // writes a snapshot.
-            if flags.phaseC {
-                rollbackService.startObservingRequests()
-                let sessionIDs = Set(missionHost.snapshot.activeTiles.compactMap { tile in
-                    tile.id.isEmpty ? nil : tile.id
-                })
-                for sessionID in sessionIDs {
-                    rollbackService.startObservingSession(sessionID)
-                }
+            // Observe rollback snapshots for every active CLI session so
+            // the rollback card shows up the moment the Mac writes one.
+            rollbackService.startObservingRequests()
+            let sessionIDs = Set(missionHost.snapshot.activeTiles.compactMap { tile in
+                tile.id.isEmpty ? nil : tile.id
+            })
+            for sessionID in sessionIDs {
+                rollbackService.startObservingSession(sessionID)
             }
         }
         .onChange(of: inbox.items) { _, _ in
@@ -195,22 +189,18 @@ struct HermesSquareRoot: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                if flags.phaseB {
-                    Button {
-                        isShowingFanOut = true
-                    } label: {
-                        Image(systemName: "rectangle.stack.badge.plus")
-                    }
-                    .accessibilityLabel("Fan-out dispatch")
+                Button {
+                    isShowingFanOut = true
+                } label: {
+                    Image(systemName: "rectangle.stack.badge.plus")
                 }
-                if flags.phaseD {
-                    Button {
-                        isShowingVoice = true
-                    } label: {
-                        Image(systemName: "mic.circle.fill")
-                    }
-                    .accessibilityLabel("Voice command")
+                .accessibilityLabel("Fan-out dispatch")
+                Button {
+                    isShowingVoice = true
+                } label: {
+                    Image(systemName: "mic.circle.fill")
                 }
+                .accessibilityLabel("Voice command")
             }
         }
         .overlay(alignment: .top) {
@@ -328,6 +318,16 @@ struct HermesSquareRoot: View {
             HermesSquarePinnedGrid(
                 config: pinnedGrid,
                 registry: registry,
+                modelProvider: { identity in
+                    guard let provider = identity.resolvedProvider,
+                          let runtime = AssistantRuntimeID.fromHarnessProvider(provider) else {
+                        return nil
+                    }
+                    return AssistantModelLens(
+                        hermesService: hermesService,
+                        piService: piService
+                    ).snapshot(for: runtime).provider
+                },
                 onTap: { uri in handlePinnedTap(uri: uri) },
                 onLongPress: { uri in handlePinnedLongPress(uri: uri) }
             )
@@ -690,9 +690,13 @@ struct HermesSquareRoot: View {
     private func runtimeNativeView(for runtime: AssistantRuntimeID) -> some View {
         switch runtime {
         case .hermes:
-            HermesConversationListView(service: hermesService, dashboardSnapshot: nil)
+            NavigationStack {
+                HermesConversationListView(service: hermesService, dashboardSnapshot: nil)
+            }
         case .pi:
-            PiConversationListView(service: piService)
+            NavigationStack {
+                PiConversationListView(service: piService)
+            }
         case .codex, .claude, .openClaw:
             if let cliRuntime = CLIAgentRuntime(assistant: runtime) {
                 CLIAgentConversationListView(runtime: cliRuntime)

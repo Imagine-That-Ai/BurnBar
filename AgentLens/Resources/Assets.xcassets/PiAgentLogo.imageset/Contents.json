@@ -1,7 +1,24 @@
 {
   "images" : [
     {
-      "filename" : "PiAgentLogo.svg",
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "light"
+        }
+      ],
+      "filename" : "PiAgentLogo-Light.svg",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "dark"
+        }
+      ],
+      "filename" : "PiAgentLogo-Dark.svg",
       "idiom" : "universal",
       "scale" : "1x"
     }

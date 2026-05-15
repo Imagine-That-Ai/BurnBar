@@ -11,18 +11,20 @@ struct HermesSquareSubscriptionsFolder: View {
     let registry: AgentIdentityRegistry
     @Environment(\.dismiss) private var dismiss
 
-    @State private var topics: [SubscriptionTopic] = []
+    @State private var topicStore = AgentSubscriptionTopicStore.shared
+    @State private var pendingTopicIDs: Set<String> = []
+    @State private var operationError: String?
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                if topics.isEmpty {
+                if topicStore.topics.isEmpty {
                     emptyState
                         .padding(.top, 60)
                         .padding(.horizontal, 24)
                 } else {
                     VStack(spacing: 10) {
-                        ForEach(topics) { topic in
+                        ForEach(topicStore.topics) { topic in
                             row(for: topic)
                         }
                     }
@@ -31,10 +33,22 @@ struct HermesSquareSubscriptionsFolder: View {
             }
             .navigationTitle("Subscriptions")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                topicStore.bootstrap()
+                await topicStore.refresh()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .alert("Subscription action failed", isPresented: Binding(
+                get: { operationError != nil },
+                set: { if !$0 { operationError = nil } }
+            )) {
+                Button("OK", role: .cancel) { operationError = nil }
+            } message: {
+                Text(operationError ?? "")
             }
         }
     }
@@ -47,7 +61,7 @@ struct HermesSquareSubscriptionsFolder: View {
             Text("No subscriptions yet")
                 .font(.headline)
                 .foregroundStyle(DesignSystemColors.textPrimary)
-            Text("Subscription-tier agents broadcast on a schedule — research scouts, weekly recaps, monitoring agents. Pick one in Discover → Marketplace once Phase C ships, then opt-in per topic.")
+            Text("Tap Subscribe in an agent brand zone to add a topic. Muted topics stay saved and can be resumed later.")
                 .font(.callout)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(DesignSystemColors.textSecondary)
@@ -60,9 +74,48 @@ struct HermesSquareSubscriptionsFolder: View {
 
     private func row(for topic: SubscriptionTopic) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(topic.displayName)
-                .font(.callout.bold())
-                .foregroundStyle(DesignSystemColors.textPrimary)
+            HStack(spacing: 8) {
+                Text(topic.displayName)
+                    .font(.callout.bold())
+                    .foregroundStyle(DesignSystemColors.textPrimary)
+                if topic.isMuted {
+                    Text("Muted")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(DesignSystemColors.surface))
+                        .foregroundStyle(DesignSystemColors.textMuted)
+                }
+                Spacer()
+                if pendingTopicIDs.contains(topic.id) {
+                    ProgressView()
+                        .controlSize(.mini)
+                } else {
+                    Menu {
+                        Button(topic.isMuted ? "Unmute" : "Mute") {
+                            mutate(topicID: topic.id) {
+                                try await topicStore.setMuted(
+                                    agentURI: topic.agentURI,
+                                    topicID: topic.topicID,
+                                    muted: !topic.isMuted
+                                )
+                            }
+                        }
+                        Button("Unsubscribe", role: .destructive) {
+                            mutate(topicID: topic.id) {
+                                try await topicStore.unsubscribe(
+                                    agentURI: topic.agentURI,
+                                    topicID: topic.topicID
+                                )
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundStyle(DesignSystemColors.textMuted)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
             Text(topic.description)
                 .font(.caption)
                 .foregroundStyle(DesignSystemColors.textMuted)
@@ -84,5 +137,20 @@ struct HermesSquareSubscriptionsFolder: View {
             RoundedRectangle(cornerRadius: 10)
                 .fill(DesignSystemColors.surface.opacity(0.5))
         )
+    }
+
+    private func mutate(
+        topicID: String,
+        operation: @escaping @Sendable () async throws -> Void
+    ) {
+        pendingTopicIDs.insert(topicID)
+        Task {
+            do {
+                try await operation()
+            } catch {
+                operationError = error.localizedDescription
+            }
+            pendingTopicIDs.remove(topicID)
+        }
     }
 }

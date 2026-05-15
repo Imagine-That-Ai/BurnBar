@@ -138,7 +138,7 @@ struct AssistantModelLens {
         }
         return ModelSnapshot(
             displayName: "—",
-            provider: runtime.agentProvider,
+            provider: hermesAgentProvider(for: runtime.rawValue),
             origin: .fallback,
             activeModelID: nil
         )

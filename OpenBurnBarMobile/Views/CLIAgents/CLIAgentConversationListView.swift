@@ -18,19 +18,38 @@ struct CLIAgentConversationListView: View {
     let runtime: CLIAgentRuntime
     @State private var reader: CLIAgentChatReader = .shared
     @State private var selectedSession: CLIAgentSessionRecord?
+    @State private var showConnectionSheet = false
+    @State private var showModelPicker = false
 
     var body: some View {
         ZStack {
             AuroraBackdrop()
 
-            if visibleSessions.isEmpty {
-                emptyState
-            } else {
-                sessionList
+            VStack(spacing: 0) {
+                brandHeader
+                if visibleSessions.isEmpty {
+                    emptyState
+                } else {
+                    sessionList
+                }
             }
         }
-        .navigationTitle(runtime.displayName)
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showConnectionSheet) {
+            AssistantConnectionSheet(
+                hermesService: HermesService.shared,
+                piService: PiService.shared,
+                focusedRuntime: runtime.assistantRuntime
+            )
+        }
+        .sheet(isPresented: $showModelPicker) {
+            AssistantModelPickerSheet(
+                runtime: runtime.assistantRuntime,
+                hermesService: HermesService.shared,
+                piService: PiService.shared
+            )
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -65,6 +84,21 @@ struct CLIAgentConversationListView: View {
 
     private var visibleSessions: [CLIAgentSessionRecord] {
         reader.sessions(for: runtime)
+    }
+
+    // MARK: - Brand Header
+
+    private var brandHeader: some View {
+        let lens = AssistantModelLens(hermesService: HermesService.shared, piService: PiService.shared)
+        let resolver = AssistantStatusResolver(hermesService: HermesService.shared, piService: PiService.shared)
+        return AssistantBrandHeader(
+            runtime: runtime.assistantRuntime,
+            runtimeStatus: resolver.status(for: runtime.assistantRuntime),
+            modelSnapshot: lens.snapshot(for: runtime.assistantRuntime),
+            endpointLabel: resolver.endpointLabel(for: runtime.assistantRuntime),
+            onTapModel: { showModelPicker = true },
+            onTapStatus: { showConnectionSheet = true }
+        )
     }
 
     @ViewBuilder

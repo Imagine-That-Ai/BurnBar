@@ -20,16 +20,20 @@ struct PiConversationListView: View {
 
     @State private var historyStore: MobileChatHistoryStore = .shared
     @State private var showConnectionSheet = false
+    @State private var showModelPicker = false
 
     var body: some View {
         ZStack {
             AuroraBackdrop()
 
-            Group {
-                if historyStore.threads(for: .pi).isEmpty {
-                    emptyLanding
-                } else {
-                    threadList
+            VStack(spacing: 0) {
+                brandHeader
+                Group {
+                    if historyStore.threads(for: .pi).isEmpty {
+                        emptyLanding
+                    } else {
+                        threadList
+                    }
                 }
             }
 
@@ -43,7 +47,7 @@ struct PiConversationListView: View {
                 }
             }
         }
-        .navigationTitle("Pi")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -71,6 +75,13 @@ struct PiConversationListView: View {
                 focusedRuntime: .pi
             )
         }
+        .sheet(isPresented: $showModelPicker) {
+            AssistantModelPickerSheet(
+                runtime: .pi,
+                hermesService: HermesService.shared,
+                piService: service
+            )
+        }
         .navigationDestination(for: PiChatRoute.self) { route in
             PiChatThreadView(service: service, route: route)
         }
@@ -78,6 +89,21 @@ struct PiConversationListView: View {
             historyStore.bootstrap()
             await service.refreshRuntime()
         }
+    }
+
+    // MARK: - Brand Header
+
+    private var brandHeader: some View {
+        let lens = AssistantModelLens(hermesService: HermesService.shared, piService: service)
+        let resolver = AssistantStatusResolver(hermesService: HermesService.shared, piService: service)
+        return AssistantBrandHeader(
+            runtime: .pi,
+            runtimeStatus: resolver.status(for: .pi),
+            modelSnapshot: lens.snapshot(for: .pi),
+            endpointLabel: resolver.endpointLabel(for: .pi),
+            onTapModel: { showModelPicker = true },
+            onTapStatus: { showConnectionSheet = true }
+        )
     }
 
     // MARK: - Subviews

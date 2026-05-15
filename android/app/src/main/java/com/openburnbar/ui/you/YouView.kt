@@ -208,8 +208,6 @@ private fun YouRoot(
             onClick = onOpenSettings
         )
 
-        HermesSquarePhaseAToggleRow()
-
         Spacer(modifier = Modifier.height(AuroraSpacing.md.dp))
 
         AuroraSecondaryButton(

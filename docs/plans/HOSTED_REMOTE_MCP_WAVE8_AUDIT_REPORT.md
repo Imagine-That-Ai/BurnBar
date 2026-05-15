@@ -8,13 +8,12 @@ implementation.
 
 ## Executive Verdict
 
-**Hold.** The hosted MCP implementation, generated-URL deploy, controlled
+**Hold.** The hosted MCP implementation, branded fallback endpoint, controlled
 paid/unpaid/revoked/cross-tenant proof, core monitoring, cross-platform
-connected-client revoke surfaces, `burnbar.ai` ownership verification, and
-large-corpus search/body performance proof, and generated-URL real paid
-subscriber fixture proof are in place. Launch readiness is still blocked by
-Google-managed certificate issuance for `mcp.burnbar.ai`, branded-endpoint
-subscriber proof, and real client compatibility proof.
+connected-client revoke surfaces, `burnbar.ai` ownership verification,
+large-corpus search/body performance proof, and branded real paid subscriber
+fixture proof are in place. Launch readiness is still blocked by real unpaid
+fixture proof and real client compatibility proof.
 
 ## Evidence Baseline
 
@@ -27,10 +26,9 @@ subscriber proof, and real client compatibility proof.
 - Current branded endpoint status: `burnbar.ai` ownership is verified in Google,
   Namecheap DNS has `mcp CNAME ghs.googlehosted.com.`, public resolvers return
   that CNAME from Cloudflare, Google, and Quad9, and the Cloud Run domain
-  mapping exists with `DomainRoutable=True`. HTTPS proof is blocked only by
-  Cloud Run managed certificate status `CertificatePending`; the
-  `2026-05-15T07:25:09Z` retry kept the certificate pending and set the next
-  polling interval to one hour.
+  mapping is `Ready=True`, `CertificateProvisioned=True`, and
+  `DomainRoutable=True`. `https://mcp.burnbar.ai/readyz` returns HTTP 200 and
+  branded MCP security smoke passed.
 - Current synced state before this audit report: branch was synced to upstream;
   unrelated local worktree changes remain outside the hosted-MCP commits.
 
@@ -44,15 +42,14 @@ Verdict: **Continue hardening.**
 
 Findings:
 
-- P1: The standards-first service shape exists, but the public production
-  resource URL is still generated Cloud Run, not a branded endpoint.
+- P1: The standards-first service shape exists and the branded fallback
+  endpoint is live on `https://mcp.burnbar.ai/mcp`.
 - P1: Source and tests show deny-by-default tool metadata and resource-route
   auth enforcement, and temp-profile real CLI config proof now passes for
   Codex, Claude Code, Droid/Factory, Kimi, and Forge. Final client proof is
   still missing login/list/search/body against the branded endpoint.
 - P2: The local shim and hosted service are separated cleanly. Real paid
-  subscriber proof now exists on the generated URL, but not yet on the branded
-  endpoint.
+  subscriber proof now exists on the branded fallback endpoint.
 
 Evidence:
 
@@ -70,9 +67,8 @@ Verdict: **Hold.**
 
 Findings:
 
-- P0: Branded endpoint DNS is configured, but HTTPS is not live until Google
-  finishes managed certificate issuance; the final audience/endpoint pairing
-  still has not been proven with production clients.
+- P1: Branded endpoint HTTPS is live and the real paid subscriber
+  endpoint/audience path passed tools/search/body/revoke proof.
 - P1: Controlled live proof covers paid, unpaid, revoked, missing-scope, and
   cross-tenant denials. A real paid subscriber fixture also proves
   entitlement/tools/search/body/revoke on the generated URL; branded endpoint
@@ -126,8 +122,8 @@ Verdict: **Hold.**
 
 Findings:
 
-- P0: `mcp.burnbar.ai` domain mapping is created and DNS resolves, but the
-  managed certificate remains pending.
+- P1: `mcp.burnbar.ai` domain mapping is created, DNS resolves, and the managed
+  certificate is provisioned.
 - P1: Cloud Run service is deployed and healthy on the generated URL. The latest
   read-budget/performance/body-bucket revision is `openburnbar-hosted-mcp-00012-dhf`
   at 100% traffic.
@@ -223,8 +219,7 @@ Findings:
 
 - P1: MCP methods, JSON-RPC error handling, authorization challenges, protocol
   version handling, and metadata endpoints exist in source.
-- P1: Generated-URL protocol proof exists; branded endpoint proof is blocked by
-  domain verification.
+- P1: Branded endpoint protocol reachability and security smoke passed.
 - P1: Target clients are represented in installer output, but real client
   protocol proof is missing for Codex, Claude Code, Droid/Factory, Kimi, Forge,
   and a generic inspector/client.
@@ -264,18 +259,14 @@ Evidence:
 
 | Severity | Finding | Required Resolution |
 | --- | --- | --- |
-| P0 | Branded hosted endpoint is blocked by Google-managed certificate issuance. | `burnbar.ai` is verified, `mcp.burnbar.ai` DNS resolves to `ghs.googlehosted.com.` from Cloudflare, Google, and Quad9, and Cloud Run mapping is domain-routable; wait for `CertificateProvisioned=True`, then prove `/readyz` and `/mcp`. |
-| P0 | Final production launch proof is not on a branded endpoint. | Rerun live paid/unpaid/revoked/cross-tenant proof against the branded endpoint. |
-| P1 | Branded real subscriber proof is missing. | Real paid fixture `alberto8793@gmail.com` passed tools/search/body/revoke proof on the generated URL; rerun after branded HTTPS is live and add unpaid real fixture proof. |
+| P1 | Real unpaid/non-subscriber fixture proof is missing. | Add a real unpaid fixture and prove branded endpoint denial. Controlled unpaid denial already passes with temporary proof users. |
 | P1 | Real client compatibility matrix is incomplete. | Temp-profile config proof passes for installed CLIs and live stdio shim proof passes; prove authenticated target-client flows against the branded endpoint. |
-| P1 | Branded-endpoint rollback proof is still pending. | Generated-URL Cloud Run rollback rehearsal passed; repeat after branded domain mapping if launch requires hostname-level proof. |
-| P1 | Real subscriber body-fetch proof is missing. | Large-corpus proof-object body fetch passes; repeat against a real subscriber fixture after branded HTTPS is live. |
+| P1 | Branded-endpoint rollback proof is still pending. | Generated-URL Cloud Run rollback rehearsal passed; repeat against branded hostname if launch requires hostname-level proof. |
 | P1 | Real signed-in connected-client UI proof is pending. | iOS/iPadOS, macOS, and Android list/revoke surfaces are implemented and build-verified where gates allow; prove an authenticated client appears and revokes on each platform. |
-| P2 | Body-fetch read-budget proof is controlled, not subscriber-backed. | Proof Storage object shows 1 Firestore read + 1 Storage read; add a real subscriber fixture before launch. |
-| P2 | Firestore plaintext leakage scan is not subscriber-backed. | Production-safe scan passed with zero violations, but the current Remote MCP/search collections were empty after proof cleanup; rerun with a real subscriber fixture. |
+| P2 | Firestore plaintext leakage scan is not subscriber-backed. | Production-safe scan passed with zero violations, but the durable Remote MCP/search collections were empty after proof cleanup; rerun if a persistent subscriber fixture is kept. |
 
 ## Final Recommendation
 
-**Hold.** Continue hardening. The next unblocker is Google-managed certificate
-issuance for `mcp.burnbar.ai`; the next non-blocked engineering work is real
-client compatibility proof in isolated profiles plus real-subscriber proof.
+**Hold.** Continue hardening. The branded paid path is proven. The next
+non-blocked work is real client compatibility proof in isolated profiles plus a
+real unpaid fixture denial.

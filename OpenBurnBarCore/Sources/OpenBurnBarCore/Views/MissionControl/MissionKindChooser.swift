@@ -33,13 +33,14 @@ public struct MissionKindChooser: View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             sectionHeader
 
-            ScrollView(.horizontal, showsIndicators: true) {
+            ScrollView(.horizontal, showsIndicators: false) {
                 LazyHGrid(rows: rows, alignment: .top, spacing: UnifiedDesignSystem.Spacing.sm) {
                     ForEach(MissionConsoleKind.allCases) { kind in
                         kindTile(kind)
                     }
                 }
-                .padding(.horizontal, 1)
+                .padding(.leading, 1)
+                .padding(.trailing, UnifiedDesignSystem.Spacing.xl)
                 .padding(.vertical, 2)
             }
         }

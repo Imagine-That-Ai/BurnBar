@@ -84,6 +84,12 @@ struct PiChatMessage: Identifiable, Equatable {
 @MainActor
 @Observable
 final class PiService {
+    /// Shared instance for views that need to read Pi state but don't own
+    /// the lifecycle (notably the conversation-list brand header which
+    /// needs an `AssistantModelLens` but doesn't otherwise touch Pi).
+    /// Long-running views should still inject their own instance.
+    @MainActor static let shared = PiService()
+
     var messages: [PiChatMessage] = []
     var connections: [PiConnectionRecord] = [PiConnectionRecord.localDefault]
     var selectedConnection: PiConnectionRecord = .localDefault

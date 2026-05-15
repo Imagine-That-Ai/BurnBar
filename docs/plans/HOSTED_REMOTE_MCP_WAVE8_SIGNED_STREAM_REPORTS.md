@@ -15,8 +15,7 @@ Baseline:
 - Branded fallback domain: `mcp.burnbar.ai`
 - Branded domain state: `burnbar.ai` is verified, public DNS resolves
   `mcp.burnbar.ai` to `ghs.googlehosted.com.`, and Cloud Run reports
-  `DomainRoutable=True`, but `CertificateProvisioned=Unknown` with reason
-  `CertificatePending`.
+  `Ready=True`, `CertificateProvisioned=True`, and `DomainRoutable=True`.
 
 Overall recommendation: **hold**.
 
@@ -33,10 +32,9 @@ Findings:
   `tools/openburnbar-mcp-remote`.
 - P1: The tool registry is deny-by-default and source-level auth/resource
   ownership checks are centralized instead of ad hoc per tool.
-- P1: The production resource URL is still not live on branded HTTPS, so the
-  final architecture is deployed only on the generated Cloud Run URL.
-- P2: Real paid subscriber proof now exists on the generated URL, but branded
-  endpoint subscriber proof remains blocked by certificate issuance.
+- P1: The branded fallback endpoint is live on
+  `https://mcp.burnbar.ai/mcp`.
+- P2: Real paid subscriber proof now exists on the branded fallback endpoint.
 
 Evidence:
 
@@ -55,11 +53,11 @@ Verdict: **Hold.**
 
 Findings:
 
-- P0: Final endpoint/audience proof is blocked until
-  `https://mcp.burnbar.ai/mcp` serves with Google-managed HTTPS.
+- P1: Final branded fallback endpoint/audience proof is live for the real paid
+  subscriber path.
 - P1: Missing-auth, unpaid, revoked, missing-scope, and cross-tenant negative
   paths have controlled live proof on the generated Cloud Run URL.
-- P1: Real paid subscriber fixture proof passed on the generated URL with
+- P1: Real paid subscriber fixture proof passed on the branded fallback URL with
   active `burnbar_pro`, tools/list, capabilities, search, encrypted body fetch,
   and post-revoke denial.
 - P1: Refresh tokens are stored hashed at rest, and MCP access tokens are
@@ -113,14 +111,14 @@ Verdict: **Hold.**
 
 Findings:
 
-- P0: `mcp.burnbar.ai` is routable but certificate provisioning is still
-  pending, so the branded health and MCP endpoints are not live.
+- P1: `mcp.burnbar.ai` is routable, certificate provisioning is complete, and
+  branded `/readyz` returns HTTP 200.
 - P1: Cloud Run is healthy on the generated URL and serving revision
   `openburnbar-hosted-mcp-00012-dhf` at 100% traffic.
 - P1: Alert policies exist for hosted MCP 5xx, 429, auth denials, p95 latency,
   instance pressure, plus project-level Firestore read spikes.
-- P1: Rollback was rehearsed on generated Cloud Run traffic, but branded-host
-  rollback proof is still pending.
+- P1: Rollback was rehearsed on generated Cloud Run traffic; branded-host
+  rollback proof remains optional unless launch requires hostname-level proof.
 
 Evidence:
 
@@ -193,8 +191,7 @@ Findings:
 - P1: MCP initialize, tools/list, tools/call, resources/list, resources/read,
   protocol version handling, protected-resource metadata, JSON-RPC errors, and
   auth challenges exist in source.
-- P1: Generated-URL protocol proof exists; branded endpoint protocol proof is
-  blocked by certificate provisioning.
+- P1: Branded endpoint protocol reachability and security smoke passed.
 - P1: Installer output covers Codex, Claude Code, Droid/Factory, Kimi, Forge,
   and generic MCP clients, but real authenticated client execution remains
   pending.

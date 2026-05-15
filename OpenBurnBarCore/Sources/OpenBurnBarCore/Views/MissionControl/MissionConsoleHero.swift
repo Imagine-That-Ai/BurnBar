@@ -196,6 +196,7 @@ public struct MissionConsoleHero: View {
                     metaCell(label: "APPROVALS", value: "\(approvalPendingCount)", tint: UnifiedDesignSystem.Colors.hermesAureate)
                 }
             }
+            .padding(.trailing, UnifiedDesignSystem.Spacing.xl)
         }
     }
 
