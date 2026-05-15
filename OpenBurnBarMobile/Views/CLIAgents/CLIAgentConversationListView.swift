@@ -6,13 +6,12 @@ import OpenBurnBarCore
 // Replaces the "Connect your Mac" placeholder for the Codex, Claude
 // Code, and OpenClaw tiles inside the iOS Assistants tab. Lists the
 // mirrored sessions the macOS app has published into Firestore via
-// `CLIAgentSessionMirror`. Read-only — tapping a row opens
-// `CLIAgentTranscriptView`.
+// `CLIAgentSessionMirror`. New chats are persisted through the paired
+// Mac request queue and then show back up here as real `cli_sessions`.
 //
 // Empty-state copy is intentional: if the user is signed in but hasn't
-// chatted with this runtime on their Mac yet, we explain *why* the list
-// is empty instead of inventing an "ask CLI agent" composer the iOS app
-// can't drive.
+// chatted with this runtime on their Mac yet, we explain what will sync
+// and still expose a real persisted chat composer.
 
 struct CLIAgentConversationListView: View {
     let runtime: CLIAgentRuntime
@@ -20,6 +19,9 @@ struct CLIAgentConversationListView: View {
     @State private var selectedSession: CLIAgentSessionRecord?
     @State private var showConnectionSheet = false
     @State private var showModelPicker = false
+    @State private var showNewChatSheet = false
+    @State private var missionHost = MobileMissionConsoleHost()
+    @State private var queuedChatMessage: String?
 
     var body: some View {
         ZStack {
@@ -31,6 +33,16 @@ struct CLIAgentConversationListView: View {
                     emptyState
                 } else {
                     sessionList
+                }
+            }
+
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    newThreadFAB
+                        .padding(.trailing, MobileTheme.Spacing.lg)
+                        .padding(.bottom, 108)
                 }
             }
         }
@@ -49,6 +61,14 @@ struct CLIAgentConversationListView: View {
                 hermesService: HermesService.shared,
                 piService: PiService.shared
             )
+        }
+        .sheet(isPresented: $showNewChatSheet) {
+            CLIAgentNewChatSheet(
+                runtime: runtime,
+                missionHost: missionHost
+            ) { requestID in
+                queuedChatMessage = "\(runtime.displayName) chat queued on your account. It will appear here when your Mac starts streaming. \(shortRequestID(requestID))"
+            }
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -75,15 +95,27 @@ struct CLIAgentConversationListView: View {
             }
         }
         .task {
+            missionHost.start()
             await reader.refresh()
+        }
+        .onDisappear {
+            missionHost.stop()
         }
         .refreshable {
             await reader.refresh()
+            await missionHost.refresh()
         }
     }
 
     private var visibleSessions: [CLIAgentSessionRecord] {
         reader.sessions(for: runtime)
+    }
+
+    private var visibleMissionTiles: [MissionConsoleActiveTile] {
+        missionHost.snapshot.activeTiles.filter { tile in
+            guard let runtimeID = tile.runtimeID?.lowercased() else { return false }
+            return runtimeID == runtime.rawValue.lowercased()
+        }
     }
 
     // MARK: - Brand Header
@@ -105,6 +137,12 @@ struct CLIAgentConversationListView: View {
     private var sessionList: some View {
         ScrollView {
             LazyVStack(spacing: MobileTheme.Spacing.sm) {
+                if let queuedChatMessage {
+                    successBanner(queuedChatMessage)
+                }
+                ForEach(visibleMissionTiles) { tile in
+                    activeMissionRow(tile)
+                }
                 if let lastError = reader.lastError {
                     errorBanner(lastError)
                 }
@@ -118,7 +156,46 @@ struct CLIAgentConversationListView: View {
                 }
             }
             .padding(MobileTheme.Spacing.md)
+            .padding(.bottom, 96)
         }
+    }
+
+    @ViewBuilder
+    private func activeMissionRow(_ tile: MissionConsoleActiveTile) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label(
+                    tile.phase.displayLabel,
+                    systemImage: tile.phase.isProblem ? "exclamationmark.triangle.fill" : "antenna.radiowaves.left.and.right"
+                )
+                .font(MobileTheme.Typography.tiny.weight(.bold))
+                .foregroundStyle(tile.phase.isProblem ? MobileTheme.Colors.error : accent)
+                .textCase(.uppercase)
+                Spacer()
+                Text("chat")
+                    .font(MobileTheme.Typography.tiny.weight(.semibold))
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+            Text(tile.title)
+                .font(MobileTheme.Typography.body.weight(.semibold))
+                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                .lineLimit(2)
+            if let detail = tile.phaseDetail ?? tile.lastEventSnippet {
+                Text(detail)
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(MobileTheme.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.90))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .stroke(accent.opacity(0.55), lineWidth: 1)
+        )
     }
 
     @ViewBuilder
@@ -193,6 +270,20 @@ struct CLIAgentConversationListView: View {
     }
 
     @ViewBuilder
+    private func successBanner(_ message: String) -> some View {
+        Text(message)
+            .font(MobileTheme.Typography.caption)
+            .foregroundStyle(accent)
+            .padding(.horizontal, MobileTheme.Spacing.md)
+            .padding(.vertical, MobileTheme.Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
+                    .fill(accent.opacity(0.13))
+            )
+    }
+
+    @ViewBuilder
     private var emptyState: some View {
         VStack(spacing: MobileTheme.Spacing.lg) {
             Spacer()
@@ -214,6 +305,25 @@ struct CLIAgentConversationListView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 320)
             }
+            if let queuedChatMessage {
+                successBanner(queuedChatMessage)
+                    .frame(maxWidth: 360)
+            }
+            ForEach(visibleMissionTiles) { tile in
+                activeMissionRow(tile)
+                    .frame(maxWidth: 360)
+            }
+            Button {
+                showNewChatSheet = true
+            } label: {
+                Label("New \(runtime.displayName) chat", systemImage: "plus")
+                    .font(MobileTheme.Typography.body.weight(.semibold))
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(accent.opacity(0.22)))
+                    .foregroundStyle(accent)
+            }
+            .buttonStyle(.plain)
             Button {
                 Task { await reader.refresh() }
             } label: {
@@ -232,14 +342,39 @@ struct CLIAgentConversationListView: View {
         .padding(MobileTheme.Spacing.lg)
     }
 
+    private var newThreadFAB: some View {
+        Button {
+            HapticBus.sheetOpen()
+            showNewChatSheet = true
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [accent, accent.opacity(0.62)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 56, height: 56)
+                    .shadow(color: accent.opacity(0.35), radius: 12, y: 6)
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Start new \(runtime.displayName) chat")
+    }
+
     private var emptyCopy: String {
         switch runtime {
         case .codex:
-            return "Open OpenBurnBar on your Mac, chat with Codex, and your transcript — tool pills and all — will sync here automatically."
+            return "Start a Codex chat here, or chat on your Mac and the transcript will sync back automatically."
         case .claude:
-            return "Open OpenBurnBar on your Mac and start a Claude Code session. Once it streams, this list mirrors the conversation."
+            return "Start a Claude Code chat here, or chat on your Mac and this list will mirror the conversation."
         case .openClaw:
-            return "Open OpenBurnBar on your Mac and start an OpenClaw session. The transcript appears here as it streams."
+            return "Start an OpenClaw chat here, or chat on your Mac and the transcript appears as it streams."
         }
     }
 
@@ -249,6 +384,142 @@ struct CLIAgentConversationListView: View {
         case .claude:   return Color(hex: "D58A4F")
         case .openClaw: return Color(hex: "6E56CF")
         }
+    }
+
+    private func shortRequestID(_ id: String) -> String {
+        "#\(id.prefix(8))"
+    }
+}
+
+private struct CLIAgentNewChatSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let runtime: CLIAgentRuntime
+    let missionHost: MobileMissionConsoleHost
+    let onQueued: (String) -> Void
+
+    @State private var title: String
+    @State private var message: String = ""
+    @State private var targetProject: String = ""
+    @State private var dispatching: Bool = false
+    @State private var inlineError: String?
+
+    init(
+        runtime: CLIAgentRuntime,
+        missionHost: MobileMissionConsoleHost,
+        onQueued: @escaping (String) -> Void
+    ) {
+        self.runtime = runtime
+        self.missionHost = missionHost
+        self.onQueued = onQueued
+        _title = State(initialValue: "New \(runtime.displayName) chat")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(header: Text(runtime.displayName)) {
+                    TextField("Title", text: $title)
+                    ZStack(alignment: .topLeading) {
+                        TextEditor(text: $message)
+                            .frame(minHeight: 140)
+                        if message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text("Message \(runtime.displayName)")
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 8)
+                                .padding(.leading, 4)
+                        }
+                    }
+                }
+
+                Section(header: Text("Project")) {
+                    TextField("Optional path or project", text: $targetProject)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    if !missionHost.snapshot.recentProjects.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack {
+                                ForEach(missionHost.snapshot.recentProjects, id: \.self) { project in
+                                    Button(project) {
+                                        targetProject = project
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let inlineError {
+                    Section {
+                        Text(inlineError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("New Chat")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if dispatching {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button("Start") {
+                            Task { await dispatch() }
+                        }
+                        .disabled(!canDispatch)
+                    }
+                }
+            }
+        }
+        .onAppear {
+            missionHost.start()
+        }
+    }
+
+    private var canDispatch: Bool {
+        !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func dispatch() async {
+        dispatching = true
+        inlineError = nil
+        do {
+            let requestID = try await CLIAgentMissionDispatcher.shared.dispatch(
+                title: title.trimmedOrFallback("New \(runtime.displayName) chat"),
+                prompt: message,
+                missionKind: "chat",
+                requestedRuntime: runtime.rawValue,
+                targetProject: targetProject.trimmedNilIfEmpty,
+                depth: "standard",
+                approvalMode: "existing_policy",
+                commandsAllowed: false,
+                fileEditsAllowed: false
+            )
+            await missionHost.refresh()
+            dispatching = false
+            onQueued(requestID)
+            dismiss()
+        } catch {
+            dispatching = false
+            inlineError = error.localizedDescription
+        }
+    }
+}
+
+private extension String {
+    var trimmedNilIfEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    func trimmedOrFallback(_ fallback: String) -> String {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
     }
 }
 

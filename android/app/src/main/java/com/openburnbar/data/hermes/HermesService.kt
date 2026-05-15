@@ -525,6 +525,7 @@ class HermesService(
     ) {
         val assistantID = UUID.randomUUID().toString()
         var accumulated = ""
+        val rescue = EmptyResponseRescue()
         val body = JSONObject().apply {
             put("model", modelName)
             put("stream", true)
@@ -554,7 +555,9 @@ class HermesService(
                     val payload = line.removePrefix("data:").trim()
                     if (!line.startsWith("data:") || payload.isEmpty()) continue
                     if (payload == "[DONE]") break
-                    val delta = parseCompletionText(JSONObject(payload))
+                    val json = JSONObject(payload)
+                    rescue.absorb(json)
+                    val delta = parseCompletionText(json)
                     if (delta.isNotEmpty()) {
                         accumulated += delta
                         upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = true)
@@ -562,7 +565,7 @@ class HermesService(
                 }
             }
             if (accumulated.isBlank()) {
-                accumulated = "Hermes finished without returning text."
+                accumulated = rescue.fallbackText()
             }
             upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = false)
             persistCurrentThread()
@@ -587,6 +590,7 @@ class HermesService(
     ) {
         val assistantID = UUID.randomUUID().toString()
         var accumulated = ""
+        val rescue = EmptyResponseRescue()
         val body = JSONObject().apply {
             put("model", modelName)
             put("stream", true)
@@ -616,14 +620,16 @@ class HermesService(
                     val payload = line.removePrefix("data:").trim()
                     if (!line.startsWith("data:") || payload.isEmpty()) continue
                     if (payload == "[DONE]") break
-                    val delta = parseCompletionText(JSONObject(payload))
+                    val json = JSONObject(payload)
+                    rescue.absorb(json)
+                    val delta = parseCompletionText(json)
                     if (delta.isNotEmpty()) {
                         accumulated += delta
                         upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = true)
                     }
                 }
             }
-            if (accumulated.isBlank()) accumulated = "Hermes finished without returning text."
+            if (accumulated.isBlank()) accumulated = rescue.fallbackText()
             upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = false)
             persistCurrentThread()
             _isConnected.value = true
@@ -652,6 +658,7 @@ class HermesService(
         val relay = relayClient ?: throw HermesRelayException("Relay client unavailable.")
         val assistantID = UUID.randomUUID().toString()
         var accumulated = ""
+        val rescue = EmptyResponseRescue()
         val body = JSONObject().apply {
             put("model", modelName)
             put("stream", true)
@@ -680,14 +687,16 @@ class HermesService(
                     if (!line.startsWith("data:")) return@forEach
                     val payload = line.removePrefix("data:").trim()
                     if (payload.isEmpty() || payload == "[DONE]") return@forEach
-                    val delta = runCatching { parseCompletionText(JSONObject(payload)) }.getOrDefault("")
+                    val json = runCatching { JSONObject(payload) }.getOrNull() ?: return@forEach
+                    rescue.absorb(json)
+                    val delta = runCatching { parseCompletionText(json) }.getOrDefault("")
                     if (delta.isNotEmpty()) {
                         accumulated += delta
                         upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = true)
                     }
                 }
             }
-            if (accumulated.isBlank()) accumulated = "Hermes finished without returning text."
+            if (accumulated.isBlank()) accumulated = rescue.fallbackText()
             upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = false)
             persistCurrentThread()
             _isConnected.value = true
@@ -737,6 +746,91 @@ class HermesService(
                 .takeIf { it.isNotEmpty() }
                 ?: value.optString("content")
             else -> ""
+        }
+    }
+
+    /**
+     * Captures fallback signals from each SSE chunk so an upstream
+     * model that finishes without producing any visible `content` can
+     * still surface something useful to the user.
+     *
+     * Three rescue paths in priority order:
+     *   1. `refusal` — model intentionally declined; show why.
+     *   2. `reasoning_content` / `reasoning` / `thinking` — thinking
+     *      models that emit the entire answer on the reasoning channel
+     *      and never flush to `content`.
+     *   3. `finish_reason` — keys a more honest empty-text fallback
+     *      (length cap vs. content filter vs. truncated stream).
+     */
+    private class EmptyResponseRescue {
+        private var refusal = StringBuilder()
+        private var reasoning = StringBuilder()
+        private var lastFinishReason: String? = null
+
+        fun absorb(json: JSONObject) {
+            val choices = json.optJSONArray("choices") ?: return
+            if (choices.length() == 0) return
+            val choice = choices.optJSONObject(0) ?: return
+            val delta = choice.optJSONObject("delta")
+            val message = choice.optJSONObject("message")
+
+            extractRefusal(delta)?.let { refusal.append(it) }
+            extractRefusal(message)?.let { refusal.append(it) }
+            extractReasoning(delta)?.let { reasoning.append(it) }
+            extractReasoning(message)?.let { reasoning.append(it) }
+
+            val finishReason = choice.optString("finish_reason").takeIf { it.isNotEmpty() }
+                ?: choice.optString("finishReason").takeIf { it.isNotEmpty() }
+            if (finishReason != null) lastFinishReason = finishReason
+        }
+
+        fun fallbackText(): String {
+            val refusalText = refusal.toString().trim()
+            if (refusalText.isNotEmpty()) return refusalText
+            val reasoningText = reasoning.toString().trim()
+            if (reasoningText.isNotEmpty()) return reasoningText
+            return when (lastFinishReason?.lowercase()) {
+                "length" -> "Hermes hit its output budget before finishing. Try a shorter prompt or switch to a model with a larger reply ceiling."
+                "content_filter" -> "Hermes blocked this reply for content safety. Try rewording the prompt or switch models."
+                "tool_calls" -> "Hermes asked to use a tool but didn't follow up with a reply. Try again or switch models."
+                else -> "Hermes finished without returning text. Try again or switch models."
+            }
+        }
+
+        private fun extractRefusal(envelope: JSONObject?): String? {
+            envelope ?: return null
+            val raw = envelope.opt("refusal")
+            return parseStringValue(raw)
+        }
+
+        private fun extractReasoning(envelope: JSONObject?): String? {
+            envelope ?: return null
+            return parseStringValue(envelope.opt("reasoning_content"))
+                ?: parseStringValue(envelope.opt("reasoningContent"))
+                ?: parseStringValue(envelope.opt("reasoning"))
+                ?: parseStringValue(envelope.opt("thinking"))
+        }
+
+        private fun parseStringValue(raw: Any?): String? {
+            return when (raw) {
+                is String -> raw.takeIf { it.isNotEmpty() }
+                is JSONArray -> {
+                    val joined = (0 until raw.length()).joinToString("") { idx ->
+                        when (val item = raw.opt(idx)) {
+                            is String -> item
+                            is JSONObject -> item.optString("text")
+                                .takeIf { it.isNotEmpty() }
+                                ?: item.optString("content")
+                            else -> ""
+                        }
+                    }
+                    joined.takeIf { it.isNotEmpty() }
+                }
+                is JSONObject -> raw.optString("text")
+                    .takeIf { it.isNotEmpty() }
+                    ?: raw.optString("content").takeIf { it.isNotEmpty() }
+                else -> null
+            }
         }
     }
 

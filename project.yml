@@ -250,6 +250,7 @@ targets:
       - path: OpenBurnBarMobile
         excludes:
           - "**/.DS_Store"
+          - "Tests/**"
           - "Resources/Mermaid/**"
       # Mermaid is shipped as a folder reference so `index.html` and
       # `mermaid.min.js` keep their relative paths inside the bundle.
@@ -381,6 +382,7 @@ targets:
     scheme:
       testTargets:
         - OpenBurnBarMobileTests
+        - OpenBurnBarMobileUITests
       storeKitConfiguration: OpenBurnBarMobileTests/Resources/OpenBurnBarHostedQuota.storekit
 
   OpenBurnBarMobileTests:
@@ -389,6 +391,9 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: OpenBurnBarMobileTests
+        excludes:
+          - "**/.DS_Store"
+      - path: OpenBurnBarMobile/Tests
         excludes:
           - "**/.DS_Store"
     settings:
@@ -401,6 +406,24 @@ targets:
       - target: OpenBurnBarMobile
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
+
+  OpenBurnBarMobileUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: OpenBurnBarMobileUITests
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_NAME: OpenBurnBarMobileUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.uitests
+        DEVELOPMENT_TEAM: 4Y367DF25B
+        CODE_SIGN_STYLE: Automatic
+        TEST_TARGET_NAME: OpenBurnBarMobile
+    dependencies:
+      - target: OpenBurnBarMobile
 
   OpenBurnBarWidget:
     type: app-extension

@@ -3550,7 +3550,7 @@ export const issueRemoteMcpGrant = onCall(
       grantMode,
       entitlementFamily: "burnbar_pro",
       tokenSecret,
-      audience: process.env.REMOTE_MCP_AUDIENCE ?? "https://mcp.openburnbar.com/mcp",
+      audience: process.env.REMOTE_MCP_AUDIENCE ?? "https://mcp.burnbar.ai/mcp",
     });
   }
 );

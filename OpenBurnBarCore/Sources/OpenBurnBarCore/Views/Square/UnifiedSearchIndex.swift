@@ -6,6 +6,7 @@ import Foundation
 //   • agents       — `AgentIdentity` records (built-in + installed)
 //   • threads      — `ThreadInboxItem` rows
 //   • missions     — `MissionConsoleActiveTile` rows (live) + historical
+//   • projects     — Project Memory / project summary records
 //   • artifacts    — files / images / charts emitted by past missions
 //   • cards        — `CardEnvelope` rows persisted in the thread store
 //   • web          — gated; only when a remote search endpoint is wired
@@ -31,6 +32,7 @@ public actor UnifiedSearchIndex {
         case agents
         case threads
         case missions
+        case projects
         case artifacts
         case cards
         case cloudSessions = "cloud_sessions"
@@ -281,7 +283,7 @@ extension UnifiedSearchIndex.Document {
 
     /// Build a document from a `ThreadInboxItem`.
     public static func from(_ item: ThreadInboxItem) -> UnifiedSearchIndex.Document {
-        let body = [item.title, item.preview, item.agentURI].joined(separator: " ")
+        let body = item.searchText
         return UnifiedSearchIndex.Document(
             ref: UnifiedSearchIndex.DocumentRef(corpus: .threads, id: item.id),
             title: item.title,

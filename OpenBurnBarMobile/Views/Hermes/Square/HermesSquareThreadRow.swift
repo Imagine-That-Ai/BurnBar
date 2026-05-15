@@ -202,6 +202,7 @@ struct HermesSquareSearchHitRow: View {
         case .agents:    return "person.crop.circle"
         case .threads:   return "bubble.left.and.bubble.right"
         case .missions:  return "doc.viewfinder"
+        case .projects:  return "book.closed"
         case .artifacts: return "doc"
         case .cards:     return "square.text.square"
         case .cloudSessions: return "lock.doc"

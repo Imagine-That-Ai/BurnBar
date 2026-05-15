@@ -23,7 +23,10 @@ final class CLIAgentMissionDispatcher {
         depth: String = "standard",
         approvalMode: String = "existing_policy",
         commandsAllowed: Bool = false,
-        fileEditsAllowed: Bool = false
+        fileEditsAllowed: Bool = false,
+        clientThreadID: String? = nil,
+        parentSessionID: String? = nil,
+        resumeAction: String? = nil
     ) async throws -> String {
         guard FirebaseApp.app() != nil else {
             throw DispatchError.firebaseUnavailable
@@ -32,7 +35,9 @@ final class CLIAgentMissionDispatcher {
             throw DispatchError.notSignedIn
         }
         let id = UUID().uuidString
-        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Insights mission"
+        let isChatRequest = missionKind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "chat"
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? (isChatRequest ? "New chat" : "Insights mission")
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty else {
             throw DispatchError.emptyPrompt
@@ -48,7 +53,10 @@ final class CLIAgentMissionDispatcher {
             depth: depth,
             approvalMode: approvalMode,
             commandsAllowed: commandsAllowed,
-            fileEditsAllowed: fileEditsAllowed
+            fileEditsAllowed: fileEditsAllowed,
+            clientThreadID: clientThreadID,
+            parentSessionID: parentSessionID,
+            resumeAction: resumeAction
         )
         let db = firestoreProvider()
         let requestRef = db
@@ -57,7 +65,11 @@ final class CLIAgentMissionDispatcher {
         let batch = db.batch()
         batch.setData(payload, forDocument: requestRef, merge: false)
         batch.setData(
-            CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(now: Date()),
+            CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
+                label: isChatRequest ? "Chat" : "Mission",
+                source: isChatRequest ? "ios-chat" : "ios",
+                now: Date()
+            ),
             forDocument: requestRef.collection("events").document("000001"),
             merge: false
         )
@@ -365,12 +377,17 @@ enum CLIAgentMissionRequestPayloadFactory {
         approvalMode: String,
         commandsAllowed: Bool,
         fileEditsAllowed: Bool,
+        clientThreadID: String? = nil,
+        parentSessionID: String? = nil,
+        resumeAction: String? = nil,
         now: Date = Date()
     ) -> [String: Any] {
         let timestamp = ISO8601DateFormatter().string(from: now)
-        return [
+        let isChatRequest = missionKind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "chat"
+        var payload: [String: Any] = [
             "id": id,
-            "title": title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Insights mission",
+            "title": title.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                ?? (isChatRequest ? "New chat" : "Insights mission"),
             "prompt": prompt.trimmingCharacters(in: .whitespacesAndNewlines),
             "missionKind": missionKind,
             "requestedRuntime": requestedRuntime,
@@ -379,24 +396,40 @@ enum CLIAgentMissionRequestPayloadFactory {
             "approvalMode": approvalMode,
             "commandsAllowed": commandsAllowed,
             "fileEditsAllowed": fileEditsAllowed,
-            "source": "ios-insights",
+            "source": isChatRequest ? "ios-chat" : "ios-insights",
             "status": "pending",
-            "liveSummary": "Mission queued from this device. Waiting for the signed-in Mac agent listener to claim it.",
+            "liveSummary": isChatRequest
+                ? "Chat queued from this device. Waiting for the signed-in Mac agent listener to claim it."
+                : "Mission queued from this device. Waiting for the signed-in Mac agent listener to claim it.",
             "createdAt": timestamp,
             "updatedAt": FieldValue.serverTimestamp(),
             "schemaVersion": 2
         ]
+        if let clientThreadID = clientThreadID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+            payload["clientThreadID"] = clientThreadID
+        }
+        if let parentSessionID = parentSessionID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+            payload["parentSessionID"] = parentSessionID
+        }
+        if let resumeAction = resumeAction?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+            payload["resumeAction"] = resumeAction
+        }
+        return payload
     }
 
-    static func initialQueuedEvent(now: Date = Date()) -> [String: Any] {
+    static func initialQueuedEvent(
+        label: String = "Mission",
+        source: String = "ios",
+        now: Date = Date()
+    ) -> [String: Any] {
         [
             "sequence": 1,
             "timestamp": ISO8601DateFormatter().string(from: now),
             "kind": "status",
             "phase": "queued",
             "title": "Queued",
-            "message": "Mission queued from this device.",
-            "source": "ios",
+            "message": "\(label) queued from this device.",
+            "source": source,
             "isError": false
         ]
     }

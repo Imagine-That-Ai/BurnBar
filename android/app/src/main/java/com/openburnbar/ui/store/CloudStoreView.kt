@@ -836,7 +836,7 @@ private fun CloudRemoteMcpCard(
     revokingClientId: String?,
     onRevoke: (RemoteMcpClientRecord) -> Unit
 ) {
-    val endpoint = "https://mcp.openburnbar.com/mcp"
+    val endpoint = "https://mcp.burnbar.ai/mcp"
     val stdioCommand = "openburnbar-mcp-remote mcp serve"
     val doctorCommand = "openburnbar mcp doctor"
 

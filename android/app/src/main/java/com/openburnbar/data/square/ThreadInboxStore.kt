@@ -10,6 +10,52 @@ import com.google.firebase.firestore.Query
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import kotlinx.coroutines.tasks.await
 
+data class CLIAgentToolUse(
+    val id: String,
+    val name: String,
+    val status: String,
+    val detail: String?,
+    val startedAtEpoch: Long?
+)
+
+data class CLIAgentMessage(
+    val id: String,
+    val role: String,
+    val text: String,
+    val timestampEpoch: Long?,
+    val isError: Boolean,
+    val toolUses: List<CLIAgentToolUse>
+)
+
+data class CLIAgentSessionRecord(
+    val id: String,
+    val agent: String,
+    val agentURI: String,
+    val title: String,
+    val preview: String,
+    val modelName: String?,
+    val workspaceLabel: String?,
+    val updatedAtEpoch: Long,
+    val messages: List<CLIAgentMessage>
+) {
+    val searchableText: String = listOf(
+        title,
+        preview,
+        agent,
+        modelName.orEmpty(),
+        workspaceLabel.orEmpty(),
+        messages.joinToString(" ") { message ->
+            listOf(
+                message.role,
+                message.text,
+                message.toolUses.joinToString(" ") { tool ->
+                    listOf(tool.name, tool.status, tool.detail.orEmpty()).joinToString(" ")
+                }
+            ).joinToString(" ")
+        }
+    ).joinToString(" ")
+}
+
 // MARK: - Thread Inbox Store (Android parity)
 //
 // Aggregator that holds the merged list of inbox items + last-refresh
@@ -27,6 +73,8 @@ class ThreadInboxStore private constructor(
     var refreshError by mutableStateOf<String?>(null)
         private set
     var lastRefreshedAtEpoch by mutableStateOf<Long?>(null)
+        private set
+    var cliSessionsByItemID by mutableStateOf<Map<String, CLIAgentSessionRecord>>(emptyMap())
         private set
 
     fun replace(items: List<ThreadInboxItem>) {
@@ -60,21 +108,20 @@ class ThreadInboxStore private constructor(
                 .get()
                 .await()
 
-            items = snapshot.documents.mapNotNull { document ->
-                val agent = document.getString("agent") ?: return@mapNotNull null
-                val runtime = runtimeForAgent(agent) ?: return@mapNotNull null
-                val data = document.data.orEmpty()
-                val recordID = (data["id"] as? String)?.ifBlank { null } ?: document.id
+            val parsed = snapshot.documents.mapNotNull { document -> parseCLISession(document.data.orEmpty(), document.id) }
+            cliSessionsByItemID = parsed.associateBy { "cli:${it.id}" }
+            items = parsed.map { record ->
                 ThreadInboxItem(
-                    id = "cli:$recordID",
-                    agentURI = AgentIdentity.builtInURI(runtime),
-                    title = (data["title"] as? String)?.ifBlank { "(no title)" } ?: "(no title)",
-                    preview = data["preview"] as? String ?: "",
-                    lastActivityAtEpoch = epochMillis(data["updatedAt"]) ?: System.currentTimeMillis(),
+                    id = "cli:${record.id}",
+                    agentURI = record.agentURI,
+                    title = record.title.ifBlank { "(no title)" },
+                    preview = record.preview,
+                    lastActivityAtEpoch = record.updatedAtEpoch,
                     unreadCount = 0,
                     needsAttention = false,
                     source = ThreadInboxItem.Source.CLI_MIRROR,
-                    liveMissionID = null
+                    liveMissionID = null,
+                    searchText = record.searchableText
                 )
             }.sortedForInbox()
             lastRefreshedAtEpoch = System.currentTimeMillis()
@@ -84,6 +131,52 @@ class ThreadInboxStore private constructor(
             isLoading = false
         }
     }
+
+    fun cliSessionFor(item: ThreadInboxItem): CLIAgentSessionRecord? =
+        cliSessionsByItemID[item.id]
+
+    private fun parseCLISession(data: Map<String, Any>, documentID: String): CLIAgentSessionRecord? {
+        val agent = data["agent"] as? String ?: return null
+        val runtime = runtimeForAgent(agent) ?: return null
+        val recordID = (data["id"] as? String)?.ifBlank { null } ?: documentID
+        val updatedAt = epochMillis(data["updatedAt"]) ?: System.currentTimeMillis()
+        return CLIAgentSessionRecord(
+            id = recordID,
+            agent = agent,
+            agentURI = AgentIdentity.builtInURI(runtime),
+            title = (data["title"] as? String)?.ifBlank { "(no title)" } ?: "(no title)",
+            preview = data["preview"] as? String ?: "",
+            modelName = data["modelName"] as? String,
+            workspaceLabel = data["workspaceLabel"] as? String,
+            updatedAtEpoch = updatedAt,
+            messages = parseMessages(data["messages"])
+        )
+    }
+
+    private fun parseMessages(raw: Any?): List<CLIAgentMessage> =
+        (raw as? List<*>)?.mapNotNull { entry ->
+            val map = entry as? Map<*, *> ?: return@mapNotNull null
+            CLIAgentMessage(
+                id = map["id"] as? String ?: java.util.UUID.randomUUID().toString(),
+                role = map["role"] as? String ?: "assistant",
+                text = map["text"] as? String ?: "",
+                timestampEpoch = epochMillis(map["timestamp"]),
+                isError = map["isError"] as? Boolean ?: false,
+                toolUses = parseToolUses(map["toolUses"])
+            )
+        } ?: emptyList()
+
+    private fun parseToolUses(raw: Any?): List<CLIAgentToolUse> =
+        (raw as? List<*>)?.mapNotNull { entry ->
+            val map = entry as? Map<*, *> ?: return@mapNotNull null
+            CLIAgentToolUse(
+                id = map["id"] as? String ?: java.util.UUID.randomUUID().toString(),
+                name = map["name"] as? String ?: "tool",
+                status = map["status"] as? String ?: "",
+                detail = map["detail"] as? String,
+                startedAtEpoch = epochMillis(map["startedAt"])
+            )
+        } ?: emptyList()
 
     private fun runtimeForAgent(agent: String): AssistantRuntimeID? =
         when (agent.lowercase()) {

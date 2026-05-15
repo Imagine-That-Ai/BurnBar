@@ -97,6 +97,23 @@ struct HermesChatMessage: Identifiable, Equatable {
     /// other roles. The encoder uses this to emit
     /// `{role: "tool", tool_call_id: "..."}` on the wire.
     var toolCallID: String?
+    /// Transient SSE state — accumulated `delta.refusal` text for this
+    /// turn. When the model declines, OpenAI-compatible servers emit the
+    /// reason on this channel instead of `content`. We hoist it into
+    /// `text` at finalize so the user actually sees what happened.
+    var streamedRefusal: String = ""
+    /// Transient SSE state — accumulated reasoning channel text
+    /// (`reasoning_content`, `reasoning`, `thinking`). Some thinking
+    /// models (DeepSeek R1, Qwen3 thinking, certain MiniMax routes)
+    /// emit the entire answer on the reasoning channel without ever
+    /// flushing to `content`. We hoist it into `text` at finalize so
+    /// the bubble renders the model's actual response instead of an
+    /// empty error.
+    var streamedReasoning: String = ""
+    /// Last `choices[].finish_reason` observed for this turn. Used to
+    /// pick a more honest empty-text fallback (length cap vs. content
+    /// filter vs. truncated stream).
+    var lastFinishReason: String?
 
     init(
         id: String = UUID().uuidString,
@@ -323,6 +340,56 @@ struct HermesChatMessage: Identifiable, Equatable {
         let wordCount = trimmed.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
         let wordEstimate = Int((Double(wordCount) * 1.3).rounded(.up))
         return max(1, max(characterEstimate, wordEstimate))
+    }
+
+    /// Body + error styling to use when the upstream stream finished
+    /// without producing any visible `content` or executable
+    /// `tool_calls`. Three rescue paths in priority order:
+    ///   1. **Refusal**: model declined; we surface the refusal reason
+    ///      so the user knows the model intentionally responded.
+    ///   2. **Reasoning-only**: thinking models occasionally emit the
+    ///      whole answer on the reasoning channel and never flush to
+    ///      `content`. Hoisting the reasoning text gives the user a
+    ///      real reply instead of an empty error.
+    ///   3. **Hard empty**: nothing usable — we surface a more
+    ///      informative message keyed off `lastFinishReason` so the
+    ///      user knows whether to retry, shorten the prompt, or switch
+    ///      models.
+    static func emptyResponseFallback(
+        refusal: String,
+        reasoning: String,
+        finishReason: String?
+    ) -> (text: String, isError: Bool) {
+        let trimmedRefusal = refusal.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedRefusal.isEmpty {
+            return (trimmedRefusal, false)
+        }
+        let trimmedReasoning = reasoning.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedReasoning.isEmpty {
+            return (trimmedReasoning, false)
+        }
+        switch finishReason?.lowercased() {
+        case "length":
+            return (
+                "Hermes hit its output budget before finishing. Try a shorter prompt or switch to a model with a larger reply ceiling.",
+                true
+            )
+        case "content_filter":
+            return (
+                "Hermes blocked this reply for content safety. Try rewording the prompt or switch models.",
+                true
+            )
+        case "tool_calls":
+            return (
+                "Hermes asked to use a tool but didn't follow up with a reply. Try again or switch models.",
+                true
+            )
+        default:
+            return (
+                "Hermes finished without returning text. Try again or switch models.",
+                true
+            )
+        }
     }
 }
 /// One tool the model decided to invoke in the current assistant turn.
@@ -1162,8 +1229,13 @@ final class HermesService {
             )
         }
         if assistantMessage.text.isEmpty && assistantMessage.toolCalls.isEmpty {
-            assistantMessage.text = "Hermes finished without returning text. Try again or switch models."
-            assistantMessage.isError = true
+            let fallback = HermesChatMessage.emptyResponseFallback(
+                refusal: assistantMessage.streamedRefusal,
+                reasoning: assistantMessage.streamedReasoning,
+                finishReason: assistantMessage.lastFinishReason
+            )
+            assistantMessage.text = fallback.text
+            assistantMessage.isError = fallback.isError
         }
         assistantMessage.finalizeResponseMetrics()
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
@@ -1319,8 +1391,13 @@ final class HermesService {
             )
         }
         if assistantMessage.text.isEmpty && assistantMessage.toolCalls.isEmpty {
-            assistantMessage.text = "Hermes finished without returning text. Try again or switch models."
-            assistantMessage.isError = true
+            let fallback = HermesChatMessage.emptyResponseFallback(
+                refusal: assistantMessage.streamedRefusal,
+                reasoning: assistantMessage.streamedReasoning,
+                finishReason: assistantMessage.lastFinishReason
+            )
+            assistantMessage.text = fallback.text
+            assistantMessage.isError = fallback.isError
         }
         assistantMessage.finalizeResponseMetrics()
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
@@ -1541,6 +1618,30 @@ final class HermesService {
             appendVisibleContent(content, to: &message)
         }
 
+        // Capture the OpenAI `refusal` channel so a model decline isn't
+        // swallowed into "Hermes finished without returning text".
+        if let refusal = refusalContent(from: delta) ?? refusalContent(from: finalMessage) {
+            appendStreamedRefusal(refusal, to: &message)
+        }
+
+        // Some thinking models (DeepSeek R1, Qwen3 thinking, certain
+        // MiniMax routes) emit the entire answer on the reasoning
+        // channel and never flush to `content`. Capture it so the
+        // empty-text fallback can hoist it into the bubble.
+        if let reasoning = reasoningContent(from: delta) ?? reasoningContent(from: finalMessage) {
+            appendStreamedReasoning(reasoning, to: &message)
+        }
+
+        if let finishReason = stringValue(first["finish_reason"])
+            ?? stringValue(first["finishReason"]) {
+            if message.lastFinishReason != finishReason {
+                message.lastFinishReason = finishReason
+                if let index = messages.firstIndex(where: { $0.id == message.id }) {
+                    messages[index] = message
+                }
+            }
+        }
+
         if let toolCalls = toolCalls(from: delta) ?? toolCalls(from: finalMessage) {
             mergeToolCalls(toolCalls, into: &message)
         }
@@ -1666,6 +1767,52 @@ final class HermesService {
         return visibleContentValue(item["content"])
             ?? visibleContentValue(item["text"])
             ?? visibleContentValue(item["output_text"])
+    }
+
+    /// Pull a `refusal` channel string off an OpenAI-shaped `delta` /
+    /// `message` object. Some servers nest the refusal under `content`
+    /// or as a structured object, so we run it through the same
+    /// permissive value walker as visible content.
+    private func refusalContent(from item: [String: Any]?) -> String? {
+        guard let item else { return nil }
+        return visibleContentValue(item["refusal"])
+    }
+
+    /// Pull a reasoning-channel string off the same envelopes. Vendors
+    /// disagree on the field name — DeepSeek and several OpenAI-compat
+    /// gateways use `reasoning_content`, OpenAI Responses uses
+    /// `reasoning`, and Anthropic-compat shims occasionally pass it
+    /// through as `thinking`. We probe all three.
+    private func reasoningContent(from item: [String: Any]?) -> String? {
+        guard let item else { return nil }
+        return visibleContentValue(item["reasoning_content"])
+            ?? visibleContentValue(item["reasoningContent"])
+            ?? visibleContentValue(item["reasoning"])
+            ?? visibleContentValue(item["thinking"])
+    }
+
+    private func appendStreamedRefusal(_ chunk: String, to message: inout HermesChatMessage) {
+        guard !chunk.isEmpty else { return }
+        if message.streamedRefusal.isEmpty || chunk.hasPrefix(message.streamedRefusal) {
+            message.streamedRefusal = chunk
+        } else if chunk != message.streamedRefusal {
+            message.streamedRefusal += chunk
+        }
+        if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            messages[index] = message
+        }
+    }
+
+    private func appendStreamedReasoning(_ chunk: String, to message: inout HermesChatMessage) {
+        guard !chunk.isEmpty else { return }
+        if message.streamedReasoning.isEmpty || chunk.hasPrefix(message.streamedReasoning) {
+            message.streamedReasoning = chunk
+        } else if chunk != message.streamedReasoning {
+            message.streamedReasoning += chunk
+        }
+        if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            messages[index] = message
+        }
     }
 
     private func visibleContentValue(_ raw: Any?) -> String? {

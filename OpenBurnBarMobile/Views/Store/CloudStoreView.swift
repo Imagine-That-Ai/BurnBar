@@ -81,6 +81,7 @@ struct CloudStoreView: View {
 
                     CloudStoreRemoteMCPCard(isActive: store.isActive, clientStore: remoteMCPClients)
                         .padding(.horizontal, MobileTheme.Spacing.lg)
+                        .accessibilityIdentifier("cloudStore.remoteMCP.card")
                         .staggeredEntrance(delay: 0.13)
 
                     CloudStoreComparisonCard()
@@ -586,7 +587,7 @@ private struct CloudStoreRemoteMCPCard: View {
     let isActive: Bool
     @ObservedObject var clientStore: RemoteMCPClientStore
 
-    private let endpoint = "https://mcp.openburnbar.com/mcp"
+    private let endpoint = "https://mcp.burnbar.ai/mcp"
     private let stdioCommand = "openburnbar-mcp-remote mcp serve"
     private let doctorCommand = "openburnbar mcp doctor"
 
@@ -636,7 +637,7 @@ private struct CloudStoreRemoteMCPCard: View {
         .padding(MobileTheme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(MercuryFoilCardModifier())
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("Remote MCP. \(isActive ? "Included with your subscription." : "Requires OpenBurnBar Cloud.") Endpoint \(endpoint). Stdio shim \(stdioCommand). Doctor \(doctorCommand).")
         .onAppear {
             if isActive {
@@ -668,11 +669,13 @@ private struct RemoteMCPConnectedClientsSection: View {
                     .font(MobileTheme.Typography.caption)
                     .fontWeight(.semibold)
                     .foregroundStyle(MobileTheme.Colors.textPrimary)
+                    .accessibilityIdentifier("cloudStore.remoteMCP.connectedClients.title")
                 Spacer()
                 if store.isLoading {
                     ProgressView()
                         .controlSize(.small)
                         .tint(MobileTheme.ember)
+                        .accessibilityIdentifier("cloudStore.remoteMCP.connectedClients.loading")
                 }
             }
 
@@ -681,11 +684,13 @@ private struct RemoteMCPConnectedClientsSection: View {
                     .font(MobileTheme.Typography.tiny)
                     .foregroundStyle(.red.opacity(0.9))
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("cloudStore.remoteMCP.connectedClients.error")
             } else if store.clients.isEmpty && !store.isLoading {
                 Text("No MCP clients are connected yet.")
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textPrimary.opacity(0.62))
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("cloudStore.remoteMCP.connectedClients.empty")
             } else {
                 ForEach(store.clients) { client in
                     RemoteMCPClientRow(
@@ -709,6 +714,7 @@ private struct RemoteMCPConnectedClientsSection: View {
                 Button("Revoke \(pendingRevoke.displayName)", role: .destructive) {
                     Task { await store.revoke(pendingRevoke) }
                 }
+                .accessibilityIdentifier("cloudStore.remoteMCP.confirmRevoke")
             }
         } message: {
             if let pendingRevoke {
@@ -736,6 +742,7 @@ private struct RemoteMCPClientRow: View {
                         .fontWeight(.semibold)
                         .foregroundStyle(MobileTheme.Colors.textPrimary)
                         .lineLimit(2)
+                        .accessibilityIdentifier("cloudStore.remoteMCP.client.\(client.id).displayName")
                     Text("\(client.displayType) · \(client.modeSummary)")
                         .font(MobileTheme.Typography.tiny)
                         .foregroundStyle(MobileTheme.Colors.textSecondary)
@@ -765,6 +772,7 @@ private struct RemoteMCPClientRow: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.red.opacity(0.88))
                     .accessibilityLabel("Revoke \(client.displayName)")
+                    .accessibilityIdentifier("cloudStore.remoteMCP.client.\(client.id).revoke")
                     .disabled(isRevoking)
                 }
             }
@@ -795,7 +803,8 @@ private struct RemoteMCPClientRow: View {
                     lineWidth: 0.5
                 )
         )
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("cloudStore.remoteMCP.client.\(client.id).row")
     }
 }
 

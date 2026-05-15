@@ -52,6 +52,17 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+            .onAppear {
+                // Consume a deep-link tab parked in UserDefaults by callers
+                // like the menu-bar popover whisper — e.g. tapping "Cloud
+                // Member" should drop the user straight on the Cloud pane.
+                let key = "settings.pendingTab"
+                if let raw = UserDefaults.standard.string(forKey: key),
+                   let tab = SettingsTab(rawValue: raw) {
+                    router.selectedTab = tab
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
         } detail: {
             NavigationStack(path: $router.path) {
                 Group {

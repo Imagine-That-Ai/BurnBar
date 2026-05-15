@@ -124,6 +124,9 @@ class CLIAgentMissionDispatcher(
         approvalMode: String = "existing_policy",
         commandsAllowed: Boolean = false,
         fileEditsAllowed: Boolean = false,
+        clientThreadID: String? = null,
+        parentSessionID: String? = null,
+        resumeAction: String? = null,
     ): String {
         val uid = auth.currentUser?.uid ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
         val trimmedPrompt = prompt.trim()
@@ -141,6 +144,9 @@ class CLIAgentMissionDispatcher(
             approvalMode = approvalMode,
             commandsAllowed = commandsAllowed,
             fileEditsAllowed = fileEditsAllowed,
+            clientThreadID = clientThreadID,
+            parentSessionID = parentSessionID,
+            resumeAction = resumeAction,
         )
         val requestRef = firestore.collection("users").document(uid)
             .collection("cli_agent_mission_requests").document(id)
@@ -148,7 +154,10 @@ class CLIAgentMissionDispatcher(
             .set(requestRef, payload)
             .set(
                 requestRef.collection("events").document("000001"),
-                CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(),
+                CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
+                    label = if (missionKind.trim().equals("chat", ignoreCase = true)) "Chat" else "Mission",
+                    source = if (missionKind.trim().equals("chat", ignoreCase = true)) "android-chat" else "android",
+                ),
             )
             .commit()
             .await()
@@ -235,34 +244,54 @@ object CLIAgentMissionRequestPayloadFactory {
         approvalMode: String,
         commandsAllowed: Boolean,
         fileEditsAllowed: Boolean,
+        clientThreadID: String? = null,
+        parentSessionID: String? = null,
+        resumeAction: String? = null,
         now: Instant = Instant.now(),
-    ): Map<String, Any> = mapOf(
-        "id" to id,
-        "title" to title.trim().ifBlank { "Insights mission" },
-        "prompt" to prompt.trim(),
-        "missionKind" to missionKind,
-        "requestedRuntime" to requestedRuntime,
-        "targetProject" to targetProject.orEmpty().trim(),
-        "depth" to depth,
-        "approvalMode" to approvalMode,
-        "commandsAllowed" to commandsAllowed,
-        "fileEditsAllowed" to fileEditsAllowed,
-        "source" to "android-insights",
-        "status" to "pending",
-        "liveSummary" to "Mission queued from this device. Waiting for the signed-in Mac agent listener to claim it.",
-        "createdAt" to now.toString(),
-        "updatedAt" to FieldValue.serverTimestamp(),
-        "schemaVersion" to 2,
-    )
+    ): Map<String, Any> {
+        val isChat = missionKind.trim().equals("chat", ignoreCase = true)
+        return buildMap {
+            put("id", id)
+            put("title", title.trim().ifBlank { if (isChat) "New chat" else "Insights mission" })
+            put("prompt", prompt.trim())
+            put("missionKind", missionKind)
+            put("requestedRuntime", requestedRuntime)
+            put("targetProject", targetProject.orEmpty().trim())
+            put("depth", depth)
+            put("approvalMode", approvalMode)
+            put("commandsAllowed", commandsAllowed)
+            put("fileEditsAllowed", fileEditsAllowed)
+            put("source", if (isChat) "android-chat" else "android-insights")
+            put("status", "pending")
+            put(
+                "liveSummary",
+                if (isChat) {
+                    "Chat queued from this device. Waiting for the signed-in Mac agent listener to claim it."
+                } else {
+                    "Mission queued from this device. Waiting for the signed-in Mac agent listener to claim it."
+                },
+            )
+            put("createdAt", now.toString())
+            put("updatedAt", FieldValue.serverTimestamp())
+            put("schemaVersion", 2)
+            clientThreadID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("clientThreadID", it) }
+            parentSessionID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("parentSessionID", it) }
+            resumeAction?.trim()?.takeIf { it.isNotEmpty() }?.let { put("resumeAction", it) }
+        }
+    }
 
-    fun initialQueuedEvent(now: Instant = Instant.now()): Map<String, Any> = mapOf(
+    fun initialQueuedEvent(
+        label: String = "Mission",
+        source: String = "android",
+        now: Instant = Instant.now()
+    ): Map<String, Any> = mapOf(
         "sequence" to 1,
         "timestamp" to now.toString(),
         "kind" to "status",
         "phase" to "queued",
         "title" to "Queued",
-        "message" to "Mission queued from this device.",
-        "source" to "android",
+        "message" to "$label queued from this device.",
+        "source" to source,
         "isError" to false,
     )
 }

@@ -205,10 +205,12 @@ private fun AuroraTabItem(
                             pulse = com.openburnbar.ui.pro.ProBadgePulse.Breathing,
                             diameter = 7.dp
                         )
-                        CloudIndicator.Member -> com.openburnbar.ui.pro.MercuryCrest(
-                            size = com.openburnbar.ui.pro.MercuryCrestSize.Small,
-                            shimmer = true,
-                            modifier = Modifier.graphicsLayer { scaleX = 0.62f; scaleY = 0.62f }
+                        // Member: render the user's currently-selected Cloud
+                        // badge so changes from the picker propagate to the
+                        // nav tray live (shared selection from AuroraTheme).
+                        CloudIndicator.Member -> com.openburnbar.ui.pro.CloudBadge(
+                            size = com.openburnbar.ui.pro.CloudBadgeSize.Small,
+                            modifier = Modifier.graphicsLayer { scaleX = 0.55f; scaleY = 0.55f }
                         )
                     }
                 }

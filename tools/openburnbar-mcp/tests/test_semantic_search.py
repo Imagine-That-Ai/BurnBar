@@ -235,3 +235,198 @@ def test_semantic_search_returns_deterministic_hit(tmp_path, monkeypatch):
     assert payload["results"][0]["projectName"] == "BurnBar"
     assert payload["results"][0]["source"]["sessionId"] == "session-1"
     assert "quota routing" in payload["results"][0]["snippet"]
+
+
+def test_project_memory_local_list_and_get(tmp_path, monkeypatch):
+    db_path = tmp_path / "openburnbar.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE project_memory_snapshots (
+            projectSlug TEXT PRIMARY KEY,
+            projectDisplayName TEXT NOT NULL,
+            snapshotJSON TEXT NOT NULL,
+            contentHash TEXT NOT NULL,
+            sourceSessionCount INTEGER NOT NULL,
+            sourceConversationCount INTEGER NOT NULL,
+            generatedAt TEXT NOT NULL,
+            schemaVersion INTEGER NOT NULL,
+            updatedAt TEXT NOT NULL
+        )
+        """
+    )
+    snapshot = {
+        "projectSlug": "burnbar",
+        "projectDisplayName": "BurnBar",
+        "freshness": "fresh",
+        "sections": [{"id": "executive-summary"}],
+        "visuals": [{"id": "timeline", "kind": "timeline"}],
+    }
+    conn.execute(
+        """
+        INSERT INTO project_memory_snapshots
+            (projectSlug, projectDisplayName, snapshotJSON, contentHash, sourceSessionCount, sourceConversationCount, generatedAt, schemaVersion, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "burnbar",
+            "BurnBar",
+            json.dumps(snapshot),
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            7,
+            4,
+            "2026-05-15T12:00:00Z",
+            1,
+            "2026-05-15T12:05:00Z",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("BURNBAR_DB_PATH", str(db_path))
+
+    listed = json.loads(server.burnbar_list_project_memory())
+    fetched = json.loads(server.burnbar_get_project_memory("burnbar", source="local"))
+
+    assert listed["status"] == "ok"
+    assert listed["count"] == 1
+    assert listed["snapshots"][0]["projectSlug"] == "burnbar"
+    assert listed["snapshots"][0]["visualKinds"] == ["timeline"]
+    assert fetched["status"] == "ok"
+    assert fetched["source"] == "local"
+    assert fetched["snapshot"]["projectDisplayName"] == "BurnBar"
+    assert fetched["snapshot"]["freshness"] == "fresh"
+
+
+def test_project_memory_cloud_get_decrypts_snapshot(monkeypatch):
+    called: dict[str, object] = {}
+
+    monkeypatch.setattr(server, "_cloud_config", lambda: {
+        "status": "ok",
+        "projectID": "burnbar",
+        "region": "us-central1",
+        "idToken": "token",
+        "vaultKey": b"\x00" * 32,
+    })
+
+    def _fake_callable(name, payload, _config):
+        called["name"] = name
+        called["payload"] = payload
+        return {
+            "snapshot": {
+                "projectSlug": "burnbar",
+                "projectDisplayName": "BurnBar",
+                "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "sourceSessionCount": 3,
+                "sourceConversationCount": 2,
+                "generatedAt": "2026-05-15T12:00:00Z",
+                "freshness": "fresh",
+                "visualKinds": ["timeline"],
+                "sealedSnapshot": {"algorithm": "AES-256-GCM"},
+                "updatedAt": "2026-05-15T12:01:00Z",
+                "schemaVersion": 1,
+            }
+        }
+
+    monkeypatch.setattr(server, "_call_firebase_callable", _fake_callable)
+    monkeypatch.setattr(
+        server,
+        "_open_cloud_blob_envelope",
+        lambda _envelope, _vault_key: json.dumps({
+            "projectSlug": "burnbar",
+            "projectDisplayName": "BurnBar",
+            "freshness": "fresh",
+            "sections": [{"id": "executive-summary"}],
+            "visuals": [{"id": "timeline", "kind": "timeline"}],
+        }).encode("utf-8"),
+    )
+
+    payload = json.loads(server.burnbar_get_project_memory("burnbar", source="cloud"))
+
+    assert called["name"] == "getEncryptedProjectMemorySnapshot"
+    assert called["payload"] == {"projectSlug": "burnbar"}
+    assert payload["status"] == "ok"
+    assert payload["source"] == "cloud"
+    assert payload["projectSlug"] == "burnbar"
+    assert payload["snapshot"]["projectDisplayName"] == "BurnBar"
+    assert payload["sectionCount"] == 1
+
+
+def test_project_memory_cloud_sync_encrypts_and_commits(tmp_path, monkeypatch):
+    db_path = tmp_path / "openburnbar.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE project_memory_snapshots (
+            projectSlug TEXT PRIMARY KEY,
+            projectDisplayName TEXT NOT NULL,
+            snapshotJSON TEXT NOT NULL,
+            contentHash TEXT NOT NULL,
+            sourceSessionCount INTEGER NOT NULL,
+            sourceConversationCount INTEGER NOT NULL,
+            generatedAt TEXT NOT NULL,
+            schemaVersion INTEGER NOT NULL,
+            updatedAt TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO project_memory_snapshots
+            (projectSlug, projectDisplayName, snapshotJSON, contentHash, sourceSessionCount, sourceConversationCount, generatedAt, schemaVersion, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "burnbar",
+            "BurnBar",
+            json.dumps({
+                "projectSlug": "burnbar",
+                "projectDisplayName": "BurnBar",
+                "freshness": "needsRefresh",
+                "visuals": [{"id": "timeline", "kind": "timeline"}],
+            }),
+            "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            5,
+            3,
+            "2026-05-15T12:00:00Z",
+            1,
+            "2026-05-15T12:05:00Z",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setenv("BURNBAR_DB_PATH", str(db_path))
+
+    monkeypatch.setattr(server, "_cloud_config", lambda: {
+        "status": "ok",
+        "projectID": "burnbar",
+        "region": "us-central1",
+        "idToken": "token",
+        "vaultKey": b"\x00" * 32,
+    })
+    monkeypatch.setattr(server, "_seal_cloud_blob_envelope", lambda _plaintext, _vault_key, key_version=1: {
+        "schemaVersion": 1,
+        "algorithm": "AES-256-GCM",
+        "keyVersion": key_version,
+        "plaintextSHA256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "sealedBoxBase64": "AA==",
+        "createdAt": "2026-05-15T12:06:00Z",
+    })
+
+    captured: dict[str, object] = {}
+
+    def _fake_callable(name, payload, _config):
+        captured["name"] = name
+        captured["payload"] = payload
+        return {"ok": True, "projectSlug": payload.get("projectSlug")}
+
+    monkeypatch.setattr(server, "_call_firebase_callable", _fake_callable)
+    response = json.loads(server.burnbar_cloud_sync_project_memory("burnbar"))
+
+    assert response["status"] == "ok"
+    assert captured["name"] == "commitEncryptedProjectMemorySnapshot"
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["projectSlug"] == "burnbar"
+    assert payload["projectDisplayName"] == "BurnBar"
+    assert payload["freshness"] == "needsRefresh"
+    assert payload["visualKinds"] == ["timeline"]

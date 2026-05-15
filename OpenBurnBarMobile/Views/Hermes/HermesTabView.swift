@@ -124,6 +124,17 @@ private enum HermesChatLayout {
     static let composerBottomPadding: CGFloat = 8
 }
 
+/// How `HermesChatView` was presented to its host. The push variant
+/// keeps the floating `AuroraNavigationTray` visible behind the chat
+/// stack — so we add a 70pt reserve under the composer to keep the
+/// input bar from sitting on top of the tray. The cover variant fully
+/// occludes the tray (`fullScreenCover`), so that reserve becomes a
+/// dead gap above the home indicator.
+enum HermesChatPresentation {
+    case push
+    case cover
+}
+
 extension Notification.Name {
     /// Posted by `HermesChatView` when its text input focus changes so that
     /// `RootTabView` can hide the floating `AuroraNavigationTray` while the
@@ -364,7 +375,8 @@ struct HermesConversationListView: View {
                 HermesChatView(
                     service: service,
                     dashboardSnapshot: dashboardSnapshot,
-                    route: presented.route
+                    route: presented.route,
+                    presentation: .cover
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
@@ -1103,6 +1115,7 @@ struct HermesChatView: View {
     @Bindable var service: HermesService
     let dashboardSnapshot: DashboardStore?
     let route: HermesChatRoute
+    let presentation: HermesChatPresentation
 
     @State private var input: String = ""
     @State private var showClearConfirm = false
@@ -1127,11 +1140,13 @@ struct HermesChatView: View {
     init(
         service: HermesService,
         dashboardSnapshot: DashboardStore? = nil,
-        route: HermesChatRoute = .new
+        route: HermesChatRoute = .new,
+        presentation: HermesChatPresentation = .push
     ) {
         self.service = service
         self.dashboardSnapshot = dashboardSnapshot
         self.route = route
+        self.presentation = presentation
     }
 
     /// User-visible subset of `service.messages`. `.tool` role messages
@@ -1230,12 +1245,15 @@ struct HermesChatView: View {
                     .padding(.bottom, HermesChatLayout.composerBottomPadding)
             }
             // Keep the visible prompt/composer stack stable. The floating
-            // AuroraNavigationTray needs a reserve only while the keyboard is
-            // hidden; using a safe-area spacer avoids shifting the whole chat
-            // stack during UIKit's keyboard animation.
+            // AuroraNavigationTray needs a reserve only while the keyboard
+            // is hidden AND we're being pushed inside the tab's
+            // NavigationStack — the tray sits above the stack and would
+            // otherwise overlap the composer. When presented as a
+            // fullScreenCover the tray is fully occluded, so the reserve
+            // becomes a dead gap above the home indicator.
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 Color.clear
-                    .frame(height: inputFocused ? 0 : HermesChatLayout.hiddenNavigationTrayReserve)
+                    .frame(height: bottomReserveHeight)
                     .transaction { transaction in
                         transaction.disablesAnimations = true
                     }
@@ -1693,30 +1711,36 @@ struct HermesChatView: View {
     // MARK: - Prompt Carousel
 
     private var promptCarousel: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(prompts, id: \.self) { prompt in
-                    Button {
-                        input = prompt
-                        send()
-                    } label: {
-                        Text(prompt)
-                            .font(MobileTheme.Typography.tiny)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .foregroundStyle(MobileTheme.hermesAureate)
-                            .background(
-                                Capsule().fill(MobileTheme.hermesAureate.opacity(0.12))
-                            )
-                            .overlay(
-                                Capsule().stroke(MobileTheme.hermesAureate.opacity(0.35), lineWidth: 0.5)
-                            )
+        VStack(alignment: .leading, spacing: 6) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(prompts, id: \.self) { prompt in
+                        Button {
+                            input = prompt
+                            send()
+                        } label: {
+                            Text(prompt)
+                                .font(MobileTheme.Typography.tiny)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .foregroundStyle(MobileTheme.hermesAureate)
+                                .background(
+                                    Capsule().fill(MobileTheme.hermesAureate.opacity(0.12))
+                                )
+                                .overlay(
+                                    Capsule().stroke(MobileTheme.hermesAureate.opacity(0.35), lineWidth: 0.5)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(service.isStreaming)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(service.isStreaming)
                 }
+                .padding(.horizontal, AuroraDesign.Layout.cardInset)
             }
-            .padding(.horizontal, AuroraDesign.Layout.cardInset)
+            Text("Tip: use `/wiki <project>` to query Project Memory snapshots from Hermes.")
+                .font(MobileTheme.Typography.tiny)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+                .padding(.horizontal, AuroraDesign.Layout.cardInset)
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .opacity(service.isStreaming ? 0.45 : 1)
@@ -1724,6 +1748,8 @@ struct HermesChatView: View {
 
     private var prompts: [String] {
         var list: [String] = [
+            "/wiki",
+            "/wiki top project risks",
             "Why did I burn so much today?",
             "Show my biggest sessions this week",
             "Forecast end-of-day spend",
@@ -1793,7 +1819,7 @@ struct HermesChatView: View {
     }
 
     private var field: some View {
-        TextField("Ask Hermes…", text: $input, axis: .vertical)
+        TextField("Ask Hermes… (/wiki <project>)", text: $input, axis: .vertical)
             .font(MobileTheme.Typography.body)
             .focused($inputFocused)
             .submitLabel(.send)
@@ -1846,6 +1872,14 @@ struct HermesChatView: View {
             || (input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingAttachments.isEmpty)
     }
 
+    private var bottomReserveHeight: CGFloat {
+        if inputFocused { return 0 }
+        switch presentation {
+        case .cover: return 0
+        case .push: return HermesChatLayout.hiddenNavigationTrayReserve
+        }
+    }
+
     // MARK: - Actions
 
     private func send() {
@@ -1856,7 +1890,12 @@ struct HermesChatView: View {
         input = ""
         pendingAttachments = []
         inputFocused = false
-        service.sendMessage(trimmed, context: dashboardContextPrompt, attachments: attachments)
+        let commandBias = wikiCommandContext(for: trimmed)
+        let context = mergedContextPrompt(
+            dashboardContext: dashboardContextPrompt,
+            commandBias: commandBias
+        )
+        service.sendMessage(trimmed, context: context, attachments: attachments)
     }
 
     private func dismissKeyboard() {
@@ -1932,6 +1971,39 @@ struct HermesChatView: View {
             lines.append("Top providers: \(providers).")
         }
         return lines.joined(separator: "\n")
+    }
+
+    private func wikiCommandContext(for input: String) -> String? {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.lowercased().hasPrefix("/wiki") else { return nil }
+        let commandBody = String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespacesAndNewlines)
+        if commandBody.isEmpty || commandBody.lowercased() == "list" {
+            return """
+            /wiki command mode:
+            - The user requested project wiki discovery.
+            - Call `burnbar_project_memory_list` first.
+            - Then either ask for clarification or call `burnbar_project_memory_wiki` with a concrete `project_id`.
+            - Ground the answer in snapshot sections, citations, and visuals.
+            """
+        }
+        return """
+        /wiki command mode:
+        - The user requested project wiki info: \(commandBody)
+        - Prefer `burnbar_project_memory_wiki` with a concrete `project_id`.
+        - If `project_id` is ambiguous, call `burnbar_project_memory_list` before answering.
+        - Ground the answer in snapshot sections, citations, and visuals.
+        """
+    }
+
+    private func mergedContextPrompt(
+        dashboardContext: String?,
+        commandBias: String?
+    ) -> String? {
+        let parts = [dashboardContext, commandBias]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: "\n\n")
     }
 }
 

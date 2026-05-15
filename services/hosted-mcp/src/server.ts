@@ -101,7 +101,7 @@ export function createServer() {
     route(req, res).catch((err) => {
       if (err instanceof HttpError) {
         const headers: Record<string, string> = err.status === 401
-          ? { "WWW-Authenticate": 'Bearer resource_metadata="https://mcp.openburnbar.com/.well-known/oauth-protected-resource"' }
+          ? { "WWW-Authenticate": 'Bearer resource_metadata="https://mcp.burnbar.ai/.well-known/oauth-protected-resource"' }
           : {};
         sendJson(res, err.status, jsonRpcError(null, -32000, err.message, { code: err.code }), headers);
         return;

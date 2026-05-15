@@ -21,7 +21,7 @@
 
 ## Required Controls
 
-- Bearer tokens are audience-bound to `https://mcp.openburnbar.com/mcp`.
+- Bearer tokens are audience-bound to `https://mcp.burnbar.ai/mcp`.
 - Token claims include `sub`, `client_id`, `scopes`, `entitlement_family`,
   `grant_mode`, `exp`, and `jti`.
 - Tool calls recheck entitlement and scopes.

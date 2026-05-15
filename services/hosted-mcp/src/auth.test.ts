@@ -94,6 +94,8 @@ test("remote MCP client revocation fails closed", async () => {
 
   await requireActiveRemoteMcpClient("user-1", "active-client", db as never);
   assert.equal(writes.length, 1);
+  await requireActiveRemoteMcpClient("user-1", "active-client", db as never);
+  assert.equal(writes.length, 1);
   await assert.rejects(
     () => requireActiveRemoteMcpClient("user-1", "revoked-client", db as never),
     /revoked/

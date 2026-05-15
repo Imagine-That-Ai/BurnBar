@@ -17,8 +17,8 @@ function usage() {
 
 Options:
   --project <id>          Google/Firebase project id. Default: GOOGLE_CLOUD_PROJECT, then burnbar.
-  --endpoint <url>        Hosted MCP endpoint. Default: https://mcp.openburnbar.com/mcp.
-  --audience <url>        MCP token audience. Default: https://mcp.openburnbar.com/mcp.
+  --endpoint <url>        Hosted MCP endpoint. Default: https://mcp.burnbar.ai/mcp.
+  --audience <url>        MCP token audience. Default: https://mcp.burnbar.ai/mcp.
   --bucket <name>         Storage bucket for encrypted body proof. Default: OPENBURNBAR_STORAGE_BUCKET.
   --proof-id <id>         Stable proof id. Default: generated.
   --documents <n>         Total seeded corpus documents. Default: 1000.
@@ -31,8 +31,8 @@ Options:
 function parseArgs(argv) {
   const opts = {
     project: process.env.GOOGLE_CLOUD_PROJECT || "burnbar",
-    endpoint: "https://mcp.openburnbar.com/mcp",
-    audience: "https://mcp.openburnbar.com/mcp",
+    endpoint: "https://mcp.burnbar.ai/mcp",
+    audience: "https://mcp.burnbar.ai/mcp",
     bucket: process.env.OPENBURNBAR_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || "",
     proofId: `remote-mcp-perf-${Date.now()}`,
     documents: 1000,
@@ -182,6 +182,14 @@ function hex32(number) {
   return number.toString(16).padStart(32, "0").slice(-32);
 }
 
+function hex64(number) {
+  return number.toString(16).padStart(64, "0").slice(-64);
+}
+
+function sealed(value) {
+  return { algorithm: "AES-256-GCM", nonce: "proof", ciphertext: value, tag: "proof" };
+}
+
 async function seedCorpus({ db, uid, clientId, opts, searchedHash, bodyHash, bodyPath }) {
   const now = Timestamp.now();
   const expiresAt = Timestamp.fromDate(new Date(Date.now() + 60 * 60 * 1000));
@@ -225,21 +233,23 @@ async function seedCorpus({ db, uid, clientId, opts, searchedHash, bodyHash, bod
     const chunkID = `perf-chunk-${index}`;
     const isMatch = index < opts.matches;
     const hash = isMatch ? searchedHash : hex32(index + 1);
-    const storagePath = index === 0 ? bodyPath : `users/${uid}/session_logs/${documentID}/bodies/${hex32(index + 5000)}.json.aesgcm`;
-    const effectiveBodyHash = index === 0 ? bodyHash : hex32(index + 7000);
+    const effectiveBodyHash = index === 0 ? bodyHash : hex64(index + 7000);
+    const storagePath = index === 0 ? bodyPath : `users/${uid}/session_logs/${documentID}/bodies/${effectiveBodyHash}.json.aesgcm`;
     writes.push(
       {
         ref: db.doc(`users/${uid}/cloud_search_documents/${documentID}`),
         data: {
+          documentID,
           sourceID: `Performance proof session ${index}`,
+          sourceKind: "session",
           storagePath,
           bodyHash: effectiveBodyHash,
           projectName: index % 2 === 0 ? "burnbar" : "proof",
           provider: "proof",
           model: "proof-model",
           harness: "proof-harness",
-          sealedTitle: { alg: "proof", ciphertext: `sealed-title-${index}` },
-          sealedBodyPreview: { alg: "proof", ciphertext: `sealed-preview-${index}` },
+          sealedTitle: sealed(`sealed-title-${index}`),
+          sealedBodyPreview: sealed(`sealed-preview-${index}`),
           createdAt: now
         }
       },
@@ -258,7 +268,7 @@ async function seedCorpus({ db, uid, clientId, opts, searchedHash, bodyHash, bod
           bodyHash: effectiveBodyHash,
           tokenHashes: [hash],
           semanticHashes: [],
-          sealedSnippet: { alg: "proof", ciphertext: `sealed-snippet-${index}` },
+          sealedSnippet: sealed(`sealed-snippet-${index}`),
           ordinal: index
         }
       },
@@ -279,7 +289,7 @@ async function seedCorpus({ db, uid, clientId, opts, searchedHash, bodyHash, bod
           commitID: "perf-proof-commit",
           storagePath,
           bodyHash: effectiveBodyHash,
-          sealedSnippet: { alg: "proof", ciphertext: `sealed-snippet-${index}` },
+          sealedSnippet: sealed(`sealed-snippet-${index}`),
           ordinal: index
         }
       }
@@ -299,7 +309,7 @@ async function main() {
   const uid = `${opts.proofId}-user`;
   const clientId = "performance-proof-client";
   const searchedHash = "11111111111111111111111111111111";
-  const bodyHash = "22222222222222222222222222222222";
+  const bodyHash = "2222222222222222222222222222222222222222222222222222222222222222";
   const bodyPath = `users/${uid}/session_logs/perf-doc-0/bodies/${bodyHash}.json.aesgcm`;
   const authHeader = {
     authorization: `Bearer ${mintProofToken({ uid, clientId, secret, scopes: ALL_SCOPES, audience: opts.audience })}`

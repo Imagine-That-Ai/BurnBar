@@ -1,5 +1,8 @@
 import SwiftUI
 import OpenBurnBarCore
+#if DEBUG
+import FirebaseAuth
+#endif
 
 /// Top-level routing based on auth state.
 /// Branches between iPhone (`RootTabView`) and iPad (`RootNavigationView`) layouts.
@@ -19,33 +22,65 @@ struct AuthGateView: View {
             if AppStoreScreenshotMode.isEnabled {
                 mainSignedInView
             } else {
-                switch authStore.state {
-                case .firebaseUnavailable:
-                    FirebaseUnavailableScene()
-                case .signedOut, .signingIn, .firestoreUnavailable:
-                    SignInScene(authStore: authStore)
-                case .signedIn, .deletingAccount:
-                    mainSignedInView
-                        .fullScreenCover(isPresented: Binding(
-                            get: { !hasCompletedOnboarding },
-                            set: { hasCompletedOnboarding = !$0 }
-                        )) {
-                            // Both iPhone and iPad use the same provider-connection
-                            // wizard — `OnboardingWizardView` adapts its gutter
-                            // padding via `horizontalSizeClass`.
-                            OnboardingWizardView(isPresented: Binding(
-                                get: { !hasCompletedOnboarding },
-                                set: { hasCompletedOnboarding = !$0 }
-                            ))
-                        }
+                #if DEBUG
+                if MobileE2ERoute.isCloudStoreRoute {
+                    MobileE2ECloudStoreRouteView()
+                } else {
+                    authStateView
                 }
+                #else
+                authStateView
+                #endif
             }
         }
         .animation(.snappy(duration: 0.25), value: authStore.state)
         .environment(\.uiMode, UIMode(rawValue: uiMode) ?? .standard)
     }
 
+    @ViewBuilder
+    private var authStateView: some View {
+        switch authStore.state {
+        case .firebaseUnavailable:
+            FirebaseUnavailableScene()
+        case .signedOut, .signingIn, .firestoreUnavailable:
+            SignInScene(authStore: authStore)
+        case .signedIn, .deletingAccount:
+            signedInView
+        }
+    }
+
     // MARK: - Device-Specific Root
+
+    @ViewBuilder
+    private var signedInView: some View {
+        #if DEBUG
+        if MobileE2ERoute.isCloudStoreRoute {
+            NavigationStack {
+                CloudStoreView()
+            }
+        } else {
+            signedInRootWithOnboarding
+        }
+        #else
+        signedInRootWithOnboarding
+        #endif
+    }
+
+    private var signedInRootWithOnboarding: some View {
+        mainSignedInView
+            .fullScreenCover(isPresented: Binding(
+                get: { !hasCompletedOnboarding },
+                set: { hasCompletedOnboarding = !$0 }
+            )) {
+                // Both iPhone and iPad use the same provider-connection
+                // wizard — `OnboardingWizardView` adapts its gutter
+                // padding via `horizontalSizeClass`.
+                OnboardingWizardView(isPresented: Binding(
+                    get: { !hasCompletedOnboarding },
+                    set: { hasCompletedOnboarding = !$0 }
+                ))
+            }
+    }
 
     @ViewBuilder
     private var mainSignedInView: some View {
@@ -69,3 +104,37 @@ struct AuthGateView: View {
         }
     }
 }
+
+#if DEBUG
+private struct MobileE2ECloudStoreRouteView: View {
+    @State private var isSignedIn = Auth.auth().currentUser != nil
+    @State private var authHandle: AuthStateDidChangeListenerHandle?
+
+    var body: some View {
+        Group {
+            if isSignedIn {
+                NavigationStack {
+                    CloudStoreView()
+                }
+            } else {
+                ProgressView()
+                    .accessibilityIdentifier("cloudStore.e2e.waitingForAuth")
+            }
+        }
+        .onAppear {
+            guard authHandle == nil else { return }
+            authHandle = Auth.auth().addStateDidChangeListener { _, user in
+                Task { @MainActor in
+                    isSignedIn = user != nil
+                }
+            }
+        }
+        .onDisappear {
+            if let authHandle {
+                Auth.auth().removeStateDidChangeListener(authHandle)
+                self.authHandle = nil
+            }
+        }
+    }
+}
+#endif

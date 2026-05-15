@@ -15,12 +15,26 @@ import OpenBurnBarCore
 // empty-state hero and the same FAB opens a fresh thread directly. The
 // surrounding `NavigationStack` belongs to `RootTabView.hermesStack`.
 
+private struct PresentedPiChatRoute: Identifiable {
+    let route: PiChatRoute
+
+    var id: String {
+        switch route {
+        case .new:
+            return "new"
+        case .existing(let threadID):
+            return "existing:\(threadID)"
+        }
+    }
+}
+
 struct PiConversationListView: View {
     @Bindable var service: PiService
 
     @State private var historyStore: MobileChatHistoryStore = .shared
     @State private var showConnectionSheet = false
     @State private var showModelPicker = false
+    @State private var presentedChatRoute: PresentedPiChatRoute?
 
     var body: some View {
         ZStack {
@@ -82,8 +96,17 @@ struct PiConversationListView: View {
                 piService: service
             )
         }
-        .navigationDestination(for: PiChatRoute.self) { route in
-            PiChatThreadView(service: service, route: route)
+        .fullScreenCover(item: $presentedChatRoute) { presented in
+            NavigationStack {
+                PiChatThreadView(service: service, route: presented.route)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Done") {
+                                presentedChatRoute = nil
+                            }
+                        }
+                    }
+            }
         }
         .task {
             historyStore.bootstrap()
@@ -136,7 +159,9 @@ struct PiConversationListView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
                 ForEach(historyStore.threads(for: .pi)) { thread in
-                    NavigationLink(value: PiChatRoute.existing(threadID: thread.id)) {
+                    Button {
+                        openPiChat(.existing(threadID: thread.id))
+                    } label: {
                         PiThreadRow(thread: thread)
                     }
                     .buttonStyle(.plain)
@@ -163,7 +188,9 @@ struct PiConversationListView: View {
     }
 
     private var newChatFAB: some View {
-        NavigationLink(value: PiChatRoute.new) {
+        Button {
+            openPiChat(.new)
+        } label: {
             ZStack {
                 Circle()
                     .fill(MobileTheme.piGradient)
@@ -175,11 +202,15 @@ struct PiConversationListView: View {
             }
         }
         .buttonStyle(.plain)
-        .simultaneousGesture(TapGesture().onEnded {
-            HapticBus.sheetOpen()
-            service.startNewThread()
-        })
         .accessibilityLabel("Start new Pi chat")
+    }
+
+    private func openPiChat(_ route: PiChatRoute) {
+        HapticBus.sheetOpen()
+        if case .new = route {
+            service.startNewThread()
+        }
+        presentedChatRoute = PresentedPiChatRoute(route: route)
     }
 }
 

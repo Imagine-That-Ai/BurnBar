@@ -716,7 +716,10 @@ service cloud.firestore {
           "siblingCount",
           "isGroupChild",
           "personaScopeJSON",
-          "personaID"
+          "personaID",
+          "clientThreadID",
+          "parentSessionID",
+          "resumeAction"
         ])
         && request.resource.data.id is string
         && request.resource.data.id.size() <= 512
@@ -724,9 +727,9 @@ service cloud.firestore {
         && request.resource.data.title.size() <= 512
         && request.resource.data.prompt is string
         && request.resource.data.prompt.size() <= 20000
-        && request.resource.data.missionKind in ["debt", "diligence", "creative", "accretive", "security", "ui_improvement", "modernization", "provider_routing", "cost_efficiency", "project_focus", "custom"]
+        && request.resource.data.missionKind in ["debt", "diligence", "creative", "accretive", "security", "ui_improvement", "modernization", "provider_routing", "cost_efficiency", "project_focus", "custom", "chat"]
         && request.resource.data.requestedRuntime in ["auto", "codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama"]
-        && request.resource.data.source in ["ios-insights", "android-insights", "mac-insights"]
+        && request.resource.data.source in ["ios-insights", "android-insights", "mac-insights", "ios-chat", "android-chat"]
         && request.resource.data.status in ["pending", "queued", "accepted", "starting", "running", "waiting_for_approval", "completed", "failed", "canceled", "cancelled", "mac_offline", "unauthorized", "agent_launch_failed"]
         && request.resource.data.schemaVersion is int
         && (!("targetProject" in request.resource.data) || (request.resource.data.targetProject is string && request.resource.data.targetProject.size() <= 512))
@@ -755,12 +758,15 @@ service cloud.firestore {
         && (!("siblingCount" in request.resource.data) || (request.resource.data.siblingCount is int && request.resource.data.siblingCount > 0 && request.resource.data.siblingCount <= 16))
         && (!("isGroupChild" in request.resource.data) || request.resource.data.isGroupChild is bool)
         && (!("personaScopeJSON" in request.resource.data) || (request.resource.data.personaScopeJSON is string && request.resource.data.personaScopeJSON.size() <= 8192))
-        && (!("personaID" in request.resource.data) || (request.resource.data.personaID is string && request.resource.data.personaID.size() <= 128));
+        && (!("personaID" in request.resource.data) || (request.resource.data.personaID is string && request.resource.data.personaID.size() <= 128))
+        && (!("clientThreadID" in request.resource.data) || (request.resource.data.clientThreadID is string && request.resource.data.clientThreadID.size() <= 512))
+        && (!("parentSessionID" in request.resource.data) || (request.resource.data.parentSessionID is string && request.resource.data.parentSessionID.size() <= 512))
+        && (!("resumeAction" in request.resource.data) || request.resource.data.resumeAction in ["new", "resume", "fork", "forward"]);
       }
 
       function validCliAgentMissionCreate() {
         return request.resource.data.status == "pending"
-          && request.resource.data.source in ["ios-insights", "android-insights", "mac-insights"]
+          && request.resource.data.source in ["ios-insights", "android-insights", "mac-insights", "ios-chat", "android-chat"]
           && request.resource.data.prompt.size() > 0
           && !("startedAt" in request.resource.data)
           && !("completedAt" in request.resource.data)
@@ -825,7 +831,7 @@ service cloud.firestore {
 
       function validCliAgentMissionEventSource(userId, requestId, eventId) {
         return (
-            request.resource.data.source in ["ios", "android"]
+            request.resource.data.source in ["ios", "android", "ios-chat", "android-chat"]
             && request.resource.data.phase == "queued"
             && request.resource.data.kind == "status"
             && request.resource.data.sequence == 1

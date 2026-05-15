@@ -35,6 +35,7 @@ struct HermesSquareRoot: View {
     @State private var historyStore = MobileChatHistoryStore.shared
     @State private var searchIndex = UnifiedSearchIndex()
     @State private var cloudSearchStore = ActivityStore()
+    @State private var projectsStore = ProjectsStore()
 
     @State private var query: String = ""
     @State private var searchHits: [UnifiedSearchIndex.Hit] = []
@@ -126,6 +127,9 @@ struct HermesSquareRoot: View {
                         pinnedGridSection
                             .padding(.horizontal, 16)
 
+                        projectMemorySection
+                            .padding(.horizontal, 16)
+
                         activeMissionsStrip
                             .padding(.leading, 16)
 
@@ -154,6 +158,7 @@ struct HermesSquareRoot: View {
             inbox.bind(historyStore: historyStore, missionHost: missionHost)
             await registry.refresh(hermesService: hermesService, piService: piService, missionHost: missionHost)
             await inbox.refresh()
+            await projectsStore.load()
             await reindexSearch()
             subscriptionTopicStore.bootstrap()
             await subscriptionTopicStore.refresh()
@@ -173,12 +178,24 @@ struct HermesSquareRoot: View {
         .onChange(of: registry.identities) { _, _ in
             Task { await reindexSearch() }
         }
+        .onChange(of: projectsStore.summaries) { _, _ in
+            Task { await reindexSearch() }
+        }
         .sheet(isPresented: $isShowingDiscover) {
             HermesSquareDiscoverDrawer(
                 registry: registry,
                 pinnedGrid: pinnedGrid,
+                projectSummaries: Array(projectsStore.summaries.prefix(8)),
                 onPin: { uri in pin(uri) },
-                onUnpin: { uri in unpin(uri) }
+                onUnpin: { uri in unpin(uri) },
+                onOpenProjectMemory: { project in
+                    navTarget = .projectMemory(project.id)
+                    isShowingDiscover = false
+                },
+                onAskWiki: { project in
+                    askWiki(for: project)
+                    isShowingDiscover = false
+                }
             )
         }
         .sheet(isPresented: $isShowingFanOut) {
@@ -247,6 +264,13 @@ struct HermesSquareRoot: View {
                     HermesSquareCloudSessionDetailView(row: row)
                 } else {
                     Text("Session unavailable")
+                        .foregroundStyle(DesignSystemColors.textMuted)
+                }
+            case .projectMemory(let projectID):
+                if let project = projectSummary(for: projectID) {
+                    ProjectDetailView(project: project, store: projectsStore)
+                } else {
+                    Text("Project unavailable")
                         .foregroundStyle(DesignSystemColors.textMuted)
                 }
             }
@@ -355,6 +379,99 @@ struct HermesSquareRoot: View {
                 onTap: { uri in handlePinnedTap(uri: uri) },
                 onLongPress: { uri in handlePinnedLongPress(uri: uri) }
             )
+        }
+    }
+
+    @ViewBuilder
+    private var projectMemorySection: some View {
+        let topProjects = projectsStore.topByCost(limit: 3)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Project Memory Wiki")
+                    .font(.caption.bold())
+                    .foregroundStyle(DesignSystemColors.textSecondary)
+                Spacer()
+                Button {
+                    if let project = topProjects.first {
+                        askWiki(for: project)
+                    } else {
+                        AssistantPendingPrompt.shared.stash(assistant: .hermes, prompt: "/wiki")
+                        navTarget = .runtimeNative(.hermes)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "wand.and.stars")
+                        Text("Ask /wiki")
+                    }
+                    .font(.caption.bold())
+                    .foregroundStyle(DesignSystemColors.ember)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if topProjects.isEmpty {
+                Text("No project memory available yet. Start with `/wiki` in Hermes to build one.")
+                    .font(.caption)
+                    .foregroundStyle(DesignSystemColors.textMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(topProjects) { project in
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(project.projectName)
+                                    .font(.callout.bold())
+                                    .foregroundStyle(DesignSystemColors.textPrimary)
+                                    .lineLimit(1)
+                                Text("\(project.sessions) sessions · \(project.totalTokens.formatAsTokenVolume()) · \(project.totalCost.formatAsCost())")
+                                    .font(.caption2)
+                                    .foregroundStyle(DesignSystemColors.textMuted)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 8)
+                            Button {
+                                navTarget = .projectMemory(project.id)
+                            } label: {
+                                Text("Open")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(DesignSystemColors.textPrimary)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        Capsule()
+                                            .fill(DesignSystemColors.surfaceElevated.opacity(0.75))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            Button {
+                                askWiki(for: project)
+                            } label: {
+                                Text("/wiki")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(DesignSystemColors.ember)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        Capsule()
+                                            .fill(DesignSystemColors.ember.opacity(0.15))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(DesignSystemColors.surface.opacity(0.5))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(DesignSystemColors.borderSubtle, lineWidth: 0.5)
+                                )
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -540,6 +657,8 @@ struct HermesSquareRoot: View {
         switch hit.ref.corpus {
         case .agents:
             navTarget = .brandZone(hit.ref.id)
+        case .projects:
+            navTarget = .projectMemory(hit.ref.id)
         case .threads, .missions, .cards:
             // For Phase A: open the brand zone of the owning agent if we
             // can resolve one from the search index doc. The thread/
@@ -555,6 +674,22 @@ struct HermesSquareRoot: View {
         default:
             break
         }
+    }
+
+    private func askWiki(for project: ProjectSummary) {
+        AssistantPendingPrompt.shared.stash(
+            assistant: .hermes,
+            prompt: "/wiki \(project.projectName)"
+        )
+        navTarget = .runtimeNative(.hermes)
+    }
+
+    private func projectSummary(for projectID: String) -> ProjectSummary? {
+        let query = projectID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return projectsStore.summaries.first(where: { summary in
+            summary.id == query
+                || summary.projectName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == query
+        })
     }
 
     private func pin(_ uri: String) {
@@ -610,6 +745,22 @@ struct HermesSquareRoot: View {
         for identity in registry.identities {
             await searchIndex.upsert(.from(identity))
         }
+        for project in projectsStore.summaries {
+            let body = [
+                project.projectName,
+                project.topModel ?? "",
+                project.totalTokens.formatAsTokenVolume(),
+                project.totalCost.formatAsCost()
+            ].joined(separator: " ")
+            let document = UnifiedSearchIndex.Document(
+                ref: UnifiedSearchIndex.DocumentRef(corpus: .projects, id: project.id),
+                title: project.projectName,
+                body: body,
+                lastActivityAt: project.lastSeen,
+                preview: "\(project.sessions) sessions · \(project.totalCost.formatAsCost())"
+            )
+            await searchIndex.upsert(document)
+        }
         for item in inbox.items {
             await searchIndex.upsert(.from(item))
         }
@@ -625,6 +776,7 @@ struct HermesSquareRoot: View {
         case runtimeNative(AssistantRuntimeID)
         case runtimeThread(AssistantRuntimeID)
         case cloudSession(String)
+        case projectMemory(String)
     }
 
     // MARK: - Phase B helpers

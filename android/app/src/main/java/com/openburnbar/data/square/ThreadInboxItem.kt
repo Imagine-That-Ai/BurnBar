@@ -11,7 +11,8 @@ data class ThreadInboxItem(
     val unreadCount: Int = 0,
     val needsAttention: Boolean = false,
     val source: Source,
-    val liveMissionID: String? = null
+    val liveMissionID: String? = null,
+    val searchText: String = listOf(title, preview, agentURI).joinToString(" ")
 ) {
     enum class Source(val token: String) {
         HERMES("hermes"),

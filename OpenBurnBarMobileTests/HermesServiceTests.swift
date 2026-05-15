@@ -532,6 +532,124 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertFalse(service.messages.last?.isError ?? true)
     }
 
+    // MARK: - Empty-response rescue
+
+    func testEmptyResponseFallbackPrefersRefusal() {
+        let result = HermesChatMessage.emptyResponseFallback(
+            refusal: "I can't help with that.",
+            reasoning: "<thinking>",
+            finishReason: "content_filter"
+        )
+        XCTAssertEqual(result.text, "I can't help with that.")
+        XCTAssertFalse(result.isError)
+    }
+
+    func testEmptyResponseFallbackHoistsReasoningWhenNoVisibleContent() {
+        let result = HermesChatMessage.emptyResponseFallback(
+            refusal: "",
+            reasoning: "Reasoning channel response.",
+            finishReason: "stop"
+        )
+        XCTAssertEqual(result.text, "Reasoning channel response.")
+        XCTAssertFalse(result.isError)
+    }
+
+    func testEmptyResponseFallbackKeysOffFinishReasonForLengthCap() {
+        let result = HermesChatMessage.emptyResponseFallback(
+            refusal: "",
+            reasoning: "",
+            finishReason: "length"
+        )
+        XCTAssertTrue(result.text.contains("output budget"))
+        XCTAssertTrue(result.isError)
+    }
+
+    func testEmptyResponseFallbackKeysOffFinishReasonForContentFilter() {
+        let result = HermesChatMessage.emptyResponseFallback(
+            refusal: "",
+            reasoning: "",
+            finishReason: "content_filter"
+        )
+        XCTAssertTrue(result.text.contains("content safety"))
+        XCTAssertTrue(result.isError)
+    }
+
+    func testEmptyResponseFallbackDefaultsToGenericMessage() {
+        let result = HermesChatMessage.emptyResponseFallback(
+            refusal: "",
+            reasoning: "",
+            finishReason: nil
+        )
+        XCTAssertTrue(result.text.contains("finished without returning text"))
+        XCTAssertTrue(result.isError)
+    }
+
+    func testRelayStreamingHoistsReasoningWhenContentNeverFlushes() async throws {
+        // DeepSeek R1 / Qwen3 thinking and certain MiniMax routes
+        // sometimes emit the entire answer on the reasoning channel and
+        // never flush to `content`. The empty-text fallback should rescue
+        // it instead of telling the user "Hermes finished without text".
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"reasoning_content":"The answer"}}]}"#,
+            #"data: {"choices":[{"delta":{"reasoning_content":" is 42."},"finish_reason":"stop"}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("What's the meaning of life?")
+        await waitForStreamToFinish(service)
+
+        let last = try XCTUnwrap(service.messages.last)
+        XCTAssertEqual(last.role, .assistant)
+        XCTAssertEqual(last.text, "The answer is 42.")
+        XCTAssertFalse(last.isError)
+    }
+
+    func testRelayStreamingSurfacesRefusalAsAssistantText() async throws {
+        // OpenAI-compatible servers emit `delta.refusal` when the model
+        // declines instead of producing `content`. We should surface the
+        // refusal so the user knows the model intentionally responded.
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"refusal":"I can't help with that request."},"finish_reason":"content_filter"}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("Forbidden ask")
+        await waitForStreamToFinish(service)
+
+        let last = try XCTUnwrap(service.messages.last)
+        XCTAssertEqual(last.role, .assistant)
+        XCTAssertEqual(last.text, "I can't help with that request.")
+        XCTAssertFalse(last.isError)
+    }
+
+    func testRelayStreamingReportsLengthCapWhenNothingArrived() async throws {
+        // Model hit max_tokens before any content was emitted. Surface
+        // an honest message instead of the generic "finished without
+        // returning text" so the user knows to retry shorter or pick a
+        // model with a larger reply ceiling.
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{},"finish_reason":"length"}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("Tell me everything")
+        await waitForStreamToFinish(service)
+
+        let last = try XCTUnwrap(service.messages.last)
+        XCTAssertEqual(last.role, .assistant)
+        XCTAssertTrue(last.isError)
+        XCTAssertTrue(last.text.contains("output budget"), "Expected length-cap message, got: \(last.text)")
+    }
+
     func testRelayStreamingExposesResponseModelName() async {
         let relay = FakeHermesRelayTransport()
         relay.streamingEvents = [

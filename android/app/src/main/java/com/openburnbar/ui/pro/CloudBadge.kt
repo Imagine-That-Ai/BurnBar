@@ -102,12 +102,33 @@ class CloudBadgeStore(context: Context) {
     }
 }
 
-val LocalCloudBadgeSelection = compositionLocalOf<MutableState<CloudBadgeStyle>> {
-    error("LocalCloudBadgeSelection not provided — wrap content in CloudBadgeProvider")
-}
+/**
+ * CompositionLocal carrying a single shared selection instance for the whole
+ * composition tree. `AuroraTheme` provides one so the picker, the You-tab
+ * card, and the nav-tray badge all observe the same state — without this,
+ * each [rememberCloudBadgeSelection] call would mint its own [MutableState]
+ * and the picker's writes would never recompose other call sites.
+ */
+val LocalCloudBadgeSelection = compositionLocalOf<MutableState<CloudBadgeStyle>?> { null }
 
+/**
+ * Returns the shared selection from [LocalCloudBadgeSelection] when one is
+ * provided (the production path under `AuroraTheme`); otherwise creates a
+ * local instance so the composable still works in previews and isolated tests.
+ */
 @Composable
 fun rememberCloudBadgeSelection(): MutableState<CloudBadgeStyle> {
+    LocalCloudBadgeSelection.current?.let { return it }
+    return rememberLocalCloudBadgeSelection()
+}
+
+/**
+ * Creates a fresh selection bound to [CloudBadgeStore]. Call this exactly
+ * once at the top of the composition (e.g. in `AuroraTheme`) and pipe the
+ * result into [LocalCloudBadgeSelection] so all observers share state.
+ */
+@Composable
+fun rememberLocalCloudBadgeSelection(): MutableState<CloudBadgeStyle> {
     val context = LocalContext.current
     val store = remember { CloudBadgeStore(context) }
     val state = remember { mutableStateOf(store.current) }

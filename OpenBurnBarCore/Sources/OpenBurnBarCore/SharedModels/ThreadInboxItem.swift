@@ -27,6 +27,11 @@ public struct ThreadInboxItem: Sendable, Hashable, Identifiable {
     /// One-line preview of the most recent message or status.
     public let preview: String
 
+    /// Non-visual text indexed by Hermes Square search. CLI mirrors use
+    /// this to include transcript turns without stuffing long text into
+    /// the visible preview row.
+    public let searchText: String
+
     /// Date the thread was last touched (sort key).
     public let lastActivityAt: Date
 
@@ -62,12 +67,14 @@ public struct ThreadInboxItem: Sendable, Hashable, Identifiable {
         unreadCount: Int = 0,
         needsAttention: Bool = false,
         source: Source,
-        liveMissionID: String? = nil
+        liveMissionID: String? = nil,
+        searchText: String? = nil
     ) {
         self.id = id
         self.agentURI = agentURI
         self.title = title
         self.preview = preview
+        self.searchText = searchText ?? [title, preview, agentURI].joined(separator: " ")
         self.lastActivityAt = lastActivityAt
         self.unreadCount = unreadCount
         self.needsAttention = needsAttention

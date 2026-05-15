@@ -91,7 +91,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertTrue(record.messages.first?.toolUses.isEmpty ?? false)
     }
 
-    func test_buildArchivedLogRecord_indexesProviderLogWithoutPlaintextTranscript() throws {
+    func test_buildArchivedLogRecord_includesMobileVisibleTranscriptPreview() throws {
         let start = Date(timeIntervalSince1970: 1_730_000_000)
         let conversation = ConversationRecord(
             id: ConversationRecord.stableId(provider: .codex, sessionId: "thread-123"),
@@ -108,7 +108,15 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
             keyTools: ["exec_command"],
             inferredTaskTitle: "Fix startup",
             lastAssistantMessage: "Done and verified.",
-            fullText: "very private transcript body",
+            fullText: """
+            ## You
+
+            Fix startup.
+
+            ## Assistant
+
+            Done and verified.
+            """,
             indexedAt: start,
             fileModifiedAt: start,
             summary: nil
@@ -126,7 +134,11 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertEqual(record.title, "Fix startup")
         XCTAssertEqual(record.preview, "Done and verified.")
         XCTAssertEqual(record.workspaceLabel, "BurnBar")
-        XCTAssertTrue(record.messages.isEmpty, "Archive index rows must not duplicate the encrypted transcript in plaintext")
+        XCTAssertEqual(record.messages.count, 2)
+        XCTAssertEqual(record.messages.first?.role, .user)
+        XCTAssertEqual(record.messages.first?.text, "Fix startup.")
+        XCTAssertEqual(record.messages.last?.role, .assistant)
+        XCTAssertEqual(record.messages.last?.text, "Done and verified.")
         XCTAssertTrue(record.encryptedTranscriptAvailable)
         XCTAssertEqual(record.resumeHandle?.providerSessionID, "thread-123")
         XCTAssertEqual(record.resumeHandle?.commandHint, "codex resume \"thread-123\"")

@@ -235,6 +235,7 @@ final class CLIAgentSessionMirror {
             canFork: agent == .codex || agent == .claude,
             canForward: true
         )
+        let transcriptMessages = archivedMessages(for: conversation)
         let archivedID = [
             "archive",
             agent.rawValue,
@@ -252,7 +253,7 @@ final class CLIAgentSessionMirror {
             createdAt: createdAt,
             updatedAt: updatedAt,
             endedAt: updatedAt,
-            messages: [],
+            messages: transcriptMessages,
             tokenUsage: nil,
             resumeHandle: handle,
             encryptedTranscriptAvailable: true
@@ -301,6 +302,82 @@ final class CLIAgentSessionMirror {
         case .openClaw:
             return nil
         }
+    }
+
+    private static func archivedMessages(for conversation: ConversationRecord) -> [CLIAgentMessage] {
+        let raw = conversation.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else {
+            return conversation.lastAssistantMessage.nilIfBlank.map { message in
+                [
+                    CLIAgentMessage(
+                        id: "\(conversation.id)-assistant-preview",
+                        role: .assistant,
+                        text: String(message.prefix(8_000)),
+                        timestamp: conversation.endTime ?? conversation.startTime ?? conversation.indexedAt
+                    )
+                ]
+            } ?? []
+        }
+
+        let blocks = parseMarkdownTurns(raw)
+        let cappedBlocks = Array(blocks.prefix(120))
+        if !cappedBlocks.isEmpty {
+            let start = conversation.startTime ?? conversation.indexedAt
+            let end = conversation.endTime ?? start
+            let step = max(1, end.timeIntervalSince(start) / Double(max(cappedBlocks.count, 1)))
+            return cappedBlocks.enumerated().map { index, block in
+                CLIAgentMessage(
+                    id: "\(conversation.id)-archived-\(index)",
+                    role: block.role,
+                    text: String(block.text.prefix(8_000)),
+                    timestamp: start.addingTimeInterval(step * Double(index)),
+                    isError: false,
+                    toolUses: []
+                )
+            }
+        }
+
+        return [
+            CLIAgentMessage(
+                id: "\(conversation.id)-archived-transcript",
+                role: .assistant,
+                text: String(raw.prefix(16_000)),
+                timestamp: conversation.endTime ?? conversation.startTime ?? conversation.indexedAt,
+                isError: false,
+                toolUses: []
+            )
+        ]
+    }
+
+    private static func parseMarkdownTurns(_ raw: String) -> [(role: CLIAgentRole, text: String)] {
+        let lines = raw.components(separatedBy: .newlines)
+        var turns: [(role: CLIAgentRole, text: String)] = []
+        var currentRole: CLIAgentRole?
+        var buffer: [String] = []
+
+        func flush() {
+            guard let role = currentRole else { return }
+            let text = buffer.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
+                turns.append((role, text))
+            }
+            buffer.removeAll()
+        }
+
+        for line in lines {
+            let normalized = line.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalized == "## you" || normalized == "# you" || normalized == "user:" || normalized == "## user" {
+                flush()
+                currentRole = .user
+            } else if normalized == "## assistant" || normalized == "# assistant" || normalized == "assistant:" {
+                flush()
+                currentRole = .assistant
+            } else if currentRole != nil {
+                buffer.append(line)
+            }
+        }
+        flush()
+        return turns
     }
 
     static func convert(_ message: ChatMessageRecord) -> CLIAgentMessage {

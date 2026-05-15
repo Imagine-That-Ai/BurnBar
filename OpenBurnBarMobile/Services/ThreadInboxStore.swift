@@ -120,7 +120,22 @@ final class ThreadInboxStore {
                 unreadCount: 0,
                 needsAttention: false,
                 source: .cliMirror,
-                liveMissionID: nil
+                liveMissionID: nil,
+                searchText: [
+                    record.title,
+                    record.preview,
+                    record.agent.displayName,
+                    record.modelName ?? "",
+                    record.workspaceLabel ?? "",
+                    record.messages.map { message in
+                        [
+                            message.role.rawValue,
+                            message.text,
+                            message.toolUses.map { "\($0.name) \($0.status) \($0.detail ?? "")" }
+                                .joined(separator: " ")
+                        ].joined(separator: " ")
+                    }.joined(separator: " ")
+                ].joined(separator: " ")
             )
         }
     }

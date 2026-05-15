@@ -1,17 +1,21 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
 const ALL_SCOPES = ["search:read", "conversation:read", "usage:read", "index:status"];
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const SHIM_ENTRYPOINT = resolve(REPO_ROOT, "tools/openburnbar-mcp-remote/lib/index.js");
 
 function parseArgs(argv) {
   const opts = {
     project: process.env.GOOGLE_CLOUD_PROJECT || "burnbar",
-    endpoint: process.env.OPENBURNBAR_MCP_ENDPOINT || "https://mcp.openburnbar.com/mcp",
-    audience: process.env.OPENBURNBAR_MCP_AUDIENCE || "https://mcp.openburnbar.com/mcp",
+    endpoint: process.env.OPENBURNBAR_MCP_ENDPOINT || "https://mcp.burnbar.ai/mcp",
+    audience: process.env.OPENBURNBAR_MCP_AUDIENCE || "https://mcp.burnbar.ai/mcp",
     bucket: process.env.OPENBURNBAR_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || "",
     proofId: `remote-mcp-shim-${Date.now()}`
   };
@@ -64,6 +68,10 @@ function mintProofToken({ uid, clientId, secret, scopes, audience }) {
   return `${body}.${sig}`;
 }
 
+function sealed(value) {
+  return { algorithm: "AES-256-GCM", nonce: "proof", ciphertext: value, tag: "proof" };
+}
+
 async function commitBatches(db, writes) {
   for (let index = 0; index < writes.length; index += 450) {
     const batch = db.batch();
@@ -80,7 +88,7 @@ async function seedCorpus({ db, uid, clientId, opts, searchedHash, bodyHash, bod
   const documentID = "shim-doc-0";
   const chunkID = "shim-chunk-0";
   const storagePath = bodyPath;
-  const sealedSnippet = { alg: "proof", ciphertext: "sealed-shim-snippet" };
+  const sealedSnippet = sealed("sealed-shim-snippet");
   const writes = [
     {
       ref: db.doc(`users/${uid}/entitlements/burnbar_pro`),
@@ -119,14 +127,15 @@ async function seedCorpus({ db, uid, clientId, opts, searchedHash, bodyHash, bod
       data: {
         sourceID: "Shim proof session",
         sourceKind: "session",
+        documentID,
         storagePath,
         bodyHash,
         projectName: "burnbar",
         provider: "proof",
         model: "proof-model",
         harness: "proof-harness",
-        sealedTitle: { alg: "proof", ciphertext: "sealed-shim-title" },
-        sealedBodyPreview: { alg: "proof", ciphertext: "sealed-shim-preview" },
+        sealedTitle: sealed("sealed-shim-title"),
+        sealedBodyPreview: sealed("sealed-shim-preview"),
         createdAt: now
       }
     },
@@ -184,8 +193,8 @@ async function seedCorpus({ db, uid, clientId, opts, searchedHash, bodyHash, bod
 }
 
 async function sendStdioMessages({ endpoint, token, messages }) {
-  const child = spawn("node", ["tools/openburnbar-mcp-remote/lib/index.js", "mcp", "serve"], {
-    cwd: process.cwd(),
+  const child = spawn("node", [SHIM_ENTRYPOINT, "mcp", "serve"], {
+    cwd: REPO_ROOT,
     env: {
       ...process.env,
       OPENBURNBAR_MCP_ENDPOINT: endpoint,
@@ -209,8 +218,8 @@ async function sendStdioMessages({ endpoint, token, messages }) {
 }
 
 async function runDoctor({ endpoint, token }) {
-  const child = spawn("node", ["tools/openburnbar-mcp-remote/lib/index.js", "mcp", "doctor"], {
-    cwd: process.cwd(),
+  const child = spawn("node", [SHIM_ENTRYPOINT, "mcp", "doctor"], {
+    cwd: REPO_ROOT,
     env: {
       ...process.env,
       OPENBURNBAR_MCP_ENDPOINT: endpoint,
@@ -238,7 +247,7 @@ async function main() {
   const uid = `${opts.proofId}-user`;
   const clientId = "shim-proof-client";
   const searchedHash = "33333333333333333333333333333333";
-  const bodyHash = "44444444444444444444444444444444";
+  const bodyHash = "4444444444444444444444444444444444444444444444444444444444444444";
   const bodyPath = `users/${uid}/session_logs/shim-doc-0/bodies/${bodyHash}.json.aesgcm`;
   const token = mintProofToken({ uid, clientId, secret, scopes: ALL_SCOPES, audience: opts.audience });
 

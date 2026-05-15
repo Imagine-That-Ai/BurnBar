@@ -20,16 +20,16 @@ export REMOTE_MCP_TOKEN_HMAC_SECRET=...
 ```
 
 The deploy script builds `services/hosted-mcp`, pushes a Cloud Run image, and
-sets the resource audience to `https://mcp.openburnbar.com/mcp`. The signing
+sets the resource audience to `https://mcp.burnbar.ai/mcp`. The signing
 secret must live in Secret Manager as `REMOTE_MCP_TOKEN_HMAC_SECRET`; Cloud
 Functions reads it through `defineSecret(...)`, and Cloud Run receives it via
 `--set-secrets`, not as a plaintext revision environment variable.
 
 ## Domain Mapping
 
-The launch target is `mcp.openburnbar.com`. If the OpenBurnBar domain is not
-verified in the active Google account, `mcp.burnbar.ai` is an acceptable branded
-fallback. `burnbar.ai` is verified in the active Google account via Search
+The launch target is `mcp.burnbar.ai`. The older `mcp.openburnbar.com` target is
+a future domain-alias option only after the OpenBurnBar domain is verified in
+the active Google account. `burnbar.ai` is verified in the active Google account via Search
 Console DNS verification, DNS is hosted at Namecheap
 (`dns1.registrar-servers.com`, `dns2.registrar-servers.com`), and the current
 Cloud Run domain mapping expects:
@@ -103,7 +103,7 @@ node functions/scripts/prove-hosted-mcp-live.mjs \
   --region us-central1 \
   --paid-uid "$OPENBURNBAR_PROOF_PAID_UID" \
   --unpaid-uid "$OPENBURNBAR_PROOF_UNPAID_UID" \
-  --endpoint "https://mcp.openburnbar.com/mcp"
+  --endpoint "https://mcp.burnbar.ai/mcp"
 ```
 
 Set `OPENBURNBAR_MCP_PROOF_TOKEN` for the paid-user tool-list proof. Without it,

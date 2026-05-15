@@ -37,6 +37,7 @@ final class CLIAgentChatReader {
     private let remote: CLIAgentChatRemoteSource
     private let logger = Logger(subsystem: "com.openburnbar.mobile", category: "CLIAgentChatReader")
     private var authListenerHandle: AuthStateDidChangeListenerHandle?
+    private var sessionsListener: ListenerRegistration?
 
     init(remote: CLIAgentChatRemoteSource = CLIAgentChatFirestoreSource()) {
         self.remote = remote
@@ -54,6 +55,10 @@ final class CLIAgentChatReader {
         if let handle = handleSnapshot {
             Auth.auth().removeStateDidChangeListener(handle)
         }
+        let listenerSnapshot: ListenerRegistration? = MainActor.assumeIsolated {
+            sessionsListener
+        }
+        listenerSnapshot?.remove()
     }
 
     /// Filtered list per CLI runtime, sorted newest-first.
@@ -92,13 +97,44 @@ final class CLIAgentChatReader {
         authListenerHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             Task { @MainActor in
                 if user == nil {
+                    self?.sessionsListener?.remove()
+                    self?.sessionsListener = nil
                     self?.sessions = []
                     self?.lastRefreshedAt = nil
                 } else {
+                    self?.startListening(uid: user?.uid)
                     await self?.refresh()
                 }
             }
         }
+    }
+
+    private func startListening(uid: String?) {
+        guard let uid, FirebaseApp.app() != nil else { return }
+        sessionsListener?.remove()
+        sessionsListener = Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("cli_sessions")
+            .order(by: "updatedAt", descending: true)
+            .limit(to: 200)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    if let error {
+                        self?.lastError = error.localizedDescription
+                        self?.logger.warning("CLI agent listener failed: \(String(describing: error), privacy: .public)")
+                        return
+                    }
+                    self?.sessions = snapshot?.documents.compactMap { document in
+                        CLIAgentSessionCodec.decode(
+                            documentID: document.documentID,
+                            data: document.data(),
+                            timestampDecoder: CLIAgentChatFirestoreSource.firestoreTimestampDecoder
+                        )
+                    } ?? []
+                    self?.lastRefreshedAt = Date()
+                    self?.lastError = nil
+                }
+            }
     }
 }
 

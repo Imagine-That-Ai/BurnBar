@@ -1,4 +1,5 @@
 import Foundation
+import FirebaseFirestore
 import OpenBurnBarCore
 
 // MARK: - Mobile Tool Catalog
@@ -214,6 +215,8 @@ public struct MobileToolCatalog: Sendable {
     public static let `default` = MobileToolCatalog(tools: [
         BurnBarAtomOpenTool(),
         BurnBarHermesSessionsTool(),
+        BurnBarProjectMemoryListTool(),
+        BurnBarProjectMemoryWikiTool(),
         BurnBarRuntimeStatusTool()
     ])
 }
@@ -238,6 +241,16 @@ public protocol MobileToolContext: AnyObject, Sendable {
     /// `burnbar_runtime_status`. Lightweight value-type snapshot so the
     /// tool doesn't hold references back into the service.
     var runtimeStatusSnapshot: MobileToolRuntimeStatus { get }
+
+    /// Provider used by project-memory tools to list projects and load
+    /// wiki snapshots.
+    var projectMemoryProvider: any MobileProjectMemoryProviding { get }
+}
+
+public extension MobileToolContext {
+    var projectMemoryProvider: any MobileProjectMemoryProviding {
+        MobileProjectMemoryProvider.shared
+    }
 }
 
 /// Lightweight session summary the catalog can serialize back to the
@@ -305,6 +318,700 @@ public struct MobileToolRuntimeStatus: Sendable, Equatable, Codable {
         self.advertisedModel = advertisedModel
         self.lastError = lastError
     }
+}
+
+// MARK: - Project Memory Models
+
+public enum MobileProjectMemoryFreshness: String, Sendable, Equatable, Codable {
+    case fresh
+    case needsRefresh = "needs_refresh"
+    case stale
+
+    public var displayLabel: String {
+        switch self {
+        case .fresh: return "Fresh"
+        case .needsRefresh: return "Needs refresh"
+        case .stale: return "Stale"
+        }
+    }
+
+    static func from(lastSeen: Date, now: Date = Date()) -> MobileProjectMemoryFreshness {
+        let age = now.timeIntervalSince(lastSeen)
+        if age <= 6 * 3600 { return .fresh }
+        if age <= 48 * 3600 { return .needsRefresh }
+        return .stale
+    }
+}
+
+public struct MobileProjectMemoryCitation: Identifiable, Sendable, Equatable, Codable {
+    public let id: String
+    public let sessionID: String
+    public let model: String
+    public let provider: String
+    public let observedAt: Date
+    public let note: String
+
+    public init(
+        id: String,
+        sessionID: String,
+        model: String,
+        provider: String,
+        observedAt: Date,
+        note: String
+    ) {
+        self.id = id
+        self.sessionID = sessionID
+        self.model = model
+        self.provider = provider
+        self.observedAt = observedAt
+        self.note = note
+    }
+}
+
+public struct MobileProjectMemorySection: Identifiable, Sendable, Equatable, Codable {
+    public let id: String
+    public let title: String
+    public let body: String
+    public let citations: [MobileProjectMemoryCitation]
+
+    public init(
+        id: String,
+        title: String,
+        body: String,
+        citations: [MobileProjectMemoryCitation]
+    ) {
+        self.id = id
+        self.title = title
+        self.body = body
+        self.citations = citations
+    }
+
+    public var citationCount: Int { citations.count }
+}
+
+public enum MobileProjectMemoryVisualKind: String, Sendable, Equatable, Codable {
+    case bar
+    case timeline
+}
+
+public struct MobileProjectMemoryVisualPoint: Sendable, Equatable, Codable {
+    public let label: String
+    public let value: Double
+    public let display: String
+
+    public init(label: String, value: Double, display: String) {
+        self.label = label
+        self.value = value
+        self.display = display
+    }
+}
+
+public struct MobileProjectMemoryVisual: Identifiable, Sendable, Equatable, Codable {
+    public let id: String
+    public let title: String
+    public let subtitle: String
+    public let kind: MobileProjectMemoryVisualKind
+    public let points: [MobileProjectMemoryVisualPoint]
+
+    public init(
+        id: String,
+        title: String,
+        subtitle: String,
+        kind: MobileProjectMemoryVisualKind,
+        points: [MobileProjectMemoryVisualPoint]
+    ) {
+        self.id = id
+        self.title = title
+        self.subtitle = subtitle
+        self.kind = kind
+        self.points = points
+    }
+}
+
+public struct MobileProjectMemorySnapshot: Sendable, Equatable, Codable {
+    public let projectID: String
+    public let projectName: String
+    public let summary: String
+    public let generatedAt: Date
+    public let freshness: MobileProjectMemoryFreshness
+    public let sections: [MobileProjectMemorySection]
+    public let visuals: [MobileProjectMemoryVisual]
+    public let sourceSessionCount: Int
+    public let sourceTokenTotal: Int
+    public let sourceCostTotal: Double
+
+    public init(
+        projectID: String,
+        projectName: String,
+        summary: String,
+        generatedAt: Date,
+        freshness: MobileProjectMemoryFreshness,
+        sections: [MobileProjectMemorySection],
+        visuals: [MobileProjectMemoryVisual],
+        sourceSessionCount: Int,
+        sourceTokenTotal: Int,
+        sourceCostTotal: Double
+    ) {
+        self.projectID = projectID
+        self.projectName = projectName
+        self.summary = summary
+        self.generatedAt = generatedAt
+        self.freshness = freshness
+        self.sections = sections
+        self.visuals = visuals
+        self.sourceSessionCount = sourceSessionCount
+        self.sourceTokenTotal = sourceTokenTotal
+        self.sourceCostTotal = sourceCostTotal
+    }
+
+    public var freshnessLabel: String { freshness.displayLabel }
+
+    static func build(
+        project: ProjectSummary,
+        sessions: [TokenUsage],
+        focusQuestion: String? = nil,
+        now: Date = Date()
+    ) -> MobileProjectMemorySnapshot {
+        let sortedSessions = sessions.sorted { $0.startTime > $1.startTime }
+        let sourceSessionCount = max(project.sessions, Set(sortedSessions.map(\.sessionId)).count)
+        let sourceTokenTotal = sortedSessions.isEmpty
+            ? project.totalTokens
+            : sortedSessions.reduce(0) { $0 + $1.totalTokens }
+        let sourceCostTotal = sortedSessions.isEmpty
+            ? project.totalCost
+            : sortedSessions.reduce(0) { $0 + $1.cost }
+        let summary = "\(sourceSessionCount) sessions · \(sourceTokenTotal.formatAsTokenVolume()) tokens · \(sourceCostTotal.formatAsCost())"
+
+        let recentSessions = Array(sortedSessions.prefix(5))
+        let recentSection = MobileProjectMemorySection(
+            id: "recent-work",
+            title: "Recent agent work",
+            body: recentSessions.isEmpty
+                ? "No session evidence is currently cached for this project."
+                : recentSessions.enumerated().map { idx, session in
+                    let stamp = session.startTime.formatted(date: .abbreviated, time: .shortened)
+                    return "\(idx + 1). \(session.model) · \(session.cost.formatAsCost()) · \(session.totalTokens.formatAsTokenVolume()) · \(stamp)"
+                }.joined(separator: "\n"),
+            citations: citations(from: recentSessions, limit: 5)
+        )
+
+        var modelBuckets: [String: Int] = [:]
+        var providerBuckets: [String: Double] = [:]
+        for session in sortedSessions {
+            modelBuckets[session.model, default: 0] += session.totalTokens
+            providerBuckets[session.provider.displayName, default: 0] += session.cost
+        }
+        let topModels = modelBuckets.sorted { lhs, rhs in
+            if lhs.value != rhs.value { return lhs.value > rhs.value }
+            return lhs.key < rhs.key
+        }
+        let modelSection = MobileProjectMemorySection(
+            id: "model-decisions",
+            title: "Model decisions",
+            body: topModels.isEmpty
+                ? "No model routing evidence is available yet."
+                : topModels.prefix(6).enumerated().map { idx, entry in
+                    "\(idx + 1). \(entry.key) · \(entry.value.formatAsTokenVolume())"
+                }.joined(separator: "\n"),
+            citations: citations(
+                from: sortedSessions.filter { session in
+                    topModels.prefix(3).contains(where: { $0.key == session.model })
+                },
+                limit: 4
+            )
+        )
+
+        let averageCost = sortedSessions.isEmpty
+            ? 0
+            : sortedSessions.reduce(0) { $0 + $1.cost } / Double(sortedSessions.count)
+        let riskSessions = sortedSessions.filter { $0.cost > max(averageCost * 1.8, 0.03) }
+        let riskSection = MobileProjectMemorySection(
+            id: "risks",
+            title: "Open risks",
+            body: riskSessions.isEmpty
+                ? "No unusual spend spikes detected in the current evidence window."
+                : riskSessions.prefix(4).map { session in
+                    "\(session.model) spiked to \(session.cost.formatAsCost()) on \(session.startTime.formatted(date: .abbreviated, time: .shortened))."
+                }.joined(separator: "\n"),
+            citations: citations(from: Array(riskSessions.prefix(4)), limit: 4)
+        )
+
+        var sections: [MobileProjectMemorySection] = [recentSection, modelSection, riskSection]
+        if let focusQuestion = focusQuestion?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !focusQuestion.isEmpty {
+            let focused = focusedSessions(from: sortedSessions, question: focusQuestion)
+            let focusSection = MobileProjectMemorySection(
+                id: "focus",
+                title: "Focus: \(focusQuestion)",
+                body: focused.isEmpty
+                    ? "No directly matching evidence found in the current project cache. Refresh project activity and retry this question."
+                    : focused.prefix(4).map { session in
+                        "\(session.model) · \(session.cost.formatAsCost()) · \(session.totalTokens.formatAsTokenVolume()) · \(session.startTime.formatted(date: .abbreviated, time: .shortened))"
+                    }.joined(separator: "\n"),
+                citations: citations(from: Array(focused.prefix(4)), limit: 4)
+            )
+            sections.insert(focusSection, at: 1)
+        }
+
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateFormat = "MMM d"
+        let visuals: [MobileProjectMemoryVisual] = [
+            MobileProjectMemoryVisual(
+                id: "provider-mix",
+                title: "Provider mix",
+                subtitle: "Spend by provider",
+                kind: .bar,
+                points: providerBuckets
+                    .sorted { lhs, rhs in
+                        if lhs.value != rhs.value { return lhs.value > rhs.value }
+                        return lhs.key < rhs.key
+                    }
+                    .prefix(5)
+                    .map { MobileProjectMemoryVisualPoint(label: $0.key, value: $0.value, display: $0.value.formatAsCost()) }
+            ),
+            MobileProjectMemoryVisual(
+                id: "timeline",
+                title: "Timeline",
+                subtitle: "Recent daily tokens",
+                kind: .timeline,
+                points: project.sortedDailyPoints.suffix(8).map {
+                    MobileProjectMemoryVisualPoint(
+                        label: dayFormatter.string(from: $0.date),
+                        value: $0.value,
+                        display: Int($0.value).formatAsTokenVolume()
+                    )
+                }
+            ),
+            MobileProjectMemoryVisual(
+                id: "model-hotspots",
+                title: "Model hotspots",
+                subtitle: "Top token models",
+                kind: .bar,
+                points: topModels.prefix(5).map {
+                    MobileProjectMemoryVisualPoint(label: $0.key, value: Double($0.value), display: $0.value.formatAsTokenVolume())
+                }
+            )
+        ].filter { !$0.points.isEmpty }
+
+        return MobileProjectMemorySnapshot(
+            projectID: project.id,
+            projectName: project.projectName,
+            summary: summary,
+            generatedAt: now,
+            freshness: MobileProjectMemoryFreshness.from(lastSeen: project.lastSeen, now: now),
+            sections: sections,
+            visuals: visuals,
+            sourceSessionCount: sourceSessionCount,
+            sourceTokenTotal: sourceTokenTotal,
+            sourceCostTotal: sourceCostTotal
+        )
+    }
+
+    private static func citations(
+        from sessions: [TokenUsage],
+        limit: Int
+    ) -> [MobileProjectMemoryCitation] {
+        Array(sessions.prefix(max(0, limit))).enumerated().map { idx, session in
+            MobileProjectMemoryCitation(
+                id: "\(session.sessionId)-\(idx)",
+                sessionID: session.sessionId,
+                model: session.model,
+                provider: session.provider.displayName,
+                observedAt: session.startTime,
+                note: "\(session.model) · \(session.cost.formatAsCost()) · \(session.totalTokens.formatAsTokenVolume())"
+            )
+        }
+    }
+
+    private static func focusedSessions(
+        from sessions: [TokenUsage],
+        question: String
+    ) -> [TokenUsage] {
+        let tokens = question
+            .lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+            .filter { $0.count >= 3 }
+        guard !tokens.isEmpty else {
+            return Array(sessions.prefix(4))
+        }
+        let scored = sessions.compactMap { session -> (TokenUsage, Int)? in
+            let haystack = [
+                session.model.lowercased(),
+                session.provider.rawValue.lowercased(),
+                session.projectName.lowercased()
+            ].joined(separator: " ")
+            let score = tokens.reduce(into: 0) { value, token in
+                if haystack.contains(token) { value += 2 }
+            } + (session.cost > 0.05 ? 1 : 0)
+            guard score > 0 else { return nil }
+            return (session, score)
+        }
+        return scored.sorted { lhs, rhs in
+            if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
+            return lhs.0.startTime > rhs.0.startTime
+        }.map(\.0)
+    }
+}
+
+public struct MobileProjectMemoryCatalogEntry: Sendable, Equatable, Codable {
+    public let projectID: String
+    public let projectName: String
+    public let sessionCount: Int
+    public let totalTokens: Int
+    public let totalCost: Double
+    public let lastSeen: Date
+    public let freshness: MobileProjectMemoryFreshness
+    public let summary: String
+
+    public init(
+        projectID: String,
+        projectName: String,
+        sessionCount: Int,
+        totalTokens: Int,
+        totalCost: Double,
+        lastSeen: Date,
+        freshness: MobileProjectMemoryFreshness,
+        summary: String
+    ) {
+        self.projectID = projectID
+        self.projectName = projectName
+        self.sessionCount = sessionCount
+        self.totalTokens = totalTokens
+        self.totalCost = totalCost
+        self.lastSeen = lastSeen
+        self.freshness = freshness
+        self.summary = summary
+    }
+}
+
+// MARK: - Project Memory Provider
+
+@MainActor
+public protocol MobileProjectMemoryProviding: AnyObject {
+    func listProjectMemory(limit: Int) async throws -> [MobileProjectMemoryCatalogEntry]
+    func projectMemorySnapshot(projectID: String, focusQuestion: String?) async throws -> MobileProjectMemorySnapshot?
+}
+
+@MainActor
+public final class MobileProjectMemoryProvider: MobileProjectMemoryProviding {
+    public static let shared = MobileProjectMemoryProvider()
+
+    private let firestoreProvider: () -> FirestoreRepository
+    private let pageSize: Int
+    private let maxRows: Int
+
+    init(
+        firestoreProvider: @escaping () -> FirestoreRepository = { FirestoreRepository() },
+        pageSize: Int = 100,
+        maxRows: Int = 500
+    ) {
+        self.firestoreProvider = firestoreProvider
+        self.pageSize = pageSize
+        self.maxRows = maxRows
+    }
+
+    public func listProjectMemory(limit: Int) async throws -> [MobileProjectMemoryCatalogEntry] {
+        let rows = try await loadUsageRows()
+        let summaries = ProjectSummaryAggregator.aggregate(rows)
+        let now = Date()
+        let entries = summaries.map { summary in
+            let freshness = MobileProjectMemoryFreshness.from(lastSeen: summary.lastSeen, now: now)
+            return MobileProjectMemoryCatalogEntry(
+                projectID: summary.id,
+                projectName: summary.projectName,
+                sessionCount: summary.sessions,
+                totalTokens: summary.totalTokens,
+                totalCost: summary.totalCost,
+                lastSeen: summary.lastSeen,
+                freshness: freshness,
+                summary: "\(summary.sessions) sessions · \(summary.totalTokens.formatAsTokenVolume()) · \(summary.totalCost.formatAsCost())"
+            )
+        }
+        return Array(entries.prefix(max(1, min(limit, 80))))
+    }
+
+    public func projectMemorySnapshot(projectID: String, focusQuestion: String?) async throws -> MobileProjectMemorySnapshot? {
+        let query = normalizeProjectID(projectID)
+        guard !query.isEmpty else { return nil }
+        let rows = try await loadUsageRows()
+        let summaries = ProjectSummaryAggregator.aggregate(rows)
+        guard let project = summaries.first(where: { matches(summary: $0, query: query) }) else {
+            return nil
+        }
+        let sessions = rows
+            .filter { normalizeProjectID($0.projectName) == project.id }
+            .sorted { $0.startTime > $1.startTime }
+        return MobileProjectMemorySnapshot.build(
+            project: project,
+            sessions: sessions,
+            focusQuestion: focusQuestion
+        )
+    }
+
+    private func loadUsageRows() async throws -> [TokenUsage] {
+        let firestore = firestoreProvider()
+        var rows: [TokenUsage] = []
+        var cursor: DocumentSnapshot? = nil
+
+        while rows.count < maxRows {
+            let (page, pageLast) = try await firestore.fetchUsagePage(
+                pageSize: pageSize,
+                after: cursor,
+                provider: nil,
+                model: nil,
+                device: nil,
+                startDate: nil,
+                endDate: nil
+            )
+            guard !page.isEmpty else { break }
+            rows.append(contentsOf: page)
+            cursor = pageLast
+            if page.count < pageSize || pageLast == nil {
+                break
+            }
+        }
+        if rows.count > maxRows {
+            rows = Array(rows.prefix(maxRows))
+        }
+        return rows
+    }
+
+    private func matches(summary: ProjectSummary, query: String) -> Bool {
+        let id = normalizeProjectID(summary.id)
+        let display = normalizeProjectID(summary.projectName)
+        return id == query || display == query || display.contains(query) || query.contains(display)
+    }
+
+    private func normalizeProjectID(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+// MARK: - Project Memory Tools
+
+@MainActor
+public struct BurnBarProjectMemoryListTool: MobileTool {
+    public init() {}
+
+    public static let name = "burnbar_project_memory_list"
+
+    public var displayName: String { "List project memory" }
+
+    public var description: String {
+        """
+        List projects with available Project Memory wiki snapshots on this \
+        device. Use this before `burnbar_project_memory_wiki` when the user \
+        asks for project wiki info but did not provide an exact project id.
+
+        Optional arguments:
+          - `limit`: max projects to return (1–50, default 10).
+          - `query`: case-insensitive filter on project id/name.
+
+        Returns JSON: `{"count":<int>,"total_available":<int>,"projects":[...]}` \
+        where each project includes id, name, freshness, last seen timestamp, \
+        sessions, token totals, and spend totals.
+        """
+    }
+
+    public var parametersSchema: [String: Any] {
+        MobileToolJSONSchema.object(
+            properties: [
+                "limit": MobileToolJSONSchema.integer(
+                    description: "Maximum number of projects to return.",
+                    minimum: 1,
+                    maximum: 50
+                ),
+                "query": MobileToolJSONSchema.string(
+                    description: "Optional project-name/project-id filter."
+                )
+            ],
+            required: [],
+            description: "Enumerate project memory snapshots available on-device."
+        )
+    }
+
+    public func execute(
+        arguments: String,
+        context: any MobileToolContext
+    ) async throws -> String {
+        let object = try parseArguments(arguments)
+        var limit = 10
+        if let rawLimit = object["limit"] as? Int {
+            limit = max(1, min(50, rawLimit))
+        } else if let rawLimit = object["limit"] as? Double {
+            limit = max(1, min(50, Int(rawLimit)))
+        }
+        let query = (object["query"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        let allProjects = try await context.projectMemoryProvider.listProjectMemory(limit: 80)
+        let filtered: [MobileProjectMemoryCatalogEntry]
+        if let query, !query.isEmpty {
+            filtered = allProjects.filter { project in
+                project.projectID.lowercased().contains(query)
+                    || project.projectName.lowercased().contains(query)
+            }
+        } else {
+            filtered = allProjects
+        }
+        let selected = Array(filtered.prefix(limit))
+        struct Payload: Codable {
+            let count: Int
+            let totalAvailable: Int
+            let projects: [MobileProjectMemoryCatalogEntry]
+        }
+        let payload = Payload(
+            count: selected.count,
+            totalAvailable: filtered.count,
+            projects: selected
+        )
+        return try encodeJSON(payload)
+    }
+
+    private func parseArguments(_ arguments: String) throws -> [String: Any] {
+        let trimmed = arguments.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [:] }
+        guard let data = trimmed.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data, options: []),
+              let dict = object as? [String: Any] else {
+            throw MobileToolError.invalidArguments(
+                "expected a JSON object, got \(trimmed.prefix(80))"
+            )
+        }
+        return dict
+    }
+}
+
+@MainActor
+public struct BurnBarProjectMemoryWikiTool: MobileTool {
+    public init() {}
+
+    public static let name = "burnbar_project_memory_wiki"
+
+    public var displayName: String { "Get project wiki" }
+
+    public var description: String {
+        """
+        Return a structured Project Memory wiki snapshot for a single \
+        project. Use after `burnbar_project_memory_list` (or when the user \
+        already gave a project id/name) to answer architecture, risk, and \
+        recent-work questions with citations and visuals.
+
+        Required argument:
+          - `project_id`: project id or name.
+
+        Optional argument:
+          - `focus_question`: user question to focus evidence selection.
+
+        Returns JSON containing `found`, project metadata, and a full \
+        `snapshot` object with summary, sections, citations, visuals, and \
+        freshness.
+        """
+    }
+
+    public var parametersSchema: [String: Any] {
+        MobileToolJSONSchema.object(
+            properties: [
+                "project_id": MobileToolJSONSchema.string(
+                    description: "Project identifier or project name."
+                ),
+                "focus_question": MobileToolJSONSchema.string(
+                    description: "Optional user question to focus this wiki snapshot."
+                )
+            ],
+            required: ["project_id"],
+            description: "Load one project's wiki snapshot with citations."
+        )
+    }
+
+    public func execute(
+        arguments: String,
+        context: any MobileToolContext
+    ) async throws -> String {
+        let object = try parseArguments(arguments)
+        guard let projectID = stringValue(
+            forKeys: ["project_id", "projectId", "project"],
+            object: object
+        ) else {
+            throw MobileToolError.invalidArguments(
+                "missing required argument `project_id`"
+            )
+        }
+        let focusQuestion = stringValue(
+            forKeys: ["focus_question", "focusQuestion", "question"],
+            object: object
+        )
+        let snapshot = try await context.projectMemoryProvider.projectMemorySnapshot(
+            projectID: projectID,
+            focusQuestion: focusQuestion
+        )
+
+        struct Payload: Codable {
+            let found: Bool
+            let projectID: String
+            let atomURL: String
+            let focusQuestion: String?
+            let snapshot: MobileProjectMemorySnapshot?
+            let message: String?
+        }
+        let atomURL = "burnbar://project?id=\(projectID)"
+        let payload: Payload
+        if let snapshot {
+            payload = Payload(
+                found: true,
+                projectID: snapshot.projectID,
+                atomURL: atomURL,
+                focusQuestion: focusQuestion,
+                snapshot: snapshot,
+                message: nil
+            )
+        } else {
+            payload = Payload(
+                found: false,
+                projectID: projectID,
+                atomURL: atomURL,
+                focusQuestion: focusQuestion,
+                snapshot: nil,
+                message: "No project memory snapshot found for '\(projectID)'. Call burnbar_project_memory_list to discover valid project ids."
+            )
+        }
+        return try encodeJSON(payload)
+    }
+
+    private func parseArguments(_ arguments: String) throws -> [String: Any] {
+        let trimmed = arguments.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [:] }
+        guard let data = trimmed.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data, options: []),
+              let dict = object as? [String: Any] else {
+            throw MobileToolError.invalidArguments(
+                "expected a JSON object, got \(trimmed.prefix(80))"
+            )
+        }
+        return dict
+    }
+
+    private func stringValue(forKeys keys: [String], object: [String: Any]) -> String? {
+        for key in keys {
+            if let value = object[key] as? String {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+        }
+        return nil
+    }
+}
+
+private func encodeJSON<T: Encodable>(_ value: T) throws -> String {
+    let encoder = JSONEncoder()
+    encoder.dateEncodingStrategy = .iso8601
+    encoder.keyEncodingStrategy = .convertToSnakeCase
+    let data = try encoder.encode(value)
+    return String(data: data, encoding: .utf8) ?? "{}"
 }
 
 // MARK: - Executor

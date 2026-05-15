@@ -107,6 +107,21 @@ enum CLIAgentMissionRuntimePlanner {
             ?? "existing_policy"
         let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
         let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
+        let missionKind = (data["missionKind"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if source == "ios-chat" || missionKind == "chat" {
+            return """
+            You are \(backend.displayName), continuing a normal chat that the user started from OpenBurnBar mobile.
+
+            Source: \(source)
+            Target project: \(targetProject)
+            Commands allowed: \(commandsAllowed ? "yes" : "no")
+            File edits allowed: \(fileEditsAllowed ? "yes" : "no")
+
+            Reply directly to the user's message. If you need local project context and commands are not allowed, say what you need instead of inventing details. If file edits are not allowed, do not modify files.
+
+            \(prompt)
+            """
+        }
         return """
         You are OpenBurnBar Mission Control running from \(backend.displayName) on the user's Mac.
 

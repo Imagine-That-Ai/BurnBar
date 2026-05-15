@@ -14,12 +14,14 @@ import Foundation
 //     → Firestore: users/{uid}/cli_sessions/{sessionID}
 //   iOS Assistants tab → `CLIAgentChatReader.refresh()` → renders.
 //
-// Wire shape stays read-only on iOS this wave. Future waves can replace
-// the read with a bi-directional transport.
+// Live and archived sessions are mirrored into `cli_sessions` for readable
+// mobile chat. The encrypted cloud session-log vault remains the durable
+// source for semantic search, resume metadata, and long transcript backup.
 
 /// Three CLI agent runtimes whose transcripts can be mirrored from the
 /// user's Mac to their iOS app. The raw values are stable Firestore
-/// tokens; iOS uses them to filter `cli_sessions` per tile.
+/// tokens; clients use them to filter `cli_sessions` per tile and to index
+/// provider sessions in Hermes Square search.
 public enum CLIAgentRuntime: String, Codable, Hashable, Sendable, CaseIterable {
     case codex
     case claude

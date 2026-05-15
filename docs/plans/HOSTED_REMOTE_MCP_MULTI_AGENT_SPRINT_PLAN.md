@@ -63,7 +63,7 @@ capability.
 The hosted service exposes a standards-compatible MCP Streamable HTTP endpoint:
 
 ```text
-https://mcp.openburnbar.com/mcp
+https://mcp.burnbar.ai/mcp
 ```
 
 The server supports:
@@ -166,7 +166,7 @@ There are two surfaces:
 
 ```text
 Direct remote MCP:
-  client -> https://mcp.openburnbar.com/mcp -> Firebase encrypted index
+  client -> https://mcp.burnbar.ai/mcp -> Firebase encrypted index
 
 Local decrypt shim:
   client -> local stdio MCP shim -> hosted MCP/Firebase -> local device decrypt
@@ -453,8 +453,8 @@ Returns:
 
 | Client | Preferred path | Fallback path | Installer output | Required proof |
 | --- | --- | --- | --- | --- |
-| Codex | Streamable HTTP remote MCP | local stdio shim | `codex mcp add openburnbar --url https://mcp.openburnbar.com/mcp` | login, tools/list, search, body fetch |
-| Claude Code | Streamable HTTP if supported | local stdio shim | `claude mcp add --transport http openburnbar https://mcp.openburnbar.com/mcp` | OAuth, tools/list, timeout-free search |
+| Codex | Streamable HTTP remote MCP | local stdio shim | `codex mcp add openburnbar --url https://mcp.burnbar.ai/mcp` | login, tools/list, search, body fetch |
+| Claude Code | Streamable HTTP if supported | local stdio shim | `claude mcp add --transport http openburnbar https://mcp.burnbar.ai/mcp` | OAuth, tools/list, timeout-free search |
 | Droid / Factory | HTTP MCP config | local stdio shim | `.factory/mcp.json` or `droid mcp add` | list tools and run search |
 | Kimi CLI | HTTP MCP if supported | local stdio shim | `kimi mcp add ...` or JSON config | list tools and run search |
 | Forge CLI | imported MCP JSON | local stdio shim | `forge mcp import ...` | list tools and run search |
@@ -864,7 +864,7 @@ Streams:
 Tasks:
 
 1. Deploy `services/hosted-mcp` to Cloud Run.
-2. Attach domain `mcp.openburnbar.com`.
+2. Attach domain `mcp.burnbar.ai`.
 3. Enforce TLS.
 4. Configure service account least privilege.
 5. Configure Secret Manager secrets.
@@ -878,8 +878,8 @@ Tasks:
 
 DOD:
 
-- `https://mcp.openburnbar.com/readyz` is healthy.
-- `https://mcp.openburnbar.com/mcp` responds correctly.
+- `https://mcp.burnbar.ai/readyz` is healthy.
+- `https://mcp.burnbar.ai/mcp` responds correctly.
 - Paid account works.
 - Unpaid account fails.
 - Revoked client fails.
@@ -1031,7 +1031,7 @@ node functions/scripts/prove-hosted-mcp-live.mjs \
   --region us-central1 \
   --paid-uid "$OPENBURNBAR_PROOF_PAID_UID" \
   --unpaid-uid "$OPENBURNBAR_PROOF_UNPAID_UID" \
-  --endpoint "https://mcp.openburnbar.com/mcp"
+  --endpoint "https://mcp.burnbar.ai/mcp"
 ```
 
 ## Production Definition Of Done

@@ -10,14 +10,18 @@ import OpenBurnBarCore
 struct HermesSquareDiscoverDrawer: View {
     let registry: AgentIdentityRegistry
     let pinnedGrid: PinnedAgentGridConfig
+    let projectSummaries: [ProjectSummary]
     let onPin: (String) -> Void
     let onUnpin: (String) -> Void
+    let onOpenProjectMemory: (ProjectSummary) -> Void
+    let onAskWiki: (ProjectSummary) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var section: Section = .recent
 
     enum Section: String, CaseIterable, Identifiable {
         case recent
+        case projectMemory
         case capabilities
         case marketplace
         case brandZones
@@ -25,6 +29,7 @@ struct HermesSquareDiscoverDrawer: View {
         var displayLabel: String {
             switch self {
             case .recent:        return "Recent"
+            case .projectMemory: return "Project Memory"
             case .capabilities:  return "Capabilities"
             case .marketplace:   return "Marketplace"
             case .brandZones:    return "Agents"
@@ -49,6 +54,7 @@ struct HermesSquareDiscoverDrawer: View {
                 ScrollView {
                     switch section {
                     case .recent:        recentSection
+                    case .projectMemory: projectMemorySection
                     case .capabilities:  capabilitiesSection
                     case .marketplace:   marketplaceSection
                     case .brandZones:    brandZoneSection
@@ -103,6 +109,65 @@ struct HermesSquareDiscoverDrawer: View {
                     RoundedRectangle(cornerRadius: 10)
                         .fill(DesignSystemColors.surface.opacity(0.5))
                 )
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    private var projectMemorySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if projectSummaries.isEmpty {
+                Text("No projects available yet. Start using `/wiki` in Hermes after your usage syncs.")
+                    .font(.caption)
+                    .foregroundStyle(DesignSystemColors.textMuted)
+                    .padding(.horizontal, 4)
+            } else {
+                ForEach(projectSummaries.prefix(8)) { project in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "book.closed.fill")
+                                .foregroundStyle(DesignSystemColors.ember)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(project.projectName)
+                                    .font(.callout.bold())
+                                    .foregroundStyle(DesignSystemColors.textPrimary)
+                                Text("\(project.sessions) sessions · \(project.totalTokens.formatAsTokenVolume()) · \(project.totalCost.formatAsCost())")
+                                    .font(.caption2)
+                                    .foregroundStyle(DesignSystemColors.textMuted)
+                            }
+                            Spacer()
+                        }
+
+                        HStack(spacing: 8) {
+                            Button {
+                                onOpenProjectMemory(project)
+                                dismiss()
+                            } label: {
+                                Label("Open wiki", systemImage: "book")
+                                    .font(.caption.bold())
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(DesignSystemColors.textSecondary)
+
+                            Button {
+                                onAskWiki(project)
+                                dismiss()
+                            } label: {
+                                Label("Ask /wiki", systemImage: "wand.and.stars")
+                                    .font(.caption.bold())
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(DesignSystemColors.ember)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(DesignSystemColors.surface.opacity(0.5))
+                    )
+                }
             }
         }
         .padding(.horizontal, 16)

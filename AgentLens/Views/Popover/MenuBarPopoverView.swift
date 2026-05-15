@@ -467,52 +467,21 @@ struct MenuBarPopoverView: View {
 
     // MARK: - Action Bar
 
-    // Pro vocabulary — foil whisper that lives in the popover footer.
-    // Visible every time the user opens the menu bar; tap dismisses and
-    // opens settings (where the new "Cloud" pane is one click away).
+    // MARK: - Cloud whisper strip
+    //
+    // Renders the Cloud Member chip when entitled, the upsell when free.
+    // Tapping either parks a deep-link in UserDefaults so the Settings
+    // window opens straight on the Cloud pane.
+
     @ViewBuilder
     private var cloudWhisperStrip: some View {
-        Button {
-            dismiss()
-            onOpenSettings()
-        } label: {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(ProTheme.Palette.obsidian)
-                    Circle().stroke(ProTheme.Palette.aureateStroke, lineWidth: 0.8)
-                    Image(systemName: "sparkle")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(ProTheme.Palette.aureate)
-                }
-                .frame(width: 22, height: 22)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("OpenBurnBar Cloud")
-                        .font(.system(size: 12, weight: .semibold, design: .serif))
-                        .foregroundStyle(ProTheme.Palette.mercury)
-                    Text("Your agents, unbound — hosted refresh, backup, relay.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(ProTheme.Palette.mercury.opacity(0.65))
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(ProTheme.Palette.aureate)
+        CloudWhisperStrip(
+            onOpen: {
+                UserDefaults.standard.set(SettingsTab.cloud.rawValue, forKey: "settings.pendingTab")
+                dismiss()
+                onOpenSettings()
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(ProTheme.Palette.obsidian)
-            .overlay(
-                Rectangle()
-                    .stroke(ProTheme.Palette.aureateStroke, lineWidth: 0.6)
-            )
-        }
-        .buttonStyle(.plain)
-        .popoverTooltip("Open Cloud in Settings")
-        .accessibilityLabel("OpenBurnBar Cloud. Your agents, unbound. Opens Settings.")
+        )
     }
 
     private var actionBar: some View {

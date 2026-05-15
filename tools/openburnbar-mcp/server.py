@@ -408,6 +408,107 @@ def _open_cloud_blob_envelope(envelope: dict[str, Any], vault_key: bytes) -> byt
     return plaintext
 
 
+def _seal_cloud_blob_envelope(plaintext: bytes, vault_key: bytes, key_version: int = 1) -> dict[str, Any]:
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    except ImportError as exc:
+        raise RuntimeError("install cryptography to seal OpenBurnBar cloud payloads") from exc
+    nonce = os.urandom(12)
+    ciphertext_and_tag = AESGCM(vault_key).encrypt(nonce, plaintext, None)
+    combined = nonce + ciphertext_and_tag
+    return {
+        "schemaVersion": 1,
+        "algorithm": "AES-256-GCM",
+        "keyVersion": int(key_version),
+        "plaintextSHA256": hashlib.sha256(plaintext).hexdigest(),
+        "sealedBoxBase64": base64.b64encode(combined).decode("utf-8"),
+        "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+
+
+def _normalize_project_slug(raw: str) -> str:
+    normalized = re.sub(r"[^a-z0-9_-]+", "-", raw.strip().lower())
+    normalized = re.sub(r"-{2,}", "-", normalized).strip("-")
+    return normalized
+
+
+def _project_memory_row(conn: sqlite3.Connection, project_slug: str) -> sqlite3.Row | None:
+    conn.row_factory = sqlite3.Row
+    trimmed = project_slug.strip()
+    if not trimmed:
+        return None
+    candidates = [trimmed]
+    normalized = _normalize_project_slug(trimmed)
+    if normalized and normalized not in candidates:
+        candidates.append(normalized)
+    for candidate in candidates:
+        row = conn.execute(
+            """
+            SELECT
+                projectSlug,
+                projectDisplayName,
+                snapshotJSON,
+                contentHash,
+                sourceSessionCount,
+                sourceConversationCount,
+                generatedAt,
+                schemaVersion,
+                updatedAt
+            FROM project_memory_snapshots
+            WHERE lower(projectSlug) = lower(?)
+            LIMIT 1
+            """,
+            (candidate,),
+        ).fetchone()
+        if row is not None:
+            return row
+    return None
+
+
+def _parse_project_memory_row(row: sqlite3.Row) -> dict[str, Any]:
+    record = _row_to_dict(row)
+    snapshot: dict[str, Any] = {}
+    snapshot_raw = record.get("snapshotJSON")
+    if isinstance(snapshot_raw, str) and snapshot_raw.strip():
+        try:
+            decoded = json.loads(snapshot_raw)
+            if isinstance(decoded, dict):
+                snapshot = decoded
+        except json.JSONDecodeError:
+            snapshot = {}
+
+    visuals = snapshot.get("visuals")
+    visual_kinds: list[str] = []
+    if isinstance(visuals, list):
+        visual_kinds = sorted(
+            {
+                str(item.get("kind"))
+                for item in visuals
+                if isinstance(item, dict) and isinstance(item.get("kind"), str) and item.get("kind")
+            }
+        )
+    sections = snapshot.get("sections")
+    section_count = len(sections) if isinstance(sections, list) else 0
+    page = snapshot.get("page")
+    title = page.get("title") if isinstance(page, dict) else None
+
+    return {
+        "projectSlug": record.get("projectSlug"),
+        "projectDisplayName": record.get("projectDisplayName"),
+        "contentHash": record.get("contentHash"),
+        "sourceSessionCount": record.get("sourceSessionCount"),
+        "sourceConversationCount": record.get("sourceConversationCount"),
+        "generatedAt": record.get("generatedAt"),
+        "updatedAt": record.get("updatedAt"),
+        "schemaVersion": record.get("schemaVersion"),
+        "freshness": snapshot.get("freshness"),
+        "visualKinds": visual_kinds,
+        "sectionCount": section_count,
+        "title": title,
+        "snapshot": snapshot,
+    }
+
+
 def _table_names(conn: sqlite3.Connection) -> set[str]:
     rows = conn.execute(
         "SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table')"
@@ -916,6 +1017,246 @@ def burnbar_cloud_get_conversation_body(
         "fullText": full_text,
         "fullTextTruncated": truncated,
     }, indent=2)
+
+
+@mcp.tool()
+def burnbar_list_project_memory(limit: int = 20) -> str:
+    """
+    List locally cached Project Memory snapshots from SQLite.
+
+    Returns metadata only (slug, freshness, section count, visual kinds, hash),
+    ordered by most recently updated.
+    """
+    lim = max(1, min(int(limit), 100))
+    path = _default_db_path()
+    with _connect_ro(path) as conn:
+        if "project_memory_snapshots" not in _table_names(conn):
+            return _json_unavailable(
+                "PROJECT_MEMORY_TABLE_MISSING",
+                "local project_memory_snapshots table is not present in this SQLite database",
+            )
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT
+                projectSlug,
+                projectDisplayName,
+                snapshotJSON,
+                contentHash,
+                sourceSessionCount,
+                sourceConversationCount,
+                generatedAt,
+                schemaVersion,
+                updatedAt
+            FROM project_memory_snapshots
+            ORDER BY updatedAt DESC
+            LIMIT ?
+            """,
+            (lim,),
+        ).fetchall()
+    snapshots = [_parse_project_memory_row(row) for row in rows]
+    for item in snapshots:
+        item.pop("snapshot", None)
+    return json.dumps({
+        "status": "ok",
+        "source": "local",
+        "count": len(snapshots),
+        "snapshots": snapshots,
+    }, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_get_project_memory(project_slug: str, source: str = "auto") -> str:
+    """
+    Get one Project Memory snapshot.
+
+    source:
+      - auto  (default): local first, then cloud fallback
+      - local: SQLite project_memory_snapshots only
+      - cloud: hosted encrypted snapshot via Firebase callable + local decrypt
+    """
+    source_mode = source.strip().lower()
+    if source_mode not in {"auto", "local", "cloud"}:
+        return json.dumps(
+            {"error": "source must be one of: auto, local, cloud"},
+            indent=2,
+        )
+    slug = project_slug.strip()
+    if not slug:
+        return json.dumps({"error": "project_slug is required"}, indent=2)
+
+    if source_mode in {"auto", "local"}:
+        path = _default_db_path()
+        with _connect_ro(path) as conn:
+            if "project_memory_snapshots" not in _table_names(conn):
+                if source_mode == "local":
+                    return _json_unavailable(
+                        "PROJECT_MEMORY_TABLE_MISSING",
+                        "local project_memory_snapshots table is not present in this SQLite database",
+                    )
+            else:
+                row = _project_memory_row(conn, slug)
+                if row is not None:
+                    payload = _parse_project_memory_row(row)
+                    return json.dumps({
+                        "status": "ok",
+                        "source": "local",
+                        **payload,
+                    }, indent=2, default=str)
+                if source_mode == "local":
+                    return _json_unavailable(
+                        "PROJECT_MEMORY_NOT_FOUND",
+                        "local project memory snapshot was not found",
+                        projectSlug=slug,
+                    )
+
+    config = _cloud_config()
+    if config.get("status") != "ok":
+        return json.dumps(config, indent=2)
+    try:
+        result = _call_firebase_callable(
+            "getEncryptedProjectMemorySnapshot",
+            {"projectSlug": _normalize_project_slug(slug) or slug},
+            config,
+        )
+        cloud_snapshot = result.get("snapshot") if isinstance(result, dict) else None
+        if not isinstance(cloud_snapshot, dict):
+            return _json_unavailable(
+                "PROJECT_MEMORY_NOT_FOUND",
+                "cloud project memory snapshot was not found",
+                projectSlug=slug,
+            )
+        sealed = cloud_snapshot.get("sealedSnapshot")
+        if not isinstance(sealed, dict):
+            return _json_unavailable(
+                "PROJECT_MEMORY_PAYLOAD_INVALID",
+                "cloud snapshot is missing sealedSnapshot envelope",
+                projectSlug=slug,
+            )
+        plaintext = _open_cloud_blob_envelope(sealed, config["vaultKey"])
+        snapshot = json.loads(plaintext.decode("utf-8"))
+        if not isinstance(snapshot, dict):
+            return _json_unavailable(
+                "PROJECT_MEMORY_PAYLOAD_INVALID",
+                "cloud sealed snapshot did not decode to an object",
+                projectSlug=slug,
+            )
+    except (RuntimeError, ValueError, json.JSONDecodeError) as exc:
+        return _json_unavailable(
+            "PROJECT_MEMORY_CLOUD_READ_FAILED",
+            "cloud project memory snapshot could not be read",
+            error=str(exc),
+            projectSlug=slug,
+        )
+
+    visuals = snapshot.get("visuals")
+    visual_kinds = sorted(
+        {
+            str(item.get("kind"))
+            for item in visuals
+            if isinstance(item, dict) and isinstance(item.get("kind"), str) and item.get("kind")
+        }
+    ) if isinstance(visuals, list) else []
+    sections = snapshot.get("sections")
+    section_count = len(sections) if isinstance(sections, list) else 0
+
+    return json.dumps({
+        "status": "ok",
+        "source": "cloud",
+        "projectSlug": cloud_snapshot.get("projectSlug") or snapshot.get("projectSlug") or slug,
+        "projectDisplayName": cloud_snapshot.get("projectDisplayName") or snapshot.get("projectDisplayName"),
+        "contentHash": cloud_snapshot.get("contentHash") or snapshot.get("contentHash"),
+        "sourceSessionCount": cloud_snapshot.get("sourceSessionCount") or snapshot.get("sourceSessionCount"),
+        "sourceConversationCount": cloud_snapshot.get("sourceConversationCount") or snapshot.get("sourceConversationCount"),
+        "generatedAt": cloud_snapshot.get("generatedAt") or snapshot.get("generatedAt"),
+        "updatedAt": cloud_snapshot.get("updatedAt"),
+        "schemaVersion": cloud_snapshot.get("schemaVersion"),
+        "freshness": cloud_snapshot.get("freshness") or snapshot.get("freshness"),
+        "visualKinds": cloud_snapshot.get("visualKinds") or visual_kinds,
+        "sectionCount": section_count,
+        "snapshot": snapshot,
+    }, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_cloud_sync_project_memory(project_slug: str) -> str:
+    """
+    Encrypt and upload one local Project Memory snapshot to cloud storage.
+
+    Requires local project_memory_snapshots data plus cloud auth env
+    (OPENBURNBAR_FIREBASE_ID_TOKEN and OPENBURNBAR_CLOUD_VAULT_KEY_BASE64).
+    """
+    slug = project_slug.strip()
+    if not slug:
+        return json.dumps({"error": "project_slug is required"}, indent=2)
+
+    path = _default_db_path()
+    with _connect_ro(path) as conn:
+        if "project_memory_snapshots" not in _table_names(conn):
+            return _json_unavailable(
+                "PROJECT_MEMORY_TABLE_MISSING",
+                "local project_memory_snapshots table is not present in this SQLite database",
+            )
+        row = _project_memory_row(conn, slug)
+        if row is None:
+            return _json_unavailable(
+                "PROJECT_MEMORY_NOT_FOUND",
+                "local project memory snapshot was not found",
+                projectSlug=slug,
+            )
+        parsed = _parse_project_memory_row(row)
+
+    snapshot = parsed.get("snapshot")
+    if not isinstance(snapshot, dict):
+        return _json_unavailable(
+            "PROJECT_MEMORY_PAYLOAD_INVALID",
+            "local snapshotJSON did not decode to an object",
+            projectSlug=slug,
+        )
+
+    config = _cloud_config()
+    if config.get("status") != "ok":
+        return json.dumps(config, indent=2)
+
+    try:
+        plaintext = json.dumps(snapshot, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        sealed_snapshot = _seal_cloud_blob_envelope(plaintext, config["vaultKey"], key_version=1)
+        visuals = snapshot.get("visuals")
+        visual_kinds = sorted(
+            {
+                str(item.get("kind"))
+                for item in visuals
+                if isinstance(item, dict) and isinstance(item.get("kind"), str) and item.get("kind")
+            }
+        ) if isinstance(visuals, list) else []
+        payload = {
+            "projectSlug": parsed.get("projectSlug"),
+            "projectDisplayName": parsed.get("projectDisplayName"),
+            "contentHash": parsed.get("contentHash"),
+            "sourceSessionCount": int(parsed.get("sourceSessionCount") or 0),
+            "sourceConversationCount": int(parsed.get("sourceConversationCount") or 0),
+            "generatedAt": parsed.get("generatedAt"),
+            "freshness": parsed.get("freshness") or "fresh",
+            "visualKinds": visual_kinds,
+            "sealedSnapshot": sealed_snapshot,
+        }
+        result = _call_firebase_callable("commitEncryptedProjectMemorySnapshot", payload, config)
+    except (RuntimeError, ValueError, TypeError) as exc:
+        return _json_unavailable(
+            "PROJECT_MEMORY_CLOUD_SYNC_FAILED",
+            "local project memory snapshot could not be synced to cloud",
+            error=str(exc),
+            projectSlug=slug,
+        )
+
+    return json.dumps({
+        "status": "ok",
+        "source": "cloud-sync",
+        "projectSlug": parsed.get("projectSlug"),
+        "projectDisplayName": parsed.get("projectDisplayName"),
+        "contentHash": parsed.get("contentHash"),
+        "result": result,
+    }, indent=2, default=str)
 
 
 @mcp.tool()

@@ -82,6 +82,8 @@ import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.square.AgentAvailability
 import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.data.square.AgentIdentityRegistry
+import com.openburnbar.data.square.CLIAgentMessage
+import com.openburnbar.data.square.CLIAgentSessionRecord
 import com.openburnbar.data.square.PinnedAgentGridConfig
 import com.openburnbar.data.square.ThreadInboxItem
 import com.openburnbar.data.square.ThreadInboxStore
@@ -134,6 +136,7 @@ fun HermesSquareScreen(
     var showVoice by remember { mutableStateOf(false) }
     var voiceBanner by remember { mutableStateOf<AndroidVoiceIntent?>(null) }
     var selectedCloudRow by remember { mutableStateOf<CloudConversationSearchRow?>(null) }
+    var selectedCliSession by remember { mutableStateOf<CLIAgentSessionRecord?>(null) }
 
     // Phase A: hydrate availability for built-ins. (Mac-relay runtimes
     // remain UNKNOWN until the Android mission host publishes.)
@@ -251,8 +254,12 @@ fun HermesSquareScreen(
                                 }
                                 HermesSquareHit.Kind.THREAD -> {
                                     val item = inbox.items.firstOrNull { it.id == hit.id }
+                                    val cliSession = item?.takeIf { it.source == ThreadInboxItem.Source.CLI_MIRROR }
+                                        ?.let { inbox.cliSessionFor(it) }
                                     val runtime = item?.agentURI?.let { AgentIdentity.builtInRuntime(it) }
-                                    if (runtime != null) {
+                                    if (cliSession != null) {
+                                        selectedCliSession = cliSession
+                                    } else if (runtime != null) {
                                         onOpenLegacyRuntime(runtime)
                                     }
                                 }
@@ -309,8 +316,12 @@ fun HermesSquareScreen(
                             item = item,
                             registry = registry,
                             onTap = {
+                                val cliSession = item.takeIf { it.source == ThreadInboxItem.Source.CLI_MIRROR }
+                                    ?.let { inbox.cliSessionFor(it) }
                                 val runtime = AgentIdentity.builtInRuntime(item.agentURI)
-                                if (runtime != null) {
+                                if (cliSession != null) {
+                                    selectedCliSession = cliSession
+                                } else if (runtime != null) {
                                     onOpenLegacyRuntime(runtime)
                                 } else {
                                     showBrandZoneURI = item.agentURI
@@ -403,6 +414,13 @@ fun HermesSquareScreen(
         )
     }
 
+    selectedCliSession?.let { session ->
+        CLIAgentSessionSheet(
+            session = session,
+            onDismiss = { selectedCliSession = null }
+        )
+    }
+
     showBrandZoneURI?.let { uri ->
         val identity = registry.identity(uri)
         if (identity != null) {
@@ -410,6 +428,139 @@ fun HermesSquareScreen(
                 identity = identity,
                 onDismiss = { showBrandZoneURI = null }
             )
+        }
+    }
+}
+
+@Composable
+private fun CLIAgentSessionSheet(
+    session: CLIAgentSessionRecord,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.48f))
+            .clickableUnit(onClick = onDismiss)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+            tonalElevation = 4.dp,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(560.dp)
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(18.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            session.title,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            listOf(session.agent, session.modelName.orEmpty(), session.workspaceLabel.orEmpty())
+                                .filter { it.isNotBlank() }
+                                .joinToString(" · "),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
+
+                if (session.messages.isEmpty()) {
+                    Text(
+                        session.preview.ifBlank { "No mirrored messages yet." },
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                } else {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        session.messages.forEach { message ->
+                            CLIAgentMessageBubble(message = message)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CLIAgentMessageBubble(message: CLIAgentMessage) {
+    val isUser = message.role.equals("user", ignoreCase = true)
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (isUser) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Text(
+                message.role.uppercase(),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (message.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (message.text.isNotBlank()) {
+                Text(
+                    message.text,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            if (message.toolUses.isNotEmpty()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(message.toolUses, key = { it.id }) { tool ->
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        ) {
+                            Text(
+                                listOf(tool.name, tool.status, tool.detail.orEmpty())
+                                    .filter { it.isNotBlank() }
+                                    .joinToString(" · "),
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -1205,7 +1356,7 @@ private fun runQuickSearch(
         }
     }
     for (item in inbox.items) {
-        val haystack = "${item.title} ${item.preview}".lowercase()
+        val haystack = item.searchText.lowercase()
         if (haystack.contains(q)) {
             hits.add(
                 HermesSquareHit(
@@ -1240,7 +1391,7 @@ private fun SearchResultsSection(
     ) {
         if (hits.isEmpty()) {
             Text(
-                "No matches. Try a name, runtime, file, or mission title.",
+                "No matches. Try a name, runtime, file, session text, or tool.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(vertical = 18.dp)

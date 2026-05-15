@@ -409,7 +409,11 @@ fun AuroraTheme(
         }.getOrDefault(false)
     }
 
-    CompositionLocalProvider(LocalAuroraReduceMotion provides reduceMotion) {
+    val cloudBadgeSelection = com.openburnbar.ui.pro.rememberLocalCloudBadgeSelection()
+    CompositionLocalProvider(
+        LocalAuroraReduceMotion provides reduceMotion,
+        com.openburnbar.ui.pro.LocalCloudBadgeSelection provides cloudBadgeSelection
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = AuroraMaterialTypography,

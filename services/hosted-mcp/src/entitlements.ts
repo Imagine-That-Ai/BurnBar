@@ -1,6 +1,6 @@
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, type Firestore, Timestamp } from "firebase-admin/firestore";
-import { NEGATIVE_ENTITLEMENT_CACHE_MS, POSITIVE_ENTITLEMENT_CACHE_MS } from "./config.js";
+import { NEGATIVE_ENTITLEMENT_CACHE_MS, POSITIVE_ENTITLEMENT_CACHE_MS, REMOTE_MCP_LAST_USED_WRITE_INTERVAL_MS } from "./config.js";
 import { HttpError } from "./errors.js";
 
 export interface EntitlementState {
@@ -10,6 +10,7 @@ export interface EntitlementState {
 }
 
 const cache = new Map<string, { state: EntitlementState; expiresAtMs: number }>();
+const lastUsedWriteCache = new Map<string, number>();
 
 export function firestore(): Firestore {
   if (getApps().length === 0) {
@@ -80,5 +81,13 @@ export async function requireActiveRemoteMcpClient(
   if (dateFromRaw(data.revokedAt)) {
     throw new HttpError(403, "OpenBurnBar MCP client has been revoked.", "client_revoked");
   }
-  await ref.set({ lastUsedAt: Timestamp.now(), updatedAt: Timestamp.now() }, { merge: true });
+  const cacheKey = `${uid}:${clientId}`;
+  const now = Date.now();
+  const lastWriteAt = lastUsedWriteCache.get(cacheKey) ?? 0;
+  if (now - lastWriteAt >= REMOTE_MCP_LAST_USED_WRITE_INTERVAL_MS) {
+    lastUsedWriteCache.set(cacheKey, now);
+    void ref.set({ lastUsedAt: Timestamp.now(), updatedAt: Timestamp.now() }, { merge: true }).catch(() => {
+      lastUsedWriteCache.delete(cacheKey);
+    });
+  }
 }

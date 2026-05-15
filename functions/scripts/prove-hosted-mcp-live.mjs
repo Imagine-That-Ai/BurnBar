@@ -22,7 +22,7 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const endpoint = args.endpoint ?? "https://mcp.openburnbar.com/mcp";
+const endpoint = args.endpoint ?? "https://mcp.burnbar.ai/mcp";
 const token = process.env.OPENBURNBAR_MCP_PROOF_TOKEN;
 
 function post(url, body, headers = {}) {
@@ -64,7 +64,7 @@ function mintProofToken({ uid, clientId, secret, scopes }) {
   const now = Math.floor(Date.now() / 1000);
   const claims = {
     sub: uid,
-    aud: args.audience ?? "https://mcp.openburnbar.com/mcp",
+    aud: args.audience ?? "https://mcp.burnbar.ai/mcp",
     client_id: clientId,
     scopes,
     entitlement_family: "burnbar_pro",
@@ -75,6 +75,10 @@ function mintProofToken({ uid, clientId, secret, scopes }) {
   const body = Buffer.from(JSON.stringify(claims)).toString("base64url");
   const sig = createHmac("sha256", secret).update(body).digest("base64url");
   return `${body}.${sig}`;
+}
+
+function sealed(value) {
+  return { algorithm: "AES-256-GCM", nonce: "proof", ciphertext: value, tag: "proof" };
 }
 
 async function proveMissingAuth() {
@@ -119,6 +123,8 @@ async function proveControlled(missingAuthStatus) {
   const searchDoc = "search-budget-doc";
   const searchChunk = "search-budget-chunk";
   const searchTokenHash = "0123456789abcdef0123456789abcdef";
+  const targetBodyHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const searchBodyHash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
   const searchCommit = "search-budget-commit";
   const allScopes = ["search:read", "conversation:read", "usage:read", "index:status"];
 
@@ -152,11 +158,13 @@ async function proveControlled(missingAuthStatus) {
       schemaVersion: 1
     });
     await db.doc(`users/${users.paidB}/cloud_search_documents/${targetDoc}`).set({
+      documentID: targetDoc,
       sourceID: "Tenant B proof session",
-      storagePath: `users/${users.paidB}/session_logs/${targetDoc}/bodies/body.json.enc`,
-      bodyHash: "proof-body-hash",
+      storagePath: `users/${users.paidB}/session_logs/${targetDoc}/bodies/${targetBodyHash}.json.aesgcm`,
+      bodyHash: targetBodyHash,
       projectName: "proof",
       provider: "proof",
+      sealedTitle: sealed("sealed-title-b"),
       createdAt: admin.firestore.Timestamp.now()
     });
     await db.doc(`users/${users.paidA}/cloud_search_index_manifest/current`).set({
@@ -171,12 +179,13 @@ async function proveControlled(missingAuthStatus) {
       stale: false
     });
     await db.doc(`users/${users.paidA}/cloud_search_documents/${searchDoc}`).set({
+      documentID: searchDoc,
       sourceID: "Search budget proof session",
-      storagePath: `users/${users.paidA}/session_logs/${searchDoc}/bodies/body.json.enc`,
-      bodyHash: "search-budget-body-hash",
+      storagePath: `users/${users.paidA}/session_logs/${searchDoc}/bodies/${searchBodyHash}.json.aesgcm`,
+      bodyHash: searchBodyHash,
       projectName: "proof",
       provider: "proof",
-      sealedTitle: { alg: "proof", ciphertext: "sealed-title" },
+      sealedTitle: sealed("sealed-title"),
       createdAt: admin.firestore.Timestamp.now()
     });
     await db.doc(`users/${users.paidA}/cloud_search_chunks/${searchChunk}`).set({
@@ -186,11 +195,11 @@ async function proveControlled(missingAuthStatus) {
       provider: "proof",
       projectName: "proof",
       commitID: searchCommit,
-      storagePath: `users/${users.paidA}/session_logs/${searchDoc}/bodies/body.json.enc`,
-      bodyHash: "search-budget-body-hash",
+      storagePath: `users/${users.paidA}/session_logs/${searchDoc}/bodies/${searchBodyHash}.json.aesgcm`,
+      bodyHash: searchBodyHash,
       tokenHashes: [searchTokenHash],
       semanticHashes: [],
-      sealedSnippet: { alg: "proof", ciphertext: "sealed-snippet" },
+      sealedSnippet: sealed("sealed-snippet"),
       ordinal: 1
     });
     await db.doc(`users/${users.paidA}/cloud_search_postings/token_${searchTokenHash}_${searchChunk}`).set({
