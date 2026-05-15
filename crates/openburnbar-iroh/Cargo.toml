@@ -1,0 +1,49 @@
+[package]
+name = "openburnbar-iroh"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0 OR MIT"
+description = "iroh QUIC transport binding for OpenBurnBar (Hermes + Pi)"
+publish = false
+
+# Reproducible builds inside an Xcode + UniFFI Swift pipeline require both a
+# staticlib (linked into the .xcframework binary) and a cdylib (used by the
+# uniffi-bindgen CLI at host time to introspect the library).
+[lib]
+name = "openburnbar_iroh"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+# Iroh is the QUIC + NAT-traversal stack. Pinning an exact minor for now so
+# the xcframework build is bit-stable; planned upgrade cycles will bump this
+# deliberately, validated against `OpenBurnBarIroh` Swift integration tests.
+iroh = { version = "0.35", default-features = false, features = ["discovery-pkarr-dht"] }
+
+# Async runtime + utilities used by iroh.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
+anyhow = "1"
+thiserror = "1"
+tracing = "0.1"
+
+# UniFFI surface used by `OpenBurnBarIroh` Swift package. The proc-macro
+# attribute path (`#[uniffi::export]`) is the modern, scaffolding-free way to
+# expose Rust APIs — no .udl file required.
+uniffi = { version = "0.28", features = ["cli"] }
+
+# Ed25519 pairing signatures live in OpenBurnBarCore (Swift CryptoKit). The
+# Rust side only needs the iroh secret-key representation, which iroh exposes
+# directly. We deliberately do NOT re-derive Ed25519 here so there is one
+# canonical signer (Swift) and one canonical verifier (Swift) per role.
+
+[build-dependencies]
+uniffi = { version = "0.28", features = ["build"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
+[profile.dev]
+panic = "abort"

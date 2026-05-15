@@ -10,6 +10,17 @@ let package = Package(
             name: "OpenBurnBarCore",
             type: .dynamic,
             targets: ["OpenBurnBarCore"]
+        ),
+        // Transport-agnostic iroh relay protocol + pairing + loopback
+        // transport. The actual iroh QUIC transport lives behind the
+        // `OpenBurnBarIrohTransport` Swift package (added once the
+        // `OpenBurnBarIroh.xcframework` build lands in `Vendor/`).
+        // This target is pure Swift and ships today so iOS + Mac can wire
+        // the spine in their respective transport adapters and tests.
+        .library(
+            name: "OpenBurnBarIrohRelay",
+            type: .dynamic,
+            targets: ["OpenBurnBarIrohRelay"]
         )
     ],
     targets: [
@@ -27,9 +38,17 @@ let package = Package(
                 .process("Resources")
             ]
         ),
+        .target(
+            name: "OpenBurnBarIrohRelay",
+            dependencies: ["OpenBurnBarCore"]
+        ),
         .testTarget(
             name: "OpenBurnBarCoreTests",
             dependencies: ["OpenBurnBarCore"]
+        ),
+        .testTarget(
+            name: "OpenBurnBarIrohRelayTests",
+            dependencies: ["OpenBurnBarIrohRelay", "OpenBurnBarCore"]
         )
     ]
 )

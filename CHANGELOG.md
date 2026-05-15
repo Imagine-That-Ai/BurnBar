@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Hermes Realtime Relay → iroh peer-to-peer transport (Phase 1: spine).**
+  Foundation for migrating the Hermes relay off Cloud Run + Memorystore + WSS
+  onto an [iroh](https://www.iroh.computer/) QUIC mesh between the Mac and
+  iOS/iPadOS clients. Lands the Rust crate (`crates/openburnbar-iroh/`)
+  wrapping `iroh-net` through UniFFI, the
+  `scripts/build-iroh-xcframework.sh` builder for macOS arm64 + iOS arm64 +
+  iOS Simulator (arm64/x86_64), and the
+  `.github/workflows/iroh-xcframework.yml` CI pipeline. The new
+  `OpenBurnBarIrohRelay` SwiftPM target contributes a wire-compatible
+  length-prefixed JSON codec (`IrohRelayFrameCodec`), an in-process
+  loopback transport for hermetic tests, the Ed25519-signed
+  `IrohPairingSignature` for authenticating advertised `NodeId`s, and an
+  end-to-end encrypted echo path (`HermesIrohEcho`) that reuses
+  `HermesRelayCrypto` byte-for-byte so the AES-GCM envelope is unchanged.
+  18 unit tests cover the wire format, pairing signatures, transport
+  primitives, and an encrypted echo round trip; all green on macOS arm64.
+  See [`docs/HERMES_IROH_TRANSPORT.md`](docs/HERMES_IROH_TRANSPORT.md) for
+  the architecture and migration milestones.
 - **Hermes Square now searches across all assistant runtimes and archived CLI
   sessions.** Codex, Claude Code, and OpenClaw are enabled as first-class mobile
   runtimes alongside Hermes and Pi. macOS publishes encrypted Codex/Claude/OpenClaw
