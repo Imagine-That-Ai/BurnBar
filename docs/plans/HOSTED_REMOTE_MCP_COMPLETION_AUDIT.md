@@ -35,8 +35,8 @@ still missing.
 | Production deploy | `scripts/deploy-hosted-mcp.sh` deployed `openburnbar-hosted-mcp-00004-xf4` from commit `04f30b8f0` | Cloud Run deployed at generated URL |
 | Domain `mcp.openburnbar.com` or fallback `mcp.burnbar.ai` | `curl https://mcp.openburnbar.com/readyz`; `gcloud beta run domain-mappings create ...`; `gcloud domains list-user-verified` | Fails DNS resolution; both domain mappings blocked because neither `openburnbar.com` nor `burnbar.ai` is verified in this Google account |
 | Live paid/unpaid/revoked/cross-tenant proof | `functions/scripts/prove-hosted-mcp-live.mjs`; controlled temporary Firestore proof users against generated Cloud Run URL | Controlled paid/unpaid/revoked/cross-tenant proof passed; real subscriber proof still missing |
-| Alerts/logging/rollback | `docs/REMOTE_MCP_RUNBOOK.md`, structured logging in service; Cloud Run logs scanned after live proof window; Monitoring policies `OpenBurnBar Hosted MCP 5xx spike`, `OpenBurnBar Hosted MCP 429 spike`, `OpenBurnBar Hosted MCP auth denial spike` | No obvious plaintext/token leakage in sampled Cloud Run logs; 5xx/429/auth-denial alerts exist; latency, instance-pressure, Firestore-read alerts not verified |
-| Multi-agent audit reports | Required by Wave 8 | Missing |
+| Alerts/logging/rollback | `docs/REMOTE_MCP_RUNBOOK.md`, structured logging in service; Cloud Run logs scanned after live proof window; Monitoring policies `OpenBurnBar Hosted MCP 5xx spike`, `OpenBurnBar Hosted MCP 429 spike`, `OpenBurnBar Hosted MCP auth denial spike`, `OpenBurnBar Hosted MCP p95 latency spike`, `OpenBurnBar Hosted MCP instance pressure`, and project-level `OpenBurnBar Firestore read spike` | No obvious plaintext/token leakage in sampled Cloud Run logs; hosted-MCP 5xx/429/auth-denial/latency/instance alerts exist; project-level Firestore read alert exists; MCP-specific read-budget proof and rollback rehearsal still missing |
+| Multi-agent audit reports | `docs/plans/HOSTED_REMOTE_MCP_WAVE8_AUDIT_REPORT.md` | Primary-integrator role audit exists and recommends hold; independent multi-agent reviewer reports are not separately produced |
 
 ## Verification Evidence
 
@@ -102,9 +102,15 @@ gcloud logging read \
 
 gcloud alpha monitoring policies list --project burnbar \
   --format='value(displayName,enabled)' | grep 'OpenBurnBar Hosted MCP'
+# OpenBurnBar Hosted MCP p95 latency spike   True
 # OpenBurnBar Hosted MCP auth denial spike  True
 # OpenBurnBar Hosted MCP 5xx spike          True
 # OpenBurnBar Hosted MCP 429 spike          True
+# OpenBurnBar Hosted MCP instance pressure  True
+
+gcloud alpha monitoring policies list --project burnbar \
+  --format='value(displayName,enabled)' | grep 'OpenBurnBar Firestore read spike'
+# OpenBurnBar Firestore read spike          True
 
 # Controlled live proof with temporary Firestore users and short-lived HMAC
 # tokens against https://openburnbar-hosted-mcp-cjrjb5ckqq-uc.a.run.app/mcp.
@@ -159,6 +165,7 @@ but the full app gate is not green.
 4. Add or verify macOS and Android parity for connected-client list/revoke UI,
    or explicitly scope those surfaces out with a follow-up owner/date.
 5. Verify Firestore contains no plaintext query/session/body/token leakage.
-6. Create/rehearse latency, instance-pressure, and Firestore-read alerts plus
-   rollback.
-7. Produce Wave 8 audit reports and fix or explicitly accept every finding.
+6. Add MCP-specific Firestore read-budget proof, cost dashboard coverage, and
+   rehearse rollback.
+7. Produce independent Wave 8 reviewer reports if required beyond the
+   primary-integrator role audit, then fix or explicitly accept every finding.

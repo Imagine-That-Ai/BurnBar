@@ -64,6 +64,9 @@ Configured Cloud Monitoring policies:
 - `OpenBurnBar Hosted MCP 5xx spike`
 - `OpenBurnBar Hosted MCP 429 spike`
 - `OpenBurnBar Hosted MCP auth denial spike`
+- `OpenBurnBar Hosted MCP p95 latency spike`
+- `OpenBurnBar Hosted MCP instance pressure`
+- `OpenBurnBar Firestore read spike`
 
 They are backed by these user log-based metrics:
 
@@ -71,12 +74,17 @@ They are backed by these user log-based metrics:
 - `logging.googleapis.com/user/openburnbar_hosted_mcp_429`
 - `logging.googleapis.com/user/openburnbar_hosted_mcp_auth_denial`
 
+The hosted MCP p95 latency and instance-pressure policies use Cloud Run metrics
+scoped to `resource.labels.service_name="openburnbar-hosted-mcp"`. The
+Firestore read policy is project-level Firestore read-spike coverage; use
+per-request audit events and live proof output for MCP-specific read-budget
+verification.
+
 Still required before launch:
 
-- p95 latency above 900 ms for search.
-- p95 body fetch above 2.5 s.
-- Cloud Run instance pressure.
-- Firestore read spikes from hosted MCP service account.
+- MCP-specific Firestore read-budget proof for representative search and body
+  fetches.
+- Cost dashboard separating Cloud Run, Firestore, Storage, KMS, and Redis.
 
 ## Rollback
 
