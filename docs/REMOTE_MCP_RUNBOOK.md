@@ -12,12 +12,36 @@ npm --prefix services/hosted-mcp test
 
 ```bash
 export GOOGLE_CLOUD_PROJECT=burnbar
+firebase functions:secrets:set REMOTE_MCP_TOKEN_HMAC_SECRET
+
+# Optional: add/rotate the same verifier secret for Cloud Run before deploy.
 export REMOTE_MCP_TOKEN_HMAC_SECRET=...
 ./scripts/deploy-hosted-mcp.sh
 ```
 
 The deploy script builds `services/hosted-mcp`, pushes a Cloud Run image, and
-sets the resource audience to `https://mcp.openburnbar.com/mcp`.
+sets the resource audience to `https://mcp.openburnbar.com/mcp`. The signing
+secret must live in Secret Manager as `REMOTE_MCP_TOKEN_HMAC_SECRET`; Cloud
+Functions reads it through `defineSecret(...)`, and Cloud Run receives it via
+`--set-secrets`, not as a plaintext revision environment variable.
+
+## Domain Mapping
+
+The launch target is `mcp.openburnbar.com`. If the OpenBurnBar domain is not
+verified in the active Google account, `mcp.burnbar.ai` is an acceptable branded
+fallback once `burnbar.ai` is verified.
+
+```bash
+gcloud domains verify burnbar.ai
+gcloud beta run domain-mappings create \
+  --service openburnbar-hosted-mcp \
+  --domain mcp.burnbar.ai \
+  --region us-central1 \
+  --project burnbar
+```
+
+After Cloud Run prints the required DNS records, add them at the domain's DNS
+host and wait until `/readyz` responds over the branded hostname.
 
 ## Live Proof
 

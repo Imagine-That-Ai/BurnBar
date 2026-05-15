@@ -158,6 +158,7 @@ const SELF_HOSTED_QUOTA_PROVIDERS = new Set<string>(["claude-code", "codex", "op
 const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
 const STRIPE_SECRET_KEY = defineSecret("STRIPE_SECRET_KEY");
 const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
+const REMOTE_MCP_TOKEN_HMAC_SECRET = defineSecret("REMOTE_MCP_TOKEN_HMAC_SECRET");
 const STRIPE_API_SECRETS = [STRIPE_SECRET_KEY];
 const STRIPE_WEBHOOK_SECRETS = [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET];
 const GOOGLE_PLAY_ACTIVE_STATES = new Set<string>([
@@ -3242,6 +3243,7 @@ export const issueRemoteMcpGrant = onCall(
     region: "us-central1",
     enforceAppCheck: getConfig().enforceAppCheck,
     maxInstances: 50,
+    secrets: [REMOTE_MCP_TOKEN_HMAC_SECRET],
   },
   async (
     request: CallableRequest<{
@@ -3257,7 +3259,7 @@ export const issueRemoteMcpGrant = onCall(
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before connecting OpenBurnBar MCP.");
     enforceAuthAndAppCheck(request, uid);
     await assertActiveBurnBarProEntitlement(uid);
-    const tokenSecret = process.env.REMOTE_MCP_TOKEN_HMAC_SECRET;
+    const tokenSecret = REMOTE_MCP_TOKEN_HMAC_SECRET.value();
     if (!tokenSecret) {
       throw new HttpsError("failed-precondition", "Remote MCP token signing secret is not configured.");
     }

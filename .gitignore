@@ -109,6 +109,8 @@ derived-data/
 # Local service installs/build outputs
 services/**/node_modules/
 services/**/lib/
+tools/**/node_modules/
+tools/**/lib/
 
 # Local-only Factory skills and xcodegen scratch
 .factory/skills/
