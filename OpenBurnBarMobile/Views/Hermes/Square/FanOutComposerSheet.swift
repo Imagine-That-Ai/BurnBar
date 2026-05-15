@@ -90,13 +90,12 @@ struct FanOutComposerSheet: View {
                                 }
                             )) {
                                 HStack(spacing: 8) {
-                                    ZStack {
-                                        Circle().fill(Color(hex: identity.paletteHex))
-                                            .frame(width: 20, height: 20)
-                                        Text(identity.glyph)
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundStyle(.white)
-                                    }
+                                    HermesSquareAgentAvatar(
+                                        identity: identity,
+                                        size: 22,
+                                        showAvailability: false,
+                                        ringStroke: false
+                                    )
                                     Text(identity.displayName)
                                 }
                             }

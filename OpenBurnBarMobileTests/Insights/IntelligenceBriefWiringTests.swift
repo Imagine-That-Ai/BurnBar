@@ -268,19 +268,39 @@ final class IntelligenceBriefWiringTests: XCTestCase {
         XCTAssertTrue(snapshot.isTerminal)
     }
 
-    func test_cliAgentMissionSnapshotShowsMacOfflineForStaleQueuedMission() throws {
+    func test_cliAgentMissionSnapshotMarksStaleUnclaimedMissionWithoutForcingGlobalMacOffline() throws {
         let staleCreatedAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-180))
         let snapshot = try XCTUnwrap(CLIAgentMissionSnapshot(documentID: "mission-stale", data: [
             "id": "mission-stale",
             "title": "Run a modernization mission",
             "status": "pending",
             "requestedRuntime": "codex",
+            "targetProject": " ~/Documents/Windsurf/BurnBar ",
             "createdAt": staleCreatedAt,
             "events": []
         ]))
 
-        XCTAssertEqual(snapshot.displayStatus, "mac_offline")
-        XCTAssertTrue(snapshot.displayLiveSummary?.contains("No signed-in Mac") == true)
+        XCTAssertEqual(snapshot.displayStatus, "pending")
+        XCTAssertTrue(snapshot.isStaleUnclaimed)
+        XCTAssertFalse(snapshot.hasBeenClaimedByMac)
+        XCTAssertEqual(snapshot.targetProject, "~/Documents/Windsurf/BurnBar")
+        XCTAssertTrue(snapshot.displayLiveSummary?.contains("not claimed") == true)
+    }
+
+    func test_cliAgentMissionSnapshotDoesNotMarkClaimedQueuedMissionStale() throws {
+        let staleCreatedAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-180))
+        let snapshot = try XCTUnwrap(CLIAgentMissionSnapshot(documentID: "mission-claimed", data: [
+            "id": "mission-claimed",
+            "title": "Run a claimed mission",
+            "status": "pending",
+            "requestedRuntime": "codex",
+            "selectedRuntime": "codex",
+            "createdAt": staleCreatedAt,
+            "events": []
+        ]))
+
+        XCTAssertTrue(snapshot.hasBeenClaimedByMac)
+        XCTAssertFalse(snapshot.isStaleUnclaimed)
     }
 
     func test_cliAgentMissionSnapshotDecodesPendingApprovalPrompt() throws {

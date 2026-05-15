@@ -321,7 +321,7 @@ private struct CloudMemberCrestRow: View {
             onTap()
         }) {
             HStack(spacing: MobileTheme.Spacing.lg) {
-                FirefighterHelmet(size: .medium)
+                CloudBadge(size: .medium)
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {

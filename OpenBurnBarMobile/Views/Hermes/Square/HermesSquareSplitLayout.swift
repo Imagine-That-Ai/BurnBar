@@ -78,15 +78,14 @@ private struct HermesSquareLeftColumn: View {
                             onSelect(.brandZone(uri))
                         } label: {
                             HStack {
-                                ZStack {
-                                    Circle().fill(Color(hex: identity.paletteHex)).frame(width: 22, height: 22)
-                                    Text(identity.glyph).font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
-                                }
+                                HermesSquareAgentAvatar(
+                                    identity: identity,
+                                    size: 24,
+                                    showAvailability: true,
+                                    ringStroke: false
+                                )
                                 Text(identity.displayName)
                                 Spacer()
-                                if identity.availability == .online {
-                                    Circle().fill(DesignSystemColors.success).frame(width: 6, height: 6)
-                                }
                             }
                         }
                         .buttonStyle(.plain)

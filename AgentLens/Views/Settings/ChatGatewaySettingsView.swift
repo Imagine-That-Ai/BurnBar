@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - Hermes & Chat Settings (iOS-style landing)
 
@@ -241,13 +242,18 @@ struct ChatEnginesDetailView: View {
                             get: { settingsManager.enabledChatBackends.contains(backend) },
                             set: { settingsManager.setChatBackendEnabled(backend, enabled: $0) }
                         )) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(backend.displayName)
-                                    .font(DesignSystem.Typography.body)
-                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                Text(engineSubtitle(backend))
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                            HStack(spacing: DesignSystem.Spacing.sm) {
+                                if let provider = backend.agentProvider {
+                                    ProviderLogoView(provider: provider, size: 28, useFallbackColor: true)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(backend.displayName)
+                                        .font(DesignSystem.Typography.body)
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    Text(engineSubtitle(backend))
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                }
                             }
                         }
                         if backend != ChatBackendID.allCases.last {
@@ -278,13 +284,16 @@ struct ChatEnginesDetailView: View {
                             get: { settingsManager.enabledHermesModels.contains(model) },
                             set: { settingsManager.setHermesModelEnabled(model, enabled: $0) }
                         )) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(model.displayName)
-                                    .font(DesignSystem.Typography.body)
-                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                Text(hermesModelSubtitle(model))
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                            HStack(spacing: DesignSystem.Spacing.sm) {
+                                ProviderLogoView(provider: model.agentProvider, size: 28, useFallbackColor: true)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(model.displayName)
+                                        .font(DesignSystem.Typography.body)
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    Text(hermesModelSubtitle(model))
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                }
                             }
                         }
                         if model != HermesModelID.allCases.last {

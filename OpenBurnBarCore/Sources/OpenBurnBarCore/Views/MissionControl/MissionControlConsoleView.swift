@@ -147,11 +147,17 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
 
             MissionTitlePromptFields(title: $title, prompt: $prompt)
 
-            HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
-                MissionDepthDial(depth: $depth)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                MissionApprovalLever(mode: $approvalMode)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
+                    MissionDepthDial(depth: $depth)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    MissionApprovalLever(mode: $approvalMode)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+                    MissionDepthDial(depth: $depth)
+                    MissionApprovalLever(mode: $approvalMode)
+                }
             }
 
             MissionPermissionsRow(
@@ -163,12 +169,6 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
                 project: $targetProject,
                 knownProjects: host.snapshot.knownProjects,
                 recentProjects: host.snapshot.recentProjects
-            )
-
-            MissionBurnForecastStrip(
-                forecast: liveForecast,
-                runtimeName: resolvedRuntime.displayName,
-                runtimeAccent: runtimeAccent
             )
 
             if let error = host.inlineError {
@@ -262,21 +262,6 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
             return UnifiedDesignSystem.Colors.ember
         }
         return UnifiedDesignSystem.Colors.primary(for: resolvedRuntime.provider)
-    }
-
-    private var liveForecast: MissionConsoleForecast {
-        let draft = MissionConsoleDispatchRequest(
-            title: title,
-            prompt: prompt,
-            kind: kind,
-            runtimeID: runtimeID,
-            targetProject: targetProject.isEmpty ? nil : targetProject,
-            depth: depth,
-            approvalMode: approvalMode,
-            commandsAllowed: commandsAllowed,
-            fileEditsAllowed: fileEditsAllowed
-        )
-        return MissionConsoleForecastComputer.forecast(for: draft, runtime: resolvedRuntime)
     }
 
     private var canDispatch: Bool {

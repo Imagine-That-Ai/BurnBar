@@ -34,6 +34,9 @@ import com.openburnbar.data.stores.CloudSyncHealthStore
 import com.openburnbar.data.stores.DevicesStore
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
 import com.openburnbar.data.stores.UserStore
+import com.openburnbar.ui.pro.CloudBadgePickerSheet
+import com.openburnbar.ui.pro.CloudBadgeSize
+import com.openburnbar.ui.pro.CloudBadgeWithHalo
 import com.openburnbar.ui.pro.MembershipBand
 import com.openburnbar.ui.pro.MembershipBandVariant
 import com.openburnbar.ui.pro.MercuryCrest
@@ -41,6 +44,9 @@ import com.openburnbar.ui.pro.MercuryCrestSize
 import com.openburnbar.ui.pro.ProLayout
 import com.openburnbar.ui.pro.ProPalette
 import com.openburnbar.ui.pro.ProTypography
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -319,53 +325,176 @@ private fun CloudMemberCrestRow(
     expirationDateMs: Long?,
     onTap: () -> Unit
 ) {
+    // Status line — sentinel / far-future dates show monthly recurrence,
+    // near-term renewals show relative time, neither shows "73 years".
     val monthYear = SimpleDateFormat("MMM yyyy", Locale.getDefault())
-    val dayMonth = SimpleDateFormat("MMM d", Locale.getDefault())
-    val meta = when {
+    val nowMs = System.currentTimeMillis()
+    val meta: String = when {
+        expirationDateMs != null && expirationDateMs - nowMs in 1..(90L * 24 * 60 * 60 * 1000) -> {
+            val days = ((expirationDateMs - nowMs) / (24L * 60 * 60 * 1000)).coerceAtLeast(0).toInt()
+            val rel = if (days <= 1) "tomorrow" else "in $days days"
+            if (purchaseDateMs != null) "Member since ${monthYear.format(java.util.Date(purchaseDateMs))} · renews $rel"
+            else "Active · renews $rel"
+        }
+        expirationDateMs != null -> {
+            if (purchaseDateMs != null) "Member since ${monthYear.format(java.util.Date(purchaseDateMs))} · renews monthly"
+            else "Active · renews monthly"
+        }
         purchaseDateMs != null -> "Member since ${monthYear.format(java.util.Date(purchaseDateMs))}"
-        expirationDateMs != null -> "Through ${dayMonth.format(java.util.Date(expirationDateMs))}"
         else -> "Active"
     }
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    val shape = RoundedCornerShape(22.dp)
+    var showBadgePicker by remember { mutableStateOf(false) }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 10.dp,
-                shape = RoundedCornerShape(ProLayout.cardRadiusDp.dp),
-                ambientColor = ProPalette.aureate,
-                spotColor = ProPalette.aureate
+                elevation = 22.dp,
+                shape = shape,
+                ambientColor = AuroraColors.ember,
+                spotColor = AuroraColors.ember
             )
-            .clip(RoundedCornerShape(ProLayout.cardRadiusDp.dp))
-            .background(ProPalette.obsidian, RoundedCornerShape(ProLayout.cardRadiusDp.dp))
-            .border(
-                width = 1.dp,
-                brush = Brush.linearGradient(ProPalette.aureateStrokeStops),
-                shape = RoundedCornerShape(ProLayout.cardRadiusDp.dp)
-            )
+            .clip(shape)
             .clickable(onClick = onTap)
-            .padding(horizontal = 12.dp, vertical = 14.dp)
     ) {
-        MercuryCrest(size = MercuryCrestSize.Large, shimmer = true)
-        Spacer(Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                "Cloud Member",
-                style = ProTypography.titleSerif,
-                color = ProPalette.mercury
-            )
-            Text(
-                meta,
-                fontSize = 12.sp,
-                color = ProPalette.mercury.copy(alpha = 0.7f)
-            )
+        MemberAuroraBackdrop(shape = shape)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = 1.2.dp,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            AuroraColors.hermesAureateDark,
+                            AuroraColors.amber,
+                            AuroraColors.ember,
+                            AuroraColors.hermesAureateDark
+                        )
+                    ),
+                    shape = shape
+                )
+                .padding(horizontal = 18.dp, vertical = 18.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clickable { showBadgePicker = true }
+                ) {
+                    CloudBadgeWithHalo(size = CloudBadgeSize.Medium)
+                }
+                Spacer(Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    brush = Brush.horizontalGradient(
+                                        colors = listOf(AuroraColors.ember, AuroraColors.amber)
+                                    )
+                                )
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                "PRO",
+                                color = androidx.compose.ui.graphics.Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.6.sp
+                            )
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "CLOUD MEMBER",
+                            color = AuroraColors.darkTextMuted,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.8.sp
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "Cloud Member",
+                        style = TextStyle(
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 26.sp,
+                            lineHeight = 30.sp,
+                            brush = Brush.linearGradient(
+                                colors = listOf(AuroraColors.ember, AuroraColors.amber)
+                            )
+                        )
+                    )
+                    Text(
+                        meta,
+                        color = AuroraColors.darkTextSecondary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.NavigateNext,
+                    contentDescription = null,
+                    tint = AuroraColors.amber,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
-        Icon(
-            Icons.AutoMirrored.Filled.NavigateNext,
-            null,
-            tint = ProPalette.aureate,
-            modifier = Modifier.size(18.dp)
+    }
+
+    if (showBadgePicker) {
+        com.openburnbar.ui.pro.CloudBadgePickerSheet(
+            onDismiss = { showBadgePicker = false }
         )
     }
+}
+
+/// Multi-stop aurora burst behind the member card — ember + amber + blaze
+/// with a kiss of whimsy purple for color contrast, drifting aurora ribbon
+/// across the top edge, radial halo behind the badge.
+@Composable
+private fun BoxScope.MemberAuroraBackdrop(shape: RoundedCornerShape) {
+    Box(
+        modifier = Modifier
+            .matchParentSize()
+            .clip(shape)
+            .background(AuroraColors.darkSurface)
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        AuroraColors.ember.copy(alpha = 0.50f),
+                        AuroraColors.amber.copy(alpha = 0.38f),
+                        AuroraColors.blaze.copy(alpha = 0.30f),
+                        AuroraColors.whimsy.copy(alpha = 0.22f)
+                    )
+                )
+            )
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        AuroraColors.hermesAureateDark.copy(alpha = 0.35f),
+                        AuroraColors.amber.copy(alpha = 0.55f),
+                        AuroraColors.ember.copy(alpha = 0.30f),
+                        androidx.compose.ui.graphics.Color.Transparent
+                    ),
+                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
+                    end = androidx.compose.ui.geometry.Offset(1200f, 220f)
+                )
+            )
+            .background(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        AuroraColors.amber.copy(alpha = 0.45f),
+                        AuroraColors.ember.copy(alpha = 0.20f),
+                        androidx.compose.ui.graphics.Color.Transparent
+                    ),
+                    center = androidx.compose.ui.geometry.Offset(96f, 96f),
+                    radius = 240f
+                )
+            )
+    )
 }

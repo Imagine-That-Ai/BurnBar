@@ -141,11 +141,12 @@ struct HermesSquareDiscoverDrawer: View {
     private func row(for identity: AgentIdentity) -> some View {
         let pinned = pinnedGrid.pinnedURIs.contains(identity.id)
         return HStack(spacing: 10) {
-            ZStack {
-                Circle().fill(Color(hex: identity.paletteHex)).frame(width: 30, height: 30)
-                Text(identity.glyph).font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-            }
+            HermesSquareAgentAvatar(
+                identity: identity,
+                size: 30,
+                showAvailability: true,
+                ringStroke: false
+            )
             VStack(alignment: .leading, spacing: 2) {
                 Text(identity.displayName).font(.callout.bold())
                     .foregroundStyle(DesignSystemColors.textPrimary)

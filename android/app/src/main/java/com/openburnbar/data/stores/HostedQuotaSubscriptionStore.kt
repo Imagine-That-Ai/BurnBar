@@ -16,6 +16,10 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import com.google.firebase.Timestamp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.openburnbar.data.firebase.FunctionsRepository
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,16 +68,93 @@ class HostedQuotaSubscriptionStore(
     private var billingClient: BillingClient? = null
     private var rawProductDetails: ProductDetails? = null
 
+    // ── Cloud entitlement listener (cross-platform fallback) ──
+    //
+    // Cloud Members who buy on iOS (Apple subscription
+    // `com.openburnbar.hostedQuotaSync.cloud.monthly`) have no Google Play
+    // purchase locally. The Cloud Functions verify the Apple JWS and write
+    // the canonical entitlement doc to Firestore at
+    // `users/{uid}/entitlements/hosted_quota_sync`. We listen to that doc
+    // here so the membership UI flips on for users who paid on another
+    // platform. Firestore is the server's authoritative view; Play Billing
+    // remains the local fast-path for users who purchased on Android.
+
+    private val firestore: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
+    private val firebaseAuth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
+    private var entitlementListener: ListenerRegistration? = null
+    private var authListener: FirebaseAuth.AuthStateListener? = null
+
     fun initialize(context: Context) {
-        if (billingClient != null) return
-        billingClient = BillingClient.newBuilder(context.applicationContext)
-            .setListener(this)
-            .enablePendingPurchases(
-                PendingPurchasesParams.newBuilder()
-                    .enableOneTimeProducts()
-                    .build()
-            )
-            .build()
+        if (billingClient == null) {
+            billingClient = BillingClient.newBuilder(context.applicationContext)
+                .setListener(this)
+                .enablePendingPurchases(
+                    PendingPurchasesParams.newBuilder()
+                        .enableOneTimeProducts()
+                        .build()
+                )
+                .build()
+        }
+        startListeningToCloudEntitlement()
+    }
+
+    /// Subscribe to the Firestore entitlement doc. Reattaches the listener
+    /// every time the auth user changes. No-op if already running.
+    private fun startListeningToCloudEntitlement() {
+        if (authListener != null) return
+        val listener = FirebaseAuth.AuthStateListener { auth ->
+            entitlementListener?.remove()
+            entitlementListener = null
+
+            val uid = auth.currentUser?.uid
+            if (uid == null) {
+                _isActive.value = false
+                _expirationDate.value = null
+                _purchaseDate.value = null
+                return@AuthStateListener
+            }
+
+            entitlementListener = firestore.collection("users")
+                .document(uid)
+                .collection("entitlements")
+                .document("hosted_quota_sync")
+                .addSnapshotListener { snap, _ ->
+                    if (snap == null || !snap.exists()) {
+                        // No entitlement on file. If Play Billing already
+                        // unlocked locally, leave that state alone; otherwise
+                        // the user is just a free user.
+                        return@addSnapshotListener
+                    }
+                    applyEntitlementDoc(snap.data ?: emptyMap())
+                }
+        }
+        firebaseAuth.addAuthStateListener(listener)
+        authListener = listener
+    }
+
+    /// Apply a Firestore entitlement payload to local state. Server is the
+    /// authoritative source — if it says `active = false`, we flip to false
+    /// even if Play Billing previously showed a Pro purchase (revocation /
+    /// refund / chargeback flows).
+    private fun applyEntitlementDoc(data: Map<String, Any?>) {
+        val active = (data["active"] as? Boolean) ?: false
+        val expiresAtMs = parseTimestampMs(data["expiresAt"])
+            ?: parseTimestampMs(data["expirationDate"])
+        val purchaseMs = parseTimestampMs(data["originalPurchaseDate"])
+            ?: parseTimestampMs(data["purchaseDate"])
+
+        val notExpired = expiresAtMs == null || expiresAtMs > System.currentTimeMillis()
+        _isActive.value = active && notExpired
+        if (expiresAtMs != null) _expirationDate.value = expiresAtMs
+        if (purchaseMs != null) _purchaseDate.value = purchaseMs
+    }
+
+    private fun parseTimestampMs(value: Any?): Long? = when (value) {
+        is Timestamp -> value.toDate().time
+        is Long      -> value
+        is Number    -> value.toLong()
+        is String    -> runCatching { java.time.Instant.parse(value).toEpochMilli() }.getOrNull()
+        else         -> null
     }
 
     fun load() {
@@ -163,6 +244,10 @@ class HostedQuotaSubscriptionStore(
     override fun onCleared() {
         billingClient?.endConnection()
         billingClient = null
+        entitlementListener?.remove()
+        entitlementListener = null
+        authListener?.let { firebaseAuth.removeAuthStateListener(it) }
+        authListener = null
         super.onCleared()
     }
 
@@ -228,11 +313,12 @@ class HostedQuotaSubscriptionStore(
     private suspend fun restorePurchasesInternal() {
         val purchases = querySubscriptionPurchases()
         handlePurchases(purchases)
-        if (purchases.none { it.products.contains(PRODUCT_ID) }) {
-            _isActive.value = false
-            _expirationDate.value = null
-            _purchaseDate.value = null
-        }
+        // No local Play purchase doesn't necessarily mean inactive — the
+        // user may be a Cloud Member via the iOS subscription. The Firestore
+        // entitlement listener is the canonical source; only clear local
+        // state when both Play Billing AND the entitlement doc agree the
+        // user isn't active. We leave `_isActive` alone here so the
+        // Firestore listener stays in charge.
     }
 
     private suspend fun handlePurchases(purchases: List<Purchase>) {

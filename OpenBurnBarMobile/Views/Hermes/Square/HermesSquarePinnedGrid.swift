@@ -131,32 +131,12 @@ private struct PinnedCell: View {
 
     private func decoratedCell(scale: CGFloat, haloOpacity: Double) -> some View {
         VStack(spacing: 6) {
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(hex: identity.paletteHex),
-                                Color(hex: identity.paletteHex).opacity(0.66)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 38, height: 38)
-                Text(identity.glyph)
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                if identity.availability != .unknown {
-                    Circle()
-                        .fill(availabilityColor(identity.availability))
-                        .frame(width: 7, height: 7)
-                        .overlay(
-                            Circle().stroke(DesignSystemColors.background, lineWidth: 1.2)
-                        )
-                        .offset(x: 14, y: 14)
-                }
-            }
+            HermesSquareAgentAvatar(
+                identity: identity,
+                size: 38,
+                showAvailability: true,
+                ringStroke: true
+            )
             Text(identity.displayName)
                 .font(.caption2.bold())
                 .foregroundStyle(DesignSystemColors.textPrimary)

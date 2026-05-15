@@ -32,6 +32,8 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
     private var observedMissions: [String: CLIAgentMissionSnapshot] = [:]
     private var observedOrder: [String] = []   // most-recent first
     private var dismissedTerminalIDs: Set<String> = []
+    private let hermesService = HermesService()
+    private let projectsStore = ProjectsStore()
 
     init(firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() }) {
         self.firestoreProvider = firestoreProvider
@@ -66,6 +68,7 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
             }
         }
         restartListListener(uid: Auth.auth().currentUser?.uid)
+        Task { await refreshAuxiliaryState() }
     }
 
     // MARK: Host conformance
@@ -110,10 +113,16 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
     func clearInlineError() { inlineError = nil }
 
     func refresh() async {
-        // Force a re-emit of the list query by recycling auth uid path. No-op
-        // when offline.
+        await refreshAuxiliaryState()
         guard let uid = Auth.auth().currentUser?.uid else { return }
         restartListListener(uid: uid)
+    }
+
+    private func refreshAuxiliaryState() async {
+        async let hermes: Void = hermesService.refreshRuntime()
+        async let projects: Void = projectsStore.load()
+        _ = await (hermes, projects)
+        rebuildSnapshot()
     }
 
     // MARK: Firestore list
@@ -195,7 +204,9 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
 
         let orderedMissions: [CLIAgentMissionSnapshot] = observedOrder.compactMap { observedMissions[$0] }
 
+        let macOnline = isHermesUsable || orderedMissions.contains { $0.hasBeenClaimedByMac }
         for mission in orderedMissions {
+            guard shouldShowActiveTile(for: mission, macOnline: macOnline) else { continue }
             tiles.append(tile(from: mission))
             if mission.isWaitingForApproval {
                 approvalAsks.append(approvalAsk(from: mission))
@@ -216,11 +227,11 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
         let liveCount = tiles.filter { $0.phase.isLive }.count
         let blockedCount = tiles.filter { $0.phase == .blocked || $0.phase == .failed }.count
         let queuedCount = tiles.filter { $0.phase == .queued }.count
-        let macOnline = !tiles.contains { $0.phase == .macOffline }
+        let macOffline = !macOnline && orderedMissions.contains { $0.isStaleUnclaimed }
 
         snapshot = MissionConsoleSnapshot(
             health: MissionConsoleSystemHealth(
-                daemonState: macOnline ? .live : .macOffline,
+                daemonState: macOffline ? .macOffline : (macOnline ? .live : .unknown),
                 lastRefresh: now,
                 openMissions: liveCount,
                 queuedMissions: queuedCount,
@@ -237,6 +248,20 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
             knownProjects: knownProjects(from: orderedMissions),
             recentProjects: recentProjects(from: orderedMissions)
         )
+    }
+
+    private var isHermesUsable: Bool {
+        HermesMobileSetupWizardGate.hasUsableSetup(
+            isReachable: hermesService.isReachable,
+            selectedConnection: hermesService.selectedConnection,
+            suggestedRelayConnection: hermesService.suggestedRelayConnection
+        )
+    }
+
+    private func shouldShowActiveTile(for mission: CLIAgentMissionSnapshot, macOnline: Bool) -> Bool {
+        if mission.isTerminal { return false }
+        if mission.isStaleUnclaimed && macOnline { return false }
+        return true
     }
 
     private func tile(from mission: CLIAgentMissionSnapshot) -> MissionConsoleActiveTile {
@@ -336,14 +361,27 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
     }
 
     private func knownProjects(from missions: [CLIAgentMissionSnapshot]) -> [String] {
-        // We don't have project in the iOS snapshot — fall back to a static
-        // small set the user can edit by hand. This will be populated as the
-        // listener pulls more history.
-        let dummy = missions.compactMap { _ in Optional<String>.none }
-        return dummy
+        let usageProjects = projectsStore.summaries
+            .map(\.projectName)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let missionProjects = missions.compactMap(\.targetProject)
+        return Array(Self.uniqueOrderPreserving(usageProjects + missionProjects).prefix(24))
     }
 
-    private func recentProjects(from missions: [CLIAgentMissionSnapshot]) -> [String] { [] }
+    private func recentProjects(from missions: [CLIAgentMissionSnapshot]) -> [String] {
+        let missionProjects = missions.compactMap(\.targetProject)
+        let recentUsageProjects = projectsStore.mostRecent(limit: 8).map(\.projectName)
+        return Array(Self.uniqueOrderPreserving(missionProjects + recentUsageProjects).prefix(12))
+    }
+
+    private static func uniqueOrderPreserving(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return false }
+            return seen.insert(trimmed.lowercased()).inserted
+        }
+    }
 
     private func runtimeIDGuess(rawRuntime: String?) -> MissionConsoleRuntime.ID? {
         guard let raw = rawRuntime?.lowercased(), !raw.isEmpty, raw != "auto" else { return nil }

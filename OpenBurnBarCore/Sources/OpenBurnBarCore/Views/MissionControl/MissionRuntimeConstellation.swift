@@ -88,6 +88,14 @@ public struct MissionRuntimeConstellation: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
+                        if isAuto {
+                            Image(systemName: "wand.and.stars")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(tint)
+                                .frame(width: 18, height: 18)
+                        } else {
+                            UnifiedProviderLogoView(provider: runtime.provider, size: 18)
+                        }
                         availabilityDot(runtime.availability)
                         Text(runtime.callSign)
                             .font(.system(size: 11, weight: .bold, design: .monospaced))

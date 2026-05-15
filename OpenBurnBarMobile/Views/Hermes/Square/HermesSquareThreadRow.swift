@@ -66,21 +66,23 @@ struct HermesSquareThreadRow: View {
     }
 
     private var avatar: some View {
-        ZStack {
+        Group {
             if let identity {
-                Circle()
-                    .fill(Color(hex: identity.paletteHex))
-                    .frame(width: 28, height: 28)
-                Text(identity.glyph)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                HermesSquareAgentAvatar(
+                    identity: identity,
+                    size: 28,
+                    showAvailability: false,
+                    ringStroke: false
+                )
             } else {
-                Circle()
-                    .fill(DesignSystemColors.surface)
-                    .frame(width: 28, height: 28)
-                Image(systemName: "questionmark")
-                    .font(.system(size: 12))
-                    .foregroundStyle(DesignSystemColors.textMuted)
+                ZStack {
+                    Circle()
+                        .fill(DesignSystemColors.surface)
+                        .frame(width: 28, height: 28)
+                    Image(systemName: "questionmark")
+                        .font(.system(size: 12))
+                        .foregroundStyle(DesignSystemColors.textMuted)
+                }
             }
         }
     }

@@ -34,6 +34,7 @@ struct RootTabView: View {
     @State private var pulsePath = NavigationPath()
     @State private var burnPath = NavigationPath()
     @State private var streamsPath = NavigationPath()
+    @State private var hermesPath = NavigationPath()
     @State private var youPath = NavigationPath()
 
     private let destinations = AuroraNavDestination.allCases
@@ -161,7 +162,7 @@ struct RootTabView: View {
     }
 
     private var hermesStack: some View {
-        NavigationStack {
+        NavigationStack(path: $hermesPath) {
             // Hermes Square gates per phase (plan §7):
             //   • Phase A on  ⇒ `HermesSquareRoot` (compact single-column)
             //   • Phase D on  ⇒ `HermesSquareSplitLayout` activates the

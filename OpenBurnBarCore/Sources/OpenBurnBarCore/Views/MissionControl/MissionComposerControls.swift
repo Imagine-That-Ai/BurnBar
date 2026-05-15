@@ -301,19 +301,35 @@ public struct MissionPermissionsRow: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             fieldLabel("PERMISSIONS")
-            HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                toggleTile(
-                    label: "Commands",
-                    subtitle: "Allow shell execution",
-                    glyph: "terminal.fill",
-                    isOn: $commandsAllowed
-                )
-                toggleTile(
-                    label: "File edits",
-                    subtitle: "Allow code writes",
-                    glyph: "doc.fill.badge.plus",
-                    isOn: $fileEditsAllowed
-                )
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                    toggleTile(
+                        label: "Commands",
+                        subtitle: "Allow shell execution",
+                        glyph: "terminal.fill",
+                        isOn: $commandsAllowed
+                    )
+                    toggleTile(
+                        label: "File edits",
+                        subtitle: "Allow code writes",
+                        glyph: "doc.fill.badge.plus",
+                        isOn: $fileEditsAllowed
+                    )
+                }
+                VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                    toggleTile(
+                        label: "Commands",
+                        subtitle: "Allow shell execution",
+                        glyph: "terminal.fill",
+                        isOn: $commandsAllowed
+                    )
+                    toggleTile(
+                        label: "File edits",
+                        subtitle: "Allow code writes",
+                        glyph: "doc.fill.badge.plus",
+                        isOn: $fileEditsAllowed
+                    )
+                }
             }
             if commandsAllowed && fileEditsAllowed {
                 HStack(spacing: 6) {
@@ -480,7 +496,7 @@ public struct MissionProjectField: View {
 
             if isFocused && !filteredSuggestions.isEmpty {
                 suggestionsRow
-            } else if !recentProjects.isEmpty && project.isEmpty {
+            } else if !(recentProjects + knownProjects).isEmpty && project.isEmpty {
                 quickRow
             }
         }
@@ -525,7 +541,7 @@ public struct MissionProjectField: View {
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .tracking(0.8)
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
-                ForEach(Array(recentProjects.prefix(4)), id: \.self) { name in
+                ForEach(Array((recentProjects + knownProjects).uniqueOrderPreserving.prefix(8)), id: \.self) { name in
                     suggestionChip(name)
                 }
             }

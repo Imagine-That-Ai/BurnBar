@@ -66,6 +66,14 @@
       ]
     },
     {
+      "collectionGroup": "session_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "deviceId", "order": "ASCENDING"},
+        {"fieldPath": "sessionId", "order": "ASCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "cloud_search_chunks",
       "queryScope": "COLLECTION",
       "fields": [
@@ -162,6 +170,46 @@
         {"fieldPath": "connectionId", "order": "ASCENDING"},
         {"fieldPath": "status", "order": "ASCENDING"},
         {"fieldPath": "createdAt", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "devices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "platform", "order": "ASCENDING"},
+        {"fieldPath": "lastActiveAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "escrow_grants",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "targetDeviceId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "escrow_audit_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "actorDeviceId", "order": "ASCENDING"},
+        {"fieldPath": "timestamp", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "cloud_vault_key_wrappers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "targetDeviceId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "hermes_relay_requests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "connectionId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"}
       ]
     }
   ],

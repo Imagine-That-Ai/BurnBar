@@ -171,7 +171,7 @@ private struct CloudStorePosterHero: View {
 
     var body: some View {
         VStack(spacing: MobileTheme.Spacing.md) {
-            FirefighterHelmet(size: .large)
+            CloudBadge(size: .large)
                 .padding(.top, MobileTheme.Spacing.lg)
 
             VStack(spacing: MobileTheme.Spacing.xs) {
@@ -1149,6 +1149,7 @@ private struct CloudStoreMemberCard: View {
     @Bindable var store: HostedQuotaSubscriptionStore
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showBadgePicker = false
 
     var body: some View {
         VStack(spacing: MobileTheme.Spacing.lg) {
@@ -1159,8 +1160,15 @@ private struct CloudStoreMemberCard: View {
                 memberAuroraBackdrop
 
                 VStack(spacing: MobileTheme.Spacing.lg) {
-                    FirefighterHelmet(size: .large)
-                        .padding(.top, MobileTheme.Spacing.xl)
+                    Button {
+                        Haptics.selection()
+                        showBadgePicker = true
+                    } label: {
+                        CloudBadge(size: .large)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Change Cloud badge")
+                    .padding(.top, MobileTheme.Spacing.xl)
 
                     VStack(spacing: 6) {
                         HStack(spacing: 6) {
@@ -1219,10 +1227,35 @@ private struct CloudStoreMemberCard: View {
             .shadow(color: MobileTheme.ember.opacity(0.40), radius: 28, y: 14)
             .shadow(color: MobileTheme.amber.opacity(0.22), radius: 40, y: 0)
 
+            // "Change badge" link — quiet, unobtrusive. Tapping the badge
+            // itself also opens the picker; this is the labelled affordance
+            // for discoverability.
+            Button {
+                Haptics.selection()
+                showBadgePicker = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "rosette")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Change badge")
+                        .font(MobileTheme.Typography.caption)
+                        .fontWeight(.semibold)
+                }
+                .foregroundStyle(MobileTheme.ember)
+            }
+            .buttonStyle(.plain)
+
             actionRow
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilitySummary)
+        .sheet(isPresented: $showBadgePicker) {
+            NavigationStack {
+                CloudBadgePicker()
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     @ViewBuilder

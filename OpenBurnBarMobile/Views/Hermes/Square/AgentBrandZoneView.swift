@@ -66,23 +66,18 @@ struct AgentBrandZoneView: View {
                     )
                     .frame(width: 92, height: 92)
                     .offset(parallaxOffset(intensity: -backdropParallaxIntensity))
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [accent, accent.opacity(0.7)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 64, height: 64)
-                    .offset(parallaxOffset(intensity: heroParallaxIntensity))
-                Text(identity.glyph)
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    // The glyph drifts slightly more than the disc so it
-                    // reads as foreground — classic CSS-parallax depth
-                    // cue translated to SwiftUI.
-                    .offset(parallaxOffset(intensity: heroParallaxIntensity * 1.25))
+                // Real brand logo (bundled asset) replaces the gradient
+                // disc + glyph for built-in runtimes. User-installed
+                // agents whose vendor doesn't match a known provider
+                // fall back to the gradient-and-glyph treatment inside
+                // `HermesSquareAgentAvatar`.
+                HermesSquareAgentAvatar(
+                    identity: identity,
+                    size: 64,
+                    showAvailability: false,
+                    ringStroke: true
+                )
+                .offset(parallaxOffset(intensity: heroParallaxIntensity))
             }
             .frame(width: 92, height: 92)
             VStack(alignment: .leading, spacing: 4) {

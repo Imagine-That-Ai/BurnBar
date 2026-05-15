@@ -208,7 +208,8 @@ struct PulseView: View {
         async let q: Void = quotaStore.refresh()
         async let s: Void = sessionsStore.refresh()
         async let live: Void = sessionsStore.loadLiveUsage(since: liveUsageStart)
-        _ = await (d, q, s, live)
+        async let h: Void = hermesService.refreshRuntime()
+        _ = await (d, q, s, live, h)
     }
 
     // MARK: - Derived

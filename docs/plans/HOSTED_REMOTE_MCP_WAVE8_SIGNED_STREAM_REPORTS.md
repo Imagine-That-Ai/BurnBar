@@ -35,8 +35,8 @@ Findings:
   ownership checks are centralized instead of ad hoc per tool.
 - P1: The production resource URL is still not live on branded HTTPS, so the
   final architecture is deployed only on the generated Cloud Run URL.
-- P2: Real subscriber proof is still absent; controlled proof users do not prove
-  live customer data or billing state.
+- P2: Real paid subscriber proof now exists on the generated URL, but branded
+  endpoint subscriber proof remains blocked by certificate issuance.
 
 Evidence:
 
@@ -59,6 +59,9 @@ Findings:
   `https://mcp.burnbar.ai/mcp` serves with Google-managed HTTPS.
 - P1: Missing-auth, unpaid, revoked, missing-scope, and cross-tenant negative
   paths have controlled live proof on the generated Cloud Run URL.
+- P1: Real paid subscriber fixture proof passed on the generated URL with
+  active `burnbar_pro`, tools/list, capabilities, search, encrypted body fetch,
+  and post-revoke denial.
 - P1: Refresh tokens are stored hashed at rest, and MCP access tokens are
   short-lived HMAC tokens rather than Firebase ID tokens.
 - P2: Current log scans found no obvious token/body/query leakage, but
@@ -136,13 +139,15 @@ Verdict: **Continue hardening.**
 Findings:
 
 - P1: Targeted hosted-MCP tests, compatibility config proof, generated-URL live
-  proof, and large-corpus performance proof have passed.
+  proof, real paid subscriber fixture proof, and large-corpus performance proof
+  have passed.
 - P1: Full app gates are not green because of unrelated existing failures, so
   launch claims must stay scoped to hosted-MCP-specific evidence.
 - P1: Real target-client authenticated flows remain pending for Codex,
   Claude Code, Droid/Factory, Kimi, Forge, and generic MCP.
-- P2: Production fixture availability check sampled one user and found no active
-  entitlement, search artifact, or Remote MCP client.
+- P2: Real paid fixture proof used temporary search/body artifacts under the
+  real subscriber UID and verified cleanup of the proof client, index rows, and
+  Storage object.
 
 Evidence:
 

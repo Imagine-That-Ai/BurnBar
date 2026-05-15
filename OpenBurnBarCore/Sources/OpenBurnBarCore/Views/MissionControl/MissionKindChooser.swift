@@ -24,8 +24,8 @@ public struct MissionKindChooser: View {
         self.onSelect = onSelect
     }
 
-    private let columns: [GridItem] = Array(
-        repeating: GridItem(.flexible(), spacing: UnifiedDesignSystem.Spacing.sm),
+    private let rows: [GridItem] = Array(
+        repeating: GridItem(.fixed(92), spacing: UnifiedDesignSystem.Spacing.sm),
         count: 2
     )
 
@@ -33,10 +33,14 @@ public struct MissionKindChooser: View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             sectionHeader
 
-            LazyVGrid(columns: columns, alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-                ForEach(MissionConsoleKind.allCases) { kind in
-                    kindTile(kind)
+            ScrollView(.horizontal, showsIndicators: true) {
+                LazyHGrid(rows: rows, alignment: .top, spacing: UnifiedDesignSystem.Spacing.sm) {
+                    ForEach(MissionConsoleKind.allCases) { kind in
+                        kindTile(kind)
+                    }
                 }
+                .padding(.horizontal, 1)
+                .padding(.vertical, 2)
             }
         }
     }
@@ -107,7 +111,7 @@ public struct MissionKindChooser: View {
                 Spacer(minLength: 0)
             }
             .padding(UnifiedDesignSystem.Spacing.sm)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minWidth: 260, maxWidth: 260, minHeight: 88, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.md, style: .continuous)
                     .fill(UnifiedDesignSystem.Colors.surface.opacity(isSelected ? 0.95 : 0.55))

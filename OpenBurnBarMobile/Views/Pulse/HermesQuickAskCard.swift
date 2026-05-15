@@ -20,10 +20,10 @@ struct HermesQuickAskCard: View {
             VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
                 AuroraSection(
                     "Hermes",
-                    subtitle: service.isReachable
+                    subtitle: isHermesUsable
                         ? "Live · ask about your fleet"
                         : "Hermes offline — start it on your Mac",
-                    accent: service.isReachable ? MobileTheme.hermesAureate : MobileTheme.warning
+                    accent: isHermesUsable ? MobileTheme.hermesAureate : MobileTheme.warning
                 ) {
                     Button(action: onOpenHermes) {
                         Label("Full chat", systemImage: "arrow.up.right.square")
@@ -43,6 +43,14 @@ struct HermesQuickAskCard: View {
                 }
             }
         }
+    }
+
+    private var isHermesUsable: Bool {
+        HermesMobileSetupWizardGate.hasUsableSetup(
+            isReachable: service.isReachable,
+            selectedConnection: service.selectedConnection,
+            suggestedRelayConnection: service.suggestedRelayConnection
+        )
     }
 
     // MARK: - Thread Preview

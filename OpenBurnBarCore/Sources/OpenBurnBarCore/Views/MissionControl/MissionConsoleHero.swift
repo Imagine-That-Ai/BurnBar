@@ -182,19 +182,20 @@ public struct MissionConsoleHero: View {
     }
 
     private var metaStrip: some View {
-        HStack(alignment: .center, spacing: UnifiedDesignSystem.Spacing.lg) {
-            metaCell(label: "IN FLIGHT", value: "\(activeMissionCount)", tint: UnifiedDesignSystem.Colors.amber)
-            metaCell(label: "QUEUED", value: "\(health.queuedMissions)", tint: UnifiedDesignSystem.Colors.textSecondary)
-            metaCell(label: "BURN / HR", value: MissionConsoleFormatting.cost(burnPerHourUSD, precise: burnPerHourUSD < 1), tint: burnPerHourUSD > 1.5 ? UnifiedDesignSystem.Colors.ember : UnifiedDesignSystem.Colors.textPrimary)
-            metaCell(label: "BURN TODAY", value: MissionConsoleFormatting.cost(health.burnTodayUSD), tint: UnifiedDesignSystem.Colors.textPrimary)
-            metaCell(label: "RUNTIMES", value: "\(health.onlineRuntimes)/\(health.totalRuntimes)", tint: UnifiedDesignSystem.Colors.hermesAureate)
-            if blockedCount > 0 {
-                metaCell(label: "BLOCKED", value: "\(blockedCount)", tint: UnifiedDesignSystem.Colors.ember)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .center, spacing: UnifiedDesignSystem.Spacing.lg) {
+                metaCell(label: "IN FLIGHT", value: "\(activeMissionCount)", tint: UnifiedDesignSystem.Colors.amber)
+                metaCell(label: "QUEUED", value: "\(health.queuedMissions)", tint: UnifiedDesignSystem.Colors.textSecondary)
+                metaCell(label: "BURN / HR", value: MissionConsoleFormatting.cost(burnPerHourUSD, precise: burnPerHourUSD < 1), tint: burnPerHourUSD > 1.5 ? UnifiedDesignSystem.Colors.ember : UnifiedDesignSystem.Colors.textPrimary)
+                metaCell(label: "BURN TODAY", value: MissionConsoleFormatting.cost(health.burnTodayUSD), tint: UnifiedDesignSystem.Colors.textPrimary)
+                metaCell(label: "RUNTIMES", value: "\(health.onlineRuntimes)/\(health.totalRuntimes)", tint: UnifiedDesignSystem.Colors.hermesAureate)
+                if blockedCount > 0 {
+                    metaCell(label: "BLOCKED", value: "\(blockedCount)", tint: UnifiedDesignSystem.Colors.ember)
+                }
+                if approvalPendingCount > 0 {
+                    metaCell(label: "APPROVALS", value: "\(approvalPendingCount)", tint: UnifiedDesignSystem.Colors.hermesAureate)
+                }
             }
-            if approvalPendingCount > 0 {
-                metaCell(label: "APPROVALS", value: "\(approvalPendingCount)", tint: UnifiedDesignSystem.Colors.hermesAureate)
-            }
-            Spacer(minLength: 0)
         }
     }
 

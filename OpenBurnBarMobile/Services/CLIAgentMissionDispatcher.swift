@@ -469,6 +469,7 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
     let requestedRuntime: String
     let selectedRuntime: String?
     let selectedRuntimeName: String?
+    let targetProject: String?
     let liveSummary: String?
     let resultPreview: String?
     let errorMessage: String?
@@ -491,6 +492,9 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
         self.requestedRuntime = (data["requestedRuntime"] as? String) ?? "auto"
         self.selectedRuntime = data["selectedRuntime"] as? String
         self.selectedRuntimeName = data["selectedRuntimeName"] as? String
+        self.targetProject = (data["targetProject"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
         self.liveSummary = data["liveSummary"] as? String
         self.resultPreview = data["resultPreview"] as? String
         self.errorMessage = data["errorMessage"] as? String
@@ -522,19 +526,31 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
     }
 
     var displayStatus: String {
+        status
+    }
+
+    var displayLiveSummary: String? {
+        guard isStaleUnclaimed else { return liveSummary }
+        return "This queued mission was not claimed. Compose a fresh dispatch after the Mac shows online."
+    }
+
+    var isStaleUnclaimed: Bool {
         let normalized = status.lowercased()
         guard ["pending", "queued"].contains(normalized),
               let createdAt,
               Date().timeIntervalSince(createdAt) > 120
         else {
-            return status
+            return false
         }
-        return "mac_offline"
+        return !hasBeenClaimedByMac
     }
 
-    var displayLiveSummary: String? {
-        guard displayStatus == "mac_offline" else { return liveSummary }
-        return "No signed-in Mac has claimed this mission yet. Open BurnBar on the paired Mac to start execution."
+    var hasBeenClaimedByMac: Bool {
+        if selectedRuntime?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false { return true }
+        if selectedRuntimeName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false { return true }
+        return events.contains { event in
+            event.source?.lowercased() == "mac" || event.runtime?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
     }
 
     var currentStepLabel: String {

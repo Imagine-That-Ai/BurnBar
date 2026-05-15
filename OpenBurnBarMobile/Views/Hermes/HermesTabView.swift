@@ -29,6 +29,7 @@ enum HermesChatRoute: Hashable {
 enum HermesMobileSetupStep: Int, CaseIterable, Identifiable {
     case keepMacReady
     case chooseHost
+    case syncProjects
     case startChat
 
     var id: Int { rawValue }
@@ -38,6 +39,7 @@ enum HermesMobileSetupStep: Int, CaseIterable, Identifiable {
         switch self {
         case .keepMacReady: return "Keep your Mac ready"
         case .chooseHost: return "Pick a Hermes host"
+        case .syncProjects: return "Sync projects"
         case .startChat: return "Start chatting"
         }
     }
@@ -48,6 +50,8 @@ enum HermesMobileSetupStep: Int, CaseIterable, Identifiable {
             return "OpenBurnBar on macOS should be signed in, running, and set to allow Hermes Remote Relay."
         case .chooseHost:
             return "Use Remote Relay away from home; use a direct LAN/VPN URL only when your device can reach the Mac."
+        case .syncProjects:
+            return "The Mac shares recent BurnBar projects so Mission Control can offer selectable targets instead of a blank path."
         case .startChat:
             return "Ask about spend, sessions, quota pressure, or anything your connected Hermes runtime can answer."
         }
@@ -57,6 +61,7 @@ enum HermesMobileSetupStep: Int, CaseIterable, Identifiable {
         switch self {
         case .keepMacReady: return "macbook.and.iphone"
         case .chooseHost: return "antenna.radiowaves.left.and.right"
+        case .syncProjects: return "folder.badge.gearshape"
         case .startChat: return "bubble.left.and.bubble.right.fill"
         }
     }
@@ -170,10 +175,10 @@ private struct HermesMobileSetupWizardView: View {
                 HStack(spacing: 12) {
                     HermesLiveGlyph(size: 44, isLive: false)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Hermes in 1-2-3")
+                        Text("Hermes in 1-2-3-4")
                             .font(MobileTheme.Typography.title)
                             .foregroundStyle(MobileTheme.Colors.textPrimary)
-                        Text("One Mac host. One connection. One chat.")
+                        Text("One Mac host. One connection. Selectable projects. One chat.")
                             .font(MobileTheme.Typography.caption)
                             .foregroundStyle(MobileTheme.Colors.textSecondary)
                     }
