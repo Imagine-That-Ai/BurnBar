@@ -101,7 +101,8 @@ public enum ProviderRoutingStateBuilder {
     /// quota-state mapping directly.
     public static func quotaState(
         for account: ProviderAccountDoc,
-        snapshot: ProviderQuotaSnapshot?
+        snapshot: ProviderQuotaSnapshot?,
+        now: Date = Date()
     ) -> ProviderRoutingQuotaState {
         switch account.status {
         case .deleted:
@@ -124,7 +125,7 @@ public enum ProviderRoutingStateBuilder {
             return account.status == .stale ? .pressure : .unknown
         }
 
-        if snapshot.isStale() {
+        if snapshot.isStale(relativeTo: now) {
             return .pressure
         }
 
@@ -157,7 +158,7 @@ public enum ProviderRoutingStateBuilder {
         let snapshot = snapshots
             .filter { $0.accountID == account.id }
             .max(by: { $0.fetchedAt < $1.fetchedAt })
-        let state = quotaState(for: account, snapshot: snapshot)
+        let state = quotaState(for: account, snapshot: snapshot, now: now)
 
         // The router treats an empty `credentialHandle` as
         // `.missingCredential` and skips the account. Synced surfaces cannot
