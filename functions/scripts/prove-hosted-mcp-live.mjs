@@ -51,6 +51,15 @@ function assertStatus(label, result, status, code) {
   }
 }
 
+function parseToolText(label, result) {
+  const envelope = JSON.parse(result.body);
+  const text = envelope?.result?.content?.[0]?.text;
+  if (typeof text !== "string") {
+    throw new Error(`${label} did not return MCP text content: ${result.body.slice(0, 500)}`);
+  }
+  return JSON.parse(text);
+}
+
 function mintProofToken({ uid, clientId, secret, scopes }) {
   const now = Math.floor(Date.now() / 1000);
   const claims = {
@@ -107,6 +116,10 @@ async function proveControlled(missingAuthStatus) {
     revoked: `${proofId}-revoked`
   };
   const targetDoc = "cross-tenant-target-doc";
+  const searchDoc = "search-budget-doc";
+  const searchChunk = "search-budget-chunk";
+  const searchTokenHash = "0123456789abcdef0123456789abcdef";
+  const searchCommit = "search-budget-commit";
   const allScopes = ["search:read", "conversation:read", "usage:read", "index:status"];
 
   const authHeader = (uid, scopes = allScopes) => ({
@@ -146,6 +159,47 @@ async function proveControlled(missingAuthStatus) {
       provider: "proof",
       createdAt: admin.firestore.Timestamp.now()
     });
+    await db.doc(`users/${users.paidA}/cloud_search_index_manifest/current`).set({
+      schemaVersion: 1,
+      indexVersion: 1,
+      activeCommitIDsByDevice: { proofDevice: searchCommit },
+      latestCommittedAt: new Date().toISOString(),
+      documentCount: 1,
+      chunkCount: 1,
+      tokenPostingCount: 1,
+      semanticPostingCount: 0,
+      stale: false
+    });
+    await db.doc(`users/${users.paidA}/cloud_search_documents/${searchDoc}`).set({
+      sourceID: "Search budget proof session",
+      storagePath: `users/${users.paidA}/session_logs/${searchDoc}/bodies/body.json.enc`,
+      bodyHash: "search-budget-body-hash",
+      projectName: "proof",
+      provider: "proof",
+      sealedTitle: { alg: "proof", ciphertext: "sealed-title" },
+      createdAt: admin.firestore.Timestamp.now()
+    });
+    await db.doc(`users/${users.paidA}/cloud_search_chunks/${searchChunk}`).set({
+      documentID: searchDoc,
+      sourceKind: "session",
+      sourceID: "Search budget proof session",
+      provider: "proof",
+      projectName: "proof",
+      commitID: searchCommit,
+      storagePath: `users/${users.paidA}/session_logs/${searchDoc}/bodies/body.json.enc`,
+      bodyHash: "search-budget-body-hash",
+      tokenHashes: [searchTokenHash],
+      semanticHashes: [],
+      sealedSnippet: { alg: "proof", ciphertext: "sealed-snippet" },
+      ordinal: 1
+    });
+    await db.doc(`users/${users.paidA}/cloud_search_postings/token_${searchTokenHash}_${searchChunk}`).set({
+      postingKey: `token_${searchTokenHash}`,
+      kind: "token",
+      hash: searchTokenHash,
+      chunkID: searchChunk,
+      provider: "proof"
+    });
 
     const paidCapabilities = await post(endpoint, {
       jsonrpc: "2.0",
@@ -170,6 +224,22 @@ async function proveControlled(missingAuthStatus) {
       params: { name: "burnbar_resolve_capabilities", arguments: {} }
     }, authHeader(users.revoked));
     assertStatus("revoked denial", revokedCapabilities, 403, "client_revoked");
+
+    const paidSearch = await post(endpoint, {
+      jsonrpc: "2.0",
+      id: 9,
+      method: "tools/call",
+      params: {
+        name: "burnbar_search_conversations",
+        arguments: { tokenHashes: [searchTokenHash], provider: "proof", limit: 10 }
+      }
+    }, authHeader(users.paidA));
+    assertStatus("paid search", paidSearch, 200, searchDoc);
+    const paidSearchBody = parseToolText("paid search", paidSearch);
+    const readBudget = paidSearchBody.readBudget;
+    if (!readBudget?.withinSearchReadBudget || readBudget.storageReads !== 0 || readBudget.firestoreDocumentReads > 150) {
+      throw new Error(`paid search exceeded read budget: ${JSON.stringify(readBudget)}`);
+    }
 
     const paidBList = await post(endpoint, {
       jsonrpc: "2.0",
@@ -203,6 +273,8 @@ async function proveControlled(missingAuthStatus) {
       paidCapabilitiesStatus: paidCapabilities.status,
       unpaidCapabilitiesStatus: unpaidCapabilities.status,
       revokedCapabilitiesStatus: revokedCapabilities.status,
+      paidSearchStatus: paidSearch.status,
+      paidSearchReadBudget: paidSearchBody.readBudget,
       paidBListStatus: paidBList.status,
       crossTenantReadStatus: crossRead.status,
       missingScopeStatus: missingScope.status

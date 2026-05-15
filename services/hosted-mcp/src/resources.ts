@@ -52,7 +52,8 @@ export async function readConversationBody(
     nextCursor: offset + maxChars < encoded.length
       ? signCursor({ uid, tool: "burnbar_get_conversation_body", offset: offset + maxChars, resourceUri: uri, exp: Date.now() + 15 * 60_000 })
       : undefined,
-    storageReads: 1
+    storageReads: 1,
+    readBudget: { firestoreDocumentReads: 1, storageReads: 1, bodyStorageReadCap: 1, withinBodyReadBudget: true }
   };
 }
 

@@ -33,17 +33,21 @@ export async function searchConversations(db: Firestore, uid: string, args: Sear
     return {
       mode: "local_decrypt_shim_required",
       hits: [],
-      warning: "Sealed-only hosted search requires locally derived opaque query hashes. Use openburnbar-mcp-remote for decrypted search."
+      warning: "Sealed-only hosted search requires locally derived opaque query hashes. Use openburnbar-mcp-remote for decrypted search.",
+      readBudget: { firestoreDocumentReads: 0, storageReads: 0, searchReadCap: 150, withinSearchReadBudget: true }
     };
   }
 
   const offset = args.cursor ? verifyCursor(args.cursor, uid, "burnbar_search_conversations").offset : 0;
+  let firestoreDocumentReads = 0;
   const active = await activeCommitIDs(db, uid);
+  firestoreDocumentReads += active.firestoreDocumentReads;
   const candidates = new Map<string, { id: string; tokenMatches: number; semanticMatches: number; data: FirebaseFirestore.DocumentData }>();
-  await Promise.all([
+  const postingReads = await Promise.all([
     collectPostingMatches(db, uid, tokenHashes, "token", candidates, active, args.provider),
     collectPostingMatches(db, uid, semanticHashes, "semantic", candidates, active, args.provider)
   ]);
+  firestoreDocumentReads += postingReads.reduce((sum, reads) => sum + reads, 0);
 
   const sorted = Array.from(candidates.values()).sort((a, b) => {
     const scoreA = a.tokenMatches * 2 + a.semanticMatches;
@@ -57,6 +61,7 @@ export async function searchConversations(db: Firestore, uid: string, args: Sear
     const documentID = typeof item.data.documentID === "string" ? item.data.documentID : "";
     if (!documentID || seenDocuments.has(documentID)) continue;
     const docSnap = await db.doc(`users/${uid}/cloud_search_documents/${documentID}`).get();
+    firestoreDocumentReads += 1;
     if (!docSnap.exists) continue;
     const doc = docSnap.data() ?? {};
     if (doc.bodyHash !== item.data.bodyHash || doc.storagePath !== item.data.storagePath) continue;
@@ -84,11 +89,12 @@ export async function searchConversations(db: Firestore, uid: string, args: Sear
     nextCursor: offset + limit < sorted.length
       ? signCursor({ uid, tool: "burnbar_search_conversations", offset: offset + limit, exp: Date.now() + 15 * 60_000 })
       : undefined,
-    storageReads: 0
+    storageReads: 0,
+    readBudget: { firestoreDocumentReads, storageReads: 0, searchReadCap: 150, withinSearchReadBudget: firestoreDocumentReads <= 150 }
   };
 }
 
-async function activeCommitIDs(db: Firestore, uid: string): Promise<Set<string>> {
+async function activeCommitIDs(db: Firestore, uid: string): Promise<{ activeCommitIDs: Set<string>; firestoreDocumentReads: number }> {
   const manifest = await db.doc(`users/${uid}/cloud_search_index_manifest/current`).get();
   const active = new Set<string>();
   const byDevice = manifest.get("activeCommitIDsByDevice");
@@ -97,13 +103,13 @@ async function activeCommitIDs(db: Firestore, uid: string): Promise<Set<string>>
       if (typeof value === "string") active.add(value);
     }
   }
-  if (active.size > 0) return active;
+  if (active.size > 0) return { activeCommitIDs: active, firestoreDocumentReads: 1 };
   const state = await db.collection(`users/${uid}/cloud_search_index_state`).limit(100).get();
   for (const doc of state.docs) {
     const commitID = doc.get("activeCommitID");
     if (typeof commitID === "string") active.add(commitID);
   }
-  return active;
+  return { activeCommitIDs: active, firestoreDocumentReads: 1 + state.docs.length };
 }
 
 async function collectPostingMatches(
@@ -112,16 +118,17 @@ async function collectPostingMatches(
   inputHashes: string[],
   kind: "token" | "semantic",
   candidates: Map<string, { id: string; tokenMatches: number; semanticMatches: number; data: FirebaseFirestore.DocumentData }>,
-  activeCommitIDs: Set<string>,
+  active: { activeCommitIDs: Set<string>; firestoreDocumentReads: number },
   provider?: string
-): Promise<void> {
-  if (inputHashes.length === 0) return;
+): Promise<number> {
+  if (inputHashes.length === 0) return 0;
   const requested = new Set(inputHashes);
   let query: FirebaseFirestore.Query = db
     .collection(`users/${uid}/cloud_search_postings`)
     .where("postingKey", "in", inputHashes.map((hash) => `${kind}_${hash}`));
   if (provider) query = query.where("provider", "==", provider);
   const postings = await query.limit(500).get();
+  let firestoreDocumentReads = postings.docs.length;
   const chunkIDs = new Set<string>();
   for (const posting of postings.docs) {
     const hash = posting.get("hash");
@@ -131,14 +138,15 @@ async function collectPostingMatches(
     }
   }
   const refs = Array.from(chunkIDs).slice(0, 500).map((chunkID) => db.doc(`users/${uid}/cloud_search_chunks/${chunkID}`));
-  if (refs.length === 0) return;
+  if (refs.length === 0) return firestoreDocumentReads;
   const chunks = await db.getAll(...refs);
+  firestoreDocumentReads += refs.length;
   for (const chunk of chunks) {
     if (!chunk.exists) continue;
     const data = chunk.data() ?? {};
     if (provider && data.provider !== provider) continue;
     const commitID = typeof data.commitID === "string" ? data.commitID : undefined;
-    if (activeCommitIDs.size > 0 && (!commitID || !activeCommitIDs.has(commitID))) continue;
+    if (active.activeCommitIDs.size > 0 && (!commitID || !active.activeCommitIDs.has(commitID))) continue;
     const values = Array.isArray(data[kind === "token" ? "tokenHashes" : "semanticHashes"])
       ? data[kind === "token" ? "tokenHashes" : "semanticHashes"].filter((hash: unknown): hash is string => typeof hash === "string")
       : [];
@@ -149,6 +157,7 @@ async function collectPostingMatches(
     else current.semanticMatches += matches;
     candidates.set(chunk.id, current);
   }
+  return firestoreDocumentReads;
 }
 
 export async function listIndexStatus(db: Firestore, uid: string) {
