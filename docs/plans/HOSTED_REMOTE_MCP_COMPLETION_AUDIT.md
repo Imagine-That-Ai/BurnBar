@@ -7,17 +7,17 @@ Objective audited:
 
 Verdict: **hold**. The source implementation is present, Cloud Run is deployed
 on its generated `run.app` URL, the grant/revoke Functions are deployed, and a
-controlled live paid/unpaid/revoked proof passed. The production definition of
-done is still not met because the branded DNS/domain, live cross-tenant proof,
-real subscriber proof, real client compatibility proof, and signed audit reports
-are still missing.
+controlled live paid/unpaid/revoked/cross-tenant proof passed. The production
+definition of done is still not met because the branded DNS/domain, real
+subscriber proof, real client compatibility proof, and signed audit reports are
+still missing.
 
 ## Prompt-To-Artifact Checklist
 
 | Requirement | Artifact / Evidence | Status |
 | --- | --- | --- |
 | Standards-first Streamable HTTP endpoint at `https://mcp.openburnbar.com/mcp` | `services/hosted-mcp/src/server.ts`, `src/mcp.ts`, `src/oauthMetadata.ts` implement `/mcp`, protocol handlers, metadata, errors, origin checks | Cloud Run URL deployed; branded domain absent |
-| MCP methods: `initialize`, `tools/list`, `tools/call`, `resources/list`, `resources/read` | `services/hosted-mcp/src/mcp.ts`, `src/toolRegistry.ts`, `src/resources.ts`; local tests pass | Locally verified |
+| MCP methods: `initialize`, `tools/list`, `tools/call`, `resources/list`, `resources/read` | `services/hosted-mcp/src/mcp.ts`, `src/toolRegistry.ts`, `src/resources.ts`; resource routes now enforce scope, active client, entitlement, and rate limits; local tests pass | Locally verified and redeployed |
 | Missing auth returns `401`; invalid origin returns `403`; bounded oversized input | `scripts/test-hosted-mcp-security.sh`; local run passed in implementation pass | Locally verified only |
 | OpenBurnBar Pro paywall via `users/{uid}/entitlements/burnbar_pro` | `functions/src/index.ts`, `functions/src/remoteMcpOAuth.ts`, `services/hosted-mcp/src/entitlements.ts`; controlled live proof on generated Cloud Run URL | Live controlled paid/unpaid proof passed |
 | Firebase ID tokens are not final MCP bearer tokens | `functions/src/remoteMcpOAuth.ts` signs short-lived HMAC MCP access tokens; `services/hosted-mcp/src/auth.ts` validates audience/client/scopes/expiry | Source present |
@@ -34,7 +34,7 @@ are still missing.
 | App UX for setup/status/revoke | `OpenBurnBarMobile/Views/Store/CloudStoreView.swift` shows setup/status copy, lists `remote_mcp_clients`, displays scopes/last-used/decrypt mode/status, and calls `revokeRemoteMcpClient`; targeted iOS build passed | iOS/iPadOS member UI implemented; macOS/Android parity not verified |
 | Production deploy | `scripts/deploy-hosted-mcp.sh` deployed `openburnbar-hosted-mcp-00002-d4f` | Cloud Run deployed at generated URL |
 | Domain `mcp.openburnbar.com` or fallback `mcp.burnbar.ai` | `curl https://mcp.openburnbar.com/readyz`; `gcloud beta run domain-mappings create ...`; `gcloud domains list-user-verified` | Fails DNS resolution; both domain mappings blocked because neither `openburnbar.com` nor `burnbar.ai` is verified in this Google account |
-| Live paid/unpaid/revoked/cross-tenant proof | `functions/scripts/prove-hosted-mcp-live.mjs`; controlled temporary Firestore proof users against generated Cloud Run URL | Paid/unpaid/revoked passed; cross-tenant and real subscriber proof still missing |
+| Live paid/unpaid/revoked/cross-tenant proof | `functions/scripts/prove-hosted-mcp-live.mjs`; controlled temporary Firestore proof users against generated Cloud Run URL | Controlled paid/unpaid/revoked/cross-tenant proof passed; real subscriber proof still missing |
 | Alerts/logging/rollback | `docs/REMOTE_MCP_RUNBOOK.md`, structured logging in service | Docs/source present; live alerts not verified |
 | Multi-agent audit reports | Required by Wave 8 | Missing |
 
@@ -86,6 +86,17 @@ node functions/scripts/prove-hosted-mcp-live.mjs \
 # revoked denial: HTTP/2 403, code client_revoked
 # Temporary proof users and token files were removed after the run.
 
+# Controlled live MCP resource proof with temporary Firestore users against
+# https://openburnbar-hosted-mcp-cjrjb5ckqq-uc.a.run.app/mcp.
+# Temporary proof id: remote-mcp-resource-proof-1778821941
+# paid tenant B resources/list: HTTP 200
+# cross-tenant resources/read with tenant A token for tenant B resource:
+#   HTTP 404, code resource_not_found
+# unpaid resources/list: HTTP 403, code burnbar_pro_required
+# revoked resources/list: HTTP 403, code client_revoked
+# missing conversation scope resources/read: HTTP 403, code insufficient_scope
+# Temporary proof users were removed after the run.
+
 gcloud beta run domain-mappings create \
   --service openburnbar-hosted-mcp \
   --domain mcp.openburnbar.com \
@@ -114,8 +125,7 @@ but the full app gate is not green.
 
 1. Verify ownership of `openburnbar.com` or `burnbar.ai` in the `burnbar` Google
    account, create the Cloud Run domain mapping, and update DNS.
-2. Run live cross-tenant proof and real subscriber proof on the final branded
-   endpoint.
+2. Run real subscriber proof on the final branded endpoint.
 3. Run real client compatibility for Codex, Claude Code, Droid/Factory, Kimi,
    Forge, and generic MCP.
 4. Add or verify macOS and Android parity for connected-client list/revoke UI,

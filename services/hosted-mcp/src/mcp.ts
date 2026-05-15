@@ -1,6 +1,9 @@
 import type { Firestore } from "firebase-admin/firestore";
 import { MCP_PROTOCOL_VERSION, MAX_OUTPUT_BYTES } from "./config.js";
 import type { AccessTokenClaims } from "./auth.js";
+import { requireScope } from "./auth.js";
+import { requireActiveBurnBarPro, requireActiveRemoteMcpClient } from "./entitlements.js";
+import { enforceRateLimit } from "./rateLimits.js";
 import { callTool, listMcpTools } from "./toolRegistry.js";
 import { jsonRpcError, McpError } from "./errors.js";
 import { truncateJson } from "./redaction.js";
@@ -46,12 +49,21 @@ async function dispatch(db: Firestore, claims: AccessTokenClaims, req: JsonRpcRe
       return callTool({ db, claims }, name, args);
     }
     case "resources/list":
+      await requireResourceAccess(db, claims, "search:read", "metadata:standard");
       return listResources(db, claims.sub);
     case "resources/read": {
+      await requireResourceAccess(db, claims, "conversation:read", "body:standard");
       const uri = typeof req.params?.uri === "string" ? req.params.uri : "";
       return readConversationBody(db, claims.sub, { resourceUri: uri });
     }
     default:
       throw new McpError(-32601, `Unsupported MCP method ${req.method}.`);
   }
+}
+
+async function requireResourceAccess(db: Firestore, claims: AccessTokenClaims, scope: string, rateLimitBucket: string) {
+  requireScope(claims, scope);
+  await requireActiveRemoteMcpClient(claims.sub, claims.client_id, db);
+  await requireActiveBurnBarPro(claims.sub, db);
+  await enforceRateLimit(db, claims.sub, claims.client_id, rateLimitBucket);
 }

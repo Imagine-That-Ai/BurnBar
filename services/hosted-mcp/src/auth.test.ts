@@ -4,6 +4,7 @@ import { MCP_RESOURCE } from "./config.js";
 import { mintDevelopmentToken, verifyBearerToken } from "./auth.js";
 import { signCursor, verifyCursor } from "./cursors.js";
 import { requireActiveRemoteMcpClient } from "./entitlements.js";
+import { handleMcpRequest } from "./mcp.js";
 import { redact } from "./redaction.js";
 import { listMcpTools } from "./toolRegistry.js";
 
@@ -100,5 +101,103 @@ test("remote MCP client revocation fails closed", async () => {
   await assert.rejects(
     () => requireActiveRemoteMcpClient("user-1", "missing-client", db as never),
     /not found/
+  );
+});
+
+test("MCP resources enforce scope, entitlement, and client revocation gates", async () => {
+  const claims = {
+    sub: "resource-user",
+    aud: MCP_RESOURCE,
+    client_id: "active-client",
+    scopes: ["search:read", "conversation:read", "usage:read", "index:status"],
+    entitlement_family: "burnbar_pro" as const,
+    grant_mode: "local_decrypt_shim" as const,
+    exp: Math.floor(Date.now() / 1000) + 60,
+    jti: "resource-jti"
+  };
+
+  const db = {
+    doc(path: string) {
+      return {
+        async get() {
+          if (path.endsWith("/remote_mcp_clients/active-client")) {
+            return { exists: true, data: () => ({ displayName: "Active" }) };
+          }
+          if (path.endsWith("/entitlements/burnbar_pro")) {
+            return { exists: true, data: () => ({ active: true, expiresAt: new Date(Date.now() + 60_000).toISOString() }) };
+          }
+          return { exists: false, data: () => undefined };
+        },
+        async set() {}
+      };
+    },
+    collection(path: string) {
+      assert.equal(path, "users/resource-user/cloud_search_documents");
+      return {
+        limit() {
+          return {
+            async get() {
+              return {
+                docs: [{
+                  id: "doc-1",
+                  get(field: string) {
+                    return field === "sourceID" ? "Session One" : undefined;
+                  }
+                }]
+              };
+            }
+          };
+        }
+      };
+    },
+    async runTransaction(fn: (tx: unknown) => Promise<void>) {
+      await fn({
+        async get() {
+          return { get: () => 0 };
+        },
+        set() {}
+      });
+    }
+  };
+
+  const listed = await handleMcpRequest(db as never, claims, {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "resources/list",
+    params: {}
+  }) as { result: { resources: Array<{ uri: string }> } };
+  assert.equal(listed.result.resources[0]?.uri, "burnbar://conversation/doc-1");
+
+  await assert.rejects(
+    () => handleMcpRequest(db as never, { ...claims, scopes: ["search:read"] }, {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "resources/read",
+      params: { uri: "burnbar://conversation/doc-1" }
+    }),
+    /Missing required scope conversation:read/
+  );
+
+  const revokedDb = {
+    doc(path: string) {
+      return {
+        async get() {
+          if (path.endsWith("/remote_mcp_clients/active-client")) {
+            return { exists: true, data: () => ({ revokedAt: new Date().toISOString() }) };
+          }
+          return { exists: false, data: () => undefined };
+        },
+        async set() {}
+      };
+    }
+  };
+  await assert.rejects(
+    () => handleMcpRequest(revokedDb as never, claims, {
+      jsonrpc: "2.0",
+      id: 3,
+      method: "resources/list",
+      params: {}
+    }),
+    /revoked/
   );
 });
