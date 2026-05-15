@@ -576,7 +576,7 @@ struct ProvidersSettingsView: View {
             }
             return "Provider plans exist, but none are enabled for quota refresh."
         case .codex:
-            return "Quota comes from local Codex rollout/session logs on this Mac."
+            return "Quota comes from the local Codex login session when available, with rollout/session logs as fallback."
         case .claudeCode:
             return "Quota comes from Claude Code status line payloads captured locally."
         case .factory:

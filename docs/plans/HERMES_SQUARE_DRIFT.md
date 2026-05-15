@@ -132,4 +132,89 @@ telemetry-level feedback"):
 
 ## Status
 
-Drift audit complete. Task #1 done. Proceeding to Phase A foundations.
+Drift audit complete. **Phase A foundation shipped behind `square_phase_a`
+feature flag across iOS, iPadOS, and Android.** Verified:
+
+- **iOS / iPadOS** — `xcodebuild -scheme OpenBurnBarMobile -destination 'generic/platform=iOS Simulator' build` ⇒ **BUILD SUCCEEDED**
+- **Android** — `./gradlew :app:assembleDebug` ⇒ **BUILD SUCCESSFUL**
+- **Tests** — `swift test --filter HermesSquare` ⇒ **38/38 PASSING** (forecast aggregation, phase reducer, manifest validation, card budget gate, pinned grid sanitisation, persona scope round-trip, search ranking, feature flag persistence, thread inbox sort)
+
+## Phase A artefacts (delta from `main`)
+
+### Shared core (OpenBurnBarCore)
+
+| File | Role | LOC |
+| --- | --- | --: |
+| `SharedModels/AgentIdentity.swift` | Rich identity record + built-in catalog (`agent://burnbar/...` URIs) | 482 |
+| `SharedModels/AgentTier.swift` | Service / Subscription tier with notification budgets | 58 |
+| `SharedModels/AgentPersona.swift` | Persona model + Tech Reviewer / Doc Writer / Triage seeds | 210 |
+| `SharedModels/AgentManifest.swift` | W3C MiniApp-shaped install manifest + validation | 386 |
+| `SharedModels/HermesSquareFeatureFlags.swift` | Per-phase flags (`phaseA…D`) + offline test seed | 112 |
+| `SharedModels/PinnedAgentGridConfig.swift` | 12-slot pinned grid + sanitisation/move/pin | 165 |
+| `SharedModels/SubscriptionTopic.swift` | Per-topic explicit consent + per-month budget gate | 116 |
+| `SharedModels/ThreadInboxItem.swift` | Unified inbox view-model + sort/split helpers | 96 |
+| `Contracts/MissionGroupContracts.swift` | `users/{uid}/mission_groups/{id}` DTO + forecast / phase reducer | 308 |
+| `Contracts/PersonaScopeEnvelope.swift` | Wire envelope for persona-scoped dispatch | 107 |
+| `Views/Cards/CardEnvelope.swift` | Discriminated union (text/table/diff/image/chart/approval/mission/custom/tooLarge/unknown) + 2 MB budget gate | 246 |
+| `Views/Cards/CardEnvelopeView.swift` | SwiftUI renderer for every kind + dispatch view | 326 |
+| `Views/Square/UnifiedSearchIndex.swift` | Federated search actor + corpus-aware ranking with recency boost | 326 |
+
+### iOS / iPadOS app (OpenBurnBarMobile)
+
+| File | Role |
+| --- | --- |
+| `Services/AgentIdentityRegistry.swift` | Mobile registry (built-in seed + user-install manifests) |
+| `Services/ThreadInboxStore.swift` | Aggregator over Hermes / Pi / CLI mirror / mission host |
+| `Views/Hermes/Square/HermesSquareRoot.swift` | The new tab root — search bar / pinned grid / mission strip / inbox |
+| `Views/Hermes/Square/HermesSquarePinnedGrid.swift` | Alipay-style grid composable |
+| `Views/Hermes/Square/HermesSquareThreadRow.swift` | Inbox row + mission tile + search hit row |
+| `Views/Hermes/Square/HermesSquareDiscoverDrawer.swift` | Discover sheet (Agents / Capabilities / Marketplace) |
+| `Views/Hermes/Square/HermesSquareSubscriptionsFolder.swift` | Subscriptions folder (Phase A placeholder) |
+| `Views/Hermes/Square/AgentBrandZoneView.swift` | Brand zone with hero / quick actions / capabilities / personas / about |
+| `Views/You/HermesSquarePhaseAToggle.swift` | Settings → Experimental dogfood toggle |
+| `Views/RootTabView.swift` | **Edited** — gates `.hermes` tab on `HermesSquareFeatureFlags.shared.phaseA` |
+| `Views/You/SettingsHubView.swift` | **Edited** — adds Experimental section with phase A toggle |
+
+### Android (com.openburnbar)
+
+| File | Role |
+| --- | --- |
+| `data/square/AgentIdentity.kt` | Kotlin parity record + tier + capabilities + transport |
+| `data/square/HermesSquareFeatureFlags.kt` | Per-phase flags persisted via SharedPreferences, Compose-observable |
+| `data/square/PinnedAgentGridConfig.kt` | JSON-on-disk pinned grid (mirrors iOS) |
+| `data/square/ThreadInboxItem.kt` | Unified inbox view-model |
+| `data/square/AgentIdentityRegistry.kt` | Compose-state registry seeded with built-ins |
+| `data/square/ThreadInboxStore.kt` | Compose-state inbox store |
+| `ui/square/HermesSquareScreen.kt` | Main composable + federated search + pinned grid + inbox |
+| `ui/square/HermesSquareDiscoverSheet.kt` | Discover / Subscriptions / Brand-zone modal sheets |
+| `ui/you/HermesSquarePhaseAToggleRow.kt` | Settings toggle (parity with iOS) |
+| `ui/navigation/BurnBarNavHost.kt` | **Edited** — gates `hermes` route on `phaseA` flag |
+| `ui/you/YouView.kt` | **Edited** — adds Phase A toggle row |
+
+### Tests (OpenBurnBarCoreTests)
+
+| File | Suites | Test count |
+| --- | --- | --: |
+| `HermesSquarePhaseATests.swift` | 8 (identity / manifest / cards / pinned grid / mission group / persona scope / search / feature flag / inbox) | 38 |
+
+## Decisions still pending (deferred to Phase B/C/D)
+
+- **D1** — fan-out dispatch UI defaults to Claude + Codex + Hermes once Phase B ships the composer fan-out toggle.
+- **D2** — subscription-tier delivery medium currently shows the Subscriptions folder placeholder; banner delivery wires up with push topics in Phase C.
+- **D3** — persona marketplace remains first-party only (built-ins + seed personas: `defaultPersona`, `techReviewer`, `docWriter`, `triage`).
+- **D5** — approval cross-channel (iMessage / Slack) deferred to Phase D.
+
+## Run book
+
+To dogfood Phase A on either platform:
+
+1. Build the app (`xcodebuild`/`./gradlew :app:assembleDebug`).
+2. Settings → Experimental → flip "Hermes Square (beta)".
+3. Pop the Assistants tab. The Square renders instead of the runtime pill.
+4. Pin / unpin agents from Discover ▸ Agents. The grid persists across launches.
+5. Search the federated index for an agent name or thread title.
+
+Toggle off to revert to the legacy `AssistantsTabRoot` / `AssistantsScreen`
+instantly — both surfaces share the same per-runtime stores, so no state is
+lost.
+

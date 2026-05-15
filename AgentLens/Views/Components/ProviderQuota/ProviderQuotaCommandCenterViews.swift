@@ -650,7 +650,7 @@ struct QuotaCommandRow: View {
     @ViewBuilder
     private var codexSetup: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-            Text("Codex quota is read automatically from your local Codex session logs.")
+            Text("Codex quota is read from your local Codex login session when available, with session logs as fallback.")
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)

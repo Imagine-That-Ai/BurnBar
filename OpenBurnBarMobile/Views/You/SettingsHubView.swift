@@ -283,6 +283,14 @@ struct SettingsHubView: View {
                 } header: { groupHeader("AI Environments") }
 
                 Section {
+                    HermesSquarePhaseAToggle()
+                } header: { groupHeader("Experimental") } footer: {
+                    Text("Hermes Square is the unified inbox + pinned grid + federated search surface that replaces the runtime pill. Phase A is the foundation; later phases ship dispatch fan-out, mini-program cards, and voice.")
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+
+                Section {
                     LabeledContent("Version", value: marketingVersion)
                         .settingsAnchor(SettingsAnchor.aboutVersion)
                     LabeledContent("Build", value: buildVersion)

@@ -29,8 +29,11 @@ import com.openburnbar.ui.components.AuroraNavIcon
 import com.openburnbar.ui.components.BurnBarLogo
 import com.openburnbar.ui.components.FloatingChatMode
 import com.openburnbar.ui.components.FloatingChatPill
+import com.openburnbar.data.square.HermesSquareFeatureFlags
 import com.openburnbar.ui.hermes.AssistantsScreen
 import com.openburnbar.ui.hermes.HermesView
+import com.openburnbar.ui.square.HermesSquareScreen
+import androidx.compose.ui.platform.LocalContext
 import com.openburnbar.ui.insights.MissionActivityOverlay
 import com.openburnbar.ui.pulse.PulseView
 import com.openburnbar.ui.streams.StreamsView
@@ -283,7 +286,20 @@ private fun BurnBarContent(
                 navDeepLink { uriPattern = "burnbar://chat" },
                 navDeepLink { uriPattern = "burnbar://assistants" }
             )
-        ) { AssistantsScreen() }
+        ) {
+            // Hermes Square Phase A (plan §7): when the feature flag is on,
+            // route through the new super-app surface; otherwise the legacy
+            // runtime-pill AssistantsScreen. Both share the same deep links
+            // above so existing widget chips and external routers keep
+            // landing here.
+            val context = LocalContext.current
+            val flags = remember(context) { HermesSquareFeatureFlags.shared(context) }
+            if (flags.phaseA) {
+                HermesSquareScreen()
+            } else {
+                AssistantsScreen()
+            }
+        }
         composable(
             BurnBarTab.YOU.route,
             deepLinks = listOf(navDeepLink { uriPattern = "burnbar://you" })

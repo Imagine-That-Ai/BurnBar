@@ -476,61 +476,110 @@ struct DashboardView: View {
         if dataStore.totalUsageSessionCount == 0 {
             overviewEmptyState
         } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                    LazyVGrid(
-                        columns: [
-                            GridItem(
-                                .adaptive(minimum: 250),
-                                spacing: DesignSystem.Spacing.lg,
-                                alignment: .top
+            ZStack {
+                DashboardDepthBackdrop()
+                    .ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                        LazyVGrid(
+                            columns: [
+                                GridItem(
+                                    .adaptive(minimum: 250),
+                                    spacing: DesignSystem.Spacing.lg,
+                                    alignment: .top
+                                )
+                            ],
+                            alignment: .leading,
+                            spacing: DesignSystem.Spacing.lg
+                        ) {
+                            StatCard(
+                                title: "Total Cost",
+                                value: totalCostForTimeRange.formatAsCost(),
+                                accent: DesignSystem.Colors.whimsy,
+                                detail: heroSubheadline
                             )
-                        ],
-                        alignment: .leading,
-                        spacing: DesignSystem.Spacing.lg
-                    ) {
-                        StatCard(
-                            title: "Total Cost",
-                            value: totalCostForTimeRange.formatAsCost(),
-                            accent: DesignSystem.Colors.whimsy,
-                            detail: heroSubheadline
-                        )
-                        StatCard(
-                            title: "Tokens",
-                            value: "\(totalTokensForTimeRange.formatted())",
-                            accent: DesignSystem.Colors.ember,
-                            detail: "\(activeProviderCount) provider\(activeProviderCount == 1 ? "" : "s") active"
-                        )
-                        StatCard(
-                            title: "Sessions",
-                            value: "\(dashboardUsageWindow.sessionCount.formatted())",
-                            accent: DesignSystem.Colors.amber,
-                            detail: "\(dataStore.totalUsageSessionCount.formatted()) total tracked"
-                        )
-                    }
-                    NarrativeCardView(dataStore: dataStore)
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .top, spacing: DesignSystem.Spacing.xl) {
-                            VStack(spacing: DesignSystem.Spacing.xl) {
+                            StatCard(
+                                title: "Tokens",
+                                value: "\(totalTokensForTimeRange.formatted())",
+                                accent: DesignSystem.Colors.ember,
+                                detail: "\(activeProviderCount) provider\(activeProviderCount == 1 ? "" : "s") active"
+                            )
+                            StatCard(
+                                title: "Sessions",
+                                value: "\(dashboardUsageWindow.sessionCount.formatted())",
+                                accent: DesignSystem.Colors.amber,
+                                detail: "\(dataStore.totalUsageSessionCount.formatted()) total tracked"
+                            )
+                        }
+                        liveCostCurveBand
+                        NarrativeCardView(dataStore: dataStore)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(alignment: .top, spacing: DesignSystem.Spacing.xl) {
+                                VStack(spacing: DesignSystem.Spacing.xl) {
+                                    providerLane
+                                    modelLane
+                                }
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                                activityLane
+                            }
+
+                            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
                                 providerLane
                                 modelLane
+                                activityLane
                             }
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                            activityLane
-                        }
-
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                            providerLane
-                            modelLane
-                            activityLane
                         }
                     }
+                    .padding(DesignSystem.Spacing.xl)
                 }
-                .padding(DesignSystem.Spacing.xl)
+                .scrollContentBackground(.hidden)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear { overviewAppeared = true }
         }
+    }
+
+    // MARK: - Live Cost Curve Band
+    //
+    // Sits between the four hero stat cards and the narrative banner, mirroring
+    // the iOS / Android Pulse hero curve: cumulative burn over the active time
+    // window, with provider-tinted accent + brand-gradient stroke + a pulsing
+    // "now" marker. Falls back to a dashed shimmer rail when there's no
+    // activity yet so the band still feels alive.
+
+    @ViewBuilder
+    private var liveCostCurveBand: some View {
+        DashboardLiveCostCurve(
+            usages: dashboardUsageWindow.usages,
+            unit: .cost,
+            granularity: curveGranularityForCurrentRange,
+            domain: curveDomainForCurrentRange,
+            accent: liveCostCurveAccent
+        )
+    }
+
+    private var curveGranularityForCurrentRange: DashboardLiveCostCurve.Granularity {
+        switch selectedTimeRange {
+        case .today, .thisMonth, .last7Days, .last30Days, .allTime: return .day
+        }
+    }
+
+    private var curveDomainForCurrentRange: ClosedRange<Date> {
+        if let range = selectedTimeRange.dateRange() {
+            return range
+        }
+        let cal = Calendar.current
+        let now = Date()
+        let start = cal.startOfDay(for: now)
+        let end = cal.date(byAdding: .day, value: 1, to: start) ?? now
+        return start...end
+    }
+
+    private var liveCostCurveAccent: Color {
+        if let top = dashboardProviderSummaries.first {
+            return DesignSystem.Colors.primary(for: top.provider)
+        }
+        return DesignSystem.Colors.ember
     }
 
     private var overviewEmptyState: some View {

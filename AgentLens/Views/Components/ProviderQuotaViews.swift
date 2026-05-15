@@ -43,7 +43,7 @@ struct ProviderQuotaSettingsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-            Text("Quota reporting stays separate from spend history. OpenBurnBar uses official APIs where they exist and otherwise shows the best verifiable local signal it can: Codex rollout snapshots, Claude statusline JSON, Factory / Droid token history, and explicit OpenBurnBar login sessions for providers that need web quota pages.")
+            Text("Quota reporting stays separate from spend history. OpenBurnBar uses official APIs and reusable login sessions where providers allow it, then falls back to verifiable local signals: Codex session logs, Claude statusline JSON, Factory / Droid token history, and explicit OpenBurnBar login sessions for web quota pages.")
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
