@@ -1,5 +1,8 @@
 import SwiftUI
 import StoreKit
+@preconcurrency import FirebaseAuth
+import FirebaseCore
+@preconcurrency import FirebaseFirestore
 import OpenBurnBarCore
 
 private enum CloudStoreLegalURLs {
@@ -41,6 +44,7 @@ struct CloudStoreView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var localStore = HostedQuotaSubscriptionStore()
     @State private var didLoadLocal = false
+    @StateObject private var remoteMCPClients = RemoteMCPClientStore()
 
     private var store: HostedQuotaSubscriptionStore {
         sharedStore ?? localStore
@@ -73,7 +77,7 @@ struct CloudStoreView: View {
                         .padding(.horizontal, MobileTheme.Spacing.lg)
                         .staggeredEntrance(delay: 0.10)
 
-                    RemoteMCPSetupCard(isActive: store.isActive)
+                    RemoteMCPSetupCard(isActive: store.isActive, clientStore: remoteMCPClients)
                         .padding(.horizontal, MobileTheme.Spacing.lg)
                         .staggeredEntrance(delay: 0.12)
 
@@ -601,8 +605,155 @@ private struct CloudCapabilityCard: View {
 
 // MARK: - Remote MCP Setup
 
+private struct RemoteMCPClientRecord: Identifiable, Hashable {
+    let id: String
+    let displayName: String
+    let clientType: String
+    let allowedScopes: [String]
+    let grantMode: String
+    let createdAt: Date?
+    let lastUsedAt: Date?
+    let revokedAt: Date?
+
+    var isRevoked: Bool { revokedAt != nil }
+
+    var displayType: String {
+        clientType.isEmpty ? "generic MCP" : clientType
+    }
+
+    var scopeSummary: String {
+        allowedScopes.isEmpty ? "No scopes recorded" : allowedScopes.sorted().joined(separator: ", ")
+    }
+
+    var modeSummary: String {
+        switch grantMode {
+        case "sealed_only": return "Sealed only"
+        case "local_decrypt_shim": return "Local decrypt shim"
+        case "remote_readable_explicit_opt_in": return "Remote readable opt-in"
+        default: return grantMode.isEmpty ? "Local decrypt shim" : grantMode.replacingOccurrences(of: "_", with: " ")
+        }
+    }
+}
+
+@MainActor
+private final class RemoteMCPClientStore: ObservableObject {
+    @Published private(set) var clients: [RemoteMCPClientRecord] = []
+    @Published private(set) var isLoading = false
+    @Published private(set) var error: String?
+    @Published private(set) var revokingClientID: String?
+
+    private var listener: ListenerRegistration?
+    private var authHandle: AuthStateDidChangeListenerHandle?
+
+    deinit {
+        listener?.remove()
+        if let authHandle {
+            Auth.auth().removeStateDidChangeListener(authHandle)
+        }
+    }
+
+    func startListening() {
+        guard FirebaseApp.app() != nil else {
+            clients = []
+            error = "Cloud is not configured on this device."
+            return
+        }
+
+        if authHandle == nil {
+            authHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+                Task { @MainActor in
+                    self?.restartListener(uid: user?.uid)
+                }
+            }
+        }
+
+        restartListener(uid: Auth.auth().currentUser?.uid)
+    }
+
+    func stopListening() {
+        listener?.remove()
+        listener = nil
+        isLoading = false
+    }
+
+    func revoke(_ client: RemoteMCPClientRecord) async {
+        guard !client.isRevoked else { return }
+        revokingClientID = client.id
+        error = nil
+        do {
+            try await FunctionsRepository.shared.revokeRemoteMcpClient(clientID: client.id)
+        } catch {
+            self.error = error.localizedDescription
+        }
+        revokingClientID = nil
+    }
+
+    private func restartListener(uid: String?) {
+        listener?.remove()
+        listener = nil
+        error = nil
+        guard let uid else {
+            clients = []
+            isLoading = false
+            error = "Sign in to view connected MCP clients."
+            return
+        }
+
+        isLoading = true
+        listener = Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("remote_mcp_clients")
+            .order(by: "updatedAt", descending: true)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.isLoading = false
+                    if let error {
+                        self.clients = []
+                        self.error = error.localizedDescription
+                        return
+                    }
+
+                    self.clients = (snapshot?.documents ?? [])
+                        .compactMap { Self.decode(documentID: $0.documentID, data: $0.data()) }
+                        .sorted { lhs, rhs in
+                            (lhs.lastUsedAt ?? lhs.createdAt ?? .distantPast) > (rhs.lastUsedAt ?? rhs.createdAt ?? .distantPast)
+                        }
+                }
+            }
+    }
+
+    private static func decode(documentID: String, data: [String: Any]) -> RemoteMCPClientRecord {
+        let clientID = (data["clientId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayName = (data["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clientType = (data["clientType"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let scopes = data["allowedScopes"] as? [String] ?? []
+        let grantMode = (data["grantMode"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return RemoteMCPClientRecord(
+            id: clientID?.isEmpty == false ? clientID! : documentID,
+            displayName: displayName?.isEmpty == false ? displayName! : "OpenBurnBar MCP client",
+            clientType: clientType ?? "",
+            allowedScopes: scopes,
+            grantMode: grantMode ?? "local_decrypt_shim",
+            createdAt: date(from: data["createdAt"]),
+            lastUsedAt: date(from: data["lastUsedAt"]),
+            revokedAt: date(from: data["revokedAt"])
+        )
+    }
+
+    private static func date(from value: Any?) -> Date? {
+        if let timestamp = value as? Timestamp { return timestamp.dateValue() }
+        if let date = value as? Date { return date }
+        if let seconds = value as? TimeInterval { return Date(timeIntervalSince1970: seconds) }
+        if let string = value as? String { return ISO8601DateFormatter().date(from: string) }
+        return nil
+    }
+}
+
 private struct RemoteMCPSetupCard: View {
     let isActive: Bool
+    @ObservedObject var clientStore: RemoteMCPClientStore
 
     private let endpoint = "https://mcp.openburnbar.com/mcp"
     private let stdioCommand = "openburnbar-mcp-remote mcp serve"
@@ -631,6 +782,10 @@ private struct RemoteMCPSetupCard: View {
                 RemoteMCPCommandRow(label: "Endpoint", value: endpoint)
                 RemoteMCPCommandRow(label: "Stdio shim", value: stdioCommand)
                 RemoteMCPCommandRow(label: "Doctor", value: doctorCommand)
+            }
+
+            if isActive {
+                RemoteMCPConnectedClientsSection(store: clientStore)
             }
 
             HStack(spacing: MobileTheme.Spacing.md) {
@@ -662,6 +817,158 @@ private struct RemoteMCPSetupCard: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Remote MCP. \(isActive ? "Included with your subscription." : "Requires BurnBar Pro.") Endpoint \(endpoint). Stdio shim \(stdioCommand). Doctor \(doctorCommand).")
+        .onAppear {
+            if isActive {
+                clientStore.startListening()
+            }
+        }
+        .onChange(of: isActive) { _, active in
+            if active {
+                clientStore.startListening()
+            } else {
+                clientStore.stopListening()
+            }
+        }
+        .onDisappear {
+            clientStore.stopListening()
+        }
+    }
+}
+
+private struct RemoteMCPConnectedClientsSection: View {
+    @ObservedObject var store: RemoteMCPClientStore
+    @State private var pendingRevoke: RemoteMCPClientRecord?
+    @State private var isConfirmingRevoke = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.sm) {
+            HStack {
+                Label("Connected clients", systemImage: "rectangle.connected.to.line.below")
+                    .font(MobileTheme.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(MobileTheme.Colors.textPrimary)
+                Spacer()
+                if store.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            if let error = store.error {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.error)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if store.clients.isEmpty && !store.isLoading {
+                Text("No MCP clients are connected yet.")
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ForEach(store.clients) { client in
+                    RemoteMCPClientRow(
+                        client: client,
+                        isRevoking: store.revokingClientID == client.id,
+                        onRevoke: {
+                            pendingRevoke = client
+                            isConfirmingRevoke = true
+                        }
+                    )
+                }
+            }
+        }
+        .padding(.top, MobileTheme.Spacing.xs)
+        .confirmationDialog(
+            "Revoke MCP client?",
+            isPresented: $isConfirmingRevoke,
+            titleVisibility: .visible
+        ) {
+            if let pendingRevoke {
+                Button("Revoke \(pendingRevoke.displayName)", role: .destructive) {
+                    Task { await store.revoke(pendingRevoke) }
+                }
+            }
+        } message: {
+            if let pendingRevoke {
+                Text("This immediately blocks \(pendingRevoke.displayName) and revokes its outstanding grants.")
+            }
+        }
+    }
+}
+
+private struct RemoteMCPClientRow: View {
+    let client: RemoteMCPClientRecord
+    let isRevoking: Bool
+    let onRevoke: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: MobileTheme.Spacing.sm) {
+                Image(systemName: client.isRevoked ? "xmark.seal.fill" : "checkmark.seal.fill")
+                    .foregroundStyle(client.isRevoked ? MobileTheme.Colors.textMuted : MobileTheme.Colors.success)
+                    .padding(.top, 2)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(client.displayName)
+                        .font(MobileTheme.Typography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .lineLimit(2)
+                    Text("\(client.displayType) · \(client.modeSummary)")
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textSecondary)
+                        .lineLimit(2)
+                    Text(client.scopeSummary)
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: MobileTheme.Spacing.sm)
+
+                if client.isRevoked {
+                    Text("Revoked")
+                        .font(MobileTheme.Typography.tiny)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                } else {
+                    Button(role: .destructive, action: onRevoke) {
+                        if isRevoking {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "xmark.circle.fill")
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(MobileTheme.Colors.error)
+                    .accessibilityLabel("Revoke \(client.displayName)")
+                    .disabled(isRevoking)
+                }
+            }
+
+            HStack(spacing: MobileTheme.Spacing.sm) {
+                if let lastUsedAt = client.lastUsedAt {
+                    Label("Used \(lastUsedAt, style: .relative)", systemImage: "clock.arrow.circlepath")
+                } else if let createdAt = client.createdAt {
+                    Label("Added \(createdAt, style: .relative)", systemImage: "plus.circle")
+                } else {
+                    Label("Awaiting first use", systemImage: "clock")
+                }
+            }
+            .font(MobileTheme.Typography.tiny)
+            .foregroundStyle(MobileTheme.Colors.textMuted)
+        }
+        .padding(MobileTheme.Spacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.58))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.sm, style: .continuous)
+                .stroke(client.isRevoked ? MobileTheme.Colors.border.opacity(0.5) : MobileTheme.Colors.success.opacity(0.24), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .combine)
     }
 }
 

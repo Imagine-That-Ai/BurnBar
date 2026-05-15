@@ -31,7 +31,7 @@ are still missing.
 | Local shim for stdio clients and local decrypt | `tools/openburnbar-mcp-remote/src/*` | Tests/lint passed |
 | Installer output for Codex, Claude Code, Droid/Factory, Kimi, Forge, generic | `tools/openburnbar-mcp-remote/src/installers.ts`, `src/installers.test.ts`, `scripts/test-hosted-mcp-compatibility.sh` | Hermetic verification only |
 | Doctor command | `tools/openburnbar-mcp-remote/src/doctor.ts` | Source present; live doctor proof missing |
-| App UX for setup/status/revoke | `OpenBurnBarMobile/Views/Store/CloudStoreView.swift` shows setup/status copy | Partial: setup/status present; live client list/revoke UI not complete |
+| App UX for setup/status/revoke | `OpenBurnBarMobile/Views/Store/CloudStoreView.swift` shows setup/status copy, lists `remote_mcp_clients`, displays scopes/last-used/decrypt mode/status, and calls `revokeRemoteMcpClient`; targeted iOS build passed | iOS/iPadOS member UI implemented; macOS/Android parity not verified |
 | Production deploy | `scripts/deploy-hosted-mcp.sh` deployed `openburnbar-hosted-mcp-00002-d4f` | Cloud Run deployed at generated URL |
 | Domain `mcp.openburnbar.com` or fallback `mcp.burnbar.ai` | `curl https://mcp.openburnbar.com/readyz`; `gcloud beta run domain-mappings create ...`; `gcloud domains list-user-verified` | Fails DNS resolution; both domain mappings blocked because neither `openburnbar.com` nor `burnbar.ai` is verified in this Google account |
 | Live paid/unpaid/revoked/cross-tenant proof | `functions/scripts/prove-hosted-mcp-live.mjs`; controlled temporary Firestore proof users against generated Cloud Run URL | Paid/unpaid/revoked passed; cross-tenant and real subscriber proof still missing |
@@ -53,6 +53,7 @@ npm --prefix functions test
 ./scripts/test-hosted-mcp-security.sh
 ./scripts/test-hosted-mcp-compatibility.sh
 ./scripts/test-openburnbar-swift.sh
+xcodebuild -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
 ```
 
 Failed or blocked:
@@ -117,8 +118,8 @@ but the full app gate is not green.
    endpoint.
 3. Run real client compatibility for Codex, Claude Code, Droid/Factory, Kimi,
    Forge, and generic MCP.
-4. Add real connected-client list/revoke UI or explicitly scope it out with a
-   follow-up owner/date.
+4. Add or verify macOS and Android parity for connected-client list/revoke UI,
+   or explicitly scope those surfaces out with a follow-up owner/date.
 5. Verify Cloud logs and Firestore contain no plaintext query/session/body/token
    leakage.
 6. Create/rehearse alerts and rollback.

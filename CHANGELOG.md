@@ -18,8 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and local sealed-result decrypt support. Functions now include remote MCP
   grant/client helpers and callable grant/revoke entrypoints; Firestore rules
   deny direct client writes to remote MCP grant, audit, rate-limit, and manifest
-  docs. Docs and deploy/security/compatibility proof scripts cover the launch
-  path; live production proof still requires deployed Cloud Run/domain/secrets.
+  docs. The iOS/iPadOS Cloud membership screen now lists connected hosted MCP
+  clients with scopes, decrypt mode, last-used status, and a revoke action wired
+  to the server callable. Docs and deploy/security/compatibility proof scripts
+  cover the launch path; live production proof still requires the branded
+  domain and final client matrix.
 - **BurnBar Pro adds encrypted hosted session search.** Premium services now
   supplement Hosted Quota instead of replacing it: active `burnbar_pro`
   entitlements unlock hosted MiniMax-backed LLM answers, Hosted Quota, and

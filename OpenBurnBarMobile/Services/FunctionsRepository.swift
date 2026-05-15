@@ -370,6 +370,11 @@ final class FunctionsRepository {
         _ = try await callable.call(["connectionId": connectionId])
     }
 
+    func revokeRemoteMcpClient(clientID: String) async throws {
+        let callable = functions.httpsCallable("revokeRemoteMcpClient")
+        _ = try await callable.call(["clientId": clientID])
+    }
+
     // MARK: Pi Agent host pairing
 
     func createPiAgentPairing(
