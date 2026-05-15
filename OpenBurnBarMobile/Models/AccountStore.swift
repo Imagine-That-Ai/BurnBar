@@ -5,6 +5,14 @@ import FirebaseAuth
 @Observable
 @MainActor
 final class AccountStore {
+    /// Process-wide shared instance for views that need a read-only
+    /// snapshot of the user's connected providers without owning the
+    /// store's lifecycle (notably the assistant model picker, which only
+    /// needs `connectedProviderIDs`). Long-lived views (Account, You)
+    /// still construct their own instance so they get their own loading
+    /// state.
+    static let shared = AccountStore()
+
     private let authRepo: AuthRepository
     private let firestore: FirestoreRepository
 
@@ -15,6 +23,16 @@ final class AccountStore {
     private(set) var connections: [ProviderConnectionDoc] = []
     private(set) var providerAccounts: [ProviderAccountDoc] = []
     private(set) var syncHealth: SyncHealth = .unknown
+
+    /// Providers the user has actually connected and that can route a
+    /// request right now. Includes `.stale` because a recently-expired
+    /// token is still routable until the next validation cycle — dropping
+    /// it would flicker the picker's reachability set away.
+    var connectedProviderIDs: Set<ProviderID> {
+        Set(providerAccounts
+            .filter { $0.status == .connected || $0.status == .stale }
+            .map(\.providerID))
+    }
 
     // MARK: - Multi-profile support (iPad Settings)
     private(set) var profiles: [BurnBarProfile] = []

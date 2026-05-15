@@ -91,6 +91,49 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertTrue(record.messages.first?.toolUses.isEmpty ?? false)
     }
 
+    func test_buildArchivedLogRecord_indexesProviderLogWithoutPlaintextTranscript() throws {
+        let start = Date(timeIntervalSince1970: 1_730_000_000)
+        let conversation = ConversationRecord(
+            id: ConversationRecord.stableId(provider: .codex, sessionId: "thread-123"),
+            provider: .codex,
+            sessionId: "thread-123",
+            projectName: "BurnBar",
+            startTime: start,
+            endTime: start.addingTimeInterval(60),
+            messageCount: 4,
+            userWordCount: 8,
+            assistantWordCount: 80,
+            keyFiles: ["AgentLens/App.swift"],
+            keyCommands: ["swift test"],
+            keyTools: ["exec_command"],
+            inferredTaskTitle: "Fix startup",
+            lastAssistantMessage: "Done and verified.",
+            fullText: "very private transcript body",
+            indexedAt: start,
+            fileModifiedAt: start,
+            summary: nil
+        )
+
+        let record = try XCTUnwrap(
+            CLIAgentSessionMirror.buildArchivedLogRecord(
+                conversation: conversation,
+                cloudLogDocumentID: "mac_codex_thread_123"
+            )
+        )
+
+        XCTAssertEqual(record.agent, .codex)
+        XCTAssertEqual(record.sourceKind, .archivedLog)
+        XCTAssertEqual(record.title, "Fix startup")
+        XCTAssertEqual(record.preview, "Done and verified.")
+        XCTAssertEqual(record.workspaceLabel, "BurnBar")
+        XCTAssertTrue(record.messages.isEmpty, "Archive index rows must not duplicate the encrypted transcript in plaintext")
+        XCTAssertTrue(record.encryptedTranscriptAvailable)
+        XCTAssertEqual(record.resumeHandle?.providerSessionID, "thread-123")
+        XCTAssertEqual(record.resumeHandle?.commandHint, "codex resume \"thread-123\"")
+        XCTAssertTrue(record.resumeHandle?.canResume ?? false)
+        XCTAssertTrue(record.resumeHandle?.canFork ?? false)
+    }
+
     func test_build_titleFallsBackToDefault_whenNoUserMessage() {
         let assistantOnly = ChatMessageRecord(
             id: "a1",

@@ -77,6 +77,7 @@ final class SessionLogSyncService: CloudSyncDomain {
                    existing["chunkMetadataVersion"] as? Int == Self.chunkMetadataVersion,
                    existing["cloudSearchIndexVersion"] as? Int == Self.cloudSearchIndexVersion,
                    existing["bodyStorage"] as? String == "firebase_storage_encrypted" {
+                    await CLIAgentSessionMirror.shared.mirrorArchivedLog(record, cloudLogDocumentID: docId)
                     try context.dataStore.markSessionLogsSynced(ids: [record.id])
                     continue
                 }
@@ -224,6 +225,7 @@ final class SessionLogSyncService: CloudSyncDomain {
                         try await batch.commit()
                     }
                 }
+                await CLIAgentSessionMirror.shared.mirrorArchivedLog(record, cloudLogDocumentID: docId)
             }
 
             let ids = unsynced.map(\.id)
@@ -316,6 +318,70 @@ final class SessionLogSyncService: CloudSyncDomain {
         ])
     }
 
+    func uploadProjectMemorySnapshot(_ snapshot: ProjectMemorySnapshot) async throws {
+        guard context.accountManager.isFirebaseAvailable,
+              context.accountManager.isSignedIn,
+              context.accountManager.isCloudSyncEnabled,
+              context.settingsManager.sessionLogCloudBackupEnabled,
+              !context.syncIsSuppressed(),
+              let uid = context.currentUID else { return }
+
+        let vaultKey = try vaultKeyStore.getOrCreateKey(uid: uid)
+        try await publishCloudVaultKey(uid: uid, vaultKey: vaultKey)
+
+        let payload = try Self.jsonData(snapshot)
+        let sealedSnapshot = try CloudVaultCrypto.sealBlob(payload, keyData: vaultKey)
+        let visualKinds = Array(Set(snapshot.visuals.map(\.kind.rawValue))).sorted()
+
+        do {
+            _ = try await functions.httpsCallable("commitEncryptedProjectMemorySnapshot").call([
+                "projectSlug": snapshot.projectSlug,
+                "projectDisplayName": snapshot.projectDisplayName,
+                "contentHash": snapshot.contentHash,
+                "sourceSessionCount": snapshot.sourceSessionCount,
+                "sourceConversationCount": snapshot.sourceConversationCount,
+                "generatedAt": Self.iso8601.string(from: snapshot.generatedAt),
+                "freshness": snapshot.freshness.rawValue,
+                "visualKinds": visualKinds,
+                "sealedSnapshot": try Self.dictionary(sealedSnapshot)
+            ])
+        } catch {
+            if Self.isPermissionDeniedFunctionsError(error) { return }
+            throw error
+        }
+    }
+
+    func fetchCloudProjectMemorySnapshot(projectSlug: String) async throws -> ProjectMemorySnapshot? {
+        guard context.accountManager.isFirebaseAvailable,
+              context.accountManager.isSignedIn,
+              context.accountManager.isCloudSyncEnabled,
+              context.settingsManager.sessionLogCloudBackupEnabled,
+              !context.syncIsSuppressed(),
+              let uid = context.currentUID else { return nil }
+
+        guard let vaultKey = try vaultKeyStore.loadKey(uid: uid) else { return nil }
+        let result: HTTPSCallableResult
+        do {
+            result = try await functions.httpsCallable("getEncryptedProjectMemorySnapshot").call([
+                "projectSlug": projectSlug
+            ])
+        } catch {
+            if Self.isPermissionDeniedFunctionsError(error) { return nil }
+            throw error
+        }
+        guard let payload = result.data as? [String: Any],
+              let snapshotPayload = payload["snapshot"] as? [String: Any],
+              let sealedSnapshot = snapshotPayload["sealedSnapshot"] else {
+            return nil
+        }
+        let sealedData = try JSONSerialization.data(withJSONObject: sealedSnapshot)
+        let envelope = try JSONDecoder().decode(CloudVaultBlobEnvelope.self, from: sealedData)
+        let plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: vaultKey)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(ProjectMemorySnapshot.self, from: plaintext)
+    }
+
     private func publishCloudVaultKey(uid: String, vaultKey: Data) async throws {
         let keypair = try CloudVaultDeviceKeypair(account: "cloud-vault-device:\(context.deviceId)")
         let userRef = context.firestoreGateway.collection("users").document(uid)
@@ -392,6 +458,21 @@ final class SessionLogSyncService: CloudSyncDomain {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         return try encoder.encode(value)
+    }
+
+    private static let iso8601: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static func isPermissionDeniedFunctionsError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == FunctionsErrorDomain,
+              let code = FunctionsErrorCode(rawValue: nsError.code) else {
+            return false
+        }
+        return code == .permissionDenied || code == .unauthenticated || code == .failedPrecondition
     }
 
     private static func normalizedTerms(from text: String) -> [String] {

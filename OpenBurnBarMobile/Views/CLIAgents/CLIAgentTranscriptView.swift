@@ -28,8 +28,12 @@ struct CLIAgentTranscriptView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
                     metadataBanner
-                    ForEach(liveSession.messages) { message in
-                        bubble(for: message)
+                    if liveSession.messages.isEmpty, liveSession.sourceKind == .archivedLog {
+                        archivedLogBanner
+                    } else {
+                        ForEach(liveSession.messages) { message in
+                            bubble(for: message)
+                        }
                     }
                     if !liveSession.isCompleted {
                         liveIndicator
@@ -72,12 +76,58 @@ struct CLIAgentTranscriptView: View {
                     .font(MobileTheme.Typography.tiny)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
             }
+            if session.sourceKind == .archivedLog {
+                Label("Encrypted cloud archive", systemImage: "lock.doc")
+                    .font(MobileTheme.Typography.tiny)
+                    .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
         }
         .padding(.horizontal, MobileTheme.Spacing.md)
         .padding(.vertical, MobileTheme.Spacing.sm)
         .background(
             RoundedRectangle(cornerRadius: MobileTheme.Radius.md, style: .continuous)
                 .fill(accent.opacity(0.10))
+        )
+    }
+
+    @ViewBuilder
+    private var archivedLogBanner: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Archived provider session", systemImage: "lock.doc")
+                .font(MobileTheme.Typography.body.weight(.semibold))
+                .foregroundStyle(accent)
+            Text(liveSession.encryptedTranscriptAvailable
+                 ? "The full transcript is stored in your encrypted cloud session log index. Search Hermes Square to open matching encrypted snippets."
+                 : "This session was indexed from the paired Mac.")
+                .font(MobileTheme.Typography.caption)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+            if let handle = liveSession.resumeHandle {
+                VStack(alignment: .leading, spacing: 4) {
+                    if handle.canResume {
+                        Text("Resume on Mac")
+                            .font(MobileTheme.Typography.tiny.weight(.semibold))
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                    }
+                    if let command = handle.commandHint {
+                        Text(command)
+                            .font(MobileTheme.Typography.tiny.monospaced())
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                            .lineLimit(2)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(MobileTheme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.78))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
+                .stroke(accent.opacity(0.45), lineWidth: 0.7)
         )
     }
 

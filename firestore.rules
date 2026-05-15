@@ -623,6 +623,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           "id",
           "agent",
+          "sourceKind",
           "title",
           "preview",
           "modelName",
@@ -632,11 +633,14 @@ service cloud.firestore {
           "endedAt",
           "schemaVersion",
           "messages",
-          "tokenUsage"
+          "tokenUsage",
+          "resumeHandle",
+          "encryptedTranscriptAvailable"
         ])
         && request.resource.data.id is string
         && request.resource.data.id.size() <= 512
         && request.resource.data.agent in ["codex", "claude", "openclaw"]
+        && (!("sourceKind" in request.resource.data) || request.resource.data.sourceKind in ["live_chat", "archived_log"])
         && request.resource.data.title is string
         && request.resource.data.title.size() <= 512
         && request.resource.data.preview is string
@@ -644,7 +648,26 @@ service cloud.firestore {
         && request.resource.data.schemaVersion is int
         && (!("modelName" in request.resource.data) || (request.resource.data.modelName is string && request.resource.data.modelName.size() <= 256))
         && (!("workspaceLabel" in request.resource.data) || (request.resource.data.workspaceLabel is string && request.resource.data.workspaceLabel.size() <= 512))
-        && (!("messages" in request.resource.data) || (request.resource.data.messages is list && request.resource.data.messages.size() <= 200));
+        && (!("messages" in request.resource.data) || (request.resource.data.messages is list && request.resource.data.messages.size() <= 200))
+        && (!("encryptedTranscriptAvailable" in request.resource.data) || request.resource.data.encryptedTranscriptAvailable is bool)
+        && (!("resumeHandle" in request.resource.data) || (
+          request.resource.data.resumeHandle is map
+          && request.resource.data.resumeHandle.keys().hasOnly([
+            "providerSessionID",
+            "projectLabel",
+            "commandHint",
+            "canResume",
+            "canFork",
+            "canForward"
+          ])
+          && request.resource.data.resumeHandle.providerSessionID is string
+          && request.resource.data.resumeHandle.providerSessionID.size() <= 512
+          && (!("projectLabel" in request.resource.data.resumeHandle) || (request.resource.data.resumeHandle.projectLabel is string && request.resource.data.resumeHandle.projectLabel.size() <= 512))
+          && (!("commandHint" in request.resource.data.resumeHandle) || (request.resource.data.resumeHandle.commandHint is string && request.resource.data.resumeHandle.commandHint.size() <= 512))
+          && (!("canResume" in request.resource.data.resumeHandle) || request.resource.data.resumeHandle.canResume is bool)
+          && (!("canFork" in request.resource.data.resumeHandle) || request.resource.data.resumeHandle.canFork is bool)
+          && (!("canForward" in request.resource.data.resumeHandle) || request.resource.data.resumeHandle.canForward is bool)
+        ));
       allow delete: if ownsUserNamespace(userId);
     }
 

@@ -23,8 +23,10 @@ struct AssistantModelPickerSheet: View {
     var onChange: ((AssistantModelOption) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
+    @State private var accountStore = AccountStore.shared
     @State private var refreshing = false
     @State private var cliPreference: String? = nil
+    @State private var showProviderWizard: AgentProvider? = nil
 
     var body: some View {
         NavigationStack {
@@ -47,7 +49,7 @@ struct AssistantModelPickerSheet: View {
                     Button("Done") { dismiss() }
                         .fontWeight(.semibold)
                 }
-                if runtime == .hermes || runtime == .pi {
+                if runtime == .hermes || runtime == .pi || runtime == .openClaw {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             Task { await refreshLive() }
@@ -66,6 +68,21 @@ struct AssistantModelPickerSheet: View {
                 // Bundled copy is shown immediately; this swaps it in
                 // when the network call returns.
                 AssistantModelCatalog.refreshRemote()
+                // Kick the live relays too — the merger trusts these
+                // first, so the user sees real data as soon as it lands.
+                await refreshLive()
+            }
+        }
+        .sheet(item: $showProviderWizard) { provider in
+            NavigationStack {
+                MobileProviderWizardView(
+                    preselectedProvider: provider,
+                    onConnected: { _ in
+                        showProviderWizard = nil
+                        Task { await accountStore.fetchConnections() }
+                    },
+                    onCancel: { showProviderWizard = nil }
+                )
             }
         }
     }
@@ -136,40 +153,64 @@ struct AssistantModelPickerSheet: View {
 
     @ViewBuilder
     private var modelGroups: some View {
-        // Every harness routes to the same broad universe of frontier
-        // models, so the picker always offers the full catalog. For
-        // Hermes/Pi we additionally honor the live relay's favorite list
-        // and call `selectModel(_:)` on the service so the change applies
-        // instantly. For the CLI harnesses (Codex / Claude / OpenClaw) we
-        // persist via `CLIAgentModelPreferences` because their Mac binary
-        // reads the preference at the next session boundary.
-        catalogGroups()
+        // Three sources merged into one ordered, reachability-tagged list:
+        //   1. Live relay (HermesService / PiService advertised models)
+        //   2. User's connected provider accounts (AccountStore)
+        //   3. Bundled / remote catalog (AssistantModelCatalog)
+        // The merger drops the broken `hermes-agent` / `pi-agent` self-loop.
+        mergedGroups()
     }
 
-    private func catalogGroups() -> some View {
-        let options = AssistantModelCatalog.options(for: runtime)
-        let grouped = Dictionary(grouping: options, by: { $0.providerName })
-        let sortedProviderNames = preservedProviderOrder(in: options)
+    /// Build the merger input and render grouped rows. Live rows win on
+    /// conflict; catalog rows backed by a connected account get tagged
+    /// `.connectedOnIOS`; everything else is `.unreachable` (dimmed + CTA).
+    private func mergedGroups() -> some View {
+        let liveRelay = currentLiveRelayOptions()
+        let catalog = AssistantModelCatalog.options(for: runtime)
+        let connected = accountStore.connectedProviderIDs
+
+        let rows = AssistantModelMerger.merge(
+            runtime: runtime,
+            liveRelay: liveRelay,
+            catalog: catalog,
+            connectedProviderIDs: connected
+        )
+
+        let grouped = Dictionary(grouping: rows, by: { $0.option.providerName })
+        let sortedProviderNames = preservedProviderOrder(in: rows)
 
         return VStack(alignment: .leading, spacing: MobileTheme.Spacing.lg) {
             favoritesGroupIfAny()
             ForEach(sortedProviderNames, id: \.self) { providerName in
-                if let providerOptions = grouped[providerName] {
-                    providerGroup(providerName: providerName, options: providerOptions)
+                if let providerRows = grouped[providerName] {
+                    providerGroup(providerName: providerName, rows: providerRows)
                 }
             }
             resetButton
         }
     }
 
-    /// Preserve the catalog's intentional ordering (newest provider first,
-    /// most capable model first) rather than alphabetising.
-    private func preservedProviderOrder(in options: [AssistantModelOption]) -> [String] {
+    /// Pull the live relay's advertised models for the active runtime.
+    /// OpenClaw reads from its own dedicated service. Codex/Claude have
+    /// no mobile-native discovery yet — those return `[]` and the merger
+    /// fills exclusively from the catalog + connected accounts.
+    private func currentLiveRelayOptions() -> [HermesRuntimeModelOption] {
+        switch runtime {
+        case .hermes:           return hermesService.modelOptions
+        case .pi:               return piService.modelOptions
+        case .openClaw:         return OpenClawService.shared.modelOptions
+        case .codex, .claude:   return []
+        }
+    }
+
+    /// Preserve the merger's stable ordering (catalog ordering, then any
+    /// live-only providers appended at the end) rather than alphabetising.
+    private func preservedProviderOrder(in rows: [AssistantModelMerger.Row]) -> [String] {
         var seen = Set<String>()
         var ordered: [String] = []
-        for option in options where !seen.contains(option.providerName) {
-            seen.insert(option.providerName)
-            ordered.append(option.providerName)
+        for row in rows where !seen.contains(row.option.providerName) {
+            seen.insert(row.option.providerName)
+            ordered.append(row.option.providerName)
         }
         return ordered
     }
@@ -185,7 +226,11 @@ struct AssistantModelPickerSheet: View {
             if !piService.favoriteModelOptions.isEmpty {
                 liveFavoritesGroup(favorites: piService.favoriteModelOptions, service: .pi)
             }
-        case .codex, .claude, .openClaw:
+        case .openClaw:
+            if !OpenClawService.shared.favoriteModelOptions.isEmpty {
+                liveFavoritesGroup(favorites: OpenClawService.shared.favoriteModelOptions, service: .openClaw)
+            }
+        case .codex, .claude:
             EmptyView()
         }
     }
@@ -196,14 +241,15 @@ struct AssistantModelPickerSheet: View {
             sectionLabel("Favorites", systemName: "star.fill", tint: MobileTheme.amber)
             ForEach(favorites) { option in
                 modelRow(option: option.asAssistantModelOption,
+                         reachability: .liveOnRelay,
                          isFavoriteToggleable: true,
                          isFavorite: true)
             }
         }
     }
 
-    private func providerGroup(providerName: String, options: [AssistantModelOption]) -> some View {
-        let provider = hermesAgentProvider(for: options.first?.providerID ?? providerName)
+    private func providerGroup(providerName: String, rows: [AssistantModelMerger.Row]) -> some View {
+        let provider = hermesAgentProvider(for: rows.first?.option.providerID ?? providerName)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 UnifiedProviderLogoView(provider: provider, size: 22)
@@ -214,65 +260,84 @@ struct AssistantModelPickerSheet: View {
                     .textCase(.uppercase)
                     .tracking(0.5)
                 Spacer()
-                Text("\(options.count)")
+                Text("\(rows.count)")
                     .font(MobileTheme.Typography.tiny)
                     .foregroundStyle(MobileTheme.Colors.textMuted)
             }
-            ForEach(options) { option in
-                modelRow(option: option,
-                         isFavoriteToggleable: runtime == .hermes || runtime == .pi,
-                         isFavorite: isFavorited(option))
+            ForEach(rows) { row in
+                modelRow(
+                    option: row.option,
+                    reachability: row.reachability,
+                    isFavoriteToggleable: (runtime == .hermes
+                                           || runtime == .pi
+                                           || runtime == .openClaw)
+                        && row.reachability == .liveOnRelay,
+                    isFavorite: isFavorited(row.option)
+                )
             }
         }
     }
 
     private func isFavorited(_ option: AssistantModelOption) -> Bool {
         switch runtime {
-        case .hermes: return hermesService.isFavoriteModel(option.asHermesRuntimeModelOption)
-        case .pi:     return piService.isFavoriteModel(option.asHermesRuntimeModelOption)
-        case .codex, .claude, .openClaw: return false
+        case .hermes:   return hermesService.isFavoriteModel(option.asHermesRuntimeModelOption)
+        case .pi:       return piService.isFavoriteModel(option.asHermesRuntimeModelOption)
+        case .openClaw: return OpenClawService.shared.isFavoriteModel(option.asHermesRuntimeModelOption)
+        case .codex, .claude: return false
         }
     }
 
     private func currentModelID() -> String? {
         switch runtime {
-        case .hermes: return hermesService.selectedModelID
-        case .pi:     return piService.selectedModelID
-        case .codex, .claude, .openClaw:
+        case .hermes:   return hermesService.selectedModelID
+        case .pi:       return piService.selectedModelID
+        case .openClaw: return OpenClawService.shared.selectedModelID
+        case .codex, .claude:
             return cliPreference ?? CLIAgentModelPreferences.preferredModelID(for: runtime)
         }
     }
 
     private func modelRow(option: AssistantModelOption,
+                          reachability: AssistantModelMerger.Row.Reachability = .liveOnRelay,
                           isFavoriteToggleable: Bool,
                           isFavorite: Bool) -> some View {
-        let isSelected = currentModelID() == option.modelID
+        let isSelected = currentModelID() == option.modelID && reachability != .unreachable
+        let isUnreachable = reachability == .unreachable
+        let rowOpacity: Double = isUnreachable ? 0.55 : 1.0
+
         return HStack(spacing: 10) {
             Button {
-                applySelection(option)
+                if isUnreachable {
+                    showProviderWizard = inferAgentProvider(for: option)
+                } else {
+                    applySelection(option)
+                }
             } label: {
                 HStack(spacing: MobileTheme.Spacing.md) {
                     UnifiedProviderLogoView(
                         provider: hermesAgentProvider(for: option.providerID + " " + option.modelID),
                         size: 32
                     )
+                    .opacity(rowOpacity)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(option.displayName)
-                            .font(MobileTheme.Typography.body)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(MobileTheme.Colors.textPrimary)
-                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(option.displayName)
+                                .font(MobileTheme.Typography.body)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(MobileTheme.Colors.textPrimary)
+                                .lineLimit(1)
+                            reachabilityBadge(reachability)
+                        }
                         Text(option.modelID)
                             .font(MobileTheme.Typography.tiny)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                             .lineLimit(1)
                     }
+                    .opacity(rowOpacity)
                     Spacer()
-                    if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 19, weight: .bold))
-                            .foregroundStyle(MobileTheme.success)
-                    }
+                    trailingAccessory(option: option,
+                                      reachability: reachability,
+                                      isSelected: isSelected)
                 }
                 .padding(MobileTheme.Spacing.sm)
                 .background(
@@ -288,6 +353,7 @@ struct AssistantModelPickerSheet: View {
                 )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(accessibilityLabel(for: option, reachability: reachability))
 
             if isFavoriteToggleable {
                 Button {
@@ -308,13 +374,87 @@ struct AssistantModelPickerSheet: View {
         }
     }
 
+    // MARK: Reachability affordances
+
+    @ViewBuilder
+    private func reachabilityBadge(_ reachability: AssistantModelMerger.Row.Reachability) -> some View {
+        switch reachability {
+        case .liveOnRelay:
+            EmptyView()
+        case .connectedOnIOS:
+            tagPill(text: "Account", tint: MobileTheme.hermesAureate)
+        case .unreachable:
+            tagPill(text: "Connect", tint: MobileTheme.amber)
+        }
+    }
+
+    @ViewBuilder
+    private func trailingAccessory(
+        option: AssistantModelOption,
+        reachability: AssistantModelMerger.Row.Reachability,
+        isSelected: Bool
+    ) -> some View {
+        switch reachability {
+        case .unreachable:
+            Image(systemName: "plus.circle.fill")
+                .font(.system(size: 19, weight: .bold))
+                .foregroundStyle(MobileTheme.amber)
+        case .liveOnRelay, .connectedOnIOS:
+            if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(MobileTheme.success)
+            }
+        }
+    }
+
+    private func tagPill(text: String, tint: Color) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .heavy, design: .rounded))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                Capsule().fill(tint.opacity(0.15))
+            )
+            .overlay(
+                Capsule().stroke(tint.opacity(0.35), lineWidth: 0.5)
+            )
+    }
+
+    private func accessibilityLabel(
+        for option: AssistantModelOption,
+        reachability: AssistantModelMerger.Row.Reachability
+    ) -> String {
+        switch reachability {
+        case .liveOnRelay:    return "\(option.displayName), available on relay"
+        case .connectedOnIOS: return "\(option.displayName), account connected"
+        case .unreachable:    return "\(option.displayName), tap to connect provider"
+        }
+    }
+
+    /// Best-effort map from a model's provider ID to the `AgentProvider`
+    /// the wizard knows how to onboard. Falls back to `.openAI` only when
+    /// no match exists — the wizard will still let the user pick.
+    private func inferAgentProvider(for option: AssistantModelOption) -> AgentProvider {
+        let token = ProviderID(rawValue: option.providerID).rawValue
+        if let provider = AgentProvider.mobileAccountConnectableProviders
+            .first(where: { $0.providerID.rawValue == token })
+        {
+            return provider
+        }
+        return hermesAgentProvider(for: option.providerID + " " + option.modelID)
+    }
+
     private func applySelection(_ option: AssistantModelOption) {
         switch runtime {
         case .hermes:
             hermesService.selectModel(option.asHermesRuntimeModelOption)
         case .pi:
             piService.selectModel(option.asHermesRuntimeModelOption)
-        case .codex, .claude, .openClaw:
+        case .openClaw:
+            OpenClawService.shared.selectModel(option.asHermesRuntimeModelOption)
+        case .codex, .claude:
             CLIAgentModelPreferences.setPreferredModelID(option.modelID, for: runtime)
             cliPreference = option.modelID
         }
@@ -329,7 +469,9 @@ struct AssistantModelPickerSheet: View {
             hermesService.toggleFavoriteModel(option.asHermesRuntimeModelOption)
         case .pi:
             piService.toggleFavoriteModel(option.asHermesRuntimeModelOption)
-        case .codex, .claude, .openClaw:
+        case .openClaw:
+            OpenClawService.shared.toggleFavoriteModel(option.asHermesRuntimeModelOption)
+        case .codex, .claude:
             break
         }
         HapticBus.toggle()
@@ -339,9 +481,10 @@ struct AssistantModelPickerSheet: View {
     private var resetButton: some View {
         let hasPreference: Bool = {
             switch runtime {
-            case .hermes: return hermesService.selectedModelID != nil
-            case .pi:     return piService.selectedModelID != nil
-            case .codex, .claude, .openClaw: return cliPreference != nil
+            case .hermes:   return hermesService.selectedModelID != nil
+            case .pi:       return piService.selectedModelID != nil
+            case .openClaw: return OpenClawService.shared.selectedModelID != nil
+            case .codex, .claude: return cliPreference != nil
             }
         }()
         if hasPreference {
@@ -368,8 +511,8 @@ struct AssistantModelPickerSheet: View {
 
     private var resetLabel: String {
         switch runtime {
-        case .hermes, .pi: return "Clear selection (let the relay pick)"
-        case .codex, .claude, .openClaw: return "Clear preference (let the Mac CLI choose)"
+        case .hermes, .pi, .openClaw: return "Clear selection (let the relay pick)"
+        case .codex, .claude:         return "Clear preference (let the Mac CLI choose)"
         }
     }
 
@@ -379,7 +522,9 @@ struct AssistantModelPickerSheet: View {
             hermesService.selectedModelID = nil
         case .pi:
             piService.selectedModelID = nil
-        case .codex, .claude, .openClaw:
+        case .openClaw:
+            OpenClawService.shared.selectedModelID = nil
+        case .codex, .claude:
             CLIAgentModelPreferences.setPreferredModelID(nil, for: runtime)
             cliPreference = nil
         }
@@ -408,9 +553,10 @@ struct AssistantModelPickerSheet: View {
         refreshing = true
         defer { refreshing = false }
         switch runtime {
-        case .hermes: await hermesService.refreshRuntime()
-        case .pi:     await piService.refreshRuntime()
-        case .codex, .claude, .openClaw: break
+        case .hermes:           await hermesService.refreshRuntime()
+        case .pi:               await piService.refreshRuntime()
+        case .openClaw:         await OpenClawService.shared.refreshRuntime()
+        case .codex, .claude:   break
         }
     }
 }

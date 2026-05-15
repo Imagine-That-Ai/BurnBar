@@ -33,6 +33,7 @@ public actor UnifiedSearchIndex {
         case missions
         case artifacts
         case cards
+        case cloudSessions = "cloud_sessions"
         case web
     }
 

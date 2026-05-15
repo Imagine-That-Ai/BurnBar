@@ -417,7 +417,7 @@ private final class MacRemoteMCPClientStore: ObservableObject {
         error = nil
         do {
             let callable = Functions.functions(region: "us-central1").httpsCallable("revokeRemoteMcpClient")
-            _ = try await callable.call(["clientID": client.id])
+            _ = try await callable.call(["clientId": client.id])
         } catch {
             self.error = error.localizedDescription
         }

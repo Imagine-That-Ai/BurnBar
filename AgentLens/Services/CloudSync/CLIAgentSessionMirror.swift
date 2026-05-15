@@ -103,6 +103,37 @@ final class CLIAgentSessionMirror {
         }
     }
 
+    /// Mirror a provider-owned CLI log as a first-class assistant session.
+    /// The full transcript remains in the encrypted `session_logs` cloud
+    /// vault; this plaintext row is only the non-secret index/resume surface
+    /// that lets iOS list, search, and route the session alongside live
+    /// OpenBurnBar chats.
+    func mirrorArchivedLog(_ conversation: ConversationRecord, cloudLogDocumentID: String? = nil) async {
+        guard accountManager.isFirebaseAvailable,
+              accountManager.isSignedIn,
+              accountManager.isCloudSyncEnabled,
+              isEnabled,
+              let uid = accountManager.userID,
+              let record = Self.buildArchivedLogRecord(
+                conversation: conversation,
+                cloudLogDocumentID: cloudLogDocumentID
+              ) else {
+            return
+        }
+
+        let payload = CLIAgentSessionCodec.encode(record)
+        let firestore = firestoreProvider()
+        let docRef = firestore
+            .collection("users").document(uid)
+            .collection("cli_sessions").document(Self.firestoreDocumentID(for: record))
+        do {
+            try await docRef.setData(payload, merge: true)
+            logger.debug("mirrored archived CLI log \(record.id, privacy: .public) agent=\(record.agent.rawValue, privacy: .public)")
+        } catch {
+            logger.warning("Archived CLI mirror upload failed for \(record.id, privacy: .public): \(String(describing: error), privacy: .public)")
+        }
+    }
+
     /// Hard-delete the mirrored copy of a thread (used when the user
     /// deletes the thread locally). Best-effort: failures are logged
     /// and swallowed.
@@ -181,6 +212,95 @@ final class CLIAgentSessionMirror {
             messages: cliMessages,
             tokenUsage: tokenUsage
         )
+    }
+
+    static func buildArchivedLogRecord(
+        conversation: ConversationRecord,
+        cloudLogDocumentID: String? = nil
+    ) -> CLIAgentSessionRecord? {
+        guard conversation.sourceType == .providerLog,
+              let agent = archivedAgent(for: conversation.provider) else {
+            return nil
+        }
+
+        let title = archivedTitle(for: conversation)
+        let preview = archivedPreview(for: conversation)
+        let createdAt = conversation.startTime ?? conversation.indexedAt
+        let updatedAt = conversation.endTime ?? conversation.startTime ?? conversation.indexedAt
+        let handle = CLIAgentResumeHandle(
+            providerSessionID: conversation.sessionId,
+            projectLabel: conversation.projectName.nilIfBlank,
+            commandHint: commandHint(agent: agent, sessionID: conversation.sessionId),
+            canResume: agent == .codex || agent == .claude,
+            canFork: agent == .codex || agent == .claude,
+            canForward: true
+        )
+        let archivedID = [
+            "archive",
+            agent.rawValue,
+            cloudLogDocumentID?.nilIfBlank ?? conversation.id
+        ].joined(separator: ":")
+
+        return CLIAgentSessionRecord(
+            id: archivedID,
+            agent: agent,
+            sourceKind: .archivedLog,
+            title: title,
+            preview: preview,
+            modelName: nil,
+            workspaceLabel: conversation.projectName.nilIfBlank,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            endedAt: updatedAt,
+            messages: [],
+            tokenUsage: nil,
+            resumeHandle: handle,
+            encryptedTranscriptAvailable: true
+        )
+    }
+
+    static func archivedAgent(for provider: AgentProvider) -> CLIAgentRuntime? {
+        switch provider {
+        case .codex: return .codex
+        case .claudeCode: return .claude
+        case .openClaw: return .openClaw
+        default: return nil
+        }
+    }
+
+    static func firestoreDocumentID(for record: CLIAgentSessionRecord) -> String {
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+        let scalars = record.id.unicodeScalars.map { scalar -> Character in
+            allowed.contains(scalar) ? Character(scalar) : "_"
+        }
+        let sanitized = String(scalars).trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        return sanitized.isEmpty ? UUID().uuidString : String(sanitized.prefix(512))
+    }
+
+    private static func archivedTitle(for conversation: ConversationRecord) -> String {
+        if let title = conversation.summaryTitle?.nilIfBlank { return String(title.prefix(120)) }
+        if let summary = conversation.summary?.nilIfBlank { return String(summary.prefix(120)) }
+        return String((conversation.inferredTaskTitle.nilIfBlank ?? conversation.sessionId).prefix(120))
+    }
+
+    private static func archivedPreview(for conversation: ConversationRecord) -> String {
+        let preview = conversation.lastAssistantMessage.nilIfBlank
+            ?? conversation.summary?.nilIfBlank
+            ?? conversation.fullText.nilIfBlank
+            ?? "Encrypted transcript archived from \(conversation.provider.displayName)."
+        return String(preview.prefix(500))
+    }
+
+    private static func commandHint(agent: CLIAgentRuntime, sessionID: String) -> String? {
+        let safe = sessionID.replacingOccurrences(of: "\"", with: "\\\"")
+        switch agent {
+        case .codex:
+            return "codex resume \"\(safe)\""
+        case .claude:
+            return "claude --resume \"\(safe)\""
+        case .openClaw:
+            return nil
+        }
     }
 
     static func convert(_ message: ChatMessageRecord) -> CLIAgentMessage {

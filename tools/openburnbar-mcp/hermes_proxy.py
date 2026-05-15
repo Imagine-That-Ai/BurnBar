@@ -187,6 +187,66 @@ def extract_usage(payload: dict[str, Any]) -> Optional[dict[str, Any]]:
     return usage
 
 
+# Model IDs we consider "self-loop placeholders" — the harness reporting
+# itself instead of a real underlying LLM. Mobile sees these as garbage
+# rows; strip them before forwarding the response.
+_SELF_LOOP_MODEL_IDS = frozenset(
+    {
+        "hermes",
+        "hermes-agent",
+        "hermes_agent",
+        "pi",
+        "pi-agent",
+        "pi_agent",
+        "piagent",
+        "openclaw",
+        "openclaw-agent",
+        "open-claw",
+        "claw",
+        "codex",
+        "codex-agent",
+        "claude",
+        "claude-agent",
+    }
+)
+
+
+def _filter_self_loop_models(body_bytes: bytes) -> bytes:
+    """Drop self-loop placeholder rows from an OpenAI-style `/v1/models`
+    response. Returns the body unchanged on any parse failure so the
+    proxy never breaks a healthy upstream by accident.
+    """
+    try:
+        payload = json.loads(body_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return body_bytes
+    if not isinstance(payload, dict):
+        return body_bytes
+    data = payload.get("data")
+    if not isinstance(data, list):
+        return body_bytes
+    filtered: list[Any] = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            filtered.append(entry)
+            continue
+        model_id = entry.get("id")
+        if not isinstance(model_id, str):
+            filtered.append(entry)
+            continue
+        normalized = model_id.strip().lower()
+        if normalized in _SELF_LOOP_MODEL_IDS:
+            continue
+        filtered.append(entry)
+    if len(filtered) == len(data):
+        return body_bytes
+    payload["data"] = filtered
+    try:
+        return json.dumps(payload).encode("utf-8")
+    except (TypeError, ValueError):
+        return body_bytes
+
+
 def _model_id_from_payload(payload: dict[str, Any], fallback: str) -> str:
     if isinstance(payload, dict):
         model = payload.get("model")
@@ -480,6 +540,20 @@ class HermesProxyHandler(BaseHTTPRequestHandler):
             return
 
         body_bytes = response.read()
+        # `/v1/models` self-loop guard: upstream Hermes occasionally
+        # advertises only `hermes-agent` / `hermes` / `pi-agent` as the
+        # available model when no concrete provider is wired. Those are
+        # placeholders, not real models the user can pick — strip them
+        # before forwarding so the mobile picker doesn't render a single
+        # bogus row. Mobile falls through to its bundled catalog when the
+        # filtered `data` is empty.
+        if (
+            method == "GET"
+            and path == "/v1/models"
+            and "application/json" in content_type.lower()
+        ):
+            body_bytes = _filter_self_loop_models(body_bytes)
+
         try:
             self.wfile.write(body_bytes)
         except (BrokenPipeError, ConnectionResetError):

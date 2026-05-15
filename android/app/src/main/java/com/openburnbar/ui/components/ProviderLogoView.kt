@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -20,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.openburnbar.R
 import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.models.AgentProvider
+import com.openburnbar.data.square.AgentIdentity
 
 // ── Provider / Agent / Model Logos (Android) ──
 //
@@ -78,6 +80,14 @@ object ProviderLogo {
     fun drawableForModelToken(token: String): Int {
         val k = token.lowercase()
         return when {
+            // Built-in runtimes first — these are the most precise identifiers
+            // we have and they should always win over substring matching.
+            "openclaw"   in k || "open_claw" in k || "open-claw" in k -> R.drawable.open_claw_logo
+            // Pi as a runtime token shows up as exact "pi" / "pi-agent".
+            // Restrict it to whole-token matches so "openai" / "perplexity"
+            // don't fall into this bucket.
+            k == "pi" || k.startsWith("pi-") || k.endsWith("/pi")     -> R.drawable.pi_agent_logo
+            k == "hermes" || k.endsWith("/hermes")                    -> R.drawable.hermes_logo
             "claude"     in k || "anthropic" in k             -> R.drawable.anthropic_logo
             "gpt"        in k || "chatgpt"   in k             -> R.drawable.open_ai_logo
             "openai"     in k                                  -> R.drawable.open_ai_logo
@@ -102,13 +112,48 @@ object ProviderLogo {
         }
     }
 
+    /// Strongest lookup — uses the full `AgentIdentity` so we never lose
+    /// the `runtimeID` (set for every built-in) to URI-string roundtripping.
+    @DrawableRes
+    fun drawableForIdentity(identity: AgentIdentity): Int {
+        // 1. Built-in runtime — single source of truth.
+        identity.runtimeID?.let { return drawableFor(it) }
+        // 2. ID may be a provider URI / key.
+        AgentProvider.fromKey(identity.id)?.let { return drawableFor(it) }
+        // 3. Display name as a coarse fallback ("Claude Code", "OpenAI").
+        AgentProvider.fromKey(identity.displayName)?.let { return drawableFor(it) }
+        // 4. Model-token substring matching against id + display name.
+        return drawableForAnyIdentifier(identity.id.ifBlank { identity.displayName })
+    }
+
     /// Best-effort logo for any free-form identifier (key, display name,
-    /// model token). Tries the provider table first, falls back to model
-    /// token matching, then to the Hermes mark.
+    /// model token). Resolves built-in agent URIs (`agent://burnbar/{token}`)
+    /// directly against the runtime table first, then falls through to
+    /// provider keys, then to model-token substring matching, then to the
+    /// Hermes mark.
     @DrawableRes
     fun drawableForAnyIdentifier(identifier: String?): Int {
         if (identifier.isNullOrBlank()) return R.drawable.hermes_logo
+
+        // 1. Built-in agent URI: peel off the `agent://burnbar/` prefix and
+        //    look up the runtime directly. This is what `AgentIdentity.id`
+        //    looks like for HERMES / PI / CODEX / CLAUDE / OPEN_CLAW.
+        val builtInPrefix = "agent://burnbar/"
+        if (identifier.startsWith(builtInPrefix)) {
+            val token = identifier.removePrefix(builtInPrefix)
+            val runtime = AssistantRuntimeID.entries.firstOrNull { it.token == token }
+            if (runtime != null) return drawableFor(runtime)
+        }
+
+        // 2. Bare runtime token (e.g. "pi", "openclaw") — catch the cases
+        //    where the caller passes a token without the URI prefix.
+        AssistantRuntimeID.entries.firstOrNull { it.token == identifier.lowercase() }
+            ?.let { return drawableFor(it) }
+
+        // 3. Provider key / display name match.
         AgentProvider.fromKey(identifier)?.let { return drawableFor(it) }
+
+        // 4. Model-token substring matching.
         return drawableForModelToken(identifier)
     }
 }
@@ -188,3 +233,55 @@ fun ProviderLogoView(
     style = style,
     modifier = modifier
 )
+
+// ── BurnBar Agent Avatar ──
+//
+// The single component every Hermes Square surface should call to render
+// an agent's brand mark. Takes the full `AgentIdentity` so we never lose
+// `runtimeID` to string parsing. Renders a flat PNG on a brand-tinted
+// circular disc with a thin brand-colored ring — same treatment iOS uses,
+// no double-chrome.
+
+@Composable
+fun BurnBarAgentAvatar(
+    identity: AgentIdentity,
+    size: Dp = 40.dp,
+    showRing: Boolean = true,
+    modifier: Modifier = Modifier
+) {
+    val brandColor = remember(identity.paletteHex) {
+        runCatching {
+            val cleaned = identity.paletteHex.trim().removePrefix("#")
+            val rgb = cleaned.toLong(radix = 16)
+            Color(0xFF000000L or rgb)
+        }.getOrElse { Color.White }
+    }
+    val drawableRes = remember(identity.id, identity.runtimeID, identity.displayName) {
+        ProviderLogo.drawableForIdentity(identity)
+    }
+
+    Box(
+        modifier = modifier.size(size),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(brandColor.copy(alpha = 0.14f))
+                .then(
+                    if (showRing) Modifier.border(
+                        width = 0.8.dp,
+                        color = brandColor.copy(alpha = 0.55f),
+                        shape = CircleShape
+                    ) else Modifier
+                )
+        )
+        Image(
+            painter = painterResource(id = drawableRes),
+            contentDescription = "${identity.displayName} logo",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.size(size * 0.74f)
+        )
+    }
+}

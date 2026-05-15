@@ -197,15 +197,15 @@ enum class AssistantRuntimeID(val token: String, val displayName: String, val gl
     CLAUDE("claude", "Claude", "\u2726"),
     OPEN_CLAW("openclaw", "OpenClaw", "\u26A1");
 
-    /** True for runtimes that have a first-class Android chat surface today. */
-    val hasMobileChatSurface: Boolean get() = this == HERMES || this == PI
+    /** True for runtimes that have a first-class Android surface today. */
+    val hasMobileChatSurface: Boolean get() = true
 
     companion object {
         fun fromToken(value: String?): AssistantRuntimeID =
             values().firstOrNull { it.token == value } ?: HERMES
 
-        /** Default-visible tiles for a fresh install (parity with the prior 2-case pill). */
-        val defaultEnabledTiles: Set<AssistantRuntimeID> = setOf(HERMES, PI)
+        /** Default-visible tiles for a fresh install. */
+        val defaultEnabledTiles: Set<AssistantRuntimeID> = values().toSet()
     }
 }
 

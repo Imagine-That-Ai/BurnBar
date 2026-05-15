@@ -561,6 +561,40 @@ export interface QuotaSnapshotDoc {
 }
 
 // ---------------------------------------------------------------------------
+// Firestore: project_memory_snapshots/{projectSlug}
+// ---------------------------------------------------------------------------
+
+export type ProjectMemoryFreshness = "fresh" | "needsRefresh" | "stale";
+
+export interface CloudVaultBlobEnvelopeDoc {
+  schemaVersion: number;
+  algorithm: "AES-256-GCM";
+  keyVersion: number;
+  plaintextSHA256: string;
+  sealedBoxBase64: string;
+  createdAt: string;
+}
+
+export interface ProjectMemorySnapshotDoc {
+  projectSlug: string;
+  projectDisplayName: string;
+  contentHash: string;
+  sourceSessionCount: number;
+  sourceConversationCount: number;
+  generatedAt: string;
+  freshness: ProjectMemoryFreshness;
+  visualKinds: string[];
+  sealedSnapshot: CloudVaultBlobEnvelopeDoc;
+  encryption: {
+    algorithm: string;
+    keyVersion: number;
+    envelopeSchemaVersion: number;
+  };
+  schemaVersion: number;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // Firestore: model_benchmark_snapshots/{source_model_task_timestamp}
 // Firestore: model_benchmark_source_status/{source}
 // ---------------------------------------------------------------------------

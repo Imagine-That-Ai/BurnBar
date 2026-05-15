@@ -53,6 +53,9 @@ export async function runStdioShim(): Promise<void> {
 async function handleLine(line: string): Promise<void> {
   try {
     const message = JSON.parse(line);
+    if (message && typeof message === "object" && !Array.isArray(message) && !("id" in message)) {
+      return;
+    }
     const response = await forwardMcpMessage(message);
     process.stdout.write(`${JSON.stringify(response)}\n`);
   } catch (err) {

@@ -95,6 +95,9 @@ import type {
   PiAgentPairingDoc,
   PiAgentConnectionAuditEventDoc,
   RollupJobDoc,
+  ProjectMemorySnapshotDoc,
+  ProjectMemoryFreshness,
+  CloudVaultBlobEnvelopeDoc,
 } from "./types.js";
 
 import { onUsageWritten } from "./triggers.js";
@@ -372,6 +375,76 @@ function requireSealedText(raw: unknown, fieldName: string): Record<string, unkn
     }
   }
   return envelope;
+}
+
+function requireISODateString(raw: unknown, fieldName: string): string {
+  const value = boundedTrimmedString(raw, fieldName, 64, true)!;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be an ISO 8601 date.`);
+  }
+  return new Date(parsed).toISOString();
+}
+
+function optionalISODateString(raw: unknown, fieldName: string): string | undefined {
+  if (raw == null) return undefined;
+  return requireISODateString(raw, fieldName);
+}
+
+function requireBoundedStringArray(
+  raw: unknown,
+  fieldName: string,
+  maxLength: number,
+  itemMaxLength: number
+): string[] {
+  if (!Array.isArray(raw)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be an array.`);
+  }
+  if (raw.length > maxLength) {
+    throw new HttpsError("invalid-argument", `${fieldName} can contain at most ${maxLength} items.`);
+  }
+  const values = raw.map((item, idx) =>
+    boundedTrimmedString(item, `${fieldName}[${idx}]`, itemMaxLength, true)!
+  );
+  return Array.from(new Set(values));
+}
+
+function parseProjectMemoryFreshness(raw: unknown): ProjectMemoryFreshness {
+  const value = boundedTrimmedString(raw, "freshness", 32, false);
+  if (value === "needsRefresh" || value === "stale") return value;
+  return "fresh";
+}
+
+function requireCloudVaultBlobEnvelope(raw: unknown, fieldName: string): CloudVaultBlobEnvelopeDoc {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be an encrypted blob envelope.`);
+  }
+  const envelope = raw as Record<string, unknown>;
+  const algorithm = boundedTrimmedString(envelope.algorithm, `${fieldName}.algorithm`, 64, true);
+  if (algorithm !== "AES-256-GCM") {
+    throw new HttpsError("invalid-argument", `${fieldName}.algorithm must be AES-256-GCM.`);
+  }
+  const keyVersion = requireBoundedNumber(envelope.keyVersion, `${fieldName}.keyVersion`, 1, 100);
+  const schemaVersion = requireBoundedNumber(envelope.schemaVersion ?? 1, `${fieldName}.schemaVersion`, 1, 10);
+  const plaintextSHA256 = requireHexDigest(envelope.plaintextSHA256, `${fieldName}.plaintextSHA256`);
+  const sealedBoxBase64 = boundedTrimmedString(
+    envelope.sealedBoxBase64,
+    `${fieldName}.sealedBoxBase64`,
+    1_500_000,
+    true
+  )!;
+  if (!/^[A-Za-z0-9+/=]+$/u.test(sealedBoxBase64)) {
+    throw new HttpsError("invalid-argument", `${fieldName}.sealedBoxBase64 must be base64.`);
+  }
+  const createdAt = optionalISODateString(envelope.createdAt, `${fieldName}.createdAt`) ?? nowISO();
+  return {
+    schemaVersion,
+    algorithm,
+    keyVersion,
+    plaintextSHA256,
+    sealedBoxBase64,
+    createdAt,
+  };
 }
 
 function assertUserStoragePath(
@@ -3073,6 +3146,172 @@ export const commitEncryptedSearchIndexBatch = onCall(
 
     await commitBatchedWrites(writes);
     return { ok: true, writeCount, documentCount: documents.length, chunkCount: chunks.length, commitID };
+  }
+);
+
+export const commitEncryptedProjectMemorySnapshot = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      projectSlug?: unknown;
+      projectDisplayName?: unknown;
+      contentHash?: unknown;
+      sourceSessionCount?: unknown;
+      sourceConversationCount?: unknown;
+      generatedAt?: unknown;
+      freshness?: unknown;
+      visualKinds?: unknown;
+      sealedSnapshot?: unknown;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before syncing Project Memory.");
+    enforceAuthAndAppCheck(request, uid);
+    await assertActiveBurnBarProEntitlement(uid);
+
+    const projectSlug = requiredIdentifier(request.data.projectSlug, "projectSlug");
+    const projectDisplayName = boundedTrimmedString(
+      request.data.projectDisplayName,
+      "projectDisplayName",
+      240,
+      true
+    )!;
+    const contentHash = requireHexDigest(request.data.contentHash, "contentHash");
+    const sourceSessionCount = requireBoundedNumber(
+      request.data.sourceSessionCount ?? 0,
+      "sourceSessionCount",
+      0,
+      1_000_000
+    );
+    const sourceConversationCount = requireBoundedNumber(
+      request.data.sourceConversationCount ?? 0,
+      "sourceConversationCount",
+      0,
+      1_000_000
+    );
+    const generatedAt = optionalISODateString(request.data.generatedAt, "generatedAt") ?? nowISO();
+    const freshness = parseProjectMemoryFreshness(request.data.freshness);
+    const visualKinds = request.data.visualKinds == null
+      ? []
+      : requireBoundedStringArray(request.data.visualKinds, "visualKinds", 24, 80);
+    const sealedSnapshot = requireCloudVaultBlobEnvelope(request.data.sealedSnapshot, "sealedSnapshot");
+    const updatedAt = nowISO();
+
+    const doc: ProjectMemorySnapshotDoc = {
+      projectSlug,
+      projectDisplayName,
+      contentHash,
+      sourceSessionCount,
+      sourceConversationCount,
+      generatedAt,
+      freshness,
+      visualKinds,
+      sealedSnapshot,
+      encryption: {
+        algorithm: sealedSnapshot.algorithm,
+        keyVersion: sealedSnapshot.keyVersion,
+        envelopeSchemaVersion: sealedSnapshot.schemaVersion,
+      },
+      schemaVersion: 1,
+      updatedAt,
+    };
+
+    await db.doc(`users/${uid}/project_memory_snapshots/${projectSlug}`).set(stripUndefined(doc), { merge: true });
+    return {
+      ok: true,
+      projectSlug,
+      contentHash,
+      generatedAt,
+      updatedAt,
+    };
+  }
+);
+
+export const getEncryptedProjectMemorySnapshot = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      projectSlug?: unknown;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before reading Project Memory.");
+    enforceAuthAndAppCheck(request, uid);
+    await assertActiveBurnBarProEntitlement(uid);
+
+    const projectSlug = requiredIdentifier(request.data.projectSlug, "projectSlug");
+    const snap = await db.doc(`users/${uid}/project_memory_snapshots/${projectSlug}`).get();
+    if (!snap.exists) {
+      return { snapshot: null };
+    }
+    const data = snap.data() ?? {};
+    return {
+      snapshot: stripUndefined({
+        projectSlug: data.projectSlug ?? projectSlug,
+        projectDisplayName: data.projectDisplayName,
+        contentHash: data.contentHash,
+        sourceSessionCount: data.sourceSessionCount,
+        sourceConversationCount: data.sourceConversationCount,
+        generatedAt: data.generatedAt,
+        freshness: data.freshness,
+        visualKinds: data.visualKinds,
+        sealedSnapshot: data.sealedSnapshot,
+        encryption: data.encryption,
+        schemaVersion: data.schemaVersion,
+        updatedAt: data.updatedAt,
+      }),
+    };
+  }
+);
+
+export const listEncryptedProjectMemorySnapshots = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      limit?: unknown;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before listing Project Memory.");
+    enforceAuthAndAppCheck(request, uid);
+    await assertActiveBurnBarProEntitlement(uid);
+
+    const limit = requireBoundedNumber(request.data.limit ?? 20, "limit", 1, 50);
+    const snapshot = await db
+      .collection(`users/${uid}/project_memory_snapshots`)
+      .orderBy("updatedAt", "desc")
+      .limit(limit)
+      .get();
+
+    const snapshots = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return stripUndefined({
+        projectSlug: data.projectSlug ?? doc.id,
+        projectDisplayName: data.projectDisplayName,
+        contentHash: data.contentHash,
+        sourceSessionCount: data.sourceSessionCount,
+        sourceConversationCount: data.sourceConversationCount,
+        generatedAt: data.generatedAt,
+        freshness: data.freshness,
+        visualKinds: data.visualKinds,
+        schemaVersion: data.schemaVersion,
+        updatedAt: data.updatedAt,
+      });
+    });
+
+    return { snapshots };
   }
 );
 

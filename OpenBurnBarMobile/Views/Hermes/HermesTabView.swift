@@ -24,6 +24,19 @@ enum HermesChatRoute: Hashable {
     case new
 }
 
+private struct PresentedHermesChatRoute: Identifiable {
+    let route: HermesChatRoute
+
+    var id: String {
+        switch route {
+        case .new:
+            return "new"
+        case .existing(let sessionID):
+            return "existing:\(sessionID)"
+        }
+    }
+}
+
 // MARK: - Hermes Mobile Setup
 
 enum HermesMobileSetupStep: Int, CaseIterable, Identifiable {
@@ -254,6 +267,7 @@ struct HermesConversationListView: View {
     @State private var libraryStore = HermesCloudLibraryStore()
     @State private var historyStore: MobileChatHistoryStore = .shared
     @State private var selectedLibrarySession: HermesLibrarySession?
+    @State private var presentedChatRoute: PresentedHermesChatRoute?
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
 
     init(service: HermesService, dashboardSnapshot: DashboardStore? = nil) {
@@ -340,6 +354,22 @@ struct HermesConversationListView: View {
         }
         .sheet(item: $selectedLibrarySession) { session in
             HermesLibraryTranscriptSheet(store: libraryStore, session: session)
+        }
+        .fullScreenCover(item: $presentedChatRoute) { presented in
+            NavigationStack {
+                HermesChatView(
+                    service: service,
+                    dashboardSnapshot: dashboardSnapshot,
+                    route: presented.route
+                )
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Done") {
+                            presentedChatRoute = nil
+                        }
+                    }
+                }
+            }
         }
         .sheet(isPresented: $showSetupWizard) {
             HermesMobileSetupWizardView(
@@ -488,13 +518,12 @@ struct HermesConversationListView: View {
                     if !onlyDeviceThreads.isEmpty {
                         librarySectionHeader("On This Device", systemImage: "iphone")
                         ForEach(onlyDeviceThreads) { thread in
-                            NavigationLink(value: HermesChatRoute.existing(sessionID: thread.id)) {
+                            Button {
+                                openChat(.existing(sessionID: thread.id))
+                            } label: {
                                 OnDeviceHermesRow(thread: thread)
                             }
                             .buttonStyle(.plain)
-                            .simultaneousGesture(TapGesture().onEnded {
-                                HapticBus.sheetOpen()
-                            })
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
                                     service.deleteMobileThread(id: thread.id)
@@ -510,16 +539,15 @@ struct HermesConversationListView: View {
                     librarySectionHeader("Live Hermes Host", systemImage: "antenna.radiowaves.left.and.right")
                         .padding(.top, onDeviceThreads.isEmpty ? 0 : 10)
                     ForEach(sortedSessions) { session in
-                        NavigationLink(value: HermesChatRoute.existing(sessionID: session.id)) {
+                        Button {
+                            openChat(.existing(sessionID: session.id))
+                        } label: {
                             ConversationRow(
                                 session: session,
                                 isActive: service.selectedSessionID == session.id
                             )
                         }
                         .buttonStyle(.plain)
-                        .simultaneousGesture(
-                            TapGesture().onEnded { HapticBus.sheetOpen() }
-                        )
                     }
                 }
 
@@ -610,7 +638,9 @@ struct HermesConversationListView: View {
                             .foregroundStyle(MobileTheme.Colors.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        NavigationLink(value: HermesChatRoute.new) {
+                        Button {
+                            openChat(.new)
+                        } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "plus.bubble.fill")
                                     .font(.system(size: 14, weight: .bold))
@@ -706,7 +736,9 @@ struct HermesConversationListView: View {
     // MARK: - FAB
 
     private var newChatFAB: some View {
-        NavigationLink(value: HermesChatRoute.new) {
+        Button {
+            openChat(.new)
+        } label: {
             ZStack {
                 Circle()
                     .fill(AuroraDesign.Gradients.mercuryFoil)
@@ -722,9 +754,11 @@ struct HermesConversationListView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Start new Hermes conversation")
-        .simultaneousGesture(
-            TapGesture().onEnded { HapticBus.primaryAction() }
-        )
+    }
+
+    private func openChat(_ route: HermesChatRoute) {
+        HapticBus.sheetOpen()
+        presentedChatRoute = PresentedHermesChatRoute(route: route)
     }
 }
 

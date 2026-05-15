@@ -24,7 +24,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -53,6 +55,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.openburnbar.data.cloud.CloudConversationSearchRow
+import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.ui.components.AuroraBackdrop
 import com.openburnbar.ui.theme.AuroraColors
 import androidx.compose.runtime.Composable
@@ -101,6 +107,8 @@ fun HermesSquareScreen(
     val context = LocalContext.current
     val registry = remember { AgentIdentityRegistry.shared() }
     val inbox = remember { ThreadInboxStore.shared() }
+    val activityStore: ActivityStore = viewModel()
+    val cloudHits by activityStore.cloudSearchHits.collectAsStateWithLifecycle()
 
     val pinnedPrefs = remember {
         context.applicationContext.getSharedPreferences("square.pinned_grid", android.content.Context.MODE_PRIVATE)
@@ -125,10 +133,12 @@ fun HermesSquareScreen(
     var showFanOut by remember { mutableStateOf(false) }
     var showVoice by remember { mutableStateOf(false) }
     var voiceBanner by remember { mutableStateOf<AndroidVoiceIntent?>(null) }
+    var selectedCloudRow by remember { mutableStateOf<CloudConversationSearchRow?>(null) }
 
     // Phase A: hydrate availability for built-ins. (Mac-relay runtimes
     // remain UNKNOWN until the Android mission host publishes.)
     LaunchedEffect(Unit) {
+        inbox.refreshFromCloud()
         registry.refreshAvailability(
             mapOf(
                 AgentIdentity.builtInURI(AssistantRuntimeID.HERMES) to AgentAvailability.ONLINE,
@@ -137,13 +147,23 @@ fun HermesSquareScreen(
         )
     }
 
+    LaunchedEffect(query) {
+        activityStore.updateSearch(query)
+    }
+
     val splitInbox by remember(inbox.items) {
         derivedStateOf { inbox.items.splitForInbox() }
     }
-    val filteredHits by remember(query, inbox.items, registry.identities) {
+    val filteredHits by remember(query, inbox.items, registry.identities, cloudHits) {
         derivedStateOf {
             val q = query.trim()
-            if (q.isBlank()) emptyList() else runQuickSearch(q, registry, inbox)
+            if (q.isBlank()) {
+                emptyList()
+            } else {
+                (runQuickSearch(q, registry, inbox) + cloudHits.map { it.toHermesSquareHit() })
+                    .sortedByDescending { it.score }
+                    .take(30)
+            }
         }
     }
 
@@ -235,6 +255,9 @@ fun HermesSquareScreen(
                                     if (runtime != null) {
                                         onOpenLegacyRuntime(runtime)
                                     }
+                                }
+                                HermesSquareHit.Kind.CLOUD_SESSION -> {
+                                    selectedCloudRow = hit.cloudRow
                                 }
                             }
                         },
@@ -372,6 +395,14 @@ fun HermesSquareScreen(
         HermesSquareSubscriptionsSheet(onDismiss = { showSubscriptions = false })
     }
 
+    selectedCloudRow?.let { row ->
+        CloudSessionResultSheet(
+            row = row,
+            activityStore = activityStore,
+            onDismiss = { selectedCloudRow = null }
+        )
+    }
+
     showBrandZoneURI?.let { uri ->
         val identity = registry.identity(uri)
         if (identity != null) {
@@ -379,6 +410,124 @@ fun HermesSquareScreen(
                 identity = identity,
                 onDismiss = { showBrandZoneURI = null }
             )
+        }
+    }
+}
+
+@Composable
+private fun CloudSessionResultSheet(
+    row: CloudConversationSearchRow,
+    activityStore: ActivityStore,
+    onDismiss: () -> Unit
+) {
+    var bodyText by remember(row.id) { mutableStateOf<String?>(null) }
+    var errorText by remember(row.id) { mutableStateOf<String?>(null) }
+    var isLoading by remember(row.id) { mutableStateOf(true) }
+
+    LaunchedEffect(row.id) {
+        isLoading = true
+        errorText = null
+        bodyText = null
+        runCatching { activityStore.loadCloudConversationBody(row) }
+            .onSuccess { bodyText = it }
+            .onFailure { errorText = it.message ?: it::class.java.simpleName }
+        isLoading = false
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.48f))
+            .clickableUnit(onClick = onDismiss)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+            tonalElevation = 4.dp,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(520.dp)
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(18.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            row.title,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            listOfNotNull(row.provider, row.projectName).joinToString(" · ")
+                                .ifBlank { "Encrypted cloud session" },
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Text(
+                    row.snippet,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
+
+                when {
+                    isLoading -> {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 12.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text(
+                                "Decrypting transcript…",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    errorText != null -> {
+                        Text(
+                            errorText ?: "Unable to open encrypted transcript.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    else -> {
+                        Text(
+                            bodyText.orEmpty(),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .verticalScroll(rememberScrollState())
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -682,22 +831,18 @@ private fun PinnedCell(
                 .fillMaxSize()
                 .padding(vertical = 6.dp)
         ) {
-            Box(contentAlignment = Alignment.BottomEnd, modifier = Modifier.size(38.dp)) {
-                com.openburnbar.ui.components.ProviderLogoView(
-                    drawableRes = com.openburnbar.ui.components.ProviderLogo.drawableForAnyIdentifier(
-                        identity.id.ifBlank { identity.displayName }
-                    ),
-                    size = 38.dp,
-                    style = com.openburnbar.ui.components.ProviderLogoStyle.Tile,
-                    tintBackground = hexColor(identity.paletteHex).copy(alpha = 0.18f)
+            Box(contentAlignment = Alignment.BottomEnd, modifier = Modifier.size(40.dp)) {
+                com.openburnbar.ui.components.BurnBarAgentAvatar(
+                    identity = identity,
+                    size = 40.dp
                 )
                 if (identity.availability != AgentAvailability.UNKNOWN) {
                     Box(
                         modifier = Modifier
-                            .size(9.dp)
+                            .size(10.dp)
                             .clip(RoundedCornerShape(50))
                             .background(availabilityColor(identity.availability))
-                            .border(1.dp, MaterialTheme.colorScheme.surface, RoundedCornerShape(50))
+                            .border(1.5.dp, MaterialTheme.colorScheme.surface, RoundedCornerShape(50))
                     )
                 }
             }
@@ -861,14 +1006,20 @@ private fun ThreadInboxRow(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            com.openburnbar.ui.components.ProviderLogoView(
-                drawableRes = com.openburnbar.ui.components.ProviderLogo.drawableForAnyIdentifier(
-                    item.agentURI.ifBlank { identity?.displayName }
-                ),
-                size = 32.dp,
-                style = com.openburnbar.ui.components.ProviderLogoStyle.Disc,
-                tintBackground = identity?.paletteHex?.let { hexColor(it).copy(alpha = 0.16f) }
-            )
+            if (identity != null) {
+                com.openburnbar.ui.components.BurnBarAgentAvatar(
+                    identity = identity,
+                    size = 36.dp
+                )
+            } else {
+                com.openburnbar.ui.components.ProviderLogoView(
+                    drawableRes = com.openburnbar.ui.components.ProviderLogo.drawableForAnyIdentifier(
+                        item.agentURI
+                    ),
+                    size = 36.dp,
+                    style = com.openburnbar.ui.components.ProviderLogoStyle.Disc
+                )
+            }
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1012,10 +1163,23 @@ internal data class HermesSquareHit(
     val kind: Kind,
     val title: String,
     val preview: String,
-    val score: Double
+    val score: Double,
+    val cloudRow: CloudConversationSearchRow? = null
 ) {
-    enum class Kind { AGENT, THREAD }
+    enum class Kind { AGENT, THREAD, CLOUD_SESSION }
 }
+
+private fun CloudConversationSearchRow.toHermesSquareHit(): HermesSquareHit =
+    HermesSquareHit(
+        id = "cloud:$id",
+        kind = HermesSquareHit.Kind.CLOUD_SESSION,
+        title = title,
+        preview = listOfNotNull(provider, projectName, snippet)
+            .joinToString(" · ")
+            .ifBlank { snippet },
+        score = score + 0.15,
+        cloudRow = this
+    )
 
 private fun runQuickSearch(
     query: String,

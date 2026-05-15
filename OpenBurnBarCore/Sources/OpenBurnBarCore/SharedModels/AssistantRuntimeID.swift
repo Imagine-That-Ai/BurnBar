@@ -51,17 +51,17 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
         }
     }
 
-    /// Runtimes that today have a first-class mobile chat surface. The rest
-    /// render a "Connect via your Mac" placeholder until a native runtime ships.
+    /// Runtimes that today have a first-class mobile surface. Hermes and Pi
+    /// can start native mobile threads; Codex, Claude Code, and OpenClaw open
+    /// their Mac-backed mirrored session lists.
     public var hasMobileChatSurface: Bool {
         switch self {
-        case .hermes, .pi: return true
-        case .codex, .claude, .openClaw: return false
+        case .hermes, .pi, .codex, .claude, .openClaw: return true
         }
     }
 
-    /// Default set surfaced to a fresh install. Hermes + Pi remain on (parity
-    /// with the prior 2-case enum); the three new tiles ship off so we don't
-    /// suddenly expand the navigation pill without user intent.
-    public static let defaultEnabledTiles: Set<AssistantRuntimeID> = [.hermes, .pi]
+    /// Default set surfaced to a fresh install. All five runtimes are visible
+    /// so Codex and Claude Code are first-class alongside Hermes, Pi, and
+    /// OpenClaw.
+    public static let defaultEnabledTiles: Set<AssistantRuntimeID> = Set(AssistantRuntimeID.allCases)
 }

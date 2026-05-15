@@ -109,6 +109,17 @@ struct AssistantModelLens {
     // MARK: CLI runtimes
 
     private func cliSnapshot(for runtime: AssistantRuntimeID) -> ModelSnapshot {
+        // OpenClaw has its own discovery service now — prefer the live
+        // relay when it's reported a selected model.
+        if runtime == .openClaw,
+           let option = OpenClawService.shared.selectedModelOption {
+            return ModelSnapshot(
+                displayName: option.displayName,
+                provider: option.agentProvider,
+                origin: .live,
+                activeModelID: option.modelID
+            )
+        }
         if let preferred = CLIAgentModelPreferences.preferredOption(for: runtime),
            CLIAgentModelPreferences.preferredModelID(for: runtime) != nil {
             return ModelSnapshot(

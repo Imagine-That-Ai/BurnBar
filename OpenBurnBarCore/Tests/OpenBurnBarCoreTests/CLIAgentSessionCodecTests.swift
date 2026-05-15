@@ -11,6 +11,7 @@ final class CLIAgentSessionCodecTests: XCTestCase {
         let record = CLIAgentSessionRecord(
             id: "thread-1",
             agent: .codex,
+            sourceKind: .archivedLog,
             title: "Refactor login flow",
             preview: "Final answer text…",
             modelName: "gpt-5.5",
@@ -41,7 +42,16 @@ final class CLIAgentSessionCodecTests: XCTestCase {
                     ]
                 )
             ],
-            tokenUsage: CLIAgentTokenUsage(inputTokens: 320, outputTokens: 1200)
+            tokenUsage: CLIAgentTokenUsage(inputTokens: 320, outputTokens: 1200),
+            resumeHandle: CLIAgentResumeHandle(
+                providerSessionID: "codex-thread-1",
+                projectLabel: "BurnBar",
+                commandHint: "codex resume codex-thread-1",
+                canResume: true,
+                canFork: true,
+                canForward: true
+            ),
+            encryptedTranscriptAvailable: true
         )
 
         let encoded = CLIAgentSessionCodec.encode(record)
@@ -51,6 +61,7 @@ final class CLIAgentSessionCodecTests: XCTestCase {
 
         XCTAssertEqual(decoded.id, record.id)
         XCTAssertEqual(decoded.agent, .codex)
+        XCTAssertEqual(decoded.sourceKind, .archivedLog)
         XCTAssertEqual(decoded.title, "Refactor login flow")
         XCTAssertEqual(decoded.preview, "Final answer text…")
         XCTAssertEqual(decoded.modelName, "gpt-5.5")
@@ -63,6 +74,11 @@ final class CLIAgentSessionCodecTests: XCTestCase {
         XCTAssertEqual(decoded.messages[1].toolUses.first?.detail, "AgentLens/Services/AuthRepository.swift")
         XCTAssertEqual(decoded.tokenUsage?.inputTokens, 320)
         XCTAssertEqual(decoded.tokenUsage?.outputTokens, 1200)
+        XCTAssertEqual(decoded.resumeHandle?.providerSessionID, "codex-thread-1")
+        XCTAssertEqual(decoded.resumeHandle?.projectLabel, "BurnBar")
+        XCTAssertEqual(decoded.resumeHandle?.commandHint, "codex resume codex-thread-1")
+        XCTAssertEqual(decoded.resumeHandle?.canResume, true)
+        XCTAssertTrue(decoded.encryptedTranscriptAvailable)
     }
 
     func test_decode_returnsNilForFutureSchemaVersion() {
@@ -104,6 +120,7 @@ final class CLIAgentSessionCodecTests: XCTestCase {
         )
         XCTAssertEqual(decoded.id, "fallback-id")
         XCTAssertEqual(decoded.title, "CLI session")
+        XCTAssertEqual(decoded.sourceKind, .liveChat)
         XCTAssertEqual(decoded.preview, "")
         XCTAssertNil(decoded.modelName)
         XCTAssertNil(decoded.workspaceLabel)
@@ -132,6 +149,25 @@ final class CLIAgentSessionCodecTests: XCTestCase {
         let decoded = CLIAgentSessionCodec.decodeToolUse(encoded)
         XCTAssertEqual(decoded?.id, "t")
         XCTAssertNil(decoded?.detail)
+    }
+
+    func test_resumeHandle_roundTrip_omitsBlankOptionals() {
+        let handle = CLIAgentResumeHandle(
+            providerSessionID: "s1",
+            projectLabel: "   ",
+            commandHint: nil,
+            canResume: true,
+            canFork: false,
+            canForward: true
+        )
+        let encoded = CLIAgentSessionCodec.encodeResumeHandle(handle)
+        let decoded = CLIAgentSessionCodec.decodeResumeHandle(encoded)
+        XCTAssertEqual(decoded?.providerSessionID, "s1")
+        XCTAssertNil(decoded?.projectLabel)
+        XCTAssertNil(decoded?.commandHint)
+        XCTAssertEqual(decoded?.canResume, true)
+        XCTAssertEqual(decoded?.canFork, false)
+        XCTAssertEqual(decoded?.canForward, true)
     }
 
     func test_assistantRuntimeMapping() {

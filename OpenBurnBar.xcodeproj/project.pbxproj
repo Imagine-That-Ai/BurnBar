@@ -504,6 +504,8 @@
 		77D1172CA1A8A3048E3B8C02 /* CheckpointTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 922DC848CE4B5FEAAA64D503 /* CheckpointTests.swift */; };
 		77D9DF00BE965A0EF20C4586 /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9CFA0F65135CD903E2556CA /* AccountStore.swift */; };
 		785A384DF1994EE8DAB5DECE /* HermesServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDE272960AF1D36131DBD7C /* HermesServiceTests.swift */; };
+		C3F6C6B6C370430E9B25C859 /* AssistantModelMergerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1743ABAF87BD4D56858CB4F9 /* AssistantModelMergerTests.swift */; };
+		2EF1E58200C84BAF9D26D680 /* OpenClawServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A37E0E49F0E4BBEA31FACC0 /* OpenClawServiceTests.swift */; };
 		78D61EAB7318A9E9CD5AB744 /* IndexSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B94B2A2E5E4DA4F8EA66F054 /* IndexSettings.swift */; };
 		797162B32915C3C1BEBA9D9A /* PiConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 970D78A1BE5059EF3CEF28B0 /* PiConversationListView.swift */; };
 		799C5D24D4164C211B857FE3 /* SessionLogDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0356B4FEFFCB190D93D0A82B /* SessionLogDetailPane.swift */; };
@@ -595,6 +597,8 @@
 		8AACEB4AAAFB2FCDC5BE0FF4 /* FirestoreRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = C34286570B572FF9B5698DDD /* FirestoreRepository.swift */; };
 		8B27A25E3958515DDF1B6BFE /* ProBadgeDot.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF58DC37D095E3DF9F1F88F9 /* ProBadgeDot.swift */; };
 		8B2F6E9A4C214D3E8F901234 /* AssistantModelLens.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8D47F610C7E42DB9A567890 /* AssistantModelLens.swift */; };
+		F71B808C1CD64DB4B9868229 /* AssistantModelMerger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD7AFF71D4594F43A16BA997 /* AssistantModelMerger.swift */; };
+		8BA970B8DADB476EAC778E3E /* OpenClawService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FBEA186D35F4AD5ADC14C48 /* OpenClawService.swift */; };
 		8B80CC6F1A353438E1FB033F /* ClaudeConversationExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA70ED73608D26956E8FEA87 /* ClaudeConversationExtractor.swift */; };
 		8BB485D57A53C581F60EEA1B /* SettingsPersistenceCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E96677833D0DF64468C562A /* SettingsPersistenceCoordinator.swift */; };
 		8BBC0B93AAC4AECAE031CEF6 /* ChatSearchResultsList.swift in Sources */ = {isa = PBXBuildFile; fileRef = C57E605AC1983EB99E7ABC84 /* ChatSearchResultsList.swift */; };
@@ -1264,6 +1268,8 @@
 		1B34A7A55CC5CF6E2ABF55F2 /* SwitcherCrossFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitcherCrossFlowTests.swift; sourceTree = "<group>"; };
 		1B69F858B4AE85E0BB670CCC /* MercuryGradientSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryGradientSnapshotTests.swift; sourceTree = "<group>"; };
 		1BDE272960AF1D36131DBD7C /* HermesServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesServiceTests.swift; sourceTree = "<group>"; };
+		1743ABAF87BD4D56858CB4F9 /* AssistantModelMergerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantModelMergerTests.swift; sourceTree = "<group>"; };
+		7A37E0E49F0E4BBEA31FACC0 /* OpenClawServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawServiceTests.swift; sourceTree = "<group>"; };
 		1C25DAF67D90C6EFEE0E0FCD /* SessionLogsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLogsView.swift; sourceTree = "<group>"; };
 		1C2F37A6CA116C4E9D547608 /* UsageConflictResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageConflictResolutionTests.swift; sourceTree = "<group>"; };
 		1C39AD878BD781A5964AB634 /* CLIBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIBridge.swift; sourceTree = "<group>"; };
@@ -1835,6 +1841,8 @@
 		A86BE15251C4595A555645E6 /* DashboardSidebarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSidebarTests.swift; sourceTree = "<group>"; };
 		A8CAF3ADB875BEDCC8E28AF7 /* BurnBarParallelDAGScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarParallelDAGScheduler.swift; sourceTree = "<group>"; };
 		A8D47F610C7E42DB9A567890 /* AssistantModelLens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantModelLens.swift; sourceTree = "<group>"; };
+		AD7AFF71D4594F43A16BA997 /* AssistantModelMerger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantModelMerger.swift; sourceTree = "<group>"; };
+		3FBEA186D35F4AD5ADC14C48 /* OpenClawService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawService.swift; sourceTree = "<group>"; };
 		A8E2C9E820D3F2DAF1FDFDED /* FirestorePlaintextProhibitionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirestorePlaintextProhibitionTests.swift; sourceTree = "<group>"; };
 		A90C86083722188D37B80C8D /* HostedQuotaSubscriptionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedQuotaSubscriptionStore.swift; sourceTree = "<group>"; };
 		A9848EB8A189DD55F67AA267 /* ZAIQuotaAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZAIQuotaAdapter.swift; sourceTree = "<group>"; };
@@ -3620,6 +3628,8 @@
 				1E8268F892FDBAD11FED250D /* Tools */,
 				B1C3D5E7F90123456789ABCD /* AssistantModelCatalog.swift */,
 				A8D47F610C7E42DB9A567890 /* AssistantModelLens.swift */,
+				AD7AFF71D4594F43A16BA997 /* AssistantModelMerger.swift */,
+				3FBEA186D35F4AD5ADC14C48 /* OpenClawService.swift */,
 				1C714CC045D405C1DC97F89B /* AuthRepository.swift */,
 				8AD578132658E34722F97218 /* CLIAgentChatReader.swift */,
 				EF61AB5C92B55BCE7ED8B6EE /* CLIAgentMissionDispatcher.swift */,
@@ -3712,6 +3722,8 @@
 				A8E2C9E820D3F2DAF1FDFDED /* FirestorePlaintextProhibitionTests.swift */,
 				E4CE5039840C3D9AEF0F2B1F /* HermesConversationListViewTests.swift */,
 				1BDE272960AF1D36131DBD7C /* HermesServiceTests.swift */,
+				1743ABAF87BD4D56858CB4F9 /* AssistantModelMergerTests.swift */,
+				7A37E0E49F0E4BBEA31FACC0 /* OpenClawServiceTests.swift */,
 				5DB2003BFEBBB49A75F9F530 /* HostedQuotaSubscriptionStoreTests.swift */,
 				98DF246A29C869F8230417F3 /* iPadNavigationUITests.swift */,
 				58C3C040094F4AD3B12BEC36 /* MobileChatHistoryStoreTests.swift */,
@@ -4853,6 +4865,8 @@
 				22761BA4AC3DFCD40EDE09E8 /* FirestorePlaintextProhibitionTests.swift in Sources */,
 				2B38929E81128CD1F2E7F9B2 /* HermesConversationListViewTests.swift in Sources */,
 				785A384DF1994EE8DAB5DECE /* HermesServiceTests.swift in Sources */,
+				C3F6C6B6C370430E9B25C859 /* AssistantModelMergerTests.swift in Sources */,
+				2EF1E58200C84BAF9D26D680 /* OpenClawServiceTests.swift in Sources */,
 				EAEA78454FEE3AEB314199C6 /* HermesServiceToolUseLoopTests.swift in Sources */,
 				0347A8BAEBE77B6F79D24086 /* HostedQuotaSubscriptionStoreTests.swift in Sources */,
 				7A6019441F7EB3DA5E66C0A5 /* IntelligenceBriefSnapshotTests.swift in Sources */,
@@ -4921,6 +4935,8 @@
 				6150583DF145E412EA75DCF5 /* AsciiCanvasView.swift in Sources */,
 				032DCC90A0DEB86FC4A828B0 /* AssistantConnectionSheet.swift in Sources */,
 				8B2F6E9A4C214D3E8F901234 /* AssistantModelLens.swift in Sources */,
+				F71B808C1CD64DB4B9868229 /* AssistantModelMerger.swift in Sources */,
+				8BA970B8DADB476EAC778E3E /* OpenClawService.swift in Sources */,
 				B2C3D5E7F90123456789ABCD /* AssistantModelCatalog.swift in Sources */,
 				C461DD921F94505065926E83 /* AssistantStateBanner.swift in Sources */,
 				301929AE953FA525C11C292E /* AuroraBackdrop.swift in Sources */,

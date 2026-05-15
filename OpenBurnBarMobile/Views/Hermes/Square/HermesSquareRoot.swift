@@ -34,9 +34,11 @@ struct HermesSquareRoot: View {
     @State private var inbox: ThreadInboxStore
     @State private var historyStore = MobileChatHistoryStore.shared
     @State private var searchIndex = UnifiedSearchIndex()
+    @State private var cloudSearchStore = ActivityStore()
 
     @State private var query: String = ""
     @State private var searchHits: [UnifiedSearchIndex.Hit] = []
+    @State private var cloudSearchRowsByID: [String: CloudConversationSearchRow] = [:]
     @State private var isSearching: Bool = false
 
     @AppStorage(PinnedAgentGridConfig.userDefaultsKey) private var pinnedJSON: String = ""
@@ -240,6 +242,13 @@ struct HermesSquareRoot: View {
                 runtimeNativeView(for: runtime)
             case .runtimeThread(let runtime):
                 runtimeThreadView(for: runtime)
+            case .cloudSession(let hitID):
+                if let row = cloudSearchRowsByID[hitID] {
+                    HermesSquareCloudSessionDetailView(row: row)
+                } else {
+                    Text("Session unavailable")
+                        .foregroundStyle(DesignSystemColors.textMuted)
+                }
             }
         }
     }
@@ -541,6 +550,8 @@ struct HermesSquareRoot: View {
                 _ = dot
                 navTarget = .brandZone(identity.id)
             }
+        case .cloudSessions:
+            navTarget = .cloudSession(hit.ref.id)
         default:
             break
         }
@@ -566,8 +577,32 @@ struct HermesSquareRoot: View {
         }
         isSearching = true
         defer { isSearching = false }
-        let hits = await searchIndex.searchFlat(q, limit: 20)
-        searchHits = hits
+        async let localHits = searchIndex.searchFlat(q, limit: 20)
+        await cloudSearchStore.updateSearch(query: q)
+        let cloudRows = cloudSearchStore.cloudSearchHits
+        cloudSearchRowsByID = Dictionary(uniqueKeysWithValues: cloudRows.map { ($0.id, $0) })
+        let cloudHits = cloudRows.map { row in
+            UnifiedSearchIndex.Hit(
+                ref: UnifiedSearchIndex.DocumentRef(corpus: .cloudSessions, id: row.id),
+                title: row.title,
+                preview: [
+                    row.provider,
+                    row.projectName,
+                    row.snippet
+                ].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " · "),
+                score: row.score,
+                lastActivityAt: nil
+            )
+        }
+        searchHits = (await localHits + cloudHits)
+            .sorted { lhs, rhs in
+                if lhs.score != rhs.score { return lhs.score > rhs.score }
+                return (lhs.lastActivityAt ?? .distantPast) > (rhs.lastActivityAt ?? .distantPast)
+            }
+            .prefix(30)
+            .map { $0 }
     }
 
     private func reindexSearch() async {
@@ -589,6 +624,7 @@ struct HermesSquareRoot: View {
         case brandZone(String)        // agent URI
         case runtimeNative(AssistantRuntimeID)
         case runtimeThread(AssistantRuntimeID)
+        case cloudSession(String)
     }
 
     // MARK: - Phase B helpers
@@ -732,6 +768,65 @@ struct HermesSquareRoot: View {
             PiChatThreadView(service: piService, route: .new)
         case .claude, .codex, .openClaw:
             runtimeNativeView(for: runtime)
+        }
+    }
+}
+
+private struct HermesSquareCloudSessionDetailView: View {
+    let row: CloudConversationSearchRow
+    @State private var activityStore = ActivityStore()
+    @State private var bodyText: String?
+    @State private var errorText: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(row.title)
+                        .font(.title3.bold())
+                        .foregroundStyle(DesignSystemColors.textPrimary)
+                    HStack(spacing: 8) {
+                        if let provider = row.provider {
+                            Label(provider, systemImage: "cpu")
+                        }
+                        if let project = row.projectName {
+                            Label(project, systemImage: "folder")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(DesignSystemColors.textMuted)
+                }
+
+                if let bodyText {
+                    Text(bodyText)
+                        .font(.callout.monospaced())
+                        .textSelection(.enabled)
+                        .foregroundStyle(DesignSystemColors.textPrimary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else if let errorText {
+                    Text(errorText)
+                        .font(.callout)
+                        .foregroundStyle(DesignSystemColors.ember)
+                } else {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Opening encrypted session…")
+                            .font(.callout)
+                            .foregroundStyle(DesignSystemColors.textMuted)
+                    }
+                }
+            }
+            .padding(18)
+        }
+        .background(EmberSurfaceBackground().ignoresSafeArea())
+        .navigationTitle("Cloud Session")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            do {
+                bodyText = try await activityStore.loadCloudConversationBody(for: row)
+            } catch {
+                errorText = error.localizedDescription
+            }
         }
     }
 }

@@ -204,10 +204,12 @@ struct AuroraTabItem: View {
                 )
 
                 // Pro vocabulary — the whisper. Free users see a small
-                // breathing dot; members see a tiny mercury crest. Same slot,
-                // different state. Sits in the top-right corner of the icon.
+                // breathing dot; members see their selected CloudBadge. Same
+                // slot, different state. Sits in the top-right corner of the
+                // icon, nudged slightly northeast so the badge clears the
+                // glyph stroke.
                 cloudIndicatorOverlay
-                    .offset(x: 6, y: -2)
+                    .offset(x: 9, y: -6)
             }
 
             // Tiny accent dot under the active icon — replaces the heavy
@@ -234,8 +236,7 @@ struct AuroraTabItem: View {
         case .free:
             ProBadgeDot(pulse: .breathing)
         case .member:
-            MercuryCrest(size: .small, shimmer: true)
-                .scaleEffect(0.62)
+            CloudBadge(size: .custom(16))
         }
     }
 

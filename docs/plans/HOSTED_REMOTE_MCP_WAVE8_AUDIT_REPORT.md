@@ -13,8 +13,9 @@ paid/unpaid/revoked/cross-tenant proof, core monitoring, cross-platform
 connected-client revoke surfaces, `burnbar.ai` ownership verification,
 large-corpus search/body performance proof, and branded real paid subscriber
 fixture proof, real unpaid fixture denial, and branded compatibility config
-proof are in place. Launch readiness is still blocked by authenticated
-target-client UI flows.
+proof are in place. macOS and Android signed-in connected-client UI list/revoke
+proof also passed after fixing callable payload casing. Launch readiness is
+still blocked by iOS/iPadOS live device list/revoke proof.
 
 ## Evidence Baseline
 
@@ -167,9 +168,11 @@ Findings:
   `assembleDebug` passed, and macOS `OpenBurnBar` fresh-DerivedData build passed.
 - P1: Real client matrix remains incomplete. The compatibility script now
   verifies deterministic installer output and installed-client temp-profile
-  configuration, and the local stdio shim now has live tools/list/search/body
-  proof against generated and branded endpoints. Authenticated target-client UI
-  flows remain pending.
+  configuration using the branded default endpoint, and the local stdio shim now
+  has live tools/list/search/body proof against generated and branded endpoints.
+  Claude Code health check connects and Kimi `mcp test` lists all six tools
+  against the branded endpoint. Codex add/get and Droid/Factory add proof pass.
+  Forge temp-profile import/list/reload proof now passes and lists 6 tools.
 - P2: Controlled live search read-budget proof reports 4 Firestore document
   reads, zero Storage reads, and `withinSearchReadBudget: true`; Cloud Build
   large-corpus body-enabled proof against the live generated endpoint passed
@@ -259,12 +262,13 @@ Evidence:
 
 | Severity | Finding | Required Resolution |
 | --- | --- | --- |
-| P1 | Real client compatibility matrix is incomplete. | Branded temp-profile config proof passes for installed CLIs and branded live stdio shim proof passes; prove authenticated target-client UI flows against the branded endpoint. |
+| P1 | Real client compatibility matrix needs final app-surface proof. | Branded-default temp-profile config proof passes for installed CLIs, branded live stdio shim proof passes, Claude Code connects, Kimi lists six tools, Codex add/get passes, Droid/Factory add passes, and Forge lists 6 tools; prove the signed-in app list/revoke surfaces on real platform sessions. |
 | P1 | Branded-endpoint rollback proof is still pending. | Generated-URL Cloud Run rollback rehearsal passed; repeat against branded hostname if launch requires hostname-level proof. |
-| P1 | Real signed-in connected-client UI proof is pending. | iOS/iPadOS, macOS, and Android list/revoke surfaces are implemented and build-verified where gates allow; prove an authenticated client appears and revokes on each platform. |
+| P1 | Real signed-in connected-client UI proof is pending on iOS/iPadOS. | macOS and Android signed-in list/revoke proof passed against real Firestore proof clients; iOS/iPadOS still needs live device proof. |
 | P2 | Firestore plaintext leakage scan is not subscriber-backed. | Production-safe scan passed with zero violations, but the durable Remote MCP/search collections were empty after proof cleanup; rerun if a persistent subscriber fixture is kept. |
 
 ## Final Recommendation
 
 **Hold.** Continue hardening. The branded paid and unpaid entitlement paths are
-proven. The next non-blocked work is authenticated target-client UI proof.
+proven. The remaining blocker is signed-in connected-client UI list/revoke proof
+on iOS/iPadOS.

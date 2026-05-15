@@ -993,4 +993,6 @@ struct ProjectMemorySnapshot: Identifiable, Codable, Equatable, Sendable {
     let visuals: [ProjectMemoryVisual]
 
     var id: String { projectSlug }
+    var sourceSessionCount: Int { sourceSessionIDs.count }
+    var sourceConversationCount: Int { sourceConversationIDs.count }
 }

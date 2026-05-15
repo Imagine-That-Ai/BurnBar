@@ -1,6 +1,19 @@
 import Foundation
 import OpenBurnBarCore
 
+// MARK: - TODO(per-user-models)
+//
+// Mobile's `OpenClawService` polls `http://127.0.0.1:18789/v1/models` for
+// OpenClaw model discovery and falls back to the bundled catalog when the
+// endpoint isn't there. To make mobile's OpenClaw picker fully truthful
+// per-user, the daemon (or a co-running OpenClaw binary) should serve an
+// OpenAI-compatible `/v1/models` envelope that unions:
+//   1. Ollama's `http://127.0.0.1:11434/api/tags` — installed local models.
+//   2. The user's `ProviderAccountStore` entries — cloud routes OpenClaw
+//      is configured to relay through.
+//   3. (Optional) the website's `models.json` for display-name enrichment.
+// See `OpenBurnBarMobile/Services/OpenClawService.swift` for the consumer.
+
 extension OpenBurnBarDaemonManager {
 
     var launchctlDomain: String {

@@ -139,12 +139,29 @@ Findings:
 - P1: Targeted hosted-MCP tests, compatibility config proof, generated-URL live
   proof, branded stdio shim proof, real paid subscriber fixture proof, and
   large-corpus performance proof have passed.
+- P1: `openburnbar-mcp-remote` and installer JSON now default to
+  `https://mcp.burnbar.ai/mcp`, and installed-client temp-profile config proof
+  passed without endpoint overrides.
+- P1: Claude Code health check connected and Kimi `mcp test` listed all six
+  tools against the branded endpoint. Codex add/get and Droid/Factory add proof
+  pass against the branded shim. Generic MCP is covered by direct stdio shim
+  proof.
+- P1: Forge temp-profile import/list/reload proof now passes with a temporary
+  real MCP token/client and lists 6 OpenBurnBar tools.
 - P1: Real unpaid fixture denial passed on the branded endpoint with
   `burnbar_pro_required`.
 - P1: Full app gates are not green because of unrelated existing failures, so
   launch claims must stay scoped to hosted-MCP-specific evidence.
-- P1: Real target-client authenticated flows remain pending for Codex,
-  Claude Code, Droid/Factory, Kimi, Forge, and generic MCP.
+- P1: macOS signed-in app UI listed `Mac UI proof client`, revoked it through
+  the confirmation dialog, and Firestore showed `revokedAt` before proof-client
+  cleanup; this required fixing macOS/Android callable payload casing from
+  `clientID` to `clientId`.
+- P1: Android signed-in app UI listed `Android UI proof client`, revoked it
+  through the confirmation dialog on the connected physical device after the
+  fixed APK was installed, and Firestore showed `revokedAt` before proof-client
+  cleanup.
+- P1: Signed-in app UI list/revoke proof remains pending on iOS/iPadOS live
+  device sessions.
 - P2: Real paid fixture proof used temporary search/body artifacts under the
   real subscriber UID and verified cleanup of the proof client, index rows, and
   Storage object.

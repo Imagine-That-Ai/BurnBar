@@ -622,12 +622,13 @@ final class CodexParser: LogParser, Sendable {
             return ParseResult(usages: [], conversations: [])
         }
 
-        let usages = try parseCodexDatabase(dbPath: dbPath)
-        return ParseResult(usages: usages, conversations: [])
+        let parsed = try parseCodexDatabase(dbPath: dbPath)
+        return ParseResult(usages: parsed.usages, conversations: parsed.conversations)
     }
 
-    private func parseCodexDatabase(dbPath: String) throws -> [TokenUsage] {
+    private func parseCodexDatabase(dbPath: String) throws -> (usages: [TokenUsage], conversations: [ConversationRecord]) {
         var usages: [TokenUsage] = []
+        var conversations: [ConversationRecord] = []
         var sessionCache = cacheStore.load()
         var activePaths = Set<String>()
         var cacheMutated = false
@@ -675,10 +676,13 @@ final class CodexParser: LogParser, Sendable {
                 }
 
                 let model: String = row["model"] ?? "unknown"
+                let rawTitle: String = row["title"] ?? ""
                 let cwd: String = row["cwd"] ?? "~"
                 let projectName = (cwd as NSString).lastPathComponent
                 let startTime = Date(timeIntervalSince1970: Double(createdAt))
                 let endTime = Date(timeIntervalSince1970: Double(updatedAt))
+                let rolloutPath: String? = hasRolloutPath ? (row["rollout_path"] as? String) : nil
+                let expandedRolloutPath = rolloutPath.map { ($0 as NSString).expandingTildeInPath }
 
                 // Try to get exact token breakdown from JSONL session file
                 var inputTokens: Int = 0
@@ -686,8 +690,7 @@ final class CodexParser: LogParser, Sendable {
                 var cacheReadTokens: Int = 0
                 var foundExact = false
 
-                if hasRolloutPath, let rolloutPath: String = row["rollout_path"] {
-                    let expandedPath = (rolloutPath as NSString).expandingTildeInPath
+                if let expandedPath = expandedRolloutPath {
                     let cacheKey = URL(fileURLWithPath: expandedPath).standardizedFileURL.path
                     activePaths.insert(cacheKey)
 
@@ -732,32 +735,62 @@ final class CodexParser: LogParser, Sendable {
                     outputTokens = max(tokensUsed - inputTokens, 0)
                 }
 
-                guard inputTokens > 0 || outputTokens > 0 else { continue }
+                if inputTokens > 0 || outputTokens > 0 {
+                    let pricing = ModelPricing.lookup(model: model)
+                    let cost = pricing.cost(
+                        inputTokens: inputTokens,
+                        outputTokens: outputTokens,
+                        cacheReadTokens: cacheReadTokens
+                    )
 
-                let pricing = ModelPricing.lookup(model: model)
-                let cost = pricing.cost(
-                    inputTokens: inputTokens,
-                    outputTokens: outputTokens,
-                    cacheReadTokens: cacheReadTokens
-                )
+                    let usage = TokenUsage(
+                        provider: .codex,
+                        sessionId: threadId,
+                        projectName: projectName,
+                        model: model,
+                        inputTokens: inputTokens,
+                        outputTokens: outputTokens,
+                        cacheCreationTokens: 0,
+                        cacheReadTokens: cacheReadTokens,
+                        costUSD: cost,
+                        startTime: startTime,
+                        endTime: endTime,
+                        provenanceMethod: foundExact ? .providerLog : .heuristicEstimate,
+                        provenanceConfidence: foundExact ? .exact : .lowConfidenceEstimate,
+                        estimatorVersion: foundExact ? "" : "tokens-used-split-v1"
+                    )
+                    usages.append(usage)
+                }
 
-                let usage = TokenUsage(
+                let parsedConversation = expandedRolloutPath.flatMap {
+                    parseCodexConversationJSONL(path: $0, fallbackTitle: rawTitle)
+                }
+                let inferredTitle = parsedConversation?.title
+                    ?? rawTitle.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                    ?? threadId
+                let fullText = parsedConversation?.markdown
+                    ?? rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                let conversation = ConversationRecord(
+                    id: ConversationRecord.stableId(provider: .codex, sessionId: threadId),
                     provider: .codex,
                     sessionId: threadId,
                     projectName: projectName,
-                    model: model,
-                    inputTokens: inputTokens,
-                    outputTokens: outputTokens,
-                    cacheCreationTokens: 0,
-                    cacheReadTokens: cacheReadTokens,
-                    costUSD: cost,
                     startTime: startTime,
                     endTime: endTime,
-                    provenanceMethod: foundExact ? .providerLog : .heuristicEstimate,
-                    provenanceConfidence: foundExact ? .exact : .lowConfidenceEstimate,
-                    estimatorVersion: foundExact ? "" : "tokens-used-split-v1"
+                    messageCount: parsedConversation?.messageCount ?? (fullText.isEmpty ? 0 : 1),
+                    userWordCount: parsedConversation?.userWordCount ?? rawTitle.split(separator: " ").count,
+                    assistantWordCount: parsedConversation?.assistantWordCount ?? 0,
+                    keyFiles: parsedConversation?.keyFiles ?? [],
+                    keyCommands: parsedConversation?.keyCommands ?? [],
+                    keyTools: parsedConversation?.keyTools ?? [],
+                    inferredTaskTitle: inferredTitle,
+                    lastAssistantMessage: parsedConversation?.lastAssistantMessage ?? "",
+                    fullText: fullText,
+                    indexedAt: Date(),
+                    fileModifiedAt: expandedRolloutPath.flatMap { modificationDate(of: URL(fileURLWithPath: $0)) },
+                    summary: nil
                 )
-                usages.append(usage)
+                conversations.append(conversation)
             }
         }
 
@@ -773,7 +806,7 @@ final class CodexParser: LogParser, Sendable {
             cacheStore.persist(sessionCache)
         }
 
-        return usages
+        return (usages, conversations)
     }
 
     /// Parse a Codex session JSONL file to extract exact token breakdowns.
@@ -848,6 +881,133 @@ final class CodexParser: LogParser, Sendable {
             return (input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens)
         }
         return foundDelta ? (input: inputTokens, output: outputTokens, cacheRead: cacheReadTokens) : nil
+    }
+
+    private func parseCodexConversationJSONL(path: String, fallbackTitle: String) -> (
+        title: String,
+        markdown: String,
+        messageCount: Int,
+        userWordCount: Int,
+        assistantWordCount: Int,
+        keyFiles: [String],
+        keyCommands: [String],
+        keyTools: [String],
+        lastAssistantMessage: String
+    )? {
+        guard fileManager.fileExists(atPath: path),
+              let handle = FileHandle(forReadingAtPath: path) else {
+            return nil
+        }
+        defer { try? handle.close() }
+
+        var turns: [(role: String, text: String)] = []
+        var keyFiles = Set<String>()
+        var keyCommands = Set<String>()
+        var keyTools = Set<String>()
+
+        for line in handle.readAllUTF8Lines() {
+            guard let data = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                continue
+            }
+            if let extracted = Self.extractCodexMessage(from: json) {
+                turns.append(extracted)
+            }
+            if let tool = Self.extractCodexTool(from: json) {
+                keyTools.insert(tool.name)
+                if let detail = tool.detail {
+                    if tool.name.lowercased().contains("bash") || tool.name.lowercased().contains("exec") {
+                        keyCommands.insert(detail)
+                    } else if detail.contains("/") || detail.contains(".swift") || detail.contains(".ts") || detail.contains(".kt") {
+                        keyFiles.insert(detail)
+                    }
+                }
+            }
+        }
+
+        guard !turns.isEmpty else { return nil }
+
+        let markdown = turns.map { turn -> String in
+            let header = turn.role == "assistant" ? "## Assistant" : "## You"
+            return "\(header)\n\n\(turn.text)"
+        }.joined(separator: "\n\n")
+        let title = turns.first(where: { $0.role == "user" })?.text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty
+            ?? fallbackTitle.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+            ?? "Codex session"
+        let lastAssistant = turns.last(where: { $0.role == "assistant" })?.text ?? ""
+        let userWords = turns
+            .filter { $0.role == "user" }
+            .reduce(0) { $0 + $1.text.split(separator: " ").count }
+        let assistantWords = turns
+            .filter { $0.role == "assistant" }
+            .reduce(0) { $0 + $1.text.split(separator: " ").count }
+
+        return (
+            title: String(title.prefix(160)),
+            markdown: markdown,
+            messageCount: turns.count,
+            userWordCount: userWords,
+            assistantWordCount: assistantWords,
+            keyFiles: Array(Array(keyFiles).sorted().prefix(12)),
+            keyCommands: Array(Array(keyCommands).sorted().prefix(12)),
+            keyTools: Array(Array(keyTools).sorted().prefix(12)),
+            lastAssistantMessage: String(lastAssistant.prefix(500))
+        )
+    }
+
+    private static func extractCodexMessage(from json: [String: Any]) -> (role: String, text: String)? {
+        let item = (json["item"] as? [String: Any])
+            ?? (json["payload"] as? [String: Any])?["item"] as? [String: Any]
+            ?? (json["msg"] as? [String: Any])?["item"] as? [String: Any]
+        guard let item,
+              let role = item["role"] as? String,
+              role == "user" || role == "assistant" else {
+            return nil
+        }
+        let text = extractText(from: item["content"])
+            ?? extractText(from: item["message"])
+            ?? (item["text"] as? String)
+        guard let cleaned = text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !cleaned.isEmpty else {
+            return nil
+        }
+        return (role, cleaned)
+    }
+
+    private static func extractText(from raw: Any?) -> String? {
+        if let string = raw as? String { return string }
+        if let pieces = raw as? [[String: Any]] {
+            let text = pieces.compactMap { piece -> String? in
+                if let text = piece["text"] as? String { return text }
+                if let text = piece["content"] as? String { return text }
+                return nil
+            }.joined(separator: "\n")
+            return text.isEmpty ? nil : text
+        }
+        return nil
+    }
+
+    private static func extractCodexTool(from json: [String: Any]) -> (name: String, detail: String?)? {
+        let item = (json["item"] as? [String: Any])
+            ?? (json["payload"] as? [String: Any])?["item"] as? [String: Any]
+            ?? (json["msg"] as? [String: Any])?["item"] as? [String: Any]
+        guard let item else { return nil }
+        let name = (item["name"] as? String)
+            ?? (item["tool_name"] as? String)
+            ?? (item["type"] as? String)
+        guard let name, !name.isEmpty else { return nil }
+        let detail = (item["command"] as? String)
+            ?? (item["path"] as? String)
+            ?? (item["file_path"] as? String)
+            ?? (item["query"] as? String)
+            ?? (item["pattern"] as? String)
+        return (name, detail)
+    }
+
+    private func modificationDate(of url: URL) -> Date? {
+        (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
     }
 
 }

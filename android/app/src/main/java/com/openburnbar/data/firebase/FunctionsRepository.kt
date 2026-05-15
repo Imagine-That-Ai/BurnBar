@@ -187,7 +187,7 @@ class FunctionsRepository {
 
     suspend fun revokeRemoteMcpClient(clientId: String) {
         functions.getHttpsCallable("revokeRemoteMcpClient")
-            .call(mapOf("clientID" to clientId))
+            .call(mapOf("clientId" to clientId))
             .await()
     }
 

@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Hermes Square now searches across all assistant runtimes and archived CLI
+  sessions.** Codex, Claude Code, and OpenClaw are enabled as first-class mobile
+  runtimes alongside Hermes and Pi. macOS publishes encrypted Codex/Claude/OpenClaw
+  session-log archives into the shared `cli_sessions` surface with resume
+  handles, while keeping full transcript bodies in the encrypted hosted
+  session-log store. The Hermes Square search bar now merges local Square hits,
+  live chats, missions, and encrypted hosted session-log results, with a
+  decrypting detail view for cloud archive matches.
 - **Real-time quota refresh for Codex, Claude Code, Kimi, MiniMax, and Z.ai on iOS/iPadOS.**
   Pro users can now get accurate and fresh quota numbers for all five providers
   from any signed-in device at any time.

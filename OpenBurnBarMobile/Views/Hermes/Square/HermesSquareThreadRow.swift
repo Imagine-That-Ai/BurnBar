@@ -204,6 +204,7 @@ struct HermesSquareSearchHitRow: View {
         case .missions:  return "doc.viewfinder"
         case .artifacts: return "doc"
         case .cards:     return "square.text.square"
+        case .cloudSessions: return "lock.doc"
         case .web:       return "globe"
         }
     }

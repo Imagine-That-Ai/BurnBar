@@ -631,10 +631,25 @@ private struct ProjectHubView: View {
         proxy.scrollTo(anchorID, anchor: .top)
     }
 
+    private func normalizedProjectMemoryKey(_ raw: String) -> String {
+        let normalized = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9_-]+", with: "-", options: .regularExpression)
+            .replacingOccurrences(of: "-+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return normalized
+    }
+
     private var projectMemoryKeys: [String] {
         let normalized = [project.slug, project.displayName]
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-            .filter { !$0.isEmpty }
+            .flatMap { value -> [String] in
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return [] }
+                let lower = trimmed.lowercased()
+                let slug = normalizedProjectMemoryKey(trimmed)
+                return slug.isEmpty || slug == lower ? [lower] : [lower, slug]
+            }
         var seen = Set<String>()
         return normalized.filter { seen.insert($0).inserted }
     }
@@ -645,10 +660,27 @@ private struct ProjectHubView: View {
         isRefreshingProjectMemory = true
         defer { isRefreshingProjectMemory = false }
 
+        let syncContext = CloudSyncContext(
+            dataStore: dataStore,
+            accountManager: AccountManager.shared,
+            settingsManager: settingsManager
+        )
+        let projectMemorySync = SessionLogSyncService(context: syncContext)
+
         if forceRefresh == false {
             for key in projectMemoryKeys {
                 if let cached = try? dataStore.fetchProjectMemorySnapshot(projectSlug: key) {
                     projectMemorySnapshot = cached
+                    break
+                }
+            }
+        }
+
+        if forceRefresh == false, projectMemorySnapshot == nil {
+            for key in projectMemoryKeys {
+                if let cloudSnapshot = try? await projectMemorySync.fetchCloudProjectMemorySnapshot(projectSlug: key) {
+                    projectMemorySnapshot = cloudSnapshot
+                    try? dataStore.upsertProjectMemorySnapshot(cloudSnapshot)
                     break
                 }
             }
@@ -672,6 +704,7 @@ private struct ProjectHubView: View {
             conversations = fallback.filter { keys.contains($0.projectName.lowercased()) }
         }
 
+        let previousContentHash = projectMemorySnapshot?.contentHash
         var seen = Set<String>()
         let dedupedConversations = conversations.filter { seen.insert($0.id).inserted }
         let snapshot = ProjectMemoryService.assemble(
@@ -688,6 +721,15 @@ private struct ProjectHubView: View {
             projectMemoryError = nil
         } catch {
             projectMemoryError = "Couldn't persist Project Memory locally: \(error.localizedDescription)"
+        }
+
+        guard forceRefresh || previousContentHash != snapshot.contentHash else { return }
+        do {
+            try await projectMemorySync.uploadProjectMemorySnapshot(snapshot)
+        } catch {
+            if projectMemoryError == nil {
+                projectMemoryError = "Project Memory saved locally, but cloud backup failed: \(error.localizedDescription)"
+            }
         }
     }
 

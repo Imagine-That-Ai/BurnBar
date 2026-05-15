@@ -61,6 +61,7 @@ public enum CLIAgentRuntime: String, Codable, Hashable, Sendable, CaseIterable {
 public struct CLIAgentSessionRecord: Codable, Identifiable, Hashable, Sendable {
     public var id: String
     public var agent: CLIAgentRuntime
+    public var sourceKind: CLIAgentSessionSourceKind
     public var title: String
     public var preview: String
     public var modelName: String?
@@ -74,12 +75,20 @@ public struct CLIAgentSessionRecord: Codable, Identifiable, Hashable, Sendable {
     public var schemaVersion: Int
     public var messages: [CLIAgentMessage]
     public var tokenUsage: CLIAgentTokenUsage?
+    /// Optional local resume/fork handle. This never contains credentials.
+    /// Mobile uses it to explain whether the paired Mac can continue the
+    /// underlying Codex/Claude/OpenClaw session.
+    public var resumeHandle: CLIAgentResumeHandle?
+    /// True when the full transcript lives in the encrypted session-log
+    /// cloud vault rather than plaintext `messages`.
+    public var encryptedTranscriptAvailable: Bool
 
     public static let currentSchemaVersion = 1
 
     public init(
         id: String,
         agent: CLIAgentRuntime,
+        sourceKind: CLIAgentSessionSourceKind = .liveChat,
         title: String,
         preview: String,
         modelName: String? = nil,
@@ -89,10 +98,13 @@ public struct CLIAgentSessionRecord: Codable, Identifiable, Hashable, Sendable {
         endedAt: Date? = nil,
         schemaVersion: Int = CLIAgentSessionRecord.currentSchemaVersion,
         messages: [CLIAgentMessage] = [],
-        tokenUsage: CLIAgentTokenUsage? = nil
+        tokenUsage: CLIAgentTokenUsage? = nil,
+        resumeHandle: CLIAgentResumeHandle? = nil,
+        encryptedTranscriptAvailable: Bool = false
     ) {
         self.id = id
         self.agent = agent
+        self.sourceKind = sourceKind
         self.title = title
         self.preview = preview
         self.modelName = modelName
@@ -103,11 +115,50 @@ public struct CLIAgentSessionRecord: Codable, Identifiable, Hashable, Sendable {
         self.schemaVersion = schemaVersion
         self.messages = messages
         self.tokenUsage = tokenUsage
+        self.resumeHandle = resumeHandle
+        self.encryptedTranscriptAvailable = encryptedTranscriptAvailable
     }
 
     /// `true` when the session has been finalised — no more messages will
     /// be appended. iOS uses this to dim the "running" indicator.
     public var isCompleted: Bool { endedAt != nil }
+}
+
+/// Where the mirrored CLI session came from. Live chat rows stream from
+/// OpenBurnBar's own Mac chat panel; archived log rows are parsed from
+/// provider-owned Codex/Claude/OpenClaw history and point at the encrypted
+/// cloud session-log body for search/reference.
+public enum CLIAgentSessionSourceKind: String, Codable, Hashable, Sendable {
+    case liveChat = "live_chat"
+    case archivedLog = "archived_log"
+}
+
+/// Non-secret pointer that lets mobile display whether a CLI session can
+/// be resumed/forked on the paired Mac. The Mac remains the executor; cloud
+/// stores only stable IDs and user-facing command hints.
+public struct CLIAgentResumeHandle: Codable, Hashable, Sendable {
+    public var providerSessionID: String
+    public var projectLabel: String?
+    public var commandHint: String?
+    public var canResume: Bool
+    public var canFork: Bool
+    public var canForward: Bool
+
+    public init(
+        providerSessionID: String,
+        projectLabel: String? = nil,
+        commandHint: String? = nil,
+        canResume: Bool = false,
+        canFork: Bool = false,
+        canForward: Bool = true
+    ) {
+        self.providerSessionID = providerSessionID
+        self.projectLabel = projectLabel
+        self.commandHint = commandHint
+        self.canResume = canResume
+        self.canFork = canFork
+        self.canForward = canForward
+    }
 }
 
 /// One message in a mirrored CLI agent session.
@@ -234,6 +285,8 @@ public enum CLIAgentSessionCodec {
               let agent = CLIAgentRuntime(rawValue: rawAgent) else {
             return nil
         }
+        let sourceKind = (data["sourceKind"] as? String)
+            .flatMap(CLIAgentSessionSourceKind.init(rawValue:)) ?? .liveChat
         let id = (data["id"] as? String) ?? documentID
         let title = (data["title"] as? String) ?? "CLI session"
         let preview = (data["preview"] as? String) ?? ""
@@ -245,9 +298,12 @@ public enum CLIAgentSessionCodec {
         let rawMessages = data["messages"] as? [[String: Any]] ?? []
         let messages = rawMessages.compactMap { decodeMessage($0, timestampDecoder: timestampDecoder) }
         let tokenUsage = (data["tokenUsage"] as? [String: Any]).flatMap(decodeTokenUsage)
+        let resumeHandle = (data["resumeHandle"] as? [String: Any]).flatMap(decodeResumeHandle)
+        let encryptedTranscriptAvailable = (data["encryptedTranscriptAvailable"] as? Bool) ?? false
         return CLIAgentSessionRecord(
             id: id,
             agent: agent,
+            sourceKind: sourceKind,
             title: title,
             preview: preview,
             modelName: modelName,
@@ -257,7 +313,9 @@ public enum CLIAgentSessionCodec {
             endedAt: endedAt,
             schemaVersion: schemaVersion,
             messages: messages,
-            tokenUsage: tokenUsage
+            tokenUsage: tokenUsage,
+            resumeHandle: resumeHandle,
+            encryptedTranscriptAvailable: encryptedTranscriptAvailable
         )
     }
 
@@ -268,12 +326,14 @@ public enum CLIAgentSessionCodec {
         var dict: [String: Any] = [
             "id": record.id,
             "agent": record.agent.rawValue,
+            "sourceKind": record.sourceKind.rawValue,
             "title": record.title,
             "preview": record.preview,
             "createdAt": record.createdAt,
             "updatedAt": record.updatedAt,
             "schemaVersion": record.schemaVersion,
-            "messages": record.messages.map(encodeMessage)
+            "messages": record.messages.map(encodeMessage),
+            "encryptedTranscriptAvailable": record.encryptedTranscriptAvailable
         ]
         if let modelName = record.modelName, !modelName.isEmpty {
             dict["modelName"] = modelName
@@ -286,6 +346,9 @@ public enum CLIAgentSessionCodec {
         }
         if let usage = record.tokenUsage {
             dict["tokenUsage"] = encodeTokenUsage(usage)
+        }
+        if let resumeHandle = record.resumeHandle {
+            dict["resumeHandle"] = encodeResumeHandle(resumeHandle)
         }
         return dict
     }
@@ -322,6 +385,22 @@ public enum CLIAgentSessionCodec {
             "cacheReadTokens": usage.cacheReadTokens,
             "reasoningTokens": usage.reasoningTokens
         ]
+    }
+
+    public static func encodeResumeHandle(_ handle: CLIAgentResumeHandle) -> [String: Any] {
+        var dict: [String: Any] = [
+            "providerSessionID": handle.providerSessionID,
+            "canResume": handle.canResume,
+            "canFork": handle.canFork,
+            "canForward": handle.canForward
+        ]
+        if let projectLabel = handle.projectLabel, !projectLabel.isEmpty {
+            dict["projectLabel"] = projectLabel
+        }
+        if let commandHint = handle.commandHint, !commandHint.isEmpty {
+            dict["commandHint"] = commandHint
+        }
+        return dict
     }
 
     public static func decodeMessage(
@@ -375,6 +454,21 @@ public enum CLIAgentSessionCodec {
             cacheCreationTokens: intValue(raw["cacheCreationTokens"]),
             cacheReadTokens: intValue(raw["cacheReadTokens"]),
             reasoningTokens: intValue(raw["reasoningTokens"])
+        )
+    }
+
+    public static func decodeResumeHandle(_ raw: [String: Any]) -> CLIAgentResumeHandle? {
+        guard let providerSessionID = raw["providerSessionID"] as? String,
+              !providerSessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return CLIAgentResumeHandle(
+            providerSessionID: providerSessionID,
+            projectLabel: (raw["projectLabel"] as? String).flatMap(nonBlank),
+            commandHint: (raw["commandHint"] as? String).flatMap(nonBlank),
+            canResume: (raw["canResume"] as? Bool) ?? false,
+            canFork: (raw["canFork"] as? Bool) ?? false,
+            canForward: (raw["canForward"] as? Bool) ?? true
         )
     }
 

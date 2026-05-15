@@ -171,6 +171,34 @@ OPENBURNBAR_MCP_REAL_CLIENTS=1 \
 # hosted MCP compatibility config smoke passed
 ```
 
+The shim and generated JSON installers now default to:
+
+```text
+https://mcp.burnbar.ai/mcp
+```
+
+Run this after changing defaults:
+
+```bash
+npm --prefix tools/openburnbar-mcp-remote test
+OPENBURNBAR_MCP_REAL_CLIENTS=1 ./scripts/test-hosted-mcp-compatibility.sh
+```
+
+Target-client execution proof captured so far:
+
+- Claude Code: temp HOME + temp PATH shim, `claude mcp get openburnbar`
+  reported connected against `https://mcp.burnbar.ai/mcp`.
+- Kimi CLI: temp HOME + temp PATH shim, `kimi mcp test openburnbar` connected
+  and listed all six OpenBurnBar tools.
+- Codex: temp HOME + temp PATH shim, `codex mcp add` and
+  `codex mcp get --json` passed.
+- Droid/Factory: temp HOME + temp PATH shim, real Factory `droid mcp add`
+  passed.
+- Forge: temp HOME with copied non-secret Forge provider/model config, temp PATH
+  shim, and temporary real MCP token/client; `forge mcp import`, `forge mcp
+  list`, and `forge mcp reload` passed, with `list` reporting 6 OpenBurnBar
+  tools.
+
 Live stdio shim proof:
 
 ```bash
