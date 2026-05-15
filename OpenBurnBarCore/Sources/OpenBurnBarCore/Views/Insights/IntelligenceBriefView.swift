@@ -118,6 +118,26 @@ public struct IntelligenceBriefView: View {
     /// submission produces a new `briefingAnswer`.
     fileprivate static let heroAnchorID = "intelligence-brief-hero"
 
+    private struct AnomalySnapshotPair: Identifiable {
+        let id: Int
+        let lhs: InsightAnomaly
+        let rhs: InsightAnomaly?
+        let lhsIndex: Int
+        let rhsIndex: Int
+    }
+
+    private var anomalySnapshotPairs: [AnomalySnapshotPair] {
+        stride(from: 0, to: result.anomalies.count, by: 2).map { index in
+            AnomalySnapshotPair(
+                id: index,
+                lhs: result.anomalies[index],
+                rhs: index + 1 < result.anomalies.count ? result.anomalies[index + 1] : nil,
+                lhsIndex: index,
+                rhsIndex: index + 1
+            )
+        }
+    }
+
     /// Equivalent to `body` with `snapshotMode == true`. Kept as a
     /// dedicated entry point so callers don't have to thread the flag —
     /// any embed that needs the brief to participate in an outer scroll
@@ -517,58 +537,64 @@ public struct IntelligenceBriefView: View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
             sectionEyebrow("ANOMALY ATLAS")
             if snapshotMode {
-                // Static two-column wrap for snapshot exports — preserves
-                // editorial L→R reading order without depending on a
-                // horizontal ScrollView (which `ImageRenderer` collapses).
-                let pairs = stride(from: 0, to: result.anomalies.count, by: 2).map { i in
-                    (lhs: result.anomalies[i],
-                     rhs: i + 1 < result.anomalies.count ? result.anomalies[i + 1] : nil,
-                     lhsIndex: i,
-                     rhsIndex: i + 1)
-                }
-                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
-                    ForEach(Array(pairs.enumerated()), id: \.offset) { _, pair in
-                        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
-                            AnomalyInstrumentCard(
-                                anomaly: pair.lhs,
-                                position: pair.lhsIndex + 1,
-                                total: result.anomalies.count,
-                                onCitationTap: onCitationTap,
-                                fillWidth: true
-                            )
-                            if let rhs = pair.rhs {
-                                AnomalyInstrumentCard(
-                                    anomaly: rhs,
-                                    position: pair.rhsIndex + 1,
-                                    total: result.anomalies.count,
-                                    onCitationTap: onCitationTap,
-                                    fillWidth: true
-                                )
-                            } else {
-                                Color.clear.frame(maxWidth: .infinity)
-                            }
-                        }
-                    }
-                }
+                anomalySnapshotGrid
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
-                        ForEach(Array(result.anomalies.enumerated()), id: \.element.id) { idx, anomaly in
-                            AnomalyInstrumentCard(
-                                anomaly: anomaly,
-                                position: idx + 1,
-                                total: result.anomalies.count,
-                                onCitationTap: onCitationTap
-                            )
-                        }
-                    }
-                    .padding(.vertical, 1)
-                }
-                .scrollIndicators(.hidden)
+                anomalyScrollTray
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Anomaly Atlas — \(result.anomalies.count) entries left to right")
+    }
+
+    // Static two-column wrap for snapshot exports. This preserves editorial
+    // left-to-right reading order without a horizontal ScrollView, which
+    // ImageRenderer collapses.
+    private var anomalySnapshotGrid: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
+            ForEach(anomalySnapshotPairs) { pair in
+                anomalySnapshotRow(pair)
+            }
+        }
+    }
+
+    private func anomalySnapshotRow(_ pair: AnomalySnapshotPair) -> some View {
+        HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
+            AnomalyInstrumentCard(
+                anomaly: pair.lhs,
+                position: pair.lhsIndex + 1,
+                total: result.anomalies.count,
+                onCitationTap: onCitationTap,
+                fillWidth: true
+            )
+            if let rhs = pair.rhs {
+                AnomalyInstrumentCard(
+                    anomaly: rhs,
+                    position: pair.rhsIndex + 1,
+                    total: result.anomalies.count,
+                    onCitationTap: onCitationTap,
+                    fillWidth: true
+                )
+            } else {
+                Color.clear.frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var anomalyScrollTray: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
+                ForEach(Array(result.anomalies.enumerated()), id: \.element.id) { index, anomaly in
+                    AnomalyInstrumentCard(
+                        anomaly: anomaly,
+                        position: index + 1,
+                        total: result.anomalies.count,
+                        onCitationTap: onCitationTap
+                    )
+                }
+            }
+            .padding(.vertical, 1)
+        }
+        .scrollIndicators(.hidden)
     }
 
     // MARK: - Recommendations

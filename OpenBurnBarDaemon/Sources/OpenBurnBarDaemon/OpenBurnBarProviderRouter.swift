@@ -590,6 +590,26 @@ public struct BurnBarProviderRouter: Sendable {
     ) -> BurnBarCatalogModel? {
         let normalized = modelName.lowercased()
 
+        if configuration.provider.id.lowercased() == "ollama",
+           let directCloudModelID = normalizedOllamaCloudModelID(from: modelName) {
+            let exactCloudModel = configuration.preferredModels.first(where: {
+                $0.id.lowercased() == normalized || $0.aliases.contains(where: { $0.lowercased() == normalized })
+            })
+            let cloudFamily = configuration.provider.models.first(where: { $0.id == "ollama-cloud-family" })
+            let modelTemplate = exactCloudModel ?? cloudFamily
+            guard let modelTemplate else { return nil }
+            return BurnBarCatalogModel(
+                id: directCloudModelID,
+                displayName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
+                visibility: .hidden,
+                aliases: [modelName],
+                matchers: [],
+                pricing: modelTemplate.pricing,
+                capabilityClassID: cloudFamily?.capabilityClassID ?? modelTemplate.capabilityClassID ?? directCloudModelID,
+                capabilityClassRank: cloudFamily?.capabilityClassRank ?? modelTemplate.capabilityClassRank
+            )
+        }
+
         if let exactMatch = configuration.preferredModels.first(where: {
             $0.id.lowercased() == normalized || $0.aliases.contains(where: { $0.lowercased() == normalized })
         }) {

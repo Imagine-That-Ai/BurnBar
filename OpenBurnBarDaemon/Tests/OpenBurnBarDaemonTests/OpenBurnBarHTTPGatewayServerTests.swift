@@ -419,7 +419,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             body: Data(#"{"model":"deepseek-v4-flash:cloud","messages":[{"role":"user","content":"hello"}],"stream":false,"reasoning_effort":"high","stream_options":{"include_usage":true},"max_completion_tokens":64}"#.utf8)
         )
 
-        XCTAssertEqual(response.statusCode, 200)
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
         XCTAssertEqual(response.value(forHTTPHeaderField: "Content-Type"), "application/json")
         let bodyText = String(decoding: body, as: UTF8.self)
         XCTAssertTrue(bodyText.contains("ollama backup answered"))
@@ -427,7 +427,10 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertTrue(bodyText.contains(#""completion_tokens":5"#))
 
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
-        XCTAssertEqual(upstreamRequests.count, 2)
+        guard upstreamRequests.count == 2 else {
+            XCTFail("Expected two upstream requests after primary Ollama slot exhaustion, got \(upstreamRequests)")
+            return
+        }
         XCTAssertTrue(upstreamRequests.allSatisfy { $0.path == "/api/chat" })
         XCTAssertEqual(upstreamRequests[0].authorization, "Bearer primary-ollama-key")
         XCTAssertEqual(upstreamRequests[1].authorization, "Bearer backup-ollama-key")

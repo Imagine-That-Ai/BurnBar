@@ -353,8 +353,10 @@ public actor BurnBarHTTPGatewayServer {
                 routingEventStore: BurnBarProviderRoutingDecisionEventStore()
             )
             let catalog = await configStore.catalogSupport.catalog
-            let resolvedCapabilityClassID = catalog
-                .capabilityClassID(forModelName: modelID)
+            let resolvedCapabilityClassID = capabilityClassID(
+                forModelName: modelID,
+                catalog: catalog
+            )
             let ranking = try await router.scoreAndRankRoutes(
                 modelName: modelID,
                 requestedFormatFamily: .openaiCompat,
@@ -468,8 +470,10 @@ public actor BurnBarHTTPGatewayServer {
                 routingEventStore: BurnBarProviderRoutingDecisionEventStore()
             )
             let catalog = await configStore.catalogSupport.catalog
-            let resolvedCapabilityClassID = catalog
-                .capabilityClassID(forModelName: modelID)
+            let resolvedCapabilityClassID = capabilityClassID(
+                forModelName: modelID,
+                catalog: catalog
+            )
             let ranking = try await router.scoreAndRankRoutes(
                 modelName: modelID,
                 requestedFormatFamily: .anthropic,
@@ -604,6 +608,15 @@ public actor BurnBarHTTPGatewayServer {
         return description.contains("quota")
             || description.contains("rate limit")
             || description.contains("429")
+    }
+
+    private func capabilityClassID(
+        forModelName modelName: String,
+        catalog: BurnBarCatalog
+    ) -> String? {
+        let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let providerID = normalized.contains(":cloud") || normalized.contains("-cloud") ? "ollama" : nil
+        return catalog.capabilityClassID(forModelName: modelName, providerID: providerID)
     }
 
     // MARK: - HTTP I/O (NWConnection)
