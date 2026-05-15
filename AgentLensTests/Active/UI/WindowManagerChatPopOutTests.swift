@@ -22,14 +22,12 @@ final class WindowManagerChatPopOutTests: XCTestCase {
     }
 
     func test_openChatPopOutWindow_allocatesWindow() async throws {
-        let store = try DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false)
-        let settingsManager = SettingsManager(defaults: UserDefaults(suiteName: #file)!)
-        let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
+        let fixture = try makeFixture()
 
         let window = WindowManager.shared.openChatPopOutWindow(
-            controller: controller,
-            dataStore: store,
-            settingsManager: settingsManager,
+            controller: fixture.controller,
+            dataStore: fixture.store,
+            settingsManager: fixture.settingsManager,
             accountManager: AccountManager.shared
         )
 
@@ -40,21 +38,19 @@ final class WindowManagerChatPopOutTests: XCTestCase {
     }
 
     func test_openChatPopOutWindow_reusesExistingWindow() async throws {
-        let store = try DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false)
-        let settingsManager = SettingsManager(defaults: UserDefaults(suiteName: #file)!)
-        let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
+        let fixture = try makeFixture()
 
         let first = WindowManager.shared.openChatPopOutWindow(
-            controller: controller,
-            dataStore: store,
-            settingsManager: settingsManager,
+            controller: fixture.controller,
+            dataStore: fixture.store,
+            settingsManager: fixture.settingsManager,
             accountManager: AccountManager.shared
         )
 
         let second = WindowManager.shared.openChatPopOutWindow(
-            controller: controller,
-            dataStore: store,
-            settingsManager: settingsManager,
+            controller: fixture.controller,
+            dataStore: fixture.store,
+            settingsManager: fixture.settingsManager,
             accountManager: AccountManager.shared
         )
 
@@ -62,14 +58,12 @@ final class WindowManagerChatPopOutTests: XCTestCase {
     }
 
     func test_closeChatPopOutWindow_releasesReference() async throws {
-        let store = try DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: false)
-        let settingsManager = SettingsManager(defaults: UserDefaults(suiteName: #file)!)
-        let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
+        let fixture = try makeFixture()
 
         _ = WindowManager.shared.openChatPopOutWindow(
-            controller: controller,
-            dataStore: store,
-            settingsManager: settingsManager,
+            controller: fixture.controller,
+            dataStore: fixture.store,
+            settingsManager: fixture.settingsManager,
             accountManager: AccountManager.shared
         )
         XCTAssertNotNil(WindowManager._currentChatPopOutWindow())
@@ -78,5 +72,17 @@ final class WindowManagerChatPopOutTests: XCTestCase {
         // Window close is delivered via NSWindow's willClose notification; wait briefly.
         try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertNil(WindowManager._currentChatPopOutWindow())
+    }
+
+    private func makeFixture() throws -> (
+        store: DataStoreCoordinator,
+        settingsManager: SettingsManager,
+        controller: ChatSessionController
+    ) {
+        let store = try DataStoreCoordinator(databaseQueue: DatabaseQueue(), runMigrations: true)
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "\(Self.self)-\(UUID().uuidString)"))
+        let settingsManager = SettingsManager(defaults: defaults)
+        let controller = ChatSessionController(dataStore: store, settingsManager: settingsManager)
+        return (store, settingsManager, controller)
     }
 }

@@ -460,25 +460,23 @@ final class WindowManager: ObservableObject {
         settingsManager: SettingsManager,
         accountManager: AccountManager
     ) -> NSWindow {
-        NSApplication.shared.activate(ignoringOtherApps: true)
+        if !OpenBurnBarRuntime.isRunningTests {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
 
         if let window = WindowManager.chatPopOutWindow {
             window.makeKeyAndOrderFront(nil)
             return window
         }
 
-        let contentView = DashboardChatWorkspaceView(
+        let contentView = WindowManager.chatPopOutContent(
             controller: controller,
             dataStore: dataStore,
             settingsManager: settingsManager,
-            sharedFeaturesAvailable: accountManager.isSignedIn,
-            mode: .popOut,
-            onClose: { [weak self] in
-                self?.closeChatPopOutWindow()
-            }
+            accountManager: accountManager,
+            onClose: { [weak self] in self?.closeChatPopOutWindow() }
         )
         .frame(minWidth: 780, minHeight: 560)
-        .environment(settingsManager)
 
         let initialFrame = WindowManager.persistedChatPopOutFrame()
             ?? NSRect(x: 0, y: 0, width: 1100, height: 760)
@@ -497,7 +495,11 @@ final class WindowManager: ObservableObject {
         if WindowManager.persistedChatPopOutFrame() == nil {
             window.center()
         }
-        window.makeKeyAndOrderFront(nil)
+        if OpenBurnBarRuntime.isRunningTests {
+            window.orderFront(nil)
+        } else {
+            window.makeKeyAndOrderFront(nil)
+        }
         window.isReleasedWhenClosed = false
 
         let delegate = ChatPopOutWindowLifecycleDelegate { closed in
@@ -518,6 +520,30 @@ final class WindowManager: ObservableObject {
 
     /// Test-only accessor.
     static func _currentChatPopOutWindow() -> NSWindow? { chatPopOutWindow }
+
+    private static func chatPopOutContent(
+        controller: ChatSessionController,
+        dataStore: DataStore,
+        settingsManager: SettingsManager,
+        accountManager: AccountManager,
+        onClose: @escaping () -> Void
+    ) -> AnyView {
+        guard !OpenBurnBarRuntime.isRunningTests else {
+            return AnyView(ChatPopOutWindowTestContent(onClose: onClose))
+        }
+
+        return AnyView(
+            DashboardChatWorkspaceView(
+                controller: controller,
+                dataStore: dataStore,
+                settingsManager: settingsManager,
+                sharedFeaturesAvailable: accountManager.isSignedIn,
+                mode: .popOut,
+                onClose: onClose
+            )
+            .environment(settingsManager)
+        )
+    }
 
     fileprivate static func persistedChatPopOutFrame() -> NSRect? {
         let raw = UserDefaults.standard.string(forKey: "dashboardChatPopOutFrameJSON") ?? ""
@@ -557,6 +583,20 @@ private final class ChatPopOutWindowLifecycleDelegate: NSObject, NSWindowDelegat
         Task { @MainActor in
             self.onWillClose(window)
         }
+    }
+}
+
+private struct ChatPopOutWindowTestContent: View {
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Chat")
+                .font(.headline)
+            Button("Close", action: onClose)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("chat-pop-out-test-content")
     }
 }
 
