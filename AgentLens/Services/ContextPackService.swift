@@ -1,4 +1,6 @@
+import CryptoKit
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Context Pack Domain Model
 
@@ -437,5 +439,472 @@ enum ContextPackService {
             }
         }
         return result
+    }
+}
+
+// MARK: - Project Memory Service
+
+enum ProjectMemoryService {
+    static func assemble(
+        projectSlug: String,
+        projectDisplayName: String,
+        conversations: [ConversationRecord],
+        usages: [TokenUsage],
+        referenceDate: Date = Date()
+    ) -> ProjectMemorySnapshot {
+        let normalizedSlug = normalizeProjectSlug(projectSlug, fallback: projectDisplayName)
+        let normalizedDisplayName = normalizeDisplayName(projectDisplayName, fallback: normalizedSlug)
+        let orderedConversations = ordered(conversations: conversations)
+
+        let keyFiles = ContextPackService.dedupeOrdered(
+            orderedConversations.flatMap(\.keyFiles).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        ).filter { !$0.isEmpty }
+        let keyCommands = ContextPackService.dedupeOrdered(
+            orderedConversations.flatMap(\.keyCommands).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        ).filter { !$0.isEmpty }
+
+        let sourceConversationIDs = orderedConversations.map(\.id)
+        let sourceSessionIDs = ContextPackService.dedupeOrdered(
+            orderedConversations.map { "\($0.provider.rawValue):\($0.sessionId)" }
+        )
+
+        let sourceWindowStart = orderedConversations.compactMap { $0.startTime ?? $0.endTime ?? $0.indexedAt }.min()
+        let sourceWindowEnd = orderedConversations.compactMap { $0.endTime ?? $0.startTime ?? $0.indexedAt }.max()
+
+        let totalCost = usages.reduce(0) { $0 + $1.cost }
+        let totalTokens = usages.reduce(0) { $0 + $1.totalTokens }
+        let usageSessionCount = Set(usages.map(\.sessionId)).count
+        let providers = Set(orderedConversations.map(\.provider.rawValue)).sorted()
+
+        let usageSummary = buildUsageSummary(
+            totalCost: totalCost,
+            totalTokens: totalTokens,
+            usageSessionCount: usageSessionCount,
+            providerNames: providers,
+            sourceConversationCount: sourceConversationIDs.count
+        )
+
+        let citations = orderedConversations.prefix(8).map(citation(from:))
+        let executiveSection = ProjectMemorySection(
+            id: "executive-brief",
+            title: "Executive Brief",
+            body: executiveBriefBody(
+                projectName: normalizedDisplayName,
+                totalCost: totalCost,
+                totalTokens: totalTokens,
+                usageSessionCount: usageSessionCount,
+                sourceConversationCount: sourceConversationIDs.count,
+                providerNames: providers
+            ),
+            citations: Array(citations.prefix(3))
+        )
+        let recentWorkSection = ProjectMemorySection(
+            id: "recent-agent-work",
+            title: "Recent Agent Work",
+            body: recentWorkBody(from: orderedConversations),
+            citations: Array(citations.prefix(5))
+        )
+        let decisionsSection = ProjectMemorySection(
+            id: "decisions-rationale",
+            title: "Decisions & Rationale",
+            body: decisionsBody(from: orderedConversations),
+            citations: Array(citations.prefix(4))
+        )
+        let architectureSection = ProjectMemorySection(
+            id: "architecture-map",
+            title: "Architecture Map",
+            body: architectureBody(from: orderedConversations),
+            citations: Array(citations.prefix(4))
+        )
+        let runbooksSection = ProjectMemorySection(
+            id: "commands-runbooks",
+            title: "Commands & Runbooks",
+            body: runbooksBody(commands: keyCommands),
+            citations: Array(citations.prefix(3))
+        )
+        let risksSection = ProjectMemorySection(
+            id: "open-risks-questions",
+            title: "Open Risks & Questions",
+            body: risksBody(from: orderedConversations),
+            citations: Array(citations.prefix(4))
+        )
+
+        let visuals = buildVisuals(
+            projectName: normalizedDisplayName,
+            usages: usages,
+            conversations: orderedConversations,
+            keyFiles: keyFiles
+        )
+
+        let pageOne = ProjectMemoryPage(
+            id: "project-memory",
+            title: "Project Memory",
+            summary: "Living brief generated from local agent transcripts with source citations.",
+            sections: [executiveSection, recentWorkSection, decisionsSection],
+            visualIDs: visuals.filter { $0.kind == .cover || $0.kind == .providerMix || $0.kind == .timeline }.map(\.id)
+        )
+        let pageTwo = ProjectMemoryPage(
+            id: "engineering-field-guide",
+            title: "Engineering Field Guide",
+            summary: "Architecture, commands, and unresolved risks with evidence-backed references.",
+            sections: [architectureSection, runbooksSection, risksSection],
+            visualIDs: visuals.filter { $0.kind == .hotspots || $0.kind == .timeline }.map(\.id)
+        )
+
+        let freshness = freshnessState(referenceDate: referenceDate, sourceWindowEnd: sourceWindowEnd, sourceConversationCount: sourceConversationIDs.count)
+
+        let hashPayload = ProjectMemoryHashPayload(
+            projectSlug: normalizedSlug,
+            projectDisplayName: normalizedDisplayName,
+            sourceSessionIDs: sourceSessionIDs,
+            sourceConversationIDs: sourceConversationIDs,
+            sourceWindowStart: sourceWindowStart,
+            sourceWindowEnd: sourceWindowEnd,
+            keyFiles: keyFiles,
+            keyCommands: keyCommands,
+            usageSummary: usageSummary,
+            freshness: freshness.rawValue,
+            pages: [pageOne, pageTwo],
+            visuals: visuals
+        )
+        let contentHash = contentHash(for: hashPayload)
+
+        return ProjectMemorySnapshot(
+            projectSlug: normalizedSlug,
+            projectDisplayName: normalizedDisplayName,
+            generatedAt: referenceDate,
+            sourceSessionIDs: sourceSessionIDs,
+            sourceConversationIDs: sourceConversationIDs,
+            sourceWindowStart: sourceWindowStart,
+            sourceWindowEnd: sourceWindowEnd,
+            keyFiles: Array(keyFiles.prefix(24)),
+            keyCommands: Array(keyCommands.prefix(20)),
+            usageSummary: usageSummary,
+            freshness: freshness,
+            contentHash: contentHash,
+            schemaVersion: ProjectMemorySnapshot.currentSchemaVersion,
+            pages: [pageOne, pageTwo],
+            visuals: visuals
+        )
+    }
+
+    private struct ProjectMemoryHashPayload: Codable {
+        let projectSlug: String
+        let projectDisplayName: String
+        let sourceSessionIDs: [String]
+        let sourceConversationIDs: [String]
+        let sourceWindowStart: Date?
+        let sourceWindowEnd: Date?
+        let keyFiles: [String]
+        let keyCommands: [String]
+        let usageSummary: String
+        let freshness: String
+        let pages: [ProjectMemoryPage]
+        let visuals: [ProjectMemoryVisual]
+    }
+
+    private static func ordered(conversations: [ConversationRecord]) -> [ConversationRecord] {
+        let sorted = conversations.sorted { lhs, rhs in
+            let lhsTime = lhs.endTime ?? lhs.startTime ?? lhs.indexedAt
+            let rhsTime = rhs.endTime ?? rhs.startTime ?? rhs.indexedAt
+            if lhsTime != rhsTime {
+                return lhsTime > rhsTime
+            }
+            return lhs.id < rhs.id
+        }
+        var seen = Set<String>()
+        var deduped: [ConversationRecord] = []
+        deduped.reserveCapacity(sorted.count)
+        for conversation in sorted where seen.insert(conversation.id).inserted {
+            deduped.append(conversation)
+        }
+        return deduped
+    }
+
+    private static func normalizeProjectSlug(_ slug: String, fallback: String) -> String {
+        let candidate = slug.trimmingCharacters(in: .whitespacesAndNewlines)
+        if candidate.isEmpty {
+            return fallback
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .replacingOccurrences(of: " ", with: "-")
+        }
+        return candidate.lowercased()
+    }
+
+    private static func normalizeDisplayName(_ displayName: String, fallback: String) -> String {
+        let candidate = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if candidate.isEmpty {
+            return fallback.replacingOccurrences(of: "-", with: " ")
+        }
+        return candidate
+    }
+
+    private static func buildUsageSummary(
+        totalCost: Double,
+        totalTokens: Int,
+        usageSessionCount: Int,
+        providerNames: [String],
+        sourceConversationCount: Int
+    ) -> String {
+        var parts: [String] = []
+        parts.append("\(usageSessionCount) usage session\(usageSessionCount == 1 ? "" : "s")")
+        parts.append("\(sourceConversationCount) cited transcript\(sourceConversationCount == 1 ? "" : "s")")
+        parts.append("\(totalTokens) tokens")
+        parts.append(String(format: "$%.2f spend", totalCost))
+        if providerNames.isEmpty == false {
+            parts.append("providers: \(providerNames.joined(separator: ", "))")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private static func executiveBriefBody(
+        projectName: String,
+        totalCost: Double,
+        totalTokens: Int,
+        usageSessionCount: Int,
+        sourceConversationCount: Int,
+        providerNames: [String]
+    ) -> String {
+        var lines: [String] = []
+        lines.append("\(projectName) generated \(usageSessionCount) usage sessions and \(sourceConversationCount) cited conversations.")
+        lines.append("Observed spend is \(String(format: "$%.2f", totalCost)) across \(totalTokens) tokens.")
+        if providerNames.isEmpty == false {
+            lines.append("Primary providers in this window: \(providerNames.joined(separator: ", ")).")
+        }
+        lines.append("Use this brief as the project handoff before starting the next agent run.")
+        return lines.joined(separator: "\n")
+    }
+
+    private static func recentWorkBody(from conversations: [ConversationRecord]) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+
+        let lines = conversations.prefix(6).enumerated().map { idx, conversation in
+            let when = formatter.string(from: conversation.endTime ?? conversation.startTime ?? conversation.indexedAt)
+            let title = preferredTitle(for: conversation)
+            return "\(idx + 1). \(title) (\(conversation.provider.rawValue), \(when))"
+        }
+        if lines.isEmpty {
+            return "No indexed conversations are available yet."
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func decisionsBody(from conversations: [ConversationRecord]) -> String {
+        let decisionLines = conversations
+            .compactMap { conversation -> String? in
+                let summary = conversation.summary?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard summary.isEmpty == false else { return nil }
+                return "• \(preferredTitle(for: conversation)): \(compact(summary, max: 220))"
+            }
+            .prefix(5)
+        if decisionLines.isEmpty {
+            return "No explicit decision summaries were found yet. Generate more summaries to improve this section."
+        }
+        return decisionLines.joined(separator: "\n")
+    }
+
+    private static func architectureBody(from conversations: [ConversationRecord]) -> String {
+        var fileFrequency: [String: Int] = [:]
+        for conversation in conversations {
+            for file in conversation.keyFiles {
+                let trimmed = file.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmed.isEmpty == false else { continue }
+                fileFrequency[trimmed, default: 0] += 1
+            }
+        }
+        let ranked = fileFrequency.sorted {
+            if $0.value != $1.value { return $0.value > $1.value }
+            return $0.key < $1.key
+        }
+        if ranked.isEmpty {
+            return "No key-file evidence found yet."
+        }
+        return ranked.prefix(8).enumerated().map { idx, entry in
+            "\(idx + 1). \(entry.key) · touched in \(entry.value) session\(entry.value == 1 ? "" : "s")"
+        }.joined(separator: "\n")
+    }
+
+    private static func runbooksBody(commands: [String]) -> String {
+        let cleaned = commands.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        if cleaned.isEmpty {
+            return "No reusable commands captured yet."
+        }
+        return cleaned.prefix(10).enumerated().map { idx, command in
+            "\(idx + 1). \(command)"
+        }.joined(separator: "\n")
+    }
+
+    private static func risksBody(from conversations: [ConversationRecord]) -> String {
+        let keywords = ["todo", "fixme", "blocked", "risk", "warning", "follow up", "regression", "rollback", "unknown"]
+        var riskLines: [String] = []
+        for conversation in conversations.prefix(12) {
+            let haystack = "\(conversation.summary ?? "") \(conversation.lastAssistantMessage) \(conversation.fullText.prefix(400))".lowercased()
+            guard keywords.contains(where: { haystack.contains($0) }) else { continue }
+            riskLines.append("• \(preferredTitle(for: conversation)) — contains unresolved risk markers.")
+        }
+        if riskLines.isEmpty {
+            return "No high-signal unresolved risk markers detected in recent transcript evidence."
+        }
+        return Array(riskLines.prefix(6)).joined(separator: "\n")
+    }
+
+    private static func citation(from conversation: ConversationRecord) -> ProjectMemoryCitation {
+        let snippetSource = conversation.summary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? (conversation.summary ?? "")
+            : (conversation.lastAssistantMessage.isEmpty ? conversation.fullText : conversation.lastAssistantMessage)
+        return ProjectMemoryCitation(
+            id: "citation-\(conversation.id)",
+            sourceID: conversation.id,
+            sourceKind: .conversation,
+            title: preferredTitle(for: conversation),
+            snippet: compact(snippetSource, max: 220),
+            createdAt: conversation.endTime ?? conversation.startTime ?? conversation.indexedAt
+        )
+    }
+
+    private static func preferredTitle(for conversation: ConversationRecord) -> String {
+        let summaryTitle = conversation.summaryTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if summaryTitle.isEmpty == false { return summaryTitle }
+        let inferred = conversation.inferredTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if inferred.isEmpty == false { return inferred }
+        return "Session \(conversation.sessionId)"
+    }
+
+    private static func buildVisuals(
+        projectName: String,
+        usages: [TokenUsage],
+        conversations: [ConversationRecord],
+        keyFiles: [String]
+    ) -> [ProjectMemoryVisual] {
+        var visuals: [ProjectMemoryVisual] = []
+        let totalCost = usages.reduce(0) { $0 + $1.cost }
+        let totalTokens = usages.reduce(0) { $0 + $1.totalTokens }
+
+        visuals.append(
+            ProjectMemoryVisual(
+                id: "cover",
+                kind: .cover,
+                title: projectName,
+                subtitle: "Visual cover generated from local project evidence",
+                points: [
+                    ProjectMemoryVisualPoint(label: "Sessions", value: Double(Set(usages.map(\.sessionId)).count)),
+                    ProjectMemoryVisualPoint(label: "Tokens", value: Double(totalTokens)),
+                    ProjectMemoryVisualPoint(label: "Spend", value: totalCost),
+                ]
+            )
+        )
+
+        let providerCostBuckets = Dictionary(grouping: usages, by: { $0.provider.rawValue })
+            .mapValues { rows in rows.reduce(0) { $0 + $1.cost } }
+        let providerPoints = providerCostBuckets
+            .sorted { lhs, rhs in
+                if lhs.value != rhs.value { return lhs.value > rhs.value }
+                return lhs.key < rhs.key
+            }
+            .prefix(6)
+            .map { ProjectMemoryVisualPoint(label: $0.key, value: $0.value, subtitle: String(format: "$%.2f", $0.value)) }
+        if providerPoints.isEmpty == false {
+            visuals.append(
+                ProjectMemoryVisual(
+                    id: "provider-mix",
+                    kind: .providerMix,
+                    title: "Provider Mix",
+                    subtitle: "Spend distribution by provider",
+                    points: providerPoints
+                )
+            )
+        }
+
+        let calendar = Calendar.current
+        let timelineBuckets = Dictionary(grouping: usages) { calendar.startOfDay(for: $0.startTime) }
+            .mapValues { rows in rows.reduce(0) { $0 + $1.totalTokens } }
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateFormat = "MMM d"
+        let timelinePoints = timelineBuckets
+            .sorted { $0.key < $1.key }
+            .suffix(10)
+            .map { ProjectMemoryVisualPoint(label: dayFormatter.string(from: $0.key), value: Double($0.value)) }
+        if timelinePoints.isEmpty == false {
+            visuals.append(
+                ProjectMemoryVisual(
+                    id: "timeline",
+                    kind: .timeline,
+                    title: "Session Timeline",
+                    subtitle: "Daily tokens in recent activity",
+                    points: timelinePoints
+                )
+            )
+        }
+
+        var hotspotFrequency: [String: Int] = [:]
+        for conversation in conversations {
+            for file in conversation.keyFiles {
+                hotspotFrequency[file, default: 0] += 1
+            }
+        }
+        if hotspotFrequency.isEmpty {
+            for file in keyFiles {
+                hotspotFrequency[file, default: 0] += 1
+            }
+        }
+        let hotspotPoints = hotspotFrequency
+            .sorted {
+                if $0.value != $1.value { return $0.value > $1.value }
+                return $0.key < $1.key
+            }
+            .prefix(8)
+            .map { ProjectMemoryVisualPoint(label: compact($0.key, max: 48), value: Double($0.value)) }
+        if hotspotPoints.isEmpty == false {
+            visuals.append(
+                ProjectMemoryVisual(
+                    id: "hotspots",
+                    kind: .hotspots,
+                    title: "File Hotspots",
+                    subtitle: "Most frequently referenced files",
+                    points: hotspotPoints
+                )
+            )
+        }
+        return visuals
+    }
+
+    private static func freshnessState(
+        referenceDate: Date,
+        sourceWindowEnd: Date?,
+        sourceConversationCount: Int
+    ) -> ProjectMemoryFreshness {
+        guard sourceConversationCount >= 2 else { return .evidenceThin }
+        guard let sourceWindowEnd else { return .evidenceThin }
+        let age = max(0, referenceDate.timeIntervalSince(sourceWindowEnd))
+        if age <= 6 * 3600 {
+            return .fresh
+        }
+        if age <= 48 * 3600 {
+            return .needsRefresh
+        }
+        return .stale
+    }
+
+    private static func compact(_ text: String, max: Int) -> String {
+        let normalized = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\t", with: " ")
+            .replacingOccurrences(of: "  ", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.count > max else { return normalized }
+        return String(normalized.prefix(max)) + "…"
+    }
+
+    private static func contentHash<T: Encodable>(for value: T) -> String {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        if #available(macOS 10.13, iOS 11.0, *) {
+            encoder.outputFormatting = [.sortedKeys]
+        }
+        let data = (try? encoder.encode(value)) ?? Data()
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }

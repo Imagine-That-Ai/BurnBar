@@ -488,6 +488,9 @@ private struct ProjectHubView: View {
     let onEditSetup: () -> Void
     let onLaunchReview: (BurnBarControllerReviewCadence) -> Void
     let onRegister: () -> Void
+    @State private var projectMemorySnapshot: ProjectMemorySnapshot?
+    @State private var projectMemoryError: String?
+    @State private var isRefreshingProjectMemory = false
 
     private var daemonIsHealthy: Bool {
         if case .healthy = daemonManager.status { return true }
@@ -538,6 +541,9 @@ private struct ProjectHubView: View {
 
                     // Header
                     headerSection
+
+                    // Project Memory Wiki
+                    projectMemorySection
 
                     // Pending Questions
                     if !pendingQuestions.isEmpty {
@@ -614,6 +620,7 @@ private struct ProjectHubView: View {
             .defaultScrollAnchor(.top)
             .task(id: project.id) {
                 await scrollProjectHubToTop(using: proxy, anchorID: projectHubTopAnchorID)
+                await loadProjectMemory(forceRefresh: false)
             }
         }
     }
@@ -622,6 +629,66 @@ private struct ProjectHubView: View {
     private func scrollProjectHubToTop(using proxy: ScrollViewProxy, anchorID: String) async {
         await Task.yield()
         proxy.scrollTo(anchorID, anchor: .top)
+    }
+
+    private var projectMemoryKeys: [String] {
+        let normalized = [project.slug, project.displayName]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+        var seen = Set<String>()
+        return normalized.filter { seen.insert($0).inserted }
+    }
+
+    @MainActor
+    private func loadProjectMemory(forceRefresh: Bool) async {
+        if isRefreshingProjectMemory { return }
+        isRefreshingProjectMemory = true
+        defer { isRefreshingProjectMemory = false }
+
+        if forceRefresh == false {
+            for key in projectMemoryKeys {
+                if let cached = try? dataStore.fetchProjectMemorySnapshot(projectSlug: key) {
+                    projectMemorySnapshot = cached
+                    break
+                }
+            }
+        }
+
+        var conversations: [ConversationRecord] = []
+        for key in projectMemoryKeys {
+            if let rows = try? dataStore.fetchConversationsForTranscriptScan(
+                provider: nil,
+                projectName: key,
+                dateRange: nil,
+                conversationSources: nil,
+                limit: 240
+            ) {
+                conversations.append(contentsOf: rows)
+            }
+        }
+        if conversations.isEmpty {
+            let fallback = (try? dataStore.fetchConversations(limit: 500)) ?? []
+            let keys = Set(projectMemoryKeys)
+            conversations = fallback.filter { keys.contains($0.projectName.lowercased()) }
+        }
+
+        var seen = Set<String>()
+        let dedupedConversations = conversations.filter { seen.insert($0.id).inserted }
+        let snapshot = ProjectMemoryService.assemble(
+            projectSlug: project.slug,
+            projectDisplayName: project.displayName,
+            conversations: dedupedConversations,
+            usages: projectUsages,
+            referenceDate: Date()
+        )
+        projectMemorySnapshot = snapshot
+
+        do {
+            try dataStore.upsertProjectMemorySnapshot(snapshot)
+            projectMemoryError = nil
+        } catch {
+            projectMemoryError = "Couldn't persist Project Memory locally: \(error.localizedDescription)"
+        }
     }
 
     // MARK: - Header
@@ -726,6 +793,89 @@ private struct ProjectHubView: View {
                             .font(DesignSystem.Typography.tiny)
                             .foregroundStyle(DesignSystem.Colors.textMuted)
                     }
+                }
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+    }
+
+    // MARK: - Project Memory
+
+    private var projectMemorySection: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                HStack(alignment: .center) {
+                    sectionHeader("Project Memory Wiki")
+                    Spacer()
+                    if isRefreshingProjectMemory {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Button {
+                        Task { await loadProjectMemory(forceRefresh: true) }
+                    } label: {
+                        HStack(spacing: DesignSystem.Spacing.xs) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text("Refresh")
+                                .font(DesignSystem.Typography.caption)
+                        }
+                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                        .padding(.horizontal, DesignSystem.Spacing.md)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                                .fill(DesignSystem.Colors.hermesAureate.opacity(0.12))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                                .stroke(DesignSystem.Colors.hermesAureate.opacity(0.35), lineWidth: 0.75)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isRefreshingProjectMemory)
+                }
+
+                if let snapshot = projectMemorySnapshot {
+                    ProjectMemoryHeroCard(snapshot: snapshot)
+
+                    ForEach(snapshot.pages.prefix(2)) { page in
+                        ProjectMemoryPageCard(page: page)
+                    }
+
+                    if snapshot.visuals.isEmpty == false {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: DesignSystem.Spacing.md) {
+                                ForEach(snapshot.visuals) { visual in
+                                    ProjectMemoryVisualCard(visual: visual)
+                                }
+                            }
+                            .padding(.vertical, DesignSystem.Spacing.xs)
+                        }
+                    }
+
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        statusPill(title: snapshot.freshness.label, color: snapshot.freshness.color)
+                        Text(snapshot.generatedAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                } else if isRefreshingProjectMemory {
+                    Text("Building project memory from local transcript evidence…")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                } else {
+                    Text("No Project Memory snapshot yet. Refresh to generate a cited, visual brief for this project.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let projectMemoryError {
+                    Text(projectMemoryError)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.warning)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding(DesignSystem.Spacing.lg)
@@ -1147,6 +1297,213 @@ private struct InlineFollowupRow: View {
             }
             .buttonStyle(.plain)
         }
+    }
+}
+
+private extension ProjectMemoryFreshness {
+    var color: Color {
+        switch self {
+        case .fresh:
+            return DesignSystem.Colors.success
+        case .needsRefresh:
+            return DesignSystem.Colors.hermesAureate
+        case .evidenceThin:
+            return DesignSystem.Colors.amber
+        case .stale:
+            return DesignSystem.Colors.warning
+        }
+    }
+}
+
+private struct ProjectMemoryHeroCard: View {
+    let snapshot: ProjectMemorySnapshot
+
+    private var coverVisual: ProjectMemoryVisual? {
+        snapshot.visuals.first { $0.kind == .cover }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            DesignSystem.Colors.hermesMercury.opacity(0.22),
+                            DesignSystem.Colors.hermesAureate.opacity(0.22),
+                            DesignSystem.Colors.surfaceElevated.opacity(0.7),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
+                        .stroke(DesignSystem.Colors.mercuryGradient, lineWidth: 1)
+                )
+
+            Circle()
+                .fill(DesignSystem.Colors.hermesAureate.opacity(0.18))
+                .frame(width: 120, height: 120)
+                .offset(x: 180, y: -30)
+                .blur(radius: 1.2)
+
+            Circle()
+                .fill(DesignSystem.Colors.whimsy.opacity(0.12))
+                .frame(width: 80, height: 80)
+                .offset(x: 235, y: 42)
+                .blur(radius: 1)
+
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                Text(snapshot.projectDisplayName)
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(snapshot.usageSummary)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let coverVisual {
+                    HStack(spacing: DesignSystem.Spacing.md) {
+                        ForEach(Array(coverVisual.points.prefix(3).enumerated()), id: \.offset) { _, point in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(point.label.uppercased())
+                                    .font(DesignSystem.Typography.tiny)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                Text(metric(point))
+                                    .font(DesignSystem.Typography.monoSmall)
+                                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(DesignSystem.Spacing.lg)
+        }
+        .clipShape(.rect(cornerRadius: DesignSystem.Radius.lg))
+    }
+
+    private func metric(_ point: ProjectMemoryVisualPoint) -> String {
+        if point.label.lowercased().contains("spend") {
+            return point.value.formatAsCost()
+        }
+        if point.label.lowercased().contains("token") {
+            return Int(point.value).formatAsTokenVolume()
+        }
+        return String(Int(point.value))
+    }
+}
+
+private struct ProjectMemoryPageCard: View {
+    let page: ProjectMemoryPage
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text(page.title)
+                .font(DesignSystem.Typography.headline)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            Text(page.summary)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ForEach(page.sections.prefix(2)) { section in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(section.title)
+                        .font(DesignSystem.Typography.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    Text(section.body)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(3)
+                    if section.citations.isEmpty == false {
+                        Text("\(section.citations.count) citation\(section.citations.count == 1 ? "" : "s")")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    }
+                }
+                .padding(DesignSystem.Spacing.sm)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(DesignSystem.Colors.surfaceElevated.opacity(0.55))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .stroke(DesignSystem.Colors.border.opacity(0.25), lineWidth: 0.75)
+                )
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.55))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+        )
+    }
+}
+
+private struct ProjectMemoryVisualCard: View {
+    let visual: ProjectMemoryVisual
+
+    private var maxValue: Double {
+        max(visual.points.map(\.value).max() ?? 1, 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text(visual.title)
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+            if let subtitle = visual.subtitle {
+                Text(subtitle)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+
+            ForEach(Array(visual.points.prefix(5).enumerated()), id: \.offset) { _, point in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(point.label)
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(pointValueLabel(point))
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    }
+                    Capsule()
+                        .fill(DesignSystem.Colors.hermesAureate.opacity(0.8))
+                        .frame(width: CGFloat(max(0.12, point.value / maxValue)) * 140, height: 4)
+                }
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .frame(width: 220, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.65))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.mercuryGradient, lineWidth: 0.75)
+        )
+    }
+
+    private func pointValueLabel(_ point: ProjectMemoryVisualPoint) -> String {
+        if let subtitle = point.subtitle, subtitle.isEmpty == false {
+            return subtitle
+        }
+        if visual.kind == .providerMix {
+            return point.value.formatAsCost()
+        }
+        if visual.kind == .timeline {
+            return Int(point.value).formatAsTokenVolume()
+        }
+        return String(Int(point.value))
     }
 }
 

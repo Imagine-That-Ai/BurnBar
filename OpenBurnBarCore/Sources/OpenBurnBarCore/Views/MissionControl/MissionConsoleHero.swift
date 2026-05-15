@@ -197,6 +197,7 @@ public struct MissionConsoleHero: View {
                 }
             }
             .padding(.trailing, UnifiedDesignSystem.Spacing.xl)
+            .fixedSize(horizontal: true, vertical: false)
         }
     }
 

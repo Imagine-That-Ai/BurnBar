@@ -123,6 +123,8 @@ public struct MissionFanOutGroupCard: View {
                 }
             }
             .padding(.vertical, 2)
+            .padding(.trailing, UnifiedDesignSystem.Spacing.xl)
+            .fixedSize(horizontal: true, vertical: false)
         }
     }
 

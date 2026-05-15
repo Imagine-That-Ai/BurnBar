@@ -10,8 +10,7 @@ on its generated `run.app` URL, the grant/revoke Functions are deployed,
 controlled live paid/unpaid/revoked/cross-tenant proof passed, `burnbar.ai`
 ownership is verified in Google, `mcp.burnbar.ai` HTTPS is live, and branded
 real paid subscriber proof passed. The production definition of done is still
-not met because real unpaid-subscriber proof and real target-client
-compatibility proof are still missing.
+not met because authenticated target-client UI flows remain unproven.
 
 ## Prompt-To-Artifact Checklist
 
@@ -30,12 +29,12 @@ compatibility proof are still missing.
 | Required tools: search, body, index status, facets, recent usage, capabilities | `services/hosted-mcp/src/toolRegistry.ts` | Source present |
 | Firestore data additions and rules | `firestore.rules`, `firestore.indexes.json`, `functions/scripts/test-firestore-rules.mjs` | Rules tests passed |
 | Local shim for stdio clients and local decrypt | `tools/openburnbar-mcp-remote/src/*` | Tests/lint passed |
-| Installer output for Codex, Claude Code, Droid/Factory, Kimi, Forge, generic | `tools/openburnbar-mcp-remote/src/installers.ts`, `src/installers.test.ts`, `scripts/test-hosted-mcp-compatibility.sh`, `functions/scripts/prove-hosted-mcp-shim-live.mjs` | Hermetic verification plus temp-profile real CLI config proof passed; live stdio shim proof passed for tools/list, search, and body fetch; target-client authenticated UI flows remain pending |
-| Doctor command | `tools/openburnbar-mcp-remote/src/doctor.ts`, `functions/scripts/prove-hosted-mcp-shim-live.mjs` | Live doctor proof passed with temporary MCP token: token found, endpoint `200 OK`, and `tools/list` passed |
+| Installer output for Codex, Claude Code, Droid/Factory, Kimi, Forge, generic | `tools/openburnbar-mcp-remote/src/installers.ts`, `src/installers.test.ts`, `scripts/test-hosted-mcp-compatibility.sh`, `functions/scripts/prove-hosted-mcp-shim-live.mjs` | Hermetic branded config proof passed; temp-profile installed CLI config proof passed; live stdio shim proof passed for tools/list, search, and body fetch against generated and branded endpoints; target-client authenticated UI flows remain pending |
+| Doctor command | `tools/openburnbar-mcp-remote/src/doctor.ts`, `functions/scripts/prove-hosted-mcp-shim-live.mjs` | Live doctor proof passed with temporary MCP token against generated and branded endpoints: token found, endpoint `200 OK`, and `tools/list` passed |
 | App UX for setup/status/revoke | `OpenBurnBarMobile/Views/Store/CloudStoreView.swift`, `AgentLens/Views/Settings/CloudStoreSettingsView.swift`, `android/app/src/main/java/com/openburnbar/ui/store/CloudStoreView.kt`, and `android/app/src/main/java/com/openburnbar/data/stores/RemoteMcpClientStore.kt` show setup/status copy, list `remote_mcp_clients`, display scopes/last-used/decrypt mode/status, and call `revokeRemoteMcpClient` | iOS/iPadOS, macOS, and Android member UI implemented; Android `assembleDebug` passed; macOS fresh-DerivedData build passed; iOS source compiled with warnings before unrelated widget gate failure |
 | Production deploy | `scripts/deploy-hosted-mcp.sh` deployed `openburnbar-hosted-mcp-00011-zqb`; Cloud Run env update deployed `openburnbar-hosted-mcp-00012-dhf`; Storage bucket `burnbar-hosted-mcp-bodies-246956661961`; encrypted-session Functions callables redeployed with `OPENBURNBAR_STORAGE_BUCKET`; image digest `sha256:b13876c48978972c19fe253dc2a6787c4e1441291e3763d6c7e616edf30d1495` | Cloud Run deployed at generated URL with 100% traffic and body bucket configured; upload/download/search-index callables are active with the same bucket |
 | Domain `mcp.openburnbar.com` or fallback `mcp.burnbar.ai` | Google Search Console ownership verification; Namecheap DNS; Cloud Run domain mapping; `dig +short CNAME mcp.burnbar.ai @1.1.1.1`; `dig +short CNAME mcp.burnbar.ai @8.8.8.8`; `dig +short CNAME mcp.burnbar.ai @9.9.9.9`; `gcloud beta run domain-mappings describe ...`; `curl https://mcp.burnbar.ai/readyz`; `OPENBURNBAR_MCP_ENDPOINT=https://mcp.burnbar.ai/mcp ./scripts/test-hosted-mcp-security.sh` | `burnbar.ai` ownership verified; `mcp.burnbar.ai CNAME ghs.googlehosted.com.` resolves publicly from Cloudflare, Google, and Quad9; Cloud Run mapping is `Ready=True`, `CertificateProvisioned=True`, and `DomainRoutable=True`; branded `/readyz` returns 200; branded security smoke passed |
-| Live paid/unpaid/revoked/cross-tenant proof | `functions/scripts/prove-hosted-mcp-live.mjs`; controlled temporary Firestore proof users against generated Cloud Run URL; real paid fixture `alberto8793@gmail.com` against generated and branded URLs | Controlled paid/unpaid/revoked/cross-tenant proof passed; real paid subscriber fixture proved active entitlement, tools/list, capabilities, search, encrypted body fetch, and revoke denial on generated URL and branded fallback URL; real unpaid fixture proof still missing |
+| Live paid/unpaid/revoked/cross-tenant proof | `functions/scripts/prove-hosted-mcp-live.mjs`; controlled temporary Firestore proof users against generated Cloud Run URL; real paid fixture `alberto8793@gmail.com` against generated and branded URLs; real unpaid fixture against branded URL | Controlled paid/unpaid/revoked/cross-tenant proof passed; real paid subscriber fixture proved active entitlement, tools/list, capabilities, search, encrypted body fetch, and revoke denial on generated URL and branded fallback URL; real unpaid fixture denied with `burnbar_pro_required` on branded URL |
 | Alerts/logging/rollback/cost dashboard | `docs/REMOTE_MCP_RUNBOOK.md`, `functions/scripts/prove-hosted-mcp-privacy-scan.mjs`, structured logging in service; Cloud Run logs scanned after live proof window; Monitoring policies `OpenBurnBar Hosted MCP 5xx spike`, `OpenBurnBar Hosted MCP 429 spike`, `OpenBurnBar Hosted MCP auth denial spike`, `OpenBurnBar Hosted MCP p95 latency spike`, `OpenBurnBar Hosted MCP instance pressure`, and project-level `OpenBurnBar Firestore read spike`; dashboard `OpenBurnBar Hosted MCP Cost and Capacity`; rollback rehearsal from `00005-ndq` to `00004-xf4` and back | No obvious plaintext/token leakage in sampled Cloud Run logs; production Firestore/Storage privacy scan passed with zero violations, but current Remote MCP/search collections were empty after controlled proof cleanup; hosted-MCP 5xx/429/auth-denial/latency/instance alerts exist; project-level Firestore read alert exists; cost/capacity dashboard exists; rollback rehearsal passed |
 | Multi-agent audit reports | `docs/plans/HOSTED_REMOTE_MCP_WAVE8_AUDIT_REPORT.md`, `docs/plans/HOSTED_REMOTE_MCP_WAVE8_SIGNED_STREAM_REPORTS.md` | Every required stream has a signed report and prioritized findings; reports recommend hold until branded HTTPS, real subscriber proof, and real client proof are complete |
 
@@ -315,6 +314,32 @@ node functions/scripts/prove-hosted-mcp-shim-live.mjs \
 # searchReadBudget: firestoreDocumentReads 2, storageReads 0, withinSearchReadBudget true
 # bodyReadBudget: firestoreDocumentReads 1, storageReads 1, withinBodyReadBudget true
 
+OPENBURNBAR_MCP_TOKEN_HMAC_SECRET=$(gcloud secrets versions access latest \
+  --secret REMOTE_MCP_TOKEN_HMAC_SECRET --project burnbar) \
+GOOGLE_CLOUD_PROJECT=burnbar \
+OPENBURNBAR_STORAGE_BUCKET=burnbar-hosted-mcp-bodies-246956661961 \
+node functions/scripts/prove-hosted-mcp-shim-live.mjs \
+  --project burnbar \
+  --endpoint https://mcp.burnbar.ai/mcp \
+  --bucket burnbar-hosted-mcp-bodies-246956661961
+# ok: true
+# proofId: remote-mcp-shim-1778838356886
+# shim: openburnbar-mcp-remote stdio
+# doctor: PASS token, PASS endpoint 200 OK, PASS tools/list
+# toolsListed: 6
+# searchReadBudget: firestoreDocumentReads 2, storageReads 0, withinSearchReadBudget true
+# bodyReadBudget: firestoreDocumentReads 1, storageReads 1, withinBodyReadBudget true
+
+OPENBURNBAR_MCP_ENDPOINT=https://mcp.burnbar.ai/mcp \
+  ./scripts/test-hosted-mcp-compatibility.sh
+# hosted MCP compatibility config smoke passed
+
+OPENBURNBAR_MCP_ENDPOINT=https://mcp.burnbar.ai/mcp \
+OPENBURNBAR_MCP_REAL_CLIENTS=1 \
+  ./scripts/test-hosted-mcp-compatibility.sh
+# hosted MCP real client config proof passed
+# hosted MCP compatibility config smoke passed
+
 gcloud logging read \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="openburnbar-hosted-mcp" AND timestamp>="2026-05-15T07:00:00Z"' \
   --project burnbar --limit 200 --format=json
@@ -347,6 +372,15 @@ gcloud logging read \
 # Cleanup verified:
 # remaining client false, state false, document false, chunk false, posting false,
 # storageObjects 0
+
+# Branded real unpaid fixture proof.
+# proofId: branded-real-unpaid-mcp-1778838427075
+# endpoint: https://mcp.burnbar.ai/mcp
+# checkedUsers: 1
+# uidHash: 4ad190a88dc92b9b
+# emailHash: 869dabf82df64ddd
+# burnbar_resolve_capabilities: 403 burnbar_pro_required
+# Cleanup verified: remaining client false
 
 # Branded real paid subscriber fixture proof.
 # Account: alberto8793@gmail.com
@@ -398,13 +432,12 @@ but the full app gate is not green.
 
 ## Remaining Work
 
-1. Add real unpaid/non-subscriber fixture proof on the branded endpoint.
-2. Run final real client compatibility for Codex, Claude Code, Droid/Factory,
+1. Run final real client compatibility for Codex, Claude Code, Droid/Factory,
    Kimi, Forge, and generic MCP against the branded endpoint with OAuth,
    tools/list, search, and body fetch. Temp-profile local config proof now
    passes but does not prove authenticated live tool use.
-3. Add real subscriber-backed Firestore/Storage privacy scan evidence once real
+2. Add real subscriber-backed Firestore/Storage privacy scan evidence once real
    subscriber search artifacts exist; current production scan passed but had no
    Remote MCP/search documents to inspect after proof cleanup.
-4. Fix or explicitly accept every remaining Wave 8 finding after unpaid fixture
-   proof and real client proof are available.
+3. Fix or explicitly accept every remaining Wave 8 finding after real client
+   proof is available.

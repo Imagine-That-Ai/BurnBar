@@ -1334,6 +1334,9 @@ struct HermesChatView: View {
         }
         .environment(\.hermesAtomNavigator, atomRouter)
         .task(id: route) { await applyRoute() }
+        .task(id: AssistantPendingPrompt.shared.hermes) {
+            await consumePendingHermesPromptIfNeeded()
+        }
         .task {
             // Idempotent: refreshRuntime coalesces concurrent callers and loads
             // both remote relay discovery and selected-host reachability.
@@ -1428,6 +1431,16 @@ struct HermesChatView: View {
                 }
             }
         }
+    }
+
+    @MainActor
+    private func consumePendingHermesPromptIfNeeded() async {
+        guard case .new = route,
+              let pending = AssistantPendingPrompt.shared.consume(.hermes),
+              !pending.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        service.sendMessage(pending)
     }
 
     private var navigationTitleText: String {

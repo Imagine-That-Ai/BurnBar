@@ -1,4 +1,5 @@
 const command = "openburnbar-mcp-remote";
+const endpoint = "https://mcp.burnbar.ai/mcp";
 
 export type ClientKind = "codex" | "claude" | "droid" | "kimi" | "forge" | "generic";
 
@@ -9,7 +10,7 @@ export function installer(kind: ClientKind): string {
         command,
         args: ["mcp", "serve"],
         env: {
-          OPENBURNBAR_MCP_ENDPOINT: "https://mcp.openburnbar.com/mcp"
+          OPENBURNBAR_MCP_ENDPOINT: endpoint
         }
       }
     }

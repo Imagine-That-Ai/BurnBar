@@ -6,7 +6,7 @@ agents search a user's encrypted hosted session memory.
 The production endpoint is:
 
 ```text
-https://mcp.openburnbar.com/mcp
+https://mcp.burnbar.ai/mcp
 ```
 
 ## Architecture

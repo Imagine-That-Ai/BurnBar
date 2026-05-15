@@ -213,6 +213,115 @@ final class ControlPlaneStore: Sendable {
         }
     }
 
+    // MARK: - Project Memory Snapshots
+
+    func upsertProjectMemorySnapshot(_ snapshot: ProjectMemorySnapshot, updatedAt: Date = Date()) throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try encoder.encode(snapshot)
+        guard let snapshotJSON = String(data: data, encoding: .utf8) else {
+            throw NSError(domain: "OpenBurnBar.ProjectMemory", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "Project memory snapshot could not be encoded as UTF-8."
+            ])
+        }
+
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO project_memory_snapshots (
+                    projectSlug, projectDisplayName, snapshotJSON, contentHash,
+                    sourceSessionCount, sourceConversationCount, generatedAt, schemaVersion, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(projectSlug) DO UPDATE SET
+                    projectDisplayName = excluded.projectDisplayName,
+                    snapshotJSON = excluded.snapshotJSON,
+                    contentHash = excluded.contentHash,
+                    sourceSessionCount = excluded.sourceSessionCount,
+                    sourceConversationCount = excluded.sourceConversationCount,
+                    generatedAt = excluded.generatedAt,
+                    schemaVersion = excluded.schemaVersion,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    snapshot.projectSlug,
+                    snapshot.projectDisplayName,
+                    snapshotJSON,
+                    snapshot.contentHash,
+                    snapshot.sourceSessionIDs.count,
+                    snapshot.sourceConversationIDs.count,
+                    snapshot.generatedAt,
+                    snapshot.schemaVersion,
+                    updatedAt
+                ]
+            )
+        }
+    }
+
+    func fetchProjectMemorySnapshot(projectSlug: String) throws -> ProjectMemorySnapshot? {
+        let normalized = projectSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.isEmpty == false else { return nil }
+
+        return try dbQueue.read { db in
+            guard let snapshotJSON = try String.fetchOne(
+                db,
+                sql: """
+                SELECT snapshotJSON
+                FROM project_memory_snapshots
+                WHERE projectSlug = ?
+                LIMIT 1
+                """,
+                arguments: [normalized]
+            ) else {
+                return nil
+            }
+            guard let data = snapshotJSON.data(using: .utf8) else { return nil }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return try decoder.decode(ProjectMemorySnapshot.self, from: data)
+        }
+    }
+
+    func fetchProjectMemorySnapshots(limit: Int = 80) throws -> [ProjectMemorySnapshot] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT snapshotJSON
+                FROM project_memory_snapshots
+                ORDER BY generatedAt DESC, updatedAt DESC, projectSlug ASC
+                LIMIT ?
+                """,
+                arguments: [max(1, limit)]
+            )
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+
+            var snapshots: [ProjectMemorySnapshot] = []
+            snapshots.reserveCapacity(rows.count)
+            for row in rows {
+                guard let json: String = row["snapshotJSON"], let data = json.data(using: .utf8) else {
+                    continue
+                }
+                if let snapshot = try? decoder.decode(ProjectMemorySnapshot.self, from: data) {
+                    snapshots.append(snapshot)
+                }
+            }
+            return snapshots
+        }
+    }
+
+    func deleteProjectMemorySnapshot(projectSlug: String) throws {
+        let normalized = projectSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.isEmpty == false else { return }
+
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM project_memory_snapshots WHERE projectSlug = ?",
+                arguments: [normalized]
+            )
+        }
+    }
+
     func mutateControllerRuntimeMirror(
         cacheKey: String = "latest",
         _ mutate: (inout OpenBurnBarControllerRuntimeSnapshot) -> Void

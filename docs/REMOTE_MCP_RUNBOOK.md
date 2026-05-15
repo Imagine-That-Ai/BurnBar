@@ -158,6 +158,19 @@ This proves that the installed Codex, Claude Code, Droid/Factory, Kimi, and
 Forge CLIs accept the OpenBurnBar stdio shim configuration. It does not replace
 the final real target-client OAuth/search/body compatibility proof.
 
+Branded endpoint config proof:
+
+```bash
+OPENBURNBAR_MCP_ENDPOINT=https://mcp.burnbar.ai/mcp \
+  ./scripts/test-hosted-mcp-compatibility.sh
+
+OPENBURNBAR_MCP_ENDPOINT=https://mcp.burnbar.ai/mcp \
+OPENBURNBAR_MCP_REAL_CLIENTS=1 \
+  ./scripts/test-hosted-mcp-compatibility.sh
+# hosted MCP real client config proof passed
+# hosted MCP compatibility config smoke passed
+```
+
 Live stdio shim proof:
 
 ```bash
@@ -170,6 +183,14 @@ node functions/scripts/prove-hosted-mcp-shim-live.mjs \
   --endpoint https://openburnbar-hosted-mcp-cjrjb5ckqq-uc.a.run.app/mcp \
   --bucket burnbar-hosted-mcp-bodies-246956661961
 # proofId remote-mcp-shim-1778829335741 passed doctor, tools/list, search, and body fetch.
+
+node functions/scripts/prove-hosted-mcp-shim-live.mjs \
+  --project burnbar \
+  --endpoint https://mcp.burnbar.ai/mcp \
+  --bucket burnbar-hosted-mcp-bodies-246956661961
+# proofId remote-mcp-shim-1778838356886 passed doctor, tools/list, search, and body fetch.
+# searchReadBudget: firestoreDocumentReads 2, storageReads 0
+# bodyReadBudget: firestoreDocumentReads 1, storageReads 1
 ```
 
 ## Monitor
@@ -241,7 +262,6 @@ npm --prefix functions run prove:hosted-mcp-privacy -- \
 
 Still required before launch:
 
-- Add a real unpaid/non-subscriber fixture denial proof.
 - Prove authenticated real target-client flows against the branded endpoint.
 
 ## Rollback

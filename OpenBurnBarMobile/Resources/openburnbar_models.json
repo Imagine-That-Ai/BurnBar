@@ -1,0 +1,107 @@
+[
+  {
+    "modelID": "claude-opus-4-7",
+    "modelDisplay": "Claude Opus 4.7",
+    "providerID": "anthropic",
+    "providerDisplay": "Anthropic",
+    "tier": "flagship"
+  },
+  {
+    "modelID": "claude-sonnet-4-6",
+    "modelDisplay": "Claude Sonnet 4.6",
+    "providerID": "anthropic",
+    "providerDisplay": "Anthropic",
+    "tier": "mid"
+  },
+  {
+    "modelID": "gpt-5-5",
+    "modelDisplay": "GPT-5.5",
+    "providerID": "openai",
+    "providerDisplay": "OpenAI",
+    "tier": "flagship"
+  },
+  {
+    "modelID": "gpt-5-3-codex",
+    "modelDisplay": "GPT-5.3 Codex",
+    "providerID": "openai",
+    "providerDisplay": "OpenAI",
+    "tier": "flagship"
+  },
+  {
+    "modelID": "gpt-5-4-mini",
+    "modelDisplay": "GPT-5.4 mini",
+    "providerID": "openai",
+    "providerDisplay": "OpenAI",
+    "tier": "mini"
+  },
+  {
+    "modelID": "gemini-3-1-pro-preview",
+    "modelDisplay": "Gemini 3.1 Pro (preview)",
+    "providerID": "google",
+    "providerDisplay": "Google",
+    "tier": "flagship"
+  },
+  {
+    "modelID": "gemini-3-flash",
+    "modelDisplay": "Gemini 3 Flash",
+    "providerID": "google",
+    "providerDisplay": "Google",
+    "tier": "mid"
+  },
+  {
+    "modelID": "glm-5-1",
+    "modelDisplay": "GLM 5.1",
+    "providerID": "zai",
+    "providerDisplay": "Z.ai",
+    "tier": "flagship"
+  },
+  {
+    "modelID": "glm-5",
+    "modelDisplay": "GLM 5",
+    "providerID": "zai",
+    "providerDisplay": "Z.ai",
+    "tier": "flagship"
+  },
+  {
+    "modelID": "glm-4-7",
+    "modelDisplay": "GLM 4.7",
+    "providerID": "zai",
+    "providerDisplay": "Z.ai",
+    "tier": "flagship"
+  },
+  {
+    "modelID": "minimax-m2-7",
+    "modelDisplay": "MiniMax M2.7",
+    "providerID": "minimax",
+    "providerDisplay": "MiniMax",
+    "tier": "flagship"
+  },
+  {
+    "modelID": "kimi-k2-6",
+    "modelDisplay": "Kimi K2.6",
+    "providerID": "kimi",
+    "providerDisplay": "Moonshot \u00b7 Kimi",
+    "tier": "flagship"
+  },
+  {
+    "modelID": "kimi-k2-5",
+    "modelDisplay": "Kimi K2.5",
+    "providerID": "kimi",
+    "providerDisplay": "Moonshot \u00b7 Kimi",
+    "tier": "flagship"
+  },
+  {
+    "modelID": "deepseek-v4-pro",
+    "modelDisplay": "DeepSeek V4 Pro",
+    "providerID": "deepseek",
+    "providerDisplay": "DeepSeek",
+    "tier": "flagship"
+  },
+  {
+    "modelID": "deepseek-v4-flash",
+    "modelDisplay": "DeepSeek V4 Flash",
+    "providerID": "deepseek",
+    "providerDisplay": "DeepSeek",
+    "tier": "mid"
+  }
+]

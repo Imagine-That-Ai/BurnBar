@@ -4,18 +4,23 @@ import OpenBurnBarCore
 // MARK: - Assistant Model Catalog
 //
 // EVERY harness in OpenBurnBar is an *agent harness* that routes prompts
-// to a real frontier LLM. Hermes and Pi are general-purpose harnesses
-// that can run on any model the relay can reach. Codex / Claude Code /
-// OpenClaw are CLI harnesses constrained by the vendor's binary (Codex
-// runs on OpenAI, Claude Code runs on Anthropic, OpenClaw runs on local
-// models).
+// to a real frontier LLM. Hermes, Pi, OpenClaw (and the CLI bridges
+// Codex / Claude Code) all expose the same underlying choice: which
+// model should run under the hood.
 //
-// The catalog below is the source of truth for "what models can each
-// harness reasonably be pointed at." When a harness's relay advertises a
-// model list of its own (Hermes / Pi) we merge that in; when it doesn't,
-// the catalog is what the user sees. That replaces the previous broken
-// state where Hermes' picker only offered "Hermes Agent" — a self-loop
-// that wasn't a model at all.
+// The list of models is **not** hardcoded into mobile. The source of
+// truth lives in `website/scripts/rundown-seed/models.json` — the same
+// file the router rundown pages read so the website and the app stay
+// in lockstep. A trimmed copy is bundled at
+// `OpenBurnBarMobile/Resources/openburnbar_models.json` so the catalog
+// is always available offline. Online, callers can override the bundled
+// copy by calling `AssistantModelCatalog.refreshRemote(...)` — that hits
+// the website-hosted JSON, parses it, and replaces the in-memory list.
+//
+// This replaces the previous hardcoded catalog (which invented
+// half-real names like "MiniMax M2" instead of the actual "MiniMax
+// M2.7"). Anything the user sees here now matches what the relay
+// catalog actually advertises.
 
 /// One row in the catalog. Mirrors `HermesRuntimeModelOption` in shape so
 /// the same UI rows can render either source.
@@ -25,146 +30,123 @@ public struct AssistantModelOption: Hashable, Identifiable, Sendable {
     public let providerName: String
     public let modelID: String
     public let displayName: String
+    public let tier: String
 
-    public init(providerID: String, providerName: String, modelID: String, displayName: String) {
+    public init(providerID: String,
+                providerName: String,
+                modelID: String,
+                displayName: String,
+                tier: String = "mid") {
         self.providerID = providerID
         self.providerName = providerName
         self.modelID = modelID
         self.displayName = displayName
+        self.tier = tier
     }
 }
 
-public enum AssistantModelCatalog {
+// MARK: - Catalog store
 
-    // MARK: - Master catalog (sorted by provider)
-    //
-    // Hermes and Pi both route to everything in this list. Order within
-    // each provider is "newest, most capable first" so the default
-    // selection feels right when a user hasn't picked anything yet.
+public actor AssistantModelCatalogStore {
+    public static let shared = AssistantModelCatalogStore()
 
-    private static let anthropicModels: [AssistantModelOption] = [
-        .init(providerID: "anthropic", providerName: "Anthropic",
-              modelID: "claude-opus-4-7",   displayName: "Claude Opus 4.7"),
-        .init(providerID: "anthropic", providerName: "Anthropic",
-              modelID: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6"),
-        .init(providerID: "anthropic", providerName: "Anthropic",
-              modelID: "claude-haiku-4-5",  displayName: "Claude Haiku 4.5"),
-    ]
+    private var cached: [AssistantModelOption]?
 
-    private static let openAIModels: [AssistantModelOption] = [
-        .init(providerID: "openai", providerName: "OpenAI",
-              modelID: "gpt-5.5",       displayName: "GPT-5.5"),
-        .init(providerID: "openai", providerName: "OpenAI",
-              modelID: "gpt-5",         displayName: "GPT-5"),
-        .init(providerID: "openai", providerName: "OpenAI",
-              modelID: "gpt-5-codex",   displayName: "GPT-5 Codex"),
-        .init(providerID: "openai", providerName: "OpenAI",
-              modelID: "o3",            displayName: "o3"),
-        .init(providerID: "openai", providerName: "OpenAI",
-              modelID: "o4-mini",       displayName: "o4-mini"),
-    ]
+    private init() {}
 
-    private static let googleModels: [AssistantModelOption] = [
-        .init(providerID: "google", providerName: "Google",
-              modelID: "gemini-2.5-pro",   displayName: "Gemini 2.5 Pro"),
-        .init(providerID: "google", providerName: "Google",
-              modelID: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash"),
-    ]
+    /// Return the current catalog. First call loads from the bundle; later
+    /// calls return the cached copy until `refreshFromBundle` or
+    /// `refreshRemote` swaps it.
+    public func options() -> [AssistantModelOption] {
+        if let cached { return cached }
+        let loaded = Self.loadFromBundle() ?? []
+        cached = loaded
+        return loaded
+    }
 
-    private static let minimaxModels: [AssistantModelOption] = [
-        .init(providerID: "minimax", providerName: "MiniMax",
-              modelID: "minimax-2.7",  displayName: "MiniMax 2.7"),
-        .init(providerID: "minimax", providerName: "MiniMax",
-              modelID: "minimax-m2",   displayName: "MiniMax M2"),
-    ]
+    /// Re-read the bundled JSON. Useful if a future setting lets the user
+    /// switch back to "shipped catalog only".
+    public func refreshFromBundle() {
+        cached = Self.loadFromBundle() ?? []
+    }
 
-    private static let zaiModels: [AssistantModelOption] = [
-        .init(providerID: "zai", providerName: "Z.ai",
-              modelID: "glm-5.1",  displayName: "GLM 5.1"),
-        .init(providerID: "zai", providerName: "Z.ai",
-              modelID: "glm-4.6",  displayName: "GLM 4.6"),
-    ]
-
-    private static let moonshotModels: [AssistantModelOption] = [
-        .init(providerID: "kimi", providerName: "Moonshot",
-              modelID: "kimi-k2.6",  displayName: "Kimi K2.6"),
-        .init(providerID: "kimi", providerName: "Moonshot",
-              modelID: "kimi-k2",    displayName: "Kimi K2"),
-    ]
-
-    private static let deepseekModels: [AssistantModelOption] = [
-        .init(providerID: "deepseek", providerName: "DeepSeek",
-              modelID: "deepseek-v3.1",  displayName: "DeepSeek V3.1"),
-        .init(providerID: "deepseek", providerName: "DeepSeek",
-              modelID: "deepseek-r1",    displayName: "DeepSeek R1"),
-    ]
-
-    private static let xaiModels: [AssistantModelOption] = [
-        .init(providerID: "xai", providerName: "xAI",
-              modelID: "grok-4",  displayName: "Grok 4"),
-    ]
-
-    private static let qwenModels: [AssistantModelOption] = [
-        .init(providerID: "ollama", providerName: "Qwen (local)",
-              modelID: "qwen3-coder:480b",  displayName: "Qwen 3 Coder 480B"),
-        .init(providerID: "ollama", providerName: "Qwen (local)",
-              modelID: "qwen3:235b",        displayName: "Qwen 3 235B"),
-    ]
-
-    private static let metaModels: [AssistantModelOption] = [
-        .init(providerID: "ollama", providerName: "Meta (local)",
-              modelID: "llama3.3:70b",  displayName: "Llama 3.3 70B"),
-    ]
-
-    private static let localOllamaModels: [AssistantModelOption] = [
-        .init(providerID: "ollama", providerName: "Qwen (local)",
-              modelID: "qwen3-coder:30b",   displayName: "Qwen 3 Coder 30B"),
-        .init(providerID: "ollama", providerName: "Meta (local)",
-              modelID: "llama3.3:70b",      displayName: "Llama 3.3 70B"),
-        .init(providerID: "ollama", providerName: "DeepSeek (local)",
-              modelID: "deepseek-r1:32b",   displayName: "DeepSeek R1 32B"),
-        .init(providerID: "ollama", providerName: "Google (local)",
-              modelID: "gemma3:27b",        displayName: "Gemma 3 27B"),
-    ]
-
-    /// Routable models for Hermes / Pi — the "anything goes" set. These
-    /// harnesses ride on the OpenBurnBar relay which routes to any
-    /// connected provider, so the catalog is intentionally broad.
-    private static let universalCatalog: [AssistantModelOption] = {
-        anthropicModels
-            + openAIModels
-            + googleModels
-            + xaiModels
-            + minimaxModels
-            + zaiModels
-            + moonshotModels
-            + deepseekModels
-            + qwenModels
-            + metaModels
-    }()
-
-    public static func options(for runtime: AssistantRuntimeID) -> [AssistantModelOption] {
-        switch runtime {
-        case .hermes, .pi, .codex, .claude, .openClaw:
-            // Every harness is exactly that — a harness. The underlying
-            // LLM is a separate, orthogonal choice routed through the
-            // OpenBurnBar relay, so the catalog is the same broad set
-            // across all of them. The harness defines the prompt + tool
-            // semantics, the model defines the brain.
-            return universalCatalog
+    /// Fetch the latest catalog from the website-hosted JSON and replace
+    /// the cache. Silently falls back to the bundled copy on any error so
+    /// the app never shows an empty picker.
+    public func refreshRemote(from url: URL = AssistantModelCatalog.remoteCatalogURL) async {
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            let parsed = try Self.decode(data)
+            if !parsed.isEmpty {
+                cached = parsed
+            }
+        } catch {
+            // Network failure is fine — keep whatever's cached.
         }
     }
 
-    /// Default selection used when the user hasn't expressed a preference
-    /// yet. First entry in the catalog — newest, most capable.
+    // MARK: - Decoder
+
+    private static func loadFromBundle() -> [AssistantModelOption]? {
+        guard let url = Bundle.main.url(forResource: "openburnbar_models", withExtension: "json"),
+              let data = try? Data(contentsOf: url)
+        else { return nil }
+        return try? decode(data)
+    }
+
+    private static func decode(_ data: Data) throws -> [AssistantModelOption] {
+        let raw = try JSONDecoder().decode([RawEntry].self, from: data)
+        return raw.map { entry in
+            AssistantModelOption(
+                providerID: entry.providerID,
+                providerName: entry.providerDisplay,
+                modelID: entry.modelID,
+                displayName: entry.modelDisplay,
+                tier: entry.tier ?? "mid"
+            )
+        }
+    }
+
+    private struct RawEntry: Decodable {
+        let modelID: String
+        let modelDisplay: String
+        let providerID: String
+        let providerDisplay: String
+        let tier: String?
+    }
+}
+
+// MARK: - Public façade
+
+public enum AssistantModelCatalog {
+
+    /// Where to fetch the live catalog from. Points at the website's
+    /// public JSON so we can drop new models in via a content push
+    /// without an app release.
+    public static let remoteCatalogURL: URL = URL(string: "https://burnbar.ai/data/models.json")!
+
+    /// Synchronous access used by the picker. Returns whatever's currently
+    /// cached in `AssistantModelCatalogStore`. The first call from any
+    /// thread triggers a bundle load.
+    public static func options(for runtime: AssistantRuntimeID) -> [AssistantModelOption] {
+        // Same catalog applies to every harness — Hermes / Pi / Codex /
+        // Claude / OpenClaw are all agent harnesses that can run on any
+        // model the relay supports.
+        return Self.cachedOptions()
+    }
+
     public static func defaultOption(for runtime: AssistantRuntimeID) -> AssistantModelOption? {
         options(for: runtime).first
     }
 
+    public static func option(forModelID modelID: String,
+                              in runtime: AssistantRuntimeID) -> AssistantModelOption? {
+        options(for: runtime).first { $0.modelID == modelID }
+    }
+
     /// CLI harnesses where the iOS-side preference is honored "on the next
-    /// session" rather than instantly applied (because the Mac CLI is the
-    /// one that actually invokes the model). Used to surface honest copy
-    /// in the picker UI.
+    /// session" rather than instantly applied. Surfaced in the picker copy.
     public static func appliesNextSession(_ runtime: AssistantRuntimeID) -> Bool {
         switch runtime {
         case .hermes, .pi: return false
@@ -172,12 +154,53 @@ public enum AssistantModelCatalog {
         }
     }
 
-    /// Resolve a saved `modelID` back to a catalog entry. Used by the
-    /// picker to highlight which model the user is on regardless of which
-    /// harness happens to have advertised it.
-    public static func option(forModelID modelID: String,
-                              in runtime: AssistantRuntimeID) -> AssistantModelOption? {
-        options(for: runtime).first { $0.modelID == modelID }
+    /// Kick off a remote refresh. Safe to call from `.task` modifiers.
+    public static func refreshRemote() {
+        Task.detached {
+            await AssistantModelCatalogStore.shared.refreshRemote()
+        }
+    }
+
+    // MARK: - Internal sync cache
+    //
+    // SwiftUI views need synchronous access. We mirror the actor's cache
+    // into a `nonisolated(unsafe)` snapshot — readers always see the
+    // last value, writers happen on the actor.
+
+    nonisolated(unsafe) private static var snapshot: [AssistantModelOption] = []
+    private static let snapshotLock = NSLock()
+
+    fileprivate static func cachedOptions() -> [AssistantModelOption] {
+        snapshotLock.lock()
+        let current = snapshot
+        snapshotLock.unlock()
+        if !current.isEmpty { return current }
+        // First read — synchronously load from the bundle so the UI never
+        // starts with an empty picker.
+        let loaded = AssistantModelCatalogStore.loadFromBundleSync() ?? []
+        snapshotLock.lock()
+        snapshot = loaded
+        snapshotLock.unlock()
+        return loaded
+    }
+
+    fileprivate static func updateSnapshot(_ value: [AssistantModelOption]) {
+        snapshotLock.lock()
+        snapshot = value
+        snapshotLock.unlock()
+    }
+}
+
+// MARK: - Bridge: actor cache → sync snapshot
+
+extension AssistantModelCatalogStore {
+    /// Synchronous bundle loader exposed to the public facade. Same
+    /// underlying decoder as the actor-isolated path.
+    fileprivate static func loadFromBundleSync() -> [AssistantModelOption]? {
+        guard let url = Bundle.main.url(forResource: "openburnbar_models", withExtension: "json"),
+              let data = try? Data(contentsOf: url)
+        else { return nil }
+        return try? decode(data)
     }
 }
 

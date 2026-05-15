@@ -842,3 +842,155 @@ struct DeviceUsageSummary: Identifiable, Equatable, Sendable {
         customIcon ?? DeviceHardwareIcon.sfSymbol(for: hardwareModel)
     }
 }
+
+// MARK: - Project Memory
+
+enum ProjectMemoryFreshness: String, Codable, CaseIterable, Sendable {
+    case fresh
+    case needsRefresh = "needs_refresh"
+    case evidenceThin = "evidence_thin"
+    case stale
+
+    var label: String {
+        switch self {
+        case .fresh:
+            return "Fresh"
+        case .needsRefresh:
+            return "Needs refresh"
+        case .evidenceThin:
+            return "Evidence thin"
+        case .stale:
+            return "Stale"
+        }
+    }
+}
+
+enum ProjectMemoryVisualKind: String, Codable, CaseIterable, Sendable {
+    case cover
+    case providerMix = "provider_mix"
+    case timeline
+    case hotspots
+}
+
+struct ProjectMemoryVisualPoint: Codable, Equatable, Sendable {
+    let label: String
+    let value: Double
+    let subtitle: String?
+
+    init(label: String, value: Double, subtitle: String? = nil) {
+        self.label = label
+        self.value = value
+        self.subtitle = subtitle
+    }
+}
+
+struct ProjectMemoryVisual: Identifiable, Codable, Equatable, Sendable {
+    let id: String
+    let kind: ProjectMemoryVisualKind
+    let title: String
+    let subtitle: String?
+    let points: [ProjectMemoryVisualPoint]
+
+    init(
+        id: String = UUID().uuidString,
+        kind: ProjectMemoryVisualKind,
+        title: String,
+        subtitle: String? = nil,
+        points: [ProjectMemoryVisualPoint] = []
+    ) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.subtitle = subtitle
+        self.points = points
+    }
+}
+
+struct ProjectMemoryCitation: Identifiable, Codable, Equatable, Sendable {
+    let id: String
+    let sourceID: String
+    let sourceKind: SearchSourceKind
+    let title: String
+    let snippet: String
+    let createdAt: Date?
+
+    init(
+        id: String = UUID().uuidString,
+        sourceID: String,
+        sourceKind: SearchSourceKind = .conversation,
+        title: String,
+        snippet: String,
+        createdAt: Date? = nil
+    ) {
+        self.id = id
+        self.sourceID = sourceID
+        self.sourceKind = sourceKind
+        self.title = title
+        self.snippet = snippet
+        self.createdAt = createdAt
+    }
+}
+
+struct ProjectMemorySection: Identifiable, Codable, Equatable, Sendable {
+    let id: String
+    let title: String
+    let body: String
+    let citations: [ProjectMemoryCitation]
+
+    init(
+        id: String = UUID().uuidString,
+        title: String,
+        body: String,
+        citations: [ProjectMemoryCitation] = []
+    ) {
+        self.id = id
+        self.title = title
+        self.body = body
+        self.citations = citations
+    }
+}
+
+struct ProjectMemoryPage: Identifiable, Codable, Equatable, Sendable {
+    let id: String
+    let title: String
+    let summary: String
+    let sections: [ProjectMemorySection]
+    /// References `ProjectMemoryVisual.id`.
+    let visualIDs: [String]
+
+    init(
+        id: String = UUID().uuidString,
+        title: String,
+        summary: String,
+        sections: [ProjectMemorySection] = [],
+        visualIDs: [String] = []
+    ) {
+        self.id = id
+        self.title = title
+        self.summary = summary
+        self.sections = sections
+        self.visualIDs = visualIDs
+    }
+}
+
+struct ProjectMemorySnapshot: Identifiable, Codable, Equatable, Sendable {
+    static let currentSchemaVersion = 1
+
+    let projectSlug: String
+    let projectDisplayName: String
+    let generatedAt: Date
+    let sourceSessionIDs: [String]
+    let sourceConversationIDs: [String]
+    let sourceWindowStart: Date?
+    let sourceWindowEnd: Date?
+    let keyFiles: [String]
+    let keyCommands: [String]
+    let usageSummary: String
+    let freshness: ProjectMemoryFreshness
+    let contentHash: String
+    let schemaVersion: Int
+    let pages: [ProjectMemoryPage]
+    let visuals: [ProjectMemoryVisual]
+
+    var id: String { projectSlug }
+}

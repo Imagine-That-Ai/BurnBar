@@ -61,6 +61,11 @@ struct AssistantModelPickerSheet: View {
             }
             .task {
                 cliPreference = CLIAgentModelPreferences.preferredModelID(for: runtime)
+                // Fire-and-forget remote refresh so the catalog stays in
+                // lockstep with the website's authoritative `models.json`.
+                // Bundled copy is shown immediately; this swaps it in
+                // when the network call returns.
+                AssistantModelCatalog.refreshRemote()
             }
         }
     }

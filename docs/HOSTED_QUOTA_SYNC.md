@@ -70,7 +70,7 @@ BurnBar Pro supplements Hosted Quota with two additional hosted services:
   `cloud_search_*`, while still allowing users to read and delete their own
   mirrored data.
 - **Hosted Remote MCP.** BurnBar Pro users can connect coding agents to
-  `https://mcp.openburnbar.com/mcp` or use the local `openburnbar-mcp-remote`
+  `https://mcp.burnbar.ai/mcp` or use the local `openburnbar-mcp-remote`
   stdio shim. MCP access uses OpenBurnBar-issued short-lived bearer tokens,
   not Firebase ID tokens, and defaults to local device-side decrypt.
 

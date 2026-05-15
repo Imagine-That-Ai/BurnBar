@@ -183,7 +183,13 @@ private struct HermesSquareDetailColumn: View {
             .padding()
         case .brandZone(let uri):
             if let identity = registry.identity(for: uri) {
-                AgentBrandZoneView(identity: identity, registry: registry)
+                AgentBrandZoneView(
+                    identity: identity,
+                    registry: registry,
+                    missionHost: missionHost,
+                    onOpenRuntimeThread: nil,
+                    onOpenRuntimeList: nil
+                )
             } else {
                 placeholder
             }

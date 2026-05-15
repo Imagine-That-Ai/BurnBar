@@ -42,6 +42,22 @@ extension DataStore {
         try controlPlaneStore.localAuthoritySnapshot()
     }
 
+    nonisolated func upsertProjectMemorySnapshot(_ snapshot: ProjectMemorySnapshot, updatedAt: Date = Date()) throws {
+        try controlPlaneStore.upsertProjectMemorySnapshot(snapshot, updatedAt: updatedAt)
+    }
+
+    nonisolated func fetchProjectMemorySnapshot(projectSlug: String) throws -> ProjectMemorySnapshot? {
+        try controlPlaneStore.fetchProjectMemorySnapshot(projectSlug: projectSlug)
+    }
+
+    nonisolated func fetchProjectMemorySnapshots(limit: Int = 80) throws -> [ProjectMemorySnapshot] {
+        try controlPlaneStore.fetchProjectMemorySnapshots(limit: limit)
+    }
+
+    nonisolated func deleteProjectMemorySnapshot(projectSlug: String) throws {
+        try controlPlaneStore.deleteProjectMemorySnapshot(projectSlug: projectSlug)
+    }
+
     nonisolated func mutateControllerRuntimeMirror(
         cacheKey: String = "latest",
         _ mutate: (inout OpenBurnBarControllerRuntimeSnapshot) -> Void

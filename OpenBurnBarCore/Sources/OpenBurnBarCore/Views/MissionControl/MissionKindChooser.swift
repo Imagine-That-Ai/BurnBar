@@ -42,6 +42,7 @@ public struct MissionKindChooser: View {
                 .padding(.leading, 1)
                 .padding(.trailing, UnifiedDesignSystem.Spacing.xl)
                 .padding(.vertical, 2)
+                .fixedSize(horizontal: true, vertical: false)
             }
         }
     }

@@ -137,8 +137,10 @@ Verdict: **Continue hardening.**
 Findings:
 
 - P1: Targeted hosted-MCP tests, compatibility config proof, generated-URL live
-  proof, real paid subscriber fixture proof, and large-corpus performance proof
-  have passed.
+  proof, branded stdio shim proof, real paid subscriber fixture proof, and
+  large-corpus performance proof have passed.
+- P1: Real unpaid fixture denial passed on the branded endpoint with
+  `burnbar_pro_required`.
 - P1: Full app gates are not green because of unrelated existing failures, so
   launch claims must stay scoped to hosted-MCP-specific evidence.
 - P1: Real target-client authenticated flows remain pending for Codex,

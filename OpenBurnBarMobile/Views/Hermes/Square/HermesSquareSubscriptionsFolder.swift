@@ -8,7 +8,6 @@ import OpenBurnBarCore
 // subscriptions (typically none on first install).
 
 struct HermesSquareSubscriptionsFolder: View {
-    let registry: AgentIdentityRegistry
     @Environment(\.dismiss) private var dismiss
 
     @State private var topicStore = AgentSubscriptionTopicStore.shared
@@ -141,7 +140,7 @@ struct HermesSquareSubscriptionsFolder: View {
 
     private func mutate(
         topicID: String,
-        operation: @escaping @Sendable () async throws -> Void
+        operation: @escaping () async throws -> Void
     ) {
         pendingTopicIDs.insert(topicID)
         Task {

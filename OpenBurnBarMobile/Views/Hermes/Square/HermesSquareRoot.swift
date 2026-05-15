@@ -215,7 +215,7 @@ struct HermesSquareRoot: View {
             }
         }
         .sheet(isPresented: $isShowingSubscriptions) {
-            HermesSquareSubscriptionsFolder(registry: registry)
+            HermesSquareSubscriptionsFolder()
         }
         .navigationDestination(item: $navTarget) { target in
             switch target {

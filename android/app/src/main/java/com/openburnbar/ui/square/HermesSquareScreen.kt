@@ -2,6 +2,7 @@ package com.openburnbar.ui.square
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,10 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
@@ -33,15 +38,23 @@ import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.ViewAgenda
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TopAppBarDefaults
+import com.openburnbar.ui.components.AuroraBackdrop
+import com.openburnbar.ui.theme.AuroraColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -79,6 +92,7 @@ import com.openburnbar.data.square.splitForInbox
 //   • Subscriptions folder entry
 //   • Discover drawer entry
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HermesSquareScreen(
     onOpenLegacyRuntime: (AssistantRuntimeID) -> Unit = {},
@@ -133,13 +147,62 @@ fun HermesSquareScreen(
         }
     }
 
+    Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    Text(
+                        "Hermes Square",
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    scrolledContainerColor = androidx.compose.ui.graphics.Color.Transparent
+                ),
+                actions = {
+                    if (flags.phaseB) {
+                        IconButton(
+                            onClick = { showFanOut = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.ViewAgenda,
+                                contentDescription = "Fan-out dispatch",
+                                tint = AuroraColors.ember
+                            )
+                        }
+                    }
+                    if (flags.phaseD) {
+                        IconButton(
+                            onClick = { showVoice = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.RecordVoiceOver,
+                                contentDescription = "Voice command",
+                                tint = AuroraColors.amber
+                            )
+                        }
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
     ) {
+        // Warm aurora behind everything — same backdrop the rest of the app
+        // uses, so the Square feels like a peer of Pulse / Burn / Streams
+        // rather than a different app.
+        AuroraBackdrop()
+
         LazyColumn(
-            contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp),
+            contentPadding = PaddingValues(
+                top = innerPadding.calculateTopPadding() + 12.dp,
+                bottom = 88.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize()
         ) {
@@ -149,34 +212,6 @@ fun HermesSquareScreen(
                     onQueryChange = { query = it },
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
-            }
-
-            if (flags.phaseB && query.isBlank()) {
-                item {
-                    PhaseBFanOutEntry(
-                        onTap = { showFanOut = true },
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                }
-            }
-
-            if (flags.phaseD && query.isBlank()) {
-                item {
-                    PhaseDVoiceEntry(
-                        onTap = { showVoice = true },
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                }
-            }
-
-            voiceBanner?.let { intent ->
-                item {
-                    VoiceIntentBanner(
-                        intent = intent,
-                        onDismiss = { voiceBanner = null },
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                }
             }
 
             if (query.isNotBlank()) {
@@ -279,6 +314,26 @@ fun HermesSquareScreen(
                 }
             }
         }
+
+        // Voice intent banner — slides in at the top of the Square when a
+        // voice command resolves. Mirrors the iOS .overlay(alignment: .top).
+        AnimatedVisibility(
+            visible = voiceBanner != null,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = innerPadding.calculateTopPadding() + 8.dp)
+                .padding(horizontal = 16.dp)
+        ) {
+            voiceBanner?.let { intent ->
+                VoiceIntentBanner(
+                    intent = intent,
+                    onDismiss = { voiceBanner = null }
+                )
+            }
+        }
+    }
     }
 
     if (showDiscover) {
@@ -627,33 +682,22 @@ private fun PinnedCell(
                 .fillMaxSize()
                 .padding(vertical = 6.dp)
         ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(
-                        Brush.linearGradient(
-                            listOf(
-                                hexColor(identity.paletteHex),
-                                hexColor(identity.paletteHex).copy(alpha = 0.66f)
-                            )
-                        )
-                    )
-            ) {
-                Text(
-                    identity.glyph,
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+            Box(contentAlignment = Alignment.BottomEnd, modifier = Modifier.size(38.dp)) {
+                com.openburnbar.ui.components.ProviderLogoView(
+                    drawableRes = com.openburnbar.ui.components.ProviderLogo.drawableForAnyIdentifier(
+                        identity.id.ifBlank { identity.displayName }
+                    ),
+                    size = 38.dp,
+                    style = com.openburnbar.ui.components.ProviderLogoStyle.Tile,
+                    tintBackground = hexColor(identity.paletteHex).copy(alpha = 0.18f)
                 )
                 if (identity.availability != AgentAvailability.UNKNOWN) {
                     Box(
                         modifier = Modifier
-                            .size(8.dp)
+                            .size(9.dp)
                             .clip(RoundedCornerShape(50))
                             .background(availabilityColor(identity.availability))
-                            .padding(start = 28.dp, top = 28.dp)
+                            .border(1.dp, MaterialTheme.colorScheme.surface, RoundedCornerShape(50))
                     )
                 }
             }
@@ -817,20 +861,14 @@ private fun ThreadInboxRow(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(identity?.paletteHex?.let { hexColor(it) } ?: MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Text(
-                    identity?.glyph ?: "?",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            com.openburnbar.ui.components.ProviderLogoView(
+                drawableRes = com.openburnbar.ui.components.ProviderLogo.drawableForAnyIdentifier(
+                    item.agentURI.ifBlank { identity?.displayName }
+                ),
+                size = 32.dp,
+                style = com.openburnbar.ui.components.ProviderLogoStyle.Disc,
+                tintBackground = identity?.paletteHex?.let { hexColor(it).copy(alpha = 0.16f) }
+            )
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

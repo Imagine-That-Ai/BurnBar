@@ -591,6 +591,7 @@
 		898C8594EB8E6B50FE3127C4 /* NestHubSettingsCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2C0DA9F6FB9F7D015DCDBC8 /* NestHubSettingsCard.swift */; };
 		8A13D18E23DCCB722CD36F08 /* ModelPricingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00D04B9DFB295A5377F83F2A /* ModelPricingTests.swift */; };
 		8A3D3C763AE73AAD2A41E29C /* Mermaid in Resources */ = {isa = PBXBuildFile; fileRef = 3D4B5B088375784E89AEA8F1 /* Mermaid */; };
+		95CD60793C93496C9FC8347D /* openburnbar_models.json in Resources */ = {isa = PBXBuildFile; fileRef = 2D7518DB6F764E81B2EF9F6A /* openburnbar_models.json */; };
 		8AACEB4AAAFB2FCDC5BE0FF4 /* FirestoreRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = C34286570B572FF9B5698DDD /* FirestoreRepository.swift */; };
 		8B27A25E3958515DDF1B6BFE /* ProBadgeDot.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF58DC37D095E3DF9F1F88F9 /* ProBadgeDot.swift */; };
 		8B2F6E9A4C214D3E8F901234 /* AssistantModelLens.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8D47F610C7E42DB9A567890 /* AssistantModelLens.swift */; };
@@ -1856,6 +1857,7 @@
 		ADA3DA5EB43692AB2982A2B6 /* PiAgentRedisDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiAgentRedisDiscovery.swift; sourceTree = "<group>"; };
 		ADA9B3A1D5923CFBA13B0761 /* RecentSessionsStripCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentSessionsStripCard.swift; sourceTree = "<group>"; };
 		ADB09D71338A6D9E24C0D315 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		2D7518DB6F764E81B2EF9F6A /* openburnbar_models.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = openburnbar_models.json; sourceTree = "<group>"; };
 		ADB9BB991B89CA976743C437 /* ProTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProTheme.swift; sourceTree = "<group>"; };
 		AE655E6F08BDF3CA0D53E819 /* OpenBurnBarControllerWorkbenchPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarControllerWorkbenchPanel.swift; sourceTree = "<group>"; };
 		AE755759216551775ECB678A /* OpenBurnBarDaemonManager+ActivitySnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OpenBurnBarDaemonManager+ActivitySnapshot.swift"; sourceTree = "<group>"; };
@@ -3393,6 +3395,7 @@
 				E10FB395525B8C6AE422A378 /* GoogleService-Info.plist */,
 				22ECA745C30F9DB35B12C1C4 /* OpenBurnBarMobile.entitlements */,
 				26D25E62271A8698A81CAB25 /* PrivacyInfo.xcprivacy */,
+				2D7518DB6F764E81B2EF9F6A /* openburnbar_models.json */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -4655,6 +4658,7 @@
 				E38F3B0ED39A8F9D977DD6D3 /* GoogleService-Info.plist in Resources */,
 				8A3D3C763AE73AAD2A41E29C /* Mermaid in Resources */,
 				5E89AAE1A4444E470D5194BD /* PrivacyInfo.xcprivacy in Resources */,
+				95CD60793C93496C9FC8347D /* openburnbar_models.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

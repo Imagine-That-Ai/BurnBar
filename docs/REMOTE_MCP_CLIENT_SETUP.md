@@ -30,7 +30,7 @@ Each installer emits deterministic config for `openburnbar-mcp-remote mcp
 serve`. The direct remote endpoint is always:
 
 ```text
-https://mcp.openburnbar.com/mcp
+https://mcp.burnbar.ai/mcp
 ```
 
 ## Doctor

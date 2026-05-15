@@ -1,7 +1,7 @@
 import { decryptSearchResultJson } from "./decrypt.js";
 import { readAccessToken } from "./oauth.js";
 
-const DEFAULT_ENDPOINT = "https://mcp.openburnbar.com/mcp";
+export const DEFAULT_ENDPOINT = "https://mcp.burnbar.ai/mcp";
 const PROTOCOL_VERSION = "2025-11-25";
 
 export async function forwardMcpMessage(message: unknown, endpoint = process.env.OPENBURNBAR_MCP_ENDPOINT ?? DEFAULT_ENDPOINT): Promise<unknown> {

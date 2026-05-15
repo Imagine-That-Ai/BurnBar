@@ -236,6 +236,97 @@ final class DataStoreTests: XCTestCase {
         XCTAssertEqual(last7Days.totalTokens, 10_002)
     }
 
+    // MARK: - Project Memory Persistence Tests
+
+    func test_projectMemorySnapshot_roundTripsThroughControlPlaneStore() throws {
+        let queue = try DatabaseQueue()
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let now = Date()
+        let snapshot = ProjectMemorySnapshot(
+            projectSlug: "apollo",
+            projectDisplayName: "Apollo",
+            generatedAt: now,
+            sourceSessionIDs: ["Claude Code:s-1"],
+            sourceConversationIDs: ["conv-1"],
+            sourceWindowStart: now.addingTimeInterval(-3600),
+            sourceWindowEnd: now,
+            keyFiles: ["Sources/App.swift"],
+            keyCommands: ["swift test"],
+            usageSummary: "1 usage session · 1 cited transcript · 2,400 tokens · $1.20 spend · providers: Claude Code",
+            freshness: .fresh,
+            contentHash: "hash-1",
+            schemaVersion: ProjectMemorySnapshot.currentSchemaVersion,
+            pages: [
+                ProjectMemoryPage(
+                    title: "Project Memory",
+                    summary: "Snapshot summary",
+                    sections: [
+                        ProjectMemorySection(
+                            title: "Executive Brief",
+                            body: "Apollo summary",
+                            citations: [
+                                ProjectMemoryCitation(
+                                    sourceID: "conv-1",
+                                    sourceKind: .conversation,
+                                    title: "Session one",
+                                    snippet: "Source snippet",
+                                    createdAt: now
+                                )
+                            ]
+                        )
+                    ],
+                    visualIDs: ["cover"]
+                )
+            ],
+            visuals: [
+                ProjectMemoryVisual(
+                    id: "cover",
+                    kind: .cover,
+                    title: "Apollo",
+                    subtitle: "Cover",
+                    points: [ProjectMemoryVisualPoint(label: "Sessions", value: 1)]
+                )
+            ]
+        )
+
+        try store.upsertProjectMemorySnapshot(snapshot)
+
+        let fetched = try store.fetchProjectMemorySnapshot(projectSlug: "apollo")
+        XCTAssertNotNil(fetched)
+        XCTAssertEqual(fetched?.projectSlug, snapshot.projectSlug)
+        XCTAssertEqual(fetched?.projectDisplayName, snapshot.projectDisplayName)
+        XCTAssertEqual(fetched?.contentHash, snapshot.contentHash)
+        XCTAssertEqual(fetched?.pages.first?.sections.first?.citations.first?.sourceID, "conv-1")
+    }
+
+    func test_projectMemorySnapshot_deleteRemovesSnapshot() throws {
+        let queue = try DatabaseQueue()
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let snapshot = ProjectMemorySnapshot(
+            projectSlug: "remove-me",
+            projectDisplayName: "Remove Me",
+            generatedAt: Date(),
+            sourceSessionIDs: [],
+            sourceConversationIDs: [],
+            sourceWindowStart: nil,
+            sourceWindowEnd: nil,
+            keyFiles: [],
+            keyCommands: [],
+            usageSummary: "empty",
+            freshness: .evidenceThin,
+            contentHash: "hash-2",
+            schemaVersion: ProjectMemorySnapshot.currentSchemaVersion,
+            pages: [],
+            visuals: []
+        )
+
+        try store.upsertProjectMemorySnapshot(snapshot)
+        XCTAssertNotNil(try store.fetchProjectMemorySnapshot(projectSlug: "remove-me"))
+
+        try store.deleteProjectMemorySnapshot(projectSlug: "remove-me")
+        XCTAssertNil(try store.fetchProjectMemorySnapshot(projectSlug: "remove-me"))
+    }
+
     // MARK: - Helper Methods
 
     private var pastDayUsage: TokenUsage {

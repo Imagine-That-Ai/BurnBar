@@ -8,6 +8,7 @@ test("installers cover every required client", () => {
     assert.match(installer(kind), /openburnbar/);
   }
   assert.match(installer("generic"), /mcpServers/);
+  assert.match(installer("generic"), /https:\/\/mcp\.burnbar\.ai\/mcp/);
 });
 
 test("sealed result decrypt is no-op without a local vault key", () => {

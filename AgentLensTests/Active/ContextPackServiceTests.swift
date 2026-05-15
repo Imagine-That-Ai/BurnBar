@@ -517,4 +517,136 @@ final class ContextPackServiceTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(pack.charEstimate, 0)
         XCTAssertLessThanOrEqual(pack.charEstimate, 12_000)
     }
+
+    // MARK: - VAL-PROJMEM-001: Project Memory builds cited pages and visuals
+
+    func test_projectMemory_assemblesCitedVisualSnapshot() {
+        let conversations = [
+            Fixtures.makeConversation(
+                id: "pm-1",
+                sessionId: "pm-s1",
+                provider: .claudeCode,
+                projectName: "AnchorProject",
+                daysOld: 1,
+                keyFiles: ["Sources/App.swift", "Sources/Auth.swift"],
+                keyCommands: ["swift test", "make run"],
+                summary: "Implemented auth flow and fixed retry bug.",
+                summaryTitle: "Auth flow repair",
+                fullText: "Risk: blocked by flaky test in CI."
+            ),
+            Fixtures.makeConversation(
+                id: "pm-2",
+                sessionId: "pm-s2",
+                provider: .factory,
+                projectName: "AnchorProject",
+                daysOld: 2,
+                keyFiles: ["Sources/App.swift"],
+                keyCommands: ["swiftlint"],
+                summary: "Added project memory rendering and refreshed timeline.",
+                summaryTitle: "Project memory rendering"
+            )
+        ]
+        let usages = [
+            TokenUsage(
+                provider: .claudeCode,
+                sessionId: "pm-s1",
+                projectName: "AnchorProject",
+                model: "claude-4.1",
+                inputTokens: 900,
+                outputTokens: 400,
+                costUSD: 1.30,
+                startTime: Fixtures.daysAgo(1),
+                endTime: Fixtures.daysAgo(1).addingTimeInterval(1200)
+            ),
+            TokenUsage(
+                provider: .factory,
+                sessionId: "pm-s2",
+                projectName: "AnchorProject",
+                model: "droid-4",
+                inputTokens: 400,
+                outputTokens: 200,
+                costUSD: 0.70,
+                startTime: Fixtures.daysAgo(2),
+                endTime: Fixtures.daysAgo(2).addingTimeInterval(900)
+            )
+        ]
+
+        let snapshot = ProjectMemoryService.assemble(
+            projectSlug: "anchor-project",
+            projectDisplayName: "Anchor Project",
+            conversations: conversations,
+            usages: usages,
+            referenceDate: Fixtures.referenceDate
+        )
+
+        XCTAssertEqual(snapshot.projectSlug, "anchor-project")
+        XCTAssertEqual(snapshot.projectDisplayName, "Anchor Project")
+        XCTAssertEqual(snapshot.schemaVersion, ProjectMemorySnapshot.currentSchemaVersion)
+        XCTAssertGreaterThanOrEqual(snapshot.pages.count, 2)
+        XCTAssertFalse(snapshot.visuals.isEmpty)
+        XCTAssertTrue(snapshot.visuals.contains(where: { $0.kind == .providerMix }))
+        XCTAssertTrue(snapshot.pages.contains { page in
+            page.sections.contains { !$0.citations.isEmpty }
+        })
+        XCTAssertEqual(snapshot.freshness, .needsRefresh)
+    }
+
+    // MARK: - VAL-PROJMEM-002: Project Memory hash is deterministic for fixed inputs
+
+    func test_projectMemory_hashIsDeterministicForSameInput() {
+        let conversations = [
+            Fixtures.makeConversation(
+                id: "pm-hash-1",
+                sessionId: "pm-hash-s1",
+                provider: .claudeCode,
+                projectName: "HashProject",
+                daysOld: 1,
+                keyFiles: ["Sources/Hash.swift"],
+                keyCommands: ["swift test"],
+                summary: "Added deterministic hashing."
+            ),
+            Fixtures.makeConversation(
+                id: "pm-hash-2",
+                sessionId: "pm-hash-s2",
+                provider: .factory,
+                projectName: "HashProject",
+                daysOld: 2,
+                keyFiles: ["Sources/Hash.swift"],
+                keyCommands: ["make ci"],
+                summary: "Validated output stability."
+            )
+        ]
+        let usages = [
+            TokenUsage(
+                provider: .claudeCode,
+                sessionId: "pm-hash-s1",
+                projectName: "HashProject",
+                model: "claude-4.1",
+                inputTokens: 300,
+                outputTokens: 120,
+                costUSD: 0.42,
+                startTime: Fixtures.daysAgo(1),
+                endTime: Fixtures.daysAgo(1).addingTimeInterval(200)
+            )
+        ]
+
+        let a = ProjectMemoryService.assemble(
+            projectSlug: "hash-project",
+            projectDisplayName: "Hash Project",
+            conversations: conversations,
+            usages: usages,
+            referenceDate: Fixtures.referenceDate
+        )
+        let b = ProjectMemoryService.assemble(
+            projectSlug: "hash-project",
+            projectDisplayName: "Hash Project",
+            conversations: conversations,
+            usages: usages,
+            referenceDate: Fixtures.referenceDate
+        )
+
+        XCTAssertEqual(a.contentHash, b.contentHash)
+        XCTAssertEqual(a.pages, b.pages)
+        XCTAssertEqual(a.visuals, b.visuals)
+    }
 }

@@ -1270,6 +1270,25 @@ final class OpenBurnBarDatabase: Sendable {
             }
         }
 
+        migrator.registerMigration("v39_project_memory_snapshots") { db in
+            try db.create(table: "project_memory_snapshots") { t in
+                t.column("projectSlug", .text).primaryKey()
+                t.column("projectDisplayName", .text).notNull()
+                t.column("snapshotJSON", .text).notNull()
+                t.column("contentHash", .text).notNull()
+                t.column("sourceSessionCount", .integer).notNull().defaults(to: 0)
+                t.column("sourceConversationCount", .integer).notNull().defaults(to: 0)
+                t.column("generatedAt", .datetime).notNull().indexed()
+                t.column("schemaVersion", .integer).notNull().defaults(to: 1)
+                t.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(
+                index: "project_memory_snapshots_updated_idx",
+                on: "project_memory_snapshots",
+                columns: ["updatedAt"]
+            )
+        }
+
         return migrator
     }
 

@@ -12,8 +12,9 @@ implementation.
 paid/unpaid/revoked/cross-tenant proof, core monitoring, cross-platform
 connected-client revoke surfaces, `burnbar.ai` ownership verification,
 large-corpus search/body performance proof, and branded real paid subscriber
-fixture proof are in place. Launch readiness is still blocked by real unpaid
-fixture proof and real client compatibility proof.
+fixture proof, real unpaid fixture denial, and branded compatibility config
+proof are in place. Launch readiness is still blocked by authenticated
+target-client UI flows.
 
 ## Evidence Baseline
 
@@ -70,9 +71,8 @@ Findings:
 - P1: Branded endpoint HTTPS is live and the real paid subscriber
   endpoint/audience path passed tools/search/body/revoke proof.
 - P1: Controlled live proof covers paid, unpaid, revoked, missing-scope, and
-  cross-tenant denials. A real paid subscriber fixture also proves
-  entitlement/tools/search/body/revoke on the generated URL; branded endpoint
-  proof remains blocked by certificate issuance.
+  cross-tenant denials. Real paid and unpaid fixtures also prove branded
+  entitlement behavior.
 - P1: Resource list/read routes were previously a bypass risk; they now enforce
   scope, active client, entitlement, and rate limits.
 - P2: Log scan covered the proof window and found no obvious tokens, raw query,
@@ -168,8 +168,8 @@ Findings:
 - P1: Real client matrix remains incomplete. The compatibility script now
   verifies deterministic installer output and installed-client temp-profile
   configuration, and the local stdio shim now has live tools/list/search/body
-  proof against the generated endpoint. Authenticated target-client UI flows
-  remain pending.
+  proof against generated and branded endpoints. Authenticated target-client UI
+  flows remain pending.
 - P2: Controlled live search read-budget proof reports 4 Firestore document
   reads, zero Storage reads, and `withinSearchReadBudget: true`; Cloud Build
   large-corpus body-enabled proof against the live generated endpoint passed
@@ -259,14 +259,12 @@ Evidence:
 
 | Severity | Finding | Required Resolution |
 | --- | --- | --- |
-| P1 | Real unpaid/non-subscriber fixture proof is missing. | Add a real unpaid fixture and prove branded endpoint denial. Controlled unpaid denial already passes with temporary proof users. |
-| P1 | Real client compatibility matrix is incomplete. | Temp-profile config proof passes for installed CLIs and live stdio shim proof passes; prove authenticated target-client flows against the branded endpoint. |
+| P1 | Real client compatibility matrix is incomplete. | Branded temp-profile config proof passes for installed CLIs and branded live stdio shim proof passes; prove authenticated target-client UI flows against the branded endpoint. |
 | P1 | Branded-endpoint rollback proof is still pending. | Generated-URL Cloud Run rollback rehearsal passed; repeat against branded hostname if launch requires hostname-level proof. |
 | P1 | Real signed-in connected-client UI proof is pending. | iOS/iPadOS, macOS, and Android list/revoke surfaces are implemented and build-verified where gates allow; prove an authenticated client appears and revokes on each platform. |
 | P2 | Firestore plaintext leakage scan is not subscriber-backed. | Production-safe scan passed with zero violations, but the durable Remote MCP/search collections were empty after proof cleanup; rerun if a persistent subscriber fixture is kept. |
 
 ## Final Recommendation
 
-**Hold.** Continue hardening. The branded paid path is proven. The next
-non-blocked work is real client compatibility proof in isolated profiles plus a
-real unpaid fixture denial.
+**Hold.** Continue hardening. The branded paid and unpaid entitlement paths are
+proven. The next non-blocked work is authenticated target-client UI proof.

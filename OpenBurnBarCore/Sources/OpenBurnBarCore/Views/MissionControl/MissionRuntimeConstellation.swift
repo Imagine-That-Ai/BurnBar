@@ -48,6 +48,7 @@ public struct MissionRuntimeConstellation: View {
                 }
                 .padding(.leading, 1)
                 .padding(.trailing, UnifiedDesignSystem.Spacing.xl)
+                .fixedSize(horizontal: true, vertical: false)
             }
         }
     }

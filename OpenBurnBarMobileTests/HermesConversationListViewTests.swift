@@ -191,12 +191,12 @@ final class HermesConversationListViewTests: XCTestCase {
 
     // MARK: - First Launch Setup
 
-    func testMobileSetupWizardUsesThreeSteps() {
-        XCTAssertEqual(HermesMobileSetupStep.allCases.count, 3)
-        XCTAssertEqual(HermesMobileSetupStep.allCases.map(\.number), [1, 2, 3])
+    func testMobileSetupWizardUsesFourSteps() {
+        XCTAssertEqual(HermesMobileSetupStep.allCases.count, 4)
+        XCTAssertEqual(HermesMobileSetupStep.allCases.map(\.number), [1, 2, 3, 4])
         XCTAssertEqual(
             HermesMobileSetupStep.allCases.map(\.title),
-            ["Keep your Mac ready", "Pick a Hermes host", "Start chatting"]
+            ["Keep your Mac ready", "Pick a Hermes host", "Sync projects", "Start chatting"]
         )
     }
 
@@ -212,6 +212,59 @@ final class HermesConversationListViewTests: XCTestCase {
 
         XCTAssertTrue(defaults.bool(forKey: HermesMobileSetupWizardState.completionKey))
         defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    // MARK: - Hermes Square Brand-zone quick actions
+
+    func testBrandZoneDefaultSubscriptionTopicUsesAgentIdentityAndCadence() {
+        let agent = AgentIdentity.builtIn(.claude)
+
+        let topic = AgentBrandQuickActionComposer.defaultSubscriptionTopic(
+            for: agent,
+            cadence: .weekly,
+            now: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+
+        XCTAssertEqual(topic.agentURI, agent.id)
+        XCTAssertEqual(topic.topicID, AgentBrandQuickActionComposer.defaultSubscriptionTopicID)
+        XCTAssertEqual(topic.cadence, .weekly)
+        XCTAssertEqual(topic.displayName, "\(agent.displayName) updates")
+        XCTAssertNotNil(topic.consentGivenAt)
+    }
+
+    func testBrandZoneNewThreadKickoffPromptIncludesAgentNameAndGuardrails() {
+        let agent = AgentIdentity.builtIn(.codex)
+
+        let prompt = AgentBrandQuickActionComposer.newThreadKickoffPrompt(for: agent)
+
+        XCTAssertTrue(prompt.contains("new \(agent.displayName) thread"))
+        XCTAssertTrue(prompt.contains("objective"))
+        XCTAssertTrue(prompt.contains("success criteria"))
+    }
+
+    func testBrandZoneForwardPromptIncludesContextAndOperatorNote() {
+        let source = AgentIdentity.builtIn(.claude)
+        let destination = AgentIdentity.builtIn(.codex)
+        let context = AgentForwardContextSnapshot(
+            title: "Router reliability sweep",
+            preview: "Found flaky retries in daemon dispatch path.",
+            sourceLabel: "Mac mirrored session",
+            updatedAt: Date(timeIntervalSince1970: 1_700_000_100)
+        )
+
+        let prompt = AgentBrandQuickActionComposer.forwardPrompt(
+            source: source,
+            destination: destination,
+            context: context,
+            note: "Focus on a minimal but permanent fix.",
+            now: Date(timeIntervalSince1970: 1_700_000_200)
+        )
+
+        XCTAssertTrue(prompt.contains(source.displayName))
+        XCTAssertTrue(prompt.contains(destination.displayName))
+        XCTAssertTrue(prompt.contains(context.title))
+        XCTAssertTrue(prompt.contains(context.preview))
+        XCTAssertTrue(prompt.contains("Operator note: Focus on a minimal but permanent fix."))
     }
 
     // MARK: - Helpers
