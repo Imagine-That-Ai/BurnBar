@@ -15,9 +15,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context};
-use iroh::{Endpoint, NodeAddr, NodeId, RelayMode, RelayUrl, SecretKey};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use iroh::{Endpoint, NodeAddr, NodeId, RelayMap, RelayMode, RelayUrl, SecretKey};
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
@@ -56,9 +54,6 @@ impl IrohFfiError {
     }
     fn accept<E: std::fmt::Display>(error: E) -> Self {
         Self::AcceptFailed { message: error.to_string() }
-    }
-    fn shutdown<E: std::fmt::Display>(error: E) -> Self {
-        Self::ShutdownFailed { message: error.to_string() }
     }
     fn runtime<E: std::fmt::Display>(error: E) -> Self {
         Self::RuntimeFailed { message: error.to_string() }
@@ -130,12 +125,8 @@ impl IrohStream {
             let mut len_buf = [0u8; 4];
             match inner.recv.read_exact(&mut len_buf).await {
                 Ok(_) => {}
-                Err(err) => {
-                    if err.kind() == std::io::ErrorKind::UnexpectedEof {
-                        return Ok(None);
-                    }
-                    return Err(IrohFfiError::stream(err));
-                }
+                Err(iroh::endpoint::ReadExactError::FinishedEarly(0)) => return Ok(None),
+                Err(err) => return Err(IrohFfiError::stream(err)),
             }
             let length = u32::from_be_bytes(len_buf) as usize;
             let mut payload = vec![0u8; length];
@@ -213,12 +204,13 @@ impl IrohEndpointHandle {
         let relay_mode = if relay_url.trim().is_empty() {
             RelayMode::Default
         } else {
-            let url: RelayUrl = relay_url
-                .parse()
-                .map_err(|err: url::ParseError| IrohFfiError::RuntimeFailed {
-                    message: format!("invalid relay url: {err}"),
-                })?;
-            RelayMode::Custom(vec![url].into())
+            let url: RelayUrl =
+                relay_url
+                    .parse()
+                    .map_err(|err: iroh::RelayUrlParseError| IrohFfiError::RuntimeFailed {
+                        message: format!("invalid relay url: {err}"),
+                    })?;
+            RelayMode::Custom(RelayMap::from(url))
         };
 
         let endpoint = runtime
@@ -393,43 +385,4 @@ where
     }
 }
 
-// A tiny adapter so the crate is compilable without the optional rand
-// feature graph reaching deep into iroh dev-dependencies.
-mod rand {
-    pub fn thread_rng() -> ThreadRng {
-        ThreadRng
-    }
-    pub struct ThreadRng;
-    impl ::rand_core::RngCore for ThreadRng {
-        fn next_u32(&mut self) -> u32 {
-            ::rand_core::OsRng.next_u32()
-        }
-        fn next_u64(&mut self) -> u64 {
-            ::rand_core::OsRng.next_u64()
-        }
-        fn fill_bytes(&mut self, dest: &mut [u8]) {
-            ::rand_core::OsRng.fill_bytes(dest)
-        }
-        fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), ::rand_core::Error> {
-            ::rand_core::OsRng.try_fill_bytes(dest)
-        }
-    }
-    impl ::rand_core::CryptoRng for ThreadRng {}
-}
 
-// Keep imports needed at the top level happy even when the `rand` alias above
-// is the only consumer of `anyhow` and `Context` via diagnostics.
-#[allow(dead_code)]
-fn _silence_anyhow_warnings(err: anyhow::Error) -> anyhow::Error {
-    err.context("openburnbar-iroh")
-}
-
-#[allow(dead_code)]
-fn _silence_use_anyhow() -> anyhow::Result<()> {
-    Err(anyhow!("unused")).context("never called")
-}
-
-#[allow(dead_code)]
-fn _silence_use_tracing() {
-    tracing::trace!("openburnbar-iroh module loaded");
-}

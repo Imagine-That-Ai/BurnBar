@@ -13,6 +13,13 @@ import OpenBurnBarIrohRelay
 final class HermesIrohRelayTransport: HermesRelayTransporting {
     static let shared = HermesIrohRelayTransport()
 
+    /// Hard cap on iroh dial latency. Keeping this independent from the
+    /// request `timeout` (which is per-completion and can be 60-120s) means
+    /// a slow NAT-traversal failure surfaces fast and the cascade can fall
+    /// back to WSS within 5s instead of after the full chat completion
+    /// budget.
+    static let defaultConnectTimeout: TimeInterval = 5
+
     private let directory: any IrohPairingDirectory
     private let transportFactory: @MainActor () -> any IrohRelayTransport
     private let pairingPublicKeyProvider: any IrohPairingPublicKeyProviding
@@ -21,6 +28,11 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     private let decoder = JSONDecoder()
     private var endpoint: (any IrohRelayTransport)?
     private var identity: IrohEndpointIdentity?
+    /// Outstanding bootstrap promise so concurrent callers reuse the same
+    /// `transport.start()` invocation rather than racing to spin up two
+    /// endpoints and leaking one of them.
+    private var bootstrapTask: Task<any IrohRelayTransport, Error>?
+    private let connectTimeout: TimeInterval
     private let now: @Sendable () -> Date
 
     init(
@@ -30,12 +42,14 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         transportFactory: @escaping @MainActor () -> any IrohRelayTransport = {
             HermesIrohRelayTransport.defaultTransport()
         },
+        connectTimeout: TimeInterval = HermesIrohRelayTransport.defaultConnectTimeout,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.directory = directory
         self.pairingPublicKeyProvider = pairingPublicKeyProvider
         self.auditLogger = auditLogger
         self.transportFactory = transportFactory
+        self.connectTimeout = connectTimeout
         self.now = now
     }
 
@@ -123,9 +137,16 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             throw HermesServiceError.relayUnavailable("Could not verify iroh pairing record: \(error.localizedDescription)")
         }
 
-        // 2. Bring up the iroh endpoint (idempotent) and dial.
+        // 2. Bring up the iroh endpoint (idempotent, race-safe) and dial.
         let transport = try await transport()
-        let stream = try await transport.connect(to: verifiedNodeId, timeout: timeout)
+        // The dial uses a tight timeout independent from the request
+        // budget: a quick failure here lets `HermesCompositeRelayTransport`
+        // cascade to WSS without spending the full chat-completion window
+        // waiting for NAT traversal.
+        let stream = try await transport.connect(
+            to: verifiedNodeId,
+            timeout: min(connectTimeout, timeout)
+        )
         defer { Task { await stream.close() } }
 
         let requestID = "iroh_\(UUID().uuidString.lowercased())"
@@ -209,11 +230,22 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
 
     private func transport() async throws -> any IrohRelayTransport {
         if let endpoint, identity != nil { return endpoint }
-        let transport = transportFactory()
-        let identity = try await transport.start()
-        self.endpoint = transport
-        self.identity = identity
-        return transport
+        if let bootstrapTask {
+            // A concurrent caller is already starting the endpoint —
+            // hand them the same outcome so we never spin up twice.
+            return try await bootstrapTask.value
+        }
+        let factory = transportFactory
+        let task = Task { @MainActor [factory] () throws -> any IrohRelayTransport in
+            let transport = factory()
+            let identity = try await transport.start()
+            self.endpoint = transport
+            self.identity = identity
+            return transport
+        }
+        bootstrapTask = task
+        defer { bootstrapTask = nil }
+        return try await task.value
     }
 
     private func chunkRecord(

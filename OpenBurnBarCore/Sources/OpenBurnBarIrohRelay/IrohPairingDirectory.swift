@@ -101,4 +101,9 @@ public struct IrohPairingPublisher: Sendable {
 
 public enum IrohPairingDirectoryError: Error, Equatable, Sendable {
     case recordNotFound
+    /// Surface raised when a read-only directory implementation (such as
+    /// the iOS mobile reader) is asked to publish or revoke a record. The
+    /// previous design no-oped these calls silently, which would mask a
+    /// future coding error that wired a mobile caller into the publisher.
+    case unsupportedOnReader
 }

@@ -701,6 +701,14 @@ struct RemoteRelayDetailView: View {
                         isOn: $settingsManager.hermesRemoteRelayEnabled
                     )
 
+                    SettingsToggle(
+                        title: "Use iroh peer-to-peer transport",
+                        subtitle: "Routes traffic directly Mac \u{2194} iPhone over QUIC when both are reachable. Falls back to the hosted relay automatically.",
+                        icon: "antenna.radiowaves.left.and.right",
+                        isOn: $settingsManager.hermesIrohTransportEnabled
+                    )
+                    .disabled(!settingsManager.hermesRemoteRelayEnabled)
+
                     DisclosureGroup("Advanced relay endpoint") {
                         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                             Text("OpenBurnBar uses the hosted relay automatically for premium accounts. Change this only for development or self-hosted staging.")

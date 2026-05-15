@@ -29,12 +29,17 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private let relayKeyStore: HermesRelayKeyStore
     private let pairingKeyStore: IrohPairingKeyStore
     private let directory: any IrohPairingDirectory
+    private let publicKeyPublisher: IrohPairingPublicKeyPublishing
     private let transportFactory: @MainActor (HermesIrohRelayHostClient) -> any IrohRelayTransport
     private let urlSession: URLSession
     private let auditLogger: any IrohTransportAuditLogging
     private var transport: (any IrohRelayTransport)?
     private var acceptTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
+    /// Per-stream serve tasks spawned by `acceptLoop`. Tracked so `stop()`
+    /// can cancel them deterministically instead of letting them outlive the
+    /// host.
+    private var serveTasks: [UUID: Task<Void, Never>] = [:]
     private var readyUID: String?
     private var readyConnectionID: String?
     private var publishedNodeId: String?
@@ -46,6 +51,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         relayKeyStore: HermesRelayKeyStore = HermesRelayKeyStore(),
         pairingKeyStore: IrohPairingKeyStore = IrohPairingKeyStore(),
         directory: any IrohPairingDirectory = FirestoreIrohPairingDirectory.shared,
+        publicKeyPublisher: IrohPairingPublicKeyPublishing = IrohPairingPublicKeyPublisher.shared,
         auditLogger: any IrohTransportAuditLogging = FirestoreIrohAuditLogger.shared,
         urlSession: URLSession = .shared,
         pairingPublishInterval: TimeInterval = 15 * 60,
@@ -58,6 +64,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         self.relayKeyStore = relayKeyStore
         self.pairingKeyStore = pairingKeyStore
         self.directory = directory
+        self.publicKeyPublisher = publicKeyPublisher
         self.auditLogger = auditLogger
         self.urlSession = urlSession
         self.pairingPublishInterval = pairingPublishInterval
@@ -87,6 +94,13 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             publishedNodeId = identity.nodeId
 
             let pairingKeypair = try pairingKeyStore.keypair()
+            // Publish the verifier key BEFORE the pairing record so iOS
+            // never sees a freshly-published `iroh_pairing/*` doc without
+            // the corresponding `iroh_pairing_keys/host` doc to verify it.
+            try await publicKeyPublisher.publish(
+                uid: uid,
+                publicKeyBase64: pairingKeypair.publicKeyBase64
+            )
             let publisher = IrohPairingPublisher(directory: directory)
             _ = try await publisher.publish(
                 uid: uid,
@@ -128,6 +142,10 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         acceptTask = nil
         heartbeatTask?.cancel()
         heartbeatTask = nil
+        for task in serveTasks.values {
+            task.cancel()
+        }
+        serveTasks.removeAll()
 
         let transportToStop = transport
         let uid = readyUID
@@ -170,7 +188,8 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     urlSession: urlSession,
                     settingsManager: settingsManager
                 )
-                Task { [auditLogger] in
+                let serveID = UUID()
+                let task = Task { [weak self, auditLogger] in
                     let start = Date()
                     await auditLogger.record(
                         event: .streamOpened,
@@ -206,7 +225,9 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                         )
                     }
                     await stream.close()
+                    await self?.releaseServeTask(serveID)
                 }
+                serveTasks[serveID] = task
             } catch IrohRelayTransportError.timedOut {
                 continue
             } catch IrohRelayTransportError.shutdown {
@@ -218,10 +239,18 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         }
     }
 
+    private func releaseServeTask(_ id: UUID) {
+        serveTasks.removeValue(forKey: id)
+    }
+
     private func refreshPairingRecord(uid: String, connectionID: String) async {
         guard let nodeId = publishedNodeId else { return }
         do {
             let pairingKeypair = try pairingKeyStore.keypair()
+            try await publicKeyPublisher.publish(
+                uid: uid,
+                publicKeyBase64: pairingKeypair.publicKeyBase64
+            )
             let publisher = IrohPairingPublisher(directory: directory)
             _ = try await publisher.publish(
                 uid: uid,

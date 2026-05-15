@@ -871,12 +871,30 @@ final class HermesRelayHostService {
         self.settingsManager = settingsManager
         self.urlSession = urlSession
         self.relayKeyStore = relayKeyStore
-        self.realtimeRelayClient = realtimeRelayClient ?? HermesRealtimeRelayHostClient(
-            accountManager: accountManager,
-            settingsManager: settingsManager,
-            relayKeyStore: relayKeyStore,
-            urlSession: urlSession
-        )
+        if let realtimeRelayClient {
+            self.realtimeRelayClient = realtimeRelayClient
+        } else {
+            let wssClient = HermesRealtimeRelayHostClient(
+                accountManager: accountManager,
+                settingsManager: settingsManager,
+                relayKeyStore: relayKeyStore,
+                urlSession: urlSession
+            )
+            if settingsManager.hermesIrohTransportEnabled {
+                let irohClient = HermesIrohRelayHostClient(
+                    accountManager: accountManager,
+                    settingsManager: settingsManager,
+                    relayKeyStore: relayKeyStore,
+                    urlSession: urlSession
+                )
+                self.realtimeRelayClient = HermesRelayHostFanout(
+                    primary: irohClient,
+                    fallback: wssClient
+                )
+            } else {
+                self.realtimeRelayClient = wssClient
+            }
+        }
     }
 
     var connectionID: String {

@@ -112,13 +112,16 @@ test that exposed the bug).
 A device's iroh `NodeId` is *not* secret, but it must be authenticated to
 prevent connection-hijacking. `IrohRelayPairing` solves this:
 
-* On first launch the Mac (or the iOS app) generates an Ed25519 keypair
-  via `CryptoKit.Curve25519.Signing.PrivateKey`. The private key is held
-  in the Keychain via `HermesRelayKeyStore`. The public key is published
-  to Firestore as `provider_accounts/{uid}.irohPairingPublicKey` (same
-  document the existing relay uses).
+* On first launch the Mac generates an Ed25519 keypair via
+  `CryptoKit.Curve25519.Signing.PrivateKey`. The private key is held in the
+  Keychain via `IrohPairingKeyStore` (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`).
+  The public key is published by `IrohPairingPublicKeyPublisher` to
+  `users/{uid}/iroh_pairing_keys/host` (a dedicated singleton collection,
+  not the per-account provider records) so iOS can fetch one canonical
+  verifier per user without scanning provider docs. Schema:
+  `IrohPairingPublicKeyDoc` in `functions/src/types.ts`.
 * When a Mac wants to advertise an iroh `NodeId`, it signs
-  `"openburnbar.iroh.v1|{uid}|{connectionId}|{nodeId}|{publishedAtMillis}"`
+  `"openburnbar.iroh.pairing.v1|{uid}|{connectionId}|{nodeId}|{publishedAtMillis}"`
   with the Ed25519 key and writes the signed record to
   `/users/{uid}/iroh_pairing/{connectionId}`.
 * When iOS reads the record, `IrohPairingSignature.verify` checks the

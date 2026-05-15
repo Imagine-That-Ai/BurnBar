@@ -4,16 +4,24 @@ import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 
 /// Mobile-side reader for the Mac's Ed25519 pairing public key. The Mac
-/// publishes its public key to `provider_accounts/{uid}.irohPairingPublicKey`
-/// (base64-encoded). iOS fetches it once per session and caches by uid.
+/// publishes its public key to `users/{uid}/iroh_pairing_keys/host` as a
+/// base64-encoded 32-byte raw key (schema = `IrohPairingPublicKeyDoc`).
+/// iOS fetches it once per session and caches by uid; the cache survives
+/// for the lifetime of the actor instance because we treat the key as
+/// long-lived and never auto-rotate.
 final class FirestoreIrohPairingPublicKeyProvider: IrohPairingPublicKeyProviding, @unchecked Sendable {
     static let shared = FirestoreIrohPairingPublicKeyProvider()
 
     private let firestoreProvider: @Sendable () -> Firestore
     private let cache = PublicKeyCache()
+    private let roleId: String
 
-    init(firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() }) {
+    init(
+        firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() },
+        roleId: String = "host"
+    ) {
         self.firestoreProvider = firestoreProvider
+        self.roleId = roleId
     }
 
     func fetchPublicKey(uid: String) async throws -> Data {
@@ -23,15 +31,13 @@ final class FirestoreIrohPairingPublicKeyProvider: IrohPairingPublicKeyProviding
         let snapshot = try await firestoreProvider()
             .collection("users")
             .document(uid)
-            .collection("provider_accounts")
-            .whereField("irohPairingPublicKey", isNotEqualTo: NSNull())
-            .limit(to: 1)
-            .getDocuments()
-        guard let document = snapshot.documents.first else {
+            .collection("iroh_pairing_keys")
+            .document(roleId)
+            .getDocument()
+        guard snapshot.exists, let data = snapshot.data() else {
             throw FirestoreIrohPairingPublicKeyError.publicKeyNotFound
         }
-        let data = document.data()
-        guard let base64 = data["irohPairingPublicKey"] as? String,
+        guard let base64 = data["publicKeyBase64"] as? String,
               let raw = Data(base64Encoded: base64),
               raw.count == 32 else {
             throw FirestoreIrohPairingPublicKeyError.invalidPublicKey

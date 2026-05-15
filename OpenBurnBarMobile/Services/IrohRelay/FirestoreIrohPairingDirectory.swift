@@ -6,8 +6,10 @@ import OpenBurnBarIrohRelay
 /// Mobile (iOS / iPadOS) `IrohPairingDirectory`. Reads
 /// `/users/{uid}/iroh_pairing/{connectionId}` written by the Mac via
 /// `AgentLens/.../FirestoreIrohPairingDirectory.swift`. Mobile is a pure
-/// reader; the `publish` / `revoke` calls are no-ops because mobile does
-/// not host an iroh endpoint in Phase 4 (mobile is the dialer).
+/// reader; the `publish` / `revoke` calls throw because mobile does not
+/// host an iroh endpoint in Phase 4 (mobile is the dialer). Silently
+/// no-oping these would have masked a coding error if a future mobile
+/// caller wired itself into the shared publisher.
 final class FirestoreIrohPairingDirectory: IrohPairingDirectory, @unchecked Sendable {
     static let shared = FirestoreIrohPairingDirectory()
 
@@ -18,10 +20,7 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, @unchecked Send
     }
 
     func publish(_ record: IrohPairingRecord, for uid: String) async throws {
-        // Mobile never publishes — only the Mac signs records. Surface as a
-        // no-op so the shared `IrohPairingPublisher.publish(...)` path stays
-        // generic; in practice mobile callers should never reach this.
-        return
+        throw IrohPairingDirectoryError.unsupportedOnReader
     }
 
     func fetch(uid: String, connectionId: String) async throws -> IrohPairingRecord? {
@@ -36,8 +35,7 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, @unchecked Send
     }
 
     func revoke(uid: String, connectionId: String) async throws {
-        // Same rationale as `publish` — mobile is a reader only.
-        return
+        throw IrohPairingDirectoryError.unsupportedOnReader
     }
 
     private func decode(data: [String: Any], uid: String) -> IrohPairingRecord? {

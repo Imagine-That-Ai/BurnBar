@@ -100,7 +100,16 @@ public final class IrohXcframeworkTransport: IrohRelayTransport, @unchecked Send
             }
             return .streamRejected("iroh connect failed: \(message)")
         case .streamFailed(let message):
-            return .decodeFailed("iroh stream failed: \(message)")
+            // Transport-layer stream errors (write_all / read_exact / quic
+            // connection drops) are NOT decode errors — the bytes never
+            // made it past the wire. Misclassifying them as `.decodeFailed`
+            // confuses the cascade because higher layers treat decode
+            // errors as "the peer sent garbage" instead of "the stream is
+            // dead, fall back".
+            if message.lowercased().contains("timed out") {
+                return .timedOut
+            }
+            return .streamRejected("iroh stream failed: \(message)")
         case .acceptFailed(let message):
             if message.lowercased().contains("timed out") {
                 return .timedOut

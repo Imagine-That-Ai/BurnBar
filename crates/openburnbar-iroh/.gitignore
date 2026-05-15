@@ -1,0 +1,4 @@
+# Cargo build output. The lockfile (Cargo.lock) is committed because this
+# crate ships a staticlib bundled into an xcframework — pinning the full
+# transitive graph keeps the build deterministic across CI runs.
+target/

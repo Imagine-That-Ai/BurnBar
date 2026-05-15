@@ -17,13 +17,14 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # Iroh is the QUIC + NAT-traversal stack. Pinning an exact minor for now so
 # the xcframework build is bit-stable; planned upgrade cycles will bump this
 # deliberately, validated against `OpenBurnBarIroh` Swift integration tests.
-iroh = { version = "0.35", default-features = false, features = ["discovery-pkarr-dht"] }
+iroh = { version = "0.91", default-features = false }
 
 # Async runtime + utilities used by iroh.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
-anyhow = "1"
 thiserror = "1"
-tracing = "0.1"
+# Matches iroh 0.91's pinned rand. Used by `SecretKey::generate(&mut OsRng)`
+# when Swift asks us for a cold-start identity.
+rand = "0.8"
 
 # UniFFI surface used by `OpenBurnBarIroh` Swift package. The proc-macro
 # attribute path (`#[uniffi::export]`) is the modern, scaffolding-free way to

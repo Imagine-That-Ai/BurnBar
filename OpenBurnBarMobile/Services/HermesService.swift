@@ -2669,6 +2669,13 @@ final class HermesService {
 
 @MainActor
 final class HermesCompositeRelayTransport: HermesRelayTransporting {
+    /// `UserDefaults` key the iOS feature toggle writes. The OpenBurnBar Mac
+    /// app sets the same key via `SettingsManager.hermesIrohTransportEnabled`.
+    /// When false (the v1 default) the cascade skips iroh entirely and goes
+    /// straight to WSS so users on older builds never see the iroh dial
+    /// timeout latency.
+    static let irohEnabledDefaultsKey = "hermes_iroh_transport_enabled"
+
     static let shared = HermesCompositeRelayTransport(
         primary: HermesIrohRelayTransport.shared,
         secondary: HermesRealtimeRelayTransport.shared,
@@ -2678,6 +2685,7 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
     private let primary: HermesRelayTransporting
     private let secondary: HermesRelayTransporting
     private let fallback: HermesRelayTransporting
+    private let irohEnabled: @Sendable () -> Bool
 
     /// Three-tier fallback chain. The primary is the iroh peer-to-peer
     /// transport; failures cascade to the WSS relay and finally to the
@@ -2687,18 +2695,24 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
     init(
         primary: HermesRelayTransporting,
         secondary: HermesRelayTransporting,
-        fallback: HermesRelayTransporting
+        fallback: HermesRelayTransporting,
+        irohEnabled: @escaping @Sendable () -> Bool = {
+            UserDefaults.standard.bool(forKey: HermesCompositeRelayTransport.irohEnabledDefaultsKey)
+        }
     ) {
         self.primary = primary
         self.secondary = secondary
         self.fallback = fallback
+        self.irohEnabled = irohEnabled
     }
 
     func sendUnary(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> Data {
-        do {
-            return try await primary.sendUnary(payload, timeout: timeout)
-        } catch {
-            await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-wss")
+        if irohEnabled() {
+            do {
+                return try await primary.sendUnary(payload, timeout: timeout)
+            } catch {
+                await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-wss")
+            }
         }
         do {
             return try await secondary.sendUnary(payload, timeout: timeout)
@@ -2713,11 +2727,13 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
         timeout: TimeInterval,
         onSSEEvent: @escaping @MainActor (String) -> Void
     ) async throws {
-        do {
-            try await primary.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
-            return
-        } catch {
-            await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-wss")
+        if irohEnabled() {
+            do {
+                try await primary.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
+                return
+            } catch {
+                await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-wss")
+            }
         }
         do {
             try await secondary.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)

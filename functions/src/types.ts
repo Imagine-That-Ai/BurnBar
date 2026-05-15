@@ -280,7 +280,7 @@ export interface HermesConnectionAuditEventDoc {
  * Read-side (iOS / iPadOS):
  *   1. Look up the user's `irohPairingPublicKey` (32 raw bytes, base64).
  *   2. Verify `signature` over
- *      `openburnbar.iroh.v1|{uid}|{connectionId}|{nodeId}|{publishedAtMillis}`.
+ *      `openburnbar.iroh.pairing.v1|{uid}|{connectionId}|{nodeId}|{publishedAtMillis}`.
  *   3. Reject records older than `IROH_PAIRING_FRESHNESS_MS` (24h) or with
  *      a `protocolVersion` newer than the client understands.
  *   4. Dial `nodeId` over the QUIC ALPN advertised by
@@ -319,8 +319,44 @@ export interface IrohPairingRecordDoc {
 /** Max age (ms) the iOS client will trust an `IrohPairingRecordDoc`. */
 export const IROH_PAIRING_FRESHNESS_MS = 24 * 60 * 60 * 1000;
 
-/** Canonical AAD prefix the Mac signs. Mirrors `IrohPairingSignature` in Swift. */
-export const IROH_PAIRING_SIGNATURE_PREFIX = "openburnbar.iroh.v1";
+/** Canonical AAD prefix the Mac signs. Mirrors `IrohPairingSignature` in
+ *  Swift: `openburnbar.iroh.pairing.v\(protocolVersion)` interpolated into
+ *  `IrohPairingSignature.canonicalPayload`.
+ */
+export const IROH_PAIRING_SIGNATURE_PREFIX = "openburnbar.iroh.pairing.v1";
+
+/**
+ * Singleton document published by the Mac at
+ * `users/{uid}/iroh_pairing_keys/host` containing the Ed25519 public half of
+ * the pairing key. iOS clients fetch this once per session and verify every
+ * `IrohPairingRecordDoc.signature` against it before dialing a NodeId.
+ *
+ * Why a dedicated collection (not a field on `provider_accounts/*`):
+ *   - Provider accounts are per-account, the pairing key is per-user.
+ *   - Querying for "any provider_accounts doc with the field set" is racy if
+ *     a user has multiple accounts.
+ *   - A dedicated path lets `firestore.rules` constrain the schema tightly
+ *     (only the 5 fields below are allowed).
+ */
+export interface IrohPairingPublicKeyDoc {
+  /** Role identifier — today always `"host"`; reserved for future client roles. */
+  id: string;
+
+  /** Base64 of the 32-byte Ed25519 public key. */
+  publicKeyBase64: string;
+
+  /** Milliseconds since epoch when the Mac wrote/refreshed the doc. */
+  publishedAtMillis: number;
+
+  /** Frame schema version the key is bound to. Default 1. */
+  protocolVersion: number;
+
+  /** Document schema version for forward compatibility. */
+  schemaVersion: number;
+}
+
+/** Role id of the singleton iroh_pairing_keys document the Mac publishes. */
+export const IROH_PAIRING_KEY_HOST_ROLE = "host";
 
 /**
  * Audit event the Mac (or the Cloud Functions hosted runner) writes when an

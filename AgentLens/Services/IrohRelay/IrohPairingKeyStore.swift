@@ -5,9 +5,10 @@ import OpenBurnBarIrohRelay
 import Security
 
 /// Persists the Mac's Ed25519 pairing key. Public half is published to
-/// Firestore as `provider_accounts/{uid}.irohPairingPublicKey`; private
-/// half lives in the Keychain. Rotating this key invalidates every iOS
-/// verifier — only do it on a hard reset.
+/// Firestore at `users/{uid}/iroh_pairing_keys/host` by
+/// `IrohPairingPublicKeyPublisher`; private half lives in the Keychain.
+/// Rotating this key invalidates every iOS verifier — only do it on a hard
+/// reset.
 final class IrohPairingKeyStore: @unchecked Sendable {
     static let shared = IrohPairingKeyStore()
 

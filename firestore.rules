@@ -4,7 +4,7 @@ rules_version = '2';
 // - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups
 // - users/{uid}/projects (derived read model)
 // - users/{uid}/hermes_connections, hermes_pairings, hermes_relay_requests, hermes_session_cache, hermes_audit_events
-// - users/{uid}/iroh_pairing, iroh_audit_events
+// - users/{uid}/iroh_pairing, iroh_pairing_keys, iroh_audit_events
 // - users/{uid}/pi_agent_connections, pi_agent_pairings, pi_agent_relay_requests, pi_agent_audit_events
 // - users/{uid}/provider_account_device_links, runtime_connection_preferences
 // - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
@@ -1329,9 +1329,38 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Iroh transport pairing public keys. The Mac writes one singleton
+    // document per host role (today: `host`) containing the base64-encoded
+    // 32-byte Ed25519 public half of the pairing key. iOS clients read this
+    // value to verify `iroh_pairing/*` signatures before dialing. Schema lives
+    // in `functions/src/types.ts` (`IrohPairingPublicKeyDoc`).
+    match /users/{userId}/iroh_pairing_keys/{roleId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "publicKeyBase64",
+          "publishedAtMillis",
+          "protocolVersion",
+          "schemaVersion"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id == roleId
+        && request.resource.data.publicKeyBase64 is string
+        && request.resource.data.publicKeyBase64.size() >= 32
+        && request.resource.data.publicKeyBase64.size() <= 128
+        && request.resource.data.publishedAtMillis is int
+        && request.resource.data.publishedAtMillis > 0
+        && request.resource.data.protocolVersion is int
+        && request.resource.data.protocolVersion >= 1
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1;
+      allow delete: if ownsUserNamespace(userId);
+    }
+
     // Iroh transport pairing records. Mac publishes; iOS reads + verifies the
-    // Ed25519 signature using `provider_accounts/{uid}.irohPairingPublicKey`
-    // before dialing the NodeId. Schema lives in `functions/src/types.ts`
+    // Ed25519 signature using `iroh_pairing_keys/host.publicKeyBase64` before
+    // dialing the NodeId. Schema lives in `functions/src/types.ts`
     // (`IrohPairingRecordDoc`); the Mac is the sole writer.
     match /users/{userId}/iroh_pairing/{connectionId} {
       allow read: if ownsUserNamespace(userId);
