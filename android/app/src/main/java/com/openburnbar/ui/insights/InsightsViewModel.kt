@@ -10,6 +10,7 @@ import com.openburnbar.data.insights.InsightEgressTier
 import com.openburnbar.data.insights.InsightFilter
 import com.openburnbar.data.insights.InsightModelTag
 import com.openburnbar.data.insights.InsightTheme
+import com.openburnbar.data.insights.services.AndroidBurnBarHostedInsightGateway
 import com.openburnbar.data.insights.services.AndroidHermesInsightAnalysisGateway
 import com.openburnbar.data.insights.services.AndroidInsightCredentialStore
 import com.openburnbar.data.insights.services.AndroidInsightAnalysisEngine
@@ -177,13 +178,28 @@ class InsightsViewModel(
         prompt: String,
         missionKind: String = missionKind(prompt),
         requestedRuntime: String = "auto",
+        targetProject: String? = null,
+        depth: String = "standard",
+        approvalMode: String = "existing_policy",
+        commandsAllowed: Boolean = false,
+        fileEditsAllowed: Boolean = false,
     ) {
         val trimmedPrompt = prompt.trim()
         val trimmedTitle = title.trim().ifEmpty { "Insights mission" }
         if (trimmedPrompt.isEmpty()) return
         viewModelScope.launch {
             try {
-                val requestID = missionDispatcher.dispatch(trimmedTitle, trimmedPrompt, missionKind, requestedRuntime)
+                val requestID = missionDispatcher.dispatch(
+                    title = trimmedTitle,
+                    prompt = trimmedPrompt,
+                    missionKind = missionKind,
+                    requestedRuntime = requestedRuntime,
+                    targetProject = targetProject,
+                    depth = depth,
+                    approvalMode = approvalMode,
+                    commandsAllowed = commandsAllowed,
+                    fileEditsAllowed = fileEditsAllowed,
+                )
                 _missionStatus.value = MissionStatus.Dispatched(
                     trimmedTitle,
                     if (requestedRuntime == "auto") "Mac agent fleet" else requestedRuntime,
@@ -199,6 +215,19 @@ class InsightsViewModel(
         missionObservationJob?.cancel()
         missionObservationJob = null
         _missionStatus.value = MissionStatus.Idle
+    }
+
+    fun respondToMissionApproval(requestID: String, approve: Boolean) {
+        viewModelScope.launch {
+            try {
+                missionDispatcher.respondToApproval(requestID, approve)
+            } catch (e: Exception) {
+                _missionStatus.value = MissionStatus.Failed(
+                    "Mission approval",
+                    e.message ?: "Mission approval response failed.",
+                )
+            }
+        }
     }
 
     fun selectModel(modelTag: InsightModelTag) {
@@ -272,9 +301,16 @@ class InsightsViewModel(
         } else {
             _modelOptions.value
         }
+        // Preference order: user-relay (Hermes) → user-key cloud → Ollama
+        // → BurnBar hosted → anything non-local-rules.
         return available.firstOrNull { it.providerKey == "hermes" }
-            ?: available.firstOrNull { it.egressTier != InsightEgressTier.LOCAL_ONLY && it.providerKey != "ollama" }
+            ?: available.firstOrNull {
+                it.egressTier != InsightEgressTier.LOCAL_ONLY
+                    && it.providerKey != "ollama"
+                    && it.providerKey != AndroidBurnBarHostedInsightGateway.PROVIDER_KEY
+            }
             ?: available.firstOrNull { it.providerKey == "ollama" }
+            ?: available.firstOrNull { it.providerKey == AndroidBurnBarHostedInsightGateway.PROVIDER_KEY }
             ?: available.firstOrNull { it.providerKey != "local-rules" }
             ?: selected
     }

@@ -306,20 +306,22 @@ struct TrustedDevicesDetailView: View {
 
                 Spacer()
 
-                if !device.isCurrentDevice {
-                    Button(MacCopy.approveDevice) {
+                if device.trustState != .trusted {
+                    Button(device.isCurrentDevice ? "Approve This Mac" : MacCopy.approveDevice) {
                         Task { await deviceTrust.approve(deviceID: device.id) }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
+                }
 
+                if !device.isCurrentDevice {
                     Button(MacCopy.revokeDevice) {
                         Task { await deviceTrust.revoke(deviceID: device.id) }
                     }
                     .buttonStyle(.bordered)
                     .tint(.red)
                     .controlSize(.small)
-                } else {
+                } else if device.trustState == .trusted {
                     Text("This Mac")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.success)
@@ -334,11 +336,25 @@ struct TrustedDevicesDetailView: View {
     }
 
     private func deviceStatusText(_ device: MacTrustedDevice) -> String {
-        device.isCurrentDevice ? "Current" : device.platform
+        switch device.trustState {
+        case .trusted:
+            return device.isCurrentDevice ? "Current and trusted" : "\(device.platform) trusted"
+        case .pending:
+            return device.isCurrentDevice ? "Current, approval required" : "\(device.platform) pending"
+        case .revoked:
+            return device.isCurrentDevice ? "Current, revoked" : "\(device.platform) revoked"
+        }
     }
 
     private func deviceStatusColor(_ device: MacTrustedDevice) -> Color {
-        device.isCurrentDevice ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted
+        switch device.trustState {
+        case .trusted:
+            return DesignSystem.Colors.success
+        case .pending:
+            return DesignSystem.Colors.warning
+        case .revoked:
+            return DesignSystem.Colors.error
+        }
     }
 }
 
@@ -530,12 +546,20 @@ struct MacTrustedDevice: Identifiable, Equatable {
     let id: String
     let displayName: String
     let platform: String
+    let trustState: EscrowDeviceTrustState
     let isCurrentDevice: Bool
 
-    init(id: String, displayName: String, platform: String = "macOS", isCurrentDevice: Bool = false) {
+    init(
+        id: String,
+        displayName: String,
+        platform: String = "macOS",
+        trustState: EscrowDeviceTrustState = .pending,
+        isCurrentDevice: Bool = false
+    ) {
         self.id = id
         self.displayName = displayName
         self.platform = platform
+        self.trustState = trustState
         self.isCurrentDevice = isCurrentDevice
     }
 }
@@ -564,6 +588,7 @@ final class MacLiveDeviceTrustGateway: MacDeviceTrustGateway {
                 id: doc.documentID,
                 displayName: d["deviceName"] as? String ?? "Unknown",
                 platform: d["platform"] as? String ?? "macOS",
+                trustState: EscrowDeviceTrustState(rawValue: d["trustState"] as? String ?? "") ?? .pending,
                 isCurrentDevice: doc.documentID == self.deviceId
             )
         }

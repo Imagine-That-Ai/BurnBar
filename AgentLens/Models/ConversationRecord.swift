@@ -126,11 +126,12 @@ struct ChatTranscriptPiece: Codable, Identifiable, Hashable {
     enum Kind: String, Codable {
         case text
         case toolUse
+        case toolResult
     }
 
     let id: String
     let kind: Kind
-    /// Prose for `.text`; tool label (e.g. Read, Bash) for `.toolUse`.
+    /// Prose for `.text`; tool label (e.g. Read, Bash) for tool events.
     var value: String
     let detail: String?
 
@@ -200,7 +201,7 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
     }
 }
 
-/// Groups consecutive `.toolUse` transcript pieces for horizontal strip rendering.
+/// Groups consecutive tool transcript pieces for horizontal strip rendering.
 /// Used by both the dashboard `ChatMessageView` and the popover `HermesPopoverBubble`.
 enum TranscriptGroup: Identifiable {
     case toolGroup([ChatTranscriptPiece])
@@ -215,7 +216,7 @@ enum TranscriptGroup: Identifiable {
         }
     }
 
-    /// Partitions transcript pieces into groups: consecutive `.toolUse` pieces
+    /// Partitions transcript pieces into groups: consecutive tool pieces
     /// become `.toolGroup`, individual `.text` pieces become `.single`.
     static func group(_ transcript: [ChatTranscriptPiece]) -> [TranscriptGroup] {
         var groups: [TranscriptGroup] = []
@@ -223,7 +224,7 @@ enum TranscriptGroup: Identifiable {
 
         for piece in transcript {
             switch piece.kind {
-            case .toolUse:
+            case .toolUse, .toolResult:
                 pendingTools.append(piece)
             case .text:
                 if !pendingTools.isEmpty {

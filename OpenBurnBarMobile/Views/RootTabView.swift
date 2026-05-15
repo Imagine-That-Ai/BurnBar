@@ -20,6 +20,10 @@ struct RootTabView: View {
     @State private var motionStore = MotionStore()
     @State private var hermesService = HermesService()
     @State private var studioPresenter = ChartStudioPresenter()
+    @State private var missionActivityCenter = MobileMissionActivityCenter()
+    @State private var missionConsoleHost = MobileMissionConsoleHost()
+    @State private var missionConsoleFABOffset: CGSize = .zero
+    @State private var isMissionConsolePresented = false
     @State private var isHermesKeyboardVisible = false
     /// Shared OpenBurnBar Cloud / Hosted Quota Sync store, hoisted here so a
     /// single StoreKit observer feeds the Settings row, the Pulse upsell
@@ -62,6 +66,21 @@ struct RootTabView: View {
             // tabs.
             ChartStudioFloatingButton(presenter: studioPresenter)
 
+            // Floating Mission Console launcher — sibling to Chart Studio's
+            // FAB. Anchored bottom-LEFT by default so the two FABs don't
+            // collide. Hidden when Chart Studio is fullscreen.
+            MobileMissionFAB(
+                host: missionConsoleHost,
+                isVisible: studioPresenter.mode != .fullscreen,
+                anchorOffset: $missionConsoleFABOffset
+            ) {
+                isMissionConsolePresented = true
+            }
+
+            MobileMissionActivityOverlay(center: missionActivityCenter)
+                .padding(.bottom, 86)
+                .zIndex(8)
+
             // Full-screen Studio overlay. We host it here (not as a
             // `.fullScreenCover` on an individual card) so the user can
             // minimize it and keep navigating.
@@ -81,6 +100,13 @@ struct RootTabView: View {
         .environment(\.chartStudioPresenter, studioPresenter)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
         .task { await subscriptionStore.load() }
+        .task { missionActivityCenter.start() }
+        .task { missionConsoleHost.start() }
+        .sheet(isPresented: $isMissionConsolePresented) {
+            MobileMissionConsoleSheet(host: missionConsoleHost) {
+                isMissionConsolePresented = false
+            }
+        }
         .onAppear {
             applyScreenshotRouteIfNeeded()
         }

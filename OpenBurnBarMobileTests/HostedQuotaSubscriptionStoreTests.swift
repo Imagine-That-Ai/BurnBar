@@ -1,3 +1,4 @@
+import StoreKit
 import StoreKitTest
 import XCTest
 @testable import OpenBurnBarMobile
@@ -10,7 +11,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         let session = try makeCleanStoreKitSession()
         defer { session.clearTransactions() }
         let service = FakeHostedQuotaEntitlementService()
-        let store = HostedQuotaSubscriptionStore(functions: service)
+        let store = HostedQuotaSubscriptionStore(functions: service, isSignedIn: { true })
 
         await store.load()
 
@@ -36,7 +37,8 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
                     signedTransactionJWS: "signed-transaction-jws",
                     finish: { didFinishTransaction = true }
                 )
-            }
+            },
+            isSignedIn: { true }
         )
         await store.load()
 
@@ -61,7 +63,7 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         let service = FakeHostedQuotaEntitlementService(
             restoreResponse: .hostedQuota(active: true, expiresAt: expiresAt)
         )
-        let store = HostedQuotaSubscriptionStore(functions: service)
+        let store = HostedQuotaSubscriptionStore(functions: service, isSignedIn: { true })
 
         try await store.refreshEntitlement()
 
@@ -81,7 +83,8 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         var didSyncAppStore = false
         let store = HostedQuotaSubscriptionStore(
             functions: service,
-            syncAppStore: { didSyncAppStore = true }
+            syncAppStore: { didSyncAppStore = true },
+            isSignedIn: { true }
         )
 
         await store.restorePurchases()
@@ -92,6 +95,36 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
         XCTAssertEqual(store.expirationDate, expiresAt)
         XCTAssertEqual(service.restoreRequests.count, 1)
         XCTAssertEqual(service.restoreRequests.first?.productID, HostedQuotaSubscriptionStore.productID)
+    }
+
+    func testSignedOutPurchaseStillPresentsStoreKitAndFinishesWithActionableRecovery() async throws {
+        let session = try makeCleanStoreKitSession()
+        defer { session.clearTransactions() }
+        let service = FakeHostedQuotaEntitlementService()
+        var didFinishTransaction = false
+        var capturedOptions: Set<Product.PurchaseOption>?
+        let store = HostedQuotaSubscriptionStore(
+            functions: service,
+            purchaseProduct: { _, options in
+                capturedOptions = options
+                return .success(
+                    signedTransactionJWS: "signed-out-transaction-jws",
+                    finish: { didFinishTransaction = true }
+                )
+            },
+            isSignedIn: { false }
+        )
+        await store.load()
+
+        await store.purchase()
+
+        XCTAssertTrue(didFinishTransaction)
+        XCTAssertEqual(capturedOptions, [])
+        XCTAssertEqual(service.bindingRequests.count, 0)
+        XCTAssertEqual(service.verifyRequests.count, 0)
+        XCTAssertFalse(store.isActive)
+        XCTAssertTrue(store.error?.contains("Sign in to OpenBurnBar") == true)
+        XCTAssertFalse(store.error?.localizedCaseInsensitiveContains("Unauthenticated") == true)
     }
 
     private func makeCleanStoreKitSession() throws -> SKTestSession {

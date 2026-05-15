@@ -196,6 +196,13 @@ For any camera attachment changes, keep `NSCameraUsageDescription` in
 `OpenBurnBarMobile/Info.plist` and `project.yml`. iOS terminates the app before
 Swift can recover if the Take Photo flow reaches camera APIs without that key.
 
+For Guideline 2.1(b), the `Subscribe` button must never look dead because the
+reviewer is signed out of Firebase. `HostedQuotaSubscriptionStore.purchase()`
+must present StoreKit even when `AuthRepository.shared.isSignedIn` is false, and
+only require OpenBurnBar sign-in for server entitlement binding or restore. Keep
+`HostedQuotaSubscriptionStoreTests.testSignedOutPurchaseStillPresentsStoreKitAndFinishesWithActionableRecovery`
+green before resubmitting any subscription build.
+
 The corresponding in-app account deletion path is
 **You -> Settings -> Account -> Delete account**. Record a physical-device
 screen capture of sign-in, navigation to that row, the destructive confirmation,

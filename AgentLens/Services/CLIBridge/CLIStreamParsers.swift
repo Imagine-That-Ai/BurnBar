@@ -18,6 +18,8 @@ enum ClaudeCodeStreamJSONParser {
                     out.append(.text(text))
                 } else if kind == "tool_use", let pair = toolUsePayload(from: block) {
                     out.append(.toolUse(name: pair.0, detail: pair.1))
+                } else if kind == "tool_result", let pair = toolResultPayload(from: block) {
+                    out.append(.toolResult(name: pair.0, detail: pair.1))
                 }
             }
             if !out.isEmpty { return out }
@@ -25,6 +27,10 @@ enum ClaudeCodeStreamJSONParser {
 
         if (obj["type"] as? String) == "tool_use", let pair = toolUsePayload(from: obj) {
             return [.toolUse(name: pair.0, detail: pair.1)]
+        }
+
+        if (obj["type"] as? String) == "tool_result", let pair = toolResultPayload(from: obj) {
+            return [.toolResult(name: pair.0, detail: pair.1)]
         }
 
         if let text = extractStreamJSONText(from: obj), !text.isEmpty {
@@ -40,12 +46,42 @@ enum ClaudeCodeStreamJSONParser {
         return (name, toolInputSummary(obj["input"] as? [String: Any]))
     }
 
+    private static func toolResultPayload(from obj: [String: Any]) -> (String, String?)? {
+        let name = (obj["name"] as? String)
+            ?? (obj["tool"] as? String)
+            ?? (obj["tool_name"] as? String)
+            ?? (obj["tool_use_id"] as? String)
+            ?? "Tool result"
+        return (name, toolResultSummary(from: obj))
+    }
+
     private static func toolInputSummary(_ input: [String: Any]?) -> String? {
         guard let input else { return nil }
         if let p = input["path"] as? String ?? input["file_path"] as? String, !p.isEmpty { return p }
         if let c = input["command"] as? String, !c.isEmpty { return String(c.prefix(160)) }
         if let p = input["pattern"] as? String, !p.isEmpty { return p }
         if let q = input["query"] as? String, !q.isEmpty { return String(q.prefix(120)) }
+        return nil
+    }
+
+    private static func toolResultSummary(from obj: [String: Any]) -> String? {
+        if let content = obj["content"] as? String, !content.isEmpty {
+            return String(content.prefix(400))
+        }
+        if let text = obj["text"] as? String, !text.isEmpty {
+            return String(text.prefix(400))
+        }
+        if let output = obj["output"] as? String, !output.isEmpty {
+            return String(output.prefix(400))
+        }
+        if let content = obj["content"] as? [[String: Any]] {
+            let joined = content.compactMap { block in
+                (block["text"] as? String) ?? (block["content"] as? String)
+            }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            return joined.isEmpty ? nil : String(joined.prefix(400))
+        }
         return nil
     }
 
@@ -175,13 +211,26 @@ struct CodexExecJSONLParser {
     }
 
     static func toolEvent(from obj: [String: Any]) -> CLIChatStreamEvent? {
-        guard (obj["type"] as? String) == "item.started",
-              let item = obj["item"] as? [String: Any],
+        let type = obj["type"] as? String
+        guard let item = obj["item"] as? [String: Any],
               (item["type"] as? String) == "command_execution" else {
             return nil
         }
         let command = (item["command"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        if type == "item.completed" || type == "item.finished" {
+            let output = (item["output"] as? String)
+                ?? (item["stdout"] as? String)
+                ?? (item["stderr"] as? String)
+                ?? (item["result"] as? String)
+            let trimmedOutput = output?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let detail = trimmedOutput.flatMap { $0.isEmpty ? nil : String($0.prefix(400)) }
+            return .toolResult(name: "Bash", detail: detail ?? command.map { "Completed: \(String($0.prefix(180)))" })
+        }
+        guard type == "item.started" else {
+            return nil
+        }
         guard let command, !command.isEmpty else {
             return .toolUse(name: "Bash", detail: nil)
         }

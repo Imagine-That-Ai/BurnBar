@@ -20,6 +20,12 @@ public enum InsightGatewayError: LocalizedError, Hashable, Sendable {
     case quotaExceeded(modelID: String, providerMessage: String?)
     /// Privacy mode is on and the selected model is non-local.
     case egressBlockedByPrivacyMode(modelID: String)
+    /// The selected route requires an active BurnBar Pro
+    /// subscription that the caller does not have (free tier,
+    /// expired, or anonymous). The orchestrator catches this from
+    /// the hosted-fallback gateway and lands the brief on local
+    /// rules with an "Upgrade to BurnBar Pro" disclosure.
+    case subscriptionRequired(modelID: String, productID: String?)
     /// Wrapper for any other underlying error.
     case underlying(modelID: String, message: String)
 
@@ -45,6 +51,8 @@ public enum InsightGatewayError: LocalizedError, Hashable, Sendable {
             return "\(id) is over quota."
         case .egressBlockedByPrivacyMode(let id):
             return "\(id) cannot be used while Privacy mode is on. Pick a local model or disable Privacy mode."
+        case .subscriptionRequired:
+            return "BurnBar Pro subscription required to use the hosted Intelligence Brief."
         case .underlying(let id, let message):
             return "\(id): \(message)"
         }

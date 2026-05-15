@@ -1,6 +1,281 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
+import OpenBurnBarCore
 import OSLog
+
+// MARK: - Mission Device Trust
+
+struct CLIAgentMissionDeviceTrustResult: Equatable, Sendable {
+    let isTrusted: Bool
+    let message: String
+
+    static var trusted: CLIAgentMissionDeviceTrustResult {
+        CLIAgentMissionDeviceTrustResult(
+            isTrusted: true,
+            message: "Mac is trusted for mobile mission execution."
+        )
+    }
+
+    static func untrusted(_ message: String) -> CLIAgentMissionDeviceTrustResult {
+        CLIAgentMissionDeviceTrustResult(isTrusted: false, message: message)
+    }
+}
+
+@MainActor
+protocol CLIAgentMissionDeviceTrustChecking: AnyObject {
+    func prepareAndValidateTrustedExecutor(uid: String, deviceID: String) async -> CLIAgentMissionDeviceTrustResult
+}
+
+struct CLIAgentMissionBackend: Equatable, Sendable {
+    let rawValue: String
+    let displayName: String
+    let chatBackend: ChatBackendID?
+
+    init(chatBackend: ChatBackendID) {
+        self.rawValue = chatBackend.rawValue
+        self.displayName = chatBackend.displayName
+        self.chatBackend = chatBackend
+    }
+
+    init(rawValue: String, displayName: String) {
+        self.rawValue = rawValue
+        self.displayName = displayName
+        self.chatBackend = nil
+    }
+
+    var usesDirectCLI: Bool {
+        chatBackend == nil
+    }
+}
+
+struct CLIAgentMissionDirectLaunchPlan: Equatable, Sendable {
+    let executableName: String
+    let arguments: [String]
+    let extraEnvironment: [String: String]
+}
+
+enum CLIAgentMissionRuntimePlanner {
+    static func resolve(
+        requestedRuntime: String?,
+        missionKind: String?,
+        enabledBackends: [ChatBackendID]
+    ) -> CLIAgentMissionBackend {
+        if let requestedRuntime,
+           requestedRuntime != "auto" {
+            switch requestedRuntime {
+            case "pi":
+                return CLIAgentMissionBackend(chatBackend: .piAgent)
+            case "opencode":
+                return CLIAgentMissionBackend(rawValue: "opencode", displayName: "OpenCode")
+            case "ollama":
+                return CLIAgentMissionBackend(rawValue: "ollama", displayName: "Ollama")
+            default:
+                if let direct = ChatBackendID(rawValue: requestedRuntime) {
+                    return CLIAgentMissionBackend(chatBackend: direct)
+                }
+            }
+        }
+
+        func firstEnabled(_ ordered: [ChatBackendID]) -> ChatBackendID? {
+            ordered.first { enabledBackends.contains($0) }
+        }
+
+        switch missionKind {
+        case "diligence", "security":
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw]) ?? .codex)
+        case "creative", "accretive", "ui_improvement", "custom":
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.openclaw, .codex, .hermes, .piAgent, .claude]) ?? .hermes)
+        case "debt", "modernization", "provider_routing", "cost_efficiency", "project_focus":
+            return CLIAgentMissionBackend(chatBackend: firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw]) ?? .codex)
+        default:
+            return CLIAgentMissionBackend(chatBackend: enabledBackends.first ?? .codex)
+        }
+    }
+
+    static func prompt(
+        title: String,
+        prompt: String,
+        backend: CLIAgentMissionBackend,
+        data: [String: Any]
+    ) -> String {
+        let source = (data["source"] as? String) ?? "mobile-insights"
+        let targetProject = (data["targetProject"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? "Mac current workspace"
+        let depth = (data["depth"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? "standard"
+        let approvalMode = (data["approvalMode"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? "existing_policy"
+        let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
+        let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
+        return """
+        You are OpenBurnBar Mission Control running from \(backend.displayName) on the user's Mac.
+
+        Mission: \(title)
+        Source: \(source)
+        Target project: \(targetProject)
+        Depth: \(depth)
+        Approval mode: \(approvalMode)
+        Commands allowed: \(commandsAllowed ? "yes" : "no")
+        File edits allowed: \(fileEditsAllowed ? "yes" : "no")
+
+        Execute this as a concrete, useful mission packet. Inspect the repo or local data before making claims when commands are allowed. Produce actionable findings, acceptance criteria, validation commands, risks, and a mobile-readable result summary. If file edits are not allowed, do not modify files; return a patch plan instead. If code changes are warranted and file edits are allowed, keep them scoped and preserve unrelated work.
+
+        \(prompt)
+        """
+    }
+
+    static func directLaunchPlan(
+        title: String,
+        prompt: String,
+        backend: CLIAgentMissionBackend,
+        data: [String: Any]
+    ) -> CLIAgentMissionDirectLaunchPlan? {
+        let hostPrompt = Self.prompt(title: title, prompt: prompt, backend: backend, data: data)
+        switch backend.rawValue {
+        case ChatBackendID.piAgent.rawValue:
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "zsh",
+                arguments: [
+                    "-lic",
+                    "pi --no-session --no-tools --mode json -p \"$OPENBURNBAR_MISSION_PROMPT\""
+                ],
+                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
+            )
+        case ChatBackendID.openclaw.rawValue:
+            let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
+            let fileEditsAllowed = (data["fileEditsAllowed"] as? Bool) ?? false
+            var arguments = [
+                "-p",
+                hostPrompt,
+                "--no-session-persistence",
+                "--output-format",
+                "stream-json",
+                "--include-partial-messages",
+                "--verbose"
+            ]
+            if commandsAllowed || fileEditsAllowed {
+                arguments += ["--permission-mode", "auto"]
+                var disallowedTools: [String] = []
+                if !commandsAllowed {
+                    disallowedTools.append("Bash")
+                }
+                if !fileEditsAllowed {
+                    disallowedTools += ["Edit", "MultiEdit", "Write", "NotebookEdit"]
+                }
+                if !disallowedTools.isEmpty {
+                    arguments += ["--disallowedTools", disallowedTools.joined(separator: ",")]
+                }
+            } else {
+                arguments += ["--permission-mode", "plan", "--tools", ""]
+            }
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "openclaude",
+                arguments: arguments,
+                extraEnvironment: [:]
+            )
+        case "opencode":
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "zsh",
+                arguments: [
+                    "-lic",
+                    "opencode run \"$OPENBURNBAR_MISSION_PROMPT\""
+                ],
+                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
+            )
+        case "ollama":
+            return CLIAgentMissionDirectLaunchPlan(
+                executableName: "zsh",
+                arguments: [
+                    "-lic",
+                    """
+                    model="${OPENBURNBAR_OLLAMA_MODEL:-$(ollama list | awk 'NR==2 { print $1 }')}"
+                    if [ -z "$model" ]; then
+                      echo "No local Ollama model is installed. Pull a model or set OPENBURNBAR_OLLAMA_MODEL." >&2
+                      exit 66
+                    fi
+                    printf "%s" "$OPENBURNBAR_MISSION_PROMPT" | ollama run "$model"
+                    """
+                ],
+                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
+            )
+        case ChatBackendID.codex.rawValue, ChatBackendID.claude.rawValue, ChatBackendID.hermes.rawValue:
+            return nil
+        default:
+            return nil
+        }
+    }
+}
+
+@MainActor
+final class LiveCLIAgentMissionDeviceTrustChecker: CLIAgentMissionDeviceTrustChecking {
+    private let db: Firestore
+    private var preparedDeviceIDs = Set<String>()
+
+    init(db: Firestore = Firestore.firestore()) {
+        self.db = db
+    }
+
+    func prepareAndValidateTrustedExecutor(uid: String, deviceID: String) async -> CLIAgentMissionDeviceTrustResult {
+        let deviceRef = db.collection("users").document(uid)
+            .collection("escrow_devices")
+            .document(deviceID)
+        do {
+            let snapshot = try await deviceRef.getDocument()
+            if snapshot.exists {
+                return validate(snapshot: snapshot, deviceID: deviceID)
+            }
+
+            try await registerPendingMac(deviceRef: deviceRef, deviceID: deviceID)
+            preparedDeviceIDs.insert(deviceID)
+            return .untrusted("This Mac is registered but not approved for mobile mission execution. Approve it in OpenBurnBar Devices and Sync, then launch the mission again.")
+        } catch {
+            return .untrusted("Mac trust could not be verified before mission execution: \(error.localizedDescription)")
+        }
+    }
+
+    private func validate(snapshot: DocumentSnapshot, deviceID: String) -> CLIAgentMissionDeviceTrustResult {
+        guard let data = snapshot.data() else {
+            return .untrusted("This Mac is not registered for trusted device execution.")
+        }
+        let trustState = (data["trustState"] as? String) ?? EscrowDeviceTrustState.pending.rawValue
+        guard trustState == EscrowDeviceTrustState.trusted.rawValue else {
+            if !preparedDeviceIDs.contains(deviceID) {
+                Task { @MainActor in
+                    try? await self.registerPendingMac(deviceRef: snapshot.reference, deviceID: deviceID, mergeOnly: true)
+                }
+            }
+            return .untrusted("This Mac is not approved for mobile mission execution. Approve it in OpenBurnBar Devices and Sync, then launch the mission again.")
+        }
+
+        let platform = (data["platform"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard platform?.contains("mac") == true || platform == nil else {
+            return .untrusted("The trusted executor record for this device is not a macOS device.")
+        }
+        return .trusted
+    }
+
+    private func registerPendingMac(
+        deviceRef: DocumentReference,
+        deviceID: String,
+        mergeOnly: Bool = false
+    ) async throws {
+        let now = FieldValue.serverTimestamp()
+        var payload: [String: Any] = [
+            "deviceId": deviceID,
+            "platform": "macOS",
+            "deviceName": Host.current().localizedName ?? "OpenBurnBar Mac",
+            "appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+            "updatedAt": now
+        ]
+        if !mergeOnly {
+            payload["trustState"] = EscrowDeviceTrustState.pending.rawValue
+            payload["createdAt"] = now
+        }
+        try await deviceRef.setData(payload, merge: true)
+    }
+}
 
 // MARK: - CLI Agent Mission Request Listener
 //
@@ -19,21 +294,25 @@ final class CLIAgentMissionRequestListener {
     private let accountManager: AccountManaging
     private let settingsManager: SettingsManager
     private let chatController: ChatSessionController
+    private let deviceTrustChecker: CLIAgentMissionDeviceTrustChecking
     private let logger = Logger(subsystem: "com.openburnbar.app", category: "CLIAgentMissionRequestListener")
     private var listener: ListenerRegistration?
     private var listenerUID: String?
     private var attachTask: Task<Void, Never>?
     private var processingDocs = Set<String>()
     private var lastAttachState: String?
+    private var missionEventSequences: [String: Int] = [:]
 
     init(
         accountManager: AccountManaging,
         settingsManager: SettingsManager,
-        chatController: ChatSessionController
+        chatController: ChatSessionController,
+        deviceTrustChecker: CLIAgentMissionDeviceTrustChecking = LiveCLIAgentMissionDeviceTrustChecker()
     ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.chatController = chatController
+        self.deviceTrustChecker = deviceTrustChecker
     }
 
     func start() {
@@ -57,6 +336,7 @@ final class CLIAgentMissionRequestListener {
         listener = nil
         listenerUID = nil
         processingDocs.removeAll()
+        missionEventSequences.removeAll()
     }
 
     private func attachIfPossible() {
@@ -78,7 +358,7 @@ final class CLIAgentMissionRequestListener {
         logger.info("mission listener attaching uidSuffix=\(uid.suffix(6), privacy: .public) device=\(self.accountManager.deviceId, privacy: .public)")
         listener = Firestore.firestore().collection("users").document(uid)
             .collection("cli_agent_mission_requests")
-            .whereField("status", isEqualTo: "pending")
+            .whereField("status", in: ["pending", "waiting_for_approval"])
             .addSnapshotListener { [weak self] snapshot, error in
                 if let error {
                     Task { @MainActor [weak self] in
@@ -114,31 +394,55 @@ final class CLIAgentMissionRequestListener {
             return
         }
 
-        let backend = resolveBackend(
-            requestedRuntime: data["requestedRuntime"] as? String,
-            missionKind: data["missionKind"] as? String
-        )
-
         let requestedRuntime = (data["requestedRuntime"] as? String) ?? "auto"
         let missionKind = (data["missionKind"] as? String) ?? "unknown"
+        missionEventSequences[document.documentID] = max(
+            data["lastEventSequence"] as? Int ?? 1,
+            ((data["events"] as? [Any])?.count ?? 1)
+        )
+
+        guard let uid = accountManager.currentUID else {
+            logger.warning("mission id=\(document.documentID, privacy: .public) ignored because this Mac is not signed in")
+            return
+        }
+        let trustResult = await deviceTrustChecker.prepareAndValidateTrustedExecutor(
+            uid: uid,
+            deviceID: accountManager.deviceId
+        )
+        guard trustResult.isTrusted else {
+            logger.warning("mission id=\(document.documentID, privacy: .public) refused for untrusted Mac device=\(self.accountManager.deviceId, privacy: .public)")
+            return
+        }
+
+        let backend = resolveBackend(
+            requestedRuntime: requestedRuntime,
+            missionKind: data["missionKind"] as? String
+        )
+        if await shouldPauseForApproval(document: document, data: data, backend: backend) {
+            return
+        }
+
         logger.info("claiming mission id=\(document.documentID, privacy: .public) kind=\(missionKind, privacy: .public) requested=\(requestedRuntime, privacy: .public) selected=\(backend.rawValue, privacy: .public)")
         do {
             try await document.reference.setData([
-                "status": "running",
+                "status": "accepted",
                 "claimedBy": accountManager.deviceId,
                 "selectedRuntime": backend.rawValue,
                 "selectedRuntimeName": backend.displayName,
                 "liveSummary": "\(backend.displayName) claimed the mission on this Mac.",
-                "events": FieldValue.arrayUnion([
-                    missionEvent(
-                        phase: "claimed",
-                        message: "\(backend.displayName) claimed the mission on this Mac.",
-                        backend: backend
-                    )
-                ]),
+                "lastEventSequence": FieldValue.increment(Int64(1)),
                 "startedAt": ISO8601DateFormatter().string(from: Date()),
                 "updatedAt": FieldValue.serverTimestamp()
             ], merge: true)
+            await recordEvent(
+                reference: document.reference,
+                requestID: document.documentID,
+                phase: "accepted",
+                kind: "status",
+                title: "Accepted",
+                message: "\(backend.displayName) claimed the mission on this Mac.",
+                backend: backend
+            )
             logger.info("claimed mission id=\(document.documentID, privacy: .public)")
         } catch {
             logger.error("mission claim failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -153,32 +457,56 @@ final class CLIAgentMissionRequestListener {
         }
 
         logger.info("starting mission id=\(document.documentID, privacy: .public) backend=\(backend.rawValue, privacy: .public)")
+        do {
+            try await document.reference.setData([
+                "status": "starting",
+                "liveSummary": "Starting \(backend.displayName) with the mission prompt.",
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+        } catch {
+            logger.error("mission starting update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
         await recordEvent(
             reference: document.reference,
+            requestID: document.documentID,
             phase: "starting",
+            kind: "status",
+            title: "Starting",
             message: "Starting \(backend.displayName) with the mission prompt.",
             backend: backend
         )
-        if let directResult = await runDirectCLIMissionIfNeeded(title: title, prompt: prompt, backend: backend, data: data, reference: document.reference) {
+        let missionWorkingDirectoryURL = workingDirectoryURL(from: data)
+        let changedFilesBefore = await gitChangedFiles(in: missionWorkingDirectoryURL)
+        do {
+            try await document.reference.setData([
+                "status": "running",
+                "liveSummary": "\(backend.displayName) is running on this Mac.",
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+        } catch {
+            logger.error("mission running update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+        if let directResult = await runDirectCLIMissionIfNeeded(title: title, prompt: prompt, backend: backend, data: data, reference: document.reference, requestID: document.documentID) {
+            await recordChangedFileEvents(
+                before: changedFilesBefore,
+                after: await gitChangedFiles(in: missionWorkingDirectoryURL),
+                reference: document.reference,
+                requestID: document.documentID,
+                backend: backend
+            )
+            let safeDirectOutput = CLIAgentMissionEventFactory.mobileSafeText(directResult.output)
             var payload: [String: Any] = [
-                "status": directResult.status,
+                "status": directResult.status == "failed" ? "agent_launch_failed" : directResult.status,
                 "selectedRuntime": backend.rawValue,
                 "selectedRuntimeName": backend.displayName,
                 "sessionId": directResult.sessionID,
-                "resultPreview": directResult.output.prefix(600).description,
+                "resultPreview": safeDirectOutput,
                 "liveSummary": directResult.status == "completed" ? "\(backend.displayName) returned a result." : "\(backend.displayName) mission failed.",
-                "events": FieldValue.arrayUnion([
-                    missionEvent(
-                        phase: directResult.status == "completed" ? "completed" : "failed",
-                        message: directResult.status == "completed" ? resultSummary(from: directResult.output) : (directResult.errorMessage ?? "\(backend.displayName) mission failed."),
-                        backend: backend
-                    )
-                ]),
                 "completedAt": ISO8601DateFormatter().string(from: Date()),
                 "updatedAt": FieldValue.serverTimestamp()
             ]
             if let errorMessage = directResult.errorMessage {
-                payload["errorMessage"] = errorMessage
+                payload["errorMessage"] = CLIAgentMissionEventFactory.mobileSafeText(errorMessage)
             }
             do {
                 try await document.reference.setData(payload, merge: true)
@@ -186,10 +514,25 @@ final class CLIAgentMissionRequestListener {
             } catch {
                 logger.error("direct CLI mission update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
+            await recordEvent(
+                reference: document.reference,
+                requestID: document.documentID,
+                phase: directResult.status == "completed" ? "completed" : "agent_launch_failed",
+                kind: directResult.status == "completed" ? "final_answer" : "error",
+                title: directResult.status == "completed" ? "Completed" : "Agent launch failed",
+                message: directResult.status == "completed" ? resultSummary(from: directResult.output) : (directResult.errorMessage ?? "\(backend.displayName) mission failed."),
+                backend: backend,
+                isError: directResult.status != "completed"
+            )
             return
         }
 
-        chatController.setChatBackend(backend)
+        guard let chatBackend = backend.chatBackend else {
+            await fail(document: document, message: "\(backend.displayName) is not available through the interactive Mac chat controller.")
+            return
+        }
+
+        chatController.setChatBackend(chatBackend)
         chatController.startNewChatThread()
         let threadID = chatController.activeThreadID
         chatController.inputText = missionPrompt(title: title, prompt: prompt, backend: backend, data: data)
@@ -199,28 +542,13 @@ final class CLIAgentMissionRequestListener {
         var mirroredTranscriptPieceIDs = Set<String>()
         while chatController.isStreaming {
             let assistantMessage = chatController.messages.last(where: { $0.role == .assistant })
-            for piece in assistantMessage?.displayTranscript ?? [] where !mirroredTranscriptPieceIDs.contains(piece.id) {
-                mirroredTranscriptPieceIDs.insert(piece.id)
-                switch piece.kind {
-                case .toolUse:
-                    let detail = piece.detail?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-                    await recordEvent(
-                        reference: document.reference,
-                        phase: "tool_use",
-                        message: detail.map { "\(piece.value): \($0)" } ?? piece.value,
-                        backend: backend
-                    )
-                case .text:
-                    let text = piece.value.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !text.isEmpty else { continue }
-                    await recordEvent(
-                        reference: document.reference,
-                        phase: "assistant_response",
-                        message: text.prefix(600).description,
-                        backend: backend
-                    )
-                }
-            }
+            await mirrorTranscriptPieces(
+                assistantMessage?.displayTranscript ?? [],
+                mirroredPieceIDs: &mirroredTranscriptPieceIDs,
+                reference: document.reference,
+                requestID: document.documentID,
+                backend: backend
+            )
             if Date().timeIntervalSince(lastStreamingEvent) >= 2 {
                 lastStreamingEvent = Date()
                 let assistantPreview = assistantMessage?
@@ -228,36 +556,40 @@ final class CLIAgentMissionRequestListener {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 await recordEvent(
                     reference: document.reference,
+                    requestID: document.documentID,
                     phase: "streaming",
+                    kind: "status",
+                    title: "Streaming",
                     message: assistantPreview?.prefix(420).description.nilIfEmpty ?? "\(backend.displayName) is still working on the mission.",
                     backend: backend
                 )
             }
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
+        await mirrorTranscriptPieces(
+            chatController.messages.last(where: { $0.role == .assistant })?.displayTranscript ?? [],
+            mirroredPieceIDs: &mirroredTranscriptPieceIDs,
+            reference: document.reference,
+            requestID: document.documentID,
+            backend: backend
+        )
 
         let status = chatController.streamError == nil ? "completed" : "failed"
-        let finalSummary = chatController.messages.last(where: { $0.role == .assistant })?.content.prefix(600).description ?? ""
+        let finalSummary = chatController.messages.last(where: { $0.role == .assistant })?.content ?? ""
+        let safeFinalSummary = CLIAgentMissionEventFactory.mobileSafeText(finalSummary)
         var payload: [String: Any] = [
             "status": status,
             "selectedRuntime": backend.rawValue,
             "selectedRuntimeName": backend.displayName,
             "sessionId": threadID,
             "liveSummary": status == "completed" ? "\(backend.displayName) returned a result." : "\(backend.displayName) mission failed.",
-            "events": FieldValue.arrayUnion([
-                missionEvent(
-                    phase: status == "completed" ? "completed" : "failed",
-                    message: status == "completed" ? resultSummary(from: finalSummary) : (chatController.streamError ?? "\(backend.displayName) mission failed."),
-                    backend: backend
-                )
-            ]),
             "completedAt": ISO8601DateFormatter().string(from: Date()),
             "updatedAt": FieldValue.serverTimestamp()
         ]
         if let streamError = chatController.streamError {
-            payload["errorMessage"] = streamError
+            payload["errorMessage"] = CLIAgentMissionEventFactory.mobileSafeText(streamError)
         } else {
-            payload["resultPreview"] = finalSummary
+            payload["resultPreview"] = safeFinalSummary
         }
         do {
             try await document.reference.setData(payload, merge: true)
@@ -265,65 +597,179 @@ final class CLIAgentMissionRequestListener {
         } catch {
             logger.error("mission final update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
+
+        await recordChangedFileEvents(
+            before: changedFilesBefore,
+            after: await gitChangedFiles(in: missionWorkingDirectoryURL),
+            reference: document.reference,
+            requestID: document.documentID,
+            backend: backend
+        )
+        await recordEvent(
+            reference: document.reference,
+            requestID: document.documentID,
+            phase: status == "completed" ? "completed" : "failed",
+            kind: status == "completed" ? "final_answer" : "error",
+            title: status == "completed" ? "Completed" : "Failed",
+            message: status == "completed" ? resultSummary(from: finalSummary) : (chatController.streamError ?? "\(backend.displayName) mission failed."),
+            backend: backend,
+            isError: status != "completed"
+        )
     }
 
     private func fail(document: QueryDocumentSnapshot, message: String) async {
+        let safeMessage = CLIAgentMissionEventFactory.mobileSafeText(message, limit: 2048)
         do {
             try await document.reference.setData([
                 "status": "failed",
-                "errorMessage": message,
-                "liveSummary": message,
-                "events": FieldValue.arrayUnion([
-                    missionEvent(phase: "failed", message: message, backend: nil)
-                ]),
+                "errorMessage": safeMessage,
+                "liveSummary": safeMessage,
                 "completedAt": ISO8601DateFormatter().string(from: Date()),
                 "updatedAt": FieldValue.serverTimestamp()
             ], merge: true)
+            await recordEvent(
+                reference: document.reference,
+                requestID: document.documentID,
+                phase: "failed",
+                kind: "error",
+                title: "Failed",
+                message: safeMessage,
+                backend: nil,
+                isError: true
+            )
             logger.info("marked mission failed id=\(document.documentID, privacy: .public)")
         } catch {
             logger.error("mission failure update failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    private func resolveBackend(requestedRuntime: String?, missionKind: String?) -> ChatBackendID {
-        if let requestedRuntime,
-           requestedRuntime != "auto",
-           let direct = ChatBackendID(rawValue: requestedRuntime) {
-            return direct
+    private func shouldPauseForApproval(
+        document: QueryDocumentSnapshot,
+        data: [String: Any],
+        backend: CLIAgentMissionBackend
+    ) async -> Bool {
+        let approvalStatus = ((data["approvalStatus"] as? String) ?? "none").lowercased()
+        let status = ((data["status"] as? String) ?? "pending").lowercased()
+        if approvalStatus == "approved" {
+            return false
         }
-
-        let enabled = settingsManager.enabledChatBackends
-        func firstEnabled(_ ordered: [ChatBackendID]) -> ChatBackendID? {
-            ordered.first { enabled.contains($0) }
+        if approvalStatus == "rejected" || approvalStatus == "canceled" || approvalStatus == "cancelled" {
+            await cancelAfterApprovalDecision(document: document, approvalStatus: approvalStatus)
+            return true
         }
+        guard missionRequiresApproval(data: data) else {
+            return false
+        }
+        if status == "waiting_for_approval" {
+            return true
+        }
+        await requestApproval(document: document, data: data, backend: backend)
+        return true
+    }
 
-        switch missionKind {
-        case "diligence":
-            return firstEnabled([.claude, .codex, .hermes, .piAgent, .openclaw])
-                ?? .codex
-        case "creative":
-            return firstEnabled([.openclaw, .codex, .hermes, .piAgent, .claude])
-                ?? .hermes
-        case "debt":
-            return firstEnabled([.codex, .claude, .hermes, .piAgent, .openclaw])
-                ?? .codex
-        default:
-            return enabled.first ?? .codex
+    private func missionRequiresApproval(data: [String: Any]) -> Bool {
+        InsightMissionApprovalPolicy.requiresPreDispatchApproval(
+            approvalMode: data["approvalMode"] as? String,
+            commandsAllowed: (data["commandsAllowed"] as? Bool) ?? false,
+            fileEditsAllowed: (data["fileEditsAllowed"] as? Bool) ?? false
+        )
+    }
+
+    private func requestApproval(
+        document: QueryDocumentSnapshot,
+        data: [String: Any],
+        backend: CLIAgentMissionBackend
+    ) async {
+        let approvalID = (data["approvalRequestId"] as? String)?.nilIfEmpty ?? "approval-\(UUID().uuidString)"
+        let title = (data["title"] as? String)?.nilIfEmpty ?? "Mobile mission"
+        let approvalMode = (data["approvalMode"] as? String)?.nilIfEmpty ?? "existing_policy"
+        let commandsAllowed = ((data["commandsAllowed"] as? Bool) ?? false) ? "commands" : nil
+        let fileEditsAllowed = ((data["fileEditsAllowed"] as? Bool) ?? false) ? "file edits" : nil
+        let riskyScope = [commandsAllowed, fileEditsAllowed].compactMap { $0 }.joined(separator: " and ")
+        let scope = riskyScope.nilIfEmpty ?? "mission execution"
+        let message = "\(backend.displayName) is waiting for approval before \(scope). Approval mode: \(approvalMode)."
+        do {
+            try await document.reference.setData([
+                "status": "waiting_for_approval",
+                "claimedBy": accountManager.deviceId,
+                "approvalRequestId": approvalID,
+                "approvalStatus": "pending",
+                "approvalRequestedAt": ISO8601DateFormatter().string(from: Date()),
+                "approvalTitle": "Approve \(title)",
+                "approvalMessage": message,
+                "selectedRuntime": backend.rawValue,
+                "selectedRuntimeName": backend.displayName,
+                "liveSummary": message,
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+            await recordEvent(
+                reference: document.reference,
+                requestID: document.documentID,
+                phase: "accepted",
+                kind: "status",
+                title: "Accepted",
+                message: "\(backend.displayName) accepted the mission on this Mac and is waiting for approval.",
+                backend: backend
+            )
+            await recordEvent(
+                reference: document.reference,
+                requestID: document.documentID,
+                phase: "approval_requested",
+                kind: "approval_request",
+                title: "Approval required",
+                message: message,
+                backend: backend
+            )
+            logger.info("mission id=\(document.documentID, privacy: .public) waiting for mobile approval")
+        } catch {
+            logger.error("mission approval request failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            await fail(document: document, message: "Mac could not request mission approval: \(error.localizedDescription)")
         }
     }
 
-    private func missionPrompt(title: String, prompt: String, backend: ChatBackendID, data: [String: Any]) -> String {
-        let source = (data["source"] as? String) ?? "mobile-insights"
-        return """
-        You are OpenBurnBar Mission Control running from \(backend.displayName) on the user's Mac.
+    private func cancelAfterApprovalDecision(document: QueryDocumentSnapshot, approvalStatus: String) async {
+        let message = approvalStatus == "rejected"
+            ? "Mission approval was rejected from mobile."
+            : "Mission approval was canceled from mobile."
+        do {
+            try await document.reference.setData([
+                "status": "canceled",
+                "liveSummary": message,
+                "errorMessage": message,
+                "completedAt": ISO8601DateFormatter().string(from: Date()),
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+            await recordEvent(
+                reference: document.reference,
+                requestID: document.documentID,
+                phase: "approval_resolved",
+                kind: "status",
+                title: "Approval \(approvalStatus)",
+                message: message,
+                backend: nil,
+                isError: true
+            )
+            logger.info("mission approval \(approvalStatus, privacy: .public) id=\(document.documentID, privacy: .public)")
+        } catch {
+            logger.error("mission approval cancellation failed id=\(document.documentID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
 
-        Mission: \(title)
-        Source: \(source)
+    private func resolveBackend(requestedRuntime: String?, missionKind: String?) -> CLIAgentMissionBackend {
+        CLIAgentMissionRuntimePlanner.resolve(
+            requestedRuntime: requestedRuntime,
+            missionKind: missionKind,
+            enabledBackends: settingsManager.enabledChatBackends
+        )
+    }
 
-        Execute this as a concrete, useful mission packet. Inspect the repo or local data before making claims. Produce actionable findings, acceptance criteria, validation commands, risks, and a mobile-readable result summary. If code changes are warranted, keep them scoped and preserve unrelated work.
-
-        \(prompt)
-        """
+    private func missionPrompt(title: String, prompt: String, backend: CLIAgentMissionBackend, data: [String: Any]) -> String {
+        CLIAgentMissionRuntimePlanner.prompt(
+            title: title,
+            prompt: prompt,
+            backend: backend,
+            data: data
+        )
     }
 
     private struct DirectCLIMissionResult {
@@ -333,50 +779,204 @@ final class CLIAgentMissionRequestListener {
         let sessionID: String
     }
 
+    fileprivate struct DirectCLIStreamEvent: Sendable {
+        let phase: String
+        let kind: String
+        let title: String
+        let message: String
+        let toolName: String?
+        let isError: Bool
+
+        static func assistant(_ message: String, title: String = "Assistant") -> DirectCLIStreamEvent {
+            DirectCLIStreamEvent(
+                phase: "assistant_response",
+                kind: "llm_response",
+                title: title,
+                message: message,
+                toolName: nil,
+                isError: false
+            )
+        }
+
+        static func toolCall(_ message: String, title: String = "Tool call", toolName: String? = nil) -> DirectCLIStreamEvent {
+            DirectCLIStreamEvent(
+                phase: "tool_use",
+                kind: "tool_call",
+                title: title,
+                message: message,
+                toolName: toolName,
+                isError: false
+            )
+        }
+
+        static func toolResult(_ message: String, title: String = "Tool result", toolName: String? = nil, isError: Bool = false) -> DirectCLIStreamEvent {
+            DirectCLIStreamEvent(
+                phase: "tool_result",
+                kind: isError ? "error" : "tool_result",
+                title: title,
+                message: message,
+                toolName: toolName,
+                isError: isError
+            )
+        }
+    }
+
     private func runDirectCLIMissionIfNeeded(
         title: String,
         prompt: String,
-        backend: ChatBackendID,
+        backend: CLIAgentMissionBackend,
         data: [String: Any],
-        reference: DocumentReference
+        reference: DocumentReference,
+        requestID: String
     ) async -> DirectCLIMissionResult? {
-        switch backend {
-        case .piAgent:
-            let piPrompt = missionPrompt(title: title, prompt: prompt, backend: backend, data: data)
+        let workingDirectoryURL = workingDirectoryURL(from: data)
+        if let plan = CLIAgentMissionRuntimePlanner.directLaunchPlan(title: title, prompt: prompt, backend: backend, data: data) {
             return await runDirectCLIMission(
-                executableName: "zsh",
-                arguments: [
-                    "-lic",
-                    "pi --no-session --no-tools -p \"$OPENBURNBAR_MISSION_PROMPT\""
-                ],
+                executableName: plan.executableName,
+                arguments: plan.arguments,
                 backend: backend,
-                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": piPrompt],
-                reference: reference
+                extraEnvironment: plan.extraEnvironment,
+                workingDirectoryURL: workingDirectoryURL,
+                reference: reference,
+                requestID: requestID
             )
-        case .openclaw:
-            return await runDirectCLIMission(
-                executableName: "openclaude",
-                arguments: [
-                    "-p",
-                    missionPrompt(title: title, prompt: prompt, backend: backend, data: data),
-                    "--no-session-persistence",
-                    "--permission-mode", "auto"
-                ],
-                backend: backend,
-                extraEnvironment: [:],
-                reference: reference
-            )
-        case .codex, .claude, .hermes:
+        }
+
+        if backend.chatBackend != nil {
             return nil
+        }
+
+        return DirectCLIMissionResult(
+            status: "failed",
+            output: "",
+            errorMessage: "Unsupported mission runtime '\(backend.rawValue)'.",
+            sessionID: "direct-\(backend.rawValue)-\(UUID().uuidString)"
+        )
+    }
+
+    private func workingDirectoryURL(from data: [String: Any]) -> URL? {
+        guard let rawPath = (data["targetProject"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+        else { return nil }
+        let expandedPath = NSString(string: rawPath).expandingTildeInPath
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDirectory),
+              isDirectory.boolValue
+        else { return nil }
+        return URL(fileURLWithPath: expandedPath, isDirectory: true)
+    }
+
+    private func gitChangedFiles(in workingDirectoryURL: URL?) async -> Set<String> {
+        let directoryURL = workingDirectoryURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        let gitPath = "/usr/bin/git"
+        guard FileManager.default.fileExists(atPath: gitPath) else { return [] }
+
+        return await Task.detached(priority: .utility) {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: gitPath)
+            process.arguments = ["-C", directoryURL.path, "status", "--porcelain=v1"]
+            let stdout = Pipe()
+            process.standardOutput = stdout
+            process.standardError = FileHandle.nullDevice
+            do {
+                try process.run()
+                process.waitUntilExit()
+                guard process.terminationStatus == 0 else { return Set<String>() }
+                let data = stdout.fileHandleForReading.readDataToEndOfFile()
+                let text = String(data: data, encoding: .utf8) ?? ""
+                return Set(text
+                    .split(separator: "\n")
+                    .compactMap { line -> String? in
+                        guard line.count >= 4 else { return nil }
+                        return String(line.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                    })
+            } catch {
+                return []
+            }
+        }.value
+    }
+
+    private func recordChangedFileEvents(
+        before: Set<String>,
+        after: Set<String>,
+        reference: DocumentReference,
+        requestID: String,
+        backend: CLIAgentMissionBackend
+    ) async {
+        let changedFiles = after.subtracting(before).sorted().prefix(40)
+        for path in changedFiles {
+            await recordEvent(
+                reference: reference,
+                requestID: requestID,
+                phase: "changed_file",
+                kind: "changed_file",
+                title: "Changed file",
+                message: path,
+                backend: backend,
+                changedFilePath: path
+            )
+        }
+    }
+
+    private func mirrorTranscriptPieces(
+        _ pieces: [ChatTranscriptPiece],
+        mirroredPieceIDs: inout Set<String>,
+        reference: DocumentReference,
+        requestID: String,
+        backend: CLIAgentMissionBackend
+    ) async {
+        for piece in pieces where !mirroredPieceIDs.contains(piece.id) {
+            mirroredPieceIDs.insert(piece.id)
+            switch piece.kind {
+            case .toolUse:
+                let detail = piece.detail?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                await recordEvent(
+                    reference: reference,
+                    requestID: requestID,
+                    phase: "tool_use",
+                    kind: "tool_call",
+                    title: piece.value,
+                    message: detail.map { "\(piece.value): \($0)" } ?? piece.value,
+                    backend: backend,
+                    toolName: piece.value
+                )
+            case .toolResult:
+                let detail = piece.detail?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                await recordEvent(
+                    reference: reference,
+                    requestID: requestID,
+                    phase: "tool_result",
+                    kind: "tool_result",
+                    title: piece.value,
+                    message: detail.map { "\(piece.value): \($0)" } ?? piece.value,
+                    backend: backend,
+                    toolName: piece.value
+                )
+            case .text:
+                let text = piece.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { continue }
+                await recordEvent(
+                    reference: reference,
+                    requestID: requestID,
+                    phase: "assistant_response",
+                    kind: "llm_response",
+                    title: "Assistant",
+                    message: text,
+                    backend: backend
+                )
+            }
         }
     }
 
     private func runDirectCLIMission(
         executableName: String,
         arguments: [String],
-        backend: ChatBackendID,
+        backend: CLIAgentMissionBackend,
         extraEnvironment: [String: String],
-        reference: DocumentReference
+        workingDirectoryURL: URL?,
+        reference: DocumentReference,
+        requestID: String
     ) async -> DirectCLIMissionResult {
         guard let executable = await CLIExecutableResolver().resolveExecutable(named: executableName) else {
             return DirectCLIMissionResult(
@@ -390,7 +990,10 @@ final class CLIAgentMissionRequestListener {
         do {
             await recordEvent(
                 reference: reference,
+                requestID: requestID,
                 phase: "process_started",
+                kind: "tool_call",
+                title: "Process started",
                 message: "Launching \(backend.displayName) CLI process.",
                 backend: backend
             )
@@ -399,9 +1002,20 @@ final class CLIAgentMissionRequestListener {
                 arguments: arguments,
                 timeoutSeconds: 180,
                 extraEnvironment: extraEnvironment,
-                eventSink: { [weak self] phase, message in
+                workingDirectoryURL: workingDirectoryURL,
+                eventSink: { [weak self] event in
                     Task { @MainActor [weak self] in
-                        await self?.recordEvent(reference: reference, phase: phase, message: message, backend: backend)
+                        await self?.recordEvent(
+                            reference: reference,
+                            requestID: requestID,
+                            phase: event.phase,
+                            kind: event.kind,
+                            title: event.title,
+                            message: event.message,
+                            backend: backend,
+                            toolName: event.toolName,
+                            isError: event.isError
+                        )
                     }
                 }
             )
@@ -426,7 +1040,8 @@ final class CLIAgentMissionRequestListener {
         arguments: [String],
         timeoutSeconds: TimeInterval,
         extraEnvironment: [String: String],
-        eventSink: @escaping @Sendable (String, String) -> Void
+        workingDirectoryURL: URL?,
+        eventSink: @escaping @Sendable (DirectCLIStreamEvent) -> Void
     ) async throws -> String {
         try await Task.detached(priority: .userInitiated) {
             let process = Process()
@@ -435,30 +1050,50 @@ final class CLIAgentMissionRequestListener {
             var environment = CLIExecutableResolver.enrichedProcessEnvironment(executablePath: executable)
             environment.merge(extraEnvironment) { _, new in new }
             process.environment = environment
-            process.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            process.currentDirectoryURL = workingDirectoryURL ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             process.standardInput = FileHandle.nullDevice
 
             let stdout = Pipe()
             let stderr = Pipe()
+            let output = LockedProcessOutput()
+            let streamMirror = DirectCLIStreamMirror()
             process.standardOutput = stdout
             process.standardError = stderr
+            stdout.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                guard !data.isEmpty,
+                      let text = String(data: data, encoding: .utf8)
+                else { return }
+                output.appendStdout(text)
+                let emittedStructuredEvents = streamMirror.consumeStdout(text, eventSink: eventSink)
+                if !emittedStructuredEvents,
+                   let chunk = text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+                    eventSink(.assistant(chunk))
+                }
+            }
+            stderr.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                guard !data.isEmpty,
+                      let text = String(data: data, encoding: .utf8)
+                else { return }
+                output.appendStderr(text)
+                let emittedStructuredEvents = streamMirror.consumeStderr(text, eventSink: eventSink)
+                if !emittedStructuredEvents,
+                   let chunk = text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+                    eventSink(.toolResult(chunk, title: "Process stderr", isError: true))
+                }
+            }
 
             try process.run()
-            eventSink("process_running", "\(URL(fileURLWithPath: executable).lastPathComponent) is running.")
 
             let deadline = Date().addingTimeInterval(timeoutSeconds)
-            let startedAt = Date()
-            var lastProgressSecond = 0
             while process.isRunning && Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.1)
-                let elapsed = Int(Date().timeIntervalSince(startedAt))
-                if elapsed >= 5, elapsed % 5 == 0, elapsed != lastProgressSecond {
-                    lastProgressSecond = elapsed
-                    eventSink("process_running", "\(URL(fileURLWithPath: executable).lastPathComponent) is still running after \(elapsed)s.")
-                }
+                try await Task.sleep(nanoseconds: 100_000_000)
             }
             if process.isRunning {
                 process.terminate()
+                stdout.fileHandleForReading.readabilityHandler = nil
+                stderr.fileHandleForReading.readabilityHandler = nil
                 throw NSError(
                     domain: "OpenBurnBar.DirectCLIMission",
                     code: 124,
@@ -466,8 +1101,12 @@ final class CLIAgentMissionRequestListener {
                 )
             }
 
-            let stdoutText = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            let stderrText = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            stdout.fileHandleForReading.readabilityHandler = nil
+            stderr.fileHandleForReading.readabilityHandler = nil
+            let captured = output.snapshot()
+            let stdoutText = captured.stdout
+            let stderrText = captured.stderr
+            let finalOutput = streamMirror.finalOutputSnapshot(fallback: stdoutText.nilIfEmpty ?? stderrText)
             guard process.terminationStatus == 0 else {
                 let message = [stdoutText, stderrText]
                     .joined(separator: "\n")
@@ -479,50 +1118,442 @@ final class CLIAgentMissionRequestListener {
                 )
             }
 
-            return stdoutText.nilIfEmpty ?? stderrText
+            return finalOutput
         }.value
     }
 
     private func recordEvent(
         reference: DocumentReference,
+        requestID: String,
         phase: String,
+        kind: String,
+        title: String?,
         message: String,
-        backend: ChatBackendID?
+        backend: CLIAgentMissionBackend?,
+        toolName: String? = nil,
+        artifactPath: String? = nil,
+        changedFilePath: String? = nil,
+        isError: Bool = false
     ) async {
-        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = CLIAgentMissionEventFactory.redactSecrets(message.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !trimmed.isEmpty else { return }
+        let nextSequence = (missionEventSequences[requestID] ?? 0) + 1
+        missionEventSequences[requestID] = nextSequence
+        let event = CLIAgentMissionEventFactory.event(
+            sequence: nextSequence,
+            phase: phase,
+            kind: kind,
+            title: title,
+            message: trimmed,
+            runtime: backend?.rawValue,
+            toolName: toolName,
+            artifactPath: artifactPath,
+            changedFilePath: changedFilePath,
+            isError: isError
+        )
         do {
             try await reference.setData([
                 "liveSummary": trimmed.prefix(600).description,
-                "events": FieldValue.arrayUnion([
-                    missionEvent(phase: phase, message: trimmed, backend: backend)
-                ]),
+                "lastEventSequence": nextSequence,
                 "updatedAt": FieldValue.serverTimestamp()
             ], merge: true)
+            let eventID = CLIAgentMissionEventFactory.eventID(for: nextSequence)
+            try await reference.collection("events").document(eventID).setData(event, merge: false)
         } catch {
             logger.warning("mission event update failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    private func missionEvent(phase: String, message: String, backend: ChatBackendID?) -> [String: Any] {
+    private func resultSummary(from output: String) -> String {
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.nilIfEmpty ?? "Mission finished without a text result."
+    }
+}
+
+struct CLIAgentMissionEventFactory {
+    static func eventID(for sequence: Int) -> String {
+        String(format: "%06d", sequence)
+    }
+
+    static func event(
+        sequence: Int,
+        phase: String,
+        kind: String,
+        title: String?,
+        message: String,
+        runtime: String?,
+        toolName: String?,
+        artifactPath: String?,
+        changedFilePath: String?,
+        isError: Bool
+    ) -> [String: Any] {
+        let fullMessage = mobileSafeText(message, limit: 24_000)
+        let shortMessage = mobileSafeText(message, limit: 600)
         var event: [String: Any] = [
+            "sequence": sequence,
             "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "kind": kind,
             "phase": phase,
-            "message": message.prefix(600).description,
-            "source": "mac"
+            "title": title ?? phase.replacingOccurrences(of: "_", with: " ").capitalized,
+            "message": shortMessage,
+            "fullMessage": fullMessage,
+            "messageLength": fullMessage.count,
+            "messageTruncated": fullMessage.count < message.count,
+            "source": "mac",
+            "isError": isError
         ]
-        if let backend {
-            event["runtime"] = backend.rawValue
+        if let runtime {
+            event["runtime"] = runtime
         }
+        if let toolName { event["toolName"] = toolName.prefix(120).description }
+        if let artifactPath { event["artifactPath"] = artifactPath.prefix(512).description }
+        if let changedFilePath { event["changedFilePath"] = changedFilePath.prefix(512).description }
         return event
     }
 
-    private func resultSummary(from output: String) -> String {
-        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.nilIfEmpty?.prefix(600).description ?? "Mission finished without a text result."
+    static func redactSecrets(_ text: String) -> String {
+        var redacted = text
+        let patterns = [
+            #"(?i)(api[_-]?key|token|secret|password|authorization)\s*[:=]\s*['"]?[^'"\s]{8,}"#,
+            #"(?i)bearer\s+[a-z0-9._\-]{12,}"#,
+            #"[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}"#
+        ]
+        for pattern in patterns {
+            redacted = redacted.replacingOccurrences(
+                of: pattern,
+                with: "[REDACTED]",
+                options: [.regularExpression]
+            )
+        }
+        return redacted
+    }
+
+    static func mobileSafeText(_ text: String, limit: Int = 600) -> String {
+        redactSecrets(text.trimmingCharacters(in: .whitespacesAndNewlines))
+            .prefix(limit)
+            .description
     }
 }
 
 private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+private final class DirectCLIStreamMirror: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stdoutBuffer = ""
+    private var stderrBuffer = ""
+    private var assistantDeltaBuffer = ""
+    private var assistantDeltaTranscript = ""
+    private var latestAssistantMessage = ""
+    private var latestResultText = ""
+    private var lastReasoningEventCount = 0
+    private let assistantDeltaFlushThreshold = 480
+    private let reasoningEventStep = 500
+
+    func consumeStdout(
+        _ text: String,
+        eventSink: @escaping @Sendable (CLIAgentMissionRequestListener.DirectCLIStreamEvent) -> Void
+    ) -> Bool {
+        consume(text, buffer: &stdoutBuffer, eventSink: eventSink)
+    }
+
+    func consumeStderr(
+        _ text: String,
+        eventSink: @escaping @Sendable (CLIAgentMissionRequestListener.DirectCLIStreamEvent) -> Void
+    ) -> Bool {
+        consume(text, buffer: &stderrBuffer, eventSink: eventSink)
+    }
+
+    private func consume(
+        _ text: String,
+        buffer: inout String,
+        eventSink: @escaping @Sendable (CLIAgentMissionRequestListener.DirectCLIStreamEvent) -> Void
+    ) -> Bool {
+        let incomingLooksStructured = text.trimmingCharacters(in: .whitespacesAndNewlines).first == "{"
+        lock.lock()
+        buffer += text
+        let lines = buffer.components(separatedBy: .newlines)
+        buffer = lines.last ?? ""
+        let bufferedLooksStructured = buffer.trimmingCharacters(in: .whitespacesAndNewlines).first == "{"
+        let completeLines = lines.dropLast()
+        lock.unlock()
+
+        var emitted = incomingLooksStructured || bufferedLooksStructured
+        for rawLine in completeLines {
+            guard let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else {
+                continue
+            }
+            if line.first == "{" {
+                emitted = true
+            }
+            if let event = parseJSONLine(line) {
+                eventSink(event)
+                emitted = true
+            }
+        }
+        return emitted
+    }
+
+    private func parseJSONLine(_ line: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
+        guard line.first == "{",
+              let data = line.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = object["type"] as? String
+        else { return nil }
+
+        if let event = parseOpenClaude(object: object, type: type) {
+            return event
+        }
+        if let event = parsePi(object: object, type: type) {
+            return event
+        }
+        return nil
+    }
+
+    private func parseOpenClaude(object: [String: Any], type: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
+        if type == "system",
+           let subtype = object["subtype"] as? String,
+           subtype == "init" {
+            let model = object["model"] as? String
+            let sessionID = object["session_id"] as? String
+            return .toolResult(
+                ["OpenClaude session initialized", model.map { "model=\($0)" }, sessionID.map { "session=\($0)" }]
+                    .compactMap { $0 }
+                    .joined(separator: "\n"),
+                title: "LLM call started"
+            )
+        }
+
+        if type == "stream_event",
+           let event = object["event"] as? [String: Any],
+           let streamType = event["type"] as? String {
+            if streamType == "content_block_delta",
+               let delta = event["delta"] as? [String: Any],
+               let deltaType = delta["type"] as? String,
+               deltaType == "text_delta",
+               let text = (delta["text"] as? String)?.nilIfEmpty {
+                return appendAssistantDelta(text)
+            }
+            if streamType == "content_block_stop" || streamType == "message_stop" {
+                return flushAssistantDelta()
+            }
+            if streamType == "message_delta",
+               let usage = event["usage"] as? [String: Any] {
+                return .toolResult(formatUsage(usage), title: "LLM usage")
+            }
+        }
+
+        if type == "assistant",
+           let message = object["message"] as? [String: Any] {
+            _ = flushAssistantDelta()
+            return parseAssistantMessage(message, title: "Assistant", captureAsFinal: true)
+        }
+
+        if type == "result" {
+            if let flushed = flushAssistantDelta() {
+                return flushed
+            }
+            let result = (object["result"] as? String)?.nilIfEmpty
+            if let result {
+                storeResultText(result)
+            }
+            let stopReason = object["stop_reason"] as? String
+            let duration = object["duration_ms"] as? Int
+            let cost = object["total_cost_usd"] as? Double
+            let summary = [
+                result.map { "result=\($0)" },
+                stopReason.map { "stopReason=\($0)" },
+                duration.map { "durationMs=\($0)" },
+                cost.map { "costUsd=\($0)" }
+            ]
+                .compactMap { $0 }
+                .joined(separator: "\n")
+            return summary.nilIfEmpty.map { .toolResult($0, title: "LLM result") }
+        }
+        return nil
+    }
+
+    private func parsePi(object: [String: Any], type: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
+        if type == "session",
+           let id = object["id"] as? String {
+            return .toolResult("Pi session initialized\nsession=\(id)", title: "LLM call started")
+        }
+
+        if type == "message_start",
+           let message = object["message"] as? [String: Any],
+           (message["role"] as? String) == "assistant" {
+            let api = message["api"] as? String
+            let provider = message["provider"] as? String
+            let model = message["model"] as? String
+            return .toolResult(
+                ["Pi assistant message started", api.map { "api=\($0)" }, provider.map { "provider=\($0)" }, model.map { "model=\($0)" }]
+                    .compactMap { $0 }
+                    .joined(separator: "\n"),
+                title: "LLM call started"
+            )
+        }
+
+        if type == "message_update",
+           let update = object["assistantMessageEvent"] as? [String: Any],
+           let updateType = update["type"] as? String {
+            if updateType == "text_delta",
+               let text = (update["delta"] as? String)?.nilIfEmpty {
+                return appendAssistantDelta(text)
+            }
+            if updateType == "text_start",
+               let partial = update["partial"] as? [String: Any] {
+                return parseAssistantMessage(partial, title: "Assistant", captureAsFinal: false)
+            }
+            if updateType == "thinking_start" || updateType == "thinking_delta" || updateType == "thinking_end" {
+                let count = ((update["partial"] as? [String: Any])?["content"] as? [[String: Any]])?
+                    .compactMap { item -> String? in
+                        guard (item["type"] as? String) == "thinking" else { return nil }
+                        return item["thinking"] as? String
+                    }
+                    .joined(separator: "\n")
+                    .count ?? 0
+                if updateType == "thinking_start" {
+                    lastReasoningEventCount = 0
+                    return .toolResult("Reasoning stream started.", title: "Reasoning")
+                }
+                if updateType == "thinking_end" {
+                    lastReasoningEventCount = count
+                    return .toolResult("Reasoning stream completed (\(count) chars available from runtime).", title: "Reasoning")
+                }
+                guard count >= lastReasoningEventCount + reasoningEventStep else {
+                    return nil
+                }
+                lastReasoningEventCount = count
+                return .toolResult("Reasoning stream updated (\(count) chars available from runtime).", title: "Reasoning")
+            }
+        }
+
+        if type == "message_end",
+           let message = object["message"] as? [String: Any],
+           (message["role"] as? String) == "assistant" {
+            if let flushed = flushAssistantDelta() {
+                return flushed
+            }
+            let assistantEvent = parseAssistantMessage(message, title: "Assistant", captureAsFinal: true)
+            if let usage = message["usage"] as? [String: Any] {
+                return .toolResult(formatUsage(usage), title: "LLM usage")
+            }
+            return assistantEvent
+        }
+
+        if type == "turn_end",
+           let results = object["toolResults"] as? [[String: Any]],
+           !results.isEmpty {
+            let rendered = results.compactMap { result -> String? in
+                if let name = result["toolName"] as? String {
+                    return "\(name): \(result)"
+                }
+                return "\(result)"
+            }.joined(separator: "\n\n")
+            return rendered.nilIfEmpty.map { .toolResult($0, title: "Tool results") }
+        }
+        return nil
+    }
+
+    private func appendAssistantDelta(_ text: String) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
+        assistantDeltaTranscript += text
+        assistantDeltaBuffer += text
+        let shouldFlush = assistantDeltaBuffer.count >= assistantDeltaFlushThreshold
+            || text.contains("\n")
+            || text.contains(". ")
+            || text.contains(": ")
+        guard shouldFlush else { return nil }
+        return flushAssistantDelta()
+    }
+
+    private func flushAssistantDelta() -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
+        let text = assistantDeltaBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        assistantDeltaBuffer = ""
+        return text.nilIfEmpty.map { .assistant($0, title: "Assistant delta") }
+    }
+
+    private func parseAssistantMessage(
+        _ message: [String: Any],
+        title: String,
+        captureAsFinal: Bool
+    ) -> CLIAgentMissionRequestListener.DirectCLIStreamEvent? {
+        guard let content = message["content"] as? [[String: Any]] else { return nil }
+        var textParts: [String] = []
+        var toolEvents: [CLIAgentMissionRequestListener.DirectCLIStreamEvent] = []
+        for item in content {
+            guard let itemType = item["type"] as? String else { continue }
+            switch itemType {
+            case "text":
+                if let text = (item["text"] as? String)?.nilIfEmpty {
+                    textParts.append(text)
+                }
+            case "tool_use":
+                let name = (item["name"] as? String) ?? "Tool"
+                let input = item["input"].map { "\($0)" } ?? ""
+                toolEvents.append(.toolCall("\(name): \(input)", title: name, toolName: name))
+            default:
+                continue
+            }
+        }
+        if let toolEvent = toolEvents.first {
+            return toolEvent
+        }
+        let text = textParts.joined(separator: "\n")
+        if captureAsFinal, let finalText = text.nilIfEmpty {
+            storeAssistantMessage(finalText)
+        }
+        return text.nilIfEmpty.map { .assistant($0, title: title) }
+    }
+
+    private func formatUsage(_ usage: [String: Any]) -> String {
+        usage.keys.sorted().map { key in
+            "\(key)=\(usage[key] ?? "")"
+        }.joined(separator: "\n")
+    }
+
+    private func storeAssistantMessage(_ text: String) {
+        latestAssistantMessage = text
+    }
+
+    private func storeResultText(_ text: String) {
+        latestResultText = text
+    }
+
+    func finalOutputSnapshot(fallback: String?) -> String {
+        _ = flushAssistantDelta()
+        let candidates = [
+            latestResultText,
+            latestAssistantMessage,
+            assistantDeltaTranscript,
+            fallback ?? ""
+        ]
+        return candidates
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty }) ?? ""
+    }
+}
+
+private final class LockedProcessOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stdoutStorage = ""
+    private var stderrStorage = ""
+
+    func appendStdout(_ text: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        stdoutStorage += text
+    }
+
+    func appendStderr(_ text: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        stderrStorage += text
+    }
+
+    func snapshot() -> (stdout: String, stderr: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (stdoutStorage, stderrStorage)
+    }
 }

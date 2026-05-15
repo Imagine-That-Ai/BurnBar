@@ -167,13 +167,29 @@ service cloud.firestore {
       return /databases/$(database)/documents/users/$(userId)/entitlements/hosted_quota_sync;
     }
 
-    function hasActiveHostedQuotaEntitlement(userId) {
-      let entitlement = get(hostedCloudEntitlementPath(userId)).data;
-      return exists(hostedCloudEntitlementPath(userId))
-        && entitlement.active == true
-        && entitlement.productID == "com.openburnbar.hostedQuotaSync.cloud.monthly"
+    function burnBarProEntitlementPath(userId) {
+      return /databases/$(database)/documents/users/$(userId)/entitlements/burnbar_pro;
+    }
+
+    function activePremiumEntitlementData(entitlement) {
+      return entitlement.active == true
+        && entitlement.productID in [
+          "com.openburnbar.hostedQuotaSync.cloud.monthly",
+          "com.openburnbar.pro.monthly"
+        ]
         && entitlement.expireAt is timestamp
         && entitlement.expireAt > request.time;
+    }
+
+    function hasActiveHostedQuotaEntitlement(userId) {
+      return (
+          exists(hostedCloudEntitlementPath(userId))
+          && activePremiumEntitlementData(get(hostedCloudEntitlementPath(userId)).data)
+        )
+        || (
+          exists(burnBarProEntitlementPath(userId))
+          && activePremiumEntitlementData(get(burnBarProEntitlementPath(userId)).data)
+        );
     }
 
     function ownerWritableHostedCloudBackup(userId) {
@@ -528,7 +544,7 @@ service cloud.firestore {
     match /users/{userId}/conversations/{conversationId} {
       allow read: if ownsUserNamespace(userId);
       allow create, update: if ownerWritableHostedCloudBackup(userId);
-      allow delete: if ownsUserNamespace(userId);
+      allow delete: if false;
     }
 
     match /users/{userId}/chat_threads/{threadId} {
@@ -582,14 +598,18 @@ service cloud.firestore {
     // requests; the signed-in Mac claims them, runs the local agent, then
     // writes status and a small preview back for mobile.
     match /users/{userId}/cli_agent_mission_requests/{requestId} {
-      allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableNonSecret(userId)
-        && request.resource.data.keys().hasOnly([
+      function validCliAgentMissionRequest() {
+        return request.resource.data.keys().hasOnly([
           "id",
           "title",
           "prompt",
           "missionKind",
           "requestedRuntime",
+          "targetProject",
+          "depth",
+          "approvalMode",
+          "commandsAllowed",
+          "fileEditsAllowed",
           "source",
           "status",
           "createdAt",
@@ -600,10 +620,17 @@ service cloud.firestore {
           "selectedRuntime",
           "selectedRuntimeName",
           "sessionId",
+          "approvalRequestId",
+          "approvalStatus",
+          "approvalRequestedAt",
+          "approvalRespondedAt",
+          "approvalTitle",
+          "approvalMessage",
           "liveSummary",
           "events",
           "resultPreview",
           "errorMessage",
+          "lastEventSequence",
           "schemaVersion"
         ])
         && request.resource.data.id is string
@@ -612,20 +639,174 @@ service cloud.firestore {
         && request.resource.data.title.size() <= 512
         && request.resource.data.prompt is string
         && request.resource.data.prompt.size() <= 20000
-        && request.resource.data.missionKind in ["creative", "diligence", "debt"]
-        && request.resource.data.requestedRuntime in ["auto", "codex", "claude", "hermes", "openclaw", "piAgent"]
+        && request.resource.data.missionKind in ["debt", "diligence", "creative", "accretive", "security", "ui_improvement", "modernization", "provider_routing", "cost_efficiency", "project_focus", "custom"]
+        && request.resource.data.requestedRuntime in ["auto", "codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama"]
         && request.resource.data.source in ["ios-insights", "android-insights", "mac-insights"]
-        && request.resource.data.status in ["pending", "running", "completed", "failed"]
+        && request.resource.data.status in ["pending", "queued", "accepted", "starting", "running", "waiting_for_approval", "completed", "failed", "canceled", "cancelled", "mac_offline", "unauthorized", "agent_launch_failed"]
         && request.resource.data.schemaVersion is int
+        && (!("targetProject" in request.resource.data) || (request.resource.data.targetProject is string && request.resource.data.targetProject.size() <= 512))
+        && (!("depth" in request.resource.data) || request.resource.data.depth in ["light", "standard", "deep", "max"])
+        && (!("approvalMode" in request.resource.data) || request.resource.data.approvalMode in ["existing_policy", "manual_all", "risky_only", "read_only"])
+        && (!("commandsAllowed" in request.resource.data) || request.resource.data.commandsAllowed is bool)
+        && (!("fileEditsAllowed" in request.resource.data) || request.resource.data.fileEditsAllowed is bool)
         && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
-        && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime in ["codex", "claude", "hermes", "openclaw", "piAgent"])
+        && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama"])
         && (!("selectedRuntimeName" in request.resource.data) || (request.resource.data.selectedRuntimeName is string && request.resource.data.selectedRuntimeName.size() <= 80))
         && (!("sessionId" in request.resource.data) || (request.resource.data.sessionId is string && request.resource.data.sessionId.size() <= 512))
+        && (!("approvalRequestId" in request.resource.data) || (request.resource.data.approvalRequestId is string && request.resource.data.approvalRequestId.size() <= 512))
+        && (!("approvalStatus" in request.resource.data) || request.resource.data.approvalStatus in ["pending", "approved", "rejected", "canceled", "cancelled"])
+        && (!("approvalRequestedAt" in request.resource.data) || (request.resource.data.approvalRequestedAt is string && request.resource.data.approvalRequestedAt.size() <= 80))
+        && (!("approvalRespondedAt" in request.resource.data) || (request.resource.data.approvalRespondedAt is string && request.resource.data.approvalRespondedAt.size() <= 80))
+        && (!("approvalTitle" in request.resource.data) || (request.resource.data.approvalTitle is string && request.resource.data.approvalTitle.size() <= 512))
+        && (!("approvalMessage" in request.resource.data) || (request.resource.data.approvalMessage is string && request.resource.data.approvalMessage.size() <= 2048))
         && (!("liveSummary" in request.resource.data) || (request.resource.data.liveSummary is string && request.resource.data.liveSummary.size() <= 2048))
         && (!("events" in request.resource.data) || (request.resource.data.events is list && request.resource.data.events.size() <= 300))
         && (!("resultPreview" in request.resource.data) || (request.resource.data.resultPreview is string && request.resource.data.resultPreview.size() <= 2048))
-        && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 2048));
-      allow delete: if ownsUserNamespace(userId);
+        && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 2048))
+        && (!("lastEventSequence" in request.resource.data) || request.resource.data.lastEventSequence is int);
+      }
+
+      function validCliAgentMissionCreate() {
+        return request.resource.data.status == "pending"
+          && request.resource.data.source in ["ios-insights", "android-insights", "mac-insights"]
+          && request.resource.data.prompt.size() > 0
+          && !("startedAt" in request.resource.data)
+          && !("completedAt" in request.resource.data)
+          && !("claimedBy" in request.resource.data)
+          && !("selectedRuntime" in request.resource.data)
+          && !("selectedRuntimeName" in request.resource.data)
+          && !("sessionId" in request.resource.data)
+          && !("approvalRequestId" in request.resource.data)
+          && !("approvalStatus" in request.resource.data)
+          && !("approvalRequestedAt" in request.resource.data)
+          && !("approvalRespondedAt" in request.resource.data)
+          && !("approvalTitle" in request.resource.data)
+          && !("approvalMessage" in request.resource.data)
+          && !("events" in request.resource.data)
+          && !("resultPreview" in request.resource.data)
+          && !("errorMessage" in request.resource.data)
+          && !("lastEventSequence" in request.resource.data);
+      }
+
+      function trustedMissionExecutorDevice(userId) {
+        return ("claimedBy" in request.resource.data)
+          && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.claimedBy))
+          && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.claimedBy)).data.trustState == "trusted"
+          && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.claimedBy)).data.platform == "macOS";
+      }
+
+      function validTrustedMissionHostUpdate(userId) {
+        return trustedMissionExecutorDevice(userId)
+          && (!("claimedBy" in resource.data) || request.resource.data.claimedBy == resource.data.claimedBy)
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["events"]);
+      }
+
+      function validMobileMissionApprovalResponse() {
+        return resource.data.status == "waiting_for_approval"
+          && request.resource.data.status == "waiting_for_approval"
+          && request.resource.data.approvalStatus in ["approved", "rejected", "canceled", "cancelled"]
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "approvalStatus",
+            "approvalRespondedAt",
+            "liveSummary",
+            "updatedAt"
+          ]);
+      }
+
+      function validMissionRefusalOrFailureUpdate() {
+        return resource.data.status in ["unauthorized", "failed", "canceled", "cancelled"]
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "lastEventSequence",
+            "liveSummary",
+            "updatedAt"
+          ]);
+      }
+
+      function trustedMissionExecutorClaim(userId, requestId) {
+        return exists(/databases/$(database)/documents/users/$(userId)/cli_agent_mission_requests/$(requestId))
+          && ("claimedBy" in get(/databases/$(database)/documents/users/$(userId)/cli_agent_mission_requests/$(requestId)).data)
+          && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(get(/databases/$(database)/documents/users/$(userId)/cli_agent_mission_requests/$(requestId)).data.claimedBy))
+          && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(get(/databases/$(database)/documents/users/$(userId)/cli_agent_mission_requests/$(requestId)).data.claimedBy)).data.trustState == "trusted"
+          && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(get(/databases/$(database)/documents/users/$(userId)/cli_agent_mission_requests/$(requestId)).data.claimedBy)).data.platform == "macOS";
+      }
+
+      function validCliAgentMissionEventSource(userId, requestId, eventId) {
+        return (
+            request.resource.data.source in ["ios", "android"]
+            && request.resource.data.phase == "queued"
+            && request.resource.data.kind == "status"
+            && request.resource.data.sequence == 1
+            && eventId == "000001"
+          )
+          || (
+            request.resource.data.source == "mac"
+            && trustedMissionExecutorClaim(userId, requestId)
+          );
+      }
+
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && validCliAgentMissionRequest()
+        && validCliAgentMissionCreate();
+      allow update: if ownerWritableNonSecret(userId)
+        && validCliAgentMissionRequest()
+        && (
+          validTrustedMissionHostUpdate(userId)
+          || validMobileMissionApprovalResponse()
+          || validMissionRefusalOrFailureUpdate()
+        );
+      allow delete: if false;
+
+      match /events/{eventId} {
+        allow read: if ownsUserNamespace(userId);
+        allow create: if ownerWritableNonSecret(userId)
+          && request.resource.data.keys().hasOnly([
+            "sequence",
+            "timestamp",
+            "kind",
+            "phase",
+            "title",
+            "message",
+            "fullMessage",
+            "messageLength",
+            "messageTruncated",
+            "runtime",
+            "source",
+            "toolName",
+            "artifactPath",
+            "changedFilePath",
+            "isError"
+          ])
+          && request.resource.data.sequence is int
+          && request.resource.data.sequence >= 1
+          && request.resource.data.timestamp is string
+          && request.resource.data.timestamp.size() <= 80
+          && request.resource.data.kind in ["status", "llm_response", "assistant_message", "tool_call", "tool_result", "error", "approval_request", "artifact", "changed_file", "final_answer"]
+          && request.resource.data.phase in ["queued", "accepted", "claimed", "starting", "running", "streaming", "assistant_response", "tool_use", "tool_result", "waiting_for_approval", "approval_requested", "approval_resolved", "artifact", "changed_file", "completed", "failed", "canceled", "cancelled", "mac_offline", "unauthorized", "agent_launch_failed", "process_started", "process_running"]
+          && request.resource.data.title is string
+          && request.resource.data.title.size() <= 160
+          && request.resource.data.message is string
+          && request.resource.data.message.size() <= 2048
+          && (!("fullMessage" in request.resource.data) || (
+            request.resource.data.fullMessage is string
+            && request.resource.data.fullMessage.size() <= 24000
+          ))
+          && (!("messageLength" in request.resource.data) || (
+            request.resource.data.messageLength is int
+            && request.resource.data.messageLength >= request.resource.data.message.size()
+            && request.resource.data.messageLength <= 24000
+          ))
+          && (!("messageTruncated" in request.resource.data) || request.resource.data.messageTruncated is bool)
+          && request.resource.data.source in ["ios", "android", "mac"]
+          && validCliAgentMissionEventSource(userId, requestId, eventId)
+          && request.resource.data.isError is bool
+          && (!("runtime" in request.resource.data) || request.resource.data.runtime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama", "auto"])
+          && (!("toolName" in request.resource.data) || (request.resource.data.toolName is string && request.resource.data.toolName.size() <= 160))
+          && (!("artifactPath" in request.resource.data) || (request.resource.data.artifactPath is string && request.resource.data.artifactPath.size() <= 512))
+          && (!("changedFilePath" in request.resource.data) || (request.resource.data.changedFilePath is string && request.resource.data.changedFilePath.size() <= 512));
+        allow update, delete: if false;
+      }
     }
 
     match /users/{userId}/session_logs/{logId} {
@@ -638,6 +819,106 @@ service cloud.firestore {
         allow create, update: if ownerWritableSessionLogChunk(userId);
         allow delete: if ownsUserNamespace(userId);
       }
+    }
+
+    match /users/{userId}/cloud_search_documents/{documentId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableHostedCloudBackup(userId)
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "documentID",
+          "deviceId",
+          "sourceKind",
+          "sourceID",
+          "sourceVersionID",
+          "provider",
+          "projectName",
+          "bodyHash",
+          "storagePath",
+          "sealedTitle",
+          "sealedBodyPreview",
+          "byteCount",
+          "indexVersion",
+          "tokenHashVersion",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.uid == userId
+        && request.resource.data.documentID == documentId
+        && request.resource.data.storagePath.matches("^users/" + userId + "/session_logs/.*")
+        && !("title" in request.resource.data)
+        && !("snippet" in request.resource.data)
+        && !("body" in request.resource.data)
+        && !("text" in request.resource.data);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/cloud_search_chunks/{chunkId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableHostedCloudBackup(userId)
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "chunkID",
+          "documentID",
+          "deviceId",
+          "sourceKind",
+          "sourceID",
+          "provider",
+          "projectName",
+          "ordinal",
+          "startOffset",
+          "endOffset",
+          "contentHash",
+          "bodyHash",
+          "storagePath",
+          "sealedSnippet",
+          "tokenHashes",
+          "indexVersion",
+          "tokenHashVersion",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.uid == userId
+        && request.resource.data.chunkID == chunkId
+        && request.resource.data.storagePath.matches("^users/" + userId + "/session_logs/.*")
+        && request.resource.data.tokenHashes is list
+        && request.resource.data.tokenHashes.size() <= 250
+        && !("title" in request.resource.data)
+        && !("snippet" in request.resource.data)
+        && !("body" in request.resource.data)
+        && !("text" in request.resource.data);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/cloud_search_index_state/{deviceId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableHostedCloudBackup(userId)
+        && request.resource.data.uid == userId
+        && request.resource.data.deviceId == deviceId;
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/cloud_vault_key_wrappers/{wrapperId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableHostedCloudBackup(userId)
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "targetDeviceId",
+          "sourceDeviceId",
+          "publicKeyFingerprint",
+          "keyVersion",
+          "wrappedVaultKey",
+          "algorithm",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.uid == userId
+        && request.resource.data.wrappedVaultKey is string
+        && request.resource.data.wrappedVaultKey.size() <= 8192
+        && request.resource.data.status in ["active", "revoked"];
+      allow delete: if ownsUserNamespace(userId);
     }
 
     match /users/{userId}/devices/{deviceId} {
@@ -938,10 +1219,64 @@ service cloud.firestore {
     // rejection where credentials could otherwise be mis-serialized.
 
     match /users/{userId}/escrow_devices/{deviceId} {
+      function validEscrowDeviceDocument(deviceId) {
+        return request.resource.data.keys().hasOnly([
+          "deviceId",
+          "deviceName",
+          "platform",
+          "appVersion",
+          "trustState",
+          "approvedAt",
+          "createdAt",
+          "updatedAt",
+          "publicKeyFingerprint",
+          "keyVersion"
+        ])
+        && request.resource.data.deviceId == deviceId
+        && request.resource.data.deviceName is string
+        && request.resource.data.deviceName.size() <= 256
+        && request.resource.data.platform is string
+        && request.resource.data.platform.size() <= 80
+        && request.resource.data.trustState in ["pending", "trusted", "revoked"]
+        && (!("appVersion" in request.resource.data) || (request.resource.data.appVersion is string && request.resource.data.appVersion.size() <= 80))
+        && (!("publicKeyFingerprint" in request.resource.data) || (request.resource.data.publicKeyFingerprint is string && request.resource.data.publicKeyFingerprint.size() <= 256))
+        && (!("keyVersion" in request.resource.data) || request.resource.data.keyVersion is int);
+      }
+
+      function validEscrowDeviceCreate(deviceId) {
+        return validEscrowDeviceDocument(deviceId)
+          && (
+            request.resource.data.platform != "macOS"
+            || request.resource.data.trustState != "trusted"
+          );
+      }
+
+      function validEscrowDeviceUpdate(deviceId) {
+        return validEscrowDeviceDocument(deviceId)
+          && (
+            request.resource.data.platform != "macOS"
+            || request.resource.data.trustState != "trusted"
+            || resource.data.trustState == "trusted"
+            || (
+              resource.data.trustState == "pending"
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                "trustState",
+                "approvedAt",
+                "updatedAt"
+              ])
+            )
+          );
+      }
+
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownsUserNamespace(userId)
+      allow create: if ownsUserNamespace(userId)
         && escrowDocumentLimits()
-        && hasNoPlaintextSecretFields();
+        && hasNoPlaintextSecretFields()
+        && validEscrowDeviceCreate(deviceId);
+      allow update: if ownsUserNamespace(userId)
+        && escrowDocumentLimits()
+        && hasNoPlaintextSecretFields()
+        && validEscrowDeviceUpdate(deviceId);
       allow delete: if ownsUserNamespace(userId);
     }
 

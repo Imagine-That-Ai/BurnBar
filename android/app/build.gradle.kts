@@ -133,6 +133,8 @@ dependencies {
     implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
+    // Google Play Billing for BurnBar Pro (Hosted Quota + hosted LLM + encrypted cloud search).
+    implementation("com.android.billingclient:billing-ktx:8.3.0")
 
     // OkHttp + WebSocket for Hermes
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

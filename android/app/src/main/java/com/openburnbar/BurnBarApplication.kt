@@ -12,8 +12,14 @@ import com.openburnbar.data.widget.BurnBarWidgetSnapshotStore
 import com.openburnbar.data.widget.BurnBarWidgetSyncWorker
 
 class BurnBarApplication : Application() {
+    companion object {
+        lateinit var appContext: Context
+            private set
+    }
+
     override fun onCreate() {
         super.onCreate()
+        appContext = applicationContext
         FirebaseApp.initializeApp(this)
         installAppCheckProvider()
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(true)
@@ -49,6 +55,7 @@ class BurnBarApplication : Application() {
     private fun installAppCheckProvider() {
         val factory: AppCheckProviderFactory = when {
             BuildConfig.DEBUG -> {
+                seedDebugAppCheckTokenIfNeeded(this, BuildConfig.APP_CHECK_DEBUG_TOKEN)
                 Log.i("BurnBar", "AppCheck: using Debug provider (debug build)")
                 debugAppCheckProviderFactory()
             }

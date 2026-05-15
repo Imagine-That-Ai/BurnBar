@@ -10,6 +10,24 @@ struct StreamSearchHit: Identifiable, Decodable, Hashable, Sendable {
     let usage: TokenUsage
 }
 
+struct CloudConversationSearchHit: Identifiable, Decodable, Hashable, Sendable {
+    let id: String
+    let chunkID: String
+    let documentID: String
+    let sourceKind: String
+    let sourceID: String
+    let provider: String?
+    let projectName: String?
+    let sealedTitle: CloudVaultSealedText
+    let sealedSnippet: CloudVaultSealedText
+    let sealedBodyPreview: CloudVaultSealedText?
+    let storagePath: String
+    let bodyHash: String
+    let score: Double
+    let tokenHashVersion: Int?
+    let indexVersion: Int?
+}
+
 // MARK: - Functions Repository
 
 @MainActor
@@ -232,6 +250,34 @@ final class FunctionsRepository {
         let sanitized = FirestoreRepository.shared.sanitizeForJSON(rawHits)
         let data = try JSONSerialization.data(withJSONObject: sanitized)
         return try JSONDecoder().decode([StreamSearchHit].self, from: data)
+    }
+
+    func searchEncryptedConversationIndex(tokenHashes: [String], limit: Int = 25) async throws -> [CloudConversationSearchHit] {
+        let callable = functions.httpsCallable("searchEncryptedConversationIndex")
+        let result = try await callable.call([
+            "tokenHashes": Array(tokenHashes.prefix(10)),
+            "limit": max(1, min(limit, 50))
+        ])
+        guard let dict = result.data as? [String: Any],
+              let rawHits = dict["hits"] else {
+            throw FunctionsError.decodingFailed
+        }
+        let sanitized = FirestoreRepository.shared.sanitizeForJSON(rawHits)
+        let data = try JSONSerialization.data(withJSONObject: sanitized)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([CloudConversationSearchHit].self, from: data)
+    }
+
+    func encryptedSessionBlobDownloadURL(storagePath: String) async throws -> URL {
+        let callable = functions.httpsCallable("getEncryptedSessionBlobDownloadUrl")
+        let result = try await callable.call(["storagePath": storagePath])
+        guard let dict = result.data as? [String: Any],
+              let raw = dict["downloadURL"] as? String,
+              let url = URL(string: raw) else {
+            throw FunctionsError.decodingFailed
+        }
+        return url
     }
 
     func uploadProviderQuotaSnapshot(_ snapshot: ProviderQuotaSnapshot) async throws -> ProviderQuotaSnapshot {

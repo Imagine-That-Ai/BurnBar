@@ -138,7 +138,26 @@ class AndroidInsightAnalysisEngine(
                 ranAt = completedAt,
             )
             auditLog?.upsertLatest(completedEntry)
-            cache?.store(InsightAnalysisCacheRepository.cachedNow(cacheKey, result))
+            // Cache key is computed from the user's *selected* model.
+            // Two reasons we may decline to cache:
+            //   1. The orchestrator redirected this run through the
+            //      BurnBar hosted fallback (or another route) when
+            //      the selected gateway was unreachable — caching
+            //      under the user's selection would serve the
+            //      fallback after their own route recovers.
+            //   2. The answering route IS the hosted route. Caching
+            //      that result would let a once-Pro-now-cancelled
+            //      caller keep getting hosted answers for the same
+            //      question after their subscription lapsed. Pro is
+            //      a live entitlement; we re-verify on every turn.
+            val answeringRouteMatchesSelection =
+                result.modelTag.providerKey == request.selectedModel.providerKey
+                    && result.modelTag.modelID == request.selectedModel.modelID
+            val isHostedRoute =
+                result.modelTag.providerKey == AndroidBurnBarHostedInsightGateway.PROVIDER_KEY
+            if (answeringRouteMatchesSelection && !isHostedRoute) {
+                cache?.store(InsightAnalysisCacheRepository.cachedNow(cacheKey, result))
+            }
             result
         } catch (t: Throwable) {
             val failedAt = Instant.now().toString()
@@ -168,26 +187,122 @@ class AndroidInsightAnalysisEngine(
             return fallback.analyze(request)
         }
         val gateway = gateways[request.selectedModel.providerKey]
-            ?: return fallbackForQuestionOrThrow(request, "No Android Insights gateway is configured for ${request.selectedModel.providerKey}.")
+            ?: return tryHostedThenLocalFallback(
+                request,
+                "No Android Insights gateway is configured for ${request.selectedModel.providerKey}.",
+            )
         return try {
             val result = gateway.analyze(request)
             if (request.instruction == InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP && result.briefingAnswer == null) {
+                val answerSource = if (
+                    result.modelTag.providerKey == AndroidBurnBarHostedInsightGateway.PROVIDER_KEY
+                ) {
+                    InsightBriefingAnswer.Source.HOSTED_FALLBACK
+                } else {
+                    InsightBriefingAnswer.Source.MODEL_GATEWAY
+                }
                 result.copy(
                     briefingAnswer = InsightBriefingAnswer(
                         question = request.prompt,
                         answer = composeAnswerBody(result),
                         bullets = composeGroundedPoints(result),
                         citations = result.citations.take(3),
-                        source = InsightBriefingAnswer.Source.MODEL_GATEWAY,
+                        source = answerSource,
                         modelDisplayName = result.modelTag.displayName
                     )
                 )
             } else {
                 result
             }
+        } catch (paywall: BurnBarProSubscriptionRequiredException) {
+            // The selected gateway IS the hosted route and it threw
+            // the Pro paywall (typically when the user explicitly
+            // picked `burnbar-hosted` without a subscription).
+            // Short-circuit to the upgrade disclosure instead of
+            // re-invoking the same hosted gateway through
+            // `tryHostedThenLocalFallback` — that second call would
+            // 403 again and double the server-side rejection cost.
+            if (request.instruction == InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) {
+                composeSubscriptionRequiredFallback(request)
+            } else {
+                throw paywall
+            }
         } catch (t: Throwable) {
-            fallbackForQuestionOrThrow(request, t.message ?: t.javaClass.simpleName)
+            tryHostedThenLocalFallback(request, t.message ?: t.javaClass.simpleName)
         }
+    }
+
+    /**
+     * After a user-owned gateway fails or is missing, try the
+     * BurnBar-hosted fallback before degrading to local rules so the
+     * user still gets an LLM answer when their own route is down.
+     * Privacy mode short-circuits past the hosted attempt.
+     */
+    private suspend fun tryHostedThenLocalFallback(
+        request: InsightAnalysisRequest,
+        reason: String,
+    ): InsightAnalysisResult {
+        if (request.instruction != InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) {
+            error(reason)
+        }
+        if (!restrictToLocalOnly) {
+            val hosted = gateways[AndroidBurnBarHostedInsightGateway.PROVIDER_KEY]
+            if (hosted != null) {
+                try {
+                    val hostedTag = hosted.models.first()
+                    val hostedResult = hosted.analyze(request.copy(selectedModel = hostedTag))
+                    val existing = hostedResult.briefingAnswer
+                    return hostedResult.copy(
+                        briefingAnswer = (existing ?: InsightBriefingAnswer(
+                            question = request.prompt,
+                            answer = composeAnswerBody(hostedResult),
+                            bullets = composeGroundedPoints(hostedResult),
+                            citations = hostedResult.citations.take(3),
+                            source = InsightBriefingAnswer.Source.HOSTED_FALLBACK,
+                            modelDisplayName = hostedResult.modelTag.displayName,
+                            isFallback = false,
+                        )).copy(
+                            source = InsightBriefingAnswer.Source.HOSTED_FALLBACK,
+                            isFallback = false,
+                        )
+                    )
+                } catch (paywall: BurnBarProSubscriptionRequiredException) {
+                    // Free-tier / anonymous caller hit the hosted
+                    // paywall. Surface the dedicated "BurnBar Pro
+                    // required" disclosure so the UI switches the CTA
+                    // to "Upgrade to BurnBar Pro".
+                    return composeSubscriptionRequiredFallback(request)
+                } catch (_: Throwable) {
+                    // Fall through to local rules — disclosed below.
+                }
+            }
+        }
+        val fallbackResult = fallback.analyze(request)
+        val answer = fallbackResult.briefingAnswer ?: return fallbackResult
+        return fallbackResult.copy(
+            briefingAnswer = answer.copy(
+                isFallback = true,
+                modelDisplayName = "${request.selectedModel.displayName} → Local rules"
+            )
+        )
+    }
+
+    private suspend fun composeSubscriptionRequiredFallback(
+        request: InsightAnalysisRequest
+    ): InsightAnalysisResult {
+        val base = fallback.analyze(request)
+        val existing = base.briefingAnswer ?: return base
+        return base.copy(
+            briefingAnswer = existing.copy(
+                isFallback = true,
+                modelDisplayName = InsightBriefingAnswer.SUBSCRIPTION_REQUIRED_DISPLAY_NAME,
+                answer = buildString {
+                    appendLine("BurnBar Pro subscription required to run hosted Intelligence Brief answers. Connect your own LLM (Hermes, Claude, OpenAI, Ollama, Pi, etc.) or upgrade to BurnBar Pro to use our hosted MiniMax route.")
+                    appendLine()
+                    append(existing.answer)
+                }.trim()
+            )
+        )
     }
 
     private suspend fun ensureBriefingAnswer(
@@ -200,31 +315,37 @@ class AndroidInsightAnalysisEngine(
         if (result.modelTag.providerKey == "local-rules") {
             return result.copy(briefingAnswer = fallback.analyze(request).briefingAnswer)
         }
+        // Attribute the cached briefing to the *actual* route that
+        // produced the result, not blanket MODEL_GATEWAY. Pre-hosted
+        // cache rows stamped by the BurnBar hosted gateway must show
+        // up in the UI eyebrow and audit log as HOSTED_FALLBACK.
+        val answerSource = if (
+            result.modelTag.providerKey == AndroidBurnBarHostedInsightGateway.PROVIDER_KEY
+        ) {
+            InsightBriefingAnswer.Source.HOSTED_FALLBACK
+        } else {
+            InsightBriefingAnswer.Source.MODEL_GATEWAY
+        }
         return result.copy(
             briefingAnswer = InsightBriefingAnswer(
                 question = request.prompt,
                 answer = composeAnswerBody(result),
                 bullets = composeGroundedPoints(result),
                 citations = result.citations.take(3),
-                source = InsightBriefingAnswer.Source.MODEL_GATEWAY,
+                source = answerSource,
                 modelDisplayName = result.modelTag.displayName
             )
         )
     }
 
-    private suspend fun fallbackForQuestionOrThrow(request: InsightAnalysisRequest, reason: String): InsightAnalysisResult {
-        if (request.instruction != InsightAnalysisRequest.Instruction.ANSWER_FOLLOW_UP) {
-            error(reason)
-        }
-        val fallbackResult = fallback.analyze(request)
-        val answer = fallbackResult.briefingAnswer ?: return fallbackResult
-        return fallbackResult.copy(
-            briefingAnswer = answer.copy(
-                isFallback = true,
-                modelDisplayName = "${request.selectedModel.displayName} → Local rules"
-            )
-        )
-    }
+    @Suppress("unused")
+    @Deprecated(
+        "Kept as a deprecated symbol for source compatibility with older test bundles. " +
+            "Production callers should route through tryHostedThenLocalFallback to give the " +
+            "BurnBar-hosted route a chance before degrading."
+    )
+    private suspend fun fallbackForQuestionOrThrow(request: InsightAnalysisRequest, reason: String): InsightAnalysisResult =
+        tryHostedThenLocalFallback(request, reason)
 
     private fun composeAnswerBody(result: InsightAnalysisResult): String =
         buildList {

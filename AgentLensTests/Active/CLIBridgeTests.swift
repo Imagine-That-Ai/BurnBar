@@ -385,6 +385,30 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertEqual(third.events.last, .text("Here is the file:"))
     }
 
+    func test_claudeStreamJSONParser_emitsToolResultEvents() {
+        let events = ClaudeCodeStreamJSONParser.events(fromLine: """
+        {"message":{"content":[{"type":"tool_use","name":"Read","input":{"path":"AgentLens/App.swift"}},{"type":"tool_result","tool_use_id":"toolu_123","content":"Read 40 lines"}]}}
+        """)
+
+        XCTAssertEqual(events.count, 2)
+        XCTAssertEqual(events[0], .toolUse(name: "Read", detail: "AgentLens/App.swift"))
+        XCTAssertEqual(events[1], .toolResult(name: "toolu_123", detail: "Read 40 lines"))
+    }
+
+    func test_codexJSONLParser_emitsCommandCompletionAsToolResult() {
+        var parser = CodexExecJSONLParser()
+
+        let started = parser.events(fromLine: """
+        {"type":"item.started","item":{"type":"command_execution","command":"swift test"}}
+        """)
+        let completed = parser.events(fromLine: """
+        {"type":"item.completed","item":{"type":"command_execution","command":"swift test","output":"All tests passed"}}
+        """)
+
+        XCTAssertEqual(started.events, [.toolUse(name: "Bash", detail: "swift test")])
+        XCTAssertEqual(completed.events, [.toolResult(name: "Bash", detail: "All tests passed")])
+    }
+
     func test_openAICompatibleSSEParser_multipleToolCallsAcrossDeltas() {
         var parser = OpenAICompatibleSSEParser()
 

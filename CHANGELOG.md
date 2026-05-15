@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Hosted Intelligence Brief gated behind BurnBar Pro.** The
+  OpenRouter → MiniMax 2.7 fallback now requires an active BurnBar
+  Pro subscription (same SKU as Hosted Quota Sync —
+  `com.openburnbar.hostedQuotaSync.cloud.monthly`). The
+  `insightsHostedAnswer` callable requires Firebase Auth + a live
+  entitlement doc and returns `permission-denied` with
+  `{ code: "subscription-required", productID }` for free-tier
+  callers. Swift and Kotlin adapters detect the marker and surface a
+  dedicated brief state: `briefingAnswer.modelDisplayName ==
+  "BurnBar Pro required"`, with body text that discloses the
+  upgrade path. `IntelligenceBriefView` (Swift) and
+  `IntelligenceBriefScreen` (Kotlin) swap the generic "Connect your
+  own model" CTA for "Upgrade to BurnBar Pro" via a new
+  `onUpgradeToPro` callback the shell wires to the StoreKit / Play
+  Billing flow. Connected users with their own LLM keep using it
+  for free — only the hosted fallback is paywalled. Verified by
+  `testHostedRouteSubscriptionRequiredLandsOnProUpgradeDisclosure`.
+- **Intelligence Brief now always answers with a real LLM.** The
+  Q&A path was silently degrading to deterministic rule-based text
+  whenever the user's selected gateway failed or wasn't registered.
+  Routing now follows an explicit four-outcome contract: (1) the
+  user-owned route answers (Hermes / Pi / OpenClaw / Claude / Codex
+  / OpenCode / OpenAI-compatible / Ollama), (2) the BurnBar-hosted
+  fallback answers (OpenRouter → MiniMax 2.7) and is disclosed via
+  the briefing eyebrow + "connect your own model" CTA, (3) privacy
+  mode short-circuits past every non-local tier and lands on local
+  rules without trying the hosted route, or (4) both LLM tiers
+  failed → local rules answers with `isFallback = true` and a
+  "→ Local rules" display-name suffix so the UI surfaces a Retry
+  hint. Adds `InsightBriefingAnswer.Source.hostedFallback` (Swift)
+  and `InsightBriefingAnswer.Source.HOSTED_FALLBACK` (Kotlin); the
+  brief's eyebrow and CTA logic update across macOS, iOS/iPadOS, and
+  Android. Backed by the new `insightsHostedAnswer` Firebase
+  callable, which holds the OpenRouter API key server-side (App
+  Check enforced, anonymous-tolerant). Configurable via
+  `OPENROUTER_API_KEY` secret and
+  `INSIGHTS_HOSTED_FALLBACK_MODEL` / `INSIGHTS_HOSTED_FALLBACK_URL`
+  env vars. Verified by five regression tests in
+  `HostedFallbackTests.swift`.
+
 ### Fixed
 - **Pulse live-window totals are now raw-event accurate.** The iOS and Android
   Pulse hero now computes `1M`, `1H`, and `1D` from the live
@@ -46,6 +87,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   future.
 
 ### Added
+- **Mobile mission control streams are durable and observable.** iOS/iPadOS
+  and Android mission launch payloads now include target project, depth,
+  approval mode, command, and file-edit intent; Firestore rules allow the full
+  mission-kind/runtime matrix while constraining event shapes. The Mac host now
+  mirrors ordered mission events to an `events` subcollection for resumable
+  mobile timelines, records typed LLM/tool/error/final-answer events, redacts
+  common secrets before cloud writes, and can launch direct OpenCode, Ollama,
+  Pi, and OpenClaw CLI missions in addition to the existing chat-backed Codex,
+  Claude, and Hermes path. Execution is gated on the local Mac's
+  `escrow_devices/{deviceId}` record being explicitly trusted; pending or
+  revoked Macs mark launches `unauthorized` without running a local agent.
+  Risky or manually gated missions now pause as `waiting_for_approval`, show
+  mobile approve/reject controls, and resume on the Mac only after an approved
+  response is persisted. Mobile detail views gained timeline filters for LLM,
+  tools, errors, approvals, artifacts, and status.
 - **Insights mission board.** iOS and Android Intelligence Briefs now keep
   findings, anomalies, recommendations, and generated charts, while adding
   first-class mission candidates generated from the same cited evidence.

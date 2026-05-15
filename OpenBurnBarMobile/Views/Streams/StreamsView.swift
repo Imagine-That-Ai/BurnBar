@@ -13,6 +13,10 @@ struct StreamsView: View {
     @State private var segment: Segment = .sessions
     @State private var searchText = ""
     @State private var showFilters = false
+    @State private var selectedCloudConversation: CloudConversationSearchRow?
+    @State private var cloudConversationBody: String?
+    @State private var cloudConversationError: String?
+    @State private var isLoadingCloudConversation = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private static let iPhoneNavigationTrayClearance: CGFloat = 112
@@ -85,6 +89,17 @@ struct StreamsView: View {
             StreamsFilterSheet(store: activity)
                 .presentationDetents([.medium])
         }
+        .sheet(item: $selectedCloudConversation) { hit in
+            CloudConversationDetailSheet(
+                hit: hit,
+                decryptedBody: cloudConversationBody,
+                error: cloudConversationError,
+                isLoading: isLoadingCloudConversation
+            )
+            .task(id: hit.id) {
+                await loadCloudConversation(hit)
+            }
+        }
     }
 
     // MARK: - Filtered Data
@@ -140,6 +155,17 @@ struct StreamsView: View {
                             : "Try a different model, provider, project, or enable searchable stream backup on your Mac for full transcript search."
                     )
                     .frame(minHeight: 320)
+                } else if shouldShowCloudConversationResults {
+                    ForEach(activity.cloudSearchHits) { hit in
+                        Button {
+                            selectedCloudConversation = hit
+                            cloudConversationBody = nil
+                            cloudConversationError = nil
+                        } label: {
+                            CloudConversationSearchResultRow(hit: hit)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 } else if shouldShowCloudSearchResults {
                     ForEach(activity.searchHits) { hit in
                         NavigationLink(value: hit.usage) {
@@ -201,11 +227,26 @@ struct StreamsView: View {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !activity.searchHits.isEmpty
     }
 
+    private var shouldShowCloudConversationResults: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !activity.cloudSearchHits.isEmpty
+    }
+
     private var sessionSkeleton: some View {
         VStack(spacing: 10) {
             ForEach(0..<6, id: \.self) { _ in
                 AuroraLoadingShimmer(height: 76, cornerRadius: 14)
             }
+        }
+    }
+
+    private func loadCloudConversation(_ hit: CloudConversationSearchRow) async {
+        isLoadingCloudConversation = true
+        cloudConversationError = nil
+        defer { isLoadingCloudConversation = false }
+        do {
+            cloudConversationBody = try await activity.loadCloudConversationBody(for: hit)
+        } catch {
+            cloudConversationError = error.localizedDescription
         }
     }
 
@@ -382,6 +423,94 @@ private struct StreamSearchResultRow: View {
                     .multilineTextAlignment(.leading)
                     .padding(.leading, 15)
                     .accessibilityLabel("Search match")
+            }
+        }
+    }
+}
+
+private struct CloudConversationSearchResultRow: View {
+    let hit: CloudConversationSearchRow
+
+    var body: some View {
+        AuroraGlassCard(variant: .standard, cornerRadius: 14, interactive: true, padding: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.doc")
+                        .foregroundStyle(MobileTheme.ember)
+                    Text(hit.title.isEmpty ? "Encrypted session" : hit.title)
+                        .font(MobileTheme.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                    Spacer()
+                    Text("\(Int(hit.score * 100))%")
+                        .font(MobileTheme.Typography.tiny)
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+                Text(hit.snippet)
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.textSecondary)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                HStack(spacing: 6) {
+                    if let provider = hit.provider, !provider.isEmpty {
+                        Text(provider)
+                    }
+                    if let project = hit.projectName, !project.isEmpty {
+                        Text(project)
+                    }
+                }
+                .font(MobileTheme.Typography.tiny)
+                .foregroundStyle(MobileTheme.Colors.textMuted)
+            }
+        }
+    }
+}
+
+private struct CloudConversationDetailSheet: View {
+    let hit: CloudConversationSearchRow
+    let decryptedBody: String?
+    let error: String?
+    let isLoading: Bool
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label(hit.title.isEmpty ? "Encrypted session" : hit.title, systemImage: "lock.doc")
+                            .font(MobileTheme.Typography.headline)
+                            .foregroundStyle(MobileTheme.Colors.textPrimary)
+                        Text([hit.provider, hit.projectName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                            .font(MobileTheme.Typography.caption)
+                            .foregroundStyle(MobileTheme.Colors.textMuted)
+                    }
+
+                    if isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: 180)
+                    } else if let error {
+                        AuroraStatePane(kind: .error, icon: "exclamationmark.lock", title: "Could not decrypt", message: error)
+                            .frame(minHeight: 220)
+                    } else {
+                        Text(decryptedBody ?? hit.snippet)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(MobileTheme.Colors.textSecondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(AuroraDesign.Layout.cardInset)
+            }
+            .background(AuroraBackdrop())
+            .navigationTitle("Session Log")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
             }
         }
     }

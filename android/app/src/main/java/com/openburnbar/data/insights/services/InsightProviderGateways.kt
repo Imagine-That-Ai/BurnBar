@@ -56,12 +56,17 @@ object AndroidInsightGatewayRegistry {
     fun defaultGateways(
         credentials: AndroidInsightCredentialStore,
         hermesProvider: () -> InsightAnalysisModelGateway? = { null },
+        hostedFallbackProvider: () -> InsightAnalysisModelGateway? = { AndroidBurnBarHostedInsightGateway() },
     ): List<InsightAnalysisModelGateway> {
         val gateways = mutableListOf<InsightAnalysisModelGateway>(OllamaInsightAnalysisGateway())
         val injectedHermes = hermesProvider()
         if (injectedHermes != null) {
             gateways += injectedHermes
         }
+        // BurnBar-hosted fallback is always registered when the
+        // provider returns one. The orchestrator only routes to it
+        // when no user-owned route succeeds.
+        hostedFallbackProvider()?.let { gateways += it }
         credentials.credential("openai")?.let { key ->
             gateways += OpenAICompatibleInsightAnalysisGateway(
                 providerKey = "openai",

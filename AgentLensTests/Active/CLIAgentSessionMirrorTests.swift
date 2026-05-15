@@ -31,7 +31,8 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
             transcriptPieces: [
                 ChatTranscriptPiece(id: "p1", kind: .text, value: "On it. "),
                 ChatTranscriptPiece(id: "p2", kind: .toolUse, value: "Read", detail: "Auth.swift"),
-                ChatTranscriptPiece(id: "p3", kind: .text, value: "Now editing.")
+                ChatTranscriptPiece(id: "p3", kind: .toolResult, value: "Read", detail: "Read 80 lines."),
+                ChatTranscriptPiece(id: "p4", kind: .text, value: "Now editing.")
             ]
         )
 
@@ -61,9 +62,11 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         let convertedAssistant = try XCTUnwrap(record.messages.last)
         XCTAssertEqual(convertedAssistant.role, .assistant)
         XCTAssertEqual(convertedAssistant.text, "On it. Now editing.")
-        XCTAssertEqual(convertedAssistant.toolUses.count, 1)
+        XCTAssertEqual(convertedAssistant.toolUses.count, 2)
         XCTAssertEqual(convertedAssistant.toolUses.first?.name, "Read")
         XCTAssertEqual(convertedAssistant.toolUses.first?.detail, "Auth.swift")
+        XCTAssertEqual(convertedAssistant.toolUses.last?.status, "completed")
+        XCTAssertEqual(convertedAssistant.toolUses.last?.detail, "Read 80 lines.")
         XCTAssertEqual(record.tokenUsage?.inputTokens, 100)
         XCTAssertEqual(record.tokenUsage?.outputTokens, 200)
     }
@@ -105,5 +108,291 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
             endedAt: nil
         )
         XCTAssertEqual(record.title, "CLI session")
+    }
+
+    func test_missionEventFactory_buildsDurableOrderedMacEventPayload() throws {
+        let event = CLIAgentMissionEventFactory.event(
+            sequence: 42,
+            phase: "tool_use",
+            kind: "tool_call",
+            title: "Shell",
+            message: "Running unit tests",
+            runtime: "codex",
+            toolName: "exec_command",
+            artifactPath: "docs/INSIGHTS.md",
+            changedFilePath: "OpenBurnBarMobile/Views/Insights/InsightsRootView.swift",
+            isError: false
+        )
+
+        XCTAssertEqual(CLIAgentMissionEventFactory.eventID(for: 42), "000042")
+        XCTAssertEqual(event["sequence"] as? Int, 42)
+        XCTAssertEqual(event["phase"] as? String, "tool_use")
+        XCTAssertEqual(event["kind"] as? String, "tool_call")
+        XCTAssertEqual(event["title"] as? String, "Shell")
+        XCTAssertEqual(event["message"] as? String, "Running unit tests")
+        XCTAssertEqual(event["source"] as? String, "mac")
+        XCTAssertEqual(event["runtime"] as? String, "codex")
+        XCTAssertEqual(event["toolName"] as? String, "exec_command")
+        XCTAssertEqual(event["artifactPath"] as? String, "docs/INSIGHTS.md")
+        XCTAssertEqual(event["changedFilePath"] as? String, "OpenBurnBarMobile/Views/Insights/InsightsRootView.swift")
+        XCTAssertEqual(event["isError"] as? Bool, false)
+        XCTAssertNotNil(event["timestamp"] as? String)
+    }
+
+    func test_missionEventFactory_redactsSecretsBeforeMobileStreaming() {
+        let redacted = CLIAgentMissionEventFactory.redactSecrets(
+            "token=sk-1234567890abcdef bearer abcdefghijklmnopqrstuvwxyz012345 and eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyLWlkLTEyMzQ1Njc4OTAifQ.signaturepayload0987654321"
+        )
+
+        XCTAssertFalse(redacted.contains("sk-1234567890abcdef"))
+        XCTAssertFalse(redacted.lowercased().contains("bearer abcdef"))
+        XCTAssertFalse(redacted.contains("eyJhbGci"))
+        XCTAssertTrue(redacted.contains("[REDACTED]"))
+    }
+
+    func test_missionEventFactory_redactsParentPreviewAndErrorTextForMobile() {
+        let safeText = CLIAgentMissionEventFactory.mobileSafeText(
+            "Final answer token=sk-1234567890abcdef bearer abcdefghijklmnopqrstuvwxyz012345",
+            limit: 80
+        )
+
+        XCTAssertTrue(safeText.contains("[REDACTED]"))
+        XCTAssertFalse(safeText.contains("sk-1234567890abcdef"))
+        XCTAssertFalse(safeText.lowercased().contains("bearer abcdef"))
+        XCTAssertLessThanOrEqual(safeText.count, 80)
+    }
+
+    func test_missionRuntimePlanner_honorsExplicitMobileRuntimeSelection() {
+        let enabled: [ChatBackendID] = [.codex, .claude, .hermes, .piAgent, .openclaw]
+
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: "codex",
+                missionKind: "debt",
+                enabledBackends: enabled
+            ).chatBackend,
+            .codex
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: "claude",
+                missionKind: "diligence",
+                enabledBackends: enabled
+            ).chatBackend,
+            .claude
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: "hermes",
+                missionKind: "custom",
+                enabledBackends: enabled
+            ).chatBackend,
+            .hermes
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: "pi",
+                missionKind: "creative",
+                enabledBackends: enabled
+            ).chatBackend,
+            .piAgent
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: "piAgent",
+                missionKind: "creative",
+                enabledBackends: enabled
+            ).chatBackend,
+            .piAgent
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: "openclaw",
+                missionKind: "ui_improvement",
+                enabledBackends: enabled
+            ).chatBackend,
+            .openclaw
+        )
+
+        let opencode = CLIAgentMissionRuntimePlanner.resolve(
+            requestedRuntime: "opencode",
+            missionKind: "provider_routing",
+            enabledBackends: enabled
+        )
+        XCTAssertEqual(opencode.rawValue, "opencode")
+        XCTAssertEqual(opencode.displayName, "OpenCode")
+        XCTAssertTrue(opencode.usesDirectCLI)
+
+        let ollama = CLIAgentMissionRuntimePlanner.resolve(
+            requestedRuntime: "ollama",
+            missionKind: "cost_efficiency",
+            enabledBackends: enabled
+        )
+        XCTAssertEqual(ollama.rawValue, "ollama")
+        XCTAssertEqual(ollama.displayName, "Ollama")
+        XCTAssertTrue(ollama.usesDirectCLI)
+    }
+
+    func test_missionRuntimePlanner_selectsMissionKindFallbacksFromEnabledBackends() {
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: "auto",
+                missionKind: "diligence",
+                enabledBackends: [.codex, .claude]
+            ).chatBackend,
+            .claude
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: nil,
+                missionKind: "security",
+                enabledBackends: [.codex]
+            ).chatBackend,
+            .codex
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: nil,
+                missionKind: "creative",
+                enabledBackends: [.codex, .openclaw]
+            ).chatBackend,
+            .openclaw
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: nil,
+                missionKind: "ui_improvement",
+                enabledBackends: [.hermes]
+            ).chatBackend,
+            .hermes
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: nil,
+                missionKind: "provider_routing",
+                enabledBackends: [.claude, .codex]
+            ).chatBackend,
+            .codex
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.resolve(
+                requestedRuntime: nil,
+                missionKind: "unknown",
+                enabledBackends: [.piAgent]
+            ).chatBackend,
+            .piAgent
+        )
+    }
+
+    func test_missionRuntimePlanner_buildsMacHostPromptWithApprovalAndSafetyContext() {
+        let backend = CLIAgentMissionBackend(chatBackend: .codex)
+        let prompt = CLIAgentMissionRuntimePlanner.prompt(
+            title: "Audit Launch State",
+            prompt: "Find the blocking issue.",
+            backend: backend,
+            data: [
+                "source": "ios",
+                "targetProject": "/Users/albertonunez/Documents/Windsurf/BurnBar",
+                "depth": "deep",
+                "approvalMode": "ask_for_risky_actions",
+                "commandsAllowed": true,
+                "fileEditsAllowed": false
+            ]
+        )
+
+        XCTAssertTrue(prompt.contains("running from \(backend.displayName) on the user's Mac"))
+        XCTAssertTrue(prompt.contains("Mission: Audit Launch State"))
+        XCTAssertTrue(prompt.contains("Source: ios"))
+        XCTAssertTrue(prompt.contains("Target project: /Users/albertonunez/Documents/Windsurf/BurnBar"))
+        XCTAssertTrue(prompt.contains("Depth: deep"))
+        XCTAssertTrue(prompt.contains("Approval mode: ask_for_risky_actions"))
+        XCTAssertTrue(prompt.contains("Commands allowed: yes"))
+        XCTAssertTrue(prompt.contains("File edits allowed: no"))
+        XCTAssertTrue(prompt.contains("If file edits are not allowed, do not modify files"))
+        XCTAssertTrue(prompt.contains("Find the blocking issue."))
+    }
+
+    func test_missionRuntimePlanner_keepsShellBackedPromptsOutOfCommandStrings() throws {
+        let hostilePrompt = #"Inspect repo"; touch /tmp/openburnbar-owned; echo "$OPENROUTER_API_KEY" #"#
+        let data: [String: Any] = [
+            "source": "android-insights",
+            "targetProject": "/tmp",
+            "depth": "max",
+            "approvalMode": "read_only",
+            "commandsAllowed": false,
+            "fileEditsAllowed": false
+        ]
+        let shellBackedBackends = [
+            CLIAgentMissionBackend(chatBackend: .piAgent),
+            CLIAgentMissionBackend(rawValue: "opencode", displayName: "OpenCode"),
+            CLIAgentMissionBackend(rawValue: "ollama", displayName: "Ollama")
+        ]
+
+        for backend in shellBackedBackends {
+            let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+                title: "Hostile prompt mission",
+                prompt: hostilePrompt,
+                backend: backend,
+                data: data
+            ))
+            XCTAssertEqual(plan.executableName, "zsh")
+            XCTAssertEqual(plan.arguments.first, "-lic")
+            XCTAssertFalse(
+                plan.arguments.joined(separator: " ").contains(hostilePrompt),
+                "\(backend.displayName) must not interpolate mobile prompt text into the shell command."
+            )
+            XCTAssertTrue(plan.arguments.joined(separator: " ").contains("OPENBURNBAR_MISSION_PROMPT"))
+            XCTAssertTrue(plan.extraEnvironment["OPENBURNBAR_MISSION_PROMPT"]?.contains(hostilePrompt) == true)
+        }
+    }
+
+    func test_missionRuntimePlanner_usesDirectArgumentsForOpenClawWithoutShell() throws {
+        let hostilePrompt = #"Read "$HOME"; rm -rf /tmp/should-not-run"#
+        let backend = CLIAgentMissionBackend(chatBackend: .openclaw)
+        let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "OpenClaw direct mission",
+            prompt: hostilePrompt,
+            backend: backend,
+            data: [
+                "approvalMode": "read_only",
+                "commandsAllowed": false,
+                "fileEditsAllowed": false
+            ]
+        ))
+
+        XCTAssertEqual(plan.executableName, "openclaude")
+        XCTAssertEqual(plan.extraEnvironment, [:])
+        XCTAssertFalse(plan.arguments.contains("-lic"))
+        XCTAssertTrue(plan.arguments.contains("-p"))
+        XCTAssertTrue(plan.arguments.contains("--permission-mode"))
+        XCTAssertTrue(plan.arguments.contains("plan"))
+        XCTAssertTrue(plan.arguments.contains("--tools"))
+        let toolsIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--tools"))
+        XCTAssertEqual(plan.arguments[toolsIndex + 1], "")
+        XCTAssertTrue(plan.arguments.joined(separator: "\n").contains(hostilePrompt))
+    }
+
+    func test_missionRuntimePlanner_constrainsOpenClawEditToolsWhenFileEditsAreDisabled() throws {
+        let backend = CLIAgentMissionBackend(chatBackend: .openclaw)
+        let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "OpenClaw command-only mission",
+            prompt: "Inspect the repository with commands, but do not edit files.",
+            backend: backend,
+            data: [
+                "approvalMode": "risky_only",
+                "commandsAllowed": true,
+                "fileEditsAllowed": false
+            ]
+        ))
+
+        XCTAssertTrue(plan.arguments.contains("--permission-mode"))
+        XCTAssertTrue(plan.arguments.contains("auto"))
+        XCTAssertTrue(plan.arguments.contains("--disallowedTools"))
+        let disallowed = try XCTUnwrap(plan.arguments.last)
+        XCTAssertTrue(disallowed.contains("Edit"))
+        XCTAssertTrue(disallowed.contains("MultiEdit"))
+        XCTAssertTrue(disallowed.contains("Write"))
+        XCTAssertTrue(disallowed.contains("NotebookEdit"))
+        XCTAssertFalse(disallowed.contains("Bash"))
     }
 }

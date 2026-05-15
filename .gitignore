@@ -85,6 +85,7 @@ GoogleService-Info.plist
 .playwright-mcp/
 output/playwright/
 default.profraw
+firebase-debug.log
 
 # BurnBar local MCP (Python venv)
 tools/burnbar-mcp/.venv/

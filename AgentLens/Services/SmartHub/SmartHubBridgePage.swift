@@ -189,8 +189,11 @@ enum SmartHubBridgePage {
           overflow-x: auto;
           overflow-y: hidden;
           padding: 4px 2px 10px;
-          scroll-snap-type: x mandatory;
+          scroll-snap-type: x proximity;
           scrollbar-width: none;
+          -webkit-overflow-scrolling: touch;
+          touch-action: pan-x;
+          overscroll-behavior-x: contain;
         }
         .providers::-webkit-scrollbar { display: none; }
         .empty {
@@ -206,6 +209,9 @@ enum SmartHubBridgePage {
           flex: 0 0 232px;
           min-width: 232px;
           max-width: 232px;
+          touch-action: pan-x;
+          user-select: none;
+          -webkit-user-select: none;
           background: linear-gradient(180deg,
             color-mix(in oklab, var(--card-accent) 16%, #16130F) 0%,
             color-mix(in oklab, var(--card-accent) 4%, #0F0D0A) 60%,
@@ -275,12 +281,16 @@ enum SmartHubBridgePage {
         .status-pill.tone-mercury { background: rgba(232,219,210,0.10); color: var(--mercury); }
 
         .token-total {
-          font-size: 54px;
+          font-size: clamp(28px, 10vw, 54px);
           font-weight: 800;
           letter-spacing: -2px;
           color: var(--text-1);
           line-height: 1.0;
           margin-top: 2px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
         }
         .token-label {
           font-size: 11px;
@@ -518,7 +528,34 @@ enum SmartHubBridgePage {
         /* Horizontal scroll fade edges */
         .providers-wrap {
           position: relative;
+          min-width: 0;
         }
+        .scroll-btn {
+          position: absolute;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 36px;
+          height: 56px;
+          border: none;
+          border-radius: 10px;
+          background: rgba(255,255,255,0.08);
+          color: var(--text-2);
+          font-size: 22px;
+          font-weight: 700;
+          cursor: pointer;
+          z-index: 3;
+          display: none;
+          align-items: center;
+          justify-content: center;
+          font-family: inherit;
+          backdrop-filter: blur(4px);
+          -webkit-backdrop-filter: blur(4px);
+        }
+        .scroll-btn.visible {
+          display: flex;
+        }
+        .scroll-btn.scroll-left { left: 4px; }
+        .scroll-btn.scroll-right { right: 4px; }
         .providers-wrap::before,
         .providers-wrap::after {
           content: '';
@@ -820,10 +857,15 @@ enum SmartHubBridgePage {
           align-items: center;
           justify-content: center;
           gap: 8px;
-          font-size: 96px;
+          font-size: clamp(48px, 12vw, 96px);
           font-weight: 800;
           letter-spacing: -2px;
           color: var(--text-1);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
+          padding: 0 16px;
         }
         .ambient-total .label {
           font-size: 16px;
@@ -875,6 +917,8 @@ enum SmartHubBridgePage {
         </div>
 
         <div class="providers-wrap" id="providersWrap">
+          <button class="scroll-btn scroll-left" id="scrollLeft" type="button" aria-label="Scroll left">‹</button>
+          <button class="scroll-btn scroll-right" id="scrollRight" type="button" aria-label="Scroll right">›</button>
           <div class="providers" id="providers">
             <div class="empty">Waiting for first refresh…</div>
           </div>
@@ -902,6 +946,8 @@ enum SmartHubBridgePage {
         const headerStatus  = document.getElementById('headerStatus');
         const ambientValue  = document.getElementById('ambientValue');
         const providersWrap = document.getElementById('providersWrap');
+        const scrollLeftBtn = document.getElementById('scrollLeft');
+        const scrollRightBtn = document.getElementById('scrollRight');
         const valueToggle   = document.getElementById('valueToggle');
         const detailOverlay = document.getElementById('detailOverlay');
         const detailCard    = document.getElementById('detailCard');
@@ -926,7 +972,41 @@ enum SmartHubBridgePage {
         let pollFailures = 0;
         let lastSuccessfulPollAt = Date.now();
         const MAX_POLL_FAILURES_BEFORE_RELOAD = 12; // ~60s at 5s cadence
+        // Eat a single transient blip — a packet loss or a 1s bridge restart
+        // shouldn't flash the alarmist "Reconnecting to Mac…" pill. Only
+        // surface the offline UI once two consecutive polls have failed
+        // (~10s), which still beats the Mac-side watchdog (30s) to the punch.
+        const FAILURES_BEFORE_OFFLINE_UI = 2;
         const STALE_RELOAD_MS = 10 * 60 * 1000;     // 10 min without a good poll → reload
+
+        // Persist the last good /state.json to sessionStorage so a hard
+        // reload (after MAX_POLL_FAILURES_BEFORE_RELOAD or
+        // STALE_RELOAD_MS) rehydrates the dashboard immediately rather
+        // than flashing "Waiting for first refresh…" while the new poll
+        // round-trips. The cache is per-session, so it never outlives
+        // the WebView; if DashCast tears down, we start fresh.
+        const STATE_CACHE_KEY = 'obb_cachedState';
+        try {
+          const cached = sessionStorage.getItem(STATE_CACHE_KEY);
+          if (cached) {
+            const cachedState = JSON.parse(cached);
+            if (cachedState && typeof cachedState === 'object') {
+              try {
+                render(cachedState);
+                // Treat rehydrated data as offline until the first live
+                // poll succeeds — the orange "Reconnecting to Mac…" pill
+                // tells the user what they're looking at is stale.
+                stageEl.classList.add('bridge-offline');
+              } catch (_) {
+                // Schema mismatch between cache and current render() —
+                // wipe so we never re-hit it.
+                sessionStorage.removeItem(STATE_CACHE_KEY);
+              }
+            }
+          }
+        } catch (_) {
+          // Corrupt or unavailable storage — drop it; next render reseeds.
+        }
 
         function tickClock() {
           const d = new Date();
@@ -953,10 +1033,16 @@ enum SmartHubBridgePage {
             pollFailures = 0;
             lastSuccessfulPollAt = Date.now();
             stageEl.classList.remove('bridge-offline');
+            // Cache the latest good payload so a hard reload (or a
+            // future tab re-attach) starts with real data instead of
+            // the "Waiting for first refresh…" placeholder.
+            try { sessionStorage.setItem(STATE_CACHE_KEY, JSON.stringify(state)); } catch (_) {}
           } catch (e) {
             pollFailures += 1;
-            stageEl.classList.add('bridge-offline');
-            subEl.textContent = `Bridge offline — retrying (${pollFailures})`;
+            if (pollFailures >= FAILURES_BEFORE_OFFLINE_UI) {
+              stageEl.classList.add('bridge-offline');
+              subEl.textContent = `Bridge offline — retrying (${pollFailures})`;
+            }
             if (pollFailures >= MAX_POLL_FAILURES_BEFORE_RELOAD) {
               location.reload();
             }
@@ -977,7 +1063,9 @@ enum SmartHubBridgePage {
             }
           }
           if (state.headerStatus) headerStatus.textContent = state.headerStatus;
-          ambientValue.textContent = state.totalSpend || '$0';
+          ambientValue.textContent = displayMode === 'currency'
+            ? (state.totalSpend || '$0')
+            : (state.totalTokens || '—');
 
           renderPeriodPicker(state);
           renderRefreshState(state);
@@ -1060,7 +1148,7 @@ enum SmartHubBridgePage {
           // Big number: currency or tokens depending on toggle
           const bigValue = displayMode === 'currency'
             ? (p.tokenTotalCurrency || p.tokenTotal || '')
-            : (p.tokenTotal || p.tokenTotalCurrency || '');
+            : (p.tokenTotal || '');
           if (bigValue) {
             const total = document.createElement('div');
             total.className = 'token-total';
@@ -1216,9 +1304,23 @@ enum SmartHubBridgePage {
           const canRight = providersEl.scrollLeft + providersEl.clientWidth < providersEl.scrollWidth - 4;
           providersWrap.classList.toggle('can-scroll-left', canLeft);
           providersWrap.classList.toggle('can-scroll-right', canRight);
+          if (scrollLeftBtn) scrollLeftBtn.classList.toggle('visible', canLeft);
+          if (scrollRightBtn) scrollRightBtn.classList.toggle('visible', canRight);
         }
         if (providersEl) {
           providersEl.addEventListener('scroll', updateScrollIndicators, { passive: true });
+        }
+        if (scrollLeftBtn) {
+          scrollLeftBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (providersEl) providersEl.scrollBy({ left: -246, behavior: 'smooth' });
+          });
+        }
+        if (scrollRightBtn) {
+          scrollRightBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (providersEl) providersEl.scrollBy({ left: 246, behavior: 'smooth' });
+          });
         }
 
         function renderValueToggle() {
@@ -1323,6 +1425,45 @@ enum SmartHubBridgePage {
                 row.appendChild(ident);
                 row.appendChild(badge);
                 sec.appendChild(row);
+                // Per-account quota buckets
+                if (a.buckets && a.buckets.length > 0) {
+                  a.buckets.forEach(b => {
+                    const bRow = document.createElement('div');
+                    bRow.className = 'detail-row';
+                    bRow.style.paddingLeft = '22px';
+                    const bLabel = document.createElement('span');
+                    bLabel.className = 'label';
+                    bLabel.textContent = b.name || '';
+                    const bValue = document.createElement('span');
+                    bValue.className = 'value';
+                    bValue.textContent = b.headlineValue || (b.percent + '%');
+                    bRow.appendChild(bLabel);
+                    bRow.appendChild(bValue);
+                    sec.appendChild(bRow);
+                    if (b.percent != null) {
+                      const bar = document.createElement('div');
+                      bar.className = 'detail-bar';
+                      bar.style.marginLeft = '22px';
+                      const fill = document.createElement('div');
+                      fill.className = 'fill';
+                      if (p.accentHex) fill.style.background = '#' + p.accentHex;
+                      fill.style.width = Math.min(Math.max(b.percent, 0), 100) + '%';
+                      bar.appendChild(fill);
+                      sec.appendChild(bar);
+                    }
+                    if (b.resetsLabel) {
+                      const reset = document.createElement('div');
+                      reset.style.cssText = 'font-size:11px;color:var(--text-3);padding-top:2px;padding-left:22px;';
+                      reset.textContent = b.resetsLabel;
+                      sec.appendChild(reset);
+                    }
+                  });
+                } else if (a.percent != null && a.percent > 0) {
+                  const pctRow = document.createElement('div');
+                  pctRow.style.cssText = 'font-size:11px;color:var(--text-3);padding-left:22px;';
+                  pctRow.textContent = a.percent + '% used';
+                  sec.appendChild(pctRow);
+                }
               });
               detailContent.appendChild(sec);
             }

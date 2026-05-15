@@ -243,11 +243,16 @@ private struct AgentInsightsScopedDetail: View {
             onConfigureModel: onOpenWorkspace,
             onPickAgent: nil,
             onFollowUpTap: { _ in onOpenWorkspace() },
-            onMissionLaunchTap: { question, missionKind, requestedRuntime in
+            onMissionLaunchTap: { question, missionKind, _, options in
                 store?.dispatchMission(
                     question,
                     missionKind: missionKind,
-                    requestedRuntime: requestedRuntime,
+                    requestedRuntime: options.requestedRuntime,
+                    targetProject: options.targetProject,
+                    depth: options.depth,
+                    approvalMode: options.approvalMode,
+                    commandsAllowed: options.commandsAllowed,
+                    fileEditsAllowed: options.fileEditsAllowed,
                     via: hermesService
                 )
             },

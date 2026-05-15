@@ -20,6 +20,7 @@ struct RootNavigationView: View {
     @State private var hermesService = HermesService()
     @State private var motionStore = MotionStore()
     @State private var insightsDashboardStore = DashboardStore()
+    @State private var missionActivityCenter = MobileMissionActivityCenter()
     @State private var showHermesSheet = false
 
     enum SidebarDestination: Hashable, Identifiable {
@@ -76,13 +77,21 @@ struct RootNavigationView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            sidebar
-                .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
-        } detail: {
-            detail
+        ZStack(alignment: .bottomTrailing) {
+            NavigationSplitView {
+                sidebar
+                    .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
+            } detail: {
+                detail
+            }
+
+            MobileMissionActivityOverlay(center: missionActivityCenter)
+                .padding(.trailing, 24)
+                .padding(.bottom, 24)
+                .zIndex(8)
         }
         .environment(\.motionStore, motionStore)
+        .task { missionActivityCenter.start() }
         .onAppear {
             applyScreenshotRouteIfNeeded()
         }
@@ -98,6 +107,7 @@ struct RootNavigationView: View {
             AuroraBackdrop(density: .subtle)
             List {
                 Section {
+                    sidebarLogoHeader
                     ForEach([SidebarDestination.pulse, .burn, .insights, .streams, .hermes], id: \.self) { destination in
                         sidebarItem(destination)
                     }
@@ -110,12 +120,21 @@ struct RootNavigationView: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
-            .navigationTitle("OpenBurnBar")
-            .toolbarBackground(.hidden, for: .navigationBar)
         }
         .safeAreaInset(edge: .bottom) {
             sidebarFooter
         }
+    }
+
+    private var sidebarLogoHeader: some View {
+        Image("AppLogo")
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(height: 36)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+            .listRowBackground(Color.clear)
     }
 
     private func sidebarItem(_ destination: SidebarDestination) -> some View {

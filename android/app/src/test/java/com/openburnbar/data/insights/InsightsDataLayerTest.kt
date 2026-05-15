@@ -1,15 +1,18 @@
 package com.openburnbar.data.insights
 
 import com.openburnbar.data.assistants.CLIAgentMissionEvent
+import com.openburnbar.data.assistants.CLIAgentMissionRequestPayloadFactory
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
 import com.openburnbar.data.insights.services.InMemoryInsightDataSource
 import com.openburnbar.data.insights.services.InsightAggregator
 import com.openburnbar.data.insights.services.adapters.LocalRuleBasedAdapter
 import com.openburnbar.data.insights.services.InsightExecutor
 import com.openburnbar.data.insights.services.RuleBasedInsightAnalysisEngine
+import com.openburnbar.ui.insights.MissionRuntimeTarget
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
+import java.time.Instant
 
 class InsightsDataLayerTest {
 
@@ -318,20 +321,39 @@ class InsightsDataLayerTest {
             resultPreview = "Found three high-leverage refactors.",
             errorMessage = null,
             sessionID = "thread-123",
+            approvalRequestId = null,
+            approvalStatus = null,
+            approvalTitle = null,
+            approvalMessage = null,
+            createdAt = Instant.parse("2026-05-14T10:00:00Z"),
             events = listOf(
                 CLIAgentMissionEvent(
+                    sequence = 1,
                     timestamp = "2026-05-14T10:00:00Z",
+                    kind = "status",
                     phase = "queued",
+                    title = "Queued",
                     message = "Mission queued from this device.",
                     runtime = null,
-                    source = "android"
+                    source = "android",
+                    toolName = null,
+                    artifactPath = null,
+                    changedFilePath = null,
+                    isError = false
                 ),
                 CLIAgentMissionEvent(
+                    sequence = 2,
                     timestamp = "2026-05-14T10:00:10Z",
+                    kind = "final_answer",
                     phase = "completed",
+                    title = "Completed",
                     message = "Found three high-leverage refactors.",
                     runtime = "codex",
-                    source = "mac"
+                    source = "mac",
+                    toolName = null,
+                    artifactPath = null,
+                    changedFilePath = null,
+                    isError = false
                 )
             )
         )
@@ -341,4 +363,247 @@ class InsightsDataLayerTest {
         assertEquals("Found three high-leverage refactors.", snapshot.resultPreview)
         assertTrue(snapshot.isTerminal)
     }
+
+    @Test
+    fun `CLI agent mission request payload includes launch options without mutable parent events`() {
+        val payload = CLIAgentMissionRequestPayloadFactory.build(
+            id = "mission-123",
+            title = "  Run cost mission  ",
+            prompt = "  Inspect provider routing cost  ",
+            missionKind = "cost_efficiency",
+            requestedRuntime = "opencode",
+            targetProject = "  ~/Developer/OpenBurnBar  ",
+            depth = "deep",
+            approvalMode = "risky_only",
+            commandsAllowed = true,
+            fileEditsAllowed = false,
+            now = Instant.parse("2026-05-14T10:00:00Z"),
+        )
+
+        assertEquals("mission-123", payload["id"])
+        assertEquals("Run cost mission", payload["title"])
+        assertEquals("Inspect provider routing cost", payload["prompt"])
+        assertEquals("cost_efficiency", payload["missionKind"])
+        assertEquals("opencode", payload["requestedRuntime"])
+        assertEquals("~/Developer/OpenBurnBar", payload["targetProject"])
+        assertEquals("deep", payload["depth"])
+        assertEquals("risky_only", payload["approvalMode"])
+        assertEquals(true, payload["commandsAllowed"])
+        assertEquals(false, payload["fileEditsAllowed"])
+        assertEquals("android-insights", payload["source"])
+        assertEquals("pending", payload["status"])
+        assertEquals(2, payload["schemaVersion"])
+        assertFalse(payload.containsKey("events"))
+    }
+
+    @Test
+    fun `CLI agent mission launch contract includes all Android remote control runtimes`() {
+        assertEquals(
+            listOf("auto", "codex", "claude", "hermes", "openclaw", "piAgent", "opencode", "ollama"),
+            MissionRuntimeTarget.entries.map { it.firestoreValue }
+        )
+    }
+
+    @Test
+    fun `CLI agent mission initial queued event targets durable subcollection`() {
+        val event = CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(
+            now = Instant.parse("2026-05-14T10:00:00Z"),
+        )
+
+        assertEquals(1, event["sequence"])
+        assertEquals("2026-05-14T10:00:00Z", event["timestamp"])
+        assertEquals("queued", event["phase"])
+        assertEquals("status", event["kind"])
+        assertEquals("android", event["source"])
+        assertEquals(false, event["isError"])
+    }
+
+    @Test
+    fun `CLI agent mission snapshot derives mac offline for stale queued mission`() {
+        val snapshot = CLIAgentMissionSnapshot(
+            id = "mission-stale",
+            title = "Run modernization mission",
+            status = "pending",
+            requestedRuntime = "codex",
+            selectedRuntime = null,
+            selectedRuntimeName = null,
+            liveSummary = "Waiting for Mac.",
+            resultPreview = null,
+            errorMessage = null,
+            sessionID = null,
+            approvalRequestId = null,
+            approvalStatus = null,
+            approvalTitle = null,
+            approvalMessage = null,
+            createdAt = Instant.now().minusSeconds(180),
+            events = emptyList()
+        )
+
+        assertEquals("mac_offline", snapshot.displayStatus)
+        assertTrue(snapshot.displayLiveSummary.orEmpty().contains("No signed-in Mac"))
+    }
+
+    @Test
+    fun `CLI agent mission snapshot exposes pending approval state`() {
+        val snapshot = CLIAgentMissionSnapshot(
+            id = "mission-approval",
+            title = "Run risky mission",
+            status = "waiting_for_approval",
+            requestedRuntime = "codex",
+            selectedRuntime = "codex",
+            selectedRuntimeName = "Codex",
+            liveSummary = "Codex is waiting for approval before commands and file edits.",
+            resultPreview = null,
+            errorMessage = null,
+            sessionID = null,
+            approvalRequestId = "approval-1",
+            approvalStatus = "pending",
+            approvalTitle = "Approve Run risky mission",
+            approvalMessage = "Codex is waiting for approval before commands and file edits.",
+            createdAt = Instant.parse("2026-05-14T10:00:00Z"),
+            events = emptyList()
+        )
+
+        assertTrue(snapshot.isWaitingForApproval)
+        assertEquals("approval-1", snapshot.approvalRequestId)
+        assertEquals("Approve Run risky mission", snapshot.approvalTitle)
+        assertEquals("Codex is waiting for approval before commands and file edits.", snapshot.approvalMessage)
+    }
+
+    @Test
+    fun `CLI agent mission snapshot exposes every required mission state`() {
+        val terminalStatuses = listOf("completed", "failed", "canceled", "cancelled", "unauthorized", "agent_launch_failed")
+        val nonTerminalStatuses = listOf("queued", "accepted", "starting", "running", "waiting_for_approval")
+
+        terminalStatuses.forEach { status ->
+            val snapshot = missionSnapshot(status = status)
+            assertEquals(status, snapshot.displayStatus)
+            assertTrue("$status should be terminal", snapshot.isTerminal)
+        }
+
+        nonTerminalStatuses.forEach { status ->
+            val snapshot = missionSnapshot(status = status, approvalStatus = if (status == "waiting_for_approval") "pending" else "none")
+            assertEquals(status, snapshot.displayStatus)
+            assertFalse("$status should not be terminal", snapshot.isTerminal)
+        }
+    }
+
+    @Test
+    fun `CLI agent mission snapshot preserves durable event ordering after resume`() {
+        val snapshot = missionSnapshot(
+            status = "running",
+            events = listOf(
+                CLIAgentMissionEvent(
+                    sequence = 3,
+                    timestamp = "2026-05-14T10:00:03Z",
+                    kind = "tool_result",
+                    phase = "process_output",
+                    title = "Process",
+                    message = "Tests passed.",
+                    runtime = "codex",
+                    source = "mac",
+                    toolName = null,
+                    artifactPath = null,
+                    changedFilePath = null,
+                    isError = false
+                ),
+                CLIAgentMissionEvent(
+                    sequence = 2,
+                    timestamp = "2026-05-14T10:00:02Z",
+                    kind = "tool_call",
+                    phase = "tool_use",
+                    title = "Shell",
+                    message = "swift test",
+                    runtime = "codex",
+                    source = "mac",
+                    toolName = "exec_command",
+                    artifactPath = null,
+                    changedFilePath = null,
+                    isError = false
+                )
+            ).sortedWith(compareBy<CLIAgentMissionEvent> { it.sequence }.thenBy { it.timestamp })
+        )
+
+        assertEquals(listOf(2, 3), snapshot.events.map { it.sequence })
+        assertEquals(listOf("tool_call", "tool_result"), snapshot.events.map { it.kind })
+        assertEquals("exec_command", snapshot.events.first().toolName)
+    }
+
+    @Test
+    fun `CLI agent mission snapshot derives operator console status`() {
+        val snapshot = missionSnapshot(
+            status = "running",
+            events = listOf(
+                CLIAgentMissionEvent(
+                    sequence = 1,
+                    timestamp = "2026-05-14T10:00:00Z",
+                    kind = "status",
+                    phase = "starting",
+                    title = "Starting",
+                    message = "Starting Codex.",
+                    runtime = "codex",
+                    source = "mac",
+                    toolName = null,
+                    artifactPath = null,
+                    changedFilePath = null,
+                    isError = false,
+                ),
+                CLIAgentMissionEvent(
+                    sequence = 2,
+                    timestamp = "2026-05-14T10:00:01Z",
+                    kind = "tool_call",
+                    phase = "tool_use",
+                    title = "Shell",
+                    message = "Running tests.",
+                    runtime = "codex",
+                    source = "mac",
+                    toolName = "exec_command",
+                    artifactPath = null,
+                    changedFilePath = null,
+                    isError = false,
+                ),
+                CLIAgentMissionEvent(
+                    sequence = 3,
+                    timestamp = "2026-05-14T10:00:02Z",
+                    kind = "changed_file",
+                    phase = "changed_file",
+                    title = "Changed file",
+                    message = "android/app/src/main/java/com/openburnbar/ui/insights/InsightsScreen.kt",
+                    runtime = "codex",
+                    source = "mac",
+                    toolName = null,
+                    artifactPath = null,
+                    changedFilePath = "android/app/src/main/java/com/openburnbar/ui/insights/InsightsScreen.kt",
+                    isError = false,
+                ),
+            ),
+        )
+
+        assertEquals("Changed file", snapshot.currentStepLabel)
+        assertEquals("exec_command", snapshot.activeToolName)
+        assertEquals("android/app/src/main/java/com/openburnbar/ui/insights/InsightsScreen.kt", snapshot.latestArtifactLabel)
+    }
+
+    private fun missionSnapshot(
+        status: String,
+        approvalStatus: String? = null,
+        events: List<CLIAgentMissionEvent> = emptyList(),
+    ) = CLIAgentMissionSnapshot(
+        id = "mission-$status",
+        title = "Mission $status",
+        status = status,
+        requestedRuntime = "codex",
+        selectedRuntime = "codex",
+        selectedRuntimeName = "Codex",
+        liveSummary = "Mission is $status.",
+        resultPreview = if (status == "completed") "Done." else null,
+        errorMessage = if (status in setOf("failed", "unauthorized", "agent_launch_failed")) "Mission failed." else null,
+        sessionID = null,
+        approvalRequestId = if (status == "waiting_for_approval") "approval-1" else null,
+        approvalStatus = approvalStatus,
+        approvalTitle = if (status == "waiting_for_approval") "Approve Mission" else null,
+        approvalMessage = if (status == "waiting_for_approval") "Codex is waiting for approval." else null,
+        createdAt = Instant.now(),
+        events = events
+    )
 }

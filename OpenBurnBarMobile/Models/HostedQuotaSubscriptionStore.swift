@@ -47,6 +47,7 @@ typealias HostedQuotaProductPurchaseExecutor = @MainActor (
 ) async throws -> HostedQuotaPurchaseOutcome
 
 typealias HostedQuotaAppStoreSync = @MainActor () async throws -> Void
+typealias HostedQuotaAuthStateReader = @MainActor () -> Bool
 
 /// StoreKit 2 surface for the Apple-verified hosted-quota entitlement.
 ///
@@ -74,6 +75,7 @@ final class HostedQuotaSubscriptionStore {
     private let directReader: (any HostedQuotaEntitlementDirectReading)?
     private let purchaseProduct: HostedQuotaProductPurchaseExecutor
     private let syncAppStore: HostedQuotaAppStoreSync
+    private let isSignedIn: HostedQuotaAuthStateReader
 
     private(set) var product: Product?
     private(set) var isActive = false
@@ -104,12 +106,14 @@ final class HostedQuotaSubscriptionStore {
         functions: any HostedQuotaEntitlementServicing = FunctionsRepository.shared,
         directReader: (any HostedQuotaEntitlementDirectReading)? = FirestoreRepository.shared,
         purchaseProduct: @escaping HostedQuotaProductPurchaseExecutor = HostedQuotaSubscriptionStore.purchaseProduct,
-        syncAppStore: @escaping HostedQuotaAppStoreSync = HostedQuotaSubscriptionStore.syncAppStore
+        syncAppStore: @escaping HostedQuotaAppStoreSync = HostedQuotaSubscriptionStore.syncAppStore,
+        isSignedIn: @escaping HostedQuotaAuthStateReader = { AuthRepository.shared.isSignedIn }
     ) {
         self.functions = functions
         self.directReader = directReader
         self.purchaseProduct = purchaseProduct
         self.syncAppStore = syncAppStore
+        self.isSignedIn = isSignedIn
     }
 
     deinit {
@@ -122,7 +126,12 @@ final class HostedQuotaSubscriptionStore {
         defer { isLoading = false }
         do {
             product = try await Product.products(for: [Self.productID]).first
-            try await refreshEntitlement()
+            if isSignedIn() {
+                try await refreshEntitlement()
+            } else {
+                isActive = false
+                expirationDate = nil
+            }
             startObservingTransactionUpdates()
         } catch {
             self.error = error.localizedDescription
@@ -144,15 +153,24 @@ final class HostedQuotaSubscriptionStore {
             guard let product else {
                 throw HostedQuotaSubscriptionError.productUnavailable
             }
-            let token = try await mintAppAccountToken()
-            let purchaseOptions: Set<Product.PurchaseOption> = [
-                .appAccountToken(token),
-            ]
+            let signedInAtPurchaseStart = isSignedIn()
+            let purchaseOptions: Set<Product.PurchaseOption>
+            if signedInAtPurchaseStart {
+                let token = try await mintAppAccountToken()
+                purchaseOptions = [.appAccountToken(token)]
+            } else {
+                purchaseOptions = []
+            }
             let result = try await purchaseProduct(product, purchaseOptions)
             switch result {
             case .success(let signedTransactionJWS, let finish):
-                try await verifyOnServer(jws: signedTransactionJWS)
-                await finish()
+                if signedInAtPurchaseStart {
+                    try await verifyOnServer(jws: signedTransactionJWS)
+                    await finish()
+                } else {
+                    await finish()
+                    self.error = Self.signedOutPurchaseMessage
+                }
             case .pending, .userCancelled:
                 break
             }
@@ -184,6 +202,10 @@ final class HostedQuotaSubscriptionStore {
             //    wins; we forward only the raw JWS so the server is the
             //    sole arbiter of activation.
             let matchedJWS = await findCurrentEntitlementJWS()
+            guard isSignedIn() else {
+                self.error = Self.signedOutRestoreMessage
+                return
+            }
             if let matchedJWS {
                 let response = try await functions.restoreHostedQuotaEntitlement(
                     productID: Self.productID,
@@ -213,6 +235,14 @@ final class HostedQuotaSubscriptionStore {
     /// Sync any active StoreKit entitlement up to the server, or fall
     /// back to the server's view when no local transaction exists.
     func refreshEntitlement() async throws {
+        guard isSignedIn() else {
+            isActive = false
+            expirationDate = nil
+            purchaseDate = nil
+            latestTransactionID = nil
+            return
+        }
+
         if let matchedJWS = await findCurrentEntitlementJWS() {
             try await verifyOnServer(jws: matchedJWS)
             if !isActive {
@@ -387,6 +417,12 @@ final class HostedQuotaSubscriptionStore {
         case .unverified(_, let error): throw error
         }
     }
+
+    private static let signedOutPurchaseMessage =
+        "Purchase completed. Sign in to OpenBurnBar, then tap Restore Purchases to activate OpenBurnBar Cloud on this account."
+
+    private static let signedOutRestoreMessage =
+        "Sign in to OpenBurnBar before restoring purchases so Apple can link OpenBurnBar Cloud to your account."
 
     /// Platform tag passed to `beginEntitlementBinding` for diagnostics.
     /// Reading `UIDevice.current` requires a hop to MainActor on iOS;

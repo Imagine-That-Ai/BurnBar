@@ -135,7 +135,7 @@ struct MissionsLaneView: View {
 
     private var newMissionButton: some View {
         Button {
-            showingNewMissionSheet = true
+            MissionConsoleWindowController.bind(to: operatingLayer).makeOrShow()
         } label: {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 Image(systemName: "plus.circle.fill")

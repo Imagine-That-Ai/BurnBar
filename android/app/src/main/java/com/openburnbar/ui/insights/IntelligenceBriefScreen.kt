@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -128,9 +129,10 @@ fun IntelligenceBriefScreen(
     modifier: Modifier = Modifier,
     onCitationTap: (InsightCitation) -> Unit = {},
     onFollowUpTap: (InsightFollowUpQuestion) -> Unit = {},
-    onMissionLaunchTap: (MissionLaunchAction, MissionRuntimeTarget) -> Unit = { _, _ -> },
+    onMissionLaunchTap: (MissionLaunchAction, MissionLaunchOptions) -> Unit = { _, _ -> },
     onPinWidget: (InsightGeneratedWidget) -> Unit = {},
     onConfigureModel: (() -> Unit)? = null,
+    onUpgradeToPro: (() -> Unit)? = null,
     onShowAudit: (() -> Unit)? = null,
     theme: CanvasTheme = CanvasTheme.AURORA,
 ) {
@@ -157,13 +159,14 @@ fun IntelligenceBriefScreen(
                 isDark = isDark,
                 reduceMotion = reduceMotion,
                 onConfigureModel = onConfigureModel,
+                onUpgradeToPro = onUpgradeToPro,
                 onCitationTap = onCitationTap,
             )
         }
 
         AnimatedSection(visible = visibility[1], reduceMotion = reduceMotion) {
-            MissionLaunchpad(onSelect = { action, runtime ->
-                onMissionLaunchTap(action, runtime)
+            MissionLaunchpad(onSelect = { action, options ->
+                onMissionLaunchTap(action, options)
             })
         }
 
@@ -178,15 +181,28 @@ fun IntelligenceBriefScreen(
 
         if (result.missionCandidates.isNotEmpty()) {
             AnimatedSection(visible = visibility[3], reduceMotion = reduceMotion) {
-                MissionBoardSection(
-                    missions = result.missionCandidates,
-                    expandedMissionID = expandedMissionID,
-                    onToggle = { missionID ->
-                        expandedMissionID = if (expandedMissionID == missionID) null else missionID
-                    },
-                    onCitationTap = onCitationTap,
-                )
-            }
+            MissionBoardSection(
+                missions = result.missionCandidates,
+                expandedMissionID = expandedMissionID,
+                onToggle = { missionID ->
+                    expandedMissionID = if (expandedMissionID == missionID) null else missionID
+                },
+                onLaunch = { mission ->
+                    onMissionLaunchTap(
+                        mission.launchAction(),
+                        MissionLaunchOptions(
+                            requestedRuntime = MissionRuntimeTarget.AUTO.firestoreValue,
+                            targetProject = mission.projectDisplayName ?: mission.projectID,
+                            depth = MissionDepth.STANDARD.firestoreValue,
+                            approvalMode = MissionApprovalMode.EXISTING.firestoreValue,
+                            commandsAllowed = false,
+                            fileEditsAllowed = false,
+                        ),
+                    )
+                },
+                onCitationTap = onCitationTap,
+            )
+        }
         }
 
         if (result.anomalies.isNotEmpty()) {
@@ -292,6 +308,7 @@ private fun HeroSection(
     isDark: Boolean,
     reduceMotion: Boolean,
     onConfigureModel: (() -> Unit)?,
+    onUpgradeToPro: (() -> Unit)?,
     onCitationTap: (InsightCitation) -> Unit,
 ) {
     Column(
@@ -349,6 +366,7 @@ private fun HeroSection(
                 answer = answer,
                 onCitationTap = onCitationTap,
                 onConfigureModel = onConfigureModel,
+                onUpgradeToPro = onUpgradeToPro,
             )
         }
         MetaStrip(
@@ -372,10 +390,19 @@ private fun AnswerPanel(
     answer: InsightBriefingAnswer,
     onCitationTap: (InsightCitation) -> Unit,
     onConfigureModel: (() -> Unit)? = null,
+    onUpgradeToPro: (() -> Unit)? = null,
 ) {
-    val showConnectModelCTA = onConfigureModel != null &&
-        answer.source == InsightBriefingAnswer.Source.LOCAL_RULES &&
-        answer.modelDisplayName.contains("no LLM configured", ignoreCase = true)
+    val showUpgradeToProCTA = onUpgradeToPro != null &&
+        answer.modelDisplayName == InsightBriefingAnswer.SUBSCRIPTION_REQUIRED_DISPLAY_NAME
+    val showConnectModelCTA = onConfigureModel != null && !showUpgradeToProCTA && when (answer.source) {
+        InsightBriefingAnswer.Source.LOCAL_RULES ->
+            answer.modelDisplayName.contains("no LLM configured", ignoreCase = true)
+        // After the BurnBar-hosted fallback answered, promote the
+        // "connect your own model" CTA so the user can swap to their
+        // own route for the next turn.
+        InsightBriefingAnswer.Source.HOSTED_FALLBACK -> true
+        InsightBriefingAnswer.Source.MODEL_GATEWAY -> false
+    }
 
     Column(
         modifier = Modifier
@@ -416,27 +443,55 @@ private fun AnswerPanel(
         if (answer.citations.isNotEmpty()) {
             CitationChipRow(citations = answer.citations, onTap = onCitationTap)
         }
-        if (showConnectModelCTA && onConfigureModel != null) {
-            // "Connect a model" CTA — mirrors the Swift BriefingAnswerPanel
-            // button. Surfaces only when the user has zero LLM gateways
-            // configured so the eyebrow's "Data summary · no LLM configured"
-            // honesty is paired with a one-tap path out.
-            androidx.compose.material3.Button(
-                onClick = onConfigureModel,
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = InsightsColors.kpiPositive.copy(alpha = 0.16f),
-                    contentColor = InsightsColors.kpiPositive,
-                ),
-                modifier = Modifier
-                    .padding(top = 2.dp)
-                    .semantics {
-                        contentDescription = "Connect a model. Opens the Insights model picker so a connected gateway can author the reply."
-                    },
-            ) {
-                Text(
-                    text = "Connect a model",
-                    style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
-                )
+        if (showUpgradeToProCTA) {
+            onUpgradeToPro?.let { upgradeAction ->
+                // "Upgrade to BurnBar Pro" CTA — mirrors the Swift
+                // BriefingAnswerPanel paywall button. Surfaces only
+                // when the orchestrator caught a subscription-required
+                // rejection from the hosted Cloud Function, so
+                // existing free-tier users with their own LLM
+                // configured never see this prompt.
+                androidx.compose.material3.Button(
+                    onClick = upgradeAction,
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = InsightsColors.kpiPositive.copy(alpha = 0.20f),
+                        contentColor = InsightsColors.kpiPositive,
+                    ),
+                    modifier = Modifier
+                        .padding(top = 2.dp)
+                        .semantics {
+                            contentDescription = "Upgrade to BurnBar Pro. Unlocks the BurnBar-hosted Intelligence Brief AI answers. Subscription required."
+                        },
+                ) {
+                    Text(
+                        text = "Upgrade to BurnBar Pro",
+                        style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+                    )
+                }
+            }
+        } else if (showConnectModelCTA) {
+            onConfigureModel?.let { configureModel ->
+                // "Connect a model" CTA — mirrors the Swift BriefingAnswerPanel
+                // button. Surfaces only when the user has zero LLM gateways
+                // configured so the eyebrow's "Data summary · no LLM configured"
+                // honesty is paired with a one-tap path out.
+                androidx.compose.material3.Button(
+                    onClick = configureModel,
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = InsightsColors.kpiPositive.copy(alpha = 0.16f),
+                        contentColor = InsightsColors.kpiPositive,
+                    ),
+                    modifier = Modifier
+                        .padding(top = 2.dp)
+                        .semantics {
+                            contentDescription = "Connect a model. Opens the Insights model picker so a connected gateway can author the reply."
+                        },
+                ) {
+                    Text(
+                        text = "Connect a model",
+                        style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+                    )
+                }
             }
         }
     }
@@ -478,6 +533,11 @@ private fun answerEyebrow(answer: InsightBriefingAnswer): String =
     when {
         answer.isFallback -> "Answered locally after LLM fallback"
         answer.source == InsightBriefingAnswer.Source.MODEL_GATEWAY -> "Answered by ${answer.modelDisplayName}"
+        // The BurnBar-hosted fallback answered (OpenRouter → MiniMax).
+        // Surface it explicitly so the user understands their own
+        // route wasn't used and can connect one if they want.
+        answer.source == InsightBriefingAnswer.Source.HOSTED_FALLBACK ->
+            "Answered by ${answer.modelDisplayName} · hosted fallback"
         // Mirrors Swift `heroEyebrowText`: don't claim to "answer" when
         // there's no LLM behind it — the local rule engine only
         // summarizes the digest. Same wording, same accessibility intent.
@@ -499,7 +559,19 @@ data class MissionLaunchAction(
         )
 }
 
-enum class MissionTone { CREATIVE, DILIGENCE, DEBT }
+enum class MissionTone {
+    CREATIVE,
+    DILIGENCE,
+    DEBT,
+    ACCRETIVE,
+    SECURITY,
+    UI_IMPROVEMENT,
+    MODERNIZATION,
+    PROVIDER_ROUTING,
+    COST_EFFICIENCY,
+    PROJECT_FOCUS,
+    CUSTOM,
+}
 
 enum class MissionRuntimeTarget(
     val firestoreValue: String,
@@ -511,12 +583,45 @@ enum class MissionRuntimeTarget(
     HERMES("hermes", "Hermes"),
     OPENCLAW("openclaw", "OpenClaw"),
     PI_AGENT("piAgent", "Pi"),
+    OPENCODE("opencode", "OpenCode"),
+    OLLAMA("ollama", "Ollama"),
 }
+
+enum class MissionDepth(val firestoreValue: String, val label: String) {
+    LIGHT("light", "Light"),
+    STANDARD("standard", "Standard"),
+    DEEP("deep", "Deep"),
+    MAX("max", "Max"),
+}
+
+enum class MissionApprovalMode(val firestoreValue: String, val label: String) {
+    EXISTING("existing_policy", "Existing"),
+    MANUAL("manual_all", "Manual"),
+    RISKY("risky_only", "Risky"),
+    READ_ONLY("read_only", "Read only"),
+}
+
+data class MissionLaunchOptions(
+    val requestedRuntime: String,
+    val targetProject: String?,
+    val depth: String,
+    val approvalMode: String,
+    val commandsAllowed: Boolean,
+    val fileEditsAllowed: Boolean,
+)
 
 fun MissionTone.firestoreValue(): String = when (this) {
     MissionTone.CREATIVE -> "creative"
     MissionTone.DILIGENCE -> "diligence"
     MissionTone.DEBT -> "debt"
+    MissionTone.ACCRETIVE -> "accretive"
+    MissionTone.SECURITY -> "security"
+    MissionTone.UI_IMPROVEMENT -> "ui_improvement"
+    MissionTone.MODERNIZATION -> "modernization"
+    MissionTone.PROVIDER_ROUTING -> "provider_routing"
+    MissionTone.COST_EFFICIENCY -> "cost_efficiency"
+    MissionTone.PROJECT_FOCUS -> "project_focus"
+    MissionTone.CUSTOM -> "custom"
 }
 
 private val missionLaunchActions = listOf(
@@ -544,12 +649,89 @@ private val missionLaunchActions = listOf(
             Create a technical debt mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, project/module focus, debt hypothesis, delivery drag, validation commands, acceptance criteria, remediation sequence, and how mobile should summarize progress. Also recommend adjacent modernization, dependency, architecture, and UI cleanup missions when the evidence supports them.
         """,
     ),
+    MissionLaunchAction(
+        title = "Accretive Mission",
+        subtitle = "Small compounding product or workflow wins.",
+        tone = MissionTone.ACCRETIVE,
+        prompt = """
+            Create an accretive product mission from this Insights brief. Identify the smallest compounding feature or workflow improvement, the target project, the best local agent/runtime, acceptance criteria, evidence to inspect, and how mobile should stream progress and final artifacts.
+        """,
+    ),
+    MissionLaunchAction(
+        title = "Security Mission",
+        subtitle = "Trust boundaries, abuse paths, hardening work.",
+        tone = MissionTone.SECURITY,
+        prompt = """
+            Create a security mission from this Insights brief. Identify trust boundaries, risky data paths, likely abuse cases, validation commands, approval requirements, and the exact evidence the local Mac agent should collect before proposing changes.
+        """,
+    ),
+    MissionLaunchAction(
+        title = "UI Mission",
+        subtitle = "Operator surfaces, visual polish, accessibility.",
+        tone = MissionTone.UI_IMPROVEMENT,
+        prompt = """
+            Create a UI improvement mission from this Insights brief. Identify the most operator-visible screen or flow, the UX defect to fix, target files, visual acceptance criteria, accessibility checks, and the mobile timeline events I should expect while the Mac agent works.
+        """,
+    ),
+    MissionLaunchAction(
+        title = "Modernization Mission",
+        subtitle = "Migrations, stale APIs, compatibility cleanup.",
+        tone = MissionTone.MODERNIZATION,
+        prompt = """
+            Create a modernization mission from this Insights brief. Identify outdated architecture, dependencies, APIs, or code organization, the safest migration path, compatibility constraints, tests to run, and rollback risks.
+        """,
+    ),
+    MissionLaunchAction(
+        title = "Routing Mission",
+        subtitle = "Model selection, fallback, quota-aware routing.",
+        tone = MissionTone.PROVIDER_ROUTING,
+        prompt = """
+            Create a provider-routing mission from this Insights brief. Inspect routing policy, fallback behavior, quota state, model selection, and account-level failover, then recommend the highest-leverage routing fix with validation steps.
+        """,
+    ),
+    MissionLaunchAction(
+        title = "Cost Mission",
+        subtitle = "Spend reduction without quality loss.",
+        tone = MissionTone.COST_EFFICIENCY,
+        prompt = """
+            Create a cost-efficiency mission from this Insights brief. Find the highest-confidence spend reduction, target providers or models, expected savings, quality risks, validation queries, and implementation steps.
+        """,
+    ),
+    MissionLaunchAction(
+        title = "Focus Mission",
+        subtitle = "Repo focus, priority, next best outcome.",
+        tone = MissionTone.PROJECT_FOCUS,
+        prompt = """
+            Create a project-focus mission from this Insights brief. Identify the repo or surface consuming the most attention, the most valuable next outcome, distractions to avoid, evidence to collect, and a focused execution plan.
+        """,
+    ),
+    MissionLaunchAction(
+        title = "Custom Mission",
+        subtitle = "Dispatch the current brief as a flexible prompt.",
+        tone = MissionTone.CUSTOM,
+        prompt = """
+            Create a custom local-agent mission from this Insights brief. Preserve the brief context, choose the best runtime, name the target project, list acceptance criteria, and stream all reasoning, tool calls, tool results, changed files, and final answer back to mobile.
+        """,
+    ),
 )
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MissionLaunchpad(onSelect: (MissionLaunchAction, MissionRuntimeTarget) -> Unit) {
+private fun MissionLaunchpad(onSelect: (MissionLaunchAction, MissionLaunchOptions) -> Unit) {
     var selectedRuntime by remember { mutableStateOf(MissionRuntimeTarget.AUTO) }
+    var targetProject by remember { mutableStateOf("") }
+    var selectedDepth by remember { mutableStateOf(MissionDepth.STANDARD) }
+    var selectedApprovalMode by remember { mutableStateOf(MissionApprovalMode.EXISTING) }
+    var commandsAllowed by remember { mutableStateOf(false) }
+    var fileEditsAllowed by remember { mutableStateOf(false) }
+    val launchOptions = MissionLaunchOptions(
+        requestedRuntime = selectedRuntime.firestoreValue,
+        targetProject = targetProject.trim().ifBlank { null },
+        depth = selectedDepth.firestoreValue,
+        approvalMode = selectedApprovalMode.firestoreValue,
+        commandsAllowed = commandsAllowed,
+        fileEditsAllowed = fileEditsAllowed,
+    )
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AuroraSpacing.md.dp),
@@ -585,41 +767,179 @@ private fun MissionLaunchpad(onSelect: (MissionLaunchAction, MissionRuntimeTarge
                 }
             }
         }
+        MissionOptionsPanel(
+            targetProject = targetProject,
+            onTargetProjectChange = { targetProject = it },
+            selectedDepth = selectedDepth,
+            onDepthChange = { selectedDepth = it },
+            selectedApprovalMode = selectedApprovalMode,
+            onApprovalModeChange = { selectedApprovalMode = it },
+            commandsAllowed = commandsAllowed,
+            onCommandsAllowedChange = { commandsAllowed = it },
+            fileEditsAllowed = fileEditsAllowed,
+            onFileEditsAllowedChange = { fileEditsAllowed = it },
+        )
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
             verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
         ) {
             missionLaunchActions.forEach { action ->
-                MissionLaunchButton(action = action, runtime = selectedRuntime, onSelect = onSelect)
+                MissionLaunchButton(action = action, options = launchOptions, onSelect = onSelect)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MissionOptionsPanel(
+    targetProject: String,
+    onTargetProjectChange: (String) -> Unit,
+    selectedDepth: MissionDepth,
+    onDepthChange: (MissionDepth) -> Unit,
+    selectedApprovalMode: MissionApprovalMode,
+    onApprovalModeChange: (MissionApprovalMode) -> Unit,
+    commandsAllowed: Boolean,
+    onCommandsAllowedChange: (Boolean) -> Unit,
+    fileEditsAllowed: Boolean,
+    onFileEditsAllowedChange: (Boolean) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(BorderStroke(0.75.dp, MaterialTheme.colorScheme.outlineVariant), RoundedCornerShape(AuroraRadius.sm.dp))
+            .padding(AuroraSpacing.sm.dp),
+        verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+    ) {
+        OutlinedTextField(
+            value = targetProject,
+            onValueChange = onTargetProjectChange,
+            label = { Text("Target project path on Mac") },
+            singleLine = true,
+            textStyle = AuroraType.caption,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("insights.mission.targetProject"),
+        )
+        MissionOptionChips(
+            title = "Depth",
+            entries = MissionDepth.entries,
+            selected = selectedDepth,
+            label = { it.label },
+            onSelect = onDepthChange,
+        )
+        MissionOptionChips(
+            title = "Approval",
+            entries = MissionApprovalMode.entries,
+            selected = selectedApprovalMode,
+            label = { it.label },
+            onSelect = onApprovalModeChange,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp),
+            verticalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp),
+        ) {
+            MissionBooleanChip(
+                label = "Commands",
+                selected = commandsAllowed,
+                onClick = { onCommandsAllowedChange(!commandsAllowed) },
+                tag = "insights.mission.commandsAllowed",
+            )
+            MissionBooleanChip(
+                label = "File edits",
+                selected = fileEditsAllowed,
+                onClick = { onFileEditsAllowedChange(!fileEditsAllowed) },
+                tag = "insights.mission.fileEditsAllowed",
+            )
+        }
+    }
+}
+
+@Composable
+private fun <T> MissionOptionChips(
+    title: String,
+    entries: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = title,
+            style = AuroraType.monoTiny.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+            items(entries) { entry ->
+                MissionBooleanChip(
+                    label = label(entry),
+                    selected = entry == selected,
+                    onClick = { onSelect(entry) },
+                    tag = null,
+                )
             }
         }
     }
 }
 
 @Composable
+private fun MissionBooleanChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    tag: String?,
+) {
+    TextButton(
+        onClick = onClick,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(
+                if (selected) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+            )
+            .then(if (tag != null) Modifier.testTag(tag) else Modifier),
+    ) {
+        Text(
+            text = label,
+            style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+            color = if (selected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun MissionLaunchButton(
     action: MissionLaunchAction,
-    runtime: MissionRuntimeTarget,
-    onSelect: (MissionLaunchAction, MissionRuntimeTarget) -> Unit,
+    options: MissionLaunchOptions,
+    onSelect: (MissionLaunchAction, MissionLaunchOptions) -> Unit,
 ) {
     val isDark = isSystemInDarkTheme()
     val color = when (action.tone) {
         MissionTone.CREATIVE -> AuroraColors.whimsy(isDark)
         MissionTone.DILIGENCE -> if (isDark) AuroraColors.warningDark else AuroraColors.warning
         MissionTone.DEBT -> AuroraColors.ember(isDark)
+        MissionTone.ACCRETIVE -> InsightsColors.kpiPositive
+        MissionTone.SECURITY -> InsightsColors.kpiNegative
+        MissionTone.UI_IMPROVEMENT -> MaterialTheme.colorScheme.primary
+        MissionTone.MODERNIZATION -> MaterialTheme.colorScheme.onSurfaceVariant
+        MissionTone.PROVIDER_ROUTING -> if (isDark) AuroraColors.goldDark else AuroraColors.gold
+        MissionTone.COST_EFFICIENCY -> InsightsColors.kpiNeutral
+        MissionTone.PROJECT_FOCUS -> MaterialTheme.colorScheme.onSurfaceVariant
+        MissionTone.CUSTOM -> MaterialTheme.colorScheme.onSurface
     }
     val icon = when (action.tone) {
         MissionTone.CREATIVE -> Icons.Filled.AutoAwesome
         MissionTone.DILIGENCE -> Icons.Filled.VerifiedUser
         MissionTone.DEBT -> Icons.Filled.Build
+        else -> Icons.Filled.NorthEast
     }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AuroraRadius.sm.dp))
             .border(BorderStroke(0.75.dp, color.copy(alpha = 0.32f)), RoundedCornerShape(AuroraRadius.sm.dp))
-            .clickable { onSelect(action, runtime) }
+            .clickable { onSelect(action, options) }
             .padding(AuroraSpacing.md.dp)
             .testTag("insights.mission.${action.tone.firestoreValue()}")
             .semantics { contentDescription = action.title },
@@ -644,7 +964,7 @@ private fun MissionLaunchButton(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "${action.subtitle} Run on ${runtime.label}.",
+                text = "${action.subtitle} Run on ${missionRuntimeLabel(options.requestedRuntime)}.",
                 style = AuroraType.caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 3,
@@ -882,6 +1202,7 @@ private fun MissionBoardSection(
     missions: List<InsightMissionCandidate>,
     expandedMissionID: String?,
     onToggle: (String) -> Unit,
+    onLaunch: (InsightMissionCandidate) -> Unit,
     onCitationTap: (InsightCitation) -> Unit,
 ) {
     Column(
@@ -896,6 +1217,7 @@ private fun MissionBoardSection(
                 mission = mission,
                 expanded = expandedMissionID == mission.id,
                 onToggle = { onToggle(mission.id) },
+                onLaunch = { onLaunch(mission) },
                 onCitationTap = onCitationTap,
             )
         }
@@ -907,6 +1229,7 @@ private fun MissionCard(
     mission: InsightMissionCandidate,
     expanded: Boolean,
     onToggle: () -> Unit,
+    onLaunch: () -> Unit,
     onCitationTap: (InsightCitation) -> Unit,
 ) {
     val lensColor = missionLensColor(mission.lens)
@@ -951,6 +1274,16 @@ private fun MissionCard(
                 style = AuroraType.monoTiny,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            TextButton(
+                onClick = onLaunch,
+                modifier = Modifier.testTag("insights.mission.candidate.${mission.launchAction().tone.firestoreValue()}"),
+            ) {
+                Text(
+                    text = "Launch Mission",
+                    style = AuroraType.monoTiny.copy(fontWeight = FontWeight.SemiBold),
+                    color = lensColor,
+                )
+            }
         }
         Text(
             text = mission.title,
@@ -987,6 +1320,38 @@ private fun MissionCard(
             }
         }
     }
+}
+
+private fun missionRuntimeLabel(rawValue: String): String =
+    MissionRuntimeTarget.entries.firstOrNull { it.firestoreValue == rawValue }?.label ?: rawValue
+
+private fun InsightMissionCandidate.launchAction(): MissionLaunchAction {
+    val kind = dispatchMetadata["missionKind"] ?: when (lens) {
+        InsightMissionCandidate.Lens.ACCRETION -> "accretive"
+        InsightMissionCandidate.Lens.DILIGENCE -> "diligence"
+        InsightMissionCandidate.Lens.TECH_DEBT -> "debt"
+        InsightMissionCandidate.Lens.ROUTING -> "provider_routing"
+        InsightMissionCandidate.Lens.QUOTA -> "cost_efficiency"
+        InsightMissionCandidate.Lens.FOCUS -> "project_focus"
+    }
+    val criteria = acceptanceCriteria.take(4).joinToString(separator = "\n") { "- $it" }
+    val evidenceLabels = evidence.take(6).joinToString(separator = ", ") { it.label }
+    return MissionLaunchAction(
+        title = title,
+        subtitle = summary.ifBlank { "Recommended mission from this brief." },
+        tone = MissionTone.entries.firstOrNull { it.firestoreValue() == kind } ?: MissionTone.CUSTOM,
+        prompt = """
+            Launch this recommended $kind mission from the current Intelligence Brief.
+
+            Title: $title
+            Summary: $summary
+            Expected impact: $expectedImpact
+            Target project: ${projectDisplayName ?: projectID ?: "Use the brief evidence to choose the safest target project."}
+            Acceptance criteria:
+            ${criteria.ifBlank { "- Define acceptance criteria from the brief evidence." }}
+            Evidence: ${evidenceLabels.ifBlank { "Use the current brief citations and findings." }}
+        """,
+    )
 }
 
 private fun missionLensLabel(lens: InsightMissionCandidate.Lens): String =

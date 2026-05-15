@@ -899,6 +899,27 @@ export interface EnvConfig {
   /** StoreKit product ID that unlocks hosted quota sync. */
   hostedQuotaProductID: string;
 
+  /** Canonical premium bundle entitlement doc id/product id. */
+  burnBarProProductID: string;
+
+  /** Stripe price id for macOS/web BurnBar Pro checkout. */
+  stripeBurnBarProPriceID: string;
+
+  /** Stripe secret key for macOS/web BurnBar Pro checkout and webhook reads. */
+  stripeSecretKey: string;
+
+  /** Stripe webhook signing secret for subscription entitlement updates. */
+  stripeWebhookSecret: string;
+
+  /** Google Play package name used for Android subscription verification. */
+  googlePlayPackageName: string;
+
+  /** Google Play subscription product id for BurnBar Pro. */
+  googlePlaySubscriptionProductID: string;
+
+  /** Max encrypted session blob upload size in bytes. */
+  encryptedSessionBlobMaxBytes: number;
+
   /** HTTPS endpoint for the paid hosted quota runner. */
   hostedQuotaRunnerURL: string;
 

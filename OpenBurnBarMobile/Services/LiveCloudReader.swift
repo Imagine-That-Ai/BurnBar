@@ -281,6 +281,7 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
         guard let uid else { return }
         let name = await UIDevice.current.name
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let keypair = try? iOSDeviceKeypair()
 
         // General devices registry
         try? await db.collection("users").document(uid).collection("devices")
@@ -296,16 +297,40 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
         let escrowDoc = try? await db.collection("users").document(uid)
             .collection("escrow_devices").document(deviceId).getDocument()
         if escrowDoc?.exists != true {
+            var escrowData: [String: Any] = [
+                "deviceId": deviceId,
+                "deviceName": name,
+                "platform": "iOS",
+                "appVersion": version,
+                "trustState": EscrowDeviceTrustState.pending.rawValue,
+                "createdAt": FieldValue.serverTimestamp(),
+                "updatedAt": FieldValue.serverTimestamp()
+            ]
+            if let keypair {
+                escrowData["publicKeyFingerprint"] = keypair.publicKeyFingerprint
+                escrowData["keyVersion"] = keypair.keyVersion
+            }
+            try? await db.collection("users").document(uid)
+                .collection("escrow_devices").document(deviceId)
+                .setData(escrowData, merge: true)
+        }
+        if let keypair {
             try? await db.collection("users").document(uid)
                 .collection("escrow_devices").document(deviceId)
                 .setData([
-                    "deviceId": deviceId,
-                    "deviceName": name,
-                    "platform": "iOS",
-                    "appVersion": version,
-                    "trustState": EscrowDeviceTrustState.pending.rawValue,
-                    "createdAt": FieldValue.serverTimestamp(),
+                    "publicKeyFingerprint": keypair.publicKeyFingerprint,
+                    "keyVersion": keypair.keyVersion,
                     "updatedAt": FieldValue.serverTimestamp()
+                ], merge: true)
+            try? await db.collection("users").document(uid)
+                .collection("escrow_public_keys").document("\(deviceId)_\(keypair.keyVersion)")
+                .setData([
+                    "deviceId": deviceId,
+                    "publicKeyData": keypair.publicKeyData.base64EncodedString(),
+                    "publicKeyFingerprint": keypair.publicKeyFingerprint,
+                    "keyVersion": keypair.keyVersion,
+                    "algorithm": "ECIES-P256-AESGCM",
+                    "createdAt": FieldValue.serverTimestamp()
                 ], merge: true)
         }
     }

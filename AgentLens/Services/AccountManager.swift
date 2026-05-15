@@ -82,6 +82,9 @@ final class AccountManager {
         configureGoogleSignInIfPossible()
         refreshAuthStateSnapshot()
         observeAuthState()
+        #if DEBUG
+        signInWithE2EAccountIfNeeded()
+        #endif
     }
 
     private func configureGoogleSignInIfPossible() {
@@ -176,6 +179,48 @@ final class AccountManager {
         userEmail = user?.email
         userDisplayName = user?.displayName ?? user?.email
     }
+
+    #if DEBUG
+    private func signInWithE2EAccountIfNeeded(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        let token = environment["OPENBURNBAR_E2E_FIREBASE_CUSTOM_TOKEN"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = environment["OPENBURNBAR_E2E_FIREBASE_EMAIL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let password = environment["OPENBURNBAR_E2E_FIREBASE_PASSWORD"]
+        guard token?.isEmpty == false || (email?.isEmpty == false && password?.isEmpty == false) else {
+            return
+        }
+
+        let expectedUID = environment["OPENBURNBAR_E2E_FIREBASE_UID"]
+        if let expectedUID, Auth.auth().currentUser?.uid == expectedUID {
+            applyAuthStateSnapshot(Auth.auth().currentUser)
+            Self.authLogger.info("OpenBurnBar E2E Firebase sign-in already active.")
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                if let token, token.isEmpty == false {
+                    let result = try await Auth.auth().signIn(withCustomToken: token)
+                    self.applyAuthStateSnapshot(result.user)
+                    Self.authLogger.info("OpenBurnBar E2E Firebase sign-in active uidSuffix=\(result.user.uid.suffix(6), privacy: .public).")
+                } else if let email, let password {
+                    let credential = EmailAuthProvider.credential(withEmail: email, password: password)
+                    try await self.authenticate(with: credential)
+                    guard let user = self.currentUser else {
+                        throw AccountError.invalidCredential
+                    }
+                    Self.authLogger.info("OpenBurnBar E2E Firebase sign-in active uidSuffix=\(user.uid.suffix(6), privacy: .public).")
+                } else {
+                    return
+                }
+            } catch {
+                Self.authLogger.error("OpenBurnBar E2E Firebase sign-in failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+    #endif
 
     // MARK: - Sign In with Apple
 

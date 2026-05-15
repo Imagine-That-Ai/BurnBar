@@ -146,7 +146,7 @@ struct ChatMessageView: View {
     @ViewBuilder
     private func toolGroupStrip(_ pieces: [ChatTranscriptPiece]) -> some View {
         let reversedPieces = Array(pieces.reversed())
-        let lastToolID = transcript.last(where: { $0.kind == .toolUse })?.id
+        let lastToolID = transcript.last(where: { $0.kind == .toolUse || $0.kind == .toolResult })?.id
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 if isHermes {

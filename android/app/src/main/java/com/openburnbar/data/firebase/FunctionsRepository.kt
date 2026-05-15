@@ -3,10 +3,27 @@ package com.openburnbar.data.firebase
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
+import com.openburnbar.data.cloud.CloudVaultSealedText
 import com.openburnbar.data.hermes.PiConnectionMode
 import com.openburnbar.data.hermes.PiConnectionStatus
 import com.openburnbar.data.models.DeviceLinkCapability
 import kotlinx.coroutines.tasks.await
+
+data class CloudConversationSearchHit(
+    val id: String,
+    val chunkID: String,
+    val documentID: String,
+    val sourceKind: String,
+    val sourceID: String,
+    val provider: String?,
+    val projectName: String?,
+    val sealedTitle: CloudVaultSealedText,
+    val sealedSnippet: CloudVaultSealedText,
+    val sealedBodyPreview: CloudVaultSealedText?,
+    val storagePath: String,
+    val bodyHash: String,
+    val score: Double
+)
 
 class FunctionsRepository {
     private val functions: FirebaseFunctions = Firebase.functions
@@ -17,8 +34,34 @@ class FunctionsRepository {
             .await()
         val data = result.getData() as? Map<*, *> ?: return emptyList()
         @Suppress("UNCHECKED_CAST")
-        return data["results"] as? List<Map<String, Any>> ?: emptyList()
+        return data["hits"] as? List<Map<String, Any>>
+            ?: data["results"] as? List<Map<String, Any>>
+            ?: emptyList()
     }
+
+    suspend fun searchEncryptedConversationIndex(
+        tokenHashes: List<String>,
+        limit: Int = 25
+    ): List<CloudConversationSearchHit> {
+        val data = callMap(
+            "searchEncryptedConversationIndex",
+            mapOf(
+                "tokenHashes" to tokenHashes.take(10),
+                "limit" to limit.coerceIn(1, 50)
+            )
+        )
+        @Suppress("UNCHECKED_CAST")
+        val hits = data["hits"] as? List<Map<String, Any>> ?: return emptyList()
+        return hits.mapNotNull { it.toCloudConversationSearchHit() }
+    }
+
+    suspend fun verifyGooglePlayBurnBarProSubscription(
+        purchaseToken: String,
+        productID: String = "com.openburnbar.pro.monthly"
+    ): Map<String, Any> = callMap(
+        "verifyGooglePlayBurnBarProSubscription",
+        mapOf("purchaseToken" to purchaseToken, "productID" to productID)
+    )
 
     suspend fun rebuildUsageRollups() {
         functions.getHttpsCallable("rebuildUsageRollups").call().await()
@@ -176,4 +219,39 @@ class FunctionsRepository {
         @Suppress("UNCHECKED_CAST")
         return result.getData() as? Map<String, Any> ?: emptyMap()
     }
+}
+
+private fun Map<String, Any>.toCloudConversationSearchHit(): CloudConversationSearchHit? {
+    val sealedTitle = (this["sealedTitle"] as? Map<*, *>)?.toSealedText() ?: return null
+    val sealedSnippet = (this["sealedSnippet"] as? Map<*, *>)?.toSealedText() ?: return null
+    return CloudConversationSearchHit(
+        id = this["id"] as? String ?: return null,
+        chunkID = this["chunkID"] as? String ?: "",
+        documentID = this["documentID"] as? String ?: return null,
+        sourceKind = this["sourceKind"] as? String ?: "conversation",
+        sourceID = this["sourceID"] as? String ?: "",
+        provider = this["provider"] as? String,
+        projectName = this["projectName"] as? String,
+        sealedTitle = sealedTitle,
+        sealedSnippet = sealedSnippet,
+        sealedBodyPreview = (this["sealedBodyPreview"] as? Map<*, *>)?.toSealedText(),
+        storagePath = this["storagePath"] as? String ?: return null,
+        bodyHash = this["bodyHash"] as? String ?: return null,
+        score = (this["score"] as? Number)?.toDouble() ?: 0.0
+    )
+}
+
+private fun Map<*, *>.toSealedText(): CloudVaultSealedText? {
+    val algorithm = this["algorithm"] as? String ?: return null
+    val keyVersion = (this["keyVersion"] as? Number)?.toInt() ?: return null
+    val nonce = this["nonce"] as? String ?: return null
+    val ciphertext = this["ciphertext"] as? String ?: return null
+    val tag = this["tag"] as? String ?: return null
+    return CloudVaultSealedText(
+        algorithm = algorithm,
+        keyVersion = keyVersion,
+        nonce = nonce,
+        ciphertext = ciphertext,
+        tag = tag
+    )
 }

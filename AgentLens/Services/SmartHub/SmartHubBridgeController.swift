@@ -468,8 +468,19 @@ final class SmartHubBridgeController {
         let period = settingsManager.smartHubQuotaTimePeriod
         let now = Date()
         let runCostTotals = runCostTotalsForPeriod(period, now: now)
-        let providers = quotaProviders(period: period, runCostTotals: runCostTotals, now: now)
+        let quotaProviders = quotaProviders(period: period, runCostTotals: runCostTotals, now: now)
+        let runCostTotals5h = runCostTotalsForPeriod(.rolling5h, now: now)
+        let runCostTotals7d = runCostTotalsForPeriod(.rolling7d, now: now)
+        let burnProviders = burnProviders(
+            period: period,
+            runCostTotals: runCostTotals,
+            runCostTotals5h: runCostTotals5h,
+            runCostTotals7d: runCostTotals7d,
+            now: now
+        )
+        let providers = quotaProviders + burnProviders
         let aggregateSpend = runCostTotals.values.reduce(0.0) { $0 + $1.totalCost }
+        let aggregateTokens = runCostTotals.values.reduce(0) { $0 + $1.totalTokens }
 
         let totalText: String
         if providers.isEmpty {
@@ -488,8 +499,13 @@ final class SmartHubBridgeController {
         let subFormatter = DateFormatter()
         subFormatter.timeStyle = .short
 
+        let totalTokensText = aggregateTokens > 0
+            ? Self.formatValueAbbreviation(Double(aggregateTokens), unit: .tokens)
+            : ""
+
         return SmartHubBridgeSnapshot(
             totalSpend: totalText,
+            totalTokens: totalTokensText,
             headline: providers.isEmpty
                 ? "Waiting on the first refresh"
                 : "Showing \(period.displayName.lowercased())",
@@ -539,12 +555,12 @@ final class SmartHubBridgeController {
             // serialization tests) keep working.
             let primaryBucket = Self.bestBucket(in: primary, for: period) ?? primary.primaryDisplayableBucket
             let primaryPercent = primaryBucket.map { Int(($0.progressFraction * 100).rounded()) } ?? 0
-            let primaryTone = tone(for: primaryPercent)
+            let primaryTone = Self.tone(for: primaryPercent)
             let primaryLabel = primaryBucket?.usageText ?? primary.statusMessage
             let primaryWindowLabel = primaryBucket.map(Self.windowLabel(for:)) ?? ""
 
             // Rich card pieces.
-            let buckets = Self.bridgeBuckets(from: primary.displayableQuotaBuckets, tone: tone)
+            let buckets = Self.bridgeBuckets(from: primary.displayableQuotaBuckets, tone: Self.tone)
             let accounts = Self.bridgeAccounts(
                 for: provider,
                 snapshots: accountSnapshots,
@@ -797,11 +813,17 @@ final class SmartHubBridgeController {
             let label = snap.accountLabel ?? snap.accountID ?? "Default"
             let isActive = activeAccountID == snap.accountID
             let (badge, tone) = accountBadge(for: snap, isActive: isActive, primary: primary)
+            let accountBuckets = Self.bridgeBuckets(from: snap.displayableQuotaBuckets, tone: Self.tone).prefix(2)
+            let accountPercent = snap.primaryDisplayableBucket.map {
+                Int(($0.progressFraction * 100).rounded())
+            } ?? 0
             return SmartHubBridgeSnapshot.Provider.Account(
                 label: label,
                 badge: badge,
                 tone: tone,
-                isActive: isActive
+                isActive: isActive,
+                buckets: Array(accountBuckets),
+                percent: accountPercent
             )
         }
     }
@@ -857,11 +879,13 @@ final class SmartHubBridgeController {
     }
 
     /// Headline token count at the top of each card. Picks the biggest
-    /// `usedValue` across token/currency buckets so providers that expose
-    /// multiple windows ("5h" + "weekly") surface their dominant number
+    /// `usedValue` across token buckets so providers that expose multiple
+    /// token windows ("5h" + "weekly") surface their dominant token number
     /// (matching how the mock renders "5.4B" for Claude, "42.0B" for Codex).
+    /// Currency quota buckets intentionally do not feed this value; the page
+    /// has a separate `tokenTotalCurrency` field for dollar mode.
     private static func bridgeTokenTotal(buckets: [ProviderQuotaBucket]) -> String {
-        let tokenBuckets = buckets.filter { $0.unit == .tokens || $0.unit == .currency }
+        let tokenBuckets = buckets.filter { $0.unit == .tokens }
         let best = tokenBuckets.compactMap { bucket -> (Double, ProviderQuotaUnit)? in
             guard let used = bucket.usedValue, used > 0 else { return nil }
             return (used, bucket.unit)
@@ -1017,7 +1041,7 @@ final class SmartHubBridgeController {
         PixelClockSnapshotAdapter.windowLabel(for: bucket)
     }
 
-    private func tone(for percent: Int) -> SmartHubBridgeSnapshot.Provider.Tone {
+    private static func tone(for percent: Int) -> SmartHubBridgeSnapshot.Provider.Tone {
         switch percent {
         case 0..<60:    return .success
         case 60..<85:   return .ember

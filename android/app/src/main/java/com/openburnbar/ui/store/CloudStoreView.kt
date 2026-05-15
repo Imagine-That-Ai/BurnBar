@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -39,6 +40,7 @@ fun CloudStoreView(
     onClose: () -> Unit = {},
     subscriptionStore: HostedQuotaSubscriptionStore = viewModel()
 ) {
+    val context = LocalContext.current
     val isActive by subscriptionStore.isActive.collectAsState()
     val isLoading by subscriptionStore.isLoading.collectAsState()
     val error by subscriptionStore.error.collectAsState()
@@ -46,7 +48,10 @@ fun CloudStoreView(
     val expirationDate by subscriptionStore.expirationDate.collectAsState()
     val purchaseDate by subscriptionStore.purchaseDate.collectAsState()
 
-    LaunchedEffect(Unit) { subscriptionStore.load() }
+    LaunchedEffect(context) {
+        subscriptionStore.initialize(context)
+        subscriptionStore.load()
+    }
 
     Scaffold(
         topBar = {
@@ -73,7 +78,7 @@ fun CloudStoreView(
                 if (isActive) {
                     MemberCard(expirationDate = expirationDate, purchaseDate = purchaseDate)
                 } else {
-                    PlanPicker(priceText = productDetails?.oneTimePurchaseOfferDetails?.formattedPrice ?: "$4.99")
+                    PlanPicker(priceText = productDetails?.formattedPrice ?: "$4.99")
                 }
             }
 
@@ -91,16 +96,17 @@ fun CloudStoreView(
 
             if (!isActive) {
                 item {
+                    val activity = context as? android.app.Activity
                     Button(
-                        onClick = { /* subscriptionStore.purchase(activity) */ },
+                        onClick = { activity?.let(subscriptionStore::purchase) },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = !isLoading,
+                        enabled = !isLoading && activity != null,
                         colors = ButtonDefaults.buttonColors(containerColor = AuroraColors.ember)
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White)
                         } else {
-                            Text("Subscribe — ${productDetails?.oneTimePurchaseOfferDetails?.formattedPrice ?: "$4.99"}/mo")
+                            Text("Subscribe — ${productDetails?.formattedPrice ?: "$4.99"}/mo")
                         }
                     }
                 }

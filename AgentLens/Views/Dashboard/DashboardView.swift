@@ -38,6 +38,7 @@ struct DashboardView: View {
     @AppStorage("dashboardChatPreferMaximized") var preferMaximizedChat = false
     var chatController: ChatSessionController
     @State var quotaService = ProviderQuotaService.shared
+    @State var missionConsoleController: MissionConsoleWindowController?
 
     init(
         dataStore: DataStore,
@@ -156,6 +157,9 @@ struct DashboardView: View {
         }
         .onAppear {
             autoExpandTimeRangeIfNeeded()
+            if missionConsoleController == nil {
+                missionConsoleController = MissionConsoleWindowController.bind(to: operatingLayer)
+            }
         }
         .onChange(of: dataStore.totalUsageSessionCount) { _, _ in
             autoExpandTimeRangeIfNeeded()
@@ -206,6 +210,11 @@ struct DashboardView: View {
                         ))
                     }
                     if !chatPanelOpen {
+                        if let controller = missionConsoleController {
+                            MissionFAB(host: controller.host) {
+                                controller.makeOrShow()
+                            }
+                        }
                         ChatFAB(hasNewInsights: hasNewInsightPulse) {
                             if !settingsManager.cliAssistantConsentShown {
                                 showCLIConsentSheet = true

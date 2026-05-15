@@ -1,4 +1,5 @@
 import AppKit
+import FirebaseAuth
 import FirebaseCore
 import FirebaseAppCheck
 import GoogleSignIn
@@ -672,6 +673,9 @@ struct OpenBurnBarApp: App {
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
         }
         AccountManager.shared.onFirebaseConfigured()
+        #if DEBUG
+        signInWithE2ECustomTokenIfNeeded()
+        #endif
 
         // Validate App Check token when cloud sync is enabled.
         // This is a fail-open warning: the app continues to work but logs a warning.
@@ -679,6 +683,41 @@ struct OpenBurnBarApp: App {
             await validateAppCheckIfNeeded()
         }
     }
+
+    #if DEBUG
+    private static func signInWithE2ECustomTokenIfNeeded(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        let token = environment["OPENBURNBAR_E2E_FIREBASE_CUSTOM_TOKEN"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = environment["OPENBURNBAR_E2E_FIREBASE_EMAIL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let password = environment["OPENBURNBAR_E2E_FIREBASE_PASSWORD"]
+        guard token?.isEmpty == false || (email?.isEmpty == false && password?.isEmpty == false) else {
+            return
+        }
+
+        let expectedUID = environment["OPENBURNBAR_E2E_FIREBASE_UID"]
+        if let expectedUID, Auth.auth().currentUser?.uid == expectedUID {
+            return
+        }
+
+        Task { @MainActor in
+            do {
+                let result: AuthDataResult
+                if let token, token.isEmpty == false {
+                    result = try await Auth.auth().signIn(withCustomToken: token)
+                } else if let email, let password {
+                    result = try await Auth.auth().signIn(withEmail: email, password: password)
+                } else {
+                    return
+                }
+                AccountManager.shared.onFirebaseConfigured()
+                print("OpenBurnBar E2E Firebase sign-in active for uid \(result.user.uid).")
+            } catch {
+                print("warning: OpenBurnBar E2E Firebase sign-in failed: \(error.localizedDescription)")
+            }
+        }
+    }
+    #endif
 
     /// Validates that App Check is functional when cloud sync is enabled.
     /// Posts a notification if App Check cannot obtain a token so the UI can warn the user.

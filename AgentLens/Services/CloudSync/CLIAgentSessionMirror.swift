@@ -204,12 +204,12 @@ final class CLIAgentSessionMirror {
                 if !piece.value.isEmpty {
                     bodyParts.append(piece.value)
                 }
-            case .toolUse:
+            case .toolUse, .toolResult:
                 toolUses.append(
                     CLIAgentToolUse(
                         id: piece.id,
                         name: piece.value,
-                        status: "done",
+                        status: piece.kind == .toolResult ? "completed" : "done",
                         detail: piece.detail,
                         startedAt: message.timestamp
                     )

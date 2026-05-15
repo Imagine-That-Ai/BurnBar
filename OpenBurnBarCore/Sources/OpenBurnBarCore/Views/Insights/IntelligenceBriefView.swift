@@ -23,9 +23,15 @@ public struct IntelligenceBriefView: View {
     public let result: InsightAnalysisResult
     public let onCitationTap: (InsightCitation) -> Void
     public let onFollowUpTap: (InsightFollowUpQuestion) -> Void
-    public let onMissionLaunchTap: (InsightFollowUpQuestion, String, String) -> Void
+    public let onMissionLaunchTap: (InsightFollowUpQuestion, String, String, InsightMissionLaunchOptions) -> Void
     public let onPinWidget: (InsightGeneratedWidget) -> Void
     public let onConfigureModel: (() -> Void)?
+    /// Optional callback wired by shells that know how to open the
+    /// BurnBar Pro paywall (StoreKit sheet on iOS/macOS, Play Billing
+    /// flow on Android). The brief surfaces this CTA only when the
+    /// orchestrator marked the answer as "BurnBar Pro required" —
+    /// connected users never see it.
+    public let onUpgradeToPro: (() -> Void)?
     public let onShowAudit: (() -> Void)?
 
     /// When `true`, structural ScrollViews (vertical outer and horizontal
@@ -53,18 +59,20 @@ public struct IntelligenceBriefView: View {
         result: InsightAnalysisResult,
         onCitationTap: @escaping (InsightCitation) -> Void = { _ in },
         onFollowUpTap: @escaping (InsightFollowUpQuestion) -> Void = { _ in },
-        onMissionLaunchTap: ((InsightFollowUpQuestion, String, String) -> Void)? = nil,
+        onMissionLaunchTap: ((InsightFollowUpQuestion, String, String, InsightMissionLaunchOptions) -> Void)? = nil,
         onPinWidget: @escaping (InsightGeneratedWidget) -> Void = { _ in },
         onConfigureModel: (() -> Void)? = nil,
+        onUpgradeToPro: (() -> Void)? = nil,
         onShowAudit: (() -> Void)? = nil,
         snapshotMode: Bool = false
     ) {
         self.result = result
         self.onCitationTap = onCitationTap
         self.onFollowUpTap = onFollowUpTap
-        self.onMissionLaunchTap = onMissionLaunchTap ?? { question, _, _ in onFollowUpTap(question) }
+        self.onMissionLaunchTap = onMissionLaunchTap ?? { question, _, _, _ in onFollowUpTap(question) }
         self.onPinWidget = onPinWidget
         self.onConfigureModel = onConfigureModel
+        self.onUpgradeToPro = onUpgradeToPro
         self.onShowAudit = onShowAudit
         self.snapshotMode = snapshotMode
     }
@@ -130,8 +138,8 @@ public struct IntelligenceBriefView: View {
                 .id(Self.heroAnchorID)
                 .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
 
-            MissionLaunchpad { action, runtime in
-                onMissionLaunchTap(action.followUpQuestion, action.kind.firestoreValue, runtime.firestoreValue)
+            MissionLaunchpad { action, options in
+                onMissionLaunchTap(action.followUpQuestion, action.kind.firestoreValue, options.requestedRuntime, options)
             }
             .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
 
@@ -240,7 +248,8 @@ public struct IntelligenceBriefView: View {
                 BriefingAnswerPanel(
                     answer: answer,
                     onCitationTap: onCitationTap,
-                    onConfigureModel: onConfigureModel
+                    onConfigureModel: onConfigureModel,
+                    onUpgradeToPro: onUpgradeToPro
                 )
             }
 
@@ -358,22 +367,29 @@ public struct IntelligenceBriefView: View {
     private func heroEyebrowSymbol(for answer: InsightBriefingAnswer) -> String {
         if answer.isFallback { return "exclamationmark.triangle.fill" }
         switch answer.source {
-        case .modelGateway: return "sparkles"
-        case .localRules:   return "lock.shield.fill"
+        case .modelGateway:   return "sparkles"
+        case .hostedFallback: return "cloud.fill"
+        case .localRules:     return "lock.shield.fill"
         }
     }
 
     private func heroEyebrowColor(for answer: InsightBriefingAnswer) -> Color {
         if answer.isFallback { return UnifiedDesignSystem.Colors.warning }
         switch answer.source {
-        case .modelGateway: return UnifiedDesignSystem.Colors.ember
-        case .localRules:   return UnifiedDesignSystem.Colors.whimsy
+        case .modelGateway:   return UnifiedDesignSystem.Colors.ember
+        case .hostedFallback: return UnifiedDesignSystem.Colors.hermesAureate
+        case .localRules:     return UnifiedDesignSystem.Colors.whimsy
         }
     }
 
     private func heroEyebrowText(for answer: InsightBriefingAnswer) -> String {
         switch answer.source {
         case .modelGateway: return "Answered by \(answer.modelDisplayName)"
+        case .hostedFallback:
+            // BurnBar's hosted fallback fired — surface it honestly so
+            // the user understands their own route wasn't used and
+            // can connect one if they want privacy / their own quota.
+            return "Answered by \(answer.modelDisplayName) · hosted fallback"
         case .localRules:
             // Don't claim to "answer" when there's no LLM behind it —
             // the local rule engine only summarizes the digest.
@@ -471,6 +487,21 @@ public struct IntelligenceBriefView: View {
                             withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                                 expandedMissionID = expandedMissionID == mission.id ? nil : mission.id
                             }
+                        },
+                        onLaunch: {
+                            onMissionLaunchTap(
+                                mission.launchQuestion,
+                                mission.launchMissionKind,
+                                InsightMissionRuntimeTarget.auto.firestoreValue,
+                                InsightMissionLaunchOptions(
+                                    requestedRuntime: InsightMissionRuntimeTarget.auto.firestoreValue,
+                                    targetProject: mission.projectDisplayName ?? mission.projectID,
+                                    depth: InsightMissionDepth.standard.rawValue,
+                                    approvalMode: InsightMissionApprovalMode.existingPolicy.rawValue,
+                                    commandsAllowed: false,
+                                    fileEditsAllowed: false
+                                )
+                            )
                         },
                         onCitationTap: onCitationTap
                     )
@@ -671,14 +702,42 @@ private struct BriefingAnswerPanel: View {
     /// summary. Rendered only when the answer is explicitly framed as
     /// "no LLM configured" so connected users never see the prompt.
     let onConfigureModel: (() -> Void)?
+    /// Optional "Upgrade to BurnBar Pro" call-to-action. Wired by
+    /// shells that own the StoreKit / Play-Billing paywall. Only
+    /// rendered when the orchestrator marked the answer as
+    /// `subscriptionRequiredDisplayName`.
+    let onUpgradeToPro: (() -> Void)?
+
+    /// True when the answer is the dedicated "BurnBar Pro required"
+    /// disclosure — the user tried to use the hosted route without an
+    /// active subscription and the orchestrator landed on local rules.
+    private var showsUpgradeToProCTA: Bool {
+        guard onUpgradeToPro != nil else { return false }
+        return answer.modelDisplayName == InsightBriefingAnswer.subscriptionRequiredDisplayName
+    }
 
     /// True when this answer card is the honest "Data summary · no LLM
     /// configured" surface — the user can only escape it by attaching a
     /// gateway, so we surface the CTA right under the body.
     private var showsConnectModelCTA: Bool {
         guard onConfigureModel != nil else { return false }
-        return answer.source == .localRules
-            && answer.modelDisplayName.localizedCaseInsensitiveContains("no LLM configured")
+        // When the upgrade CTA is being shown, suppress the
+        // connect-model CTA — the user already saw the unconfigured
+        // state and consciously hit the paywalled hosted route, so
+        // the right next step is upgrading (or attaching a different
+        // user-owned gateway via the row icon, not a second button).
+        if showsUpgradeToProCTA { return false }
+        switch answer.source {
+        case .localRules:
+            return answer.modelDisplayName.localizedCaseInsensitiveContains("no LLM configured")
+        case .hostedFallback:
+            // The hosted route answered, but the user might prefer to
+            // route through their own LLM for privacy + cost control.
+            // Always offer the CTA so they can promote their own route.
+            return true
+        case .modelGateway:
+            return false
+        }
     }
 
     var body: some View {
@@ -716,7 +775,29 @@ private struct BriefingAnswerPanel: View {
                 FootnoteChipFlow(citations: answer.citations, onTap: onCitationTap)
             }
 
-            if showsConnectModelCTA, let onConfigureModel {
+            if showsUpgradeToProCTA, let onUpgradeToPro {
+                Button(action: onUpgradeToPro) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Upgrade to BurnBar Pro")
+                            .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
+                    }
+                    .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule().fill(UnifiedDesignSystem.Colors.hermesAureate.opacity(0.20))
+                    )
+                    .overlay(
+                        Capsule().strokeBorder(UnifiedDesignSystem.Colors.hermesAureate.opacity(0.65), lineWidth: 0.75)
+                    )
+                    .foregroundStyle(UnifiedDesignSystem.Colors.hermesAureate)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Upgrade to BurnBar Pro")
+                .accessibilityHint("Unlocks the BurnBar-hosted Intelligence Brief AI answers. Subscription required.")
+                .padding(.top, 2)
+            } else if showsConnectModelCTA, let onConfigureModel {
                 Button(action: onConfigureModel) {
                     HStack(spacing: 6) {
                         Image(systemName: "sparkles")
@@ -846,6 +927,8 @@ public enum InsightMissionRuntimeTarget: String, CaseIterable, Identifiable, Sen
     case hermes
     case openclaw
     case piAgent
+    case opencode
+    case ollama
 
     public var id: String { rawValue }
     public var firestoreValue: String { rawValue }
@@ -858,6 +941,8 @@ public enum InsightMissionRuntimeTarget: String, CaseIterable, Identifiable, Sen
         case .hermes: return "Hermes"
         case .openclaw: return "OpenClaw"
         case .piAgent: return "Pi"
+        case .opencode: return "OpenCode"
+        case .ollama: return "Ollama"
         }
     }
 
@@ -869,13 +954,90 @@ public enum InsightMissionRuntimeTarget: String, CaseIterable, Identifiable, Sen
     }
 }
 
+public enum InsightMissionDepth: String, CaseIterable, Identifiable, Sendable {
+    case light
+    case standard
+    case deep
+    case max
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .light: return "Light"
+        case .standard: return "Standard"
+        case .deep: return "Deep"
+        case .max: return "Max"
+        }
+    }
+}
+
+public enum InsightMissionApprovalMode: String, CaseIterable, Identifiable, Sendable {
+    case existingPolicy = "existing_policy"
+    case manualAll = "manual_all"
+    case riskyOnly = "risky_only"
+    case readOnly = "read_only"
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .existingPolicy: return "Existing"
+        case .manualAll: return "Manual"
+        case .riskyOnly: return "Risky"
+        case .readOnly: return "Read only"
+        }
+    }
+}
+
+public struct InsightMissionLaunchOptions: Equatable, Sendable {
+    public let requestedRuntime: String
+    public let targetProject: String?
+    public let depth: String
+    public let approvalMode: String
+    public let commandsAllowed: Bool
+    public let fileEditsAllowed: Bool
+
+    public init(
+        requestedRuntime: String,
+        targetProject: String?,
+        depth: String,
+        approvalMode: String,
+        commandsAllowed: Bool,
+        fileEditsAllowed: Bool
+    ) {
+        self.requestedRuntime = requestedRuntime
+        self.targetProject = targetProject
+        self.depth = depth
+        self.approvalMode = approvalMode
+        self.commandsAllowed = commandsAllowed
+        self.fileEditsAllowed = fileEditsAllowed
+    }
+}
+
 public struct InsightMissionLaunchAction: Identifiable, Sendable {
     public enum Kind: String, CaseIterable, Sendable {
         case creative
         case diligence
         case debt
+        case accretive
+        case security
+        case uiImprovement
+        case modernization
+        case providerRouting
+        case costEfficiency
+        case projectFocus
+        case custom
 
-        public var firestoreValue: String { rawValue }
+        public var firestoreValue: String {
+            switch self {
+            case .uiImprovement: return "ui_improvement"
+            case .providerRouting: return "provider_routing"
+            case .costEfficiency: return "cost_efficiency"
+            case .projectFocus: return "project_focus"
+            default: return rawValue
+            }
+        }
     }
 
     public let kind: Kind
@@ -906,6 +1068,38 @@ public struct InsightMissionLaunchAction: Identifiable, Sendable {
             return """
             Create a technical debt mission from this Insights brief for my local agent fleet: Hermes, Pi, OpenClaw/OpenClaude, Claude, and Codex. Recommend the best agent, project/module focus, debt hypothesis, delivery drag, validation commands, acceptance criteria, remediation sequence, and how mobile should summarize progress. Also recommend adjacent modernization, dependency, architecture, and UI cleanup missions when the evidence supports them.
             """
+        case .accretive:
+            return """
+            Create an accretive product mission from this Insights brief. Identify the smallest compounding feature or workflow improvement, the target project, the best local agent/runtime, acceptance criteria, evidence to inspect, and how mobile should stream progress and final artifacts.
+            """
+        case .security:
+            return """
+            Create a security mission from this Insights brief. Identify trust boundaries, risky data paths, likely abuse cases, validation commands, approval requirements, and the exact evidence the local Mac agent should collect before proposing changes.
+            """
+        case .uiImprovement:
+            return """
+            Create a UI improvement mission from this Insights brief. Identify the most operator-visible screen or flow, the UX defect to fix, target files, visual acceptance criteria, accessibility checks, and the mobile timeline events I should expect while the Mac agent works.
+            """
+        case .modernization:
+            return """
+            Create a modernization mission from this Insights brief. Identify outdated architecture, dependencies, APIs, or code organization, the safest migration path, compatibility constraints, tests to run, and rollback risks.
+            """
+        case .providerRouting:
+            return """
+            Create a provider-routing mission from this Insights brief. Inspect routing policy, fallback behavior, quota state, model selection, and account-level failover, then recommend the highest-leverage routing fix with validation steps.
+            """
+        case .costEfficiency:
+            return """
+            Create a cost-efficiency mission from this Insights brief. Find the highest-confidence spend reduction, target providers or models, expected savings, quality risks, validation queries, and implementation steps.
+            """
+        case .projectFocus:
+            return """
+            Create a project-focus mission from this Insights brief. Identify the repo or surface consuming the most attention, the most valuable next outcome, distractions to avoid, evidence to collect, and a focused execution plan.
+            """
+        case .custom:
+            return """
+            Create a custom local-agent mission from this Insights brief. Preserve the brief context, choose the best runtime, name the target project, list acceptance criteria, and stream all reasoning, tool calls, tool results, changed files, and final answer back to mobile.
+            """
         }
     }
 
@@ -927,15 +1121,80 @@ public struct InsightMissionLaunchAction: Identifiable, Sendable {
             title: "Debt Mission",
             subtitle: "Compounding drag, rewrite risk, focused remediation.",
             symbolName: "wrench.and.screwdriver"
+        ),
+        .init(
+            kind: .accretive,
+            title: "Accretive Mission",
+            subtitle: "Small compounding product or workflow wins.",
+            symbolName: "plus.forwardslash.minus"
+        ),
+        .init(
+            kind: .security,
+            title: "Security Mission",
+            subtitle: "Trust boundaries, abuse paths, hardening work.",
+            symbolName: "lock.shield"
+        ),
+        .init(
+            kind: .uiImprovement,
+            title: "UI Mission",
+            subtitle: "Operator surfaces, visual polish, accessibility.",
+            symbolName: "rectangle.and.pencil.and.ellipsis"
+        ),
+        .init(
+            kind: .modernization,
+            title: "Modernization Mission",
+            subtitle: "Migrations, stale APIs, compatibility cleanup.",
+            symbolName: "arrow.triangle.2.circlepath"
+        ),
+        .init(
+            kind: .providerRouting,
+            title: "Routing Mission",
+            subtitle: "Model selection, fallback, quota-aware routing.",
+            symbolName: "point.3.connected.trianglepath.dotted"
+        ),
+        .init(
+            kind: .costEfficiency,
+            title: "Cost Mission",
+            subtitle: "Spend reduction without quality loss.",
+            symbolName: "dollarsign.arrow.circlepath"
+        ),
+        .init(
+            kind: .projectFocus,
+            title: "Focus Mission",
+            subtitle: "Repo focus, priority, next best outcome.",
+            symbolName: "scope"
+        ),
+        .init(
+            kind: .custom,
+            title: "Custom Mission",
+            subtitle: "Dispatch the current brief as a flexible prompt.",
+            symbolName: "text.bubble"
         )
     ]
 }
 
 private struct MissionLaunchpad: View {
-    let onSelect: (InsightMissionLaunchAction, InsightMissionRuntimeTarget) -> Void
+    let onSelect: (InsightMissionLaunchAction, InsightMissionLaunchOptions) -> Void
 
     private let actions = InsightMissionLaunchAction.defaultActions
     @State private var selectedRuntime: InsightMissionRuntimeTarget = .auto
+    @State private var targetProject: String = ""
+    @State private var selectedDepth: InsightMissionDepth = .standard
+    @State private var selectedApprovalMode: InsightMissionApprovalMode = .existingPolicy
+    @State private var commandsAllowed = false
+    @State private var fileEditsAllowed = false
+
+    private var options: InsightMissionLaunchOptions {
+        let trimmedTargetProject = targetProject.trimmingCharacters(in: .whitespacesAndNewlines)
+        return InsightMissionLaunchOptions(
+            requestedRuntime: selectedRuntime.firestoreValue,
+            targetProject: trimmedTargetProject.isEmpty ? nil : trimmedTargetProject,
+            depth: selectedDepth.rawValue,
+            approvalMode: selectedApprovalMode.rawValue,
+            commandsAllowed: commandsAllowed,
+            fileEditsAllowed: fileEditsAllowed
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
@@ -950,28 +1209,35 @@ private struct MissionLaunchpad: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             RuntimeTargetPicker(selection: $selectedRuntime)
-            AdaptiveMissionActionGrid(actions: actions, selectedRuntime: selectedRuntime, onSelect: onSelect)
+            MissionOptionPanel(
+                targetProject: $targetProject,
+                selectedDepth: $selectedDepth,
+                selectedApprovalMode: $selectedApprovalMode,
+                commandsAllowed: $commandsAllowed,
+                fileEditsAllowed: $fileEditsAllowed
+            )
+            AdaptiveMissionActionGrid(actions: actions, options: options, onSelect: onSelect)
         }
     }
 }
 
 private struct AdaptiveMissionActionGrid: View {
     let actions: [InsightMissionLaunchAction]
-    let selectedRuntime: InsightMissionRuntimeTarget
-    let onSelect: (InsightMissionLaunchAction, InsightMissionRuntimeTarget) -> Void
+    let options: InsightMissionLaunchOptions
+    let onSelect: (InsightMissionLaunchAction, InsightMissionLaunchOptions) -> Void
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.md) {
                 ForEach(actions) { action in
-                    MissionLaunchButton(action: action, runtime: selectedRuntime, onSelect: onSelect)
+                    MissionLaunchButton(action: action, options: options, onSelect: onSelect)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
 
             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
                 ForEach(actions) { action in
-                    MissionLaunchButton(action: action, runtime: selectedRuntime, onSelect: onSelect)
+                    MissionLaunchButton(action: action, options: options, onSelect: onSelect)
                 }
             }
         }
@@ -980,12 +1246,16 @@ private struct AdaptiveMissionActionGrid: View {
 
 private struct MissionLaunchButton: View {
     let action: InsightMissionLaunchAction
-    let runtime: InsightMissionRuntimeTarget
-    let onSelect: (InsightMissionLaunchAction, InsightMissionRuntimeTarget) -> Void
+    let options: InsightMissionLaunchOptions
+    let onSelect: (InsightMissionLaunchAction, InsightMissionLaunchOptions) -> Void
+
+    private var runtimeLabel: String {
+        InsightMissionRuntimeTarget(rawValue: options.requestedRuntime)?.label ?? options.requestedRuntime
+    }
 
     var body: some View {
         Button {
-            onSelect(action, runtime)
+            onSelect(action, options)
         } label: {
             HStack(alignment: .top, spacing: UnifiedDesignSystem.Spacing.sm) {
                 Image(systemName: action.symbolName)
@@ -996,7 +1266,7 @@ private struct MissionLaunchButton: View {
                     Text(action.title)
                         .font(UnifiedDesignSystem.Typography.body.weight(.semibold))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                    Text("\(action.subtitle) Run on \(runtime.label).")
+                    Text("\(action.subtitle) Run on \(runtimeLabel).")
                         .font(UnifiedDesignSystem.Typography.caption)
                         .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                         .lineLimit(3)
@@ -1018,6 +1288,89 @@ private struct MissionLaunchButton: View {
         .accessibilityLabel(action.title)
         .accessibilityHint("Create a dispatch-ready Insights mission prompt")
         .accessibilityIdentifier("insights.mission.\(action.kind.firestoreValue)")
+    }
+}
+
+private struct MissionOptionPanel: View {
+    @Binding var targetProject: String
+    @Binding var selectedDepth: InsightMissionDepth
+    @Binding var selectedApprovalMode: InsightMissionApprovalMode
+    @Binding var commandsAllowed: Bool
+    @Binding var fileEditsAllowed: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+            TextField("Target project path on Mac", text: $targetProject)
+                .font(UnifiedDesignSystem.Typography.caption)
+                .padding(Edge.Set.horizontal, UnifiedDesignSystem.Spacing.sm)
+                .padding(Edge.Set.vertical, 9)
+                .background(UnifiedDesignSystem.Colors.surfaceElevated)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityIdentifier("insights.mission.targetProject")
+
+            MissionSegmentedPicker(
+                title: "Depth",
+                selection: $selectedDepth,
+                values: InsightMissionDepth.allCases,
+                label: \.label
+            )
+            MissionSegmentedPicker(
+                title: "Approval",
+                selection: $selectedApprovalMode,
+                values: InsightMissionApprovalMode.allCases,
+                label: \.label
+            )
+
+            HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                Toggle("Commands", isOn: $commandsAllowed)
+                    .toggleStyle(.button)
+                    .accessibilityIdentifier("insights.mission.commandsAllowed")
+                Toggle("File edits", isOn: $fileEditsAllowed)
+                    .toggleStyle(.button)
+                    .accessibilityIdentifier("insights.mission.fileEditsAllowed")
+            }
+            .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
+        }
+        .padding(UnifiedDesignSystem.Spacing.sm)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(UnifiedDesignSystem.Colors.borderSubtle, lineWidth: 0.75)
+        )
+    }
+}
+
+private struct MissionSegmentedPicker<Value: Identifiable & Equatable>: View {
+    let title: String
+    @Binding var selection: Value
+    let values: [Value]
+    let label: (Value) -> String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(UnifiedDesignSystem.Typography.monoTiny.weight(.semibold))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
+                    ForEach(values) { value in
+                        Button {
+                            selection = value
+                        } label: {
+                            Text(label(value))
+                                .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
+                                .foregroundStyle(selection == value ? UnifiedDesignSystem.Colors.background : UnifiedDesignSystem.Colors.textSecondary)
+                                .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
+                                .padding(.vertical, 7)
+                                .background(
+                                    Capsule()
+                                        .fill(selection == value ? UnifiedDesignSystem.Colors.textPrimary : UnifiedDesignSystem.Colors.surface)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1057,6 +1410,14 @@ private extension InsightMissionLaunchAction {
         case .creative: return UnifiedDesignSystem.Colors.whimsy
         case .diligence: return UnifiedDesignSystem.Colors.warning
         case .debt: return UnifiedDesignSystem.Colors.ember
+        case .accretive: return UnifiedDesignSystem.Colors.success
+        case .security: return UnifiedDesignSystem.Colors.error
+        case .uiImprovement: return UnifiedDesignSystem.Colors.hermesMercury
+        case .modernization: return UnifiedDesignSystem.Colors.textSecondary
+        case .providerRouting: return UnifiedDesignSystem.Colors.hermesAureate
+        case .costEfficiency: return UnifiedDesignSystem.Colors.warning
+        case .projectFocus: return UnifiedDesignSystem.Colors.textMuted
+        case .custom: return UnifiedDesignSystem.Colors.textPrimary
         }
     }
 }
@@ -1067,11 +1428,13 @@ private struct MissionCandidateRow: View {
     let mission: InsightMissionCandidate
     let isExpanded: Bool
     let onToggle: () -> Void
+    let onLaunch: () -> Void
     let onCitationTap: (InsightCitation) -> Void
 
     var body: some View {
-        Button(action: onToggle) {
-            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+        VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+            Button(action: onToggle) {
+                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
                 HStack(alignment: .firstTextBaseline, spacing: UnifiedDesignSystem.Spacing.sm) {
                     Text(lensLabel.uppercased())
                         .font(UnifiedDesignSystem.Typography.monoTiny)
@@ -1122,17 +1485,32 @@ private struct MissionCandidateRow: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .padding(UnifiedDesignSystem.Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(lensColor.opacity(isExpanded ? 0.55 : 0.28), lineWidth: isExpanded ? 1 : 0.5)
-            )
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Mission. \(lensLabel). \(priorityLabel) priority. \(mission.title). \(mission.summary)")
+            .accessibilityHint(isExpanded ? "Collapse mission details" : "Open mission details")
+
+            Button(action: onLaunch) {
+                HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
+                    Image(systemName: "play.circle.fill")
+                    Text("Launch \(lensLabel) Mission")
+                    Spacer(minLength: 0)
+                    Image(systemName: "arrow.up.right")
+                }
+                .font(UnifiedDesignSystem.Typography.caption.weight(.semibold))
+                .foregroundStyle(lensColor)
+                .padding(.top, UnifiedDesignSystem.Spacing.xs)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("insights.mission.candidate.\(mission.launchMissionKind)")
         }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Mission. \(lensLabel). \(priorityLabel) priority. \(mission.title). \(mission.summary)")
-        .accessibilityHint(isExpanded ? "Collapse mission details" : "Open mission details")
+        .padding(UnifiedDesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(lensColor.opacity(isExpanded ? 0.55 : 0.28), lineWidth: isExpanded ? 1 : 0.5)
+        )
     }
 
     private var lensLabel: String {

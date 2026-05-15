@@ -52,6 +52,7 @@ import {
 const ENTITLEMENT_SCHEMA_VERSION = 2;
 const VERIFICATION_VERSION = 2;
 const BINDING_SCHEMA_VERSION = 1;
+const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
 
 export interface ReconcileInput {
   /** The signed transaction JWS the caller provided. Required. */
@@ -158,11 +159,21 @@ export async function reconcileEntitlement(
       : undefined;
 
     if (existing && !shouldOverwrite(existing, next)) {
+      tx.set(
+        db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`),
+        buildBurnBarProEntitlementMirror(existing),
+        { merge: true }
+      );
       return { changed: false, entitlement: existing };
     }
 
     const merged = mergeWithExisting(existing, next);
     tx.set(docRef, merged, { merge: true });
+    tx.set(
+      db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`),
+      buildBurnBarProEntitlementMirror(merged),
+      { merge: true }
+    );
     return { changed: true, entitlement: merged };
   });
 
@@ -193,6 +204,31 @@ export async function reconcileEntitlement(
   }
 
   return { uid, entitlement: result.entitlement, changed: result.changed };
+}
+
+function buildBurnBarProEntitlementMirror(
+  hosted: HostedQuotaEntitlementDoc
+): Record<string, unknown> {
+  return {
+    id: BURNBAR_PRO_ENTITLEMENT_ID,
+    active: hosted.active,
+    productID: hosted.productID,
+    sourceProductID: hosted.productID,
+    entitlementFamily: "burnbar_pro",
+    features: {
+      hostedQuota: true,
+      hostedLLM: true,
+      encryptedSessionLogBackup: true,
+      cloudConversationSearch: true,
+    },
+    expiresAt: hosted.expiresAt,
+    expireAt: hosted.expireAt,
+    environment: hosted.environment,
+    source: hosted.source,
+    sourceEntitlementID: hosted.id,
+    updatedAt: hosted.updatedAt,
+    schemaVersion: 1,
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -31,6 +31,7 @@ import com.openburnbar.ui.components.FloatingChatMode
 import com.openburnbar.ui.components.FloatingChatPill
 import com.openburnbar.ui.hermes.AssistantsScreen
 import com.openburnbar.ui.hermes.HermesView
+import com.openburnbar.ui.insights.MissionActivityOverlay
 import com.openburnbar.ui.pulse.PulseView
 import com.openburnbar.ui.streams.StreamsView
 import com.openburnbar.ui.theme.AuroraSpacing
@@ -195,6 +196,12 @@ fun BurnBarNavHost(
             // including the floating chat pill.
             val hermesService = remember { com.openburnbar.data.hermes.HermesService() }
             com.openburnbar.ui.chartstudio.ChartStudioOverlay(hermes = hermesService)
+
+            MissionActivityOverlay(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = if (!isWideScreen) 104.dp else AuroraSpacing.lg.dp)
+            )
         } else {
             val isSigningIn by userStore.isSigningIn.collectAsState()
             val authError by userStore.authError.collectAsState()

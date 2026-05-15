@@ -1,4 +1,5 @@
 import UIKit
+import FirebaseAuth
 import FirebaseCore
 import FirebaseAppCheck
 import GoogleSignIn
@@ -67,6 +68,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         AppCheck.setAppCheckProviderFactory(factory)
 
         FirebaseApp.configure()
+        #if DEBUG
+        Self.signInWithE2ECustomTokenIfNeeded()
+        #endif
     }
 
     private static func googleServiceInfoLooksConfigured(at path: String) -> Bool {
@@ -106,6 +110,72 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             return false
         }
     }
+
+    #if DEBUG
+    private static func signInWithE2ECustomTokenIfNeeded(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        let token = environment["OPENBURNBAR_E2E_FIREBASE_CUSTOM_TOKEN"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = environment["OPENBURNBAR_E2E_FIREBASE_EMAIL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let password = environment["OPENBURNBAR_E2E_FIREBASE_PASSWORD"]
+        guard token?.isEmpty == false || (email?.isEmpty == false && password?.isEmpty == false) else {
+            return
+        }
+
+        let expectedUID = environment["OPENBURNBAR_E2E_FIREBASE_UID"]
+        if let expectedUID, Auth.auth().currentUser?.uid == expectedUID {
+            Task { @MainActor in
+                await launchE2EMissionIfRequested(environment: environment)
+            }
+            return
+        }
+
+        Task { @MainActor in
+            do {
+                let result: AuthDataResult
+                if let token, token.isEmpty == false {
+                    result = try await Auth.auth().signIn(withCustomToken: token)
+                } else if let email, let password {
+                    result = try await Auth.auth().signIn(withEmail: email, password: password)
+                } else {
+                    return
+                }
+                print("OpenBurnBarMobile E2E Firebase sign-in active for uid \(result.user.uid).")
+                await launchE2EMissionIfRequested(environment: environment)
+            } catch {
+                print("warning: OpenBurnBarMobile E2E Firebase sign-in failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private static func launchE2EMissionIfRequested(environment: [String: String]) async {
+        guard truthy(environment["OPENBURNBAR_E2E_LAUNCH_MISSION"]) else {
+            return
+        }
+
+        let runtime = environment["OPENBURNBAR_E2E_MISSION_RUNTIME"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetProject = environment["OPENBURNBAR_E2E_MISSION_TARGET"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prompt = environment["OPENBURNBAR_E2E_MISSION_PROMPT"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? "Reply with exactly: OpenBurnBar simulator mission complete."
+
+        do {
+            let requestID = try await CLIAgentMissionDispatcher.shared.dispatch(
+                title: "Simulator E2E Mission",
+                prompt: prompt,
+                missionKind: "custom",
+                requestedRuntime: runtime?.isEmpty == false ? runtime! : "ollama",
+                targetProject: targetProject?.isEmpty == false ? targetProject : nil,
+                depth: "standard",
+                approvalMode: "read_only",
+                commandsAllowed: false,
+                fileEditsAllowed: false
+            )
+            print("OpenBurnBarMobile E2E mission dispatched: \(requestID)")
+        } catch {
+            print("warning: OpenBurnBarMobile E2E mission dispatch failed: \(error.localizedDescription)")
+        }
+    }
+    #endif
 }
 
 /// App Check provider factory for release builds.

@@ -89,6 +89,9 @@ The OpenBurnBar Cloud purchase screen now includes a dedicated "Subscription Det
 Guideline 2.1(a) camera crash fix:
 Build ${APP.buildVersion} adds NSCameraUsageDescription to the iOS app Info.plist for the Take Photo attachment flow. The attachment menu also checks camera availability before presenting the camera sheet.
 
+Guideline 2.1(b) subscription responsiveness fix:
+Build ${APP.buildVersion} no longer blocks the Subscribe button on a Firebase-authenticated entitlement preflight. If App Review opens the OpenBurnBar Cloud screen before signing in, tapping Subscribe still presents Apple's StoreKit purchase flow immediately. Signed-in users continue to get server-side entitlement binding through appAccountToken, and signed-out purchases finish cleanly with an actionable sign-in/restore message instead of an Unauthenticated error.
+
 Terms of Use: ${LEGAL_URLS.terms}
 Privacy Policy: ${LEGAL_URLS.privacy}
 

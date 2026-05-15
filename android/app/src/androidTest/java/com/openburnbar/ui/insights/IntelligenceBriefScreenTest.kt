@@ -300,10 +300,10 @@ class IntelligenceBriefScreenTest {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                     IntelligenceBriefScreen(
                         result = fullFixture(),
-                        onMissionLaunchTap = { action, runtime ->
+                        onMissionLaunchTap = { action, options ->
                             capturedTitle = action.title
                             capturedKind = action.tone.firestoreValue()
-                            capturedRuntime = runtime.firestoreValue
+                            capturedRuntime = options.requestedRuntime
                         },
                     )
                 }
@@ -317,6 +317,64 @@ class IntelligenceBriefScreenTest {
             require(capturedTitle == "Creative Mission")
             require(capturedKind == "creative")
             require(capturedRuntime == "codex")
+        }
+    }
+
+    @Test
+    fun recommended_mission_launch_passes_candidate_context() {
+        var capturedTitle: String? = null
+        var capturedKind: String? = null
+        var capturedPrompt: String? = null
+        var capturedTargetProject: String? = null
+
+        val result = fullFixture().copy(
+            missionCandidates = listOf(
+                com.openburnbar.data.insights.InsightMissionCandidate(
+                    title = "Fix router fallback churn",
+                    summary = "Provider routing is changing too often during routine sessions.",
+                    projectID = "burnbar",
+                    projectDisplayName = "~/Documents/Windsurf/BurnBar",
+                    lens = com.openburnbar.data.insights.InsightMissionCandidate.Lens.ROUTING,
+                    priority = com.openburnbar.data.insights.InsightMissionCandidate.Priority.HIGH,
+                    confidence = InsightConfidence.HIGH,
+                    expectedImpact = "Stable favorite routing",
+                    effort = com.openburnbar.data.insights.InsightMissionCandidate.Effort.MEDIUM,
+                    acceptanceCriteria = listOf(
+                        "Codex remains sticky for routine edits",
+                        "Fallback only happens on quota exhaustion",
+                    ),
+                    evidence = listOf(citation("routing-digest", "BurnBar routing digest")),
+                ),
+            ),
+        )
+
+        composeRule.setContent {
+            AuroraTheme(darkTheme = false) {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    IntelligenceBriefScreen(
+                        result = result,
+                        onMissionLaunchTap = { action, options ->
+                            capturedTitle = action.title
+                            capturedKind = action.tone.firestoreValue()
+                            capturedPrompt = action.followUpQuestion().question
+                            capturedTargetProject = options.targetProject
+                        },
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag("insights.mission.candidate.provider_routing", useUnmergedTree = true)
+            .performScrollTo()
+            .performClick()
+
+        composeRule.runOnIdle {
+            require(capturedTitle == "Fix router fallback churn")
+            require(capturedKind == "provider_routing")
+            require(capturedTargetProject == "~/Documents/Windsurf/BurnBar")
+            require(capturedPrompt?.contains("Launch this recommended provider_routing mission") == true)
+            require(capturedPrompt?.contains("Codex remains sticky for routine edits") == true)
+            require(capturedPrompt?.contains("BurnBar routing digest") == true)
         }
     }
 

@@ -5,6 +5,7 @@ import OpenBurnBarCore
 enum CLIChatStreamEvent: Hashable {
     case text(String)
     case toolUse(name: String, detail: String?)
+    case toolResult(name: String, detail: String?)
     case usage(CLIUsageSnapshot)
 }
 

@@ -73,6 +73,35 @@ function buildConfig(): EnvConfig {
       process.env.HOSTED_QUOTA_PRODUCT_ID ??
       cfg.openburnbar?.hosted_quota_product_id ??
       "com.openburnbar.hostedQuotaSync.cloud.monthly",
+    burnBarProProductID:
+      process.env.BURNBAR_PRO_PRODUCT_ID ??
+      cfg.openburnbar?.burnbar_pro_product_id ??
+      "com.openburnbar.pro.monthly",
+    stripeBurnBarProPriceID:
+      process.env.STRIPE_BURNBAR_PRO_PRICE_ID ??
+      cfg.stripe?.burnbar_pro_price_id ??
+      "",
+    stripeSecretKey:
+      process.env.STRIPE_SECRET_KEY ??
+      cfg.stripe?.secret_key ??
+      "",
+    stripeWebhookSecret:
+      process.env.STRIPE_WEBHOOK_SECRET ??
+      cfg.stripe?.webhook_secret ??
+      "",
+    googlePlayPackageName:
+      process.env.GOOGLE_PLAY_PACKAGE_NAME ??
+      cfg.googleplay?.package_name ??
+      "com.openburnbar",
+    googlePlaySubscriptionProductID:
+      process.env.GOOGLE_PLAY_SUBSCRIPTION_PRODUCT_ID ??
+      cfg.googleplay?.subscription_product_id ??
+      "com.openburnbar.pro.monthly",
+    encryptedSessionBlobMaxBytes: toNum(
+      process.env.ENCRYPTED_SESSION_BLOB_MAX_BYTES ??
+        cfg.openburnbar?.encrypted_session_blob_max_bytes,
+      10 * 1024 * 1024
+    ),
     hostedQuotaRunnerURL:
       process.env.HOSTED_QUOTA_RUNNER_URL ??
       cfg.openburnbar?.hosted_quota_runner_url ??

@@ -71,9 +71,9 @@ enum SessionLogMarkdownFormatter {
                             if piece.value.isEmpty == false {
                                 lines.append(piece.value)
                             }
-                        case .toolUse:
+                        case .toolUse, .toolResult:
                             lines.append("")
-                            lines.append("```tool-use")
+                            lines.append(piece.kind == .toolResult ? "```tool-result" : "```tool-use")
                             lines.append(piece.value)
                             if let detail = piece.detail, detail.isEmpty == false {
                                 lines.append(detail)

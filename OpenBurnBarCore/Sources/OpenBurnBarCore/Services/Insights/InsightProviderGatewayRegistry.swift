@@ -15,12 +15,21 @@ public enum InsightProviderGatewayRegistry {
     /// `keyProvider` is deliberate — Hermes isn't credentialled the same way
     /// user-key providers are, and the shell knows its own connection state.
     public typealias HermesProvider = @Sendable () -> HermesInsightAdapter?
+    /// Optional hook for shells to inject the BurnBar-hosted fallback
+    /// adapter. Returns `nil` when the shell has no callable URL
+    /// configured (e.g. unit tests, offline dev), which keeps the
+    /// adapter from registering. macOS / iOS / Android shells pass a
+    /// closure that builds the adapter on demand so the callable URL
+    /// + auth/App Check tokens are evaluated at request time, not at
+    /// registration time.
+    public typealias HostedFallbackProvider = @Sendable () -> BurnBarHostedInsightAdapter?
 
     public static func registerDefaultSwiftGateways(
         in catalog: InsightModelCatalog,
         keyProvider: KeyProvider,
         urlProvider: URLProvider = { _ in nil },
         hermesProvider: HermesProvider? = nil,
+        hostedFallbackProvider: HostedFallbackProvider? = nil,
         includeLocalRules: Bool = true,
         includeOllama: Bool = true
     ) async {
@@ -32,6 +41,9 @@ public enum InsightProviderGatewayRegistry {
         }
         if let hermesProvider, let hermesAdapter = hermesProvider() {
             await catalog.register(hermesAdapter)
+        }
+        if let hostedFallbackProvider, let hostedAdapter = hostedFallbackProvider() {
+            await catalog.register(hostedAdapter)
         }
 
         if let apiKey = keyProvider("openai", [], ["OPENAI_API_KEY"]) {

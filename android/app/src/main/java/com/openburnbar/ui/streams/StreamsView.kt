@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.openburnbar.data.cloud.CloudConversationSearchRow
 import com.openburnbar.data.models.*
 import com.openburnbar.data.stores.ActivityStore
 import com.openburnbar.data.stores.StreamsSegment
@@ -38,6 +39,7 @@ fun StreamsView(
     val error by activityStore.error.collectAsState()
     val selectedSegment by activityStore.selectedSegment.collectAsState()
     val hasMore by activityStore.hasMore.collectAsState()
+    val cloudSearchHits by activityStore.cloudSearchHits.collectAsState()
     val isDark = isSystemInDarkTheme()
 
     val listState = rememberLazyListState()
@@ -45,6 +47,7 @@ fun StreamsView(
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) { activityStore.loadInitial() }
+    LaunchedEffect(searchQuery) { activityStore.updateSearch(searchQuery) }
 
     // Detect scroll to bottom
     val reachedBottom by remember {
@@ -127,6 +130,21 @@ fun StreamsView(
                                         it.provider.contains(searchQuery, ignoreCase = true) ||
                                         (it.projectName?.contains(searchQuery, ignoreCase = true) == true)
                                     } else usages
+
+                                if (cloudSearchHits.isNotEmpty()) {
+                                    item {
+                                        Text(
+                                            "Cloud conversation matches",
+                                            modifier = Modifier.padding(top = AuroraSpacing.xs.dp, bottom = AuroraSpacing.xxs.dp),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    items(cloudSearchHits, key = { "cloud-${it.id}" }) { hit ->
+                                        CloudConversationSearchCard(hit = hit)
+                                    }
+                                }
 
                                 items(filtered, key = { it.id }) { usage ->
                                     UsageCard(
@@ -227,6 +245,36 @@ fun UsageCard(
                 Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
                 Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
                 Text("Ask Hermes", fontSize = 11.sp)
+            }
+        }
+    }
+}
+
+@Composable
+fun CloudConversationSearchCard(hit: CloudConversationSearchRow) {
+    AuroraGlassCard {
+        Column(modifier = Modifier.padding(AuroraSpacing.md.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(16.dp), tint = AuroraColors.teal)
+                Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
+                Text(hit.title.ifBlank { "Encrypted session" }, fontWeight = FontWeight.Bold, fontSize = AuroraTypography.caption.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+            Text(
+                hit.snippet,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+                hit.provider?.takeIf { it.isNotBlank() }?.let {
+                    AssistChip(onClick = {}, label = { Text(it, fontSize = 10.sp) }, enabled = false)
+                }
+                hit.projectName?.takeIf { it.isNotBlank() }?.let {
+                    AssistChip(onClick = {}, label = { Text(it, fontSize = 10.sp) }, enabled = false)
+                }
             }
         }
     }

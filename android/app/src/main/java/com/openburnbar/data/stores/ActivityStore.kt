@@ -2,6 +2,8 @@ package com.openburnbar.data.stores
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.openburnbar.data.cloud.CloudConversationSearchRow
+import com.openburnbar.data.cloud.CloudConversationSearchService
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.*
 import kotlinx.coroutines.Job
@@ -11,7 +13,8 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 class ActivityStore(
-    private val repo: FirestoreRepository = FirestoreRepository()
+    private val repo: FirestoreRepository = FirestoreRepository(),
+    private val cloudSearch: CloudConversationSearchService = CloudConversationSearchService()
 ) : ViewModel() {
     private val _usages = MutableStateFlow<List<TokenUsage>>(emptyList())
     val usages = _usages.asStateFlow()
@@ -21,6 +24,9 @@ class ActivityStore(
 
     private val _projects = MutableStateFlow<List<ProjectSummary>>(emptyList())
     val projects = _projects.asStateFlow()
+
+    private val _cloudSearchHits = MutableStateFlow<List<CloudConversationSearchRow>>(emptyList())
+    val cloudSearchHits = _cloudSearchHits.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading = _isLoading.asStateFlow()
@@ -37,6 +43,8 @@ class ActivityStore(
     private var lastDoc: com.google.firebase.firestore.DocumentSnapshot? = null
     private var listenJob: Job? = null
     private var liveListenJob: Job? = null
+    private var searchJob: Job? = null
+    private var lastSearchQuery: String = ""
 
     fun loadInitial(pageSize: Int = 25) {
         viewModelScope.launch {
@@ -86,6 +94,25 @@ class ActivityStore(
                 _error.value = e.message
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    fun updateSearch(query: String) {
+        val trimmed = query.trim()
+        lastSearchQuery = trimmed
+        searchJob?.cancel()
+        if (trimmed.length < 2) {
+            _cloudSearchHits.value = emptyList()
+            return
+        }
+        searchJob = viewModelScope.launch {
+            try {
+                kotlinx.coroutines.delay(250)
+                if (lastSearchQuery != trimmed) return@launch
+                _cloudSearchHits.value = cloudSearch.search(trimmed)
+            } catch (_: Exception) {
+                _cloudSearchHits.value = emptyList()
             }
         }
     }

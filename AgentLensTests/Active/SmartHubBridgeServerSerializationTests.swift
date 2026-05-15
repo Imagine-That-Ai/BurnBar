@@ -19,6 +19,17 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         XCTAssertTrue(SmartHubBridgePage.brandLogoSVG.contains("#FEA41C"))
     }
 
+    func test_renderPageDoesNotFallbackToCurrencyInTokenMode() throws {
+        XCTAssertTrue(
+            SmartHubBridgePage.html.contains(#": (p.tokenTotal || '');"#),
+            "Token mode must not render tokenTotalCurrency under a TOKENS label."
+        )
+        XCTAssertFalse(
+            SmartHubBridgePage.html.contains(#": (p.tokenTotal || p.tokenTotalCurrency || '');"#),
+            "The old fallback showed dollar values while the card label said TOKENS."
+        )
+    }
+
     func test_stateJSONContainsDisplayBlockWithPaletteAndTheme() throws {
         var config = SmartHubDisplayConfig.default
         config.palette = .mercury

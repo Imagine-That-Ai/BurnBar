@@ -44,9 +44,29 @@ data class InsightBriefingAnswer(
     val modelDisplayName: String = "Local rules",
     val isFallback: Boolean = false
 ) {
+    companion object {
+        /**
+         * Sentinel `modelDisplayName` stamped by the orchestrator
+         * when the hosted route refused the call because the user
+         * has no active BurnBar Pro subscription. The UI matches on
+         * this exact string to swap the "Connect your own model"
+         * CTA for the "Upgrade to BurnBar Pro" CTA. Mirrors the
+         * Swift `subscriptionRequiredDisplayName` constant.
+         */
+        const val SUBSCRIPTION_REQUIRED_DISPLAY_NAME = "BurnBar Pro required"
+    }
+
     @Serializable
     enum class Source {
+        /** Answered by a user-owned LLM gateway (Hermes, Claude, OpenAI, etc.). */
         @SerialName("modelGateway") MODEL_GATEWAY,
+        /**
+         * Answered by the BurnBar-hosted fallback route (OpenRouter →
+         * MiniMax) when no user-owned route was reachable. Disclosed
+         * honestly to the user via the brief eyebrow + CTA.
+         */
+        @SerialName("hostedFallback") HOSTED_FALLBACK,
+        /** Deterministic local-rules answer (no LLM). */
         @SerialName("localRules") LOCAL_RULES
     }
 }

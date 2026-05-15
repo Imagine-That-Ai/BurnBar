@@ -20,10 +20,13 @@
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
-import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
+import { getStorage } from "firebase-admin/storage";
+import { HttpsError, onCall, onRequest, type CallableRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import { createHash, randomBytes } from "node:crypto";
+import { google } from "googleapis";
+import Stripe from "stripe";
 
 import { getConfig } from "./config.js";
 import { enforceAuthAndAppCheck } from "./auth.js";
@@ -101,6 +104,7 @@ import {
 import { seedAndroidDemoAccount as seedAndroidDemoAccountForUser } from "./demoSeed.js";
 import { latestRouterRundown } from "./routerRundown.js";
 import { HOSTED_RUNNER_SECRETS } from "./hostedRunnerConfig.js";
+export { insightsHostedAnswer } from "./insightsHostedAnswer.js";
 
 // ---------------------------------------------------------------------------
 // Admin initialization
@@ -148,6 +152,12 @@ const PI_AGENT_PAIRING_AUDIT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const PI_AGENT_MAX_FAILED_PAIRING_ATTEMPTS = 5;
 const HOSTED_QUOTA_PROVIDERS = new Set<string>(["codex"]);
 const SELF_HOSTED_QUOTA_PROVIDERS = new Set<string>(["claude-code", "codex", "opencode"]);
+const BURNBAR_PRO_ENTITLEMENT_ID = "burnbar_pro";
+const GOOGLE_PLAY_ACTIVE_STATES = new Set<string>([
+  "SUBSCRIPTION_STATE_ACTIVE",
+  "SUBSCRIPTION_STATE_IN_GRACE_PERIOD",
+]);
+const STRIPE_ACTIVE_STATES = new Set<string>(["active", "trialing", "past_due"]);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -249,6 +259,91 @@ function searchScore(text: string, terms: string[]): number {
 
 function sha256Hex(text: string): string {
   return createHash("sha256").update(text).digest("hex");
+}
+
+function safeCloudDocumentID(raw: unknown, fieldName: string): string {
+  const value = boundedTrimmedString(raw, fieldName, 512, true)!;
+  if (!/^[A-Za-z0-9_.:-]+$/u.test(value) || value.includes("..") || value.includes("/")) {
+    throw new HttpsError("invalid-argument", `${fieldName} contains unsupported characters.`);
+  }
+  return value;
+}
+
+function requireHexDigest(raw: unknown, fieldName: string): string {
+  const value = boundedTrimmedString(raw, fieldName, 128, true)!;
+  if (!/^[a-f0-9]{32,128}$/u.test(value)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be a lowercase hex digest.`);
+  }
+  return value;
+}
+
+function requireBoundedNumber(raw: unknown, fieldName: string, min: number, max: number): number {
+  const value = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(value)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be a number.`);
+  }
+  const rounded = Math.floor(value);
+  if (rounded < min || rounded > max) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be between ${min} and ${max}.`);
+  }
+  return rounded;
+}
+
+function requireRecordArray(raw: unknown, fieldName: string, maxLength: number): Array<Record<string, unknown>> {
+  if (!Array.isArray(raw)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be an array.`);
+  }
+  if (raw.length > maxLength) {
+    throw new HttpsError("invalid-argument", `${fieldName} can contain at most ${maxLength} items.`);
+  }
+  return raw.map((item, idx) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new HttpsError("invalid-argument", `${fieldName}[${idx}] must be an object.`);
+    }
+    return item as Record<string, unknown>;
+  });
+}
+
+function requireTokenHashes(raw: unknown, fieldName: string): string[] {
+  if (!Array.isArray(raw)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be an array.`);
+  }
+  const unique = Array.from(new Set(raw.filter((item): item is string => typeof item === "string")));
+  if (unique.length === 0 || unique.length > 250) {
+    throw new HttpsError("invalid-argument", `${fieldName} must contain between 1 and 250 token hashes.`);
+  }
+  for (const hash of unique) {
+    if (!/^[a-f0-9]{32}$/u.test(hash)) {
+      throw new HttpsError("invalid-argument", `${fieldName} contains an invalid token hash.`);
+    }
+  }
+  return unique;
+}
+
+function requireSealedText(raw: unknown, fieldName: string): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be an encrypted text envelope.`);
+  }
+  const envelope = raw as Record<string, unknown>;
+  const algorithm = boundedTrimmedString(envelope.algorithm, `${fieldName}.algorithm`, 64, true);
+  if (algorithm !== "AES-256-GCM") {
+    throw new HttpsError("invalid-argument", `${fieldName}.algorithm must be AES-256-GCM.`);
+  }
+  requireBoundedNumber(envelope.keyVersion, `${fieldName}.keyVersion`, 1, 100);
+  for (const key of ["nonce", "ciphertext", "tag"]) {
+    const value = boundedTrimmedString(envelope[key], `${fieldName}.${key}`, 8192, true)!;
+    if (!/^[A-Za-z0-9+/=]+$/u.test(value)) {
+      throw new HttpsError("invalid-argument", `${fieldName}.${key} must be base64.`);
+    }
+  }
+  return envelope;
+}
+
+function assertUserStoragePath(uid: string, storagePath: string): void {
+  const prefix = `users/${uid}/session_logs/`;
+  if (!storagePath.startsWith(prefix) || storagePath.includes("..")) {
+    throw new HttpsError("permission-denied", "Invalid encrypted session storage path.");
+  }
 }
 
 function callableDate(value: unknown): string | undefined {
@@ -380,24 +475,290 @@ function assertSelfHostedProvider(provider: string): asserts provider is Provide
 }
 
 async function assertActiveHostedQuotaEntitlement(uid: string): Promise<void> {
-  const snap = await db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get();
-  if (!snap.exists) {
-    throw new HttpsError("permission-denied", "Hosted Quota Sync subscription required.");
-  }
-  const entitlement = snap.data() as {
-    active?: boolean;
-    productID?: string;
-    expiresAt?: string;
-  };
-  const expiresAt = entitlement.expiresAt ? Date.parse(entitlement.expiresAt) : 0;
+  const [hostedSnap, proSnap] = await Promise.all([
+    db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),
+    db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`).get(),
+  ]);
+  if (isActiveHostedQuotaEntitlement(hostedSnap.data())) return;
+  if (isActivePremiumEntitlement(proSnap.data())) return;
+  throw new HttpsError("permission-denied", "Hosted Quota Sync or BurnBar Pro subscription required.");
+}
+
+async function assertActiveBurnBarProEntitlement(uid: string): Promise<void> {
+  const [proSnap, hostedSnap] = await Promise.all([
+    db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`).get(),
+    db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),
+  ]);
+  if (isActivePremiumEntitlement(proSnap.data())) return;
+  if (isActivePremiumEntitlement(hostedSnap.data())) return;
+  throw new HttpsError(
+    "permission-denied",
+    "BurnBar Pro is required for hosted LLM, encrypted session-log backup, and cloud search."
+  );
+}
+
+function isActiveHostedQuotaEntitlement(raw: Record<string, unknown> | undefined): boolean {
+  if (!raw || raw.active !== true) return false;
+  if (raw.productID !== getConfig().hostedQuotaProductID) return false;
+  const expiry = entitlementExpiryMillis(raw);
+  return Number.isFinite(expiry) && expiry > Date.now();
+}
+
+function isActivePremiumEntitlement(raw: Record<string, unknown> | undefined): boolean {
+  if (!raw || raw.active !== true) return false;
+  const productID = typeof raw.productID === "string" ? raw.productID : "";
   if (
-    entitlement.active !== true ||
-    entitlement.productID !== getConfig().hostedQuotaProductID ||
-    !Number.isFinite(expiresAt) ||
-    expiresAt <= Date.now()
+    productID !== getConfig().hostedQuotaProductID &&
+    productID !== getConfig().burnBarProProductID &&
+    productID !== getConfig().googlePlaySubscriptionProductID
   ) {
-    throw new HttpsError("permission-denied", "Hosted Quota Sync subscription is inactive.");
+    return false;
   }
+  const expiry = entitlementExpiryMillis(raw);
+  return Number.isFinite(expiry) && expiry > Date.now();
+}
+
+function entitlementExpiryMillis(raw: Record<string, unknown>): number {
+  const expireAt = raw.expireAt;
+  if (expireAt instanceof Timestamp) {
+    return expireAt.toMillis();
+  }
+  if (expireAt && typeof expireAt === "object") {
+    const candidate = expireAt as { toMillis?: () => number };
+    if (typeof candidate.toMillis === "function") {
+      return candidate.toMillis();
+    }
+  }
+  if (raw.expiresAt) {
+    const parsed = Date.parse(String(raw.expiresAt));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function burnBarProFeatures(): Record<string, boolean> {
+  return {
+    hostedQuota: true,
+    hostedLLM: true,
+    encryptedSessionLogBackup: true,
+    cloudConversationSearch: true,
+  };
+}
+
+async function writeBurnBarProEntitlement(args: {
+  uid: string;
+  productID: string;
+  expiresAtMillis: number;
+  source: string;
+  platform: "ios" | "android" | "macos" | "web" | "stripe";
+  externalSubscriptionID?: string;
+  externalCustomerID?: string;
+  purchaseTokenHash?: string;
+  rawStatus?: string;
+  environment?: string;
+  activeOverride?: boolean;
+}): Promise<Record<string, unknown>> {
+  const now = nowISO();
+  const active = args.activeOverride ?? (Number.isFinite(args.expiresAtMillis) && args.expiresAtMillis > Date.now());
+  const expiresAt = new Date(args.expiresAtMillis).toISOString();
+  const doc = stripUndefined({
+    id: BURNBAR_PRO_ENTITLEMENT_ID,
+    active,
+    productID: args.productID,
+    entitlementFamily: "burnbar_pro",
+    features: burnBarProFeatures(),
+    expiresAt,
+    expireAt: Timestamp.fromMillis(args.expiresAtMillis),
+    source: args.source,
+    platform: args.platform,
+    externalSubscriptionID: args.externalSubscriptionID,
+    externalCustomerID: args.externalCustomerID,
+    purchaseTokenHash: args.purchaseTokenHash,
+    rawStatus: args.rawStatus,
+    environment: args.environment,
+    verificationVersion: 1,
+    schemaVersion: 1,
+    lastVerifiedAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`users/${args.uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`).set(doc, { merge: true });
+  return doc;
+}
+
+function requireConfiguredStripe(): Stripe {
+  const cfg = getConfig();
+  if (!cfg.stripeSecretKey || !cfg.stripeBurnBarProPriceID) {
+    throw new HttpsError("failed-precondition", "Stripe BurnBar Pro checkout is not configured.");
+  }
+  return new Stripe(cfg.stripeSecretKey);
+}
+
+function boundedHttpsURL(raw: unknown, fieldName: string): string {
+  const value = boundedTrimmedString(raw, fieldName, 2048, true)!;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new HttpsError("invalid-argument", `${fieldName} must be a valid URL.`);
+  }
+  if (url.protocol !== "https:" && !url.hostname.includes("localhost")) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be HTTPS.`);
+  }
+  return url.toString();
+}
+
+async function getOrCreateStripeCustomer(uid: string, stripe: Stripe): Promise<string> {
+  const ref = db.doc(`users/${uid}/billing/stripe`);
+  const existing = await ref.get();
+  const existingID = existing.get("customerID");
+  if (typeof existingID === "string" && existingID.startsWith("cus_")) {
+    return existingID;
+  }
+
+  const user = await auth.getUser(uid).catch(() => undefined);
+  const customer = await stripe.customers.create({
+    email: user?.email ?? undefined,
+    name: user?.displayName ?? undefined,
+    metadata: { firebaseUID: uid },
+  });
+  await ref.set(
+    {
+      uid,
+      customerID: customer.id,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      schemaVersion: 1,
+    },
+    { merge: true }
+  );
+  await db.doc(`stripe_customers/${customer.id}`).set(
+    {
+      uid,
+      customerID: customer.id,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      schemaVersion: 1,
+    },
+    { merge: true }
+  );
+  return customer.id;
+}
+
+function googlePlayLineItemForProduct(
+  purchase: Record<string, unknown>,
+  productID: string
+): Record<string, unknown> | undefined {
+  const lineItems = Array.isArray(purchase.lineItems)
+    ? purchase.lineItems.filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+    : [];
+  return lineItems.find((item) => item.productId === productID) ?? lineItems[0];
+}
+
+function googlePlayExpiryMillis(lineItem: Record<string, unknown> | undefined): number {
+  const expiryTime = lineItem?.expiryTime;
+  if (typeof expiryTime === "string") {
+    const parsed = Date.parse(expiryTime);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  throw new HttpsError("failed-precondition", "Google Play did not return an expiry for this subscription.");
+}
+
+async function applyStripeCheckoutSession(
+  stripe: Stripe,
+  session: Stripe.Checkout.Session
+): Promise<void> {
+  const uid = session.metadata?.firebaseUID ?? session.client_reference_id ?? undefined;
+  if (!uid) return;
+  let subscription: Stripe.Subscription | undefined;
+  if (typeof session.subscription === "string") {
+    subscription = await stripe.subscriptions.retrieve(session.subscription);
+  } else if (session.subscription && typeof session.subscription === "object") {
+    subscription = session.subscription as Stripe.Subscription;
+  }
+  if (subscription) {
+    await applyStripeSubscription(stripe, subscription, uid);
+  }
+}
+
+async function applyStripeSubscription(
+  stripe: Stripe,
+  subscription: Stripe.Subscription,
+  uidOverride?: string
+): Promise<void> {
+  const uid = uidOverride ?? (await uidForStripeSubscription(subscription));
+  if (!uid) return;
+
+  const customerID = stripeCustomerID(subscription.customer);
+  const expiresAtMillis = stripeSubscriptionPeriodEndMillis(subscription);
+  const status = String(subscription.status ?? "unknown");
+  const active = STRIPE_ACTIVE_STATES.has(status) && expiresAtMillis > Date.now();
+
+  await writeBurnBarProEntitlement({
+    uid,
+    productID: getConfig().burnBarProProductID,
+    expiresAtMillis,
+    source: "stripe_webhook_verified",
+    platform: "stripe",
+    externalSubscriptionID: subscription.id,
+    externalCustomerID: customerID,
+    rawStatus: status,
+    environment: "Production",
+    activeOverride: active,
+  });
+
+  if (customerID) {
+    await db.doc(`users/${uid}/billing/stripe`).set(
+      {
+        uid,
+        customerID,
+        subscriptionID: subscription.id,
+        subscriptionStatus: status,
+        currentPeriodEnd: new Date(expiresAtMillis).toISOString(),
+        updatedAt: Timestamp.now(),
+        schemaVersion: 1,
+      },
+      { merge: true }
+    );
+    await db.doc(`stripe_customers/${customerID}`).set(
+      {
+        uid,
+        customerID,
+        subscriptionID: subscription.id,
+        subscriptionStatus: status,
+        updatedAt: Timestamp.now(),
+        schemaVersion: 1,
+      },
+      { merge: true }
+    );
+  }
+}
+
+async function uidForStripeSubscription(subscription: Stripe.Subscription): Promise<string | undefined> {
+  const metadataUID = subscription.metadata?.firebaseUID;
+  if (metadataUID) return metadataUID;
+  const customerID = stripeCustomerID(subscription.customer);
+  if (!customerID) return undefined;
+  const snap = await db.doc(`stripe_customers/${customerID}`).get();
+  const uid = snap.get("uid");
+  return typeof uid === "string" ? uid : undefined;
+}
+
+function stripeCustomerID(customer: unknown): string | undefined {
+  if (typeof customer === "string") return customer;
+  if (customer && typeof customer === "object" && "id" in customer && typeof customer.id === "string") {
+    return customer.id;
+  }
+  return undefined;
+}
+
+function stripeSubscriptionPeriodEndMillis(subscription: Stripe.Subscription): number {
+  const raw = subscription as unknown as Record<string, unknown>;
+  const direct = raw.current_period_end;
+  if (typeof direct === "number") return direct * 1000;
+  const items = raw.items as { data?: Array<Record<string, unknown>> } | undefined;
+  const itemEnd = items?.data?.[0]?.current_period_end;
+  if (typeof itemEnd === "number") return itemEnd * 1000;
+  return Date.now() - 1;
 }
 
 function normalizeHostedCredential(provider: string, raw: unknown): string {
@@ -2145,6 +2506,480 @@ export const updatePiAgentConnectionStatus = onCall(
       detail: { status: request.data.status },
     });
     return { success: true, connectionId };
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Callable / HTTP: BurnBar Pro billing bridges
+// ---------------------------------------------------------------------------
+
+export const createStripeBurnBarProCheckoutSession = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 50,
+  },
+  async (
+    request: CallableRequest<{
+      successUrl?: unknown;
+      cancelUrl?: unknown;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before starting checkout.");
+    enforceAuthAndAppCheck(request, uid);
+
+    const cfg = getConfig();
+    const stripe = requireConfiguredStripe();
+    const successUrl = boundedHttpsURL(request.data.successUrl, "successUrl");
+    const cancelUrl = boundedHttpsURL(request.data.cancelUrl, "cancelUrl");
+    const customerID = await getOrCreateStripeCustomer(uid, stripe);
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customerID,
+      client_reference_id: uid,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      allow_promotion_codes: true,
+      line_items: [{ price: cfg.stripeBurnBarProPriceID, quantity: 1 }],
+      metadata: {
+        firebaseUID: uid,
+        entitlementID: BURNBAR_PRO_ENTITLEMENT_ID,
+      },
+      subscription_data: {
+        metadata: {
+          firebaseUID: uid,
+          entitlementID: BURNBAR_PRO_ENTITLEMENT_ID,
+        },
+      },
+    });
+
+    return { sessionId: session.id, url: session.url };
+  }
+);
+
+export const createStripeBurnBarProPortalSession = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 50,
+  },
+  async (
+    request: CallableRequest<{
+      returnUrl?: unknown;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before opening the billing portal.");
+    enforceAuthAndAppCheck(request, uid);
+
+    const stripe = requireConfiguredStripe();
+    const returnUrl = boundedHttpsURL(request.data.returnUrl, "returnUrl");
+    const customerID = await getOrCreateStripeCustomer(uid, stripe);
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerID,
+      return_url: returnUrl,
+    });
+    return { url: session.url };
+  }
+);
+
+export const verifyGooglePlayBurnBarProSubscription = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      purchaseToken?: unknown;
+      productID?: unknown;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before verifying Google Play billing.");
+    enforceAuthAndAppCheck(request, uid);
+
+    const cfg = getConfig();
+    const purchaseToken = boundedTrimmedString(request.data.purchaseToken, "purchaseToken", 4096, true)!;
+    const productID =
+      boundedTrimmedString(request.data.productID, "productID", 256, false) ??
+      cfg.googlePlaySubscriptionProductID;
+    if (productID !== cfg.googlePlaySubscriptionProductID && productID !== cfg.burnBarProProductID) {
+      throw new HttpsError("invalid-argument", "Unsupported Google Play subscription product.");
+    }
+
+    const authClient = await google.auth.getClient({
+      scopes: ["https://www.googleapis.com/auth/androidpublisher"],
+    });
+    const androidpublisher = google.androidpublisher({ version: "v3", auth: authClient });
+    const response = await androidpublisher.purchases.subscriptionsv2.get({
+      packageName: cfg.googlePlayPackageName,
+      token: purchaseToken,
+    });
+
+    const purchase = response.data as Record<string, unknown>;
+    const subscriptionState =
+      typeof purchase.subscriptionState === "string"
+        ? purchase.subscriptionState
+        : "SUBSCRIPTION_STATE_UNSPECIFIED";
+    const lineItem = googlePlayLineItemForProduct(purchase, productID);
+    const expiresAtMillis = googlePlayExpiryMillis(lineItem);
+    const active = GOOGLE_PLAY_ACTIVE_STATES.has(subscriptionState) && expiresAtMillis > Date.now();
+    const tokenHash = sha256Hex(purchaseToken);
+    const entitlement = await writeBurnBarProEntitlement({
+      uid,
+      productID: cfg.googlePlaySubscriptionProductID,
+      expiresAtMillis,
+      source: "google_play_verified",
+      platform: "android",
+      purchaseTokenHash: tokenHash,
+      rawStatus: subscriptionState,
+      environment: "Production",
+      activeOverride: active,
+    });
+
+    await db.doc(`users/${uid}/billing/google_play_purchases/${tokenHash}`).set(
+      stripUndefined({
+        uid,
+        productID: cfg.googlePlaySubscriptionProductID,
+        purchaseTokenHash: tokenHash,
+        subscriptionState,
+        expiresAt: new Date(expiresAtMillis).toISOString(),
+        lineItemProductID: lineItem && typeof lineItem.productId === "string" ? lineItem.productId : undefined,
+        lastVerifiedAt: nowISO(),
+        schemaVersion: 1,
+      }),
+      { merge: true }
+    );
+
+    return { entitlement, subscriptionState, active, expiresAt: new Date(expiresAtMillis).toISOString() };
+  }
+);
+
+export const stripeBurnBarProWebhook = onRequest(
+  {
+    region: "us-central1",
+    maxInstances: 20,
+  },
+  async (req, res): Promise<void> => {
+    const cfg = getConfig();
+    if (!cfg.stripeSecretKey || !cfg.stripeWebhookSecret) {
+      res.status(503).send("Stripe webhook is not configured.");
+      return;
+    }
+    const signature = req.header("stripe-signature");
+    if (!signature) {
+      res.status(400).send("Missing Stripe signature.");
+      return;
+    }
+    const stripe = new Stripe(cfg.stripeSecretKey);
+    let event: Stripe.Event;
+    try {
+      const rawBody = Buffer.isBuffer(req.rawBody) ? req.rawBody : Buffer.from(JSON.stringify(req.body ?? {}));
+      event = stripe.webhooks.constructEvent(rawBody, signature, cfg.stripeWebhookSecret);
+    } catch (err) {
+      res.status(400).send(`Webhook Error: ${err instanceof Error ? err.message : "invalid signature"}`);
+      return;
+    }
+
+    try {
+      switch (event.type) {
+        case "checkout.session.completed":
+        case "checkout.session.async_payment_succeeded":
+          await applyStripeCheckoutSession(stripe, event.data.object as Stripe.Checkout.Session);
+          break;
+        case "customer.subscription.created":
+        case "customer.subscription.updated":
+        case "customer.subscription.deleted":
+          await applyStripeSubscription(stripe, event.data.object as Stripe.Subscription);
+          break;
+        default:
+          break;
+      }
+      res.json({ received: true });
+    } catch (err) {
+      console.error("Stripe webhook handling failed", err);
+      res.status(500).send("Stripe webhook handling failed.");
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Callable: encrypted hosted session logs + cloud search
+// ---------------------------------------------------------------------------
+
+export const beginEncryptedSessionBlobUpload = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      documentID?: unknown;
+      bodyHash?: unknown;
+      encryptedByteCount?: unknown;
+      contentType?: unknown;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before uploading session logs.");
+    enforceAuthAndAppCheck(request, uid);
+    await assertActiveBurnBarProEntitlement(uid);
+
+    const documentID = safeCloudDocumentID(request.data.documentID, "documentID");
+    const bodyHash = requireHexDigest(request.data.bodyHash, "bodyHash");
+    const encryptedByteCount = requireBoundedNumber(
+      request.data.encryptedByteCount,
+      "encryptedByteCount",
+      1,
+      getConfig().encryptedSessionBlobMaxBytes
+    );
+    const contentType =
+      boundedTrimmedString(request.data.contentType, "contentType", 128, false) ??
+      "application/octet-stream";
+    if (contentType !== "application/octet-stream") {
+      throw new HttpsError("invalid-argument", "encrypted session blobs must use application/octet-stream.");
+    }
+
+    const storagePath = `users/${uid}/session_logs/${documentID}/bodies/${bodyHash}.json.aesgcm`;
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const [uploadURL] = await getStorage()
+      .bucket()
+      .file(storagePath)
+      .getSignedUrl({
+        version: "v4",
+        action: "write",
+        expires: expiresAt,
+        contentType,
+      });
+
+    return {
+      storagePath,
+      uploadURL,
+      expiresAt: expiresAt.toISOString(),
+      maxBytes: getConfig().encryptedSessionBlobMaxBytes,
+      acceptedByteCount: encryptedByteCount,
+    };
+  }
+);
+
+export const getEncryptedSessionBlobDownloadUrl = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      storagePath?: unknown;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before reading session logs.");
+    enforceAuthAndAppCheck(request, uid);
+    await assertActiveBurnBarProEntitlement(uid);
+    const storagePath = boundedTrimmedString(request.data.storagePath, "storagePath", 1024, true)!;
+    const prefix = `users/${uid}/session_logs/`;
+    if (!storagePath.startsWith(prefix) || storagePath.includes("..")) {
+      throw new HttpsError("permission-denied", "Invalid session blob path.");
+    }
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const [downloadURL] = await getStorage()
+      .bucket()
+      .file(storagePath)
+      .getSignedUrl({
+        version: "v4",
+        action: "read",
+        expires: expiresAt,
+      });
+    return { downloadURL, expiresAt: expiresAt.toISOString() };
+  }
+);
+
+export const commitEncryptedSearchIndexBatch = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      documents?: unknown;
+      chunks?: unknown;
+      indexVersion?: unknown;
+      deviceId?: unknown;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before syncing the search index.");
+    enforceAuthAndAppCheck(request, uid);
+    await assertActiveBurnBarProEntitlement(uid);
+
+    const documents = requireRecordArray(request.data.documents, "documents", 50);
+    const chunks = requireRecordArray(request.data.chunks, "chunks", 300);
+    const indexVersion = requireBoundedNumber(request.data.indexVersion, "indexVersion", 1, 100);
+    const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 256, true)!;
+    const now = Timestamp.now();
+
+    let writeCount = 0;
+    const batch = db.batch();
+    const documentsRef = db.collection(`users/${uid}/cloud_search_documents`);
+    const chunksRef = db.collection(`users/${uid}/cloud_search_chunks`);
+
+    for (const raw of documents) {
+      const documentID = safeCloudDocumentID(raw.documentID, "document.documentID");
+      const doc = {
+        uid,
+        documentID,
+        deviceId,
+        sourceKind: boundedTrimmedString(raw.sourceKind, "document.sourceKind", 64, true),
+        sourceID: boundedTrimmedString(raw.sourceID, "document.sourceID", 512, true),
+        sourceVersionID: boundedTrimmedString(raw.sourceVersionID, "document.sourceVersionID", 512, false),
+        provider: boundedTrimmedString(raw.provider, "document.provider", 80, false),
+        projectName: boundedTrimmedString(raw.projectName, "document.projectName", 512, false),
+        bodyHash: requireHexDigest(raw.bodyHash, "document.bodyHash"),
+        storagePath: boundedTrimmedString(raw.storagePath, "document.storagePath", 1024, true)!,
+        sealedTitle: requireSealedText(raw.sealedTitle, "document.sealedTitle"),
+        sealedBodyPreview: requireSealedText(raw.sealedBodyPreview, "document.sealedBodyPreview"),
+        byteCount: requireBoundedNumber(raw.byteCount, "document.byteCount", 0, getConfig().encryptedSessionBlobMaxBytes),
+        indexVersion,
+        tokenHashVersion: 1,
+        updatedAt: now,
+        schemaVersion: 1,
+      };
+      assertUserStoragePath(uid, doc.storagePath);
+      batch.set(documentsRef.doc(documentID), stripUndefined(doc), { merge: true });
+      writeCount += 1;
+    }
+
+    for (const raw of chunks) {
+      const documentID = safeCloudDocumentID(raw.documentID, "chunk.documentID");
+      const chunkID = safeCloudDocumentID(raw.chunkID, "chunk.chunkID");
+      const tokenHashes = requireTokenHashes(raw.tokenHashes, "chunk.tokenHashes");
+      const chunk = {
+        uid,
+        chunkID,
+        documentID,
+        deviceId,
+        sourceKind: boundedTrimmedString(raw.sourceKind, "chunk.sourceKind", 64, true),
+        sourceID: boundedTrimmedString(raw.sourceID, "chunk.sourceID", 512, true),
+        provider: boundedTrimmedString(raw.provider, "chunk.provider", 80, false),
+        projectName: boundedTrimmedString(raw.projectName, "chunk.projectName", 512, false),
+        ordinal: requireBoundedNumber(raw.ordinal, "chunk.ordinal", 0, 100_000),
+        startOffset: requireBoundedNumber(raw.startOffset, "chunk.startOffset", 0, 50_000_000),
+        endOffset: requireBoundedNumber(raw.endOffset, "chunk.endOffset", 0, 50_000_000),
+        contentHash: requireHexDigest(raw.contentHash, "chunk.contentHash"),
+        bodyHash: requireHexDigest(raw.bodyHash, "chunk.bodyHash"),
+        storagePath: boundedTrimmedString(raw.storagePath, "chunk.storagePath", 1024, true)!,
+        sealedSnippet: requireSealedText(raw.sealedSnippet, "chunk.sealedSnippet"),
+        tokenHashes,
+        indexVersion,
+        tokenHashVersion: 1,
+        updatedAt: now,
+        schemaVersion: 1,
+      };
+      assertUserStoragePath(uid, chunk.storagePath);
+      batch.set(chunksRef.doc(chunkID), stripUndefined(chunk), { merge: true });
+      writeCount += 1;
+    }
+
+    batch.set(
+      db.doc(`users/${uid}/cloud_search_index_state/${deviceId}`),
+      {
+        uid,
+        deviceId,
+        indexVersion,
+        lastCommittedAt: now,
+        documentCount: documents.length,
+        chunkCount: chunks.length,
+        schemaVersion: 1,
+      },
+      { merge: true }
+    );
+    writeCount += 1;
+
+    await batch.commit();
+    return { ok: true, writeCount, documentCount: documents.length, chunkCount: chunks.length };
+  }
+);
+
+export const searchEncryptedConversationIndex = onCall(
+  {
+    region: "us-central1",
+    enforceAppCheck: getConfig().enforceAppCheck,
+    maxInstances: 100,
+  },
+  async (
+    request: CallableRequest<{
+      tokenHashes?: unknown;
+      limit?: unknown;
+      provider?: unknown;
+    }>
+  ) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before searching session logs.");
+    enforceAuthAndAppCheck(request, uid);
+    await assertActiveBurnBarProEntitlement(uid);
+
+    const tokenHashes = requireTokenHashes(request.data.tokenHashes, "tokenHashes").slice(0, 10);
+    const limitRaw = typeof request.data.limit === "number" ? request.data.limit : 25;
+    const limit = Math.max(1, Math.min(Math.floor(limitRaw), 50));
+    const provider = boundedTrimmedString(request.data.provider, "provider", 80, false);
+    if (tokenHashes.length === 0) return { hits: [] };
+
+    let query = db
+      .collection(`users/${uid}/cloud_search_chunks`)
+      .where("tokenHashes", "array-contains-any", tokenHashes);
+    if (provider) {
+      query = query.where("provider", "==", provider);
+    }
+    const snap = await query.limit(200).get();
+    const requested = new Set(tokenHashes);
+    const scored = snap.docs
+      .map((doc) => {
+        const data = doc.data();
+        const hashes = Array.isArray(data.tokenHashes)
+          ? data.tokenHashes.filter((hash): hash is string => typeof hash === "string")
+          : [];
+        const score = hashes.reduce((sum, hash) => sum + (requested.has(hash) ? 1 : 0), 0);
+        return { id: doc.id, data, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score || Number(a.data.ordinal ?? 0) - Number(b.data.ordinal ?? 0));
+
+    const hits: Array<Record<string, unknown>> = [];
+    const seenDocuments = new Set<string>();
+    for (const item of scored) {
+      const documentID = typeof item.data.documentID === "string" ? item.data.documentID : "";
+      if (!documentID || seenDocuments.has(documentID)) continue;
+      const docSnap = await db.doc(`users/${uid}/cloud_search_documents/${documentID}`).get();
+      if (!docSnap.exists) continue;
+      const docData = docSnap.data() ?? {};
+      if (docData.bodyHash !== item.data.bodyHash || docData.storagePath !== item.data.storagePath) continue;
+      seenDocuments.add(documentID);
+      hits.push({
+        id: item.id,
+        chunkID: item.id,
+        documentID,
+        sourceKind: item.data.sourceKind,
+        sourceID: item.data.sourceID,
+        provider: item.data.provider,
+        projectName: docData.projectName ?? item.data.projectName,
+        sealedTitle: docData.sealedTitle,
+        sealedSnippet: item.data.sealedSnippet,
+        sealedBodyPreview: docData.sealedBodyPreview,
+        storagePath: item.data.storagePath,
+        bodyHash: item.data.bodyHash,
+        score: item.score / Math.max(1, tokenHashes.length),
+        tokenHashVersion: item.data.tokenHashVersion ?? 1,
+        indexVersion: item.data.indexVersion ?? 1,
+      });
+      if (hits.length >= limit) break;
+    }
+    return { hits };
   }
 );
 

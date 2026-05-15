@@ -240,7 +240,13 @@ struct SessionLogsView: View {
                 applyJumpTargetIfNeeded(jumpTarget)
             }
             .onChange(of: searchText) { _, _ in
-                Task { await runLocalRetrievalSearchIfNeeded() }
+                Task {
+                    if dataSource == .cloud {
+                        await loadLogs()
+                    } else {
+                        await runLocalRetrievalSearchIfNeeded()
+                    }
+                }
             }
             .onChange(of: sourceFilter) { _, _ in
                 sectionDisplayLimits = [:]
@@ -1072,7 +1078,10 @@ struct SessionLogsView: View {
 
             case .cloud:
                 if let svc = cloudSyncService {
-                    allLogs = try await svc.fetchCloudSessionLogs()
+                    let trimmedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    allLogs = trimmedQuery.isEmpty
+                        ? try await svc.fetchCloudSessionLogs()
+                        : try await svc.searchCloudSessionLogs(query: trimmedQuery)
                 } else {
                     allLogs = []
                 }

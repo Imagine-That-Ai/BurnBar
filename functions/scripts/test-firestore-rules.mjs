@@ -2,8 +2,9 @@
  * Firestore rules regression tests for OpenBurnBar Cloud's paid backup gate.
  *
  * These tests run against the Firestore emulator. They prove that owner-scoped
- * free sync still works, while hosted cloud backup payloads require the
- * server-written `hosted_quota_sync` entitlement document.
+ * free sync still works, while hosted cloud backup payloads require a
+ * server-written premium entitlement document. Legacy hosted quota and the
+ * bundled BurnBar Pro entitlement both unlock the paid backup/search paths.
  */
 
 import assert from "node:assert/strict";
@@ -57,6 +58,25 @@ async function seedHostedCloudEntitlement(uid) {
         schemaVersion: 2,
       }
     );
+  });
+}
+
+async function seedBurnBarProEntitlement(uid) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `users/${uid}/entitlements/burnbar_pro`), {
+      id: "burnbar_pro",
+      active: true,
+      productID: "com.openburnbar.pro.monthly",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      expireAt: Timestamp.fromDate(new Date("2099-01-01T00:00:00.000Z")),
+      features: {
+        hostedQuota: true,
+        hostedLLM: true,
+        encryptedSessionLogBackup: true,
+        cloudConversationSearch: true,
+      },
+      schemaVersion: 2,
+    });
   });
 }
 
@@ -178,20 +198,510 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       prompt: "Find the highest-leverage technical debt mission from the current Insights brief.",
       missionKind: "debt",
       requestedRuntime: "auto",
+      targetProject: "",
+      depth: "standard",
+      approvalMode: "existing_policy",
+      commandsAllowed: false,
+      fileEditsAllowed: false,
+      source: "ios-insights",
+      status: "pending",
+      liveSummary: "Mission queued from this device.",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 2,
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, `${requestPath}/events/000001`), {
+      sequence: 1,
+      timestamp: "2026-05-13T00:00:00.000Z",
+      kind: "status",
+      phase: "queued",
+      title: "Queued",
+      message: "Mission queued from this device.",
+      source: "ios",
+      isError: false,
+    })
+  );
+  const androidRequestPath = "users/ivy/cli_agent_mission_requests/mission-android";
+  await assertSucceeds(
+    setDoc(doc(phoneDb, androidRequestPath), {
+      id: "mission-android",
+      title: "Android Mission",
+      prompt: "Launch a mobile mission from Android.",
+      missionKind: "custom",
+      requestedRuntime: "opencode",
+      targetProject: "",
+      depth: "light",
+      approvalMode: "read_only",
+      commandsAllowed: false,
+      fileEditsAllowed: false,
+      source: "android-insights",
+      status: "pending",
+      liveSummary: "Mission queued from this Android device.",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 2,
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, `${androidRequestPath}/events/000001`), {
+      sequence: 1,
+      timestamp: "2026-05-13T00:00:00.000Z",
+      kind: "status",
+      phase: "queued",
+      title: "Queued",
+      message: "Mission queued from this Android device.",
+      source: "android",
+      isError: false,
+    })
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, `${androidRequestPath}/events/000002`), {
+      sequence: 2,
+      timestamp: "2026-05-13T00:00:01.000Z",
+      kind: "status",
+      phase: "queued",
+      title: "Queued again",
+      message: "Mobile should not be able to append extra queued events after the initial dispatch marker.",
+      source: "android",
+      isError: false,
+    })
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, `${androidRequestPath}/events/000099`), {
+      sequence: 1,
+      timestamp: "2026-05-13T00:00:01.000Z",
+      kind: "status",
+      phase: "queued",
+      title: "Wrong event id",
+      message: "The initial mobile event must be pinned to 000001.",
+      source: "android",
+      isError: false,
+    })
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivy/cli_agent_mission_requests/mission-parent-events"), {
+      id: "mission-parent-events",
+      title: "Parent event spoof",
+      prompt: "This should not be able to seed mutable parent events.",
+      missionKind: "debt",
+      requestedRuntime: "codex",
       source: "ios-insights",
       status: "pending",
       liveSummary: "Mission queued from this device.",
       events: [
         {
+          sequence: 1,
           timestamp: "2026-05-13T00:00:00.000Z",
-          phase: "queued",
-          message: "Mission queued from this device.",
+          kind: "final_answer",
+          phase: "completed",
+          title: "Spoofed",
+          message: "Mobile should not seed parent timeline history.",
           source: "ios",
+          isError: false,
         },
       ],
       createdAt: "2026-05-13T00:00:00.000Z",
       updatedAt: serverTimestamp(),
       schemaVersion: 2,
+    })
+  );
+  await assertFails(
+    setDoc(
+      doc(phoneDb, requestPath),
+      {
+        status: "completed",
+        selectedRuntime: "codex",
+        selectedRuntimeName: "Codex",
+        sessionId: "thread-forged",
+        liveSummary: "Forged completion should not be accepted without a trusted Mac claim.",
+        resultPreview: "forged",
+        completedAt: "2026-05-13T00:00:02.000Z",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(phoneDb, requestPath),
+      {
+        status: "failed",
+        errorMessage: "Mobile should not forge a pre-claim host failure.",
+        liveSummary: "Mobile should not forge a pre-claim host failure.",
+        completedAt: "2026-05-13T00:00:02.000Z",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(phoneDb, requestPath),
+      {
+        status: "canceled",
+        errorMessage: "Mobile should not cancel execution before the Mac has claimed the mission.",
+        liveSummary: "Mobile should not cancel execution before the Mac has claimed the mission.",
+        completedAt: "2026-05-13T00:00:02.000Z",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(phoneDb, requestPath),
+      {
+        status: "unauthorized",
+        errorMessage: "Mac is not trusted.",
+        liveSummary: "Mac is not trusted.",
+        completedAt: "2026-05-13T00:00:02.500Z",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, `${requestPath}/events/000097`), {
+      sequence: 97,
+      timestamp: "2026-05-13T00:00:02.600Z",
+      kind: "error",
+      phase: "unauthorized",
+      title: "Forged unauthorized event",
+      message: "A mobile client must not be able to append mac-sourced events before a trusted Mac claim.",
+      runtime: "codex",
+      source: "mac",
+      isError: true,
+    })
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivy/escrow_devices/forged-trusted-mac"), {
+      deviceId: "forged-trusted-mac",
+      platform: "macOS",
+      deviceName: "Forged trusted Mac",
+      trustState: "trusted",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, "users/ivy/escrow_devices/mac-1"), {
+      deviceId: "mac-1",
+      platform: "macOS",
+      deviceName: "Ivy Mac",
+      trustState: "pending",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(phoneDb, "users/ivy/escrow_devices/mac-1"),
+      {
+        trustState: "trusted",
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  const lifecyclePath = "users/ivy/cli_agent_mission_requests/mission-lifecycle";
+  await assertSucceeds(
+    setDoc(doc(phoneDb, lifecyclePath), {
+      id: "mission-lifecycle",
+      title: "Lifecycle Mission",
+      prompt: "Exercise accepted, starting, and running lifecycle states.",
+      missionKind: "custom",
+      requestedRuntime: "codex",
+      targetProject: "",
+      depth: "standard",
+      approvalMode: "read_only",
+      commandsAllowed: false,
+      fileEditsAllowed: false,
+      source: "ios-insights",
+      status: "pending",
+      liveSummary: "Mission queued from this device.",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 2,
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000001`), {
+      sequence: 1,
+      timestamp: "2026-05-13T00:00:00.000Z",
+      kind: "status",
+      phase: "queued",
+      title: "Queued",
+      message: "Mission queued from this device.",
+      source: "ios",
+      isError: false,
+    })
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(phoneDb, lifecyclePath),
+      {
+        status: "accepted",
+        claimedBy: "mac-1",
+        selectedRuntime: "codex",
+        selectedRuntimeName: "Codex",
+        liveSummary: "Codex claimed the mission on this Mac.",
+        startedAt: "2026-05-13T00:00:01.000Z",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000002`), {
+      sequence: 2,
+      timestamp: "2026-05-13T00:00:01.000Z",
+      kind: "status",
+      phase: "accepted",
+      title: "Accepted",
+      message: "Codex claimed the mission on this Mac.",
+      runtime: "codex",
+      source: "mac",
+      isError: false,
+    })
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(phoneDb, lifecyclePath),
+      {
+        status: "starting",
+        claimedBy: "mac-1",
+        selectedRuntime: "codex",
+        selectedRuntimeName: "Codex",
+        liveSummary: "Starting Codex with the mission prompt.",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000003`), {
+      sequence: 3,
+      timestamp: "2026-05-13T00:00:02.000Z",
+      kind: "status",
+      phase: "starting",
+      title: "Starting",
+      message: "Starting Codex with the mission prompt.",
+      runtime: "codex",
+      source: "mac",
+      isError: false,
+    })
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(phoneDb, lifecyclePath),
+      {
+        status: "running",
+        claimedBy: "mac-1",
+        selectedRuntime: "codex",
+        selectedRuntimeName: "Codex",
+        liveSummary: "Codex is running on this Mac.",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, `${lifecyclePath}/events/000004`), {
+      sequence: 4,
+      timestamp: "2026-05-13T00:00:03.000Z",
+      kind: "status",
+      phase: "running",
+      title: "Running",
+      message: "Codex is running on this Mac.",
+      runtime: "codex",
+      source: "mac",
+      isError: false,
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, "users/ivy/escrow_devices/mac-pending"), {
+      deviceId: "mac-pending",
+      platform: "macOS",
+      deviceName: "Pending Mac",
+      trustState: "pending",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, "users/ivy/escrow_devices/phone-1"), {
+      deviceId: "phone-1",
+      platform: "iOS",
+      deviceName: "Ivy iPhone",
+      trustState: "trusted",
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(
+    setDoc(
+      doc(phoneDb, requestPath),
+      {
+        status: "running",
+        claimedBy: "mac-pending",
+        selectedRuntime: "codex",
+        selectedRuntimeName: "Codex",
+        liveSummary: "Pending Mac should not be able to claim.",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(
+      doc(phoneDb, requestPath),
+      {
+        status: "running",
+        claimedBy: "phone-1",
+        selectedRuntime: "codex",
+        selectedRuntimeName: "Codex",
+        liveSummary: "A trusted phone is not a Mac execution host.",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, `${requestPath}/events/000098`), {
+      sequence: 98,
+      timestamp: "2026-05-13T00:00:03.000Z",
+      kind: "tool_call",
+      phase: "tool_use",
+      title: "Shell",
+      message: "A pending Mac cannot append execution events.",
+      runtime: "codex",
+      source: "mac",
+      toolName: "exec_command",
+      isError: false,
+    })
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivy/cli_agent_mission_requests/mission-forged-complete"), {
+      id: "mission-forged-complete",
+      title: "Forged completion",
+      prompt: "This should not be creatable as an already-completed mission.",
+      missionKind: "debt",
+      requestedRuntime: "codex",
+      source: "ios-insights",
+      status: "completed",
+      selectedRuntime: "codex",
+      selectedRuntimeName: "Codex",
+      resultPreview: "forged",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      completedAt: "2026-05-13T00:00:01.000Z",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 2,
+    })
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivy/cli_agent_mission_requests/mission-forged-approval"), {
+      id: "mission-forged-approval",
+      title: "Forged approval",
+      prompt: "This should not be creatable as an already-approved mission.",
+      missionKind: "debt",
+      requestedRuntime: "codex",
+      source: "ios-insights",
+      status: "pending",
+      approvalRequestId: "approval-1",
+      approvalStatus: "approved",
+      approvalRespondedAt: "2026-05-13T00:00:01.000Z",
+      createdAt: "2026-05-13T00:00:00.000Z",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 2,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(phoneDb, `${requestPath}/events/000002`), {
+      sequence: 2,
+      timestamp: "2026-05-13T00:00:03.000Z",
+      kind: "tool_call",
+      phase: "tool_use",
+      title: "Read",
+      message: "A mac-sourced event cannot be written before a trusted Mac claim.",
+      runtime: "codex",
+      source: "mac",
+      toolName: "Read",
+      isError: false,
+    })
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(phoneDb, requestPath),
+      {
+        status: "waiting_for_approval",
+        claimedBy: "mac-1",
+        approvalRequestId: "approval-1",
+        approvalStatus: "pending",
+        approvalRequestedAt: "2026-05-13T00:00:03.500Z",
+        approvalTitle: "Approve Debt Mission",
+        approvalMessage: "Codex is waiting for approval before commands.",
+        selectedRuntime: "codex",
+        selectedRuntimeName: "Codex",
+        liveSummary: "Codex is waiting for approval before commands.",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, `${requestPath}/events/000002`), {
+      sequence: 2,
+      timestamp: "2026-05-13T00:00:03.000Z",
+      kind: "tool_call",
+      phase: "tool_use",
+      title: "Read",
+      message: "Read: AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift",
+      fullMessage: "Read: AgentLens/Services/CloudSync/CLIAgentMissionRequestListener.swift\n\n{\"offset\":1,\"limit\":120}",
+      messageLength: 96,
+      messageTruncated: false,
+      runtime: "codex",
+      source: "mac",
+      toolName: "Read",
+      isError: false,
+    })
+  );
+  await assertFails(
+    setDoc(
+      doc(phoneDb, `${requestPath}/events/000002`),
+      {
+        message: "Attempted rewrite of an already-written mission event.",
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(deleteDoc(doc(phoneDb, `${requestPath}/events/000002`)));
+  await assertFails(deleteDoc(doc(phoneDb, requestPath)));
+  await assertSucceeds(
+    setDoc(
+      doc(phoneDb, requestPath),
+      {
+        approvalStatus: "approved",
+        approvalRespondedAt: "2026-05-13T00:00:04.000Z",
+        liveSummary: "Approval granted from mobile. Waiting for the Mac to resume.",
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(doc(otherDb, `${requestPath}/events/000003`), {
+      sequence: 3,
+      timestamp: "2026-05-13T00:00:04.000Z",
+      kind: "error",
+      phase: "failed",
+      title: "Injected",
+      message: "Mallory should not be able to write Ivy mission events.",
+      runtime: "opencode",
+      source: "mac",
+      isError: true,
     })
   );
 
@@ -205,21 +715,28 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
         selectedRuntimeName: "Codex",
         sessionId: "thread-1",
         liveSummary: "Codex returned a result.",
-        events: [
-          {
-            timestamp: "2026-05-13T00:00:05.000Z",
-            phase: "completed",
-            message: "Prioritized debt mission with validation commands.",
-            runtime: "codex",
-            source: "mac",
-          },
-        ],
         resultPreview: "Prioritized debt mission with validation commands.",
         completedAt: "2026-05-13T00:00:05.000Z",
         updatedAt: serverTimestamp(),
       },
       { merge: true }
     )
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, `${requestPath}/events/000003`), {
+      sequence: 3,
+      timestamp: "2026-05-13T00:00:05.000Z",
+      kind: "final_answer",
+      phase: "completed",
+      title: "Completed",
+      message: "Prioritized debt mission with validation commands.",
+      fullMessage: "Prioritized debt mission with validation commands.\n\nValidation:\n- xcodebuild test\n- ./gradlew test",
+      messageLength: 95,
+      messageTruncated: false,
+      runtime: "codex",
+      source: "mac",
+      isError: false,
+    })
   );
 
   await assertFails(getDoc(doc(otherDb, requestPath)));
@@ -364,6 +881,148 @@ test("owners can delete old paid-backup data after entitlement lapses", async ()
 
   await assertSucceeds(deleteDoc(doc(db, `${logPath}/chunks/0`)));
   await assertSucceeds(deleteDoc(doc(db, logPath)));
+});
+
+test("burnbar pro allows encrypted cloud search rows and rejects plaintext search fields", async () => {
+  const db = authedDb("pro-user");
+  const documentPath = "users/pro-user/cloud_search_documents/device_session";
+  const chunkPath = "users/pro-user/cloud_search_chunks/device_session_0";
+  const indexStatePath = "users/pro-user/cloud_search_index_state/device";
+  const wrapperPath = "users/pro-user/cloud_vault_key_wrappers/wrapper";
+  const storagePath = "users/pro-user/session_logs/device_session/bodies/bodyhash.json.aesgcm";
+  const sealedText = {
+    v: 1,
+    algorithm: "AES-256-GCM",
+    nonce: "base64nonce",
+    ciphertext: "base64ciphertext",
+    keyVersion: 1,
+  };
+
+  await assertFails(
+    setDoc(doc(db, documentPath), {
+      uid: "pro-user",
+      documentID: "device_session",
+      deviceId: "device",
+      sourceKind: "session_log",
+      sourceID: "session",
+      bodyHash: "bodyhash",
+      storagePath,
+      sealedTitle: sealedText,
+      sealedBodyPreview: sealedText,
+      byteCount: 42,
+      indexVersion: 1,
+      tokenHashVersion: 1,
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await seedBurnBarProEntitlement("pro-user");
+
+  await assertSucceeds(
+    setDoc(doc(db, documentPath), {
+      uid: "pro-user",
+      documentID: "device_session",
+      deviceId: "device",
+      sourceKind: "session_log",
+      sourceID: "session",
+      provider: "codex",
+      projectName: "BurnBar",
+      bodyHash: "bodyhash",
+      storagePath,
+      sealedTitle: sealedText,
+      sealedBodyPreview: sealedText,
+      byteCount: 42,
+      indexVersion: 1,
+      tokenHashVersion: 1,
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, `${documentPath}_plaintext`), {
+      uid: "pro-user",
+      documentID: "device_session_plaintext",
+      deviceId: "device",
+      sourceKind: "session_log",
+      sourceID: "session",
+      bodyHash: "bodyhash",
+      storagePath,
+      sealedTitle: sealedText,
+      title: "plaintext title",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, chunkPath), {
+      uid: "pro-user",
+      chunkID: "device_session_0",
+      documentID: "device_session",
+      deviceId: "device",
+      sourceKind: "session_log",
+      sourceID: "session",
+      provider: "codex",
+      projectName: "BurnBar",
+      ordinal: 0,
+      startOffset: 0,
+      endOffset: 42,
+      contentHash: "contenthash",
+      bodyHash: "bodyhash",
+      storagePath,
+      sealedSnippet: sealedText,
+      tokenHashes: ["hash-a", "hash-b"],
+      indexVersion: 1,
+      tokenHashVersion: 1,
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, `${chunkPath}_plaintext`), {
+      uid: "pro-user",
+      chunkID: "device_session_1",
+      documentID: "device_session",
+      deviceId: "device",
+      sourceKind: "session_log",
+      sourceID: "session",
+      storagePath,
+      sealedSnippet: sealedText,
+      tokenHashes: ["hash-a"],
+      snippet: "plaintext preview",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, indexStatePath), {
+      uid: "pro-user",
+      deviceId: "device",
+      indexedThrough: "2026-05-14T00:00:00.000Z",
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, wrapperPath), {
+      uid: "pro-user",
+      targetDeviceId: "device",
+      sourceDeviceId: "mac",
+      publicKeyFingerprint: "fingerprint",
+      keyVersion: 1,
+      wrappedVaultKey: "sealed-vault-key",
+      algorithm: "P256_X963_HKDF_SHA256_AESGCM",
+      status: "active",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
 });
 
 test("owners can read derived project summaries but clients cannot write them", async () => {

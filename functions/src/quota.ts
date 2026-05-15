@@ -250,21 +250,43 @@ async function requireHostedQuotaEntitlement(
   db: Firestore,
   uid: string
 ): Promise<void> {
-  const snap = await db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get();
-  if (!snap.exists) {
-    throw new Error("permission-denied: Hosted Quota Sync subscription required.");
-  }
-  const entitlement = snap.data() as HostedQuotaEntitlementDoc;
-  const expectedProduct = getConfig().hostedQuotaProductID;
+  const [hostedSnap, proSnap] = await Promise.all([
+    db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),
+    db.doc(`users/${uid}/entitlements/burnbar_pro`).get(),
+  ]);
+  if (isActiveHostedQuotaEntitlement(hostedSnap.data() as HostedQuotaEntitlementDoc | undefined)) return;
+  if (isActivePremiumEntitlement(proSnap.data())) return;
+  throw new Error("permission-denied: Hosted Quota Sync or BurnBar Pro subscription required.");
+}
+
+function isActiveHostedQuotaEntitlement(entitlement: HostedQuotaEntitlementDoc | undefined): boolean {
+  if (!entitlement) return false;
   const expiresAtMs = entitlement.expiresAt ? Date.parse(entitlement.expiresAt) : 0;
+  return entitlement.active === true
+    && entitlement.productID === getConfig().hostedQuotaProductID
+    && Number.isFinite(expiresAtMs)
+    && expiresAtMs > Date.now();
+}
+
+function isActivePremiumEntitlement(raw: Record<string, unknown> | undefined): boolean {
+  if (!raw || raw.active !== true) return false;
+  const productID = typeof raw.productID === "string" ? raw.productID : "";
   if (
-    entitlement.active !== true ||
-    entitlement.productID !== expectedProduct ||
-    !Number.isFinite(expiresAtMs) ||
-    expiresAtMs <= Date.now()
+    productID !== getConfig().hostedQuotaProductID &&
+    productID !== getConfig().burnBarProProductID &&
+    productID !== getConfig().googlePlaySubscriptionProductID
   ) {
-    throw new Error("permission-denied: Hosted Quota Sync subscription is inactive.");
+    return false;
   }
+  const expireAt = raw.expireAt;
+  if (expireAt && typeof expireAt === "object") {
+    const candidate = expireAt as { toMillis?: () => number };
+    if (typeof candidate.toMillis === "function") {
+      return candidate.toMillis() > Date.now();
+    }
+  }
+  const expiresAtMs = raw.expiresAt ? Date.parse(String(raw.expiresAt)) : 0;
+  return Number.isFinite(expiresAtMs) && expiresAtMs > Date.now();
 }
 
 async function consumeHostedRefreshBudget(

@@ -1,5 +1,8 @@
 import SwiftUI
 import OpenBurnBarCore
+import FirebaseAuth
+import FirebaseCore
+import FirebaseFirestore
 
 /// Top-level mobile Insights tab content. Adapts to iPhone vs iPad
 /// automatically via size classes.
@@ -169,11 +172,16 @@ private struct AdaptiveInsightsLayout: View {
                     onFollowUpTap: { question in
                         Task { await store.compose(prompt: question.question) }
                     },
-                    onMissionLaunchTap: { question, missionKind, requestedRuntime in
+                    onMissionLaunchTap: { question, missionKind, _, options in
                         store.dispatchMission(
                             question,
                             missionKind: missionKind,
-                            requestedRuntime: requestedRuntime,
+                            requestedRuntime: options.requestedRuntime,
+                            targetProject: options.targetProject,
+                            depth: options.depth,
+                            approvalMode: options.approvalMode,
+                            commandsAllowed: options.commandsAllowed,
+                            fileEditsAllowed: options.fileEditsAllowed,
                             via: hermesService
                         )
                     },
@@ -225,8 +233,9 @@ private struct AdaptiveInsightsLayout: View {
             )
             .onTapGesture { showMissionDetail = true }
         case .tracking(let mission):
-            let isFailed = mission.status == "failed"
-            let isComplete = mission.status == "completed"
+            let status = mission.displayStatus
+            let isFailed = status == "failed" || status == "agent_launch_failed" || status == "unauthorized"
+            let isComplete = status == "completed"
             missionBanner(
                 icon: isFailed ? "exclamationmark.triangle.fill" : (isComplete ? "checkmark.circle.fill" : "dot.radiowaves.left.and.right"),
                 tone: isFailed ? UnifiedDesignSystem.Colors.warning : (isComplete ? UnifiedDesignSystem.Colors.success : UnifiedDesignSystem.Colors.whimsy),
@@ -249,17 +258,31 @@ private struct AdaptiveInsightsLayout: View {
     }
 
     private func missionBannerTitle(for mission: CLIAgentMissionSnapshot) -> String {
-        switch mission.status {
-        case "pending":
+        switch mission.displayStatus {
+        case "pending", "queued":
             return "Mission queued for \(mission.runtimeLabel)"
+        case "accepted":
+            return "Mission accepted by \(mission.runtimeLabel)"
+        case "starting":
+            return "Mission starting on \(mission.runtimeLabel)"
+        case "mac_offline":
+            return "Mac offline for \(mission.runtimeLabel)"
         case "running":
             return "Mission running on \(mission.runtimeLabel)"
+        case "waiting_for_approval":
+            return "Mission waiting for approval on \(mission.runtimeLabel)"
         case "completed":
             return "Mission completed on \(mission.runtimeLabel)"
         case "failed":
             return "Mission failed on \(mission.runtimeLabel)"
+        case "canceled", "cancelled":
+            return "Mission canceled on \(mission.runtimeLabel)"
+        case "unauthorized":
+            return "Mac not trusted for \(mission.runtimeLabel)"
+        case "agent_launch_failed":
+            return "Agent launch failed on \(mission.runtimeLabel)"
         default:
-            return "Mission \(mission.status) on \(mission.runtimeLabel)"
+            return "Mission \(mission.displayStatus) on \(mission.runtimeLabel)"
         }
     }
 
@@ -270,7 +293,7 @@ private struct AdaptiveInsightsLayout: View {
         if mission.status == "completed", let result = mission.resultPreview?.nilIfEmpty {
             return result
         }
-        return mission.liveSummary?.nilIfEmpty ?? mission.title
+        return mission.displayLiveSummary?.nilIfEmpty ?? mission.title
     }
 
     private func missionBanner(icon: String, tone: Color, title: String, detail: String, feedLines: [String]) -> some View {
@@ -312,7 +335,12 @@ private struct AdaptiveInsightsLayout: View {
     private var missionDetailSheet: some View {
         switch store.missionStatus {
         case .tracking(let mission):
-            MissionLiveDetailView(mission: mission)
+            MissionLiveDetailView(
+                mission: mission,
+                onApprovalResponse: { approve in
+                    store.respondToMissionApproval(requestID: mission.id, approve: approve)
+                }
+            )
                 .presentationDetents([.medium, .large])
         case .dispatched(let title, let runtime):
             MissionQueuedDetailView(
@@ -339,6 +367,14 @@ private extension String {
 
 private struct MissionLiveDetailView: View {
     let mission: CLIAgentMissionSnapshot
+    let onApprovalResponse: (Bool) -> Void
+    @State private var activeFilters: Set<MissionEventFilter> = Set(MissionEventFilter.allCases)
+
+    private var visibleEvents: [CLIAgentMissionEvent] {
+        mission.events.filter { event in
+            activeFilters.contains(MissionEventFilter(event: event))
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -348,14 +384,49 @@ private struct MissionLiveDetailView: View {
                         Text(mission.title)
                             .font(UnifiedDesignSystem.Typography.title)
                             .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
-                        Text(mission.liveSummary?.nilIfEmpty ?? mission.status.capitalized)
+                        Text(mission.displayLiveSummary?.nilIfEmpty ?? mission.displayStatus.capitalized)
                             .font(UnifiedDesignSystem.Typography.caption)
                             .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     }
 
-                    HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
-                        MissionDetailChip(label: mission.status.uppercased(), systemImage: mission.isTerminal ? "checkmark.circle" : "dot.radiowaves.left.and.right")
-                        MissionDetailChip(label: mission.runtimeLabel, systemImage: "desktopcomputer")
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                            MissionDetailChip(label: mission.displayStatus.uppercased(), systemImage: mission.isTerminal ? "checkmark.circle" : "dot.radiowaves.left.and.right")
+                            MissionDetailChip(label: mission.runtimeLabel, systemImage: "desktopcomputer")
+                            MissionDetailChip(label: mission.currentStepLabel, systemImage: "arrow.triangle.2.circlepath")
+                            if let tool = mission.activeToolName {
+                                MissionDetailChip(label: tool, systemImage: "hammer")
+                            }
+                            if let artifact = mission.latestArtifactLabel {
+                                MissionDetailChip(label: artifact, systemImage: "doc.text")
+                            }
+                        }
+                    }
+
+                    if mission.isWaitingForApproval {
+                        MissionDetailSection(title: mission.approvalTitle?.nilIfEmpty ?? "Approval Required") {
+                            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
+                                Text(mission.approvalMessage?.nilIfEmpty ?? "The Mac is waiting for approval before continuing this mission.")
+                                    .font(UnifiedDesignSystem.Typography.caption)
+                                    .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                                HStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                                    Button {
+                                        onApprovalResponse(true)
+                                    } label: {
+                                        Label("Approve", systemImage: "checkmark.circle.fill")
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(UnifiedDesignSystem.Colors.success)
+
+                                    Button(role: .destructive) {
+                                        onApprovalResponse(false)
+                                    } label: {
+                                        Label("Reject", systemImage: "xmark.octagon")
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                        }
                     }
 
                     if let sessionID = mission.sessionID?.nilIfEmpty {
@@ -373,8 +444,9 @@ private struct MissionLiveDetailView: View {
                                 .font(UnifiedDesignSystem.Typography.caption)
                                 .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                         } else {
+                            MissionEventFilterBar(activeFilters: $activeFilters)
                             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
-                                ForEach(mission.events) { event in
+                                ForEach(visibleEvents) { event in
                                     MissionTimelineRow(event: event)
                                 }
                             }
@@ -404,6 +476,73 @@ private struct MissionLiveDetailView: View {
             .background(UnifiedDesignSystem.Colors.background)
             .navigationTitle("Mission Live")
             .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+private enum MissionEventFilter: String, CaseIterable, Identifiable {
+    case llm
+    case tools
+    case errors
+    case approvals
+    case artifacts
+    case status
+
+    var id: String { rawValue }
+
+    init(event: CLIAgentMissionEvent) {
+        if event.isError || event.kind == "error" || event.phase == "failed" {
+            self = .errors
+        } else if event.kind == "tool_call" || event.kind == "tool_result" || event.phase == "tool_use" {
+            self = .tools
+        } else if event.kind == "approval_request" || event.phase.contains("approval") {
+            self = .approvals
+        } else if event.kind == "artifact" || event.kind == "changed_file" || event.artifactPath != nil || event.changedFilePath != nil {
+            self = .artifacts
+        } else if event.kind == "llm_response" || event.kind == "assistant_message" || event.kind == "final_answer" || event.phase == "assistant_response" {
+            self = .llm
+        } else {
+            self = .status
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .llm: return "LLM"
+        case .tools: return "Tools"
+        case .errors: return "Errors"
+        case .approvals: return "Approvals"
+        case .artifacts: return "Artifacts"
+        case .status: return "Status"
+        }
+    }
+}
+
+private struct MissionEventFilterBar: View {
+    @Binding var activeFilters: Set<MissionEventFilter>
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
+                ForEach(MissionEventFilter.allCases) { filter in
+                    Button {
+                        if activeFilters.contains(filter), activeFilters.count > 1 {
+                            activeFilters.remove(filter)
+                        } else {
+                            activeFilters.insert(filter)
+                        }
+                    } label: {
+                        Text(filter.label)
+                            .font(UnifiedDesignSystem.Typography.monoTiny.weight(.semibold))
+                            .foregroundStyle(activeFilters.contains(filter) ? Color.white : UnifiedDesignSystem.Colors.textSecondary)
+                            .padding(.horizontal, UnifiedDesignSystem.Spacing.sm)
+                            .padding(.vertical, 6)
+                            .background(activeFilters.contains(filter) ? UnifiedDesignSystem.Colors.ember : UnifiedDesignSystem.Colors.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 }
@@ -473,7 +612,7 @@ private struct MissionTimelineRow: View {
                 .frame(width: 18, height: 18)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
-                    Text(event.phase.replacingOccurrences(of: "_", with: " ").uppercased())
+                    Text((event.title?.nilIfEmpty ?? event.phase.replacingOccurrences(of: "_", with: " ")).uppercased())
                         .font(UnifiedDesignSystem.Typography.monoTiny.weight(.semibold))
                         .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
                     if let runtime = event.runtime?.nilIfEmpty {
@@ -482,10 +621,36 @@ private struct MissionTimelineRow: View {
                             .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
                     }
                 }
-                Text(event.message)
-                    .font(UnifiedDesignSystem.Typography.caption)
+                Text(event.displayMessage)
+                    .font(event.prefersMonospace ? UnifiedDesignSystem.Typography.monoTiny : UnifiedDesignSystem.Typography.caption)
                     .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
                     .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(event.prefersMonospace ? 10 : 0)
+                    .background {
+                        if event.prefersMonospace {
+                            RoundedRectangle(cornerRadius: UnifiedDesignSystem.Radius.sm)
+                                .fill(UnifiedDesignSystem.Colors.surface.opacity(0.72))
+                        }
+                    }
+                if event.messageTruncated {
+                    Text("Showing redacted mobile payload capped at \(event.messageLength ?? event.displayMessage.count) chars.")
+                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.warning)
+                }
+                if event.toolName?.nilIfEmpty != nil || event.artifactPath?.nilIfEmpty != nil || event.changedFilePath?.nilIfEmpty != nil {
+                    HStack(spacing: UnifiedDesignSystem.Spacing.xs) {
+                        if let toolName = event.toolName?.nilIfEmpty {
+                            MissionDetailChip(label: toolName, systemImage: "hammer")
+                        }
+                        if let artifactPath = event.artifactPath?.nilIfEmpty {
+                            MissionDetailChip(label: artifactPath, systemImage: "doc.text")
+                        }
+                        if let changedFilePath = event.changedFilePath?.nilIfEmpty {
+                            MissionDetailChip(label: changedFilePath, systemImage: "pencil.and.list.clipboard")
+                        }
+                    }
+                }
                 Text(event.timestamp)
                     .font(UnifiedDesignSystem.Typography.monoTiny)
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
@@ -495,7 +660,8 @@ private struct MissionTimelineRow: View {
 
     private var iconName: String {
         switch event.phase {
-        case "tool_use": return "hammer"
+        case "agent_launch_failed": return "xmark.octagon.fill"
+        case "tool_use", "tool_result": return "hammer"
         case "assistant_response": return "text.bubble"
         case "completed": return "checkmark.circle.fill"
         case "failed": return "exclamationmark.triangle.fill"
@@ -504,12 +670,223 @@ private struct MissionTimelineRow: View {
     }
 
     private var iconColor: Color {
+        if event.isError { return UnifiedDesignSystem.Colors.warning }
         switch event.phase {
         case "completed": return UnifiedDesignSystem.Colors.success
         case "failed": return UnifiedDesignSystem.Colors.warning
-        case "tool_use": return UnifiedDesignSystem.Colors.ember
+        case "tool_use", "tool_result": return UnifiedDesignSystem.Colors.ember
         default: return UnifiedDesignSystem.Colors.whimsy
         }
+    }
+}
+
+private extension CLIAgentMissionEvent {
+    var displayMessage: String {
+        fullMessage?.nilIfEmpty ?? message
+    }
+
+    var prefersMonospace: Bool {
+        kind == "tool_call"
+            || kind == "tool_result"
+            || kind == "llm_response"
+            || kind == "assistant_message"
+            || kind == "final_answer"
+            || displayMessage.contains("\n")
+    }
+}
+
+@Observable
+@MainActor
+final class MobileMissionActivityCenter {
+    enum ActivityState: Equatable, Sendable {
+        case idle
+        case tracking(CLIAgentMissionSnapshot)
+        case failed(String)
+    }
+
+    var state: ActivityState = .idle
+    private var authHandle: AuthStateDidChangeListenerHandle?
+    private var missionListRegistration: ListenerRegistration?
+    private var missionObservation: CLIAgentMissionObservation?
+    private var observedMissionID: String?
+    private var dismissedMissionIDs: Set<String> = []
+
+    func start() {
+        guard authHandle == nil else { return }
+        guard FirebaseApp.app() != nil else { return }
+        authHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            Task { @MainActor in
+                self?.restartListListener(uid: user?.uid)
+            }
+        }
+        restartListListener(uid: Auth.auth().currentUser?.uid)
+    }
+
+    func dismissCurrent() {
+        if case .tracking(let mission) = state {
+            dismissedMissionIDs.insert(mission.id)
+        }
+        missionObservation?.cancel()
+        missionObservation = nil
+        observedMissionID = nil
+        state = .idle
+    }
+
+    func respondToApproval(approve: Bool) {
+        guard case .tracking(let mission) = state else { return }
+        Task {
+            do {
+                try await CLIAgentMissionDispatcher.shared.respondToApproval(
+                    requestID: mission.id,
+                    approve: approve
+                )
+            } catch {
+                state = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    private func restartListListener(uid: String?) {
+        missionListRegistration?.remove()
+        missionListRegistration = nil
+        missionObservation?.cancel()
+        missionObservation = nil
+        observedMissionID = nil
+        guard let uid else {
+            state = .idle
+            return
+        }
+
+        missionListRegistration = Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("cli_agent_mission_requests")
+            .order(by: "createdAt", descending: true)
+            .limit(to: 6)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    if let error {
+                        self?.state = .failed(error.localizedDescription)
+                        return
+                    }
+                    let missions = snapshot?.documents.compactMap {
+                        CLIAgentMissionSnapshot(documentID: $0.documentID, data: $0.data())
+                    } ?? []
+                    self?.selectMission(from: missions)
+                }
+            }
+    }
+
+    private func selectMission(from missions: [CLIAgentMissionSnapshot]) {
+        let visible = missions.filter { !dismissedMissionIDs.contains($0.id) }
+        guard let mission = visible.first(where: { !$0.isTerminal }) ?? visible.first else {
+            state = .idle
+            return
+        }
+        guard mission.id != observedMissionID else { return }
+        missionObservation?.cancel()
+        observedMissionID = mission.id
+        do {
+            missionObservation = try CLIAgentMissionDispatcher.shared.observe(
+                requestID: mission.id,
+                onUpdate: { [weak self] snapshot in
+                    self?.state = .tracking(snapshot)
+                },
+                onError: { [weak self] message in
+                    self?.state = .failed(message)
+                }
+            )
+            state = .tracking(mission)
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+}
+
+struct MobileMissionActivityOverlay: View {
+    @Bindable var center: MobileMissionActivityCenter
+    @State private var showMissionDetail = false
+
+    var body: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                switch center.state {
+                case .idle:
+                    EmptyView()
+                case .tracking(let mission):
+                    missionButton(for: mission)
+                case .failed:
+                    alertButton
+                }
+            }
+        }
+        .sheet(isPresented: $showMissionDetail) {
+            switch center.state {
+            case .tracking(let mission):
+                MissionLiveDetailView(
+                    mission: mission,
+                    onApprovalResponse: { approve in center.respondToApproval(approve: approve) }
+                )
+                .presentationDetents([.medium, .large])
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Dismiss") {
+                            center.dismissCurrent()
+                            showMissionDetail = false
+                        }
+                    }
+                }
+            case .failed(let message):
+                MissionQueuedDetailView(title: "Mission listener", runtime: "Mobile", detail: message)
+                    .presentationDetents([.medium])
+            case .idle:
+                EmptyView()
+            }
+        }
+    }
+
+    private func missionButton(for mission: CLIAgentMissionSnapshot) -> some View {
+        Button {
+            showMissionDetail = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: mission.isTerminal ? "checkmark.circle.fill" : "dot.radiowaves.left.and.right")
+                    .symbolEffect(.pulse, options: .repeating, value: mission.events.count)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(mission.isTerminal ? "Mission done" : "Mission live")
+                        .font(UnifiedDesignSystem.Typography.tiny.weight(.semibold))
+                    Text("\(mission.runtimeLabel) · \(mission.currentStepLabel)")
+                        .font(UnifiedDesignSystem.Typography.monoTiny)
+                        .lineLimit(1)
+                }
+            }
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(mission.isTerminal ? UnifiedDesignSystem.Colors.success : UnifiedDesignSystem.Colors.ember)
+            .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 10)
+        }
+        .accessibilityLabel("Open live mission window")
+        .padding(.trailing, 18)
+    }
+
+    private var alertButton: some View {
+        Button {
+            showMissionDetail = true
+        } label: {
+            Label("Mission alert", systemImage: "exclamationmark.triangle.fill")
+                .font(UnifiedDesignSystem.Typography.tiny.weight(.semibold))
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .background(UnifiedDesignSystem.Colors.warning)
+                .clipShape(Capsule())
+                .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 10)
+        }
+        .padding(.trailing, 18)
     }
 }
 

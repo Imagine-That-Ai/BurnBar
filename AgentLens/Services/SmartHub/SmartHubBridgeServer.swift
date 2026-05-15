@@ -451,6 +451,7 @@ final class SmartHubBridgeServer {
           "timePeriodLabel": "\(escape(timePeriod.displayName))",
           "timePeriodOptions": [\(timePeriodOptions)],
           "totalSpend": "\(escape(snapshot.totalSpend))",
+          "totalTokens": "\(escape(snapshot.totalTokens))",
           "headline": "\(escape(snapshot.headline))",
           "subheadline": "\(escape(snapshot.subheadline))",
           "headerTimestamp": "\(escape(snapshot.headerTimestamp))",
@@ -466,19 +467,31 @@ final class SmartHubBridgeServer {
     /// — buckets and accounts — that the legacy single-line emitter
     /// couldn't express cleanly.
     private static func providerJSON(_ p: SmartHubBridgeSnapshot.Provider) -> String {
-        let bucketsJSON = p.buckets.map { b in
+        // Explicitly type each closure's return as `String`. Without
+        // this, Swift's overload resolver can latch onto GRDB's `SQL`
+        // type (also `ExpressibleByStringInterpolation`, re-exported
+        // via OpenBurnBarCore) and emit `SQL(elements: [...])` debug
+        // text into the payload instead of plain JSON, which makes the
+        // Nest Hub page's `await r.json()` throw and trap the UI in
+        // "Reconnecting to Mac…".
+        let bucketsJSON = p.buckets.map { (b) -> String in
             """
             {"name":"\(escape(b.name))","percent":\(b.percent),"headlineValue":"\(escape(b.headlineValue))","subLabel":"\(escape(b.subLabel))","resetsLabel":"\(escape(b.resetsLabel))","tone":"\(b.tone.rawValue)"}
             """
         }.joined(separator: ",")
 
-        let accountsJSON = p.accounts.map { a in
-            """
-            {"label":"\(escape(a.label))","badge":"\(escape(a.badge))","tone":"\(a.tone.rawValue)","isActive":\(a.isActive ? "true" : "false")}
+        let accountsJSON = p.accounts.map { (a) -> String in
+            let abuckets = a.buckets.map { (b) -> String in
+                """
+                {"name":"\(escape(b.name))","percent":\(b.percent),"headlineValue":"\(escape(b.headlineValue))","subLabel":"\(escape(b.subLabel))","resetsLabel":"\(escape(b.resetsLabel))","tone":"\(b.tone.rawValue)"}
+                """
+            }.joined(separator: ",")
+            return """
+            {"label":"\(escape(a.label))","badge":"\(escape(a.badge))","tone":"\(a.tone.rawValue)","isActive":\(a.isActive ? "true" : "false"),"percent":\(a.percent),"buckets":[\(abuckets)]}
             """
         }.joined(separator: ",")
 
-        let burnRatesJSON = p.burnRates.map { r in
+        let burnRatesJSON = p.burnRates.map { (r) -> String in
             """
             {"windowLabel":"\(escape(r.windowLabel))","tokens":"\(escape(r.tokens))","cost":"\(escape(r.cost))","runs":"\(escape(r.runs))"}
             """
@@ -603,6 +616,7 @@ final class SmartHubBridgeServer {
 /// rich form keeps reading the old fields.
 struct SmartHubBridgeSnapshot: Equatable, Sendable {
     var totalSpend: String
+    var totalTokens: String
     var headline: String
     var subheadline: String
     var providers: [Provider]
@@ -701,6 +715,28 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
             var badge: String     // "MAIN", "ACTIVE", "CLI"
             var tone: Tone
             var isActive: Bool    // active routing target — drives the green dot
+            /// Quota buckets for this specific account. Empty when the
+            /// provider doesn't expose per-account quota breakdown.
+            var buckets: [Bucket]
+            /// Primary percent for this account (0–100). Shown as a quick
+            /// glance-read in the detail view's account list.
+            var percent: Int
+
+            init(
+                label: String,
+                badge: String,
+                tone: Tone,
+                isActive: Bool,
+                buckets: [Bucket] = [],
+                percent: Int = 0
+            ) {
+                self.label = label
+                self.badge = badge
+                self.tone = tone
+                self.isActive = isActive
+                self.buckets = buckets
+                self.percent = percent
+            }
         }
 
         struct BurnRate: Equatable, Sendable, Hashable {
@@ -755,7 +791,7 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
             self.hasQuotaData = hasQuotaData
             self.burnRates = burnRates
         }
-
+    
         private static func slug(forName name: String) -> String {
             name.lowercased()
                 .unicodeScalars
@@ -774,6 +810,7 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
 
     init(
         totalSpend: String,
+        totalTokens: String = "",
         headline: String,
         subheadline: String,
         providers: [Provider],
@@ -781,6 +818,7 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
         headerStatus: String = ""
     ) {
         self.totalSpend = totalSpend
+        self.totalTokens = totalTokens
         self.headline = headline
         self.subheadline = subheadline
         self.providers = providers
@@ -790,6 +828,7 @@ struct SmartHubBridgeSnapshot: Equatable, Sendable {
 
     static let empty = SmartHubBridgeSnapshot(
         totalSpend: "—",
+        totalTokens: "",
         headline: "OpenBurnBar",
         subheadline: "Waiting for first sync…",
         providers: []

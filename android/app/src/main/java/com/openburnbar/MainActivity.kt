@@ -5,16 +5,22 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
+import com.google.firebase.auth.FirebaseAuth
+import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
 import com.openburnbar.data.assistants.PiPendingPrompt
 import com.openburnbar.ui.navigation.BurnBarNavHost
 import com.openburnbar.ui.navigation.HermesPendingPrompt
 import com.openburnbar.ui.theme.AuroraTheme
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         stashPendingPromptFromIntent(intent)
+        launchE2EMissionFromIntent(intent)
         setContent {
             AuroraTheme {
                 BurnBarNavHost()
@@ -26,6 +32,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         stashPendingPromptFromIntent(intent)
+        launchE2EMissionFromIntent(intent)
     }
 
     /**
@@ -73,10 +80,43 @@ class MainActivity : ComponentActivity() {
         return intent.data?.getQueryParameter("prompt")
     }
 
+    private fun launchE2EMissionFromIntent(intent: Intent?) {
+        if (!BuildConfig.DEBUG || intent?.getBooleanExtra(EXTRA_E2E_LAUNCH_MISSION, false) != true) return
+        lifecycleScope.launch {
+            val auth = FirebaseAuth.getInstance()
+            val expectedUid = intent.getStringExtra(EXTRA_E2E_FIREBASE_UID)
+            if (expectedUid.isNullOrBlank() || auth.currentUser?.uid != expectedUid) {
+                val email = intent.getStringExtra(EXTRA_E2E_FIREBASE_EMAIL)?.takeIf { it.isNotBlank() }
+                val password = intent.getStringExtra(EXTRA_E2E_FIREBASE_PASSWORD)?.takeIf { it.isNotBlank() }
+                if (email == null || password == null) return@launch
+                auth.signInWithEmailAndPassword(email, password).await()
+            }
+
+            CLIAgentMissionDispatcher().dispatch(
+                title = "Android E2E Mission",
+                prompt = intent.getStringExtra(EXTRA_E2E_MISSION_PROMPT)?.takeIf { it.isNotBlank() } ?: "android ok",
+                missionKind = "custom",
+                requestedRuntime = intent.getStringExtra(EXTRA_E2E_MISSION_RUNTIME)?.takeIf { it.isNotBlank() } ?: "openclaw",
+                targetProject = intent.getStringExtra(EXTRA_E2E_MISSION_TARGET)?.takeIf { it.isNotBlank() },
+                depth = "standard",
+                approvalMode = "read_only",
+                commandsAllowed = false,
+                fileEditsAllowed = false,
+            )
+        }
+    }
+
     companion object {
         const val EXTRA_ASSISTANT = "burnbar.assistant"
         const val EXTRA_PROMPT = "burnbar.prompt"
         const val ASSISTANT_HERMES = "hermes"
         const val ASSISTANT_PI = "pi"
+        const val EXTRA_E2E_LAUNCH_MISSION = "openburnbar.e2e.launchMission"
+        const val EXTRA_E2E_FIREBASE_UID = "openburnbar.e2e.firebaseUid"
+        const val EXTRA_E2E_FIREBASE_EMAIL = "openburnbar.e2e.firebaseEmail"
+        const val EXTRA_E2E_FIREBASE_PASSWORD = "openburnbar.e2e.firebasePassword"
+        const val EXTRA_E2E_MISSION_RUNTIME = "openburnbar.e2e.missionRuntime"
+        const val EXTRA_E2E_MISSION_TARGET = "openburnbar.e2e.missionTarget"
+        const val EXTRA_E2E_MISSION_PROMPT = "openburnbar.e2e.missionPrompt"
     }
 }

@@ -257,6 +257,11 @@ final class InsightsStore {
         _ question: InsightFollowUpQuestion,
         missionKind explicitMissionKind: String? = nil,
         requestedRuntime: String = "auto",
+        targetProject: String? = nil,
+        depth: String = "standard",
+        approvalMode: String = "existing_policy",
+        commandsAllowed: Bool = false,
+        fileEditsAllowed: Bool = false,
         via hermesService: HermesService
     ) {
         let title = question.question
@@ -270,7 +275,12 @@ final class InsightsStore {
                     title: title,
                     prompt: question.question,
                     missionKind: missionKind,
-                    requestedRuntime: requestedRuntime
+                    requestedRuntime: requestedRuntime,
+                    targetProject: targetProject,
+                    depth: depth,
+                    approvalMode: approvalMode,
+                    commandsAllowed: commandsAllowed,
+                    fileEditsAllowed: fileEditsAllowed
                 )
                 let runtimeLabel = requestedRuntime == "auto" ? "Mac agent fleet" : requestedRuntime
                 missionStatus = .dispatched(title: title, runtime: runtimeLabel)
@@ -286,6 +296,22 @@ final class InsightsStore {
         missionObservation?.cancel()
         missionObservation = nil
         missionStatus = .idle
+    }
+
+    func respondToMissionApproval(requestID: String, approve: Bool) {
+        Task {
+            do {
+                try await CLIAgentMissionDispatcher.shared.respondToApproval(
+                    requestID: requestID,
+                    approve: approve
+                )
+            } catch {
+                missionStatus = .failed(
+                    title: "Mission approval",
+                    message: error.localizedDescription
+                )
+            }
+        }
     }
 
     private func observeMission(requestID: String, fallbackTitle: String) {
@@ -384,7 +410,28 @@ final class InsightsStore {
             keyProvider: { provider, aliases, envKeys in
                 Self.mobileUserKey(provider: provider, aliases: aliases, envKeys: envKeys)
             },
-            urlProvider: { Self.urlFromEnvironment($0) }
+            urlProvider: { Self.urlFromEnvironment($0) },
+            hostedFallbackProvider: { Self.mobileHostedFallbackAdapter() }
+        )
+    }
+
+    /// Build the BurnBar-hosted fallback adapter for the mobile shell.
+    ///
+    /// The callable URL defaults to the prod `us-central1` Cloud
+    /// Functions endpoint; `INSIGHTS_HOSTED_FALLBACK_URL` overrides
+    /// it for staging/local emulator testing. Returns `nil` when the
+    /// URL is malformed so the registry skips registration cleanly.
+    nonisolated private static func mobileHostedFallbackAdapter() -> BurnBarHostedInsightAdapter? {
+        let envURL = ProcessInfo.processInfo.environment["INSIGHTS_HOSTED_FALLBACK_URL"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let defaultURL = "https://us-central1-burnbar.cloudfunctions.net/insightsHostedAnswer"
+        guard let url = URL(string: (envURL?.isEmpty == false ? envURL! : defaultURL)) else {
+            return nil
+        }
+        return BurnBarHostedInsightAdapter(
+            endpointURL: url,
+            authTokenProvider: { await Self.firebaseIDToken() },
+            appCheckTokenProvider: { await Self.firebaseAppCheckToken() }
         )
     }
 
@@ -394,6 +441,11 @@ final class InsightsStore {
         let available = privacyMode
             ? modelCatalog.filter { $0.egressTier == .localOnly }
             : modelCatalog
+        // The automatic selection always lands on a user-owned route
+        // when one is registered. Hosted fallback is *not* surfaced
+        // here — the orchestrator picks it up only when every
+        // user-owned route fails or is missing, so the user sees
+        // their selected model in the picker, not "BurnBar Hosted".
         let preferred = available.first { $0.providerKey == "hermes" }
             ?? available.first { $0.providerKey == "ollama" }
             ?? available.first { $0.providerKey == "local-rules" }
@@ -406,6 +458,19 @@ final class InsightsStore {
         )
     }
 
+    /// Resolve the model the engine should ask first for a Q&A turn.
+    ///
+    /// Preference order:
+    ///   1. The user's explicitly selected gateway (Hermes, Pi,
+    ///      OpenClaw, Claude, Codex, OpenCode, OpenAI, Ollama, etc.).
+    ///   2. Any registered Hermes relay (covers Pi/OpenClaw too).
+    ///   3. Any registered user-key cloud route (Claude/OpenAI/etc.).
+    ///   4. Ollama (the local relay).
+    ///   5. The BurnBar-hosted fallback — only reached when nothing
+    ///      user-owned is registered.
+    ///   6. Local rules (deterministic).
+    ///
+    /// Privacy mode short-circuits past every non-local tier.
     private func modelForAnalysis(instruction: InsightAnalysisRequest.Instruction) -> InsightModelTag {
         guard instruction == .answerFollowUp else { return selectedModelTag }
         guard selectedModelTag.providerKey == "local-rules" else { return selectedModelTag }
@@ -413,8 +478,13 @@ final class InsightsStore {
             ? modelCatalog.filter { $0.egressTier == .localOnly }
             : modelCatalog
         let preferred = available.first { $0.providerKey == "hermes" }
-            ?? available.first { $0.egressTier != .localOnly && $0.providerKey != "ollama" }
+            ?? available.first {
+                $0.egressTier != .localOnly
+                && $0.providerKey != "ollama"
+                && $0.providerKey != BurnBarHostedInsightAdapter.providerKeyRaw
+            }
             ?? available.first { $0.providerKey == "ollama" }
+            ?? available.first { $0.providerKey == BurnBarHostedInsightAdapter.providerKeyRaw }
             ?? available.first { $0.providerKey != "local-rules" }
         guard let preferred else { return selectedModelTag }
         return .init(
@@ -494,6 +564,18 @@ final class InsightsStore {
             return nil
         }
         return URL(string: raw)
+    }
+
+    /// Lazily resolved Firebase Auth ID token. Looks up the
+    /// `MobileFirebaseTokenProvider` if installed (registered by the
+    /// shell at startup); returns `nil` otherwise so the hosted
+    /// adapter still functions when only App Check is required.
+    nonisolated private static func firebaseIDToken() async -> String? {
+        await MobileFirebaseTokenProvider.shared?.idToken()
+    }
+
+    nonisolated private static func firebaseAppCheckToken() async -> String? {
+        await MobileFirebaseTokenProvider.shared?.appCheckToken()
     }
 
     private func recentAnalysisSummaries() async throws -> [String] {

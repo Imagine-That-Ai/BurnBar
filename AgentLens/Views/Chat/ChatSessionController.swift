@@ -1065,6 +1065,8 @@ final class ChatSessionController {
                         Self.appendStreamingText(chunk, to: &pieces)
                     case .toolUse(let name, let detail):
                         pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
+                    case .toolResult(let name, let detail):
+                        pieces.append(ChatTranscriptPiece(kind: .toolResult, value: name, detail: detail))
                     case .usage(let usage):
                         if let prev = usageSnapshot {
                             usageSnapshot = usage.totalTokens >= prev.totalTokens ? usage : prev

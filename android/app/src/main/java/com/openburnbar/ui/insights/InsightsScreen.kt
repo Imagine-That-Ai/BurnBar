@@ -28,11 +28,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -187,12 +187,17 @@ fun InsightsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             onCitationTap = { viewModel.ask(citationPrompt(it)) },
                             onFollowUpTap = { viewModel.ask(it.question) },
-                            onMissionLaunchTap = { action, runtime ->
+                            onMissionLaunchTap = { action, options ->
                                 viewModel.launchMission(
                                     action.title,
                                     action.followUpQuestion().question,
                                     action.tone.firestoreValue(),
-                                    runtime.firestoreValue,
+                                    options.requestedRuntime,
+                                    options.targetProject,
+                                    options.depth,
+                                    options.approvalMode,
+                                    options.commandsAllowed,
+                                    options.fileEditsAllowed,
                                 )
                             },
                         )
@@ -309,6 +314,9 @@ fun InsightsScreen(
             if (showMissionDetail) {
                 MissionDetailSheet(
                     status = missionStatus,
+                    onApprovalResponse = { requestID, approve ->
+                        viewModel.respondToMissionApproval(requestID, approve)
+                    },
                     onDismiss = { showMissionDetail = false },
                 )
             }
@@ -322,7 +330,7 @@ fun InsightsScreen(
 // event feed, dismiss text button).
 
 @Composable
-private fun MissionStatusBanner(
+fun MissionStatusBanner(
     status: InsightsViewModel.MissionStatus,
     onDismiss: () -> Unit,
     onOpen: () -> Unit,
@@ -331,7 +339,7 @@ private fun MissionStatusBanner(
         InsightsViewModel.MissionStatus.Idle -> Unit
         is InsightsViewModel.MissionStatus.Dispatched -> {
             MissionBanner(
-                icon = Icons.Filled.Send,
+                icon = Icons.AutoMirrored.Filled.Send,
                 tone = InsightsColors.kpiPositive,
                 title = "Mission dispatched to ${status.runtime}",
                 detail = "${status.title}. Waiting for the Mac agent listener to claim it.",
@@ -342,8 +350,8 @@ private fun MissionStatusBanner(
         }
         is InsightsViewModel.MissionStatus.Tracking -> {
             val mission = status.mission
-            val statusText = mission.status.lowercase()
-            val isFailed = statusText == "failed"
+            val statusText = mission.displayStatus.lowercase()
+            val isFailed = statusText == "failed" || statusText == "agent_launch_failed" || statusText == "unauthorized"
             val isComplete = statusText == "completed"
             val icon = when {
                 isFailed -> Icons.Filled.WarningAmber
@@ -357,18 +365,25 @@ private fun MissionStatusBanner(
                 else -> AuroraColors.whimsy(isDark)
             }
             val title = when (statusText) {
-                "pending" -> "Mission queued for ${mission.runtimeLabel}"
+                "pending", "queued" -> "Mission queued for ${mission.runtimeLabel}"
+                "accepted" -> "Mission accepted by ${mission.runtimeLabel}"
+                "starting" -> "Mission starting on ${mission.runtimeLabel}"
+                "mac_offline" -> "Mac offline for ${mission.runtimeLabel}"
                 "running" -> "Mission running on ${mission.runtimeLabel}"
+                "waiting_for_approval" -> "Mission waiting for approval on ${mission.runtimeLabel}"
                 "completed" -> "Mission completed on ${mission.runtimeLabel}"
                 "failed" -> "Mission failed on ${mission.runtimeLabel}"
-                else -> "Mission ${mission.status} on ${mission.runtimeLabel}"
+                "canceled", "cancelled" -> "Mission canceled on ${mission.runtimeLabel}"
+                "unauthorized" -> "Mac not trusted for ${mission.runtimeLabel}"
+                "agent_launch_failed" -> "Agent launch failed on ${mission.runtimeLabel}"
+                else -> "Mission ${mission.displayStatus} on ${mission.runtimeLabel}"
             }
             val detail = when {
                 isFailed -> mission.errorMessage?.takeIf { it.isNotBlank() }
-                    ?: mission.liveSummary?.takeIf { it.isNotBlank() } ?: mission.title
+                    ?: mission.displayLiveSummary?.takeIf { it.isNotBlank() } ?: mission.title
                 isComplete -> mission.resultPreview?.takeIf { it.isNotBlank() }
-                    ?: mission.liveSummary?.takeIf { it.isNotBlank() } ?: mission.title
-                else -> mission.liveSummary?.takeIf { it.isNotBlank() } ?: mission.title
+                    ?: mission.displayLiveSummary?.takeIf { it.isNotBlank() } ?: mission.title
+                else -> mission.displayLiveSummary?.takeIf { it.isNotBlank() } ?: mission.title
             }
             MissionBanner(
                 icon = icon,
@@ -485,8 +500,9 @@ private fun MissionBanner(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MissionDetailSheet(
+fun MissionDetailSheet(
     status: InsightsViewModel.MissionStatus,
+    onApprovalResponse: (String, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
@@ -494,7 +510,10 @@ private fun MissionDetailSheet(
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
     ) {
         when (status) {
-            is InsightsViewModel.MissionStatus.Tracking -> MissionLiveDetailContent(status.mission)
+            is InsightsViewModel.MissionStatus.Tracking -> MissionLiveDetailContent(
+                mission = status.mission,
+                onApprovalResponse = onApprovalResponse,
+            )
             is InsightsViewModel.MissionStatus.Dispatched -> MissionQueuedDetailContent(
                 title = status.title,
                 runtime = status.runtime,
@@ -511,7 +530,13 @@ private fun MissionDetailSheet(
 }
 
 @Composable
-private fun MissionLiveDetailContent(mission: CLIAgentMissionSnapshot) {
+private fun MissionLiveDetailContent(
+    mission: CLIAgentMissionSnapshot,
+    onApprovalResponse: (String, Boolean) -> Unit,
+) {
+    var activeFilters by remember { mutableStateOf(MissionEventFilter.entries.toSet()) }
+    val visibleEvents = mission.events.filter { activeFilters.contains(MissionEventFilter.from(it)) }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
@@ -532,7 +557,7 @@ private fun MissionLiveDetailContent(mission: CLIAgentMissionSnapshot) {
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = mission.liveSummary?.takeIf { it.isNotBlank() } ?: mission.status,
+                    text = mission.displayLiveSummary?.takeIf { it.isNotBlank() } ?: mission.displayStatus,
                     style = AuroraType.caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -541,10 +566,48 @@ private fun MissionLiveDetailContent(mission: CLIAgentMissionSnapshot) {
 
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
-                item { MissionDetailChip(mission.status.uppercase(), Icons.Filled.GraphicEq) }
+                item { MissionDetailChip(mission.displayStatus.uppercase(), Icons.Filled.GraphicEq) }
                 item { MissionDetailChip(mission.runtimeLabel, Icons.Filled.CheckCircle) }
+                item { MissionDetailChip(mission.currentStepLabel, Icons.Filled.GraphicEq) }
+                mission.activeToolName?.let { tool ->
+                    item { MissionDetailChip(tool, Icons.Filled.Tune) }
+                }
+                mission.latestArtifactLabel?.let { artifact ->
+                    item { MissionDetailChip(artifact, Icons.Filled.AutoAwesome) }
+                }
                 mission.sessionID?.takeIf { it.isNotBlank() }?.let { session ->
                     item { MissionDetailChip(session, Icons.Filled.AutoAwesome) }
+                }
+            }
+        }
+
+        if (mission.isWaitingForApproval) {
+            item {
+                MissionDetailSection(title = mission.approvalTitle?.takeIf { it.isNotBlank() } ?: "Approval required") {
+                    Column(verticalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+                        Text(
+                            text = mission.approvalMessage?.takeIf { it.isNotBlank() }
+                                ?: "The Mac is waiting for approval before continuing this mission.",
+                            style = AuroraType.caption,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)) {
+                            TextButton(onClick = { onApprovalResponse(mission.id, true) }) {
+                                Text(
+                                    text = "Approve",
+                                    style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+                                    color = InsightsColors.kpiPositive,
+                                )
+                            }
+                            TextButton(onClick = { onApprovalResponse(mission.id, false) }) {
+                                Text(
+                                    text = "Reject",
+                                    style = AuroraType.caption.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -557,11 +620,22 @@ private fun MissionLiveDetailContent(mission: CLIAgentMissionSnapshot) {
                         style = AuroraType.caption,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                } else {
+                    MissionEventFilterBar(
+                        activeFilters = activeFilters,
+                        onToggle = { filter ->
+                            activeFilters = if (filter in activeFilters && activeFilters.size > 1) {
+                                activeFilters - filter
+                            } else {
+                                activeFilters + filter
+                            }
+                        },
+                    )
                 }
             }
         }
 
-        items(mission.events) { event ->
+        items(visibleEvents) { event ->
             MissionTimelineRow(event)
         }
 
@@ -587,6 +661,47 @@ private fun MissionLiveDetailContent(mission: CLIAgentMissionSnapshot) {
                     )
                 }
             }
+        }
+    }
+}
+
+private enum class MissionEventFilter(val label: String) {
+    LLM("LLM"),
+    TOOLS("Tools"),
+    ERRORS("Errors"),
+    APPROVALS("Approvals"),
+    ARTIFACTS("Artifacts"),
+    STATUS("Status");
+
+    companion object {
+        fun from(event: CLIAgentMissionEvent): MissionEventFilter = when {
+            event.isError || event.kind == "error" || event.phase == "failed" -> ERRORS
+            event.kind in setOf("tool_call", "tool_result") || event.phase == "tool_use" -> TOOLS
+            event.kind == "approval_request" || "approval" in event.phase -> APPROVALS
+            event.kind in setOf("artifact", "changed_file") || event.artifactPath != null || event.changedFilePath != null -> ARTIFACTS
+            event.kind in setOf("llm_response", "assistant_message", "final_answer") || event.phase == "assistant_response" -> LLM
+            else -> STATUS
+        }
+    }
+}
+
+@Composable
+private fun MissionEventFilterBar(
+    activeFilters: Set<MissionEventFilter>,
+    onToggle: (MissionEventFilter) -> Unit,
+) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+        items(MissionEventFilter.entries) { filter ->
+            FilterChip(
+                selected = filter in activeFilters,
+                onClick = { onToggle(filter) },
+                label = {
+                    Text(
+                        text = filter.label,
+                        style = AuroraType.monoTiny.copy(fontWeight = FontWeight.SemiBold),
+                    )
+                },
+            )
         }
     }
 }
@@ -674,7 +789,7 @@ private fun MissionTimelineRow(event: CLIAgentMissionEvent) {
     val isDark = androidx.compose.foundation.isSystemInDarkTheme()
     val tone = when (event.phase) {
         "completed" -> InsightsColors.kpiPositive
-        "failed" -> if (isDark) AuroraColors.warningDark else AuroraColors.warning
+        "failed", "agent_launch_failed" -> if (isDark) AuroraColors.warningDark else AuroraColors.warning
         "tool_use" -> AuroraColors.ember
         else -> AuroraColors.whimsy(isDark)
     }
@@ -685,7 +800,7 @@ private fun MissionTimelineRow(event: CLIAgentMissionEvent) {
         Icon(
             imageVector = when (event.phase) {
                 "completed" -> Icons.Filled.CheckCircle
-                "failed" -> Icons.Filled.WarningAmber
+                "failed", "agent_launch_failed" -> Icons.Filled.WarningAmber
                 "tool_use" -> Icons.Filled.Tune
                 else -> Icons.Filled.GraphicEq
             },
@@ -696,7 +811,7 @@ private fun MissionTimelineRow(event: CLIAgentMissionEvent) {
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
                 Text(
-                    text = event.phase.replace("_", " ").uppercase(),
+                    text = (event.title ?: event.phase.replace("_", " ")).uppercase(),
                     style = AuroraType.monoTiny.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -708,11 +823,41 @@ private fun MissionTimelineRow(event: CLIAgentMissionEvent) {
                     )
                 }
             }
-            Text(
-                text = event.message,
-                style = AuroraType.caption,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Surface(
+                shape = RoundedCornerShape(AuroraRadius.sm.dp),
+                color = if (event.prefersMonospace) {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)
+                } else {
+                    Color.Transparent
+                },
+            ) {
+                Text(
+                    text = event.displayMessage,
+                    style = if (event.prefersMonospace) AuroraType.monoTiny else AuroraType.caption,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(if (event.prefersMonospace) 10.dp else 0.dp),
+                )
+            }
+            if (event.messageTruncated) {
+                Text(
+                    text = "Showing redacted mobile payload capped at ${event.messageLength ?: event.displayMessage.length} chars.",
+                    style = AuroraType.monoTiny,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (!event.toolName.isNullOrBlank() || !event.artifactPath.isNullOrBlank() || !event.changedFilePath.isNullOrBlank()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.xs.dp)) {
+                    event.toolName?.takeIf { it.isNotBlank() }?.let { tool ->
+                        item { MissionDetailChip(tool, Icons.Filled.Tune) }
+                    }
+                    event.artifactPath?.takeIf { it.isNotBlank() }?.let { artifact ->
+                        item { MissionDetailChip(artifact, Icons.Filled.AutoAwesome) }
+                    }
+                    event.changedFilePath?.takeIf { it.isNotBlank() }?.let { changedFile ->
+                        item { MissionDetailChip(changedFile, Icons.Filled.AutoAwesome) }
+                    }
+                }
+            }
             Text(
                 text = event.timestamp,
                 style = AuroraType.monoTiny,
@@ -721,6 +866,13 @@ private fun MissionTimelineRow(event: CLIAgentMissionEvent) {
         }
     }
 }
+
+private val CLIAgentMissionEvent.displayMessage: String
+    get() = fullMessage?.takeIf { it.isNotBlank() } ?: message
+
+private val CLIAgentMissionEvent.prefersMonospace: Boolean
+    get() = kind in setOf("tool_call", "tool_result", "llm_response", "assistant_message", "final_answer") ||
+        displayMessage.contains("\n")
 
 private fun citationPrompt(citation: InsightCitation): String = when (val kind = citation.kind) {
     is InsightCitation.Kind.Session ->
@@ -952,7 +1104,7 @@ private fun InsightsComposerBar(
                         )
                     } else {
                         Icon(
-                            imageVector = Icons.Filled.Send,
+                            imageVector = Icons.AutoMirrored.Filled.Send,
                             contentDescription = "Ask Insights",
                             modifier = Modifier.size(18.dp),
                         )

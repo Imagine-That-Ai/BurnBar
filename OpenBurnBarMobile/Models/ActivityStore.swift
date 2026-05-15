@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarCore
+import FirebaseAuth
 import FirebaseFirestore
 
 @Observable
@@ -15,6 +16,7 @@ final class ActivityStore {
     private(set) var liveUsages: [TokenUsage] = []
     private(set) var usages: [TokenUsage] = []
     private(set) var searchHits: [StreamSearchHit] = []
+    private(set) var cloudSearchHits: [CloudConversationSearchRow] = []
     private(set) var hasMore = true
     private var lastDoc: DocumentSnapshot?
     private var liveUsageListener: ListenerRegistration?
@@ -154,6 +156,7 @@ final class ActivityStore {
         lastSearchQuery = trimmed
         guard trimmed.count >= 2 else {
             searchHits = []
+            cloudSearchHits = []
             isSearching = false
             return
         }
@@ -163,13 +166,93 @@ final class ActivityStore {
             try await Task.sleep(for: .milliseconds(250))
             try Task.checkCancellation()
             guard lastSearchQuery == trimmed else { return }
-            searchHits = try await functions.searchStreams(query: trimmed)
+            async let streamHits = functions.searchStreams(query: trimmed)
+            async let cloudHits = searchEncryptedCloudIndex(query: trimmed)
+            searchHits = (try? await streamHits) ?? []
+            cloudSearchHits = (try? await cloudHits) ?? []
         } catch is CancellationError {
             return
         } catch {
             searchHits = []
+            cloudSearchHits = []
         }
         isSearching = false
+    }
+
+    private func searchEncryptedCloudIndex(query: String) async throws -> [CloudConversationSearchRow] {
+        guard let vaultKey = try await unlockCloudVaultKeyIfAvailable() else { return [] }
+        let tokenHashes = try CloudVaultCrypto.tokenHashes(for: query, keyData: vaultKey, limit: 10)
+        guard tokenHashes.isEmpty == false else { return [] }
+        let hits = try await functions.searchEncryptedConversationIndex(tokenHashes: tokenHashes)
+        return hits.compactMap { hit in
+            guard let title = try? CloudVaultCrypto.openText(hit.sealedTitle, keyData: vaultKey),
+                  let snippet = try? CloudVaultCrypto.openText(hit.sealedSnippet, keyData: vaultKey) else {
+                return nil
+            }
+            return CloudConversationSearchRow(
+                id: hit.id,
+                title: title,
+                snippet: snippet,
+                provider: hit.provider,
+                projectName: hit.projectName,
+                storagePath: hit.storagePath,
+                bodyHash: hit.bodyHash,
+                score: hit.score
+            )
+        }
+    }
+
+    func loadCloudConversationBody(for row: CloudConversationSearchRow) async throws -> String {
+        guard let vaultKey = try await unlockCloudVaultKeyIfAvailable() else {
+            throw CloudConversationSearchError.vaultKeyUnavailable
+        }
+        let url = try await functions.encryptedSessionBlobDownloadURL(storagePath: row.storagePath)
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw CloudConversationSearchError.downloadFailed
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let envelope = try decoder.decode(CloudVaultBlobEnvelope.self, from: data)
+        let plaintext = try CloudVaultCrypto.openBlob(envelope, keyData: vaultKey)
+        guard CloudVaultCrypto.sha256Hex(plaintext) == row.bodyHash,
+              let body = String(data: plaintext, encoding: .utf8) else {
+            throw CloudConversationSearchError.bodyHashMismatch
+        }
+        return body
+    }
+
+    private func unlockCloudVaultKeyIfAvailable() async throws -> Data? {
+        guard let uid = Auth.auth().currentUser?.uid else { return nil }
+        let keyStore = CloudVaultKeyStore()
+        if let cached = try keyStore.loadKey(uid: uid) {
+            return cached
+        }
+        let keypair = try iOSDeviceKeypair()
+        let deviceId = MobileDeviceIdentity.loadOrCreateDeviceId()
+        let snapshot = try await Firestore.firestore()
+            .collection("users/\(uid)/cloud_vault_key_wrappers")
+            .whereField("targetDeviceId", isEqualTo: deviceId)
+            .whereField("status", isEqualTo: "active")
+            .limit(to: 5)
+            .getDocuments()
+        for document in snapshot.documents {
+            let data = document.data()
+            guard let keyVersion = data["keyVersion"] as? Int,
+                  let wrappedBase64 = data["wrappedVaultKey"] as? String,
+                  let wrapped = Data(base64Encoded: wrappedBase64) else {
+                continue
+            }
+            let unwrapped: Data
+            if keyVersion == keypair.keyVersion {
+                unwrapped = try keypair.decrypt(wrapped)
+            } else {
+                unwrapped = try keypair.decryptWithOldVersion(wrapped, version: keyVersion)
+            }
+            try keyStore.saveKey(unwrapped, uid: uid)
+            return unwrapped
+        }
+        return nil
     }
 
     private func fetchRawBatch(
@@ -329,5 +412,33 @@ final class ActivityStore {
             .sorted { activityDate(for: $0) > activityDate(for: $1) }
             .compactMap { value($0)?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { $0.isEmpty == false }
+    }
+}
+
+struct CloudConversationSearchRow: Identifiable, Hashable, Sendable {
+    let id: String
+    let title: String
+    let snippet: String
+    let provider: String?
+    let projectName: String?
+    let storagePath: String
+    let bodyHash: String
+    let score: Double
+}
+
+enum CloudConversationSearchError: LocalizedError {
+    case vaultKeyUnavailable
+    case downloadFailed
+    case bodyHashMismatch
+
+    var errorDescription: String? {
+        switch self {
+        case .vaultKeyUnavailable:
+            return "This device has not received the encrypted search key yet. Leave the app signed in and let your Mac sync again."
+        case .downloadFailed:
+            return "Could not download the encrypted session log."
+        case .bodyHashMismatch:
+            return "The encrypted session log did not match its indexed hash."
+        }
     }
 }
