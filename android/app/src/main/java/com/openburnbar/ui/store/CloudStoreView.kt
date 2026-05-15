@@ -1,8 +1,27 @@
 package com.openburnbar.ui.store
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,23 +30,29 @@ import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,10 +61,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -49,30 +77,41 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
 import com.openburnbar.data.stores.RemoteMcpClientRecord
 import com.openburnbar.data.stores.RemoteMcpClientStore
-import com.openburnbar.ui.pro.FoilCTAButton
-import com.openburnbar.ui.pro.MercuryCrest
-import com.openburnbar.ui.pro.MercuryCrestSize
-import com.openburnbar.ui.pro.MercuryFoilCard
-import com.openburnbar.ui.pro.ProLayout
-import com.openburnbar.ui.pro.ProPalette
-import com.openburnbar.ui.pro.ProPosterScaffold
-import com.openburnbar.ui.pro.ProTypography
+import com.openburnbar.ui.components.AuroraBackdrop
+import com.openburnbar.ui.pro.CloudBadge
+import com.openburnbar.ui.pro.CloudBadgePickerSheet
+import com.openburnbar.ui.pro.CloudBadgeSize
+import com.openburnbar.ui.pro.CloudBadgeWithHalo
 import com.openburnbar.ui.theme.AuroraColors
-import com.openburnbar.ui.theme.LocalAuroraReduceMotion
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-// ── Cloud Store View (Android — Pro Poster) ──
+// ── Cloud Store View (Android) ──
 //
-// The Pro destination. Wears the "luxury island in utilitarian sea"
-// vocabulary — obsidian + mercury foil + serif display. Same world as the
-// iOS poster so a member who buys on iPhone walks here and finds parity.
-//
-// Surfaces:
-//   • Free   — serif hero, MercuryFoilCard plan tile, capability lineup,
-//              comparison, trust, foil CTA action bar.
-//   • Member — serif hero, MercuryCrest + member certificate card,
-//              capabilities with checks, comparison, trust, no CTA.
+// Parity with the iOS `CloudStoreView`. Aurora language throughout — warm
+// `AuroraBackdrop` over a `LazyColumn`, glass cards with ember-tinted
+// hairlines, primary-gradient capsule CTAs, SF-Rounded-equivalent type.
+// No obsidian, no serif foundry-coin chrome. The hero brand mark is the
+// user's chosen `CloudBadge` (tappable to open the badge picker), and the
+// member card mirrors the You-tab aurora-burst certificate row exactly.
+
+private object Pal {
+    // Aliases for readability inside this file.
+    val ember = AuroraColors.ember
+    val emberDark = AuroraColors.emberDark
+    val amber = AuroraColors.amber
+    val amberDark = AuroraColors.amberDark
+    val blaze = AuroraColors.blaze
+    val whimsy = AuroraColors.whimsyDark
+    val aureate = AuroraColors.hermesAureateDark
+    val mercury = AuroraColors.hermesMercuryDark
+    val textPrimary = AuroraColors.darkTextPrimary
+    val textSecondary = AuroraColors.darkTextSecondary
+    val textMuted = AuroraColors.darkTextMuted
+    val surface = AuroraColors.darkSurface
+    val border = AuroraColors.darkBorderSubtle
+    val success = AuroraColors.successDark
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,7 +131,6 @@ fun CloudStoreView(
     val remoteMcpLoading by remoteMcpClientStore.isLoading.collectAsState()
     val remoteMcpError by remoteMcpClientStore.error.collectAsState()
     val revokingRemoteMcpClientId by remoteMcpClientStore.revokingClientId.collectAsState()
-    val reduceMotion = LocalAuroraReduceMotion.current
 
     LaunchedEffect(context) {
         subscriptionStore.initialize(context)
@@ -106,25 +144,37 @@ fun CloudStoreView(
 
     val priceText = productDetails?.formattedPrice ?: "$4.99"
 
-    ProPosterScaffold {
+    Box(modifier = Modifier.fillMaxSize()) {
+        AuroraBackdrop()
+
         Scaffold(
+            containerColor = Color.Transparent,
             topBar = {
                 TopAppBar(
                     title = {
                         Text(
                             "OpenBurnBar Cloud",
-                            fontFamily = FontFamily.Serif,
                             fontWeight = FontWeight.SemiBold,
-                            color = ProPalette.mercury
+                            color = Pal.textPrimary
                         )
                     },
                     navigationIcon = {
                         IconButton(onClick = onClose) {
-                            Icon(
-                                Icons.Filled.Close,
-                                null,
-                                tint = ProPalette.mercury.copy(alpha = 0.78f)
-                            )
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Pal.surface.copy(alpha = 0.6f))
+                                    .border(0.6.dp, Pal.border, CircleShape)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = "Close",
+                                    tint = Pal.textSecondary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -132,26 +182,28 @@ fun CloudStoreView(
                         scrolledContainerColor = Color.Transparent
                     )
                 )
-            },
-            containerColor = Color.Transparent
+            }
         ) { innerPadding ->
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
-                contentPadding = PaddingValues(20.dp),
+                contentPadding = PaddingValues(
+                    start = 16.dp, end = 16.dp,
+                    top = 12.dp, bottom = if (isActive) 28.dp else 140.dp
+                ),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                item { CloudPosterHero(reduceMotion = reduceMotion, isActive = isActive) }
+                item { CloudPosterHero(isActive = isActive) }
 
                 item {
                     if (isActive) {
-                        CloudMemberCard(
-                            expirationDate = expirationDate,
-                            purchaseDate = purchaseDate
+                        CloudAuroraMemberCard(
+                            expirationDateMs = expirationDate,
+                            purchaseDateMs = purchaseDate
                         )
                     } else {
-                        CloudPlanTile(priceText = priceText)
+                        CloudPlanGlassCard(priceText = priceText)
                     }
                 }
 
@@ -174,179 +226,496 @@ fun CloudStoreView(
                 }
 
                 if (!isActive) {
-                    item {
-                        val activity = context as? android.app.Activity
-                        FoilCTAButton(
-                            title = "Become a Member",
-                            subtitle = "$priceText / month · Apple-verified, billed monthly",
-                            isLoading = isLoading,
-                            onClick = { activity?.let(subscriptionStore::purchase) }
-                        )
-                    }
-                    item {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "Restore Purchases",
-                                fontSize = 12.sp,
-                                color = ProPalette.mercury.copy(alpha = 0.7f),
-                                modifier = Modifier.clip(RoundedCornerShape(6.dp))
-                            )
-                            Spacer(Modifier.weight(1f))
-                            Text(
-                                "Privacy · Terms",
-                                fontSize = 11.sp,
-                                color = ProPalette.aureate
-                            )
-                        }
-                    }
+                    item { Spacer(Modifier.height(8.dp)) }
                 }
             }
+        }
+
+        // Floating action bar for free users — anchored to the bottom edge,
+        // mirrors the iOS `CloudStoreActionBar`.
+        if (!isActive) {
+            CloudStoreActionBar(
+                priceText = priceText,
+                isLoading = isLoading,
+                onPurchase = {
+                    val activity = context as? android.app.Activity
+                    activity?.let(subscriptionStore::purchase)
+                },
+                onRestore = { subscriptionStore.restorePurchases() },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
     }
 }
 
+// ── Aurora-glass card wrapper ──
+//
+// The single chrome primitive every Cloud card uses. UltraThinMaterial in
+// spirit (matches iOS `.ultraThinMaterial`) — Android renders it via the
+// surface tint plus the warm `cardGradient` overlay and an ember-tinted
+// hairline border. Drop-in replacement for the old `MercuryFoilCard`.
+
 @Composable
-private fun CloudPosterHero(reduceMotion: Boolean, isActive: Boolean) {
+private fun AuroraGlassCard(
+    modifier: Modifier = Modifier,
+    cornerRadius: Int = 20,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val shape = RoundedCornerShape(cornerRadius.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(elevation = 10.dp, shape = shape, ambientColor = Color.Black, spotColor = Color.Black)
+            .clip(shape)
+            .background(Pal.surface.copy(alpha = 0.78f), shape)
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Pal.ember.copy(alpha = 0.06f),
+                        Pal.amber.copy(alpha = 0.04f),
+                        Pal.blaze.copy(alpha = 0.03f)
+                    )
+                ),
+                shape = shape
+            )
+            .border(
+                width = 0.6.dp,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Pal.ember.copy(alpha = 0.30f),
+                        Pal.border.copy(alpha = 0.50f),
+                        Pal.blaze.copy(alpha = 0.22f)
+                    )
+                ),
+                shape = shape
+            ),
+        content = content
+    )
+}
+
+// ── Hero ──
+
+@Composable
+private fun CloudPosterHero(isActive: Boolean) {
+    var showBadgePicker by remember { mutableStateOf(false) }
+
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        MercuryCrest(size = MercuryCrestSize.Large, shimmer = !reduceMotion)
-        Spacer(Modifier.height(4.dp))
+        Box(modifier = Modifier.clickable { showBadgePicker = true }) {
+            CloudBadgeWithHalo(size = CloudBadgeSize.Large)
+        }
         Text(
             "OPENBURNBAR",
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
-            letterSpacing = 3.6.sp,
-            color = ProPalette.aureate
+            letterSpacing = 2.4.sp,
+            color = Pal.textMuted
         )
         Text(
             "Cloud",
-            style = ProTypography.displaySerif,
-            color = ProPalette.mercury
+            style = TextStyle(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.Bold,
+                fontSize = 36.sp,
+                lineHeight = 42.sp,
+                brush = Brush.linearGradient(listOf(Pal.ember, Pal.amber))
+            )
         )
         Text(
             text = if (isActive) {
-                "Your agents, unbound. Renewing on schedule."
+                "Your quota, your conversations, your agents — synced across every device."
             } else {
-                "Your agents, unbound — hosted refresh, conversation backup, Hermes anywhere."
+                "Hosted Codex refresh. Chat that follows you. Mac AI anywhere. From $4.99/mo."
             },
-            fontSize = 13.sp,
-            color = ProPalette.mercury.copy(alpha = 0.72f),
+            fontSize = 14.sp,
+            color = Pal.textSecondary,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 16.dp)
+            modifier = Modifier.padding(horizontal = 20.dp)
         )
+    }
+
+    if (showBadgePicker) {
+        CloudBadgePickerSheet(onDismiss = { showBadgePicker = false })
+    }
+}
+
+// ── Member card — aurora burst (matches You-tab) ──
+
+@Composable
+private fun CloudAuroraMemberCard(
+    expirationDateMs: Long?,
+    purchaseDateMs: Long?
+) {
+    val shape = RoundedCornerShape(26.dp)
+    var showBadgePicker by remember { mutableStateOf(false) }
+
+    val ribbonPhase = rememberInfiniteTransition(label = "memberRibbon").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 18_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "memberRibbonPhase"
+    ).value
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 26.dp,
+                shape = shape,
+                ambientColor = Pal.ember,
+                spotColor = Pal.ember
+            )
+            .clip(shape)
+    ) {
+        MemberAuroraBackdrop(shape = shape, ribbonPhase = ribbonPhase)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = 1.3.dp,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Pal.aureate,
+                            Pal.amber,
+                            Pal.ember,
+                            Pal.aureate
+                        )
+                    ),
+                    shape = shape
+                )
+                .padding(horizontal = 20.dp, vertical = 22.dp)
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(modifier = Modifier.clickable { showBadgePicker = true }) {
+                    CloudBadgeWithHalo(size = CloudBadgeSize.Large)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(
+                                brush = Brush.horizontalGradient(
+                                    colors = listOf(Pal.ember, Pal.amber)
+                                )
+                            )
+                            .padding(horizontal = 9.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            "PRO",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.8.sp
+                        )
+                    }
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        "OPENBURNBAR CLOUD",
+                        color = Pal.textMuted,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.0.sp
+                    )
+                }
+                Text(
+                    "Member",
+                    style = TextStyle(
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 36.sp,
+                        lineHeight = 40.sp,
+                        brush = Brush.linearGradient(listOf(Pal.ember, Pal.amber))
+                    )
+                )
+                Spacer(Modifier.height(2.dp))
+
+                // Status pill
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Pal.success.copy(alpha = 0.14f))
+                        .border(0.5.dp, Pal.success.copy(alpha = 0.45f), CircleShape)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.VerifiedUser,
+                        contentDescription = null,
+                        tint = Pal.success,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Active",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Pal.textPrimary
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("·", color = Pal.textMuted)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        membershipStatusLine(expirationDateMs, purchaseDateMs),
+                        fontSize = 11.sp,
+                        color = Pal.textSecondary
+                    )
+                }
+
+                // "Change badge" + Manage
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(top = 8.dp).fillMaxWidth()
+                ) {
+                    AuroraPrimaryButton(
+                        text = "Manage",
+                        icon = Icons.Filled.OpenInNew,
+                        onClick = {
+                            // Member-card manage tap — open Play subscription
+                            // mgmt as a sensible Android equivalent of the
+                            // iOS "Settings → Apple ID → Subscriptions" link.
+                            // Currently a no-op placeholder until Play deep
+                            // link wiring lands.
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    AuroraSecondaryButton(
+                        text = "Change badge",
+                        onClick = { showBadgePicker = true },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+
+    if (showBadgePicker) {
+        CloudBadgePickerSheet(onDismiss = { showBadgePicker = false })
     }
 }
 
 @Composable
-private fun CloudPlanTile(priceText: String) {
-    MercuryFoilCard {
+private fun BoxScope.MemberAuroraBackdrop(shape: RoundedCornerShape, ribbonPhase: Float) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(shape)
+            .background(Pal.surface)
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Pal.ember.copy(alpha = 0.50f),
+                        Pal.amber.copy(alpha = 0.38f),
+                        Pal.blaze.copy(alpha = 0.30f),
+                        Pal.whimsy.copy(alpha = 0.22f)
+                    )
+                )
+            )
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Pal.aureate.copy(alpha = 0.32f),
+                        Pal.amber.copy(alpha = 0.50f),
+                        Pal.ember.copy(alpha = 0.28f),
+                        Color.Transparent
+                    ),
+                    start = androidx.compose.ui.geometry.Offset(ribbonPhase * 600f, 0f),
+                    end = androidx.compose.ui.geometry.Offset(ribbonPhase * 600f + 900f, 220f)
+                )
+            )
+            .background(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Pal.amber.copy(alpha = 0.45f),
+                        Pal.ember.copy(alpha = 0.20f),
+                        Color.Transparent
+                    ),
+                    center = androidx.compose.ui.geometry.Offset(220f, 200f),
+                    radius = 360f
+                )
+            )
+    )
+}
+
+private fun membershipStatusLine(expirationMs: Long?, purchaseMs: Long?): String {
+    val monthYear = SimpleDateFormat("MMM yyyy", Locale.getDefault())
+    val nowMs = System.currentTimeMillis()
+    return when {
+        expirationMs != null && expirationMs - nowMs in 1..(90L * 24 * 60 * 60 * 1000) -> {
+            val days = ((expirationMs - nowMs) / (24L * 60 * 60 * 1000)).coerceAtLeast(0).toInt()
+            val rel = if (days <= 1) "tomorrow" else "in $days days"
+            if (purchaseMs != null) "Member since ${monthYear.format(java.util.Date(purchaseMs))} · renews $rel"
+            else "Renews $rel"
+        }
+        expirationMs != null -> {
+            if (purchaseMs != null) "Member since ${monthYear.format(java.util.Date(purchaseMs))} · renews monthly"
+            else "Renews monthly"
+        }
+        purchaseMs != null -> "Member since ${monthYear.format(java.util.Date(purchaseMs))}"
+        else -> "Renews monthly"
+    }
+}
+
+// ── Plan tile (free users) ──
+
+@Composable
+private fun CloudPlanGlassCard(priceText: String) {
+    AuroraGlassCard {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "MEMBERSHIP",
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.Black,
                     letterSpacing = 2.4.sp,
-                    color = ProPalette.aureate
+                    color = Pal.ember
                 )
                 Spacer(Modifier.weight(1f))
-                Text(
-                    "MONTHLY",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.4.sp,
-                    color = ProPalette.mercury,
+                Box(
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(ProPalette.obsidianElevated, CircleShape)
-                        .border(0.7.dp, Brush.linearGradient(ProPalette.aureateStrokeStops), CircleShape)
+                        .background(Pal.surface.copy(alpha = 0.6f), CircleShape)
+                        .border(0.6.dp, Pal.border, CircleShape)
                         .padding(horizontal = 10.dp, vertical = 4.dp)
-                )
+                ) {
+                    Text(
+                        "MONTHLY",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.4.sp,
+                        color = Pal.textSecondary
+                    )
+                }
             }
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     priceText,
-                    style = ProTypography.priceMono,
-                    color = ProPalette.mercury
+                    style = TextStyle(
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 32.sp,
+                        brush = Brush.linearGradient(listOf(Pal.ember, Pal.amber))
+                    )
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
                     "/ month",
-                    fontSize = 13.sp,
-                    color = ProPalette.mercury.copy(alpha = 0.65f),
-                    modifier = Modifier.padding(bottom = 2.dp)
+                    fontSize = 14.sp,
+                    color = Pal.textSecondary,
+                    modifier = Modifier.padding(bottom = 4.dp)
                 )
             }
             Text(
                 "Billed monthly through Google Play. Manage or cancel anytime in Play Store.",
                 fontSize = 12.sp,
-                color = ProPalette.mercury.copy(alpha = 0.65f)
+                color = Pal.textSecondary
+            )
+        }
+    }
+}
+
+// ── Aurora buttons ──
+
+@Composable
+private fun AuroraPrimaryButton(
+    text: String,
+    icon: ImageVector? = null,
+    isLoading: Boolean = false,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .height(46.dp)
+            .shadow(
+                elevation = 14.dp,
+                shape = CircleShape,
+                ambientColor = Pal.ember,
+                spotColor = Pal.ember
+            )
+            .clip(CircleShape)
+            .background(
+                brush = Brush.linearGradient(listOf(Pal.ember, Pal.amber)),
+                shape = CircleShape
+            )
+            .border(
+                width = 1.dp,
+                color = Pal.amber.copy(alpha = 0.55f),
+                shape = CircleShape
+            )
+            .clickable(enabled = !isLoading, onClick = onClick)
+            .padding(horizontal = 18.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = Color.White,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+            } else if (icon != null) {
+                Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(
+                text,
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp
             )
         }
     }
 }
 
 @Composable
-private fun CloudMemberCard(expirationDate: Long?, purchaseDate: Long?) {
-    val sdf = SimpleDateFormat("MMM d", Locale.getDefault())
-    val monthYear = SimpleDateFormat("MMM yyyy", Locale.getDefault())
-    val reduceMotion = LocalAuroraReduceMotion.current
-
-    MercuryFoilCard {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(22.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            MercuryCrest(size = MercuryCrestSize.Medium, shimmer = !reduceMotion)
-            Text(
-                "CLOUD",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 3.0.sp,
-                color = ProPalette.aureate
-            )
-            Text(
-                "Member",
-                style = ProTypography.titleSerif,
-                color = ProPalette.mercury
-            )
-            if (expirationDate != null) {
-                Text(
-                    "Renews ${sdf.format(java.util.Date(expirationDate))}",
-                    fontSize = 13.sp,
-                    color = ProPalette.mercury.copy(alpha = 0.85f)
-                )
-            } else {
-                Text(
-                    "Active",
-                    fontSize = 13.sp,
-                    color = ProPalette.aureate
-                )
-            }
-            if (purchaseDate != null) {
-                Text(
-                    "Member since ${monthYear.format(java.util.Date(purchaseDate))}",
-                    fontSize = 11.sp,
-                    color = ProPalette.mercury.copy(alpha = 0.6f)
-                )
-            }
+private fun AuroraSecondaryButton(
+    text: String,
+    icon: ImageVector? = null,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.height(46.dp),
+        shape = CircleShape,
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = Pal.textPrimary,
+            containerColor = Pal.surface.copy(alpha = 0.55f)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            width = 0.6.dp,
+            color = Pal.border
+        ),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
         }
+        Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     }
 }
+
+// ── Capability lineup ──
 
 @Composable
 private fun CloudCapabilityLineup(isActive: Boolean) {
@@ -355,83 +724,108 @@ private fun CloudCapabilityLineup(isActive: Boolean) {
             Text(
                 "WHAT'S INCLUDED",
                 fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.Black,
                 letterSpacing = 2.4.sp,
-                color = ProPalette.aureate
+                color = Pal.ember
             )
             Spacer(Modifier.weight(1f))
             if (isActive) {
                 Icon(
                     Icons.Filled.VerifiedUser,
                     null,
-                    tint = ProPalette.aureate,
+                    tint = Pal.amber,
                     modifier = Modifier.size(14.dp)
                 )
             }
         }
         CapabilityRow(
             icon = Icons.Filled.Cloud,
+            tint = Pal.ember,
             title = "Hosted Codex quota",
-            detail = "Refresh Codex quota from any signed-in device. We run the runner; you get the dial."
+            detail = "Refresh Codex quota from any signed-in device. We run the runner; you get the dial.",
+            isActive = isActive
         )
         CapabilityRow(
             icon = Icons.Filled.Sync,
+            tint = Pal.amber,
             title = "Conversation backup & resume",
-            detail = "Encrypted in transit, restored across iPhone, iPad, and Mac. Pick up exactly where you left off."
+            detail = "Encrypted in transit, restored across iPhone, iPad, and Mac. Pick up exactly where you left off.",
+            isActive = isActive
         )
         CapabilityRow(
             icon = Icons.Filled.Description,
+            tint = Pal.blaze,
             title = "Full session-log sync",
-            detail = "Every tool call, every chunk, every cost line — mirrored to the cloud and searchable on every device."
+            detail = "Every tool call, every chunk, every cost line — mirrored to the cloud and searchable on every device.",
+            isActive = isActive
         )
         CapabilityRow(
             icon = Icons.Filled.Wifi,
+            tint = Pal.whimsy,
             title = "Hermes remote relay",
-            detail = "Reach your Mac's Hermes from anywhere over a verified WebSocket. App Check + Apple JWS, end-to-end."
+            detail = "Reach your Mac's Hermes from anywhere over a verified WebSocket. App Check + Apple JWS, end-to-end.",
+            isActive = isActive
         )
     }
 }
 
 @Composable
-private fun CapabilityRow(icon: ImageVector, title: String, detail: String) {
-    Row(
-        verticalAlignment = Alignment.Top,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(ProLayout.bandRadiusDp.dp))
-            .background(ProPalette.obsidianElevated, RoundedCornerShape(ProLayout.bandRadiusDp.dp))
-            .border(
-                0.7.dp,
-                Brush.linearGradient(ProPalette.aureateStrokeStops),
-                RoundedCornerShape(ProLayout.bandRadiusDp.dp)
-            )
-            .padding(14.dp)
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
+private fun CapabilityRow(
+    icon: ImageVector,
+    tint: Color,
+    title: String,
+    detail: String,
+    isActive: Boolean
+) {
+    AuroraGlassCard(cornerRadius = 16) {
+        Row(
+            verticalAlignment = Alignment.Top,
             modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(ProPalette.obsidian, CircleShape)
-                .border(0.9.dp, Brush.linearGradient(ProPalette.aureateStrokeStops), CircleShape)
+                .fillMaxWidth()
+                .padding(14.dp)
         ) {
-            Icon(icon, null, tint = ProPalette.aureate, modifier = Modifier.size(15.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                title,
-                style = ProTypography.headlineSerif,
-                color = ProPalette.mercury
-            )
-            Text(
-                detail,
-                fontSize = 12.sp,
-                color = ProPalette.mercury.copy(alpha = 0.70f)
-            )
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        brush = Brush.linearGradient(listOf(tint, tint.copy(alpha = 0.7f)))
+                    )
+            ) {
+                Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Pal.textPrimary
+                    )
+                    if (isActive) {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            Icons.Filled.VerifiedUser,
+                            null,
+                            tint = Pal.success,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    detail,
+                    fontSize = 12.sp,
+                    color = Pal.textSecondary
+                )
+            }
         }
     }
 }
+
+// ── Remote MCP card ──
 
 @Composable
 private fun CloudRemoteMcpCard(
@@ -446,7 +840,7 @@ private fun CloudRemoteMcpCard(
     val stdioCommand = "openburnbar-mcp-remote mcp serve"
     val doctorCommand = "openburnbar mcp doctor"
 
-    MercuryFoilCard {
+    AuroraGlassCard {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -457,16 +851,16 @@ private fun CloudRemoteMcpCard(
                 Text(
                     "REMOTE MCP",
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.Black,
                     letterSpacing = 2.4.sp,
-                    color = ProPalette.aureate
+                    color = Pal.ember
                 )
                 Spacer(Modifier.weight(1f))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         if (isActive) Icons.Filled.VerifiedUser else Icons.Filled.Cloud,
                         null,
-                        tint = if (isActive) ProPalette.aureate else ProPalette.mercury.copy(alpha = 0.62f),
+                        tint = if (isActive) Pal.success else Pal.textMuted,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(Modifier.width(4.dp))
@@ -474,7 +868,7 @@ private fun CloudRemoteMcpCard(
                         if (isActive) "Included" else "Cloud only",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isActive) ProPalette.aureate else ProPalette.mercury.copy(alpha = 0.62f)
+                        color = if (isActive) Pal.success else Pal.textMuted
                     )
                 }
             }
@@ -482,7 +876,7 @@ private fun CloudRemoteMcpCard(
             Text(
                 "Connect Codex, Claude Code, Droid, Kimi, Forge, or any MCP client to encrypted hosted session-memory search. Direct HTTP for hosted clients; a local shim keeps decrypted snippets on-device for stdio.",
                 fontSize = 12.sp,
-                color = ProPalette.mercury.copy(alpha = 0.72f)
+                color = Pal.textSecondary
             )
 
             RemoteMcpCommandRow(label = "Endpoint", value = endpoint)
@@ -510,18 +904,18 @@ private fun RemoteMcpCommandRow(label: String, value: String) {
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
             letterSpacing = 1.2.sp,
-            color = ProPalette.mercury.copy(alpha = 0.55f)
+            color = Pal.textMuted
         )
         Text(
             value,
             fontSize = 12.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Medium,
-            color = ProPalette.mercury,
+            color = Pal.textPrimary,
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))
-                .background(ProPalette.obsidianElevated.copy(alpha = 0.86f), RoundedCornerShape(8.dp))
+                .background(Pal.surface.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
                 .padding(horizontal = 10.dp, vertical = 7.dp)
         )
     }
@@ -541,28 +935,24 @@ private fun RemoteMcpConnectedClientsSection(
                 "Connected clients",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = ProPalette.mercury
+                color = Pal.textPrimary
             )
             Spacer(Modifier.weight(1f))
             if (isLoading) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(16.dp),
                     strokeWidth = 2.dp,
-                    color = ProPalette.aureate
+                    color = Pal.ember
                 )
             }
         }
 
         when {
-            error != null -> Text(
-                error,
-                fontSize = 11.sp,
-                color = AuroraColors.error
-            )
+            error != null -> Text(error, fontSize = 11.sp, color = AuroraColors.error)
             clients.isEmpty() && !isLoading -> Text(
                 "No MCP clients are connected yet.",
                 fontSize = 12.sp,
-                color = ProPalette.mercury.copy(alpha = 0.62f)
+                color = Pal.textMuted
             )
             else -> clients.forEach { client ->
                 RemoteMcpClientRow(
@@ -589,19 +979,12 @@ private fun RemoteMcpClientRow(
             title = { Text("Revoke MCP client?") },
             text = { Text("This immediately blocks ${client.displayName} and revokes its outstanding grants.") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        showConfirm = false
-                        onRevoke()
-                    }
-                ) {
+                TextButton(onClick = { showConfirm = false; onRevoke() }) {
                     Text("Revoke", color = AuroraColors.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showConfirm = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showConfirm = false }) { Text("Cancel") }
             }
         )
     }
@@ -609,12 +992,12 @@ private fun RemoteMcpClientRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(ProPalette.obsidianElevated.copy(alpha = 0.72f), RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(10.dp))
+            .background(Pal.surface.copy(alpha = 0.60f), RoundedCornerShape(10.dp))
             .border(
                 0.5.dp,
-                if (client.isRevoked) ProPalette.mercury.copy(alpha = 0.22f) else ProPalette.aureate.copy(alpha = 0.28f),
-                RoundedCornerShape(8.dp)
+                if (client.isRevoked) Pal.border else Pal.ember.copy(alpha = 0.30f),
+                RoundedCornerShape(10.dp)
             )
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp)
@@ -623,30 +1006,17 @@ private fun RemoteMcpClientRow(
             Icon(
                 if (client.isRevoked) Icons.Filled.Close else Icons.Filled.VerifiedUser,
                 null,
-                tint = if (client.isRevoked) ProPalette.mercury.copy(alpha = 0.45f) else ProPalette.aureate,
+                tint = if (client.isRevoked) Pal.textMuted else Pal.success,
                 modifier = Modifier.size(16.dp)
             )
             Spacer(Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    client.displayName,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = ProPalette.mercury
-                )
-                Text(
-                    "${client.displayType} · ${client.modeSummary}",
-                    fontSize = 11.sp,
-                    color = ProPalette.mercury.copy(alpha = 0.70f)
-                )
-                Text(
-                    client.scopeSummary,
-                    fontSize = 10.sp,
-                    color = ProPalette.mercury.copy(alpha = 0.54f)
-                )
+                Text(client.displayName, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Pal.textPrimary)
+                Text("${client.displayType} · ${client.modeSummary}", fontSize = 11.sp, color = Pal.textSecondary)
+                Text(client.scopeSummary, fontSize = 10.sp, color = Pal.textMuted)
             }
             if (client.isRevoked) {
-                Text("Revoked", fontSize = 10.sp, color = ProPalette.mercury.copy(alpha = 0.48f))
+                Text("Revoked", fontSize = 10.sp, color = Pal.textMuted)
             } else {
                 IconButton(
                     enabled = !isRevoking,
@@ -654,11 +1024,7 @@ private fun RemoteMcpClientRow(
                     modifier = Modifier.size(28.dp)
                 ) {
                     if (isRevoking) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
-                            strokeWidth = 2.dp,
-                            color = ProPalette.aureate
-                        )
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = Pal.ember)
                     } else {
                         Icon(Icons.Filled.Close, "Revoke ${client.displayName}", tint = AuroraColors.error)
                     }
@@ -672,7 +1038,7 @@ private fun RemoteMcpClientRow(
                 else -> "Awaiting first use"
             },
             fontSize = 10.sp,
-            color = ProPalette.mercury.copy(alpha = 0.54f)
+            color = Pal.textMuted
         )
     }
 }
@@ -690,6 +1056,8 @@ private fun relativeAge(date: java.util.Date): String {
     }
 }
 
+// ── Comparison ──
+
 @Composable
 private fun CloudComparisonCard() {
     val rows = listOf(
@@ -699,14 +1067,14 @@ private fun CloudComparisonCard() {
         Triple("Hermes Remote Relay", "Local network", "Anywhere")
     )
 
-    MercuryFoilCard {
-        Column(modifier = Modifier.padding(16.dp)) {
+    AuroraGlassCard {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Text(
                 "FREE VS CLOUD",
                 fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.Black,
                 letterSpacing = 2.4.sp,
-                color = ProPalette.aureate
+                color = Pal.ember
             )
             Spacer(Modifier.height(10.dp))
             Row {
@@ -715,7 +1083,7 @@ private fun CloudComparisonCard() {
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 1.0.sp,
-                    color = ProPalette.mercury.copy(alpha = 0.55f),
+                    color = Pal.textMuted,
                     modifier = Modifier.weight(1f)
                 )
                 Text(
@@ -723,7 +1091,7 @@ private fun CloudComparisonCard() {
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 1.4.sp,
-                    color = ProPalette.mercury.copy(alpha = 0.55f),
+                    color = Pal.textMuted,
                     modifier = Modifier.width(80.dp),
                     textAlign = TextAlign.End
                 )
@@ -732,46 +1100,35 @@ private fun CloudComparisonCard() {
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.4.sp,
-                    color = ProPalette.aureate,
+                    color = Pal.ember,
                     modifier = Modifier.width(90.dp),
                     textAlign = TextAlign.End
                 )
             }
             HorizontalDivider(
                 modifier = Modifier.padding(vertical = 8.dp),
-                color = ProPalette.aureate.copy(alpha = 0.35f)
+                color = Pal.ember.copy(alpha = 0.25f)
             )
             rows.forEachIndexed { index, (label, free, cloud) ->
                 Row(modifier = Modifier.padding(vertical = 6.dp)) {
-                    Text(
-                        label,
-                        fontSize = 13.sp,
-                        color = ProPalette.mercury,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        free,
-                        fontSize = 11.sp,
-                        color = ProPalette.mercury.copy(alpha = 0.55f),
-                        modifier = Modifier.width(80.dp),
-                        textAlign = TextAlign.End
-                    )
+                    Text(label, fontSize = 13.sp, color = Pal.textPrimary, modifier = Modifier.weight(1f))
+                    Text(free, fontSize = 11.sp, color = Pal.textMuted, modifier = Modifier.width(80.dp), textAlign = TextAlign.End)
                     Text(
                         cloud,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = ProPalette.mercury,
+                        color = Pal.textPrimary,
                         modifier = Modifier.width(90.dp),
                         textAlign = TextAlign.End
                     )
                 }
-                if (index < rows.size - 1) {
-                    HorizontalDivider(color = ProPalette.mercury.copy(alpha = 0.18f))
-                }
+                if (index < rows.size - 1) HorizontalDivider(color = Pal.border.copy(alpha = 0.5f))
             }
         }
     }
 }
+
+// ── Trust ──
 
 @Composable
 private fun CloudTrustCard() {
@@ -780,39 +1137,25 @@ private fun CloudTrustCard() {
         Triple(Icons.Filled.Backup, "UID-bound", "Each purchase is bound to your Firebase UID via a signed appAccountToken."),
         Triple(Icons.Filled.Cloud, "Cancel anytime", "Managed by Apple in Settings → Apple ID. We never store payment details.")
     )
-
-    MercuryFoilCard {
+    AuroraGlassCard {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
                 "THE TRUST MODEL",
                 fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.Black,
                 letterSpacing = 2.4.sp,
-                color = ProPalette.aureate
+                color = Pal.ember
             )
             bullets.forEach { (icon, title, detail) ->
                 Row(verticalAlignment = Alignment.Top) {
-                    Icon(
-                        icon,
-                        null,
-                        tint = ProPalette.aureate,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Icon(icon, null, tint = Pal.amber, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(10.dp))
                     Column {
-                        Text(
-                            title,
-                            style = ProTypography.headlineSerif,
-                            color = ProPalette.mercury
-                        )
-                        Text(
-                            detail,
-                            fontSize = 12.sp,
-                            color = ProPalette.mercury.copy(alpha = 0.70f)
-                        )
+                        Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Pal.textPrimary)
+                        Text(detail, fontSize = 12.sp, color = Pal.textSecondary)
                     }
                 }
             }
@@ -820,15 +1163,94 @@ private fun CloudTrustCard() {
     }
 }
 
+// ── Action bar (free users) ──
+
+@Composable
+private fun CloudStoreActionBar(
+    priceText: String,
+    isLoading: Boolean,
+    onPurchase: () -> Unit,
+    onRestore: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val uriHandler = LocalUriHandler.current
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        Pal.surface.copy(alpha = 0.92f),
+                        Pal.surface
+                    )
+                )
+            )
+            .padding(horizontal = 16.dp)
+            .padding(top = 14.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "OpenBurnBar Cloud",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Pal.textPrimary
+            )
+            Text(
+                "$priceText / month · billed by Google Play",
+                fontSize = 11.sp,
+                color = Pal.textSecondary
+            )
+        }
+        AuroraPrimaryButton(
+            text = "Become a Member — $priceText/mo",
+            isLoading = isLoading,
+            onClick = onPurchase,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = "Restore Purchases",
+                fontSize = 12.sp,
+                color = Pal.textSecondary,
+                modifier = Modifier.clickable { onRestore() }
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                "Privacy",
+                fontSize = 11.sp,
+                color = Pal.ember,
+                modifier = Modifier.clickable {
+                    uriHandler.openUri("https://openburnbar.com/legal/privacy-policy")
+                }
+            )
+            Spacer(Modifier.width(8.dp))
+            Text("·", color = Pal.textMuted, fontSize = 11.sp)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Terms",
+                fontSize = 11.sp,
+                color = Pal.ember,
+                modifier = Modifier.clickable {
+                    uriHandler.openUri("https://openburnbar.com/legal/terms")
+                }
+            )
+        }
+    }
+}
+
+// ── Error ──
+
 @Composable
 private fun CloudErrorCard(message: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(AuroraColors.error.copy(alpha = 0.18f), RoundedCornerShape(10.dp))
-            .border(0.5.dp, AuroraColors.error.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .background(AuroraColors.error.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+            .border(0.5.dp, AuroraColors.error.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
             .padding(12.dp)
     ) {
         Text(message, color = AuroraColors.error, fontSize = 12.sp)

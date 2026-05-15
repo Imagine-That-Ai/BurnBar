@@ -350,7 +350,11 @@ struct HermesConversationListView: View {
             HermesRuntimeSheet(service: service)
         }
         .sheet(isPresented: $showModelPicker) {
-            HermesModelPickerSheet(service: service)
+            AssistantModelPickerSheet(
+                runtime: .hermes,
+                hermesService: service,
+                piService: PiService.shared
+            )
         }
         .sheet(item: $selectedLibrarySession) { session in
             HermesLibraryTranscriptSheet(store: libraryStore, session: session)
@@ -1314,7 +1318,11 @@ struct HermesChatView: View {
             HermesRuntimeSheet(service: service)
         }
         .sheet(isPresented: $showModelPicker) {
-            HermesModelPickerSheet(service: service)
+            AssistantModelPickerSheet(
+                runtime: .hermes,
+                hermesService: service,
+                piService: PiService.shared
+            )
         }
         .sheet(isPresented: $showSetupWizard) {
             HermesMobileSetupWizardView(

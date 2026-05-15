@@ -56,7 +56,11 @@ struct HermesSettingsView: View {
         .navigationTitle("Hermes")
         .sheet(isPresented: $showAddDirectSheet) { addDirectSheet }
         .sheet(isPresented: $showModelPicker) {
-            HermesModelPickerSheet(service: service)
+            AssistantModelPickerSheet(
+                runtime: .hermes,
+                hermesService: service,
+                piService: PiService.shared
+            )
         }
         .sheet(isPresented: $showPretextPlayground) {
             PretextPlayground()

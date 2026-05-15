@@ -741,15 +741,16 @@ struct HermesSquareRoot: View {
 
     @ViewBuilder
     private func runtimeNativeView(for runtime: AssistantRuntimeID) -> some View {
+        // No inner NavigationStack — these views are already pushed as
+        // destinations of the outer NavigationStack (from RootTabView or
+        // HermesSquareSplitLayout). A nested NavigationStack breaks
+        // child NavigationLink pushes (plus FAB → PiChatThreadView
+        // caused a black flash and pop-back).
         switch runtime {
         case .hermes:
-            NavigationStack {
-                HermesConversationListView(service: hermesService, dashboardSnapshot: nil)
-            }
+            HermesConversationListView(service: hermesService, dashboardSnapshot: nil)
         case .pi:
-            NavigationStack {
-                PiConversationListView(service: piService)
-            }
+            PiConversationListView(service: piService)
         case .codex, .claude, .openClaw:
             if let cliRuntime = CLIAgentRuntime(assistant: runtime) {
                 CLIAgentConversationListView(runtime: cliRuntime)
