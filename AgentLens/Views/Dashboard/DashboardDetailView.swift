@@ -38,6 +38,7 @@ struct DashboardDetailView: View {
                         topModels: topModels,
                         usageWindow: usageWindow,
                         context: context,
+                        selectedTimeRange: selectedTimeRange,
                         overviewAppeared: overviewAppeared,
                         onNavigate: onNavigate,
                         onOpenSettings: onOpenSettings

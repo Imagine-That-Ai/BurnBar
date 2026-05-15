@@ -1,6 +1,10 @@
 package com.openburnbar.data.cloud
 
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.security.KeyPair
 import java.security.KeyPairGenerator
@@ -11,6 +15,30 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 class CloudVaultCryptoTest {
+    @Test
+    fun semanticHashesAreDeterministicKeyedAndUsefulForRecall() {
+        val key = ByteArray(32) { 0x33.toByte() }
+        val otherKey = ByteArray(32) { 0x44.toByte() }
+        val indexed = "Hosted encrypted session logs with semantic search and cloud vault sync"
+        val related = "Find searchable cloud sessions that were encrypted and hosted"
+        val unrelated = "Espresso roast tasting notes and ceramic mugs"
+
+        val first = CloudVaultCrypto.semanticHashes(indexed, key)
+        val second = CloudVaultCrypto.semanticHashes(indexed, key)
+        val other = CloudVaultCrypto.semanticHashes(indexed, otherKey)
+        val relatedHashes = CloudVaultCrypto.semanticHashes(related, key)
+        val unrelatedHashes = CloudVaultCrypto.semanticHashes(unrelated, key)
+
+        assertEquals(first, second)
+        assertNotEquals(first, other)
+        assertTrue(first.size <= 24)
+        assertEquals(first.size, first.toSet().size)
+        assertTrue(first.all { Regex("^[a-f0-9]{32}$").matches(it) })
+        assertFalse(first.contains("encrypted"))
+        assertTrue(first.toSet().intersect(relatedHashes.toSet()).isNotEmpty())
+        assertTrue(first.toSet().intersect(relatedHashes.toSet()).size >= first.toSet().intersect(unrelatedHashes.toSet()).size)
+    }
+
     @Test
     fun unwrapVaultKeyAcceptsSwiftStyleEmptySaltHkdf() {
         val recipient = p256KeyPair()

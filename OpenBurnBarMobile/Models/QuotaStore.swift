@@ -9,6 +9,7 @@ private let quotaStoreLogger = Logger(subsystem: "com.openburnbar.mobile", categ
 @MainActor
 final class QuotaStore {
     private let firestore: FirestoreRepository
+    private let functions: FunctionsRepository
 
     private(set) var isLoading = false
     private(set) var error: String?
@@ -22,9 +23,14 @@ final class QuotaStore {
     private(set) var healthyProviders: [String] = []
     private var listener: ListenerRegistration?
     private var lastAccountRefreshAt: Date?
+    private var staleRefreshInFlight: Set<String> = []
 
-    init(firestore: FirestoreRepository = FirestoreRepository()) {
+    init(
+        firestore: FirestoreRepository = FirestoreRepository(),
+        functions: FunctionsRepository = FunctionsRepository()
+    ) {
         self.firestore = firestore
+        self.functions = functions
     }
 
     // Listener cleanup happens in `stopListening()` which is invoked from the
@@ -52,6 +58,7 @@ final class QuotaStore {
             if let docs = try? await accountsTask {
                 applyAccounts(docs)
             }
+            await refreshStaleCloudQuotaIfPossible()
         } catch {
             self.error = error.localizedDescription
         }
@@ -92,6 +99,7 @@ final class QuotaStore {
                     self.applySnapshots(update.snapshots)
                     self.error = nil
                     await self.refreshAccountsIfStale()
+                    await self.refreshStaleCloudQuotaIfPossible()
                 case .failure(let err):
                     self.error = err.localizedDescription
                 }
@@ -166,6 +174,39 @@ final class QuotaStore {
         }
         if let docs = try? await firestore.fetchProviderAccounts() {
             applyAccounts(docs)
+        }
+    }
+
+    private func refreshStaleCloudQuotaIfPossible(maxRefreshes: Int = 3) async {
+        let byAccount = Dictionary(grouping: snapshots) { $0.accountID ?? "" }
+        let refreshable = accounts
+            .filter { account in
+                account.status == .connected || account.status == .stale || account.status == .error
+            }
+            .filter { account in
+                account.storageScope == .cloudRefreshable || account.storageScope == .serverPrivate
+            }
+            .filter { account in
+                guard !staleRefreshInFlight.contains(account.id) else { return false }
+                guard let accountSnapshots = byAccount[account.id], !accountSnapshots.isEmpty else { return true }
+                return accountSnapshots.contains { $0.isStale() }
+            }
+            .prefix(maxRefreshes)
+
+        guard !refreshable.isEmpty else { return }
+
+        for account in refreshable {
+            staleRefreshInFlight.insert(account.id)
+            defer { staleRefreshInFlight.remove(account.id) }
+            do {
+                let refreshed = try await functions.refreshProviderAccountQuota(accountID: account.id)
+                let merged = snapshots
+                    .filter { $0.accountID != refreshed.accountID || $0.sourceID != refreshed.sourceID }
+                    + [refreshed]
+                applySnapshots(merged)
+            } catch {
+                quotaStoreLogger.warning("Failed to refresh stale quota for \(account.providerID.rawValue, privacy: .public)/\(account.id, privacy: .private): \(error.localizedDescription)")
+            }
         }
     }
 

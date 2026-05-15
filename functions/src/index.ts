@@ -19,11 +19,11 @@
 
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, Timestamp, type DocumentData, type DocumentSnapshot, type QuerySnapshot, type WriteBatch } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { HttpsError, onCall, onRequest, type CallableRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { Timestamp, type Firestore } from "firebase-admin/firestore";
+import type { Firestore } from "firebase-admin/firestore";
 import { createHash, randomBytes } from "node:crypto";
 import { google } from "googleapis";
 import Stripe from "stripe";
@@ -304,17 +304,39 @@ function requireRecordArray(raw: unknown, fieldName: string, maxLength: number):
   });
 }
 
+async function commitBatchedWrites(
+  writes: Array<(batch: WriteBatch) => void>,
+  maxWritesPerBatch = 450
+): Promise<void> {
+  for (let start = 0; start < writes.length; start += maxWritesPerBatch) {
+    const batch = db.batch();
+    for (const write of writes.slice(start, start + maxWritesPerBatch)) {
+      write(batch);
+    }
+    await batch.commit();
+  }
+}
+
 function requireTokenHashes(raw: unknown, fieldName: string): string[] {
+  return requireSearchHashes(raw, fieldName, true);
+}
+
+function requireOptionalSearchHashes(raw: unknown, fieldName: string): string[] {
+  return requireSearchHashes(raw, fieldName, false);
+}
+
+function requireSearchHashes(raw: unknown, fieldName: string, required: boolean): string[] {
+  if (raw == null && !required) return [];
   if (!Array.isArray(raw)) {
     throw new HttpsError("invalid-argument", `${fieldName} must be an array.`);
   }
   const unique = Array.from(new Set(raw.filter((item): item is string => typeof item === "string")));
-  if (unique.length === 0 || unique.length > 250) {
-    throw new HttpsError("invalid-argument", `${fieldName} must contain between 1 and 250 token hashes.`);
+  if ((required && unique.length === 0) || unique.length > 250) {
+    throw new HttpsError("invalid-argument", `${fieldName} must contain ${required ? "between 1 and" : "at most"} 250 hashes.`);
   }
   for (const hash of unique) {
     if (!/^[a-f0-9]{32}$/u.test(hash)) {
-      throw new HttpsError("invalid-argument", `${fieldName} contains an invalid token hash.`);
+      throw new HttpsError("invalid-argument", `${fieldName} contains an invalid hash.`);
     }
   }
   return unique;
@@ -2869,11 +2891,13 @@ export const commitEncryptedSearchIndexBatch = onCall(
     const indexVersion = requireBoundedNumber(request.data.indexVersion, "indexVersion", 1, 100);
     const deviceId = boundedTrimmedString(request.data.deviceId, "deviceId", 256, true)!;
     const now = Timestamp.now();
+    const commitID = randomBytes(16).toString("hex");
 
     let writeCount = 0;
-    const batch = db.batch();
+    const writes: Array<(batch: WriteBatch) => void> = [];
     const documentsRef = db.collection(`users/${uid}/cloud_search_documents`);
     const chunksRef = db.collection(`users/${uid}/cloud_search_chunks`);
+    const postingsRef = db.collection(`users/${uid}/cloud_search_postings`);
 
     for (const raw of documents) {
       const documentID = safeCloudDocumentID(raw.documentID, "document.documentID");
@@ -2899,6 +2923,8 @@ export const commitEncryptedSearchIndexBatch = onCall(
         ),
         indexVersion,
         tokenHashVersion: 1,
+        semanticHashVersion: 1,
+        commitID,
         updatedAt: now,
         schemaVersion: 1,
       };
@@ -2909,7 +2935,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
         bodyHash: doc.bodyHash,
         encryptedByteCount: doc.encryptedByteCount,
       });
-      batch.set(documentsRef.doc(documentID), stripUndefined(doc), { merge: true });
+      writes.push((batch) => batch.set(documentsRef.doc(documentID), stripUndefined(doc), { merge: true }));
       writeCount += 1;
     }
 
@@ -2917,6 +2943,10 @@ export const commitEncryptedSearchIndexBatch = onCall(
       const documentID = safeCloudDocumentID(raw.documentID, "chunk.documentID");
       const chunkID = safeCloudDocumentID(raw.chunkID, "chunk.chunkID");
       const tokenHashes = requireTokenHashes(raw.tokenHashes, "chunk.tokenHashes");
+      const semanticHashes = requireOptionalSearchHashes(raw.semanticHashes, "chunk.semanticHashes");
+      if (indexVersion >= 2 && semanticHashes.length === 0) {
+        throw new HttpsError("invalid-argument", "chunk.semanticHashes are required for encrypted semantic search indexes.");
+      }
       const chunk = {
         uid,
         chunkID,
@@ -2934,33 +2964,62 @@ export const commitEncryptedSearchIndexBatch = onCall(
         storagePath: boundedTrimmedString(raw.storagePath, "chunk.storagePath", 1024, true)!,
         sealedSnippet: requireSealedText(raw.sealedSnippet, "chunk.sealedSnippet"),
         tokenHashes,
+        semanticHashes,
         indexVersion,
         tokenHashVersion: 1,
+        semanticHashVersion: semanticHashes.length > 0 ? 1 : 0,
+        commitID,
         updatedAt: now,
         schemaVersion: 1,
       };
       assertUserStoragePath(uid, chunk.storagePath, chunk.bodyHash, documentID);
-      batch.set(chunksRef.doc(chunkID), stripUndefined(chunk), { merge: true });
+      writes.push((batch) => batch.set(chunksRef.doc(chunkID), stripUndefined(chunk), { merge: true }));
       writeCount += 1;
+      for (const hash of semanticHashes) {
+        const postingKey = `semantic_${hash}`;
+        const edgeID = `${postingKey}_${chunkID}`;
+        writes.push((batch) => batch.set(
+          postingsRef.doc(edgeID),
+          stripUndefined({
+            uid,
+            postingKey,
+            edgeID,
+            kind: "semantic",
+            hash,
+            chunkID,
+            documentID,
+            provider: chunk.provider,
+            projectName: chunk.projectName,
+            updatedAt: now,
+            indexVersion,
+            commitID,
+            schemaVersion: 1,
+          }),
+          { merge: true }
+        ));
+        writeCount += 1;
+      }
     }
 
-    batch.set(
+    writes.push((batch) => batch.set(
       db.doc(`users/${uid}/cloud_search_index_state/${deviceId}`),
-      {
+      stripUndefined({
         uid,
         deviceId,
         indexVersion,
+        activeCommitID: commitID,
         lastCommittedAt: now,
         documentCount: documents.length,
         chunkCount: chunks.length,
+        postingCount: writeCount - documents.length - chunks.length,
         schemaVersion: 1,
-      },
+      }),
       { merge: true }
-    );
+    ));
     writeCount += 1;
 
-    await batch.commit();
-    return { ok: true, writeCount, documentCount: documents.length, chunkCount: chunks.length };
+    await commitBatchedWrites(writes);
+    return { ok: true, writeCount, documentCount: documents.length, chunkCount: chunks.length, commitID };
   }
 );
 
@@ -2973,6 +3032,7 @@ export const searchEncryptedConversationIndex = onCall(
   async (
     request: CallableRequest<{
       tokenHashes?: unknown;
+      semanticHashes?: unknown;
       limit?: unknown;
       provider?: unknown;
     }>
@@ -2982,31 +3042,141 @@ export const searchEncryptedConversationIndex = onCall(
     enforceAuthAndAppCheck(request, uid);
     await assertActiveBurnBarProEntitlement(uid);
 
-    const tokenHashes = requireTokenHashes(request.data.tokenHashes, "tokenHashes").slice(0, 10);
+    const tokenHashes = requireOptionalSearchHashes(request.data.tokenHashes, "tokenHashes").slice(0, 10);
+    const semanticHashes = requireOptionalSearchHashes(request.data.semanticHashes, "semanticHashes").slice(0, 12);
     const limitRaw = typeof request.data.limit === "number" ? request.data.limit : 25;
     const limit = Math.max(1, Math.min(Math.floor(limitRaw), 50));
     const provider = boundedTrimmedString(request.data.provider, "provider", 80, false);
-    if (tokenHashes.length === 0) return { hits: [] };
+    if (tokenHashes.length === 0 && semanticHashes.length === 0) return { hits: [] };
 
-    let query = db
-      .collection(`users/${uid}/cloud_search_chunks`)
-      .where("tokenHashes", "array-contains-any", tokenHashes);
-    if (provider) {
-      query = query.where("provider", "==", provider);
+    type ScoredChunk = {
+      id: string;
+      data: DocumentData;
+      tokenMatches: number;
+      semanticMatches: number;
+    };
+    const scoredById = new Map<string, ScoredChunk>();
+    const chunksRef = db.collection(`users/${uid}/cloud_search_chunks`);
+    const chunkCache = new Map<string, DocumentSnapshot>();
+    const stateSnap = await db
+      .collection(`users/${uid}/cloud_search_index_state`)
+      .limit(100)
+      .get();
+    const activeCommitIDs = new Set(
+      stateSnap.docs
+        .map((doc) => doc.get("activeCommitID"))
+        .filter((commitID): commitID is string => typeof commitID === "string" && /^[a-f0-9]{32}$/u.test(commitID))
+    );
+
+    const mergeChunkDoc = (
+      doc: DocumentSnapshot,
+      requested: Set<string>,
+      fieldName: "tokenHashes" | "semanticHashes",
+      scoreName: "tokenMatches" | "semanticMatches"
+    ) => {
+      if (!doc.exists) return;
+      const data = doc.data() ?? {};
+      if (provider && data.provider !== provider) return;
+      const chunkCommitID = typeof data.commitID === "string" ? data.commitID : undefined;
+      if (chunkCommitID) {
+        if (!activeCommitIDs.has(chunkCommitID)) return;
+      } else if (activeCommitIDs.size > 0) {
+        return;
+      }
+      const hashes = Array.isArray(data[fieldName])
+        ? data[fieldName].filter((hash): hash is string => typeof hash === "string")
+        : [];
+      const matches = hashes.reduce((sum, hash) => sum + (requested.has(hash) ? 1 : 0), 0);
+      if (matches <= 0) return;
+      const existing = scoredById.get(doc.id) ?? {
+        id: doc.id,
+        data,
+        tokenMatches: 0,
+        semanticMatches: 0,
+      };
+      existing[scoreName] += matches;
+      scoredById.set(doc.id, existing);
+    };
+
+    const mergeSnapshot = (
+      snap: QuerySnapshot,
+      requested: Set<string>,
+      fieldName: "tokenHashes" | "semanticHashes",
+      scoreName: "tokenMatches" | "semanticMatches"
+    ) => {
+      for (const doc of snap.docs) {
+        chunkCache.set(doc.id, doc);
+        mergeChunkDoc(doc, requested, fieldName, scoreName);
+      }
+    };
+
+    const mergePostingHits = async (
+      hashes: string[],
+      kind: "token" | "semantic",
+      fieldName: "tokenHashes" | "semanticHashes",
+      scoreName: "tokenMatches" | "semanticMatches"
+    ) => {
+      if (hashes.length === 0) return;
+      const postingKeys = hashes.map((hash) => `${kind}_${hash}`);
+      let postingQuery = db
+        .collection(`users/${uid}/cloud_search_postings`)
+        .where("postingKey", "in", postingKeys);
+      if (provider) postingQuery = postingQuery.where("provider", "==", provider);
+      const postingSnaps = await postingQuery.limit(500).get();
+      const chunkIDs = new Set<string>();
+      for (const postingSnap of postingSnaps.docs) {
+        const data = postingSnap.data();
+        if (!data || data.kind !== kind || typeof data.hash !== "string") continue;
+        if (!hashes.includes(data.hash)) continue;
+        if (typeof data.chunkID === "string" && chunkIDs.size < 500) {
+          chunkIDs.add(data.chunkID);
+        }
+      }
+      if (chunkIDs.size === 0) return;
+      const missingRefs = Array.from(chunkIDs)
+        .filter((chunkID) => !chunkCache.has(chunkID))
+        .map((chunkID) => db.doc(`users/${uid}/cloud_search_chunks/${chunkID}`));
+      if (missingRefs.length > 0) {
+        const chunkSnaps = await db.getAll(...missingRefs);
+        for (const chunkSnap of chunkSnaps) {
+          chunkCache.set(chunkSnap.id, chunkSnap);
+        }
+      }
+      const requested = new Set(hashes);
+      for (const chunkID of chunkIDs) {
+        const chunkSnap = chunkCache.get(chunkID);
+        if (chunkSnap) {
+          mergeChunkDoc(chunkSnap, requested, fieldName, scoreName);
+        }
+      }
+    };
+
+    await Promise.all([
+      mergePostingHits(tokenHashes, "token", "tokenHashes", "tokenMatches"),
+      mergePostingHits(semanticHashes, "semantic", "semanticHashes", "semanticMatches"),
+    ]);
+
+    if (tokenHashes.length > 0) {
+      let tokenQuery = chunksRef.where("tokenHashes", "array-contains-any", tokenHashes);
+      if (provider) tokenQuery = tokenQuery.where("provider", "==", provider);
+      const tokenSnap = await tokenQuery.limit(250).get();
+      mergeSnapshot(tokenSnap, new Set(tokenHashes), "tokenHashes", "tokenMatches");
     }
-    const snap = await query.limit(200).get();
-    const requested = new Set(tokenHashes);
-    const scored = snap.docs
-      .map((doc) => {
-        const data = doc.data();
-        const hashes = Array.isArray(data.tokenHashes)
-          ? data.tokenHashes.filter((hash): hash is string => typeof hash === "string")
-          : [];
-        const score = hashes.reduce((sum, hash) => sum + (requested.has(hash) ? 1 : 0), 0);
-        return { id: doc.id, data, score };
-      })
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score || Number(a.data.ordinal ?? 0) - Number(b.data.ordinal ?? 0));
+
+    if (semanticHashes.length > 0) {
+      let semanticQuery = chunksRef.where("semanticHashes", "array-contains-any", semanticHashes);
+      if (provider) semanticQuery = semanticQuery.where("provider", "==", provider);
+      const semanticSnap = await semanticQuery.limit(250).get();
+      mergeSnapshot(semanticSnap, new Set(semanticHashes), "semanticHashes", "semanticMatches");
+    }
+
+    const scored = Array.from(scoredById.values())
+      .filter((item) => item.tokenMatches > 0 || item.semanticMatches > 0)
+      .sort((a, b) => {
+        const aScore = a.tokenMatches * 2 + a.semanticMatches;
+        const bScore = b.tokenMatches * 2 + b.semanticMatches;
+        return bScore - aScore || Number(a.data.ordinal ?? 0) - Number(b.data.ordinal ?? 0);
+      });
 
     const hits: Array<Record<string, unknown>> = [];
     const seenDocuments = new Set<string>();
@@ -3031,8 +3201,12 @@ export const searchEncryptedConversationIndex = onCall(
         sealedBodyPreview: docData.sealedBodyPreview,
         storagePath: item.data.storagePath,
         bodyHash: item.data.bodyHash,
-        score: item.score / Math.max(1, tokenHashes.length),
+        score: Math.min(1, (item.tokenMatches * 2 + item.semanticMatches) / Math.max(1, tokenHashes.length * 2 + semanticHashes.length)),
+        tokenScore: tokenHashes.length > 0 ? item.tokenMatches / tokenHashes.length : 0,
+        semanticScore: semanticHashes.length > 0 ? item.semanticMatches / semanticHashes.length : 0,
+        matchKind: item.tokenMatches > 0 && item.semanticMatches > 0 ? "hybrid" : item.semanticMatches > 0 ? "semantic" : "token",
         tokenHashVersion: item.data.tokenHashVersion ?? 1,
+        semanticHashVersion: item.data.semanticHashVersion ?? 0,
         indexVersion: item.data.indexVersion ?? 1,
       });
       if (hits.length >= limit) break;

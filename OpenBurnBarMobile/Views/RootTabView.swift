@@ -165,10 +165,20 @@ struct RootTabView: View {
 
     private var hermesStack: some View {
         NavigationStack {
-            // Plan 2: the legacy `.hermes` destination now hosts the dual
-            // runtime Assistants surface. The enum case stays `.hermes` so
-            // existing routing/screenshot tooling remains valid.
-            AssistantsTabRoot(hermesService: hermesService, dashboardSnapshot: nil)
+            // Hermes Square Phase A (plan §7) gates the new super-app
+            // surface behind `HermesSquareFeatureFlags.phaseA`. When on,
+            // we render `HermesSquareRoot`; when off, the legacy
+            // `AssistantsTabRoot` (runtime pill + per-runtime chat) remains
+            // the default. Both share the same hermesService /
+            // missionConsoleHost so state is preserved across the switch.
+            if HermesSquareFeatureFlags.shared.phaseA {
+                HermesSquareRoot(
+                    hermesService: hermesService,
+                    missionHost: missionConsoleHost
+                )
+            } else {
+                AssistantsTabRoot(hermesService: hermesService, dashboardSnapshot: nil)
+            }
         }
     }
 

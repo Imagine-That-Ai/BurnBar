@@ -575,7 +575,13 @@ fun ProviderAccordionCard(
 
         Spacer(Modifier.height(AuroraSpacing.sm.dp))
 
-        if (classified.isEmpty()) {
+        if (snapshot.isStale()) {
+            Text(
+                "Quota data is stale. Refresh before trusting these numbers.",
+                fontSize = AuroraTypography.caption.sp,
+                color = AuroraColors.warning
+            )
+        } else if (classified.isEmpty()) {
             Text(
                 snapshot.statusMessage?.takeIf { it.isNotBlank() } ?: "No quota signal yet.",
                 fontSize = AuroraTypography.caption.sp,

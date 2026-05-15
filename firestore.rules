@@ -257,6 +257,12 @@ service cloud.firestore {
         && storagePath.matches("^users/" + userId + "/session_logs/" + documentId + "/bodies/" + bodyHash + "\\.json\\.aesgcm$");
     }
 
+    function validCloudSearchHashes(value) {
+      return value is list
+        && value.size() > 0
+        && value.size() <= 250;
+    }
+
     function chatThreadIncludesBackedUpContent() {
       return request.resource.data.keys().hasAny(["messages", "title", "preview"])
         || (("contentIncluded" in request.resource.data)
@@ -865,7 +871,7 @@ service cloud.firestore {
 
     match /users/{userId}/cloud_search_documents/{documentId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableHostedCloudBackup(userId)
+      allow create, update: if false
         && request.resource.data.keys().hasOnly([
           "uid",
           "documentID",
@@ -883,6 +889,7 @@ service cloud.firestore {
           "encryptedByteCount",
           "indexVersion",
           "tokenHashVersion",
+          "semanticHashVersion",
           "updatedAt",
           "schemaVersion"
         ])
@@ -905,7 +912,7 @@ service cloud.firestore {
 
     match /users/{userId}/cloud_search_chunks/{chunkId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableHostedCloudBackup(userId)
+      allow create, update: if false
         && request.resource.data.keys().hasOnly([
           "uid",
           "chunkID",
@@ -923,8 +930,10 @@ service cloud.firestore {
           "storagePath",
           "sealedSnippet",
           "tokenHashes",
+          "semanticHashes",
           "indexVersion",
           "tokenHashVersion",
+          "semanticHashVersion",
           "updatedAt",
           "schemaVersion"
         ])
@@ -933,9 +942,46 @@ service cloud.firestore {
         && validCloudSessionStoragePath(userId, request.resource.data.documentID, request.resource.data.bodyHash, request.resource.data.storagePath)
         && validCloudHexDigest(request.resource.data.contentHash)
         && validCloudSealedText(request.resource.data.sealedSnippet)
-        && request.resource.data.tokenHashes is list
-        && request.resource.data.tokenHashes.size() > 0
-        && request.resource.data.tokenHashes.size() <= 250
+        && validCloudSearchHashes(request.resource.data.tokenHashes)
+        && (!("semanticHashes" in request.resource.data) || validCloudSearchHashes(request.resource.data.semanticHashes))
+        && (!("semanticHashVersion" in request.resource.data) || (request.resource.data.semanticHashVersion is int && request.resource.data.semanticHashVersion >= 0 && request.resource.data.semanticHashVersion <= 100))
+        && !("title" in request.resource.data)
+        && !("snippet" in request.resource.data)
+        && !("body" in request.resource.data)
+        && !("text" in request.resource.data);
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    match /users/{userId}/cloud_search_postings/{postingId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if false
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "postingKey",
+          "edgeID",
+          "kind",
+          "hash",
+          "chunkID",
+          "documentID",
+          "provider",
+          "projectName",
+          "updatedAt",
+          "indexVersion",
+          "schemaVersion"
+        ])
+        && request.resource.data.uid == userId
+        && request.resource.data.edgeID == postingId
+        && request.resource.data.kind in ["token", "semantic"]
+        && request.resource.data.hash is string
+        && request.resource.data.hash.matches("^[a-f0-9]{32}$")
+        && request.resource.data.postingKey == request.resource.data.kind + "_" + request.resource.data.hash
+        && request.resource.data.chunkID is string
+        && request.resource.data.chunkID.size() <= 512
+        && request.resource.data.edgeID == request.resource.data.postingKey + "_" + request.resource.data.chunkID
+        && request.resource.data.documentID is string
+        && request.resource.data.documentID.size() <= 512
+        && (!("provider" in request.resource.data) || (request.resource.data.provider is string && request.resource.data.provider.size() <= 80))
+        && (!("projectName" in request.resource.data) || (request.resource.data.projectName is string && request.resource.data.projectName.size() <= 512))
         && !("title" in request.resource.data)
         && !("snippet" in request.resource.data)
         && !("body" in request.resource.data)
@@ -945,7 +991,7 @@ service cloud.firestore {
 
     match /users/{userId}/cloud_search_index_state/{deviceId} {
       allow read: if ownsUserNamespace(userId);
-      allow create, update: if ownerWritableHostedCloudBackup(userId)
+      allow create, update: if false
         && request.resource.data.uid == userId
         && request.resource.data.deviceId == deviceId;
       allow delete: if ownsUserNamespace(userId);
@@ -970,7 +1016,11 @@ service cloud.firestore {
         && request.resource.data.uid == userId
         && request.resource.data.wrappedVaultKey is string
         && request.resource.data.wrappedVaultKey.size() <= 8192
-        && request.resource.data.status in ["active", "revoked"];
+        && request.resource.data.status in ["active", "revoked"]
+        && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId))
+        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId)).data.trustState == "trusted"
+        && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId))
+        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.trustState == "trusted";
       allow delete: if ownsUserNamespace(userId);
     }
 
@@ -1298,17 +1348,13 @@ service cloud.firestore {
 
       function validEscrowDeviceCreate(deviceId) {
         return validEscrowDeviceDocument(deviceId)
-          && (
-            request.resource.data.platform != "macOS"
-            || request.resource.data.trustState != "trusted"
-          );
+          && request.resource.data.trustState != "trusted";
       }
 
       function validEscrowDeviceUpdate(deviceId) {
         return validEscrowDeviceDocument(deviceId)
           && (
-            request.resource.data.platform != "macOS"
-            || request.resource.data.trustState != "trusted"
+            request.resource.data.trustState != "trusted"
             || resource.data.trustState == "trusted"
             || (
               resource.data.trustState == "pending"

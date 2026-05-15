@@ -22,7 +22,13 @@ data class CloudConversationSearchHit(
     val sealedBodyPreview: CloudVaultSealedText?,
     val storagePath: String,
     val bodyHash: String,
-    val score: Double
+    val score: Double,
+    val tokenScore: Double? = null,
+    val semanticScore: Double? = null,
+    val matchKind: String? = null,
+    val tokenHashVersion: Int? = null,
+    val semanticHashVersion: Int? = null,
+    val indexVersion: Int? = null
 )
 
 class FunctionsRepository {
@@ -41,12 +47,14 @@ class FunctionsRepository {
 
     suspend fun searchEncryptedConversationIndex(
         tokenHashes: List<String>,
+        semanticHashes: List<String> = emptyList(),
         limit: Int = 25
     ): List<CloudConversationSearchHit> {
         val data = callMap(
             "searchEncryptedConversationIndex",
             mapOf(
                 "tokenHashes" to tokenHashes.take(10),
+                "semanticHashes" to semanticHashes.take(12),
                 "limit" to limit.coerceIn(1, 50)
             )
         )
@@ -246,7 +254,13 @@ private fun Map<String, Any>.toCloudConversationSearchHit(): CloudConversationSe
         sealedBodyPreview = (this["sealedBodyPreview"] as? Map<*, *>)?.toSealedText(),
         storagePath = this["storagePath"] as? String ?: return null,
         bodyHash = this["bodyHash"] as? String ?: return null,
-        score = (this["score"] as? Number)?.toDouble() ?: 0.0
+        score = (this["score"] as? Number)?.toDouble() ?: 0.0,
+        tokenScore = (this["tokenScore"] as? Number)?.toDouble(),
+        semanticScore = (this["semanticScore"] as? Number)?.toDouble(),
+        matchKind = this["matchKind"] as? String,
+        tokenHashVersion = (this["tokenHashVersion"] as? Number)?.toInt(),
+        semanticHashVersion = (this["semanticHashVersion"] as? Number)?.toInt(),
+        indexVersion = (this["indexVersion"] as? Number)?.toInt()
     )
 }
 

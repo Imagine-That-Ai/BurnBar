@@ -9,7 +9,8 @@ Working constraints:
 - GRDB/SQLite stays the hot-path authority on device.
 - Firestore stays off the local interactive retrieval path. The exception is
   the BurnBar Pro encrypted hosted-session search surface, which stores only
-  sealed metadata and HMAC token hashes for cross-device cloud search.
+  sealed metadata and keyed token/semantic search hashes for cross-device cloud
+  search.
 - `SearchService` remains the single app-facing search entrypoint during the transition.
 - `DataStore` is split into focused stores over one shared `DatabaseQueue`; it is not replaced with a second persistence stack.
 
@@ -32,24 +33,38 @@ logs without changing the local search authority:
   ciphertext to Firebase Storage through a signed upload URL.
 - macOS writes `cloud_search_documents`, `cloud_search_chunks`, and
   `cloud_search_index_state` through Firebase Functions. These rows contain
-  sealed titles/snippets/previews, body/content hashes, storage paths, and HMAC
-  token hashes. They do not contain plaintext bodies. The commit callable
-  verifies the encrypted Storage object exists, has the expected byte size and
-  content type, and matches the document/body-hash path before the index row is
-  accepted.
+  sealed titles/snippets/previews, body/content hashes, storage paths, HMAC
+  token hashes, keyed semantic hashes, and semantic posting edges. They do not
+  contain plaintext bodies. The commit callable verifies the encrypted Storage
+  object exists, has the expected byte size and content type, and matches the
+  document/body-hash path before the index row is accepted.
+- Hosted index commits are generation stamped. Large uploads can span multiple
+  Firestore batches, so the callable writes the active commit marker last and
+  search ignores chunks from uncommitted or stale commit IDs.
 - iOS/iPadOS and Android register device public keys, read a wrapped cloud
-  vault key from `cloud_vault_key_wrappers`, query by HMAC token hashes, and
-  decrypt returned titles/snippets/full bodies locally.
+  vault key from `cloud_vault_key_wrappers`, query by locally derived opaque
+  token/semantic hashes, and decrypt returned titles/snippets/full bodies
+  locally.
 - macOS publishes its public key without self-minting trusted Mac status. A Mac
   that is not already trusted can still sync with its local vault key; vault
   wrappers are written only for devices already trusted in the escrow list.
+- Android and iOS escrow devices register as pending by default. Trusted status
+  is an explicit approval state, and cloud vault wrappers are valid only when
+  both source and target devices are trusted.
 - Firestore rules require active premium entitlement for cloud index/key-wrapper
-  writes and reject top-level plaintext `title`, `snippet`, `body`, and `text`
-  fields.
+  writes. Hosted search index writes are server-only through the commit
+  callable; direct client writes to `cloud_search_*` are denied, and the
+  callable rejects top-level plaintext `title`, `snippet`, `body`, and `text`
+  fields before Admin SDK writes occur.
+- `tools/openburnbar-mcp` exposes both local deterministic semantic search over
+  SQLite embeddings and an opt-in hosted encrypted MCP path. Hosted MCP search
+  derives search hashes locally, sends only opaque hashes to Firebase Functions,
+  and decrypts returned snippets/bodies on the MCP host.
 
 This is a privacy-preserving hosted index, not a replacement for local hybrid
 retrieval. Local `SearchService` remains the hot path for local corpus search;
-cloud search is a separate premium surface for mirrored hosted session logs.
+cloud search is a separate premium surface for mirrored hosted session logs and
+agent/MCP recall.
 
 ## Diligence source map (doc → code)
 

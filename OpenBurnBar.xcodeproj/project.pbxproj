@@ -61,6 +61,8 @@
 		0B67A08CD96B0C57B387A8AF /* DashboardExtraLargeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 241471F4F618C437DED85746 /* DashboardExtraLargeView.swift */; };
 		0B69DA68B4243A03EC1ADA1B /* DashboardSummarizingComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 838BF13BC43DE5602751F054 /* DashboardSummarizingComponents.swift */; };
 		0BBBB8455B9E3FA05C36B7D8 /* DashboardChromeComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F1F300446BCD0B872E4614C /* DashboardChromeComponents.swift */; };
+		FB22C7E3BC4D5E6F7A8B9C01 /* DashboardLiveCostCurve.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB22C7E3BC4D5E6F7A8B9C02 /* DashboardLiveCostCurve.swift */; };
+		FB22C7E3BC4D5E6F7A8B9C03 /* DashboardDepthBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB22C7E3BC4D5E6F7A8B9C04 /* DashboardDepthBackdrop.swift */; };
 		0BDF718C55ADB40D2A7662F9 /* OpenAIEmbeddingProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD173967ECB7E5F3A898531E /* OpenAIEmbeddingProvider.swift */; };
 		0BFDD88C9FA480F714F5D150 /* SessionLogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 913C0DE91E4033D5A4F54843 /* SessionLogsView.swift */; };
 		0C24CB171D8741B2A6F07AA6 /* test_designSystemColorSwatches.adaptiveColors-swatches-light.png in Resources */ = {isa = PBXBuildFile; fileRef = 476FAD9466AC484F7F07A3A6 /* test_designSystemColorSwatches.adaptiveColors-swatches-light.png */; };
@@ -1288,6 +1290,8 @@
 		2EDC950266B1721E44A124B7 /* IntelligenceBriefSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntelligenceBriefSnapshotTests.swift; sourceTree = "<group>"; };
 		2EE64443DF146CA4597F6904 /* SessionSummaryWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSummaryWizardView.swift; sourceTree = "<group>"; };
 		2F1F300446BCD0B872E4614C /* DashboardChromeComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardChromeComponents.swift; sourceTree = "<group>"; };
+		FB22C7E3BC4D5E6F7A8B9C02 /* DashboardLiveCostCurve.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardLiveCostCurve.swift; sourceTree = "<group>"; };
+		FB22C7E3BC4D5E6F7A8B9C04 /* DashboardDepthBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardDepthBackdrop.swift; sourceTree = "<group>"; };
 		2F2E304662276AF6A832E0D9 /* test_miniSparkline_flat.miniSparkline-flat-light.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "test_miniSparkline_flat.miniSparkline-flat-light.png"; sourceTree = "<group>"; };
 		2F48839B302C2E7783C177F4 /* OpenBurnBarConfigStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarConfigStore.swift; sourceTree = "<group>"; };
 		2F814AEC4F62540ED385090D /* DashboardToolbarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardToolbarTests.swift; sourceTree = "<group>"; };

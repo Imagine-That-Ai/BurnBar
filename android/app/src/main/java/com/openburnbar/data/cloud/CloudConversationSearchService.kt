@@ -37,9 +37,10 @@ class CloudConversationSearchService(
         registerDevice(uid, keypair)
         val vaultKey = unlockVaultKey(uid, keypair) ?: return emptyList()
         val tokenHashes = CloudVaultCrypto.tokenHashes(query, vaultKey, limit = 10)
-        if (tokenHashes.isEmpty()) return emptyList()
+        val semanticHashes = CloudVaultCrypto.semanticHashes(query, vaultKey, limit = 12)
+        if (tokenHashes.isEmpty() && semanticHashes.isEmpty()) return emptyList()
 
-        return functions.searchEncryptedConversationIndex(tokenHashes, limit)
+        return functions.searchEncryptedConversationIndex(tokenHashes, semanticHashes, limit)
             .mapNotNull { hit ->
                 runCatching {
                     CloudConversationSearchRow(
@@ -79,12 +80,15 @@ class CloudConversationSearchService(
         val deviceName = listOfNotNull(Build.MANUFACTURER, Build.MODEL)
             .joinToString(" ")
             .ifBlank { "Android" }
-        userRef.collection("escrow_devices").document(keypair.deviceId).set(
+        val deviceRef = userRef.collection("escrow_devices").document(keypair.deviceId)
+        val existingTrustState = runCatching { deviceRef.get().await().getString("trustState") }.getOrNull()
+        val trustState = if (existingTrustState == "trusted") "trusted" else "pending"
+        deviceRef.set(
             mapOf(
                 "deviceId" to keypair.deviceId,
                 "deviceName" to deviceName,
                 "platform" to "Android",
-                "trustState" to "trusted",
+                "trustState" to trustState,
                 "publicKeyFingerprint" to keypair.publicKeyFingerprint,
                 "keyVersion" to keypair.keyVersion,
                 "updatedAt" to FieldValue.serverTimestamp()

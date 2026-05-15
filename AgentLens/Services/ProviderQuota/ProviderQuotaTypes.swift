@@ -199,15 +199,51 @@ extension ProviderQuotaBucket {
     /// formatter. Kept on the AgentLens-local bucket because the rich Mac
     /// model is what `ProviderQuotaBucketViews` reads.
     var resetsAtDisplay: (relative: String, absolute: String)? {
-        guard let resetsAt else { return nil }
+        guard let resetsAt = Self.displayResetDate(resetsAt, windowKind: windowKind) else { return nil }
         let now = Date()
-        guard resetsAt > now else { return nil }
         let relative = Self.relativeResetsFormatter.localizedString(
             for: resetsAt,
             relativeTo: now
         )
         let absolute = resetsAt.formatted(date: .abbreviated, time: .shortened)
         return (relative: relative, absolute: absolute)
+    }
+
+    private static func displayResetDate(
+        _ resetsAt: Date?,
+        windowKind: ProviderQuotaWindowKind,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Date? {
+        guard let resetsAt else { return nil }
+        guard resetsAt <= now else { return resetsAt }
+
+        switch windowKind {
+        case .rollingHours:
+            return advance(resetsAt, by: 5 * 60 * 60, after: now)
+        case .rollingDays, .weekly:
+            return advance(resetsAt, by: 7 * 24 * 60 * 60, after: now)
+        case .daily:
+            return advance(resetsAt, by: 24 * 60 * 60, after: now)
+        case .monthly:
+            var candidate = resetsAt
+            for _ in 0..<60 {
+                guard let next = calendar.date(byAdding: .month, value: 1, to: candidate) else { return nil }
+                candidate = next
+                if candidate > now { return candidate }
+            }
+            return nil
+        case .lifetime, .custom:
+            return nil
+        }
+    }
+
+    private static func advance(_ date: Date, by interval: TimeInterval, after now: Date) -> Date? {
+        guard interval > 0 else { return nil }
+        let elapsed = max(0, now.timeIntervalSince(date))
+        let steps = floor(elapsed / interval) + 1
+        let candidate = date.addingTimeInterval(steps * interval)
+        return candidate > now ? candidate : candidate.addingTimeInterval(interval)
     }
 
     private static let relativeResetsFormatter: RelativeDateTimeFormatter = {
@@ -368,8 +404,17 @@ struct ProviderQuotaSnapshot: Codable, Hashable {
         return "\(primaryBucket.label): \(primaryBucket.remainingText) left"
     }
 
+    var isExplicitlyStale: Bool {
+        if confidence == .unavailable { return true }
+        return statusMessage.localizedCaseInsensitiveContains("stale")
+    }
+
     func isStale(relativeTo now: Date = Date()) -> Bool {
-        now.timeIntervalSince(fetchedAt) > 12 * 60 * 60
+        isExplicitlyStale || now.timeIntervalSince(fetchedAt) > 12 * 60 * 60
+    }
+
+    func isTooOldForQuotaDecisions(relativeTo now: Date = Date()) -> Bool {
+        isStale(relativeTo: now)
     }
 
     func withAccountMetadata(

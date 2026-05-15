@@ -30,7 +30,7 @@ If you choose to sign in with Google or Apple and enable cloud sync, OpenBurnBar
 - Provider account metadata and quota snapshots (redacted labels, provider IDs, refresh status, limits, remaining quota)
 - In-app chat thread metadata (thread IDs, titles/previews when enabled, timestamps, counts)
 - Conversation/session metadata and sync watermarks
-- Encrypted BurnBar Pro session-log search metadata, including sealed titles/snippets and keyed token hashes
+- Encrypted BurnBar Pro session-log search metadata, including sealed titles/snippets and keyed token/semantic hashes
 - Shared artifact metadata and revisions for collaboration features
 - Sync state metadata
 
@@ -40,7 +40,7 @@ Cloud sync is **disabled by default**. You can disable it at any time in Setting
 
 OpenBurnBar can back up chat message content and session history only after you explicitly enable the relevant backup setting. Hosted cloud backup writes for chat message bodies, conversation metadata, session-log manifests, session-log chunks, and Hermes relay traffic require an active `burnbar_pro` entitlement or a legacy active `hosted_quota_sync` entitlement.
 
-BurnBar Pro searchable hosted session logs are encrypted on device before upload. Full session bodies are sealed with AES-GCM and uploaded to Firebase Storage as ciphertext. Firestore stores encrypted titles/snippets/previews, non-secret hashes, and HMAC token hashes for matching. OpenBurnBar servers can keep the index fresh and run token-hash matching, but they do not receive the vault key needed to decrypt session bodies, titles, or snippets. Apps decrypt matching results locally after the device has an allowed wrapped vault key.
+BurnBar Pro searchable hosted session logs are encrypted on device before upload. Full session bodies are sealed with AES-GCM and uploaded to Firebase Storage as ciphertext. Firestore stores encrypted titles/snippets/previews, non-secret hashes, HMAC token hashes, keyed semantic hashes, and opaque semantic posting edges for matching. OpenBurnBar servers can keep the index fresh and run encrypted token/semantic matching, but they do not receive the vault key, plaintext embeddings, or plaintext needed to decrypt session bodies, titles, or snippets. Apps and explicitly configured MCP tools decrypt matching results locally after the device has an allowed wrapped vault key.
 
 Backed-up chat and session data may include prompts, assistant responses, file paths, project names, model names, code snippets, and other content present in your local agent logs or in-app chats. Do not enable these backup settings for repositories or conversations you do not want stored in Firebase.
 

@@ -72,6 +72,7 @@ public struct CloudVaultBlobEnvelope: Codable, Hashable, Sendable {
 public enum CloudVaultCrypto {
     public static let aesGCMAlgorithm = "AES-256-GCM"
     public static let tokenHashVersion = 1
+    public static let semanticHashVersion = 1
     public static let currentKeyVersion = 1
 
     public static func generateVaultKey() -> Data {
@@ -126,6 +127,62 @@ public enum CloudVaultCrypto {
             hashes.append(Data(mac).prefix(16).map { String(format: "%02x", $0) }.joined())
             if hashes.count >= limit { break }
         }
+        return hashes
+    }
+
+    /// Produces keyed semantic-search buckets from plaintext before it is encrypted.
+    ///
+    /// This is a searchable-symmetric-encryption style trapdoor: the server can
+    /// intersect opaque buckets and rank candidate chunks, but it never receives
+    /// plaintext tokens, embeddings, or the vault key. The sketch intentionally
+    /// favors bounded, stable recall over model-specific vectors so every client
+    /// can produce identical hashes offline.
+    public static func semanticHashes(for text: String, keyData: Data, limit: Int = 24) throws -> [String] {
+        let tokens = normalizedTokens(from: text)
+        guard tokens.isEmpty == false, limit > 0 else { return [] }
+
+        let key = try semanticSearchKey(from: keyData)
+        let features = semanticFeatures(from: tokens)
+        guard features.isEmpty == false else { return [] }
+
+        let dimensions = 64
+        var accumulator = [Double](repeating: 0, count: dimensions)
+        for feature in features {
+            let mac = HMAC<SHA256>.authenticationCode(for: Data(feature.name.utf8), using: key)
+            let bytes = Array(Data(mac))
+            let index = ((Int(bytes[0]) << 8) | Int(bytes[1])) % dimensions
+            let sign = (bytes[2] & 1) == 0 ? 1.0 : -1.0
+            accumulator[index] += sign * feature.weight
+        }
+
+        var hashes: [String] = []
+        var seen = Set<String>()
+        func appendBucket(_ bucket: String) {
+            guard hashes.count < limit else { return }
+            let mac = HMAC<SHA256>.authenticationCode(for: Data(bucket.utf8), using: key)
+            let hash = Data(mac).prefix(16).map { String(format: "%02x", $0) }.joined()
+            if seen.insert(hash).inserted {
+                hashes.append(hash)
+            }
+        }
+
+        let bandSize = 8
+        let bandCount = dimensions / bandSize
+        for band in 0..<bandCount {
+            var value = 0
+            for bit in 0..<bandSize {
+                let index = band * bandSize + bit
+                if accumulator[index] >= 0 {
+                    value |= (1 << bit)
+                }
+            }
+            appendBucket("simhash:v1:band:\(band):\(String(format: "%02x", value))")
+        }
+
+        for feature in features.prefix(max(0, limit - hashes.count)) {
+            appendBucket("feature:v1:\(feature.name)")
+        }
+
         return hashes
     }
 
@@ -202,6 +259,61 @@ public enum CloudVaultCrypto {
             info: Data("OpenBurnBar-CloudSearch-TokenHash-v1".utf8),
             outputByteCount: 32
         )
+    }
+
+    private static func semanticSearchKey(from data: Data) throws -> SymmetricKey {
+        guard data.count == 32 else { throw CloudVaultCryptoError.invalidKeyLength }
+        return HKDF<SHA256>.deriveKey(
+            inputKeyMaterial: SymmetricKey(data: data),
+            salt: Data("OpenBurnBar-CloudSearch-Semantic-Salt-v1".utf8),
+            info: Data("OpenBurnBar-CloudSearch-SemanticHash-v1".utf8),
+            outputByteCount: 32
+        )
+    }
+
+    private struct SemanticFeature {
+        let name: String
+        let weight: Double
+    }
+
+    private static func semanticFeatures(from tokens: [String]) -> [SemanticFeature] {
+        var features: [SemanticFeature] = []
+        var seen = Set<String>()
+
+        func append(_ name: String, weight: Double) {
+            guard name.isEmpty == false, seen.insert(name).inserted else { return }
+            features.append(SemanticFeature(name: name, weight: weight))
+        }
+
+        for token in tokens {
+            append("token:\(token)", weight: 2.4)
+            let stem = simpleSemanticStem(token)
+            if stem != token {
+                append("stem:\(stem)", weight: 1.8)
+            }
+            if token.count >= 5 {
+                append("prefix:\(String(token.prefix(5)))", weight: 0.8)
+            }
+        }
+
+        if tokens.count >= 2 {
+            for index in 0..<(tokens.count - 1) {
+                append("bigram:\(tokens[index])_\(tokens[index + 1])", weight: 1.3)
+            }
+        }
+        return features
+    }
+
+    private static func simpleSemanticStem(_ token: String) -> String {
+        let suffixes = ["ization", "ations", "ation", "ments", "ment", "ingly", "edly", "ing", "ies", "ied", "ers", "er", "ed", "s"]
+        for suffix in suffixes where token.count > suffix.count + 3 && token.hasSuffix(suffix) {
+            let stem = String(token.dropLast(suffix.count))
+            if suffix == "ies" || suffix == "ied" {
+                return stem + "y"
+            }
+            return stem
+        }
+        return token
     }
 
     private static func sealedText(from sealed: AES.GCM.SealedBox, keyVersion: Int) throws -> CloudVaultSealedText {

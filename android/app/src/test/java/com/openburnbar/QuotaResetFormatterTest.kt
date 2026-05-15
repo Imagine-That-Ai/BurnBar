@@ -22,22 +22,33 @@ class QuotaResetFormatterTest {
     @Test
     fun `relative half formats short future durations as "in Xh Ym"`() {
         val target = now.plusSeconds(2 * 3600 + 14 * 60)
-        val parts = QuotaResetFormatter.format(target, now, zoneUTC, englishUS)
-        assertEquals("in 2h 14m", parts.relative)
+        val parts = QuotaResetFormatter.format(target, now = now, zone = zoneUTC, locale = englishUS)
+        assertNotNull(parts)
+        assertEquals("in 2h 14m", parts!!.relative)
     }
 
     @Test
     fun `relative half formats multi-day futures with day-and-hour precision`() {
         val target = now.plusSeconds(6 * 24 * 3600 + 3 * 3600)
-        val parts = QuotaResetFormatter.format(target, now, zoneUTC, englishUS)
-        assertEquals("in 6d 3h", parts.relative)
+        val parts = QuotaResetFormatter.format(target, now = now, zone = zoneUTC, locale = englishUS)
+        assertNotNull(parts)
+        assertEquals("in 6d 3h", parts!!.relative)
     }
 
     @Test
-    fun `relative half marks past targets with "ago"`() {
+    fun `format advances past targets when window is known`() {
         val target = now.minusSeconds(45 * 60)
-        val parts = QuotaResetFormatter.format(target, now, zoneUTC, englishUS)
-        assertEquals("45m ago", parts.relative)
+        val parts = QuotaResetFormatter.format(target, "5-hour window", now = now, zone = zoneUTC, locale = englishUS)
+        assertNotNull(parts)
+        assertEquals("in 4h 15m", parts!!.relative)
+        assertNotNull(QuotaResetFormatter.combinedLabel(target, "5-hour window", now = now, zone = zoneUTC, locale = englishUS))
+    }
+
+    @Test
+    fun `format returns null for past targets when window is unknown`() {
+        val target = now.minusSeconds(45 * 60)
+        assertNull(QuotaResetFormatter.format(target, null, now = now, zone = zoneUTC, locale = englishUS))
+        assertNull(QuotaResetFormatter.combinedLabel(target, null, now = now, zone = zoneUTC, locale = englishUS))
     }
 
     @Test
@@ -45,9 +56,10 @@ class QuotaResetFormatterTest {
         // Pick a deterministic moment so the localized formatter has no
         // wiggle room across hosts.
         val target = ZonedDateTime.of(2026, 5, 12, 15, 35, 0, 0, zoneUTC).toInstant()
-        val parts = QuotaResetFormatter.format(target, now, zoneUTC, englishUS)
+        val parts = QuotaResetFormatter.format(target, now = now, zone = zoneUTC, locale = englishUS)
+        assertNotNull(parts)
         assertTrue(
-            "absolute output should mention month + time, got: ${parts.absolute}",
+            "absolute output should mention month + time, got: ${parts!!.absolute}",
             parts.absolute.contains("May") && parts.absolute.contains("3:35")
         )
     }
@@ -55,7 +67,7 @@ class QuotaResetFormatterTest {
     @Test
     fun `combinedLabel joins the two halves with a centre dot`() {
         val target = now.plusSeconds(60 * 60)
-        val label = QuotaResetFormatter.combinedLabel(target, now, zoneUTC, englishUS)
+        val label = QuotaResetFormatter.combinedLabel(target, now = now, zone = zoneUTC, locale = englishUS)
         assertNotNull(label)
         assertTrue("expected centre-dot separator in: $label", label!!.contains(" · "))
     }

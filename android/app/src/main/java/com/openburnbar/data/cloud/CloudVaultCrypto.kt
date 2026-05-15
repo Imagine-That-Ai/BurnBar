@@ -44,7 +44,11 @@ data class CloudVaultBlobEnvelope(
 object CloudVaultCrypto {
     private const val SEARCH_SALT = "OpenBurnBar-CloudSearch-Salt-v1"
     private const val SEARCH_INFO = "OpenBurnBar-CloudSearch-TokenHash-v1"
+    private const val SEMANTIC_SEARCH_SALT = "OpenBurnBar-CloudSearch-Semantic-Salt-v1"
+    private const val SEMANTIC_SEARCH_INFO = "OpenBurnBar-CloudSearch-SemanticHash-v1"
     private const val WRAP_INFO = "OpenBurnBar-Escrow-v1"
+    const val tokenHashVersion: Int = 1
+    const val semanticHashVersion: Int = 1
     private val stopwords = setOf(
         "the", "and", "for", "with", "that", "this", "from", "how", "what", "where",
         "when", "why", "are", "was", "were", "you", "your", "have", "has", "had",
@@ -68,8 +72,59 @@ object CloudVaultCrypto {
         val hashes = mutableListOf<String>()
         for (token in normalizedTokens(text)) {
             if (!seen.add(token)) continue
-            hashes += mac.doFinal(token.toByteArray()).take(16).joinToString("") { "%02x".format(it) }
+            hashes += mac.doFinal(token.toByteArray()).take(16).joinToString("") { "%02x".format(it.toInt() and 0xff) }
             if (hashes.size >= limit) break
+        }
+        return hashes
+    }
+
+    fun semanticHashes(text: String, vaultKey: ByteArray, limit: Int = 24): List<String> {
+        val tokens = normalizedTokens(text)
+        if (tokens.isEmpty() || limit <= 0) return emptyList()
+        val searchKey = hkdfSha256(
+            vaultKey,
+            SEMANTIC_SEARCH_SALT.toByteArray(),
+            SEMANTIC_SEARCH_INFO.toByteArray(),
+            32
+        )
+        val features = semanticFeatures(tokens)
+        if (features.isEmpty()) return emptyList()
+
+        val mac = Mac.getInstance("HmacSHA256")
+        val dimensions = 64
+        val accumulator = DoubleArray(dimensions)
+        for (feature in features) {
+            mac.init(SecretKeySpec(searchKey, "HmacSHA256"))
+            val bytes = mac.doFinal(feature.name.toByteArray())
+            val index = (((bytes[0].toInt() and 0xff) shl 8) or (bytes[1].toInt() and 0xff)) % dimensions
+            val sign = if ((bytes[2].toInt() and 1) == 0) 1.0 else -1.0
+            accumulator[index] += sign * feature.weight
+        }
+
+        val hashes = mutableListOf<String>()
+        val seen = linkedSetOf<String>()
+        fun appendBucket(bucket: String) {
+            if (hashes.size >= limit) return
+            mac.init(SecretKeySpec(searchKey, "HmacSHA256"))
+            val hash = mac.doFinal(bucket.toByteArray())
+                .take(16)
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            if (seen.add(hash)) hashes += hash
+        }
+
+        val bandSize = 8
+        val bandCount = dimensions / bandSize
+        for (band in 0 until bandCount) {
+            var value = 0
+            for (bit in 0 until bandSize) {
+                val index = band * bandSize + bit
+                if (accumulator[index] >= 0) value = value or (1 shl bit)
+            }
+            appendBucket("simhash:v1:band:$band:%02x".format(value))
+        }
+
+        for (feature in features.take(maxOf(0, limit - hashes.size))) {
+            appendBucket("feature:v1:${feature.name}")
         }
         return hashes
     }
@@ -113,7 +168,7 @@ object CloudVaultCrypto {
     }
 
     fun sha256Hex(data: ByteArray): String =
-        MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }
+        MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     fun sha256Base64(data: ByteArray): String =
         Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(data), Base64.NO_WRAP)
@@ -159,6 +214,41 @@ object CloudVaultCrypto {
         val raw = value.toByteArray()
         val positive = if (raw.size > 32) raw.copyOfRange(raw.size - 32, raw.size) else raw
         return ByteArray(32 - positive.size) + positive
+    }
+
+    private data class SemanticFeature(val name: String, val weight: Double)
+
+    private fun semanticFeatures(tokens: List<String>): List<SemanticFeature> {
+        val features = mutableListOf<SemanticFeature>()
+        val seen = linkedSetOf<String>()
+        fun append(name: String, weight: Double) {
+            if (name.isBlank() || !seen.add(name)) return
+            features += SemanticFeature(name, weight)
+        }
+
+        for (token in tokens) {
+            append("token:$token", 2.4)
+            val stem = simpleSemanticStem(token)
+            if (stem != token) append("stem:$stem", 1.8)
+            if (token.length >= 5) append("prefix:${token.take(5)}", 0.8)
+        }
+        if (tokens.size >= 2) {
+            for (index in 0 until tokens.lastIndex) {
+                append("bigram:${tokens[index]}_${tokens[index + 1]}", 1.3)
+            }
+        }
+        return features
+    }
+
+    private fun simpleSemanticStem(token: String): String {
+        val suffixes = listOf("ization", "ations", "ation", "ments", "ment", "ingly", "edly", "ing", "ies", "ied", "ers", "er", "ed", "s")
+        for (suffix in suffixes) {
+            if (token.length > suffix.length + 3 && token.endsWith(suffix)) {
+                val stem = token.dropLast(suffix.length)
+                return if (suffix == "ies" || suffix == "ied") stem + "y" else stem
+            }
+        }
+        return token
     }
 }
 

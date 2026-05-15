@@ -53,16 +53,26 @@ BurnBar Pro supplements Hosted Quota with two additional hosted services:
 - **Encrypted searchable hosted session logs.** The Mac app encrypts session
   bodies, titles, previews, and snippets before upload. Firebase Storage stores
   encrypted bodies, while Firestore stores sealed metadata plus HMAC token
-  hashes. The server can keep the index fresh and cheaply query by token hash,
-  but matched content is decrypted only on a trusted device.
+  hashes, keyed semantic hashes, and semantic posting edges. The server can
+  keep the index fresh and cheaply jump to semantic candidates without seeing
+  plaintext, embeddings, or the vault key; matched content is decrypted only on
+  a trusted device or explicitly configured local MCP host.
 - **Commit-time blob verification.** Cloud Functions only commits hosted search
   rows after the encrypted Storage object exists, matches the expected
   `application/octet-stream` content type, and has the encrypted byte count and
   path/body-hash shape issued in the upload ticket.
+- **Generation-safe index freshness.** Each hosted search commit is stamped
+  with an opaque commit ID. The active commit marker is written after the chunk
+  and posting batches, and search ignores uncommitted or stale generations.
+- **Server-only index writes.** Apps upload hosted search rows through the
+  callable validation path. Firestore rules deny direct client writes to
+  `cloud_search_*`, while still allowing users to read and delete their own
+  mirrored data.
 
 The cloud search index is intentionally not a plaintext Firestore transcript
 database. It is a premium, encrypted mirror for signed-in users who want their
-Mac, iPhone, iPad, and Android app to search the same hosted session corpus.
+Mac, iPhone, iPad, Android app, and trusted MCP tools to search the same hosted
+session corpus.
 
 ## In Practice
 
@@ -703,6 +713,17 @@ captured it from StoreKit or App Store Server API logs. Use only the evidence
 flags the proof user actually exercised: `--require-backup` for paid chat /
 conversation / session-log backup, and `--require-hosted-quota` for hosted
 Codex quota refresh.
+
+To prove the encrypted hosted search index itself, use:
+
+```bash
+OPENBURNBAR_PROOF_UID="FIREBASE_UID" \
+npm --prefix functions run prove:cloud-search -- --project burnbar
+```
+
+That read-only proof checks the active entitlement, encrypted search documents,
+search chunks with semantic hashes, semantic posting edges, active vault key
+wrappers, and the absence of plaintext-looking fields.
 
 The command fails unless the production user has an active, unexpired premium
 entitlement. For new purchases that is

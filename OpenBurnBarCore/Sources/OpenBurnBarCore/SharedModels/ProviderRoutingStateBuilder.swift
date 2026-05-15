@@ -124,6 +124,10 @@ public enum ProviderRoutingStateBuilder {
             return account.status == .stale ? .pressure : .unknown
         }
 
+        if snapshot.isStale() {
+            return .pressure
+        }
+
         // Pick the bucket with the smallest remaining fraction so a single
         // exhausted axis (e.g. requests-per-day) still trips the lane even
         // when total tokens look fine.

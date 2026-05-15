@@ -22,6 +22,7 @@
     "test:providers": "npm run build && node scripts/test-providers.mjs",
     "test": "npm run test:rollups && npm run test:appstore && npm run test:account-deletion && npm run test:hermes && npm run test:pi-agent && npm run test:provider-device-links && npm run test:demo-seed && npm run test:model-landscape && npm run test:router-rundown && npm run test:providers && npm run test:firestore-rules",
     "prove:hosted-quota": "node scripts/prove-hosted-quota-live.mjs",
+    "prove:cloud-search": "node scripts/prove-burnbar-pro-cloud-search-live.mjs",
     "lint": "eslint src/**/*.ts",
     "alerts:billing": "node scripts/create-billing-alert-policies.mjs",
     "serve": "firebase emulators:start --only functions",

@@ -31,6 +31,46 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertFalse(ProviderQuotaService.supportedProviders.contains(.kiloCode))
     }
 
+    func test_quotaBucketResetDisplay_advancesPastRollingResetTimes() {
+        let threeDaysAgo = Date().addingTimeInterval(-3 * 24 * 3600)
+        let bucket = ProviderQuotaBucket(
+            key: "codex-5h",
+            label: "5h window",
+            windowKind: .rollingHours,
+            usedValue: 50,
+            limitValue: 100,
+            remainingValue: 50,
+            usedPercent: 50,
+            resetsAt: threeDaysAgo,
+            unit: .percent,
+            isEstimated: false
+        )
+
+        let display = bucket.resetsAtDisplay
+        XCTAssertNotNil(display)
+        XCTAssertFalse(display?.relative.contains("ago") ?? true)
+    }
+
+    func test_quotaBucketResetDisplay_keepsFutureResetTimes() {
+        let inTwoHours = Date().addingTimeInterval(2 * 3600)
+        let bucket = ProviderQuotaBucket(
+            key: "codex-5h",
+            label: "5h window",
+            windowKind: .rollingHours,
+            usedValue: 50,
+            limitValue: 100,
+            remainingValue: 50,
+            usedPercent: 50,
+            resetsAt: inTwoHours,
+            unit: .percent,
+            isEstimated: false
+        )
+
+        let display = bucket.resetsAtDisplay
+        XCTAssertNotNil(display)
+        XCTAssertFalse(display?.relative.contains("ago") ?? true)
+    }
+
     func test_visiblePopoverProviders_onlyIncludesConnectedProviders() throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()

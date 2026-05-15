@@ -24,7 +24,11 @@ struct CloudConversationSearchHit: Identifiable, Decodable, Hashable, Sendable {
     let storagePath: String
     let bodyHash: String
     let score: Double
+    let tokenScore: Double?
+    let semanticScore: Double?
+    let matchKind: String?
     let tokenHashVersion: Int?
+    let semanticHashVersion: Int?
     let indexVersion: Int?
 }
 
@@ -252,10 +256,15 @@ final class FunctionsRepository {
         return try JSONDecoder().decode([StreamSearchHit].self, from: data)
     }
 
-    func searchEncryptedConversationIndex(tokenHashes: [String], limit: Int = 25) async throws -> [CloudConversationSearchHit] {
+    func searchEncryptedConversationIndex(
+        tokenHashes: [String],
+        semanticHashes: [String] = [],
+        limit: Int = 25
+    ) async throws -> [CloudConversationSearchHit] {
         let callable = functions.httpsCallable("searchEncryptedConversationIndex")
         let result = try await callable.call([
             "tokenHashes": Array(tokenHashes.prefix(10)),
+            "semanticHashes": Array(semanticHashes.prefix(12)),
             "limit": max(1, min(limit, 50))
         ])
         guard let dict = result.data as? [String: Any],

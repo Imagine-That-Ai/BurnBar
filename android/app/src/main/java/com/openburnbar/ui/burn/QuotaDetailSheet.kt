@@ -26,8 +26,12 @@ import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.QuotaBucket
 import com.openburnbar.data.models.effectiveResetsAt
+import com.openburnbar.data.models.effectiveWindowLabel
+import com.openburnbar.data.models.isStale
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.theme.*
+import java.time.Duration
+import java.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,8 +101,8 @@ fun QuotaDetailSheet(
                     modifier = Modifier.weight(1f)
                 )
                 StatChip(
-                    label = "Buckets",
-                    value = "${snapshots.sumOf { it.buckets.size }}",
+                    label = "Freshness",
+                    value = freshnessLabel(snapshots.firstOrNull()),
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -190,7 +194,14 @@ private fun AccountQuotaCard(
             }
         }
 
-        if (snapshot.buckets.isNotEmpty()) {
+        if (snapshot.isStale()) {
+            Text(
+                text = "Quota data is stale. Refresh this account before trusting the numbers.",
+                fontSize = AuroraTypography.caption.sp,
+                color = AuroraColors.warning,
+                modifier = Modifier.padding(vertical = AuroraSpacing.sm.dp)
+            )
+        } else if (snapshot.buckets.isNotEmpty()) {
             Text(
                 text = quotaExplanation(snapshot.buckets),
                 fontSize = AuroraTypography.caption.sp,
@@ -209,6 +220,21 @@ private fun AccountQuotaCard(
             }
         }
     }
+}
+
+private fun freshnessLabel(snapshot: ProviderQuotaSnapshot?): String {
+    val fetched = snapshot?.fetchedAt
+        ?.takeIf { it.isNotBlank() }
+        ?.let { runCatching { Instant.parse(it) }.getOrNull() }
+        ?: return "—"
+    val age = Duration.between(fetched, Instant.now()).abs()
+    val value = when {
+        age.toMinutes() < 1 -> "now"
+        age.toHours() < 1 -> "${age.toMinutes()}m"
+        age.toDays() < 1 -> "${age.toHours()}h"
+        else -> "${age.toDays()}d"
+    }
+    return if (snapshot.isStale()) "stale $value" else value
 }
 
 private fun quotaExplanation(buckets: List<QuotaBucket>): String {
@@ -243,7 +269,7 @@ fun UnifiedQuotaSignalView(
     )
 
     val resetsAt = bucket.effectiveResetsAt
-    val resetParts = resetsAt?.let { QuotaResetFormatter.format(it) }
+    val resetParts = resetsAt?.let { QuotaResetFormatter.format(it, bucket.effectiveWindowLabel) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(

@@ -536,9 +536,20 @@ test("owners can dispatch mobile Insights missions and read Mac agent results", 
       deviceId: "phone-1",
       platform: "iOS",
       deviceName: "Ivy iPhone",
-      trustState: "trusted",
+      trustState: "pending",
       updatedAt: serverTimestamp(),
     })
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(phoneDb, "users/ivy/escrow_devices/phone-1"),
+      {
+        trustState: "trusted",
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
   );
   await assertFails(
     setDoc(
@@ -883,7 +894,7 @@ test("owners can delete old paid-backup data after entitlement lapses", async ()
   await assertSucceeds(deleteDoc(doc(db, logPath)));
 });
 
-test("burnbar pro allows encrypted cloud search rows and rejects plaintext search fields", async () => {
+test("burnbar pro cloud search index writes are server-only while vault wrappers require trusted devices", async () => {
   const db = authedDb("pro-user");
   const documentPath = "users/pro-user/cloud_search_documents/device_session";
   const chunkPath = "users/pro-user/cloud_search_chunks/device_session_0";
@@ -922,7 +933,7 @@ test("burnbar pro allows encrypted cloud search rows and rejects plaintext searc
 
   await seedBurnBarProEntitlement("pro-user");
 
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(db, documentPath), {
       uid: "pro-user",
       documentID: "device_session",
@@ -939,45 +950,21 @@ test("burnbar pro allows encrypted cloud search rows and rejects plaintext searc
       encryptedByteCount: 84,
       indexVersion: 1,
       tokenHashVersion: 1,
+      commitID: "1".repeat(32),
       updatedAt: serverTimestamp(),
       schemaVersion: 1,
     })
   );
 
   await assertFails(
-    setDoc(doc(db, `${documentPath}_malformed_envelope`), {
+    setDoc(doc(db, `${documentPath}_with_plaintext`), {
       uid: "pro-user",
-      documentID: "device_session_malformed_envelope",
+      documentID: "device_session_with_plaintext",
       deviceId: "device",
       sourceKind: "session_log",
       sourceID: "session",
       bodyHash,
-      storagePath: `users/pro-user/session_logs/device_session_malformed_envelope/bodies/${bodyHash}.json.aesgcm`,
-      sealedTitle: {
-        algorithm: "AES-256-GCM",
-        nonce: "base64nonce",
-        ciphertext: "base64ciphertext",
-        keyVersion: 1,
-      },
-      sealedBodyPreview: sealedText,
-      byteCount: 42,
-      encryptedByteCount: 84,
-      indexVersion: 1,
-      tokenHashVersion: 1,
-      updatedAt: serverTimestamp(),
-      schemaVersion: 1,
-    })
-  );
-
-  await assertFails(
-    setDoc(doc(db, `${documentPath}_plaintext`), {
-      uid: "pro-user",
-      documentID: "device_session_plaintext",
-      deviceId: "device",
-      sourceKind: "session_log",
-      sourceID: "session",
-      bodyHash,
-      storagePath: `users/pro-user/session_logs/device_session_plaintext/bodies/${bodyHash}.json.aesgcm`,
+      storagePath: `users/pro-user/session_logs/device_session_with_plaintext/bodies/${bodyHash}.json.aesgcm`,
       sealedTitle: sealedText,
       sealedBodyPreview: sealedText,
       byteCount: 42,
@@ -990,7 +977,7 @@ test("burnbar pro allows encrypted cloud search rows and rejects plaintext searc
     })
   );
 
-  await assertSucceeds(
+  await assertFails(
     setDoc(doc(db, chunkPath), {
       uid: "pro-user",
       chunkID: "device_session_0",
@@ -1008,8 +995,11 @@ test("burnbar pro allows encrypted cloud search rows and rejects plaintext searc
       storagePath,
       sealedSnippet: sealedText,
       tokenHashes: ["c".repeat(32), "d".repeat(32)],
+      semanticHashes: ["e".repeat(32), "f".repeat(32)],
       indexVersion: 1,
       tokenHashVersion: 1,
+      semanticHashVersion: 1,
+      commitID: "1".repeat(32),
       updatedAt: serverTimestamp(),
       schemaVersion: 1,
     })
@@ -1031,22 +1021,100 @@ test("burnbar pro allows encrypted cloud search rows and rejects plaintext searc
       storagePath,
       sealedSnippet: sealedText,
       tokenHashes: ["c".repeat(32)],
+      semanticHashes: ["not-a-valid-hash"],
       indexVersion: 1,
       tokenHashVersion: 1,
+      semanticHashVersion: 1,
       snippet: "plaintext preview",
       updatedAt: serverTimestamp(),
       schemaVersion: 1,
     })
   );
 
-  await assertSucceeds(
+  await assertFails(
+    setDoc(doc(db, "users/pro-user/cloud_search_postings/semantic_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee_device_session_0"), {
+      uid: "pro-user",
+      postingKey: "semantic_" + "e".repeat(32),
+      edgeID: "semantic_" + "e".repeat(32) + "_device_session_0",
+      kind: "semantic",
+      hash: "e".repeat(32),
+      chunkID: "device_session_0",
+      documentID: "device_session",
+      provider: "codex",
+      projectName: "BurnBar",
+      updatedAt: serverTimestamp(),
+      indexVersion: 1,
+      commitID: "1".repeat(32),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, "users/pro-user/cloud_search_postings/semantic_plaintext"), {
+      uid: "pro-user",
+      postingKey: "semantic_" + "e".repeat(32),
+      edgeID: "semantic_plaintext",
+      kind: "semantic",
+      hash: "e".repeat(32),
+      chunkID: "device_session_0",
+      documentID: "device_session",
+      body: "plaintext should never be indexed",
+      updatedAt: serverTimestamp(),
+      indexVersion: 1,
+      schemaVersion: 1,
+    })
+  );
+
+  await assertFails(
     setDoc(doc(db, indexStatePath), {
       uid: "pro-user",
       deviceId: "device",
+      activeCommitID: "1".repeat(32),
       indexedThrough: "2026-05-14T00:00:00.000Z",
       updatedAt: serverTimestamp(),
       schemaVersion: 1,
     })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(db, "users/pro-user/escrow_devices/device"), {
+      deviceId: "device",
+      platform: "iOS",
+      deviceName: "Phone",
+      trustState: "pending",
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(db, "users/pro-user/escrow_devices/device"),
+      {
+        trustState: "trusted",
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+  );
+  await assertSucceeds(
+    setDoc(doc(db, "users/pro-user/escrow_devices/mac"), {
+      deviceId: "mac",
+      platform: "macOS",
+      deviceName: "Mac",
+      trustState: "pending",
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertSucceeds(
+    setDoc(
+      doc(db, "users/pro-user/escrow_devices/mac"),
+      {
+        trustState: "trusted",
+        approvedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
   );
 
   await assertSucceeds(

@@ -41,6 +41,9 @@ Tools are registered with the prefix `mcp_openburnbar_local_`:
 | `mcp_openburnbar_local_burnbar_recent_usage` | Exact cost/token rows ordered by date; primary tool for spend questions |
 | `mcp_openburnbar_local_burnbar_project_summary` | Pre-aggregated per-project cost + session summary over a time window |
 | `mcp_openburnbar_local_burnbar_search_conversations` | FTS search over session transcripts; use for recall and debug |
+| `mcp_openburnbar_local_burnbar_semantic_search_conversations` | Local semantic search over indexed chunks when deterministic embeddings are present |
+| `mcp_openburnbar_local_burnbar_cloud_semantic_search_conversations` | Hosted encrypted semantic search; requires cloud auth/vault env and decrypts snippets locally |
+| `mcp_openburnbar_local_burnbar_cloud_get_conversation_body` | Decrypt full hosted encrypted session text from a cloud search hit |
 | `mcp_openburnbar_local_burnbar_get_conversation` | Full transcript for a specific session by ID |
 | `mcp_openburnbar_local_burnbar_chat_messages` | Prior in-app assistant chat history (continuity questions) |
 | `mcp_openburnbar_local_burnbar_resolve_db_path` | Debug: confirm which DB file is being read |

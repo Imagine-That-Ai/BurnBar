@@ -42,6 +42,30 @@ struct CloudVaultCryptoTests {
         #expect(try CloudVaultCrypto.tokenHashes(for: "the and for", keyData: key).isEmpty)
     }
 
+    @Test("Cloud semantic hashes are deterministic, keyed, bounded, and preserve encrypted recall")
+    func semanticHashesAreKeyedAndStable() throws {
+        let key = Data(repeating: 0x33, count: 32)
+        let otherKey = Data(repeating: 0x44, count: 32)
+        let indexed = "Hosted encrypted session logs with semantic search and cloud vault sync"
+        let related = "Find searchable cloud sessions that were encrypted and hosted"
+        let unrelated = "Espresso roast tasting notes and ceramic mugs"
+
+        let first = try CloudVaultCrypto.semanticHashes(for: indexed, keyData: key)
+        let second = try CloudVaultCrypto.semanticHashes(for: indexed, keyData: key)
+        let other = try CloudVaultCrypto.semanticHashes(for: indexed, keyData: otherKey)
+        let relatedHashes = try CloudVaultCrypto.semanticHashes(for: related, keyData: key)
+        let unrelatedHashes = try CloudVaultCrypto.semanticHashes(for: unrelated, keyData: key)
+
+        #expect(first == second)
+        #expect(first != other)
+        #expect(first.count <= 24)
+        #expect(first.count == Set(first).count)
+        #expect(first.allSatisfy { $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil })
+        #expect(!first.contains("encrypted"))
+        #expect(Set(first).intersection(relatedHashes).isEmpty == false)
+        #expect(Set(first).intersection(relatedHashes).count >= Set(first).intersection(unrelatedHashes).count)
+    }
+
     @Test("P-256 wrapped vault keys unwrap across generated device keys")
     func wrappedVaultKeyRoundTrip() throws {
         let recipient = P256.KeyAgreement.PrivateKey()

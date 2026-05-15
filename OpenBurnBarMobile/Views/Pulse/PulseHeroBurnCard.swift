@@ -62,11 +62,8 @@ struct PulseHeroBurnCard: View {
                 LiveDot(color: MobileTheme.success)
             }
             Spacer()
-            if let burnRatePill {
-                burnRatePill
-                    .padding(.trailing, topProvider == nil ? 0 : 64)
-                    .transition(.scale.combined(with: .opacity))
-            }
+            burnRatePill
+                .padding(.trailing, topProvider == nil ? 0 : 64)
         }
     }
 
@@ -176,7 +173,7 @@ struct PulseHeroBurnCard: View {
     // MARK: - Burn-rate Pill
 
     @ViewBuilder
-    private var burnRatePill: some View? {
+    private var burnRatePill: some View {
         switch displayMode {
         case .currency:
             if let rate = PulseBurnRate.dollarsPerMinute(usages: liveUsages, now: now) {
@@ -185,6 +182,7 @@ struct PulseHeroBurnCard: View {
                     text: rate < 0.01 ? "<$0.01/min" : String(format: "$%.2f/min", rate),
                     accent: accentColor
                 )
+                .transition(.scale.combined(with: .opacity))
             }
         case .tokens:
             if let rate = PulseBurnRate.tokensPerMinute(usages: liveUsages, now: now) {
@@ -193,6 +191,7 @@ struct PulseHeroBurnCard: View {
                     text: "\(rate.formatAsTokenVolume())/min",
                     accent: accentColor
                 )
+                .transition(.scale.combined(with: .opacity))
             }
         }
     }

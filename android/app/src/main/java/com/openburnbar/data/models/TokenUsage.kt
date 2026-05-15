@@ -305,6 +305,23 @@ val QuotaBucket.effectiveResetsAt: java.time.Instant?
         return runCatching { java.time.Instant.parse(legacy) }.getOrNull()
     }
 
+val QuotaBucket.effectiveWindowLabel: String
+    get() = listOfNotNull(name, window).joinToString(" ")
+
+val ProviderQuotaSnapshot.isExplicitlyStale: Boolean
+    get() = confidence.equals("stale", ignoreCase = true) ||
+        confidence.equals("unavailable", ignoreCase = true) ||
+        statusMessage?.contains("stale", ignoreCase = true) == true
+
+fun ProviderQuotaSnapshot.isStale(now: java.time.Instant = java.time.Instant.now()): Boolean {
+    if (isExplicitlyStale) return true
+    val fetched = fetchedAt
+        ?.takeIf { it.isNotBlank() }
+        ?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+        ?: return true
+    return java.time.Duration.between(fetched, now) > java.time.Duration.ofHours(12)
+}
+
 /**
  * Mirrors the Firestore `ProjectSummary` (derived from usages collection).
  * Collection: users/{uid}/projects/{projectName}

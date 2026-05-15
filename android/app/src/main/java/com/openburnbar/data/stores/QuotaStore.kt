@@ -6,6 +6,8 @@ import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.ProviderAccount
 import com.openburnbar.data.models.ProviderQuotaSnapshot
+import com.openburnbar.data.models.isExplicitlyStale
+import com.openburnbar.data.models.isStale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -129,7 +131,16 @@ internal fun List<ProviderQuotaSnapshot>.dedupeFresh(): List<ProviderQuotaSnapsh
 }
 
 private fun isFresher(candidate: ProviderQuotaSnapshot, incumbent: ProviderQuotaSnapshot): Boolean {
-    // A record with real buckets always beats an empty placeholder.
+    // A fresh stale-marker/tombstone must beat old bucketed quota data;
+    // otherwise deleted or failed credentials can keep rendering fake quota.
+    val candidateStale = candidate.isExplicitlyStale || candidate.isStale()
+    val incumbentStale = incumbent.isExplicitlyStale || incumbent.isStale()
+    if (candidateStale != incumbentStale) {
+        return freshnessMillis(candidate) >= freshnessMillis(incumbent)
+    }
+
+    // A record with real buckets beats an empty placeholder only when neither
+    // side is stale.
     val candidateHasBuckets = candidate.buckets.isNotEmpty()
     val incumbentHasBuckets = incumbent.buckets.isNotEmpty()
     if (candidateHasBuckets != incumbentHasBuckets) return candidateHasBuckets

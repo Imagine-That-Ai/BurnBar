@@ -182,8 +182,12 @@ final class ActivityStore {
     private func searchEncryptedCloudIndex(query: String) async throws -> [CloudConversationSearchRow] {
         guard let vaultKey = try await unlockCloudVaultKeyIfAvailable() else { return [] }
         let tokenHashes = try CloudVaultCrypto.tokenHashes(for: query, keyData: vaultKey, limit: 10)
-        guard tokenHashes.isEmpty == false else { return [] }
-        let hits = try await functions.searchEncryptedConversationIndex(tokenHashes: tokenHashes)
+        let semanticHashes = try CloudVaultCrypto.semanticHashes(for: query, keyData: vaultKey, limit: 12)
+        guard tokenHashes.isEmpty == false || semanticHashes.isEmpty == false else { return [] }
+        let hits = try await functions.searchEncryptedConversationIndex(
+            tokenHashes: tokenHashes,
+            semanticHashes: semanticHashes
+        )
         return hits.compactMap { hit in
             guard let title = try? CloudVaultCrypto.openText(hit.sealedTitle, keyData: vaultKey),
                   let snippet = try? CloudVaultCrypto.openText(hit.sealedSnippet, keyData: vaultKey) else {

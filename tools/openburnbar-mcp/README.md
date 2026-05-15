@@ -57,6 +57,9 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add t
 | `burnbar_resolve_db_path` | Show which DB file is used |
 | `burnbar_list_providers` | Distinct `provider` values (e.g. `"Codex"`, `"Claude Code"`) |
 | `burnbar_search_conversations` | FTS search over titles + transcripts |
+| `burnbar_semantic_search_conversations` | Local deterministic semantic search over indexed conversation chunks; returns structured `unavailable` when semantic tables or compatible embeddings are absent |
+| `burnbar_cloud_semantic_search_conversations` | Hosted encrypted semantic search over the user's cloud session-log index; derives opaque query hashes locally and decrypts snippets locally |
+| `burnbar_cloud_get_conversation_body` | Download and decrypt a full hosted session body returned by cloud semantic search |
 | `burnbar_get_conversation` | Full row + `fullText` for one id |
 | `burnbar_recent_usage` | Recent `token_usage` rows |
 | `burnbar_project_summary` | Per-project cost + session aggregation over a rolling window |
@@ -73,6 +76,19 @@ idempotency cache stays consistent. When the daemon is offline the writer
 falls back to a file-locked append against
 `~/Library/Application Support/OpenBurnBar/usage-events.jsonl`. Either way,
 re-sending the same `idempotency_key` will not double-count the spend.
+
+The cloud search tools are opt-in. Configure them only for agents you trust
+with session-log recall:
+
+```bash
+export OPENBURNBAR_FIREBASE_PROJECT_ID=burnbar
+export OPENBURNBAR_FIREBASE_ID_TOKEN="<Firebase Auth ID token>"
+export OPENBURNBAR_CLOUD_VAULT_KEY_BASE64="<32-byte vault key, base64>"
+```
+
+The MCP process keeps the plaintext query and vault key local. Firebase
+receives only keyed token/semantic hashes, returns encrypted result envelopes,
+and this MCP process decrypts titles, snippets, and requested bodies on-device.
 
 The `BurnBarUsageEvent` JSON shape matches Swift's default `JSONEncoder`
 output exactly:

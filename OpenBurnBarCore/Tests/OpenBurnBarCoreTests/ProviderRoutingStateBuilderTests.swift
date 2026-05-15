@@ -178,6 +178,29 @@ final class ProviderRoutingStateBuilderTests: XCTestCase {
         )
     }
 
+    func test_quotaState_treatsOldSnapshotsAsPressureEvenWithHealthyBuckets() {
+        let acc = account(id: "openai_work")
+        let old = ProviderQuotaSnapshot(
+            id: "snap",
+            provider: "openai",
+            providerID: .openAI,
+            accountID: "openai_work",
+            accountLabel: "Work",
+            sourceKind: .provider,
+            sourceId: "openai_work",
+            fetchedAt: Date().addingTimeInterval(-13 * 60 * 60),
+            source: "OpenAI",
+            confidence: .high,
+            buckets: [ProviderQuotaBucket(name: "tokens", used: 100_000, limit: 1_000_000, remaining: 900_000)],
+            updatedAt: Date().addingTimeInterval(-13 * 60 * 60)
+        )
+
+        XCTAssertEqual(
+            ProviderRoutingStateBuilder.quotaState(for: acc, snapshot: old),
+            .pressure
+        )
+    }
+
     // MARK: - Snapshot freshness
 
     func test_build_picksMostRecentSnapshotPerAccount() {

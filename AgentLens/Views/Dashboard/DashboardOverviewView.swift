@@ -7,6 +7,7 @@ struct DashboardOverviewView: View {
     let topModels: [(model: String, provider: AgentProvider, cost: Double, tokens: Int)]
     let usageWindow: DashboardUsageWindowSummary
     let context: DashboardContext
+    var selectedTimeRange: TimeRange = .today
     let overviewAppeared: Bool
     let onNavigate: (DashboardMainRoute) -> Void
     let onOpenSettings: () -> Void
@@ -36,15 +37,65 @@ struct DashboardOverviewView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                heroMetricsRow
-                NarrativeCardView(dataStore: dataStore)
-                lanesRow
+        ZStack {
+            DashboardDepthBackdrop()
+                .ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    heroMetricsRow
+                    liveCostCurve
+                    NarrativeCardView(dataStore: dataStore)
+                    lanesRow
+                }
+                .padding(DesignSystem.Spacing.xl)
             }
-            .padding(DesignSystem.Spacing.xl)
+            .scrollContentBackground(.hidden)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Live cost curve band
+    //
+    // Sits directly under the four hero stat cards and renders a cumulative
+    // cost (or token) curve across the active time range, with provider-tinted
+    // accent + brand-gradient stroke. Falls back to a dashed rail + caption
+    // when there's no activity yet so the band still feels alive.
+
+    @ViewBuilder
+    private var liveCostCurve: some View {
+        DashboardLiveCostCurve(
+            usages: usageWindow.usages,
+            unit: .cost,
+            granularity: curveGranularity,
+            domain: curveDomain,
+            accent: liveCostAccent
+        )
+    }
+
+    private var curveGranularity: DashboardLiveCostCurve.Granularity {
+        switch selectedTimeRange {
+        case .today, .thisMonth: return .day
+        case .last7Days, .last30Days: return .day
+        case .allTime: return .day
+        }
+    }
+
+    private var curveDomain: ClosedRange<Date> {
+        if let range = selectedTimeRange.dateRange() {
+            return range
+        }
+        let cal = Calendar.current
+        let now = Date()
+        let start = cal.startOfDay(for: now)
+        let end = cal.date(byAdding: .day, value: 1, to: start) ?? now
+        return start...end
+    }
+
+    private var liveCostAccent: Color {
+        if let top = providerSummaries.first {
+            return DesignSystem.Colors.primary(for: top.provider)
+        }
+        return DesignSystem.Colors.ember
     }
 
     private var heroMetricsRow: some View {

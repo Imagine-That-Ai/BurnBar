@@ -86,12 +86,28 @@ final class ProviderQuotaBucketResetTests: XCTestCase {
         XCTAssertFalse(display?.absolute.isEmpty ?? true)
     }
 
-    func test_resetsAtDisplay_hidesPastResetTimes() {
+    func test_resetsAtDisplay_advancesPastKnownWindowResetTimes() {
         let threeDaysAgo = Date().addingTimeInterval(-3 * 24 * 3600)
         let bucket = ProviderQuotaBucket(
             name: "5h",
             used: 50, limit: 100, remaining: 50,
             window: "rollingHours",
+            meta: nil,
+            resetsAt: threeDaysAgo
+        )
+
+        let display = bucket.resetsAtDisplay
+        XCTAssertNotNil(display)
+        XCTAssertFalse(display?.relative.contains("ago") ?? true)
+        XCTAssertNotNil(bucket.resetsAtCombinedLabel)
+    }
+
+    func test_resetsAtDisplay_hidesPastUnknownWindowResetTimes() {
+        let threeDaysAgo = Date().addingTimeInterval(-3 * 24 * 3600)
+        let bucket = ProviderQuotaBucket(
+            name: "custom",
+            used: 50, limit: 100, remaining: 50,
+            window: nil,
             meta: nil,
             resetsAt: threeDaysAgo
         )

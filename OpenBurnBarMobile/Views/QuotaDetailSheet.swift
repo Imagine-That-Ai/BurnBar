@@ -126,7 +126,11 @@ struct QuotaDetailSheet: View {
         guard let timestamp = snapshots.first?.fetchedAt else { return "—" }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
-        return formatter.localizedString(for: timestamp, relativeTo: Date())
+        let relative = formatter.localizedString(for: timestamp, relativeTo: Date())
+        if snapshots.first?.isStale() == true {
+            return "stale \(relative)"
+        }
+        return relative
     }
 
     // MARK: - Account-grouped buckets
@@ -165,7 +169,12 @@ struct QuotaDetailSheet: View {
             }
 
             // Helper note: explains the gauges
-            if !snapshot.buckets.isEmpty {
+            if snapshot.isStale() {
+                Text("Quota data is stale. Refresh this account before trusting the numbers.")
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(MobileTheme.Colors.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if !snapshot.buckets.isEmpty {
                 Text(quotaExplanation(for: snapshot.buckets))
                     .font(MobileTheme.Typography.caption)
                     .foregroundStyle(MobileTheme.Colors.textSecondary)

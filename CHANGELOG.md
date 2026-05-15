@@ -13,15 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entitlements unlock hosted MiniMax-backed LLM answers, Hosted Quota, and
   encrypted searchable hosted session logs. macOS seals session-log titles,
   previews, chunks, and full bodies on device, uploads only ciphertext to
-  Firebase Storage, and uploads HMAC token hashes plus sealed snippets to
-  Firestore. iOS/iPadOS and Android register device public keys, unwrap the
-  cloud vault key, search by HMAC token hashes, and decrypt results locally.
+  Firebase Storage, and uploads HMAC token hashes, keyed semantic hashes,
+  semantic posting edges, and sealed snippets to Firestore. iOS/iPadOS and
+  Android register device public keys, unwrap the cloud vault key, search by
+  locally derived opaque token/semantic hashes, and decrypt results locally.
+  Hosted index uploads now go through server-only callable validation and are
+  commit-generation stamped so search ignores partial or stale multi-batch
+  commits.
+  `tools/openburnbar-mcp` now exposes both local deterministic semantic search
+  and an opt-in hosted encrypted semantic MCP path for trusted external agents.
   Firestore rules now gate `cloud_search_*` and `cloud_vault_key_wrappers`
-  behind active premium entitlement and reject plaintext `title`, `snippet`,
-  `body`, and `text` fields. Verified by `npm --prefix functions run build`,
-  `npm --prefix functions run test:firestore-rules`, `swift test
-  --package-path OpenBurnBarCore`, macOS/iOS simulator `xcodebuild`, and
-  Android `./gradlew assembleDebug`.
+  behind active premium entitlement, block mobile/Mac self-trusted device
+  creates, require trusted source/target devices for vault wrappers, and reject
+  plaintext `title`, `snippet`, `body`, and `text` fields. Verified by
+  `npm --prefix functions run build`, `npm --prefix functions run
+  test:firestore-rules`, focused cloud crypto tests, MCP pytest, macOS/iOS
+  simulator `xcodebuild`, and Android `./gradlew assembleDebug`.
 - **Hosted Intelligence Brief gated behind BurnBar Pro.** The
   OpenRouter → MiniMax 2.7 fallback now requires an active BurnBar
   Pro subscription (`com.openburnbar.pro.monthly`, while the legacy

@@ -160,15 +160,53 @@ public extension ProviderQuotaBucket {
     ///
     /// Example: `(relative: "in 2h 14m", absolute: "May 8, 3:35 AM")`.
     var resetsAtDisplay: (relative: String, absolute: String)? {
-        guard let resetsAt else { return nil }
+        guard let resetsAt = Self.displayResetDate(resetsAt, name: name, window: window) else { return nil }
         let now = Date()
-        guard resetsAt > now else { return nil }
         let relative = Self.relativeResetsFormatter.localizedString(
             for: resetsAt,
             relativeTo: now
         )
         let absolute = resetsAt.formatted(date: .abbreviated, time: .shortened)
         return (relative: relative, absolute: absolute)
+    }
+
+    private static func displayResetDate(
+        _ resetsAt: Date?,
+        name: String,
+        window: String?,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Date? {
+        guard let resetsAt else { return nil }
+        guard resetsAt <= now else { return resetsAt }
+
+        let marker = "\(name) \(window ?? "")".lowercased()
+        if marker.contains("5") || marker.contains("five") {
+            return advance(resetsAt, by: 5 * 60 * 60, after: now)
+        }
+        if marker.contains("7") || marker.contains("seven") || marker.contains("week") {
+            return advance(resetsAt, by: 7 * 24 * 60 * 60, after: now)
+        }
+        if marker.contains("day") {
+            return advance(resetsAt, by: 24 * 60 * 60, after: now)
+        }
+        if marker.contains("month") {
+            var candidate = resetsAt
+            for _ in 0..<60 {
+                guard let next = calendar.date(byAdding: .month, value: 1, to: candidate) else { return nil }
+                candidate = next
+                if candidate > now { return candidate }
+            }
+        }
+        return nil
+    }
+
+    private static func advance(_ date: Date, by interval: TimeInterval, after now: Date) -> Date? {
+        guard interval > 0 else { return nil }
+        let elapsed = max(0, now.timeIntervalSince(date))
+        let steps = floor(elapsed / interval) + 1
+        let candidate = date.addingTimeInterval(steps * interval)
+        return candidate > now ? candidate : candidate.addingTimeInterval(interval)
     }
 
     /// Single-line combined label ("in 2h 14m · May 8, 3:35 AM") used as the
@@ -336,6 +374,15 @@ public extension ProviderQuotaSnapshot {
             return false
         }
         return !displayableQuotaBuckets.isEmpty
+    }
+
+    var isExplicitlyStale: Bool {
+        if confidence == .stale { return true }
+        return statusMessage?.localizedCaseInsensitiveContains("stale") == true
+    }
+
+    func isStale(relativeTo now: Date = Date()) -> Bool {
+        isExplicitlyStale || now.timeIntervalSince(fetchedAt) > 12 * 60 * 60
     }
 
     func filteringToDisplayableQuotaSignal() -> ProviderQuotaSnapshot? {

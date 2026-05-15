@@ -113,7 +113,8 @@ final class SessionLogSyncService: CloudSyncDomain {
                     "encryption": [
                         "algorithm": CloudVaultCrypto.aesGCMAlgorithm,
                         "keyVersion": CloudVaultCrypto.currentKeyVersion,
-                        "tokenHashVersion": CloudVaultCrypto.tokenHashVersion
+                        "tokenHashVersion": CloudVaultCrypto.tokenHashVersion,
+                        "semanticHashVersion": CloudVaultCrypto.semanticHashVersion
                     ],
                     "chunkCount": 0,
                     "searchChunkCount": chunks.count,
@@ -147,6 +148,10 @@ final class SessionLogSyncService: CloudSyncDomain {
                         for: chunk + " " + record.inferredTaskTitle + " " + record.projectName + " " + model,
                         keyData: vaultKey
                     )
+                    let semanticHashes = try CloudVaultCrypto.semanticHashes(
+                        for: chunk + " " + record.inferredTaskTitle + " " + record.projectName + " " + model,
+                        keyData: vaultKey
+                    )
                     writes.append(([
                         "index": idx,
                         "hash": chunkHash,
@@ -160,6 +165,8 @@ final class SessionLogSyncService: CloudSyncDomain {
                         "projectName": record.projectName,
                         "sealedSnippet": try Self.dictionary(sealedSnippet),
                         "tokenHashes": tokenHashes,
+                        "semanticHashes": semanticHashes,
+                        "semanticHashVersion": CloudVaultCrypto.semanticHashVersion,
                         "bodyStorage": "firebase_storage_encrypted",
                         "storagePath": uploadTicket.storagePath,
                         "bodyHash": bodyHash,
@@ -179,6 +186,8 @@ final class SessionLogSyncService: CloudSyncDomain {
                         "storagePath": uploadTicket.storagePath,
                         "sealedSnippet": try Self.dictionary(sealedSnippet),
                         "tokenHashes": tokenHashes,
+                        "semanticHashes": semanticHashes,
+                        "semanticHashVersion": CloudVaultCrypto.semanticHashVersion,
                         "provider": record.provider.rawValue,
                         "projectName": record.projectName
                     ])
@@ -260,7 +269,7 @@ final class SessionLogSyncService: CloudSyncDomain {
     }
 
     private static let chunkMetadataVersion = 1
-    private static let cloudSearchIndexVersion = 1
+    private static let cloudSearchIndexVersion = 2
 
     private struct EncryptedUploadTicket {
         let storagePath: String
@@ -301,7 +310,7 @@ final class SessionLogSyncService: CloudSyncDomain {
     private func commitEncryptedSearchIndex(document: [String: Any], chunks: [[String: Any]]) async throws {
         _ = try await functions.httpsCallable("commitEncryptedSearchIndexBatch").call([
             "deviceId": context.deviceId,
-            "indexVersion": 1,
+            "indexVersion": Self.cloudSearchIndexVersion,
             "documents": [document],
             "chunks": chunks
         ])
@@ -513,12 +522,14 @@ extension CloudSyncService {
               let uid = Auth.auth().currentUser?.uid else { return [] }
         guard let vaultKey = try await cloudVaultKey(uid: uid) else { return [] }
         let tokenHashes = try CloudVaultCrypto.tokenHashes(for: query, keyData: vaultKey, limit: 10)
-        guard tokenHashes.isEmpty == false else { return [] }
+        let semanticHashes = try CloudVaultCrypto.semanticHashes(for: query, keyData: vaultKey, limit: 12)
+        guard tokenHashes.isEmpty == false || semanticHashes.isEmpty == false else { return [] }
 
         let result = try await Functions.functions(region: "us-central1")
             .httpsCallable("searchEncryptedConversationIndex")
             .call([
                 "tokenHashes": tokenHashes,
+                "semanticHashes": semanticHashes,
                 "limit": max(1, min(limit, 50))
             ])
         guard let dict = result.data as? [String: Any],

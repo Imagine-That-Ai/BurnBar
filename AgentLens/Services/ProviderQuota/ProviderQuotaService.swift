@@ -148,8 +148,19 @@ final class ProviderQuotaService {
                 freshest[key] = snap
                 continue
             }
-            // Records with real buckets always beat empty placeholders;
-            // otherwise the most-recent `fetchedAt` wins.
+            // Freshness tombstones must win over old bucketed snapshots;
+            // otherwise a credential delete/error marker can be masked by
+            // stale quota numbers that still happen to have buckets.
+            let candidateIsStale = snap.isExplicitlyStale
+            let incumbentIsStale = incumbent.isExplicitlyStale
+            if candidateIsStale != incumbentIsStale {
+                if snap.fetchedAt >= incumbent.fetchedAt {
+                    freshest[key] = snap
+                }
+                continue
+            }
+            // Records with real buckets beat empty placeholders only when
+            // neither side is an explicit stale marker.
             let candidateHasBuckets = !snap.displayableQuotaBuckets.isEmpty
             let incumbentHasBuckets = !incumbent.displayableQuotaBuckets.isEmpty
             if candidateHasBuckets != incumbentHasBuckets {
@@ -561,6 +572,10 @@ final class ProviderQuotaService {
             case .missingSecret:
                 return .authFailed
             }
+        }
+
+        if snapshot?.isTooOldForQuotaDecisions() == true {
+            return .pressure
         }
 
         guard let bucket = snapshot?.primaryDisplayableBucket else {

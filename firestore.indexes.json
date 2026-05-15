@@ -66,6 +66,30 @@
       ]
     },
     {
+      "collectionGroup": "cloud_search_chunks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "provider", "order": "ASCENDING"},
+        {"fieldPath": "tokenHashes", "arrayConfig": "CONTAINS"}
+      ]
+    },
+    {
+      "collectionGroup": "cloud_search_chunks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "provider", "order": "ASCENDING"},
+        {"fieldPath": "semanticHashes", "arrayConfig": "CONTAINS"}
+      ]
+    },
+    {
+      "collectionGroup": "cloud_search_postings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "postingKey", "order": "ASCENDING"},
+        {"fieldPath": "provider", "order": "ASCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "entitlements",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
