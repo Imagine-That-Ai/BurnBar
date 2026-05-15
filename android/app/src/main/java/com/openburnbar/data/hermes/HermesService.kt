@@ -789,15 +789,16 @@ class HermesService(
             if (refusalText.isNotEmpty()) return refusalText
             val reasoningText = reasoning.toString().trim()
             if (reasoningText.isNotEmpty()) {
-                // Marker keeps raw thinking ("I should answer X because…")
-                // from masquerading as a polished reply.
+                // Android's bubble doesn't have a first-class outcome
+                // chrome yet (iOS does), so we keep the prose marker
+                // here so the user knows they're reading raw thinking.
                 return "_(Hermes only emitted reasoning. Showing it below — this isn't a final answer.)_\n\n$reasoningText"
             }
             return when (lastFinishReason?.lowercase()) {
-                "length" -> "Hermes hit its output budget before finishing. Try a shorter prompt or switch to a model with a larger reply ceiling."
+                "length" -> "Hermes hit its reply length cap before finishing. Try a shorter prompt or switch to a model with a larger reply ceiling."
                 "content_filter" -> "Hermes blocked this reply for content safety. Try rewording the prompt or switch models."
                 "tool_calls" -> "Hermes asked to use a tool but didn't follow up with a reply. Try again or switch models."
-                else -> "Hermes finished without returning text. Try again or switch models."
+                else -> "Hermes returned no text. Try again or switch models."
             }
         }
 

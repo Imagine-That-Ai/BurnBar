@@ -542,6 +542,7 @@ final class HermesServiceTests: XCTestCase {
         )
         XCTAssertEqual(result.text, "I can't help with that.")
         XCTAssertFalse(result.isError)
+        XCTAssertEqual(result.outcome, .refusal)
     }
 
     func testEmptyResponseFallbackHoistsReasoningWhenNoVisibleContent() {
@@ -550,13 +551,12 @@ final class HermesServiceTests: XCTestCase {
             reasoning: "Reasoning channel response.",
             finishReason: "stop"
         )
-        XCTAssertTrue(result.text.hasSuffix("Reasoning channel response."))
-        // The marker is the user-visible signal that they're reading the
-        // reasoning channel rather than a polished answer; without it
-        // raw "I should think about…" preambles look like the model's
-        // intended reply.
-        XCTAssertTrue(result.text.contains("only emitted reasoning"), "Reasoning hoist must include a marker so users know it's not a final answer. Got: \(result.text)")
+        // Reasoning is hoisted verbatim — no prose marker. The bubble
+        // chrome (`.reasoningFallback` outcome) is what tells the user
+        // they're reading raw thinking, not a polished answer.
+        XCTAssertEqual(result.text, "Reasoning channel response.")
         XCTAssertFalse(result.isError)
+        XCTAssertEqual(result.outcome, .reasoningFallback)
     }
 
     func testEmptyResponseFallbackKeysOffFinishReasonForLengthCap() {
@@ -565,8 +565,9 @@ final class HermesServiceTests: XCTestCase {
             reasoning: "",
             finishReason: "length"
         )
-        XCTAssertTrue(result.text.contains("output budget"))
+        XCTAssertTrue(result.text.contains("length cap"))
         XCTAssertTrue(result.isError)
+        XCTAssertEqual(result.outcome, .lengthCap)
     }
 
     func testEmptyResponseFallbackKeysOffFinishReasonForContentFilter() {
@@ -577,6 +578,7 @@ final class HermesServiceTests: XCTestCase {
         )
         XCTAssertTrue(result.text.contains("content safety"))
         XCTAssertTrue(result.isError)
+        XCTAssertEqual(result.outcome, .contentFilter)
     }
 
     func testEmptyResponseFallbackDefaultsToGenericMessage() {
@@ -585,8 +587,99 @@ final class HermesServiceTests: XCTestCase {
             reasoning: "",
             finishReason: nil
         )
-        XCTAssertTrue(result.text.contains("finished without returning text"))
+        XCTAssertTrue(result.text.contains("returned no text"))
         XCTAssertTrue(result.isError)
+        XCTAssertEqual(result.outcome, .empty)
+    }
+
+    func testEmptyResponseFallbackToolCallsOutcome() {
+        let result = HermesChatMessage.emptyResponseFallback(
+            refusal: "",
+            reasoning: "",
+            finishReason: "tool_calls"
+        )
+        XCTAssertEqual(result.outcome, .toolCallNoFollowUp)
+        XCTAssertTrue(result.isError)
+    }
+
+    func testOutcomeRetrySupportPolicy() {
+        // Refusal and reasoning-fallback are valid responses (model
+        // intentionally produced them) — retry shouldn't be offered.
+        // Hard errors should be retryable so users aren't stuck.
+        XCTAssertFalse(HermesChatMessageOutcome.normal.supportsRetry)
+        XCTAssertFalse(HermesChatMessageOutcome.refusal.supportsRetry)
+        XCTAssertFalse(HermesChatMessageOutcome.reasoningFallback.supportsRetry)
+        XCTAssertTrue(HermesChatMessageOutcome.lengthCap.supportsRetry)
+        XCTAssertTrue(HermesChatMessageOutcome.contentFilter.supportsRetry)
+        XCTAssertTrue(HermesChatMessageOutcome.toolCallNoFollowUp.supportsRetry)
+        XCTAssertTrue(HermesChatMessageOutcome.empty.supportsRetry)
+    }
+
+    func testOutcomeBadgeMetadataPresentForNonNormal() {
+        for outcome in [HermesChatMessageOutcome.refusal,
+                        .reasoningFallback,
+                        .lengthCap,
+                        .contentFilter,
+                        .toolCallNoFollowUp,
+                        .empty] {
+            XCTAssertNotNil(outcome.badgeLabel, "Missing label for \(outcome)")
+            XCTAssertNotNil(outcome.badgeSymbol, "Missing symbol for \(outcome)")
+        }
+        XCTAssertNil(HermesChatMessageOutcome.normal.badgeLabel)
+        XCTAssertNil(HermesChatMessageOutcome.normal.badgeSymbol)
+    }
+
+    func testRetryLastUserTurnRewindsAndResends() async throws {
+        let relay = FakeHermesRelayTransport()
+        // First call: empty stream, no usable signals → outcome `.empty`.
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("Original prompt")
+        await waitForStreamToFinish(service)
+        XCTAssertEqual(service.messages.count, 2)
+        let firstAssistant = try XCTUnwrap(service.messages.last)
+        XCTAssertEqual(firstAssistant.outcome, .empty)
+        XCTAssertTrue(firstAssistant.outcome.supportsRetry)
+
+        // Second call: real reply this time.
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"Worked on retry."}}]}"#,
+            "data: [DONE]"
+        ]
+        service.retryLastUserTurn()
+        await waitForStreamToFinish(service)
+
+        // Failed assistant message is gone, original prompt is preserved.
+        XCTAssertEqual(service.messages.count, 2)
+        XCTAssertEqual(service.messages.first?.role, .user)
+        XCTAssertEqual(service.messages.first?.text, "Original prompt")
+        XCTAssertEqual(service.messages.last?.role, .assistant)
+        XCTAssertEqual(service.messages.last?.text, "Worked on retry.")
+        XCTAssertEqual(service.messages.last?.outcome, .normal)
+        XCTAssertFalse(service.messages.last?.isError ?? true)
+    }
+
+    func testRetryLastUserTurnIsNoOpWhenStreaming() {
+        let relay = FakeHermesRelayTransport()
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.sendMessage("Streaming…")
+        XCTAssertTrue(service.isStreaming)
+        let countBefore = service.messages.count
+        service.retryLastUserTurn()
+        // Calling retry mid-stream must not mutate history.
+        XCTAssertEqual(service.messages.count, countBefore)
+    }
+
+    func testRetryLastUserTurnIsNoOpWithoutHistory() {
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.retryLastUserTurn()
+        XCTAssertTrue(service.messages.isEmpty)
     }
 
     func testRelayStreamingHoistsReasoningWhenContentNeverFlushes() async throws {
@@ -608,8 +701,8 @@ final class HermesServiceTests: XCTestCase {
 
         let last = try XCTUnwrap(service.messages.last)
         XCTAssertEqual(last.role, .assistant)
-        XCTAssertTrue(last.text.hasSuffix("The answer is 42."))
-        XCTAssertTrue(last.text.contains("only emitted reasoning"))
+        XCTAssertEqual(last.text, "The answer is 42.")
+        XCTAssertEqual(last.outcome, .reasoningFallback)
         XCTAssertFalse(last.isError)
     }
 
@@ -631,6 +724,7 @@ final class HermesServiceTests: XCTestCase {
         let last = try XCTUnwrap(service.messages.last)
         XCTAssertEqual(last.role, .assistant)
         XCTAssertEqual(last.text, "I can't help with that request.")
+        XCTAssertEqual(last.outcome, .refusal)
         XCTAssertFalse(last.isError)
     }
 
@@ -653,7 +747,8 @@ final class HermesServiceTests: XCTestCase {
         let last = try XCTUnwrap(service.messages.last)
         XCTAssertEqual(last.role, .assistant)
         XCTAssertTrue(last.isError)
-        XCTAssertTrue(last.text.contains("output budget"), "Expected length-cap message, got: \(last.text)")
+        XCTAssertEqual(last.outcome, .lengthCap)
+        XCTAssertTrue(last.text.contains("length cap"), "Expected length-cap message, got: \(last.text)")
     }
 
     // MARK: - Pi parallel coverage
@@ -666,31 +761,47 @@ final class HermesServiceTests: XCTestCase {
         )
         XCTAssertEqual(result.text, "Pi declined.")
         XCTAssertFalse(result.isError)
+        XCTAssertEqual(result.outcome, .refusal)
     }
 
-    func testPiEmptyResponseFallbackHoistsReasoningWithMarker() {
+    func testPiEmptyResponseFallbackHoistsReasoningVerbatim() {
         let result = PiChatMessage.emptyResponseFallback(
             refusal: "",
             reasoning: "Reasoning channel only.",
             finishReason: "stop"
         )
-        XCTAssertTrue(result.text.contains("Reasoning channel only."))
-        XCTAssertTrue(result.text.contains("only emitted reasoning"))
+        // Verbatim — the badge in the bubble is the user-visible
+        // signal, not a prose marker baked into the text.
+        XCTAssertEqual(result.text, "Reasoning channel only.")
         XCTAssertFalse(result.isError)
+        XCTAssertEqual(result.outcome, .reasoningFallback)
     }
 
     func testPiEmptyResponseFallbackKeysOffFinishReason() {
         let length = PiChatMessage.emptyResponseFallback(refusal: "", reasoning: "", finishReason: "length")
-        XCTAssertTrue(length.text.contains("output budget"))
+        XCTAssertTrue(length.text.contains("length cap"))
         XCTAssertTrue(length.isError)
+        XCTAssertEqual(length.outcome, .lengthCap)
 
         let filter = PiChatMessage.emptyResponseFallback(refusal: "", reasoning: "", finishReason: "content_filter")
         XCTAssertTrue(filter.text.contains("content safety"))
         XCTAssertTrue(filter.isError)
+        XCTAssertEqual(filter.outcome, .contentFilter)
 
         let generic = PiChatMessage.emptyResponseFallback(refusal: "", reasoning: "", finishReason: nil)
-        XCTAssertTrue(generic.text.contains("Pi finished without"))
+        XCTAssertTrue(generic.text.contains("Pi returned no text"))
         XCTAssertTrue(generic.isError)
+        XCTAssertEqual(generic.outcome, .empty)
+    }
+
+    func testPiOutcomeRetrySupportPolicy() {
+        XCTAssertFalse(PiChatMessageOutcome.normal.supportsRetry)
+        XCTAssertFalse(PiChatMessageOutcome.refusal.supportsRetry)
+        XCTAssertFalse(PiChatMessageOutcome.reasoningFallback.supportsRetry)
+        XCTAssertTrue(PiChatMessageOutcome.lengthCap.supportsRetry)
+        XCTAssertTrue(PiChatMessageOutcome.contentFilter.supportsRetry)
+        XCTAssertTrue(PiChatMessageOutcome.toolCallNoFollowUp.supportsRetry)
+        XCTAssertTrue(PiChatMessageOutcome.empty.supportsRetry)
     }
 
     func testRelayStreamingExposesResponseModelName() async {

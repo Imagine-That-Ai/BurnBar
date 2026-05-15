@@ -114,6 +114,12 @@ struct HermesChatMessage: Identifiable, Equatable {
     /// pick a more honest empty-text fallback (length cap vs. content
     /// filter vs. truncated stream).
     var lastFinishReason: String?
+    /// First-class outcome for this assistant turn. Drives the bubble
+    /// chrome (badge, border, retry affordance) so the UI doesn't have
+    /// to sniff the prose to know whether the model actually answered,
+    /// declined, only emitted reasoning, or finished without text.
+    /// Always `.normal` for user/system/tool messages.
+    var outcome: HermesChatMessageOutcome = .normal
 
     init(
         id: String = UUID().uuidString,
@@ -342,9 +348,10 @@ struct HermesChatMessage: Identifiable, Equatable {
         return max(1, max(characterEstimate, wordEstimate))
     }
 
-    /// Body + error styling to use when the upstream stream finished
-    /// without producing any visible `content` or executable
-    /// `tool_calls`. Three rescue paths in priority order:
+    /// Body + error styling + first-class outcome to use when the
+    /// upstream stream finished without producing any visible
+    /// `content` or executable `tool_calls`. Three rescue paths in
+    /// priority order:
     ///   1. **Refusal**: model declined; we surface the refusal reason
     ///      so the user knows the model intentionally responded.
     ///   2. **Reasoning-only**: thinking models occasionally emit the
@@ -355,46 +362,118 @@ struct HermesChatMessage: Identifiable, Equatable {
     ///      informative message keyed off `lastFinishReason` so the
     ///      user knows whether to retry, shorten the prompt, or switch
     ///      models.
+    ///
+    /// The returned `outcome` lets the bubble UI render a tag/icon
+    /// without sniffing prose ("does this contain 'declined'?" — bad).
     static func emptyResponseFallback(
         refusal: String,
         reasoning: String,
         finishReason: String?
-    ) -> (text: String, isError: Bool) {
+    ) -> (text: String, isError: Bool, outcome: HermesChatMessageOutcome) {
         let trimmedRefusal = refusal.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedRefusal.isEmpty {
-            return (trimmedRefusal, false)
+            return (trimmedRefusal, false, .refusal)
         }
         let trimmedReasoning = reasoning.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedReasoning.isEmpty {
-            // Prepend a subtle marker so the user knows this is the raw
-            // reasoning channel — they may be reading internal monologue
-            // ("I should answer X because…") rather than a polished
-            // reply. Italics + parens keep the marker quiet while still
-            // distinguishing it from the model's substantive prose.
-            let prefix = "_(Hermes only emitted reasoning. Showing it below — this isn't a final answer.)_\n\n"
-            return (prefix + trimmedReasoning, false)
+            // Hoist verbatim — the bubble chrome (`.reasoningFallback`
+            // outcome) tells the user this is the raw reasoning channel
+            // and that the model never produced a polished reply. No
+            // prose marker needed.
+            return (trimmedReasoning, false, .reasoningFallback)
         }
         switch finishReason?.lowercased() {
         case "length":
             return (
-                "Hermes hit its output budget before finishing. Try a shorter prompt or switch to a model with a larger reply ceiling.",
-                true
+                "Hermes hit its reply length cap before finishing. Try a shorter prompt or switch to a model with a larger reply ceiling.",
+                true,
+                .lengthCap
             )
         case "content_filter":
             return (
                 "Hermes blocked this reply for content safety. Try rewording the prompt or switch models.",
-                true
+                true,
+                .contentFilter
             )
         case "tool_calls":
             return (
                 "Hermes asked to use a tool but didn't follow up with a reply. Try again or switch models.",
-                true
+                true,
+                .toolCallNoFollowUp
             )
         default:
             return (
-                "Hermes finished without returning text. Try again or switch models.",
-                true
+                "Hermes returned no text. Try again or switch models.",
+                true,
+                .empty
             )
+        }
+    }
+}
+
+/// First-class classification of an assistant turn so the bubble UI
+/// can render distinct visual treatments (tag, color, retry button)
+/// without parsing prose. `.normal` is the default; the rescue
+/// helper sets the others when a stream finishes without producing
+/// real `content`.
+enum HermesChatMessageOutcome: String, Equatable, Sendable {
+    /// Model returned a real reply. No special chrome.
+    case normal
+    /// Model intentionally declined (OpenAI `delta.refusal`). Not an
+    /// error — the model responded — but worth flagging so users
+    /// don't think their question was misunderstood.
+    case refusal
+    /// Stream produced no `content` but did emit the reasoning
+    /// channel. We hoist the reasoning into `text` so the bubble has
+    /// something to show; the badge tells the user this is raw
+    /// thinking, not a polished answer.
+    case reasoningFallback
+    /// `finish_reason: "length"` with no content — hit the output
+    /// budget before producing the answer.
+    case lengthCap
+    /// `finish_reason: "content_filter"` with no content.
+    case contentFilter
+    /// Model emitted `tool_calls` but no follow-up turn produced a
+    /// real reply.
+    case toolCallNoFollowUp
+    /// Stream closed cleanly with no usable signals at all.
+    case empty
+
+    /// `true` when this outcome should offer the user a "Try again"
+    /// affordance. Refusals are excluded — the model intentionally
+    /// declined; mashing retry won't change that.
+    var supportsRetry: Bool {
+        switch self {
+        case .lengthCap, .contentFilter, .toolCallNoFollowUp, .empty:
+            return true
+        case .normal, .refusal, .reasoningFallback:
+            return false
+        }
+    }
+
+    /// Short label rendered as a badge above the bubble.
+    var badgeLabel: String? {
+        switch self {
+        case .normal: return nil
+        case .refusal: return "Declined"
+        case .reasoningFallback: return "Reasoning channel"
+        case .lengthCap: return "Reply truncated"
+        case .contentFilter: return "Filtered"
+        case .toolCallNoFollowUp: return "Tool call dropped"
+        case .empty: return "No reply"
+        }
+    }
+
+    /// SF Symbol for the badge.
+    var badgeSymbol: String? {
+        switch self {
+        case .normal: return nil
+        case .refusal: return "hand.raised.fill"
+        case .reasoningFallback: return "brain"
+        case .lengthCap: return "scissors"
+        case .contentFilter: return "shield.lefthalf.filled"
+        case .toolCallNoFollowUp: return "wrench.and.screwdriver"
+        case .empty: return "exclamationmark.bubble"
         }
     }
 }
@@ -1134,6 +1213,32 @@ final class HermesService {
         return favoriteModelIDs.compactMap { optionsByID[$0] }
     }
 
+    /// Retry the most recent user turn. Strips any assistant messages
+    /// that came after the last user message (the failed/empty replies
+    /// we want to redo) and re-sends the original prompt with its
+    /// attachments. No-op while a stream is in flight or if there's no
+    /// user turn to retry. The composer's pending input is left alone.
+    func retryLastUserTurn(context: String? = nil) {
+        guard !isStreaming else { return }
+        guard let lastUserIndex = messages.lastIndex(where: { $0.role == .user }) else {
+            return
+        }
+        let userMessage = messages[lastUserIndex]
+        let trimmed = userMessage.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty || !userMessage.attachments.isEmpty else { return }
+        // Drop everything after the user turn we're retrying so the
+        // history shown to the model and the user matches the
+        // pre-failure state.
+        if lastUserIndex + 1 < messages.count {
+            messages.removeSubrange((lastUserIndex + 1)..<messages.count)
+        }
+        // Drop the user turn itself; sendMessage will re-append it
+        // with a fresh streaming assistant placeholder. Keeps the
+        // ordering invariants in `completionRequestBody` simple.
+        messages.remove(at: lastUserIndex)
+        sendMessage(trimmed, context: context, attachments: userMessage.attachments)
+    }
+
     func sendMessage(_ text: String, context: String? = nil, attachments: [HermesAttachment] = []) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Allow attachment-only messages (no text) so users can send a photo
@@ -1242,6 +1347,7 @@ final class HermesService {
             )
             assistantMessage.text = fallback.text
             assistantMessage.isError = fallback.isError
+            assistantMessage.outcome = fallback.outcome
         }
         assistantMessage.finalizeResponseMetrics()
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {
@@ -1404,6 +1510,7 @@ final class HermesService {
             )
             assistantMessage.text = fallback.text
             assistantMessage.isError = fallback.isError
+            assistantMessage.outcome = fallback.outcome
         }
         assistantMessage.finalizeResponseMetrics()
         if let index = messages.firstIndex(where: { $0.id == assistantMessage.id }) {

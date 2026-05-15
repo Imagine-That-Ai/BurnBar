@@ -63,6 +63,9 @@ struct PiChatMessage: Identifiable, Equatable {
     var streamedReasoning: String = ""
     /// Last `choices[].finish_reason` observed for this turn.
     var lastFinishReason: String?
+    /// First-class outcome — drives the Pi bubble's badge / retry pill.
+    /// Always `.normal` for user/system/tool messages.
+    var outcome: PiChatMessageOutcome = .normal
 
     init(
         id: String = UUID().uuidString,
@@ -97,37 +100,85 @@ struct PiChatMessage: Identifiable, Equatable {
         refusal: String,
         reasoning: String,
         finishReason: String?
-    ) -> (text: String, isError: Bool) {
+    ) -> (text: String, isError: Bool, outcome: PiChatMessageOutcome) {
         let trimmedRefusal = refusal.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedRefusal.isEmpty {
-            return (trimmedRefusal, false)
+            return (trimmedRefusal, false, .refusal)
         }
         let trimmedReasoning = reasoning.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedReasoning.isEmpty {
-            let prefix = "_(Pi only emitted reasoning. Showing it below — this isn't a final answer.)_\n\n"
-            return (prefix + trimmedReasoning, false)
+            return (trimmedReasoning, false, .reasoningFallback)
         }
         switch finishReason?.lowercased() {
         case "length":
             return (
-                "Pi hit its output budget before finishing. Try a shorter prompt or switch to a model with a larger reply ceiling.",
-                true
+                "Pi hit its reply length cap before finishing. Try a shorter prompt or switch to a model with a larger reply ceiling.",
+                true,
+                .lengthCap
             )
         case "content_filter":
             return (
                 "Pi blocked this reply for content safety. Try rewording the prompt or switch models.",
-                true
+                true,
+                .contentFilter
             )
         case "tool_calls":
             return (
                 "Pi asked to use a tool but didn't follow up with a reply. Try again or switch models.",
-                true
+                true,
+                .toolCallNoFollowUp
             )
         default:
             return (
-                "Pi finished without returning text. Try again or switch models.",
-                true
+                "Pi returned no text. Try again or switch models.",
+                true,
+                .empty
             )
+        }
+    }
+}
+
+/// Pi's mirror of `HermesChatMessageOutcome` — kept as a separate
+/// type so the runtime label (`Pi` vs. `Hermes`) and any
+/// runtime-specific outcomes can diverge later without retrofitting
+/// a shared enum.
+enum PiChatMessageOutcome: String, Equatable, Sendable {
+    case normal
+    case refusal
+    case reasoningFallback
+    case lengthCap
+    case contentFilter
+    case toolCallNoFollowUp
+    case empty
+
+    var supportsRetry: Bool {
+        switch self {
+        case .lengthCap, .contentFilter, .toolCallNoFollowUp, .empty: return true
+        case .normal, .refusal, .reasoningFallback: return false
+        }
+    }
+
+    var badgeLabel: String? {
+        switch self {
+        case .normal: return nil
+        case .refusal: return "Declined"
+        case .reasoningFallback: return "Reasoning channel"
+        case .lengthCap: return "Reply truncated"
+        case .contentFilter: return "Filtered"
+        case .toolCallNoFollowUp: return "Tool call dropped"
+        case .empty: return "No reply"
+        }
+    }
+
+    var badgeSymbol: String? {
+        switch self {
+        case .normal: return nil
+        case .refusal: return "hand.raised.fill"
+        case .reasoningFallback: return "brain"
+        case .lengthCap: return "scissors"
+        case .contentFilter: return "shield.lefthalf.filled"
+        case .toolCallNoFollowUp: return "wrench.and.screwdriver"
+        case .empty: return "exclamationmark.bubble"
         }
     }
 }
@@ -300,6 +351,21 @@ final class PiService {
 
     // MARK: - Send
 
+    /// Retry the most recent user turn — drops everything after it,
+    /// removes the user turn itself, then re-sends via `send`. Mirrors
+    /// `HermesService.retryLastUserTurn`.
+    func retryLastUserTurn() {
+        guard !isStreaming else { return }
+        guard let lastUserIndex = messages.lastIndex(where: { $0.role == .user }) else { return }
+        let trimmed = messages[lastUserIndex].text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if lastUserIndex + 1 < messages.count {
+            messages.removeSubrange((lastUserIndex + 1)..<messages.count)
+        }
+        messages.remove(at: lastUserIndex)
+        send(prompt: trimmed)
+    }
+
     func send(prompt: String) {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -456,6 +522,7 @@ final class PiService {
                 )
                 msg.text = fallback.text
                 msg.isError = fallback.isError
+                msg.outcome = fallback.outcome
             }
             messages[idx] = msg
             finalMessage = msg

@@ -1184,7 +1184,8 @@ struct HermesChatView: View {
                                     HermesMessageBubble(
                                         message: message,
                                         showTPS: showMessageTPS,
-                                        usePretextRendering: usePretextRendering
+                                        usePretextRendering: usePretextRendering,
+                                        onRetry: canRetry(message) ? { service.retryLastUserTurn(context: dashboardContextPrompt) } : nil
                                     )
                                         .id(message.id)
                                 }
@@ -1955,6 +1956,22 @@ struct HermesChatView: View {
         }
     }
 
+    /// Show the inline "Try again" affordance only on the most recent
+    /// assistant turn, only when its outcome supports retry, and only
+    /// when no stream is in flight. Earlier turns stay frozen so the
+    /// thread doesn't get rewritten by tapping an old failure.
+    private func canRetry(_ message: HermesChatMessage) -> Bool {
+        guard !service.isStreaming,
+              message.role == .assistant,
+              message.outcome.supportsRetry else {
+            return false
+        }
+        // Only the trailing assistant message — earlier turns are
+        // frozen relative to the user's history.
+        let lastAssistantID = visibleMessages.last(where: { $0.role == .assistant })?.id
+        return lastAssistantID == message.id
+    }
+
     private var dashboardContextPrompt: String? {
         guard let snapshot = dashboardSnapshot else { return nil }
         var lines = ["OpenBurnBar mobile context for this Hermes turn:"]
@@ -2632,6 +2649,11 @@ struct HermesMessageBubble: View {
     /// `@mentions` and `` `code spans` `` get inline chips and pretext line
     /// breaking. Falls back to native `Text` if the engine isn't ready.
     var usePretextRendering: Bool = true
+    /// Optional retry callback. The container passes a non-nil value
+    /// only for the most recent assistant turn whose outcome supports
+    /// retry — the bubble renders the inline "Try again" pill in that
+    /// case. Earlier turns and successful replies pass nil (no pill).
+    var onRetry: (() -> Void)? = nil
 
     var isUser: Bool { message.role == .user }
 
@@ -2681,24 +2703,36 @@ struct HermesMessageBubble: View {
             modelBadge
                 .padding(.leading, 6)
 
+            if message.outcome != .normal {
+                outcomeBadge
+                    .padding(.leading, 6)
+                    .padding(.bottom, 2)
+            }
+
             if !message.text.isEmpty || message.toolCalls.isEmpty {
                 assistantTextBody
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(
                         assistantBubbleShape
-                            .fill(MobileTheme.Colors.surface.opacity(0.85))
+                            .fill(bubbleFill)
                     )
                     .overlay(
                         assistantBubbleShape
-                            .stroke(message.isError ? AnyShapeStyle(MobileTheme.error) : AnyShapeStyle(AuroraDesign.Gradients.mercuryFoil), lineWidth: message.isError ? 1.5 : 1)
+                            .stroke(bubbleStroke, lineWidth: bubbleStrokeWidth)
                     )
                     .overlay {
-                        if !message.isError {
+                        if !message.isError && message.outcome == .normal {
                             MercuryShimmerOverlay()
                                 .clipShape(assistantBubbleShape)
                         }
                     }
+            }
+
+            if let onRetry, message.outcome.supportsRetry {
+                retryPill(onRetry: onRetry)
+                    .padding(.leading, 6)
+                    .padding(.top, 2)
             }
 
             if !message.toolCalls.isEmpty {
@@ -2965,6 +2999,115 @@ struct HermesMessageBubble: View {
                 .foregroundStyle(message.isError ? MobileTheme.Colors.error : MobileTheme.Colors.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// Bubble background tint, keyed off `outcome`. Refusals and the
+    /// reasoning-channel fallback get a soft tinted background so the
+    /// user sees they're not reading a normal answer; hard errors get
+    /// a faint red wash; everything else uses the standard surface.
+    private var bubbleFill: AnyShapeStyle {
+        switch message.outcome {
+        case .normal:
+            if message.isError {
+                return AnyShapeStyle(MobileTheme.error.opacity(0.06))
+            }
+            return AnyShapeStyle(MobileTheme.Colors.surface.opacity(0.85))
+        case .refusal, .reasoningFallback:
+            return AnyShapeStyle(MobileTheme.hermesAureate.opacity(0.07))
+        case .lengthCap, .contentFilter, .toolCallNoFollowUp, .empty:
+            return AnyShapeStyle(MobileTheme.error.opacity(0.06))
+        }
+    }
+
+    private var bubbleStroke: AnyShapeStyle {
+        if message.isError {
+            return AnyShapeStyle(MobileTheme.error)
+        }
+        switch message.outcome {
+        case .normal:
+            return AnyShapeStyle(AuroraDesign.Gradients.mercuryFoil)
+        case .refusal, .reasoningFallback:
+            return AnyShapeStyle(MobileTheme.hermesAureate.opacity(0.55))
+        case .lengthCap, .contentFilter, .toolCallNoFollowUp, .empty:
+            return AnyShapeStyle(MobileTheme.error)
+        }
+    }
+
+    private var bubbleStrokeWidth: CGFloat {
+        message.isError ? 1.5 : 1
+    }
+
+    /// Inline tag rendered above the bubble for non-`.normal`
+    /// outcomes. Symbol + label so power users can tell at a glance
+    /// why the model didn't produce a normal reply. Returns `nil`
+    /// for `.normal` so the call site can skip rendering entirely.
+    @ViewBuilder
+    private var outcomeBadge: some View {
+        if let label = message.outcome.badgeLabel,
+           let symbol = message.outcome.badgeSymbol {
+            HStack(spacing: 5) {
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .bold))
+                Text(label)
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(outcomeBadgeColor)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule()
+                    .fill(outcomeBadgeColor.opacity(0.12))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(outcomeBadgeColor.opacity(0.45), lineWidth: 0.5)
+            )
+            .accessibilityLabel(Text("Reply outcome: \(label)"))
+        }
+    }
+
+    private var outcomeBadgeColor: Color {
+        switch message.outcome {
+        case .normal: return MobileTheme.Colors.textSecondary
+        case .refusal, .reasoningFallback: return MobileTheme.hermesAureate
+        case .lengthCap, .contentFilter, .toolCallNoFollowUp, .empty: return MobileTheme.error
+        }
+    }
+
+    /// Inline retry pill rendered for the most recent assistant turn
+    /// when its outcome supports retry. Tactile (haptic on tap),
+    /// styled to match the bubble context — soft for soft outcomes,
+    /// red for hard errors.
+    @ViewBuilder
+    private func retryPill(onRetry: @escaping () -> Void) -> some View {
+        Button {
+            HapticBus.send()
+            onRetry()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 11, weight: .bold))
+                Text("Try again")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+            }
+            .foregroundStyle(outcomeBadgeColor)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule()
+                    .fill(outcomeBadgeColor.opacity(0.10))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(outcomeBadgeColor.opacity(0.55), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Try again")
+        .accessibilityHint("Re-sends your last message to Hermes.")
     }
 
     private var userBubbleShape: UnevenRoundedRectangle {

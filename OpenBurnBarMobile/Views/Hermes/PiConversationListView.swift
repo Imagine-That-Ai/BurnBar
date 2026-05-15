@@ -456,6 +456,9 @@ struct PiChatThreadView: View {
                     }
                     .foregroundStyle(MobileTheme.whimsy)
                 }
+                if !isUser, msg.outcome != .normal {
+                    piOutcomeBadge(for: msg)
+                }
                 if !msg.text.isEmpty || msg.toolCalls.isEmpty || msg.isStreaming {
                     Text(msg.text.isEmpty ? (msg.isStreaming ? "…" : "") : msg.text)
                         .font(MobileTheme.Typography.body)
@@ -464,17 +467,18 @@ struct PiChatThreadView: View {
                         .padding(.vertical, MobileTheme.Spacing.sm)
                         .background(
                             RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
-                                .fill(MobileTheme.Colors.surfaceElevated)
+                                .fill(piBubbleFill(for: msg))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: MobileTheme.Radius.lg, style: .continuous)
                                         .strokeBorder(
-                                            isUser
-                                                ? AnyShapeStyle(MobileTheme.Colors.chatUserStroke.opacity(0.55))
-                                                : AnyShapeStyle(MobileTheme.piGradient),
+                                            piBubbleStroke(for: msg, isUser: isUser),
                                             lineWidth: 0.7
                                         )
                                 )
                         )
+                }
+                if !isUser, msg.outcome.supportsRetry, canRetryPi(msg) {
+                    piRetryPill(for: msg)
                 }
                 if !isUser, !msg.toolCalls.isEmpty {
                     piToolCallStrip(msg.toolCalls)
@@ -482,6 +486,99 @@ struct PiChatThreadView: View {
             }
             if !isUser { Spacer(minLength: 32) }
         }
+    }
+
+    @ViewBuilder
+    private func piOutcomeBadge(for msg: PiChatMessage) -> some View {
+        if let label = msg.outcome.badgeLabel,
+           let symbol = msg.outcome.badgeSymbol {
+            let color = piOutcomeColor(msg.outcome)
+            HStack(spacing: 5) {
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .bold))
+                Text(label)
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(color.opacity(0.12)))
+            .overlay(Capsule().stroke(color.opacity(0.45), lineWidth: 0.5))
+            .accessibilityLabel(Text("Reply outcome: \(label)"))
+        }
+    }
+
+    private func piRetryPill(for msg: PiChatMessage) -> some View {
+        let color = piOutcomeColor(msg.outcome)
+        return Button {
+            HapticBus.send()
+            service.retryLastUserTurn()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 11, weight: .bold))
+                Text("Try again")
+                    .font(MobileTheme.Typography.tiny)
+                    .fontWeight(.semibold)
+            }
+            .foregroundStyle(color)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(color.opacity(0.10)))
+            .overlay(Capsule().stroke(color.opacity(0.55), lineWidth: 0.75))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Try again")
+        .accessibilityHint("Re-sends your last message to Pi.")
+    }
+
+    private func piBubbleFill(for msg: PiChatMessage) -> AnyShapeStyle {
+        switch msg.outcome {
+        case .normal:
+            if msg.isError {
+                return AnyShapeStyle(MobileTheme.Colors.error.opacity(0.06))
+            }
+            return AnyShapeStyle(MobileTheme.Colors.surfaceElevated)
+        case .refusal, .reasoningFallback:
+            return AnyShapeStyle(MobileTheme.whimsy.opacity(0.07))
+        case .lengthCap, .contentFilter, .toolCallNoFollowUp, .empty:
+            return AnyShapeStyle(MobileTheme.Colors.error.opacity(0.06))
+        }
+    }
+
+    private func piBubbleStroke(for msg: PiChatMessage, isUser: Bool) -> AnyShapeStyle {
+        if isUser {
+            return AnyShapeStyle(MobileTheme.Colors.chatUserStroke.opacity(0.55))
+        }
+        if msg.isError {
+            return AnyShapeStyle(MobileTheme.Colors.error)
+        }
+        switch msg.outcome {
+        case .normal:
+            return AnyShapeStyle(MobileTheme.piGradient)
+        case .refusal, .reasoningFallback:
+            return AnyShapeStyle(MobileTheme.whimsy.opacity(0.55))
+        case .lengthCap, .contentFilter, .toolCallNoFollowUp, .empty:
+            return AnyShapeStyle(MobileTheme.Colors.error)
+        }
+    }
+
+    private func piOutcomeColor(_ outcome: PiChatMessageOutcome) -> Color {
+        switch outcome {
+        case .normal: return MobileTheme.Colors.textSecondary
+        case .refusal, .reasoningFallback: return MobileTheme.whimsy
+        case .lengthCap, .contentFilter, .toolCallNoFollowUp, .empty: return MobileTheme.Colors.error
+        }
+    }
+
+    /// Show the retry pill only on the trailing assistant turn while
+    /// idle, mirroring `HermesChatView.canRetry`.
+    private func canRetryPi(_ msg: PiChatMessage) -> Bool {
+        guard !service.isStreaming else { return false }
+        let trailing = visibleMessages.last(where: { $0.role == .assistant })?.id
+        return trailing == msg.id
     }
 
     /// Horizontally scrollable strip of tool pills, most-recent on the left.
