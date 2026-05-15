@@ -200,9 +200,11 @@ extension ProviderQuotaBucket {
     /// model is what `ProviderQuotaBucketViews` reads.
     var resetsAtDisplay: (relative: String, absolute: String)? {
         guard let resetsAt else { return nil }
+        let now = Date()
+        guard resetsAt > now else { return nil }
         let relative = Self.relativeResetsFormatter.localizedString(
             for: resetsAt,
-            relativeTo: Date()
+            relativeTo: now
         )
         let absolute = resetsAt.formatted(date: .abbreviated, time: .shortened)
         return (relative: relative, absolute: absolute)

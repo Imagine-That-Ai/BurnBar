@@ -218,8 +218,8 @@ struct QuotaDualWindowStrip: View {
 
     private func windowTooltipText(for bucket: ProviderQuotaBucket, label: String) -> String {
         let resetText: String
-        if let resetsAt = bucket.resetsAt {
-            resetText = "Resets \(resetsAt.formatted(date: .abbreviated, time: .shortened))"
+        if let display = bucket.resetsAtDisplay {
+            resetText = "Resets \(display.relative) · \(display.absolute)"
         } else {
             resetText = "Reset time unavailable"
         }

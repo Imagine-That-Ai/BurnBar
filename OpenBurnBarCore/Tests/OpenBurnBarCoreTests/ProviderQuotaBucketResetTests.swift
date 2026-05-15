@@ -86,6 +86,20 @@ final class ProviderQuotaBucketResetTests: XCTestCase {
         XCTAssertFalse(display?.absolute.isEmpty ?? true)
     }
 
+    func test_resetsAtDisplay_hidesPastResetTimes() {
+        let threeDaysAgo = Date().addingTimeInterval(-3 * 24 * 3600)
+        let bucket = ProviderQuotaBucket(
+            name: "5h",
+            used: 50, limit: 100, remaining: 50,
+            window: "rollingHours",
+            meta: nil,
+            resetsAt: threeDaysAgo
+        )
+
+        XCTAssertNil(bucket.resetsAtDisplay)
+        XCTAssertNil(bucket.resetsAtCombinedLabel)
+    }
+
     /// Regression: the Mac writer emits ISO8601 *without* fractional seconds
     /// (`ISO8601DateFormatter()` default options). The first version of the
     /// decoder rejected those strings silently, so iOS lost every reset in

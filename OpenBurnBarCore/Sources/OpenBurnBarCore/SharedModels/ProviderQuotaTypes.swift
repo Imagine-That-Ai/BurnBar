@@ -161,9 +161,11 @@ public extension ProviderQuotaBucket {
     /// Example: `(relative: "in 2h 14m", absolute: "May 8, 3:35 AM")`.
     var resetsAtDisplay: (relative: String, absolute: String)? {
         guard let resetsAt else { return nil }
+        let now = Date()
+        guard resetsAt > now else { return nil }
         let relative = Self.relativeResetsFormatter.localizedString(
             for: resetsAt,
-            relativeTo: Date()
+            relativeTo: now
         )
         let absolute = resetsAt.formatted(date: .abbreviated, time: .shortened)
         return (relative: relative, absolute: absolute)
