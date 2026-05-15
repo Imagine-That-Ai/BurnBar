@@ -9,6 +9,8 @@ struct MenuBarPopoverView: View {
     var aggregator: UsageAggregator?
     var quotaService: ProviderQuotaService?
     let settingsManager: SettingsManager
+    var smartHubBridgeController: SmartHubBridgeController?
+    var smartDisplayRepairCoordinator: SmartDisplayRepairCoordinator?
     @Bindable var operatingLayer: OpenBurnBarOperatingLayer
     let onOpenDashboard: () -> Void
     let onOpenSettings: () -> Void
@@ -21,6 +23,8 @@ struct MenuBarPopoverView: View {
     @State private var listAppeared = false
     @State private var insightSnapshot: WorkflowInsightRollupSnapshot = .unavailable
     @State private var hermesChatActive = false
+    @State private var isCastingSmartHub = false
+    @State private var smartHubCastStatusMessage: String?
 
     private var isScanning: Bool { aggregator?.isRefreshing ?? false }
 
@@ -65,6 +69,32 @@ struct MenuBarPopoverView: View {
 
     private func refreshInsightRollups() {
         insightSnapshot = WorkflowInsightRollupService(dataStore: dataStore).snapshot(refreshIfStale: true)
+    }
+
+    private var smartHubCastTooltip: String {
+        if isCastingSmartHub {
+            return "Casting OpenBurnBar to your smart display."
+        }
+        if let smartHubCastStatusMessage {
+            return smartHubCastStatusMessage
+        }
+        return "Cast OpenBurnBar to your saved Nest Hub or smart display."
+    }
+
+    private func castSmartHubFromTray() {
+        guard !isCastingSmartHub else { return }
+        isCastingSmartHub = true
+        smartHubCastStatusMessage = "Casting OpenBurnBar to your smart display..."
+        Task { @MainActor in
+            let adapter = MacSmartHubDisplayOperationsAdapter(
+                settingsManager: settingsManager,
+                controller: smartHubBridgeController,
+                repairCoordinator: smartDisplayRepairCoordinator
+            )
+            let status = await adapter.repairDisplay()
+            smartHubCastStatusMessage = status.message
+            isCastingSmartHub = false
+        }
     }
 
     var body: some View {
@@ -223,6 +253,13 @@ struct MenuBarPopoverView: View {
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
 
                 Spacer()
+
+                GlassIconButton(isLoading: isCastingSmartHub, action: castSmartHubFromTray) {
+                    Image(systemName: "airplayvideo")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+                .popoverTooltip(smartHubCastTooltip)
 
                 GlassIconButton(action: runRecount) {
                     Image(systemName: "arrow.counterclockwise")

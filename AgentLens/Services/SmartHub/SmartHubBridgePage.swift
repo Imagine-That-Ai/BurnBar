@@ -81,6 +81,7 @@ enum SmartHubBridgePage {
           padding: 18px 22px 16px;
           position: relative;
           z-index: 1;
+          touch-action: pan-y;
         }
 
         /* TOP HEADER ROW — logo + status pill, refresh, day/time */
@@ -192,7 +193,7 @@ enum SmartHubBridgePage {
           scroll-snap-type: x proximity;
           scrollbar-width: none;
           -webkit-overflow-scrolling: touch;
-          touch-action: pan-x;
+          touch-action: pan-y;
           overscroll-behavior-x: contain;
         }
         .providers::-webkit-scrollbar { display: none; }
@@ -209,7 +210,7 @@ enum SmartHubBridgePage {
           flex: 0 0 232px;
           min-width: 232px;
           max-width: 232px;
-          touch-action: pan-x;
+          touch-action: pan-y;
           user-select: none;
           -webkit-user-select: none;
           background: linear-gradient(180deg,
@@ -1104,7 +1105,15 @@ enum SmartHubBridgePage {
           }
 
           // Click / Enter to open detail overlay
-          card.addEventListener('click', () => showDetail(p));
+          card.addEventListener('click', (e) => {
+            if (suppressNextCardClick) {
+              e.preventDefault();
+              e.stopPropagation();
+              suppressNextCardClick = false;
+              return;
+            }
+            showDetail(p);
+          });
           card.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
@@ -1307,8 +1316,102 @@ enum SmartHubBridgePage {
           if (scrollLeftBtn) scrollLeftBtn.classList.toggle('visible', canLeft);
           if (scrollRightBtn) scrollRightBtn.classList.toggle('visible', canRight);
         }
+        let providerScreenSwipe = null;
+        let suppressNextCardClick = false;
+        let lastProviderPointerTouchAt = { value: 0 };
+
+        function providerRailCanScroll() {
+          return providersEl && providersEl.scrollWidth > providersEl.clientWidth + 4;
+        }
+
+        function shouldIgnoreProviderSwipeStart(target) {
+          if (!target || !target.closest) return false;
+          if (detailOverlay && detailOverlay.classList.contains('active')) return true;
+          if (target.closest('.detail-overlay, .detail-card')) return true;
+          if (target.closest('.card')) return false;
+          return Boolean(target.closest('button, input, select, textarea, a, .segmented, .value-toggle, .refresh-btn, .scroll-btn'));
+        }
+
+        function beginProviderSwipeAt(x, y, target, pointerId, source) {
+          if (!stageEl || !providerRailCanScroll()) return;
+          if (shouldIgnoreProviderSwipeStart(target)) return;
+          if (providerScreenSwipe && providerScreenSwipe.active) return;
+          providerScreenSwipe = {
+            pointerId,
+            source,
+            startX: x,
+            startY: y,
+            lastX: x,
+            active: false
+          };
+        }
+
+        function moveProviderSwipeTo(x, y, event, pointerId, source) {
+          if (!providerScreenSwipe || providerScreenSwipe.pointerId !== pointerId || providerScreenSwipe.source !== source) return;
+          const dx = x - providerScreenSwipe.startX;
+          const dy = y - providerScreenSwipe.startY;
+          if (!providerScreenSwipe.active) {
+            if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+            providerScreenSwipe.active = true;
+            suppressNextCardClick = true;
+          }
+          if (event && event.cancelable) event.preventDefault();
+          const step = providerScreenSwipe.lastX - x;
+          providersEl.scrollLeft += step;
+          providerScreenSwipe.lastX = x;
+          updateScrollIndicators();
+        }
+
+        function endProviderSwipe(pointerId, source) {
+          if (!providerScreenSwipe || providerScreenSwipe.pointerId !== pointerId || providerScreenSwipe.source !== source) return;
+          const wasActive = providerScreenSwipe.active;
+          providerScreenSwipe = null;
+          if (wasActive) {
+            window.setTimeout(() => { suppressNextCardClick = false; }, 80);
+          }
+        }
+
+        if (stageEl && window.PointerEvent) {
+          stageEl.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'touch') lastProviderPointerTouchAt.value = Date.now();
+            beginProviderSwipeAt(e.clientX, e.clientY, e.target, e.pointerId, 'pointer');
+            if (providerScreenSwipe && stageEl.setPointerCapture) {
+              try { stageEl.setPointerCapture(e.pointerId); } catch (_) {}
+            }
+          });
+          window.addEventListener('pointermove', (e) => {
+            moveProviderSwipeTo(e.clientX, e.clientY, e, e.pointerId, 'pointer');
+          }, { passive: false });
+          window.addEventListener('pointerup', (e) => {
+            endProviderSwipe(e.pointerId, 'pointer');
+            if (stageEl.releasePointerCapture) {
+              try { stageEl.releasePointerCapture(e.pointerId); } catch (_) {}
+            }
+          });
+          window.addEventListener('pointercancel', (e) => endProviderSwipe(e.pointerId, 'pointer'));
+        }
+        if (stageEl) {
+          stageEl.addEventListener('touchstart', (e) => {
+            if (Date.now() - lastProviderPointerTouchAt.value < 700) return;
+            const touch = e.touches && e.touches[0];
+            if (!touch) return;
+            beginProviderSwipeAt(touch.clientX, touch.clientY, e.target, 'touch', 'touch');
+          }, { passive: true });
+          window.addEventListener('touchmove', (e) => {
+            const touch = e.touches && e.touches[0];
+            if (!touch) return;
+            moveProviderSwipeTo(touch.clientX, touch.clientY, e, 'touch', 'touch');
+          }, { passive: false });
+          window.addEventListener('touchend', () => endProviderSwipe('touch', 'touch'));
+          window.addEventListener('touchcancel', () => endProviderSwipe('touch', 'touch'));
+        }
         if (providersEl) {
           providersEl.addEventListener('scroll', updateScrollIndicators, { passive: true });
+          providersEl.addEventListener('wheel', (e) => {
+            if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+            e.preventDefault();
+            providersEl.scrollBy({ left: e.deltaY, behavior: 'smooth' });
+          }, { passive: false });
         }
         if (scrollLeftBtn) {
           scrollLeftBtn.addEventListener('click', (e) => {

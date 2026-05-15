@@ -339,10 +339,59 @@ function requireSealedText(raw: unknown, fieldName: string): Record<string, unkn
   return envelope;
 }
 
-function assertUserStoragePath(uid: string, storagePath: string): void {
-  const prefix = `users/${uid}/session_logs/`;
-  if (!storagePath.startsWith(prefix) || storagePath.includes("..")) {
+function assertUserStoragePath(
+  uid: string,
+  storagePath: string,
+  expectedBodyHash?: string,
+  expectedDocumentID?: string
+): void {
+  const parts = storagePath.split("/");
+  if (
+    parts.length !== 6 ||
+    parts[0] !== "users" ||
+    parts[1] !== uid ||
+    parts[2] !== "session_logs" ||
+    parts[4] !== "bodies" ||
+    !parts[5].endsWith(".json.aesgcm")
+  ) {
     throw new HttpsError("permission-denied", "Invalid encrypted session storage path.");
+  }
+  const pathDocumentID = safeCloudDocumentID(parts[3], "storagePath.documentID");
+  if (expectedDocumentID && pathDocumentID !== expectedDocumentID) {
+    throw new HttpsError("invalid-argument", "Encrypted session storage path does not match documentID.");
+  }
+  const pathBodyHash = requireHexDigest(parts[5].slice(0, -".json.aesgcm".length), "storagePath.bodyHash");
+  if (expectedBodyHash && pathBodyHash !== expectedBodyHash) {
+    throw new HttpsError("invalid-argument", "Encrypted session storage path does not match bodyHash.");
+  }
+}
+
+async function assertEncryptedSessionBlobObject(args: {
+  uid: string;
+  storagePath: string;
+  documentID: string;
+  bodyHash: string;
+  encryptedByteCount: number;
+}): Promise<void> {
+  assertUserStoragePath(args.uid, args.storagePath, args.bodyHash, args.documentID);
+  let metadata: Record<string, unknown>;
+  try {
+    [metadata] = await getStorage().bucket().file(args.storagePath).getMetadata();
+  } catch {
+    throw new HttpsError(
+      "failed-precondition",
+      "Encrypted session body must be uploaded before committing the search index."
+    );
+  }
+  const size = Number(metadata.size);
+  if (!Number.isFinite(size) || size !== args.encryptedByteCount) {
+    throw new HttpsError("failed-precondition", "Encrypted session body size does not match the upload ticket.");
+  }
+  if (size < 1 || size > getConfig().encryptedSessionBlobMaxBytes) {
+    throw new HttpsError("resource-exhausted", "Encrypted session body exceeds the configured upload limit.");
+  }
+  if (metadata.contentType !== "application/octet-stream") {
+    throw new HttpsError("failed-precondition", "Encrypted session body has an invalid content type.");
   }
 }
 
@@ -2782,10 +2831,7 @@ export const getEncryptedSessionBlobDownloadUrl = onCall(
     enforceAuthAndAppCheck(request, uid);
     await assertActiveBurnBarProEntitlement(uid);
     const storagePath = boundedTrimmedString(request.data.storagePath, "storagePath", 1024, true)!;
-    const prefix = `users/${uid}/session_logs/`;
-    if (!storagePath.startsWith(prefix) || storagePath.includes("..")) {
-      throw new HttpsError("permission-denied", "Invalid session blob path.");
-    }
+    assertUserStoragePath(uid, storagePath);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
     const [downloadURL] = await getStorage()
       .bucket()
@@ -2845,12 +2891,24 @@ export const commitEncryptedSearchIndexBatch = onCall(
         sealedTitle: requireSealedText(raw.sealedTitle, "document.sealedTitle"),
         sealedBodyPreview: requireSealedText(raw.sealedBodyPreview, "document.sealedBodyPreview"),
         byteCount: requireBoundedNumber(raw.byteCount, "document.byteCount", 0, getConfig().encryptedSessionBlobMaxBytes),
+        encryptedByteCount: requireBoundedNumber(
+          raw.encryptedByteCount,
+          "document.encryptedByteCount",
+          1,
+          getConfig().encryptedSessionBlobMaxBytes
+        ),
         indexVersion,
         tokenHashVersion: 1,
         updatedAt: now,
         schemaVersion: 1,
       };
-      assertUserStoragePath(uid, doc.storagePath);
+      await assertEncryptedSessionBlobObject({
+        uid,
+        storagePath: doc.storagePath,
+        documentID,
+        bodyHash: doc.bodyHash,
+        encryptedByteCount: doc.encryptedByteCount,
+      });
       batch.set(documentsRef.doc(documentID), stripUndefined(doc), { merge: true });
       writeCount += 1;
     }
@@ -2881,7 +2939,7 @@ export const commitEncryptedSearchIndexBatch = onCall(
         updatedAt: now,
         schemaVersion: 1,
       };
-      assertUserStoragePath(uid, chunk.storagePath);
+      assertUserStoragePath(uid, chunk.storagePath, chunk.bodyHash, documentID);
       batch.set(chunksRef.doc(chunkID), stripUndefined(chunk), { merge: true });
       writeCount += 1;
     }

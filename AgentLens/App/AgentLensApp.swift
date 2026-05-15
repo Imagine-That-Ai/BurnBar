@@ -920,6 +920,8 @@ struct OpenBurnBarApp: App {
                         aggregator: context.aggregator,
                         quotaService: context.quotaService,
                         settingsManager: context.settingsManager,
+                        smartHubBridgeController: context.smartHubBridgeController,
+                        smartDisplayRepairCoordinator: context.smartDisplayRepairCoordinator,
                         operatingLayer: context.operatingLayer,
                         onOpenDashboard: {
                             openDashboard(context: context)

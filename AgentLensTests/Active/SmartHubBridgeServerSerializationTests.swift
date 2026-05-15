@@ -30,6 +30,33 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         )
     }
 
+    func test_renderPageLetsScreenSwipeScrollProviderRail() throws {
+        XCTAssertTrue(
+            SmartHubBridgePage.html.contains(#"stageEl.addEventListener('pointerdown'"#),
+            "Smart Hub should translate screen-level swipes into provider rail movement."
+        )
+        XCTAssertTrue(
+            SmartHubBridgePage.html.contains(#"stageEl.addEventListener('touchstart'"#),
+            "Cast-style touch browsers need touch listeners even when pointer APIs exist."
+        )
+        XCTAssertTrue(
+            SmartHubBridgePage.html.contains(#"window.addEventListener('touchmove'"#),
+            "Touch drags should continue to move the rail after leaving the original target."
+        )
+        XCTAssertTrue(
+            SmartHubBridgePage.html.contains("touch-action: pan-y"),
+            "Horizontal swipes must be reserved for the Smart Hub provider rail handler."
+        )
+        XCTAssertTrue(
+            SmartHubBridgePage.html.contains(#"providersEl.scrollLeft += step;"#),
+            "Swipe deltas should move the provider rail horizontally."
+        )
+        XCTAssertTrue(
+            SmartHubBridgePage.html.contains("suppressNextCardClick"),
+            "Dragging a provider card should not accidentally open the detail overlay."
+        )
+    }
+
     func test_stateJSONContainsDisplayBlockWithPaletteAndTheme() throws {
         var config = SmartHubDisplayConfig.default
         config.palette = .mercury

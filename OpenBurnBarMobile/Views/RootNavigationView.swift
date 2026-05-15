@@ -127,14 +127,20 @@ struct RootNavigationView: View {
     }
 
     private var sidebarLogoHeader: some View {
-        Image("AppLogo")
-            .resizable()
-            .aspectRatio(contentMode: .fit)
-            .frame(height: 36)
-            .padding(.top, 8)
-            .padding(.bottom, 16)
-            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-            .listRowBackground(Color.clear)
+        VStack(spacing: 6) {
+            Image("AppLogo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(height: 40)
+            Text("BurnBar")
+                .font(.system(size: 13, weight: .medium, design: .default))
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 8)
+        .padding(.bottom, 16)
+        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+        .listRowBackground(Color.clear)
     }
 
     private func sidebarItem(_ destination: SidebarDestination) -> some View {

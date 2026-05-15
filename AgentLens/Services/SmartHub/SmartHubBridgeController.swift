@@ -567,8 +567,11 @@ final class SmartHubBridgeController {
                 primary: primary,
                 routingState: quotaService.routingState(for: provider.providerID)
             )
-            let tokenTotal = Self.bridgeTokenTotal(buckets: primary.displayableQuotaBuckets)
             let footer = runCostTotals[provider]
+            let usageTokenTotal = Self.bridgeTokenTotal(from: footer)
+            let tokenTotal = usageTokenTotal.isEmpty
+                ? Self.bridgeTokenTotal(buckets: primary.displayableQuotaBuckets)
+                : usageTokenTotal
             let tokenTotalCurrency = Self.bridgeTokenTotalCurrency(totalCost: footer?.totalCost ?? 0)
             let statusPill = Self.bridgeStatusPill(snapshot: primary, now: now)
             let statusTone = Self.statusPillTone(snapshot: primary, now: now)

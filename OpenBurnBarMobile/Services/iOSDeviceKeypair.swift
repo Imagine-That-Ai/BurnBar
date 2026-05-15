@@ -5,7 +5,6 @@ import Security
 
 /// iOS Keychain-backed device keypair for escrow encryption.
 /// Uses P-256 ECIES via CryptoKit with private key stored in Keychain.
-@MainActor
 final class iOSDeviceKeypair: DeviceKeypairProtocol {
     private static let keyTag = "com.openburnbar.mobile.escrow-key".data(using: .utf8)!
     private var privateKey: P256.KeyAgreement.PrivateKey

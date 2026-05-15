@@ -71,6 +71,16 @@ final class SessionLogSyncService: CloudSyncDomain {
                 let manifestRef = logsRef.document(docId)
                 let bodyHash = Self.sha256Hex(markdown)
                 let model = sessionModelMap["\(record.provider.rawValue):\(record.sessionId)"] ?? "unknown"
+                let existingManifest = try await manifestRef.getData()
+                if let existing = existingManifest,
+                   existing["bodyHash"] as? String == bodyHash,
+                   existing["chunkMetadataVersion"] as? Int == Self.chunkMetadataVersion,
+                   existing["cloudSearchIndexVersion"] as? Int == Self.cloudSearchIndexVersion,
+                   existing["bodyStorage"] as? String == "firebase_storage_encrypted" {
+                    try context.dataStore.markSessionLogsSynced(ids: [record.id])
+                    continue
+                }
+
                 let vaultKey = try vaultKeyStore.getOrCreateKey(uid: uid)
                 try await publishCloudVaultKey(uid: uid, vaultKey: vaultKey)
                 let sealedBody = try CloudVaultCrypto.sealBlob(Data(markdown.utf8), keyData: vaultKey)
@@ -80,14 +90,6 @@ final class SessionLogSyncService: CloudSyncDomain {
                     bodyHash: bodyHash,
                     byteCount: sealedBodyData.count
                 )
-
-                if let existing = try await manifestRef.getData(),
-                   existing["bodyHash"] as? String == bodyHash,
-                   existing["chunkMetadataVersion"] as? Int == Self.chunkMetadataVersion,
-                   existing["bodyStorage"] as? String == "firebase_storage_encrypted" {
-                    try context.dataStore.markSessionLogsSynced(ids: [record.id])
-                    continue
-                }
 
                 try await uploadEncryptedBody(data: sealedBodyData, ticket: uploadTicket)
                 let chunks = Self.chunkUTF8String(markdown, maxBytes: 64_000)
@@ -121,6 +123,8 @@ final class SessionLogSyncService: CloudSyncDomain {
                     "chunkSize": 0,
                     "chunkHashes": chunks.map(Self.sha256Hex),
                     "chunkMetadataVersion": Self.chunkMetadataVersion,
+                    "cloudSearchIndexVersion": Self.cloudSearchIndexVersion,
+                    "cloudSearchIndexedAt": FieldValue.serverTimestamp(),
                     "model": model,
                     "updatedAt": FieldValue.serverTimestamp()
                 ]
@@ -180,6 +184,24 @@ final class SessionLogSyncService: CloudSyncDomain {
                     ])
                 }
 
+                try await commitEncryptedSearchIndex(
+                    document: [
+                        "documentID": docId,
+                        "sourceKind": "conversation",
+                        "sourceID": record.id,
+                        "sourceVersionID": bodyHash,
+                        "provider": record.provider.rawValue,
+                        "projectName": record.projectName,
+                        "bodyHash": bodyHash,
+                        "storagePath": uploadTicket.storagePath,
+                        "sealedTitle": try Self.dictionary(sealedTitle),
+                        "sealedBodyPreview": try Self.dictionary(sealedPreview),
+                        "byteCount": markdown.utf8.count,
+                        "encryptedByteCount": sealedBodyData.count
+                    ],
+                    chunks: cloudSearchChunks
+                )
+
                 for start in stride(from: 0, to: writes.count, by: 450) {
                     let batch = context.firestoreGateway.batch()
                     for write in writes[start..<min(start + 450, writes.count)] {
@@ -193,23 +215,6 @@ final class SessionLogSyncService: CloudSyncDomain {
                         try await batch.commit()
                     }
                 }
-
-                try await commitEncryptedSearchIndex(
-                    document: [
-                        "documentID": docId,
-                        "sourceKind": "conversation",
-                        "sourceID": record.id,
-                        "sourceVersionID": bodyHash,
-                        "provider": record.provider.rawValue,
-                        "projectName": record.projectName,
-                        "bodyHash": bodyHash,
-                        "storagePath": uploadTicket.storagePath,
-                        "sealedTitle": try Self.dictionary(sealedTitle),
-                        "sealedBodyPreview": try Self.dictionary(sealedPreview),
-                        "byteCount": markdown.utf8.count
-                    ],
-                    chunks: cloudSearchChunks
-                )
             }
 
             let ids = unsynced.map(\.id)
@@ -255,6 +260,7 @@ final class SessionLogSyncService: CloudSyncDomain {
     }
 
     private static let chunkMetadataVersion = 1
+    private static let cloudSearchIndexVersion = 1
 
     private struct EncryptedUploadTicket {
         let storagePath: String
@@ -304,11 +310,17 @@ final class SessionLogSyncService: CloudSyncDomain {
     private func publishCloudVaultKey(uid: String, vaultKey: Data) async throws {
         let keypair = try CloudVaultDeviceKeypair(account: "cloud-vault-device:\(context.deviceId)")
         let userRef = context.firestoreGateway.collection("users").document(uid)
-        try await userRef.collection("escrow_devices").document(context.deviceId).setData([
+        let deviceRef = userRef.collection("escrow_devices").document(context.deviceId)
+        let existingDevice = try? await deviceRef.getData()
+        let existingTrustState = existingDevice?["trustState"] as? String
+        let trustState = existingTrustState == EscrowDeviceTrustState.trusted.rawValue
+            ? EscrowDeviceTrustState.trusted.rawValue
+            : EscrowDeviceTrustState.pending.rawValue
+        try await deviceRef.setData([
             "deviceId": context.deviceId,
             "deviceName": Host.current().localizedName ?? "Mac",
             "platform": "macOS",
-            "trustState": EscrowDeviceTrustState.trusted.rawValue,
+            "trustState": trustState,
             "publicKeyFingerprint": keypair.publicKeyFingerprint,
             "keyVersion": keypair.keyVersion,
             "updatedAt": FieldValue.serverTimestamp()

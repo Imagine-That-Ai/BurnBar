@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 
 class ActivityStore(
     private val repo: FirestoreRepository = FirestoreRepository(),
-    private val cloudSearch: CloudConversationSearchService = CloudConversationSearchService()
+    private val cloudSearchFactory: () -> CloudConversationSearchService = { CloudConversationSearchService() }
 ) : ViewModel() {
     private val _usages = MutableStateFlow<List<TokenUsage>>(emptyList())
     val usages = _usages.asStateFlow()
@@ -45,6 +45,7 @@ class ActivityStore(
     private var liveListenJob: Job? = null
     private var searchJob: Job? = null
     private var lastSearchQuery: String = ""
+    private var cloudSearch: CloudConversationSearchService? = null
 
     fun loadInitial(pageSize: Int = 25) {
         viewModelScope.launch {
@@ -110,12 +111,18 @@ class ActivityStore(
             try {
                 kotlinx.coroutines.delay(250)
                 if (lastSearchQuery != trimmed) return@launch
-                _cloudSearchHits.value = cloudSearch.search(trimmed)
+                _cloudSearchHits.value = cloudSearchService().search(trimmed)
             } catch (_: Exception) {
                 _cloudSearchHits.value = emptyList()
             }
         }
     }
+
+    suspend fun loadCloudConversationBody(row: CloudConversationSearchRow): String =
+        cloudSearchService().loadBody(row)
+
+    private fun cloudSearchService(): CloudConversationSearchService =
+        cloudSearch ?: cloudSearchFactory().also { cloudSearch = it }
 
     fun setSegment(segment: StreamsSegment) {
         _selectedSegment.value = segment

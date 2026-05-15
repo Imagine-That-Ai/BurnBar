@@ -8,7 +8,11 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.openburnbar.data.firebase.FunctionsRepository
+import java.net.URL
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 data class CloudConversationSearchRow(
     val id: String,
@@ -50,6 +54,24 @@ class CloudConversationSearchService(
                     )
                 }.getOrNull()
             }
+    }
+
+    suspend fun loadBody(row: CloudConversationSearchRow): String {
+        val uid = auth.currentUser?.uid ?: throw IllegalStateException("Sign in before opening cloud conversations.")
+        val keypair = AndroidCloudVaultDeviceKeypair.loadOrCreate()
+        registerDevice(uid, keypair)
+        val vaultKey = unlockVaultKey(uid, keypair)
+            ?: throw IllegalStateException("This device does not have the cloud vault key yet.")
+        val downloadURL = functions.encryptedSessionBlobDownloadURL(row.storagePath)
+        val bytes = withContext(Dispatchers.IO) {
+            URL(downloadURL).openStream().use { it.readBytes() }
+        }
+        val envelope = parseBlobEnvelope(bytes.toString(Charsets.UTF_8))
+        val plaintext = CloudVaultCrypto.openBlob(envelope, vaultKey)
+        require(CloudVaultCrypto.sha256Hex(plaintext) == row.bodyHash) {
+            "Encrypted conversation body hash mismatch"
+        }
+        return plaintext.toString(Charsets.UTF_8)
     }
 
     private suspend fun registerDevice(uid: String, keypair: AndroidCloudVaultDeviceKeypair) {
@@ -99,5 +121,16 @@ class CloudConversationSearchService(
             return runCatching { keypair.decryptWrappedVaultKey(wrapped) }.getOrNull() ?: continue
         }
         return null
+    }
+
+    private fun parseBlobEnvelope(json: String): CloudVaultBlobEnvelope {
+        val objectJson = JSONObject(json)
+        return CloudVaultBlobEnvelope(
+            schemaVersion = objectJson.optInt("schemaVersion", 1),
+            algorithm = objectJson.getString("algorithm"),
+            keyVersion = objectJson.optInt("keyVersion", 1),
+            plaintextSHA256 = objectJson.getString("plaintextSHA256"),
+            sealedBoxBase64 = objectJson.getString("sealedBoxBase64")
+        )
     }
 }

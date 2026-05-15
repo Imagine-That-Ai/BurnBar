@@ -328,9 +328,9 @@ final class UsageStore: Sendable {
                 guard let raw = row["provider"] as? String,
                       let provider = AgentProvider(rawValue: raw) else { continue }
                 result[provider] = ProviderRunCostTotals(
-                    sessionCount: row["sessionCount"] as? Int ?? 0,
-                    totalTokens: row["totalTokens"] as? Int ?? 0,
-                    totalCost: row["cost"] as? Double ?? 0
+                    sessionCount: Self.intValue(row["sessionCount"]),
+                    totalTokens: Self.intValue(row["totalTokens"]),
+                    totalCost: Self.doubleValue(row["cost"])
                 )
             }
             return result

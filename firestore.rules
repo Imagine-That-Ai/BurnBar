@@ -215,6 +215,48 @@ service cloud.firestore {
         && !("text" in request.resource.data);
     }
 
+    function validCloudHexDigest(value) {
+      return value is string
+        && value.matches("^[a-f0-9]{32,128}$");
+    }
+
+    function validCloudSealedText(value) {
+      return value is map
+        && value.keys().hasAll([
+          "algorithm",
+          "keyVersion",
+          "nonce",
+          "ciphertext",
+          "tag"
+        ])
+        && value.keys().hasOnly([
+          "algorithm",
+          "keyVersion",
+          "nonce",
+          "ciphertext",
+          "tag"
+        ])
+        && value.algorithm == "AES-256-GCM"
+        && value.keyVersion is int
+        && value.keyVersion >= 1
+        && value.keyVersion <= 100
+        && value.nonce is string
+        && value.nonce.size() <= 128
+        && value.nonce.matches("^[A-Za-z0-9+/=]+$")
+        && value.ciphertext is string
+        && value.ciphertext.size() <= 8192
+        && value.ciphertext.matches("^[A-Za-z0-9+/=]+$")
+        && value.tag is string
+        && value.tag.size() <= 128
+        && value.tag.matches("^[A-Za-z0-9+/=]+$");
+    }
+
+    function validCloudSessionStoragePath(userId, documentId, bodyHash, storagePath) {
+      return validCloudHexDigest(bodyHash)
+        && storagePath is string
+        && storagePath.matches("^users/" + userId + "/session_logs/" + documentId + "/bodies/" + bodyHash + "\\.json\\.aesgcm$");
+    }
+
     function chatThreadIncludesBackedUpContent() {
       return request.resource.data.keys().hasAny(["messages", "title", "preview"])
         || (("contentIncluded" in request.resource.data)
@@ -838,6 +880,7 @@ service cloud.firestore {
           "sealedTitle",
           "sealedBodyPreview",
           "byteCount",
+          "encryptedByteCount",
           "indexVersion",
           "tokenHashVersion",
           "updatedAt",
@@ -845,7 +888,14 @@ service cloud.firestore {
         ])
         && request.resource.data.uid == userId
         && request.resource.data.documentID == documentId
-        && request.resource.data.storagePath.matches("^users/" + userId + "/session_logs/.*")
+        && validCloudSessionStoragePath(userId, documentId, request.resource.data.bodyHash, request.resource.data.storagePath)
+        && validCloudSealedText(request.resource.data.sealedTitle)
+        && validCloudSealedText(request.resource.data.sealedBodyPreview)
+        && request.resource.data.byteCount is int
+        && request.resource.data.byteCount >= 0
+        && request.resource.data.encryptedByteCount is int
+        && request.resource.data.encryptedByteCount >= 1
+        && request.resource.data.encryptedByteCount < 10 * 1024 * 1024
         && !("title" in request.resource.data)
         && !("snippet" in request.resource.data)
         && !("body" in request.resource.data)
@@ -880,8 +930,11 @@ service cloud.firestore {
         ])
         && request.resource.data.uid == userId
         && request.resource.data.chunkID == chunkId
-        && request.resource.data.storagePath.matches("^users/" + userId + "/session_logs/.*")
+        && validCloudSessionStoragePath(userId, request.resource.data.documentID, request.resource.data.bodyHash, request.resource.data.storagePath)
+        && validCloudHexDigest(request.resource.data.contentHash)
+        && validCloudSealedText(request.resource.data.sealedSnippet)
         && request.resource.data.tokenHashes is list
+        && request.resource.data.tokenHashes.size() > 0
         && request.resource.data.tokenHashes.size() <= 250
         && !("title" in request.resource.data)
         && !("snippet" in request.resource.data)

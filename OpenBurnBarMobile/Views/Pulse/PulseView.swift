@@ -28,6 +28,7 @@ struct PulseView: View {
     var body: some View {
         ZStack {
             AuroraBackdrop()
+            PulseDepthBackdrop()
             ScrollView {
                 VStack(spacing: MobileTheme.Spacing.lg) {
                     if shouldShowCloudBanner {
@@ -58,9 +59,11 @@ struct PulseView: View {
                         total: metrics.total,
                         trailingTotal: metrics.trailingTotal,
                         dailyPoints: dashboard.dailyPoints,
+                        liveUsages: liveUsagesForPulse,
                         topProvider: topProvider,
                         displayMode: displayMode,
-                        scope: timelineScope
+                        scope: timelineScope,
+                        now: liveNow
                     )
                     .padding(.horizontal, AuroraDesign.Layout.cardInset)
                     .staggeredEntrance(delay: 0.05)

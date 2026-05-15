@@ -7,6 +7,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -27,6 +30,7 @@ import com.openburnbar.ui.components.*
 import com.openburnbar.ui.theme.*
 import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.util.Formatting
+import kotlinx.coroutines.launch
 
 @Composable
 fun StreamsView(
@@ -45,6 +49,11 @@ fun StreamsView(
     val listState = rememberLazyListState()
     var searchQuery by remember { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var selectedCloudConversation by remember { mutableStateOf<CloudConversationSearchRow?>(null) }
+    var cloudConversationBody by remember { mutableStateOf("") }
+    var cloudConversationError by remember { mutableStateOf<String?>(null) }
+    var isLoadingCloudConversation by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { activityStore.loadInitial() }
     LaunchedEffect(searchQuery) { activityStore.updateSearch(searchQuery) }
@@ -142,7 +151,25 @@ fun StreamsView(
                                         )
                                     }
                                     items(cloudSearchHits, key = { "cloud-${it.id}" }) { hit ->
-                                        CloudConversationSearchCard(hit = hit)
+                                        CloudConversationSearchCard(
+                                            hit = hit,
+                                            onClick = {
+                                                selectedCloudConversation = hit
+                                                cloudConversationBody = ""
+                                                cloudConversationError = null
+                                                isLoadingCloudConversation = true
+                                                scope.launch {
+                                                    try {
+                                                        cloudConversationBody = activityStore.loadCloudConversationBody(hit)
+                                                    } catch (e: Exception) {
+                                                        cloudConversationError = e.localizedMessage
+                                                            ?: "Could not decrypt this cloud conversation on this device."
+                                                    } finally {
+                                                        isLoadingCloudConversation = false
+                                                    }
+                                                }
+                                            }
+                                        )
                                     }
                                 }
 
@@ -195,6 +222,20 @@ fun StreamsView(
                         }
                     }
                 }
+            }
+
+            selectedCloudConversation?.let { hit ->
+                CloudConversationDetailDialog(
+                    hit = hit,
+                    body = cloudConversationBody,
+                    error = cloudConversationError,
+                    isLoading = isLoadingCloudConversation,
+                    onDismiss = {
+                        selectedCloudConversation = null
+                        cloudConversationBody = ""
+                        cloudConversationError = null
+                    }
+                )
             }
         }
     }
@@ -251,13 +292,26 @@ fun UsageCard(
 }
 
 @Composable
-fun CloudConversationSearchCard(hit: CloudConversationSearchRow) {
-    AuroraGlassCard {
+fun CloudConversationSearchCard(hit: CloudConversationSearchRow, onClick: () -> Unit) {
+    AuroraGlassCard(interactive = true, onClick = onClick) {
         Column(modifier = Modifier.padding(AuroraSpacing.md.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(16.dp), tint = AuroraColors.teal)
                 Spacer(modifier = Modifier.width(AuroraSpacing.xs.dp))
-                Text(hit.title.ifBlank { "Encrypted session" }, fontWeight = FontWeight.Bold, fontSize = AuroraTypography.caption.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    hit.title.ifBlank { "Encrypted session" },
+                    modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = AuroraTypography.caption.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Icon(
+                    Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             Spacer(modifier = Modifier.height(AuroraSpacing.xs.dp))
             Text(
@@ -278,6 +332,56 @@ fun CloudConversationSearchCard(hit: CloudConversationSearchRow) {
             }
         }
     }
+}
+
+@Composable
+private fun CloudConversationDetailDialog(
+    hit: CloudConversationSearchRow,
+    body: String,
+    error: String?,
+    isLoading: Boolean,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(hit.title.ifBlank { "Encrypted session" }, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "Decrypted on this device",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
+            when {
+                isLoading -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(AuroraSpacing.sm.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("Opening encrypted conversation...")
+                }
+                error != null -> Text(error, color = MaterialTheme.colorScheme.error)
+                else -> SelectionContainer {
+                    Text(
+                        body.ifBlank { hit.snippet },
+                        modifier = Modifier
+                            .heightIn(max = 520.dp)
+                            .verticalScroll(rememberScrollState()),
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }
 
 @Composable

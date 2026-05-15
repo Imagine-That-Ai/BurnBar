@@ -7,7 +7,9 @@ This document is the implementation map for the locked OpenBurnBar search progra
 Working constraints:
 
 - GRDB/SQLite stays the hot-path authority on device.
-- Firestore stays off the interactive retrieval path.
+- Firestore stays off the local interactive retrieval path. The exception is
+  the BurnBar Pro encrypted hosted-session search surface, which stores only
+  sealed metadata and HMAC token hashes for cross-device cloud search.
 - `SearchService` remains the single app-facing search entrypoint during the transition.
 - `DataStore` is split into focused stores over one shared `DatabaseQueue`; it is not replaced with a second persistence stack.
 
@@ -20,6 +22,34 @@ The search stack is live behind the seams below. Focused **store types** and dat
 - **Shared/team model:** `shared_artifact_sync_state`, `artifact_permissions`, and `audit_events` are persisted locally and synced via `CloudSyncService`.
 - **Queue-driven indexing:** projection/rebuild/re-embed run via `ProjectionPipelineService.runSweep()` from `UsageAggregator`.
 - **Single retrieval entrypoint:** `SearchService.retrieve(...)` and `SearchService.search(...)` serve consumers with lexical-first hybrid retrieval. There is **no** separate `AgentLens/Services/Retrieval/` module on disk; lexical/semantic/hybrid details are implemented **inside** `SearchService` + `DataStore` search access.
+
+## BurnBar Pro Hosted Search Addendum
+
+BurnBar Pro adds cross-device hosted search for paid, explicitly synced session
+logs without changing the local search authority:
+
+- macOS encrypts the full session body with `CloudVaultCrypto` and uploads the
+  ciphertext to Firebase Storage through a signed upload URL.
+- macOS writes `cloud_search_documents`, `cloud_search_chunks`, and
+  `cloud_search_index_state` through Firebase Functions. These rows contain
+  sealed titles/snippets/previews, body/content hashes, storage paths, and HMAC
+  token hashes. They do not contain plaintext bodies. The commit callable
+  verifies the encrypted Storage object exists, has the expected byte size and
+  content type, and matches the document/body-hash path before the index row is
+  accepted.
+- iOS/iPadOS and Android register device public keys, read a wrapped cloud
+  vault key from `cloud_vault_key_wrappers`, query by HMAC token hashes, and
+  decrypt returned titles/snippets/full bodies locally.
+- macOS publishes its public key without self-minting trusted Mac status. A Mac
+  that is not already trusted can still sync with its local vault key; vault
+  wrappers are written only for devices already trusted in the escrow list.
+- Firestore rules require active premium entitlement for cloud index/key-wrapper
+  writes and reject top-level plaintext `title`, `snippet`, `body`, and `text`
+  fields.
+
+This is a privacy-preserving hosted index, not a replacement for local hybrid
+retrieval. Local `SearchService` remains the hot path for local corpus search;
+cloud search is a separate premium surface for mirrored hosted session logs.
 
 ## Diligence source map (doc → code)
 
@@ -427,7 +457,9 @@ Preferred harness shape:
 - keep one active embedding version per query path
 - batch projection work in small local transactions; resumable background jobs only
 - avoid loading full source bodies until final result hydration
-- do not replicate derived search tables to Firestore
+- do not replicate plaintext local derived search tables to Firestore; the
+  only cloud index exception is the BurnBar Pro encrypted/HMAC session-log
+  index described above
 - project only changed artifacts/versions; no full rebuild on normal refresh
 - treat rebuild/re-embed as explicit jobs with progress and pause/resume state
 
@@ -503,7 +535,7 @@ Do not ship two user-visible search paths. During migration:
 
 ## Explicit non-goals for this program
 
-- Firestore-backed interactive search
+- plaintext Firestore-backed interactive search
 - arbitrary markdown crawling
 - view-owned ranking logic
 - embedding-only retrieval without lexical fallback

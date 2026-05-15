@@ -55,6 +55,15 @@ class FunctionsRepository {
         return hits.mapNotNull { it.toCloudConversationSearchHit() }
     }
 
+    suspend fun encryptedSessionBlobDownloadURL(storagePath: String): String {
+        val data = callMap(
+            "getEncryptedSessionBlobDownloadUrl",
+            mapOf("storagePath" to storagePath)
+        )
+        return data["downloadURL"] as? String
+            ?: throw IllegalStateException("Encrypted session download URL missing.")
+    }
+
     suspend fun verifyGooglePlayBurnBarProSubscription(
         purchaseToken: String,
         productID: String = "com.openburnbar.pro.monthly"

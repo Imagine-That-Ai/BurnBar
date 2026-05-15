@@ -73,11 +73,15 @@ extension DashboardView {
                 DashboardToolbar(
                     navigationModel: navigationModel,
                     settingsManager: settingsManager,
-                    totalCost: dataStore.usageWindowSummary(for: navigationModel.selectedTimeRange).totalCost,
-                    totalTokens: dataStore.usageWindowSummary(for: navigationModel.selectedTimeRange).totalTokens,
+                    chatController: chatController,
+                    navigationCoordinator: navigationCoordinator,
+                    totalCost: dashboardUsageWindow.totalCost,
+                    totalTokens: dashboardUsageWindow.totalTokens,
+                    deltaPercent: burnRailDeltaPercent,
+                    sparkline: burnRailSparkline,
+                    isLive: burnRailIsLive,
                     isScanning: isScanning,
                     canRunRecount: canRunRecount,
-                    backButtonHelpText: navigationModel.backButtonHelpText,
                     onBack: { navigationModel.goBack() },
                     onViewModeChange: { mode in
                         navigationModel.viewMode = mode

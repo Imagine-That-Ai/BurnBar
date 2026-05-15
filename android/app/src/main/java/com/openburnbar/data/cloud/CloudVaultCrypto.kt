@@ -33,6 +33,14 @@ data class CloudVaultSealedText(
     val tag: String = ""
 )
 
+data class CloudVaultBlobEnvelope(
+    val schemaVersion: Int = 1,
+    val algorithm: String = "AES-256-GCM",
+    val keyVersion: Int = 1,
+    val plaintextSHA256: String = "",
+    val sealedBoxBase64: String = ""
+)
+
 object CloudVaultCrypto {
     private const val SEARCH_SALT = "OpenBurnBar-CloudSearch-Salt-v1"
     private const val SEARCH_INFO = "OpenBurnBar-CloudSearch-TokenHash-v1"
@@ -64,6 +72,19 @@ object CloudVaultCrypto {
             if (hashes.size >= limit) break
         }
         return hashes
+    }
+
+    fun openBlob(envelope: CloudVaultBlobEnvelope, vaultKey: ByteArray): ByteArray {
+        require(envelope.algorithm == "AES-256-GCM") { "Unsupported envelope algorithm" }
+        val combined = Base64.decode(envelope.sealedBoxBase64, Base64.DEFAULT)
+        require(combined.size > 28) { "Invalid encrypted blob envelope" }
+        val plaintext = openAesGcm(
+            vaultKey,
+            combined.copyOfRange(0, 12),
+            combined.copyOfRange(12, combined.size)
+        )
+        require(sha256Hex(plaintext) == envelope.plaintextSHA256) { "Encrypted blob hash mismatch" }
+        return plaintext
     }
 
     fun normalizedTokens(text: String): List<String> =
@@ -104,8 +125,9 @@ object CloudVaultCrypto {
     }
 
     private fun hkdfSha256(input: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {
+        val effectiveSalt = if (salt.isEmpty()) ByteArray(32) else salt
         val extractMac = Mac.getInstance("HmacSHA256")
-        extractMac.init(SecretKeySpec(salt, "HmacSHA256"))
+        extractMac.init(SecretKeySpec(effectiveSalt, "HmacSHA256"))
         val prk = extractMac.doFinal(input)
         val output = ByteArray(length)
         var previous = ByteArray(0)

@@ -672,6 +672,8 @@
 		A6C173601A4A5672BA495E56 /* ChatHistoryRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B953E68ADA1E8E926710F0B4 /* ChatHistoryRow.swift */; };
 		A794AF8CFCB8B00E33498234 /* InsightsBuiltInTemplates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CE36142E44C147A291EEDBB /* InsightsBuiltInTemplates.swift */; };
 		A7A4AE1754301DA2F6DEECBB /* PulseHeroBurnCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC119374685D015C19BE99B0 /* PulseHeroBurnCard.swift */; };
+		FA11B6E2BC4D5E6F7A8B9C02 /* PulseLiveCostCurve.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA11B6E2BC4D5E6F7A8B9C01 /* PulseLiveCostCurve.swift */; };
+		FA11B6E2BC4D5E6F7A8B9C04 /* PulseDepthBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA11B6E2BC4D5E6F7A8B9C03 /* PulseDepthBackdrop.swift */; };
 		A7C10B40B1F60BFD28F9EF37 /* SwitcherProfileStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52DD165A9B954A65EB419B82 /* SwitcherProfileStoreTests.swift */; };
 		A7DC2C1C81C2CFD6292D45E5 /* CodexTokenAccountingRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA16F5F8D572534979CA8EDF /* CodexTokenAccountingRegressionTests.swift */; };
 		A8472166CA8E1BD054497697 /* SummaryLLMClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D21286B250435F313A0D023D /* SummaryLLMClient.swift */; };
@@ -2017,6 +2019,8 @@
 		EBB0C9D18B36867A7CB11124 /* TokenAccountingPrecedenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenAccountingPrecedenceTests.swift; sourceTree = "<group>"; };
 		EBFDD2C9221F15ED4FACAB70 /* DataStoreTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStoreTypes.swift; sourceTree = "<group>"; };
 		EC119374685D015C19BE99B0 /* PulseHeroBurnCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulseHeroBurnCard.swift; sourceTree = "<group>"; };
+		FA11B6E2BC4D5E6F7A8B9C01 /* PulseLiveCostCurve.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulseLiveCostCurve.swift; sourceTree = "<group>"; };
+		FA11B6E2BC4D5E6F7A8B9C03 /* PulseDepthBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulseDepthBackdrop.swift; sourceTree = "<group>"; };
 		EC31F1B44D169BD9C9511F41 /* RemoteSyncWatermarkStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSyncWatermarkStore.swift; sourceTree = "<group>"; };
 		EC66E12A1C3385DF88194A6F /* ChatEngineModelMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatEngineModelMenu.swift; sourceTree = "<group>"; };
 		ECF33D054BA0C287A376CB45 /* ProjectionChunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionChunker.swift; sourceTree = "<group>"; };
@@ -2496,7 +2500,9 @@
 			children = (
 				271D0D74D8E204855A96EA45 /* Atlas */,
 				467B706E9C782FE647104D3F /* HermesQuickAskCard.swift */,
+				FA11B6E2BC4D5E6F7A8B9C03 /* PulseDepthBackdrop.swift */,
 				EC119374685D015C19BE99B0 /* PulseHeroBurnCard.swift */,
+				FA11B6E2BC4D5E6F7A8B9C01 /* PulseLiveCostCurve.swift */,
 				10431E6CAA4835D8B967C6BF /* PulseView.swift */,
 				0DBF83BC7D80725C3F4AB510 /* PulseWindowMetrics.swift */,
 				D7F45CCAEDCFFF8D5DC0535A /* QuotaPulseCard.swift */,

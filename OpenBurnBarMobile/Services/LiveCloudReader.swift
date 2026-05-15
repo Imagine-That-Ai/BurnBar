@@ -1,11 +1,12 @@
 import FirebaseAuth
 import FirebaseCore
-import FirebaseFirestore
+@preconcurrency import FirebaseFirestore
 import Foundation
 import OpenBurnBarCore
 import Security
 import UIKit
 
+@MainActor
 enum MobileDeviceIdentity {
     static let deviceIDKey = "com.openburnbar.mobile.deviceId"
 
@@ -151,7 +152,7 @@ final class LiveCloudReader: CloudReader {
             let approvedAt = (d["approvedAt"] as? Timestamp)?.dateValue()
             let keyVersion = d["keyVersion"] as? Int
 
-            if var existing = deviceMap[did] {
+            if let existing = deviceMap[did] {
                 deviceMap[did] = DeviceRecord(
                     id: existing.id, displayName: existing.displayName,
                     platform: existing.platform, appVersion: existing.appVersion,
@@ -279,7 +280,7 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
     /// Called on sign-in so the device appears in lists immediately.
     func registerSelfIfNeeded() async {
         guard let uid else { return }
-        let name = await UIDevice.current.name
+        let name = UIDevice.current.name
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         let keypair = try? iOSDeviceKeypair()
 
@@ -342,7 +343,7 @@ final class LiveDeviceTrustGateway: DeviceTrustGateway {
         guard others.documents.isEmpty else {
             throw CloudGatewayError.classified(.other(message: "Another trusted device already exists. Approve from that device."))
         }
-        let name = await UIDevice.current.name
+        let name = UIDevice.current.name
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         try await ref.document(deviceId).setData([
             "deviceId": deviceId, "deviceName": name, "platform": "iOS",

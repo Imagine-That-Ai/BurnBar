@@ -76,6 +76,49 @@ extension DashboardView {
         let n = UserDefaults.standard.integer(forKey: "lastSeenSessionCountForChatBadge")
         return dataStore.totalUsageSessionCount > n && dataStore.totalUsageSessionCount > 0
     }
+
+    // MARK: - Burn rail telemetry
+
+    /// 24-bucket sparkline normalized 0...1 across the active time window.
+    var burnRailSparkline: [Double] {
+        BurnRailSparklineBuilder.buildSamples(
+            from: dashboardUsageWindow.usages,
+            range: dashboardDateRange,
+            bucketCount: 24
+        )
+    }
+
+    /// % change vs. the immediately preceding equal-length window. `nil` for
+    /// "All Time" (no preceding window) or when the previous window is empty.
+    var burnRailDeltaPercent: Double? {
+        guard let current = dashboardDateRange else { return nil }
+        let span = current.upperBound.timeIntervalSince(current.lowerBound)
+        guard span > 0 else { return nil }
+        let prev = current.lowerBound.addingTimeInterval(-span)...current.lowerBound
+        let prevSummary = dataStore.usageWindowSummary(in: prev)
+        let currentMetric: Double
+        let previousMetric: Double
+        switch settingsManager.usageDisplayMode {
+        case .currency:
+            currentMetric = dashboardUsageWindow.totalCost
+            previousMetric = prevSummary.totalCost
+        case .tokens:
+            currentMetric = Double(dashboardUsageWindow.totalTokens)
+            previousMetric = Double(prevSummary.totalTokens)
+        }
+        guard previousMetric > 0 else { return nil }
+        return ((currentMetric - previousMetric) / previousMetric) * 100.0
+    }
+
+    /// A "live" rail dot animates when new usage is arriving — defined as a
+    /// scan running OR usage activity within the last 5 minutes.
+    var burnRailIsLive: Bool {
+        if isScanning { return true }
+        let latest = dashboardUsageWindow.usages
+            .map(\.endTime)
+            .max() ?? .distantPast
+        return Date().timeIntervalSince(latest) < 300
+    }
 }
 
 enum DashboardUsageRanking {

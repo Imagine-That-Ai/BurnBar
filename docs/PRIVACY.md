@@ -1,6 +1,6 @@
 # OpenBurnBar Privacy Policy
 
-**Last updated: May 13, 2026**
+**Last updated: May 15, 2026**
 
 ## Summary
 
@@ -30,6 +30,7 @@ If you choose to sign in with Google or Apple and enable cloud sync, OpenBurnBar
 - Provider account metadata and quota snapshots (redacted labels, provider IDs, refresh status, limits, remaining quota)
 - In-app chat thread metadata (thread IDs, titles/previews when enabled, timestamps, counts)
 - Conversation/session metadata and sync watermarks
+- Encrypted BurnBar Pro session-log search metadata, including sealed titles/snippets and keyed token hashes
 - Shared artifact metadata and revisions for collaboration features
 - Sync state metadata
 
@@ -37,7 +38,9 @@ Cloud sync is **disabled by default**. You can disable it at any time in Setting
 
 ### Optional Chat and Session Backup (paid entitlement)
 
-OpenBurnBar can back up chat message content and session history only after you explicitly enable the relevant backup setting. Hosted cloud backup writes for chat message bodies, conversation metadata, session-log manifests, session-log chunks, and Hermes relay traffic require an active Apple-verified `hosted_quota_sync` entitlement.
+OpenBurnBar can back up chat message content and session history only after you explicitly enable the relevant backup setting. Hosted cloud backup writes for chat message bodies, conversation metadata, session-log manifests, session-log chunks, and Hermes relay traffic require an active `burnbar_pro` entitlement or a legacy active `hosted_quota_sync` entitlement.
+
+BurnBar Pro searchable hosted session logs are encrypted on device before upload. Full session bodies are sealed with AES-GCM and uploaded to Firebase Storage as ciphertext. Firestore stores encrypted titles/snippets/previews, non-secret hashes, and HMAC token hashes for matching. OpenBurnBar servers can keep the index fresh and run token-hash matching, but they do not receive the vault key needed to decrypt session bodies, titles, or snippets. Apps decrypt matching results locally after the device has an allowed wrapped vault key.
 
 Backed-up chat and session data may include prompts, assistant responses, file paths, project names, model names, code snippets, and other content present in your local agent logs or in-app chats. Do not enable these backup settings for repositories or conversations you do not want stored in Firebase.
 
@@ -48,6 +51,10 @@ If you enable iCloud session mirroring, OpenBurnBar copies selected local sessio
 ### Hosted Quota Refresh and Provider Credentials (opt-in, paid entitlement)
 
 If you add a hosted quota account, OpenBurnBar may send provider authentication material that you explicitly provide to OpenBurnBar-operated Firebase/Google Cloud infrastructure. The Firestore document stores only non-secret metadata and a redacted label. Secret values are stored in Google Cloud Secret Manager and are used by Cloud Functions or the hosted quota runner to refresh quota snapshots. Hosted quota refresh requires a valid subscription entitlement and may be rate limited.
+
+### Hosted MiniMax LLM Answers (opt-in, paid entitlement)
+
+If you use the BurnBar-hosted Intelligence Brief fallback, OpenBurnBar sends a bounded briefing prompt and privacy-filtered usage digest through Cloud Functions to the hosted LLM provider path. This requires BurnBar Pro. Users who connect their own model or stay in local/privacy mode do not need to use the hosted fallback.
 
 ### Optional Diagnostics (opt-in only)
 
@@ -61,7 +68,7 @@ If you enable crash reporting or diagnostics, anonymized crash reports may be se
 - The content of your source code or agent conversations unless you explicitly enable chat/session backup or iCloud mirroring
 - Personal identifying information beyond what your Apple or Google account provides for sign-in
 - Any data from other applications
-- Payment card numbers; App Store subscriptions are handled by Apple
+- Payment card numbers; subscriptions are handled by Apple, Google Play, or Stripe
 
 ---
 
@@ -74,6 +81,9 @@ When cloud sync is enabled:
 | Firebase / Google Cloud | Authentication, optional Firestore sync, Cloud Functions, Secret Manager, hosted quota infrastructure | [firebase.google.com/support/privacy](https://firebase.google.com/support/privacy) |
 | Apple iCloud | Optional session-log mirroring in your personal iCloud Drive container | [apple.com/legal/privacy](https://www.apple.com/legal/privacy/) |
 | Apple App Store / StoreKit | Subscription purchase, entitlement verification, and billing status | [apple.com/legal/privacy](https://www.apple.com/legal/privacy/) |
+| Google Play Billing | Android subscription purchase and entitlement verification | [policies.google.com/privacy](https://policies.google.com/privacy) |
+| Stripe | Web subscription checkout, customer portal, entitlement webhook processing | [stripe.com/privacy](https://stripe.com/privacy) |
+| OpenRouter / MiniMax | Optional BurnBar Pro hosted LLM fallback for Intelligence Brief answers | [openrouter.ai/privacy](https://openrouter.ai/privacy) / [minimax.io/privacy](https://www.minimax.io/privacy) |
 | Sentry | Optional crash reporting | [sentry.io/privacy](https://sentry.io/privacy) |
 
 ---

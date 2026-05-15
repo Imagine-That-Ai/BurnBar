@@ -889,12 +889,14 @@ test("burnbar pro allows encrypted cloud search rows and rejects plaintext searc
   const chunkPath = "users/pro-user/cloud_search_chunks/device_session_0";
   const indexStatePath = "users/pro-user/cloud_search_index_state/device";
   const wrapperPath = "users/pro-user/cloud_vault_key_wrappers/wrapper";
-  const storagePath = "users/pro-user/session_logs/device_session/bodies/bodyhash.json.aesgcm";
+  const bodyHash = "a".repeat(64);
+  const contentHash = "b".repeat(64);
+  const storagePath = `users/pro-user/session_logs/device_session/bodies/${bodyHash}.json.aesgcm`;
   const sealedText = {
-    v: 1,
     algorithm: "AES-256-GCM",
     nonce: "base64nonce",
     ciphertext: "base64ciphertext",
+    tag: "base64tag",
     keyVersion: 1,
   };
 
@@ -905,11 +907,12 @@ test("burnbar pro allows encrypted cloud search rows and rejects plaintext searc
       deviceId: "device",
       sourceKind: "session_log",
       sourceID: "session",
-      bodyHash: "bodyhash",
+      bodyHash,
       storagePath,
       sealedTitle: sealedText,
       sealedBodyPreview: sealedText,
       byteCount: 42,
+      encryptedByteCount: 84,
       indexVersion: 1,
       tokenHashVersion: 1,
       updatedAt: serverTimestamp(),
@@ -928,11 +931,37 @@ test("burnbar pro allows encrypted cloud search rows and rejects plaintext searc
       sourceID: "session",
       provider: "codex",
       projectName: "BurnBar",
-      bodyHash: "bodyhash",
+      bodyHash,
       storagePath,
       sealedTitle: sealedText,
       sealedBodyPreview: sealedText,
       byteCount: 42,
+      encryptedByteCount: 84,
+      indexVersion: 1,
+      tokenHashVersion: 1,
+      updatedAt: serverTimestamp(),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertFails(
+    setDoc(doc(db, `${documentPath}_malformed_envelope`), {
+      uid: "pro-user",
+      documentID: "device_session_malformed_envelope",
+      deviceId: "device",
+      sourceKind: "session_log",
+      sourceID: "session",
+      bodyHash,
+      storagePath: `users/pro-user/session_logs/device_session_malformed_envelope/bodies/${bodyHash}.json.aesgcm`,
+      sealedTitle: {
+        algorithm: "AES-256-GCM",
+        nonce: "base64nonce",
+        ciphertext: "base64ciphertext",
+        keyVersion: 1,
+      },
+      sealedBodyPreview: sealedText,
+      byteCount: 42,
+      encryptedByteCount: 84,
       indexVersion: 1,
       tokenHashVersion: 1,
       updatedAt: serverTimestamp(),
@@ -947,9 +976,14 @@ test("burnbar pro allows encrypted cloud search rows and rejects plaintext searc
       deviceId: "device",
       sourceKind: "session_log",
       sourceID: "session",
-      bodyHash: "bodyhash",
-      storagePath,
+      bodyHash,
+      storagePath: `users/pro-user/session_logs/device_session_plaintext/bodies/${bodyHash}.json.aesgcm`,
       sealedTitle: sealedText,
+      sealedBodyPreview: sealedText,
+      byteCount: 42,
+      encryptedByteCount: 84,
+      indexVersion: 1,
+      tokenHashVersion: 1,
       title: "plaintext title",
       updatedAt: serverTimestamp(),
       schemaVersion: 1,
@@ -969,11 +1003,11 @@ test("burnbar pro allows encrypted cloud search rows and rejects plaintext searc
       ordinal: 0,
       startOffset: 0,
       endOffset: 42,
-      contentHash: "contenthash",
-      bodyHash: "bodyhash",
+      contentHash,
+      bodyHash,
       storagePath,
       sealedSnippet: sealedText,
-      tokenHashes: ["hash-a", "hash-b"],
+      tokenHashes: ["c".repeat(32), "d".repeat(32)],
       indexVersion: 1,
       tokenHashVersion: 1,
       updatedAt: serverTimestamp(),
@@ -982,16 +1016,23 @@ test("burnbar pro allows encrypted cloud search rows and rejects plaintext searc
   );
 
   await assertFails(
-    setDoc(doc(db, `${chunkPath}_plaintext`), {
+    setDoc(doc(db, "users/pro-user/cloud_search_chunks/device_session_1"), {
       uid: "pro-user",
       chunkID: "device_session_1",
       documentID: "device_session",
       deviceId: "device",
       sourceKind: "session_log",
       sourceID: "session",
+      ordinal: 1,
+      startOffset: 0,
+      endOffset: 42,
+      contentHash,
+      bodyHash,
       storagePath,
       sealedSnippet: sealedText,
-      tokenHashes: ["hash-a"],
+      tokenHashes: ["c".repeat(32)],
+      indexVersion: 1,
+      tokenHashVersion: 1,
       snippet: "plaintext preview",
       updatedAt: serverTimestamp(),
       schemaVersion: 1,

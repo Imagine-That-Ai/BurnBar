@@ -1,10 +1,13 @@
-# Claude Code, Codex, and OpenCode Remote Quota Sync
+# Hosted Quota Sync and BurnBar Pro Cloud Services
 
-This is the reference guide for the iOS/iPadOS quota-provider work.
+This is the reference guide for the iOS/iPadOS quota-provider work and the
+BurnBar Pro cloud-services bundle.
 
-The short version: users can add Claude Code, Codex, and OpenCode quota
-providers from the mobile apps and refresh quota on demand without relying on
-the macOS app to do the refresh.
+The short version: Hosted Quota is not being replaced. BurnBar Pro adds more
+premium services on top of it: Hosted Quota, hosted MiniMax-backed Intelligence
+Brief answers, and encrypted searchable hosted session logs. Existing Hosted
+Quota users remain compatible through the legacy entitlement; new bundled
+premium access uses `burnbar_pro`.
 
 There is one important compliance distinction:
 
@@ -40,6 +43,27 @@ Now mobile has remote paths:
 Both paths are explicit and on demand. There is no scheduled polling, random
 background refresh, hidden scraping, or cookie capture.
 
+## BurnBar Pro Additions
+
+BurnBar Pro supplements Hosted Quota with two additional hosted services:
+
+- **Hosted MiniMax-backed Intelligence Brief answers.** The user can keep using
+  their own model for free. If they use the BurnBar-hosted fallback, the
+  callable requires active premium entitlement.
+- **Encrypted searchable hosted session logs.** The Mac app encrypts session
+  bodies, titles, previews, and snippets before upload. Firebase Storage stores
+  encrypted bodies, while Firestore stores sealed metadata plus HMAC token
+  hashes. The server can keep the index fresh and cheaply query by token hash,
+  but matched content is decrypted only on a trusted device.
+- **Commit-time blob verification.** Cloud Functions only commits hosted search
+  rows after the encrypted Storage object exists, matches the expected
+  `application/octet-stream` content type, and has the encrypted byte count and
+  path/body-hash shape issued in the upload ticket.
+
+The cloud search index is intentionally not a plaintext Firestore transcript
+database. It is a premium, encrypted mirror for signed-in users who want their
+Mac, iPhone, iPad, and Android app to search the same hosted session corpus.
+
 ## In Practice
 
 ### Codex Hosted Mode
@@ -47,7 +71,7 @@ background refresh, hidden scraping, or cookie capture.
 1. User opens the iOS/iPadOS app.
 2. User adds Codex as a provider.
 3. User chooses `Hosted`.
-4. User subscribes to the hosted quota sync product.
+4. User subscribes to BurnBar Pro or the legacy hosted quota sync product.
 5. User pastes the contents of `~/.codex/auth.json`, or a base64 encoded copy.
 6. Mobile calls Firebase Functions to store the credential securely.
 7. When the user taps refresh, Firebase Functions calls the hosted quota runner.
@@ -213,16 +237,34 @@ iOS/iPadOS/macOS listeners update
 
 ## Billing
 
-Hosted product id:
+Current product ids:
 
 ```text
-com.openburnbar.hostedQuotaSync.cloud.monthly
+BurnBar Pro: com.openburnbar.pro.monthly
+Legacy Hosted Quota Sync: com.openburnbar.hostedQuotaSync.cloud.monthly
 ```
 
 Current intended price:
 
 ```text
 $4.99/month
+```
+
+Both entitlement documents are accepted by hosted quota checks during the
+compatibility window:
+
+```text
+users/{uid}/entitlements/burnbar_pro
+users/{uid}/entitlements/hosted_quota_sync
+```
+
+`burnbar_pro` additionally advertises the bundled features:
+
+```text
+hostedQuota
+hostedLLM
+encryptedSessionLogBackup
+cloudConversationSearch
 ```
 
 ### Server-side Apple JWS verification (v2)
@@ -322,6 +364,11 @@ legacy `functions.config()`. The deployed callable environment must include:
 KMS_KEY_NAME
 HOSTED_QUOTA_RUNNER_URL
 HOSTED_QUOTA_PRODUCT_ID=com.openburnbar.hostedQuotaSync.cloud.monthly
+BURNBAR_PRO_PRODUCT_ID=com.openburnbar.pro.monthly
+STRIPE_BURNBAR_PRO_PRICE_ID=price_...
+GOOGLE_PLAY_PACKAGE_NAME=com.openburnbar.app
+GOOGLE_PLAY_SUBSCRIPTION_PRODUCT_ID=com.openburnbar.pro.monthly
+ENCRYPTED_SESSION_BLOB_MAX_BYTES=10485760
 HOSTED_QUOTA_DAILY_REFRESH_LIMIT=30
 HOSTED_QUOTA_MONTHLY_REFRESH_LIMIT=300
 ENFORCE_APP_CHECK=true
@@ -657,10 +704,13 @@ flags the proof user actually exercised: `--require-backup` for paid chat /
 conversation / session-log backup, and `--require-hosted-quota` for hosted
 Codex quota refresh.
 
-The command fails unless the production
-`users/{uid}/entitlements/hosted_quota_sync` document is active, unexpired,
-for `com.openburnbar.hostedQuotaSync.cloud.monthly`, backed by a matching
-`entitlement_events` audit row, and has any requested backup/quota evidence.
+The command fails unless the production user has an active, unexpired premium
+entitlement. For new purchases that is
+`users/{uid}/entitlements/burnbar_pro` with product
+`com.openburnbar.pro.monthly`; legacy hosted quota verification still accepts
+`users/{uid}/entitlements/hosted_quota_sync` with product
+`com.openburnbar.hostedQuotaSync.cloud.monthly`. The entitlement must be backed
+by a matching audit row and have any requested backup/quota evidence.
 - Mac app refresh remains useful, but it is no longer required for Claude Code
   and Codex mobile quota updates.
 - Refresh is on demand only.
