@@ -262,6 +262,23 @@ is_known_hang() {
     return 1
 }
 
+is_xcode_false_negative_pass() {
+    local log_path="$1"
+
+    # Xcode can occasionally return 65 and print "** TEST FAILED **" after the
+    # selected XCTest suite has already reported a clean run. Only accept that
+    # as success when the XCTest summary is unambiguously green and no failing
+    # test marker appears anywhere in the log.
+    grep -Fq "Test Suite 'Selected tests' passed" "$log_path" || return 1
+    grep -Eq "Executed [1-9][0-9]* tests, with ([0-9]+ tests skipped and )?0 failures" "$log_path" || return 1
+
+    if grep -Eq "Test Case '-\\[[^]]+\\]' failed|Failing tests:|with [1-9][0-9]* failures" "$log_path"; then
+        return 1
+    fi
+
+    return 0
+}
+
 # ---------------------------------------------------------------------------
 # Backoff schedule
 # ---------------------------------------------------------------------------
@@ -321,6 +338,15 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
 
     if [ "$last_test_exit_code" -eq 0 ]; then
         emit_attempt_event "$test_attempt" "$last_test_exit_code" "passed" "$attempt_duration" "$attempt_xcresult"
+        final_exit_code=0
+        final_outcome="passed"
+        final_xcresult="$attempt_xcresult"
+        break
+    fi
+
+    if is_xcode_false_negative_pass "$xcodebuild_log"; then
+        emit_attempt_event "$test_attempt" "$last_test_exit_code" "xcode_false_negative_passed" "$attempt_duration" "$attempt_xcresult"
+        echo ">>> xcodebuild exited $last_test_exit_code after XCTest reported Selected tests passed with 0 failures; accepting attempt as passed."
         final_exit_code=0
         final_outcome="passed"
         final_xcresult="$attempt_xcresult"
