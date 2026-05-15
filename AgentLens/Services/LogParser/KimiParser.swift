@@ -170,6 +170,13 @@ final class KimiParser: LogParser, Sendable {
             cacheReadTokens: cacheReadTokens
         )
 
+        // Fall back to the log file's mtime (stable across re-parses) when the
+        // session's JSONL lines don't carry a `created_at` / `timestamp`. Using
+        // `Date()` here would invent fresh "now" timestamps on every parse,
+        // permanently floating these sessions to the top of Streams.
+        let resolvedStart = firstTimestamp ?? mtime ?? Date()
+        let resolvedEnd = lastTimestamp ?? mtime ?? resolvedStart
+
         let usage = TokenUsage(
             provider: .kimi,
             sessionId: sessionId,
@@ -180,8 +187,8 @@ final class KimiParser: LogParser, Sendable {
             cacheCreationTokens: cacheCreationTokens,
             cacheReadTokens: cacheReadTokens,
             costUSD: cost,
-            startTime: firstTimestamp ?? Date(),
-            endTime: lastTimestamp ?? Date(),
+            startTime: resolvedStart,
+            endTime: resolvedEnd,
             provenanceMethod: wireTokens != nil ? .providerLog : .heuristicEstimate,
             provenanceConfidence: wireTokens != nil ? .exact : .lowConfidenceEstimate,
             estimatorVersion: wireTokens != nil ? "" : TokenExtractionUtility.currentEstimatorVersion
@@ -192,8 +199,8 @@ final class KimiParser: LogParser, Sendable {
             provider: .kimi,
             sessionId: sessionId,
             projectName: projectName,
-            startTime: firstTimestamp ?? usage.startTime,
-            endTime: lastTimestamp ?? usage.endTime,
+            startTime: firstTimestamp ?? mtime ?? usage.startTime,
+            endTime: lastTimestamp ?? mtime ?? usage.endTime,
             messageCount: messageCount,
             userWordCount: userWords,
             assistantWordCount: assistantWords,
