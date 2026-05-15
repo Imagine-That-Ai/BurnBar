@@ -32,7 +32,7 @@ still missing.
 | Installer output for Codex, Claude Code, Droid/Factory, Kimi, Forge, generic | `tools/openburnbar-mcp-remote/src/installers.ts`, `src/installers.test.ts`, `scripts/test-hosted-mcp-compatibility.sh` | Hermetic verification only |
 | Doctor command | `tools/openburnbar-mcp-remote/src/doctor.ts` | Source present; live doctor proof missing |
 | App UX for setup/status/revoke | `OpenBurnBarMobile/Views/Store/CloudStoreView.swift` shows setup/status copy, lists `remote_mcp_clients`, displays scopes/last-used/decrypt mode/status, and calls `revokeRemoteMcpClient`; targeted iOS build passed | iOS/iPadOS member UI implemented; macOS/Android parity not verified |
-| Production deploy | `scripts/deploy-hosted-mcp.sh` deployed `openburnbar-hosted-mcp-00002-d4f` | Cloud Run deployed at generated URL |
+| Production deploy | `scripts/deploy-hosted-mcp.sh` deployed `openburnbar-hosted-mcp-00004-xf4` from commit `04f30b8f0` | Cloud Run deployed at generated URL |
 | Domain `mcp.openburnbar.com` or fallback `mcp.burnbar.ai` | `curl https://mcp.openburnbar.com/readyz`; `gcloud beta run domain-mappings create ...`; `gcloud domains list-user-verified` | Fails DNS resolution; both domain mappings blocked because neither `openburnbar.com` nor `burnbar.ai` is verified in this Google account |
 | Live paid/unpaid/revoked/cross-tenant proof | `functions/scripts/prove-hosted-mcp-live.mjs`; controlled temporary Firestore proof users against generated Cloud Run URL | Controlled paid/unpaid/revoked/cross-tenant proof passed; real subscriber proof still missing |
 | Alerts/logging/rollback | `docs/REMOTE_MCP_RUNBOOK.md`, structured logging in service | Docs/source present; live alerts not verified |
@@ -63,6 +63,8 @@ gcloud secrets describe REMOTE_MCP_TOKEN_HMAC_SECRET --project burnbar
 # Secret exists; version 1 was created during deploy.
 
 gcloud run services describe openburnbar-hosted-mcp --region us-central1 --project burnbar
+# latestReadyRevisionName: openburnbar-hosted-mcp-00004-xf4
+# traffic: 100
 # Service URL: https://openburnbar-hosted-mcp-cjrjb5ckqq-uc.a.run.app
 
 curl https://openburnbar-hosted-mcp-cjrjb5ckqq-uc.a.run.app/readyz
@@ -88,7 +90,7 @@ node functions/scripts/prove-hosted-mcp-live.mjs \
 
 # Controlled live MCP resource proof with temporary Firestore users against
 # https://openburnbar-hosted-mcp-cjrjb5ckqq-uc.a.run.app/mcp.
-# Temporary proof id: remote-mcp-resource-proof-1778821941
+# Temporary proof id after committed-source redeploy: remote-mcp-resource-proof-1778822166
 # paid tenant B resources/list: HTTP 200
 # cross-tenant resources/read with tenant A token for tenant B resource:
 #   HTTP 404, code resource_not_found
