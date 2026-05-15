@@ -3,6 +3,7 @@ import test from "node:test";
 import { MCP_RESOURCE } from "./config.js";
 import { mintDevelopmentToken, verifyBearerToken } from "./auth.js";
 import { signCursor, verifyCursor } from "./cursors.js";
+import { requireActiveRemoteMcpClient } from "./entitlements.js";
 import { redact } from "./redaction.js";
 import { listMcpTools } from "./toolRegistry.js";
 
@@ -31,6 +32,18 @@ test("verifies HMAC bearer token claims and rejects wrong audience", () => {
     jti: "jti-2"
   }, "unit-secret");
   assert.throws(() => verifyBearerToken(`Bearer ${bad}`), /audience/);
+
+  const unsafeClient = mintDevelopmentToken({
+    sub: "user-1",
+    aud: MCP_RESOURCE,
+    client_id: "../client",
+    scopes: ["search:read"],
+    entitlement_family: "burnbar_pro",
+    grant_mode: "local_decrypt_shim",
+    exp: Math.floor(Date.now() / 1000) + 60,
+    jti: "jti-3"
+  }, "unit-secret");
+  assert.throws(() => verifyBearerToken(`Bearer ${unsafeClient}`), /client ID/);
 });
 
 test("cursor signing rejects tampering and scope mismatch", () => {
@@ -55,4 +68,37 @@ test("registry exposes required tool surface and redaction strips raw content", 
     query: "[REDACTED]",
     nested: { body: "[REDACTED]" }
   });
+});
+
+test("remote MCP client revocation fails closed", async () => {
+  const writes: unknown[] = [];
+  const db = {
+    doc(path: string) {
+      return {
+        async get() {
+          if (path.endsWith("/active-client")) {
+            return { exists: true, data: () => ({ displayName: "Active" }) };
+          }
+          if (path.endsWith("/revoked-client")) {
+            return { exists: true, data: () => ({ revokedAt: new Date().toISOString() }) };
+          }
+          return { exists: false, data: () => undefined };
+        },
+        async set(value: unknown) {
+          writes.push(value);
+        }
+      };
+    }
+  };
+
+  await requireActiveRemoteMcpClient("user-1", "active-client", db as never);
+  assert.equal(writes.length, 1);
+  await assert.rejects(
+    () => requireActiveRemoteMcpClient("user-1", "revoked-client", db as never),
+    /revoked/
+  );
+  await assert.rejects(
+    () => requireActiveRemoteMcpClient("user-1", "missing-client", db as never),
+    /not found/
+  );
 });

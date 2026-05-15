@@ -1,7 +1,7 @@
 import type { Firestore } from "firebase-admin/firestore";
 import type { AccessTokenClaims } from "./auth.js";
 import { requireScope } from "./auth.js";
-import { requireActiveBurnBarPro } from "./entitlements.js";
+import { requireActiveBurnBarPro, requireActiveRemoteMcpClient } from "./entitlements.js";
 import { enforceRateLimit } from "./rateLimits.js";
 import { listFacets, listIndexStatus, searchConversations } from "./search.js";
 import { listResources, readConversationBody, recentUsage } from "./resources.js";
@@ -124,6 +124,7 @@ export async function callTool(ctx: ToolContext, name: string, args: Record<stri
     return { content: [{ type: "text", text: `Unknown OpenBurnBar MCP tool: ${name}` }], isError: true };
   }
   for (const scope of tool.requiredScopes) requireScope(ctx.claims, scope);
+  await requireActiveRemoteMcpClient(ctx.claims.sub, ctx.claims.client_id, ctx.db);
   await requireActiveBurnBarPro(ctx.claims.sub, ctx.db);
   await enforceRateLimit(ctx.db, ctx.claims.sub, ctx.claims.client_id, tool.rateLimitBucket);
   const result = await tool.handler(ctx, args);

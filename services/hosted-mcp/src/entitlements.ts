@@ -62,3 +62,20 @@ export async function requireActiveBurnBarPro(uid: string, db?: Firestore): Prom
   }
   return state;
 }
+
+export async function requireActiveRemoteMcpClient(
+  uid: string,
+  clientId: string,
+  db: Firestore = firestore()
+): Promise<void> {
+  const ref = db.doc(`users/${uid}/remote_mcp_clients/${clientId}`);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpError(403, "OpenBurnBar MCP client grant was not found.", "client_not_found");
+  }
+  const data = snap.data() ?? {};
+  if (dateFromRaw(data.revokedAt)) {
+    throw new HttpError(403, "OpenBurnBar MCP client has been revoked.", "client_revoked");
+  }
+  await ref.set({ lastUsedAt: Timestamp.now(), updatedAt: Timestamp.now() }, { merge: true });
+}

@@ -15,6 +15,8 @@ export interface AccessTokenClaims {
   jti: string;
 }
 
+const SAFE_CLIENT_ID = /^[A-Za-z0-9_.:-]{1,160}$/u;
+
 function base64UrlDecode(value: string): Buffer {
   return Buffer.from(value.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
@@ -62,6 +64,9 @@ export function verifyBearerToken(header: string | undefined): AccessTokenClaims
   }
   if (!claims.sub || !claims.client_id || !claims.jti || claims.aud !== MCP_RESOURCE) {
     throw new HttpError(401, "OpenBurnBar MCP token audience or subject is invalid.", "invalid_claims");
+  }
+  if (!SAFE_CLIENT_ID.test(claims.client_id)) {
+    throw new HttpError(401, "OpenBurnBar MCP token client ID is invalid.", "invalid_client_id");
   }
   if (!Array.isArray(claims.scopes)) {
     throw new HttpError(401, "OpenBurnBar MCP token has invalid scopes.", "invalid_scopes");
