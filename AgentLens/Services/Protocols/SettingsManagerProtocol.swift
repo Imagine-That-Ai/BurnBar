@@ -158,6 +158,11 @@ protocol SettingsManagerProtocol: AnyObject {
     /// Cloud Run WebSocket relay endpoint for low-latency Hermes remote relay.
     var hermesRealtimeRelayURL: String { get set }
 
+    /// Phase-4 feature flag for the iroh peer-to-peer transport. When true the
+    /// Mac advertises a signed `iroh_pairing` record and iOS dials the iroh
+    /// `NodeId` first, falling back to the WSS relay on any failure.
+    var hermesIrohTransportEnabled: Bool { get set }
+
     /// Whether OpenBurnBar should launch Hermes Dashboard and its local gateway on app startup.
     var launchHermesWithOpenBurnBar: Bool { get set }
 

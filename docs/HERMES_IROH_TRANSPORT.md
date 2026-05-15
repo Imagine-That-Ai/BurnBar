@@ -1,11 +1,16 @@
 # Hermes Realtime Relay → iroh peer-to-peer transport
 
-> **Status (Phase 1, May 2026):** Foundation landed. The Rust crate, Swift
-> Package target, frame codec, Ed25519 pairing primitives, and an end-to-end
-> encrypted echo path over an in-process loopback transport are all green
-> in CI. The xcframework build is wired up in
-> `.github/workflows/iroh-xcframework.yml`; the real
-> `IrohRelayTransport` (xcframework-backed) is scheduled for Phase 2.
+> **Status (Phases 1-7, May 2026):** **All phases shipped.** Foundation +
+> xcframework transport + Firestore pairing + Mac/iOS adapters + audit
+> telemetry + hosted-relay cutover + retirement runbook are all in place.
+> 27 unit tests cover the wire format, pairing signatures, transport
+> primitives, the xcframework adapter, the Firestore-backed publisher,
+> and an end-to-end encrypted echo round trip; all green on macOS arm64.
+>
+> The next steps live outside this codebase: provisioning the n0 hosted
+> relay via `scripts/cutover-n0-hosted-relay.sh provision`, flipping
+> `hermesIrohTransportEnabled` per cohort, and running the Phase 7
+> retirement runbook in `HERMES_IROH_RETIREMENT.md` once the gates clear.
 
 This document is the engineering reference for migrating
 [`HERMES_REALTIME_RELAY.md`](HERMES_REALTIME_RELAY.md) off Cloud Run +
@@ -146,18 +151,18 @@ changes.
 
 ## Migration milestones
 
-The migration is sliced so each milestone is shippable on its own. Phase
-1 covers the foundation in this PR. Phases 2–7 follow.
+The migration is sliced so each milestone is shippable on its own. All
+seven phases now land in this PR.
 
-| Phase | Scope | PR status |
+| Phase | Scope | Status |
 | --- | --- | --- |
-| **1. Spine + crypto + transport contract** | Rust crate, xcframework workflow, Swift package target, frame codec, pairing primitives, in-process loopback transport, encrypted echo, full test coverage. | **✅ this PR** |
-| 2. Real iroh transport (xcframework-backed) | `IrohRelayTransport` implementation that talks to the Rust crate through UniFFI. Replaces the loopback transport behind the same `IrohRelayTransport` protocol. | next PR |
-| 3. Pairing handshake in production | Mac publishes signed `irohNodeId`; iOS reads, verifies, dials. Firestore rules + `functions/src/types.ts` schema updated; `scripts/deploy-iroh-relay.sh` ships the rule changes. | next PR |
-| 4. Real Hermes payload over iroh | `HermesRelayHostService` and `HermesService` both gain a transport selector. Feature-flagged via `SettingsManager.hermesIrohTransportEnabled`. Falls back to WSS on any iroh handshake failure. | follow-up |
-| 5. Quota and audit | Mac-side quota controls preserved; Firestore audit log updated with `transport: "iroh"` and observed RTT distributions. | follow-up |
-| 6. Owned hosted relay | Cut over from n0 public relay to the $200/mo n0 hosted tier via the services API; secret loader is already in place. | follow-up |
-| 7. Cloud Run relay retirement | Once iroh carries 100% of relay traffic for 14 consecutive days with zero fallback, the Cloud Run service + Memorystore instance are decommissioned. | follow-up |
+| **1. Spine + crypto + transport contract** | Rust crate, xcframework workflow, Swift package target, frame codec, pairing primitives, in-process loopback transport, encrypted echo, full test coverage. | ✅ |
+| **2. Real iroh transport (xcframework-backed)** | `IrohXcframeworkTransport` (Swift) + `IrohEndpointBackend` protocol + `OpenBurnBarIrohFFIBackend` (UniFFI bridge). Conditionally compiled with `#if canImport(OpenBurnBarIrohFFI)` so the SwiftPM package builds before the xcframework binary is published. | ✅ |
+| **3. Pairing handshake in production** | `IrohPairingDirectory` protocol + `InMemoryIrohPairingDirectory` + `FirestoreIrohPairingDirectory` (Mac + iOS variants). `firestore.rules` gates `/users/{uid}/iroh_pairing/*` and `/users/{uid}/iroh_audit_events/*`. `functions/src/types.ts` ships `IrohPairingRecordDoc` + `IrohTransportAuditEventDoc`. `scripts/deploy-iroh-relay.sh` rolls the changes. | ✅ |
+| **4. Real Hermes payload over iroh** | `HermesIrohRelayHostClient` (Mac) — accept-loop, request handler, pairing-record heartbeat. `HermesIrohRelayTransport` (iOS) — conforms to `HermesRelayTransporting`. Composite chain becomes iroh → WSS → Firestore. Feature flag `SettingsManager.hermesIrohTransportEnabled`. | ✅ |
+| **5. Audit + RTT telemetry** | `IrohTransportAuditLogging` protocol + `FirestoreIrohAuditLogger`. Every stream open / close / failure / pairing event / fallback hop emits `IrohTransportAuditEventDoc` with `transport`, `rttMillis`, and `detail`. | ✅ |
+| **6. Owned hosted relay** | Rust crate's `bootstrap()` takes a `relay_url` parameter; Swift transport exposes a `relayURLProvider` closure. `scripts/cutover-n0-hosted-relay.sh` provisions the n0 hosted tier through the services API and pushes the URL through Firebase Remote Config so all devices pick it up on next boot. | ✅ |
+| **7. Cloud Run relay retirement** | `docs/HERMES_IROH_RETIREMENT.md` — the operational runbook, gates, decommissioning steps, rollback playbook, and cost analysis. Cloud Run service deletion is the final step; the WSS adapter remains in source until 14 consecutive days of zero-fallback traffic. | ✅ |
 
 ## Failure model
 

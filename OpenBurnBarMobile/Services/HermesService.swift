@@ -2670,24 +2670,42 @@ final class HermesService {
 @MainActor
 final class HermesCompositeRelayTransport: HermesRelayTransporting {
     static let shared = HermesCompositeRelayTransport(
-        realtime: HermesRealtimeRelayTransport.shared,
+        primary: HermesIrohRelayTransport.shared,
+        secondary: HermesRealtimeRelayTransport.shared,
         fallback: FirestoreHermesRelayTransport.shared
     )
 
-    private let realtime: HermesRelayTransporting
+    private let primary: HermesRelayTransporting
+    private let secondary: HermesRelayTransporting
     private let fallback: HermesRelayTransporting
 
-    init(realtime: HermesRelayTransporting, fallback: HermesRelayTransporting) {
-        self.realtime = realtime
+    /// Three-tier fallback chain. The primary is the iroh peer-to-peer
+    /// transport; failures cascade to the WSS relay and finally to the
+    /// Firestore long-poll transport. Cascade reasons are surfaced through
+    /// `FirestoreIrohAuditLogger` so the user's audit log shows when iroh
+    /// falls back to WSS.
+    init(
+        primary: HermesRelayTransporting,
+        secondary: HermesRelayTransporting,
+        fallback: HermesRelayTransporting
+    ) {
+        self.primary = primary
+        self.secondary = secondary
         self.fallback = fallback
     }
 
     func sendUnary(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> Data {
         do {
-            return try await realtime.sendUnary(payload, timeout: timeout)
+            return try await primary.sendUnary(payload, timeout: timeout)
         } catch {
-            return try await fallback.sendUnary(payload, timeout: timeout)
+            await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-wss")
         }
+        do {
+            return try await secondary.sendUnary(payload, timeout: timeout)
+        } catch {
+            await Self.recordFallback(payload: payload, error: error, hop: "wss-to-firestore")
+        }
+        return try await fallback.sendUnary(payload, timeout: timeout)
     }
 
     func sendStreaming(
@@ -2696,10 +2714,33 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
         onSSEEvent: @escaping @MainActor (String) -> Void
     ) async throws {
         do {
-            try await realtime.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
+            try await primary.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
+            return
         } catch {
-            try await fallback.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
+            await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-wss")
         }
+        do {
+            try await secondary.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
+            return
+        } catch {
+            await Self.recordFallback(payload: payload, error: error, hop: "wss-to-firestore")
+        }
+        try await fallback.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
+    }
+
+    private static func recordFallback(payload: HermesRelayPayload, error: Error, hop: String) async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        await FirestoreIrohAuditLogger.shared.record(
+            event: .fallbackToWss,
+            uid: uid,
+            connectionId: payload.connectionID,
+            transport: hop == "iroh-to-wss" ? .wss : .firestore,
+            rttMillis: nil,
+            detail: [
+                "hop": hop,
+                "error": String(error.localizedDescription.prefix(256))
+            ]
+        )
     }
 }
 

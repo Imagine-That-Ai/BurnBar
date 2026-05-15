@@ -388,6 +388,11 @@ final class SettingsManager {
         set { chatBackend.hermesRealtimeRelayURL = newValue }
     }
 
+    var hermesIrohTransportEnabled: Bool {
+        get { chatBackend.hermesIrohTransportEnabled }
+        set { chatBackend.hermesIrohTransportEnabled = newValue }
+    }
+
     var launchHermesWithOpenBurnBar: Bool {
         get { chatBackend.launchHermesWithOpenBurnBar }
         set { chatBackend.launchHermesWithOpenBurnBar = newValue }

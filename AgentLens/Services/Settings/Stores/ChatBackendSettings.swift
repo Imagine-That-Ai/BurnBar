@@ -55,6 +55,15 @@ final class ChatBackendSettings {
         didSet { persistence.set(hermesRealtimeRelayURL, forKey: "hermesRealtimeRelayURL") }
     }
 
+    /// Feature flag for the iroh peer-to-peer transport. Off by default so
+    /// existing WSS-based relay traffic is untouched; flipping this on makes
+    /// `HermesRelayHostService` publish a signed `iroh_pairing` record and
+    /// makes `HermesService` prefer the iroh transport with WSS fallback.
+    /// See `docs/HERMES_IROH_TRANSPORT.md`.
+    var hermesIrohTransportEnabled: Bool = false {
+        didSet { persistence.set(hermesIrohTransportEnabled, forKey: "hermesIrohTransportEnabled") }
+    }
+
     var launchHermesWithOpenBurnBar: Bool = false {
         didSet { persistence.set(launchHermesWithOpenBurnBar, forKey: "launchHermesWithOpenBurnBar") }
     }
@@ -195,6 +204,7 @@ final class ChatBackendSettings {
             forKey: "hermesRealtimeRelayURL",
             defaultValue: HermesRealtimeRelayProtocol.defaultHostedRelayURLString
         )
+        self.hermesIrohTransportEnabled = persistence.bool(forKey: "hermesIrohTransportEnabled")
         self.launchHermesWithOpenBurnBar = persistence.bool(forKey: "launchHermesWithOpenBurnBar")
         self.piAgentGatewayBaseURL = persistence.string(forKey: "piAgentGatewayBaseURL", defaultValue: "http://127.0.0.1:8765")
         self.piAgentBearerToken = secretPersistence.load(

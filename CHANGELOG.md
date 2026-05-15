@@ -8,24 +8,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Hermes Realtime Relay → iroh peer-to-peer transport (Phase 1: spine).**
-  Foundation for migrating the Hermes relay off Cloud Run + Memorystore + WSS
-  onto an [iroh](https://www.iroh.computer/) QUIC mesh between the Mac and
-  iOS/iPadOS clients. Lands the Rust crate (`crates/openburnbar-iroh/`)
-  wrapping `iroh-net` through UniFFI, the
-  `scripts/build-iroh-xcframework.sh` builder for macOS arm64 + iOS arm64 +
-  iOS Simulator (arm64/x86_64), and the
-  `.github/workflows/iroh-xcframework.yml` CI pipeline. The new
-  `OpenBurnBarIrohRelay` SwiftPM target contributes a wire-compatible
-  length-prefixed JSON codec (`IrohRelayFrameCodec`), an in-process
-  loopback transport for hermetic tests, the Ed25519-signed
-  `IrohPairingSignature` for authenticating advertised `NodeId`s, and an
-  end-to-end encrypted echo path (`HermesIrohEcho`) that reuses
-  `HermesRelayCrypto` byte-for-byte so the AES-GCM envelope is unchanged.
-  18 unit tests cover the wire format, pairing signatures, transport
-  primitives, and an encrypted echo round trip; all green on macOS arm64.
-  See [`docs/HERMES_IROH_TRANSPORT.md`](docs/HERMES_IROH_TRANSPORT.md) for
-  the architecture and migration milestones.
+- **Hermes Realtime Relay → iroh peer-to-peer transport (all 7 phases).**
+  Migrates the Hermes relay off Cloud Run + Memorystore + WSS onto an
+  [iroh](https://www.iroh.computer/) QUIC mesh between the Mac and
+  iOS/iPadOS clients. Same `HermesRelayCrypto` envelope, same
+  `HermesRealtimeRelayFrame` wire JSON, holepunched QUIC peer-to-peer with
+  iroh relay fallback. Touches:
+    * **Rust crate** `crates/openburnbar-iroh/` — UniFFI surface around
+      `iroh-net` (bootstrap/identity/connect/accept/send/recv/shutdown/close),
+      now accepts a `relay_url` to pin a hosted relay (Phase 6).
+    * **xcframework build** — `scripts/build-iroh-xcframework.sh` builds for
+      macOS arm64 + iOS arm64 + iOS Simulator (arm64/x86_64);
+      `.github/workflows/iroh-xcframework.yml` publishes the artifact.
+    * **SwiftPM target** `OpenBurnBarIrohRelay` — frame codec, transport
+      protocol, in-process loopback transport, xcframework-backed transport
+      (`IrohXcframeworkTransport`), Ed25519 pairing primitives
+      (`IrohPairingSignature` + `IrohPairingPublisher` +
+      `IrohPairingDirectory`), and the encrypted echo path
+      (`HermesIrohEcho`).
+    * **Mac adapter** `AgentLens/Services/IrohRelay/HermesIrohRelayHostClient`
+      — drop-in for `HermesRealtimeRelayHostClient` over the iroh transport
+      with Keychain-backed `IrohRelayKeyStore` + `IrohPairingKeyStore` and
+      a pairing-record heartbeat.
+    * **iOS adapter** `OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport`
+      — conforms to `HermesRelayTransporting`, fetches + verifies the Mac's
+      signed pairing record, dials the iroh `NodeId`, falls back to WSS on
+      any iroh failure.
+    * **Composite chain** `HermesCompositeRelayTransport` becomes
+      iroh → WSS → Firestore, with cascade reasons surfaced through the
+      audit log.
+    * **Schema** `functions/src/types.ts` — `IrohPairingRecordDoc`,
+      `IrohTransportAuditEventDoc`, freshness constants, canonical AAD
+      string.
+    * **Rules** `firestore.rules` — gates `/users/{uid}/iroh_pairing/*`
+      (owner write, ≤24h freshness window) and
+      `/users/{uid}/iroh_audit_events/*` (append-only).
+    * **Feature flag** `SettingsManager.hermesIrohTransportEnabled` — sticky
+      per-device, default off, can be flipped per cohort via Remote Config.
+    * **Hosted relay cutover** `scripts/cutover-n0-hosted-relay.sh` —
+      provisions the n0 hosted relay through the services API and rolls
+      out the relay URL via Firebase Remote Config.
+    * **Retirement runbook** `docs/HERMES_IROH_RETIREMENT.md` — Phase 7
+      gates, decommissioning steps, rollback playbook, and cost analysis.
+  27 unit tests cover the wire format, pairing signatures, transport
+  primitives, the xcframework adapter (against a fake backend), the
+  Firestore-backed publisher (against an in-memory directory), and the
+  encrypted echo round trip; all green on macOS arm64. See
+  [`docs/HERMES_IROH_TRANSPORT.md`](docs/HERMES_IROH_TRANSPORT.md) and
+  [`docs/HERMES_IROH_RETIREMENT.md`](docs/HERMES_IROH_RETIREMENT.md).
 - **Hermes Square now searches across all assistant runtimes and archived CLI
   sessions.** Codex, Claude Code, and OpenClaw are enabled as first-class mobile
   runtimes alongside Hermes and Pi. macOS publishes encrypted Codex/Claude/OpenClaw

@@ -4,6 +4,7 @@ rules_version = '2';
 // - users/{uid}/quota_snapshots, provider_connections, provider_accounts, usage_rollups
 // - users/{uid}/projects (derived read model)
 // - users/{uid}/hermes_connections, hermes_pairings, hermes_relay_requests, hermes_session_cache, hermes_audit_events
+// - users/{uid}/iroh_pairing, iroh_audit_events
 // - users/{uid}/pi_agent_connections, pi_agent_pairings, pi_agent_relay_requests, pi_agent_audit_events
 // - users/{uid}/provider_account_device_links, runtime_connection_preferences
 // - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
@@ -1326,6 +1327,71 @@ service cloud.firestore {
     match /users/{userId}/hermes_audit_events/{eventId} {
       allow read: if ownsUserNamespace(userId);
       allow write: if false;
+    }
+
+    // Iroh transport pairing records. Mac publishes; iOS reads + verifies the
+    // Ed25519 signature using `provider_accounts/{uid}.irohPairingPublicKey`
+    // before dialing the NodeId. Schema lives in `functions/src/types.ts`
+    // (`IrohPairingRecordDoc`); the Mac is the sole writer.
+    match /users/{userId}/iroh_pairing/{connectionId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "nodeId",
+          "publishedAtMillis",
+          "protocolVersion",
+          "signature",
+          "createdAt",
+          "updatedAt",
+          "schemaVersion"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id == connectionId
+        && request.resource.data.nodeId is string
+        && request.resource.data.nodeId.size() <= 64
+        && request.resource.data.publishedAtMillis is int
+        && request.resource.data.publishedAtMillis > 0
+        && request.resource.data.signature is string
+        && request.resource.data.signature.size() <= 256
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1;
+      allow delete: if ownsUserNamespace(userId);
+    }
+
+    // Iroh transport audit events. Append-only; written by the Mac (on stream
+    // open/close/fail) and the Cloud Functions hosted runner (on fallback to
+    // the WSS relay). Schema lives in `functions/src/types.ts`
+    // (`IrohTransportAuditEventDoc`).
+    match /users/{userId}/iroh_audit_events/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "connectionId",
+          "eventType",
+          "rttMillis",
+          "transport",
+          "observedAt",
+          "detail",
+          "schemaVersion",
+          "expireAt"
+        ])
+        && request.resource.data.id is string
+        && request.resource.data.id == eventId
+        && request.resource.data.eventType in [
+          "iroh_stream_opened",
+          "iroh_stream_closed",
+          "iroh_stream_failed",
+          "iroh_pairing_published",
+          "iroh_pairing_verified",
+          "iroh_pairing_rejected",
+          "iroh_fallback_to_wss"
+        ]
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1;
+      allow update: if false;
+      allow delete: if false;
     }
 
     match /users/{userId}/pi_agent_connections/{connectionId} {

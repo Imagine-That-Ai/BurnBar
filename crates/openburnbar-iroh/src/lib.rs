@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context};
-use iroh::{Endpoint, NodeAddr, NodeId, SecretKey};
+use iroh::{Endpoint, NodeAddr, NodeId, RelayMode, RelayUrl, SecretKey};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
@@ -185,9 +185,16 @@ impl IrohEndpointHandle {
     /// Spawn the iroh endpoint with the supplied 32-byte secret key. Idempotent
     /// per handle; calling twice replaces the inner endpoint. Returns the
     /// node identity (public key + base32 NodeId).
+    ///
+    /// Phase 6+: callers can pass a non-empty `relay_url` to pin a specific
+    /// hosted relay (e.g., the $200/mo n0 hosted tier provisioned via the
+    /// services API and surfaced by `scripts/cutover-n0-hosted-relay.sh`).
+    /// Empty string means "use n0's public relay set" (the default in
+    /// phases 1-5).
     pub fn bootstrap(
         self: Arc<Self>,
         secret: IrohSecretKeyMaterial,
+        relay_url: String,
     ) -> Result<IrohNodeIdentity, IrohFfiError> {
         if secret.raw.len() != 32 {
             return Err(IrohFfiError::InvalidSecretKey);
@@ -203,11 +210,23 @@ impl IrohEndpointHandle {
             .build()
             .map_err(IrohFfiError::runtime)?;
 
+        let relay_mode = if relay_url.trim().is_empty() {
+            RelayMode::Default
+        } else {
+            let url: RelayUrl = relay_url
+                .parse()
+                .map_err(|err: url::ParseError| IrohFfiError::RuntimeFailed {
+                    message: format!("invalid relay url: {err}"),
+                })?;
+            RelayMode::Custom(vec![url].into())
+        };
+
         let endpoint = runtime
             .block_on(async {
                 Endpoint::builder()
                     .secret_key(secret_key.clone())
                     .alpns(vec![OPENBURNBAR_ALPN.to_vec()])
+                    .relay_mode(relay_mode)
                     .bind()
                     .await
             })

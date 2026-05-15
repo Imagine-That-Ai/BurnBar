@@ -265,6 +265,97 @@ export interface HermesConnectionAuditEventDoc {
   expireAt?: import("firebase-admin/firestore").Timestamp;
 }
 
+// ---------------------------------------------------------------------------
+// Firestore: iroh transport pairing records
+// ---------------------------------------------------------------------------
+
+/**
+ * Iroh transport pairing record. Published by the Mac (AgentLens) once it
+ * has bootstrapped an iroh endpoint and signed the NodeId with the user's
+ * Ed25519 pairing key (`provider_accounts/{uid}.irohPairingPublicKey`).
+ *
+ * Lives at:
+ *   /users/{uid}/iroh_pairing/{connectionId}
+ *
+ * Read-side (iOS / iPadOS):
+ *   1. Look up the user's `irohPairingPublicKey` (32 raw bytes, base64).
+ *   2. Verify `signature` over
+ *      `openburnbar.iroh.v1|{uid}|{connectionId}|{nodeId}|{publishedAtMillis}`.
+ *   3. Reject records older than `IROH_PAIRING_FRESHNESS_MS` (24h) or with
+ *      a `protocolVersion` newer than the client understands.
+ *   4. Dial `nodeId` over the QUIC ALPN advertised by
+ *      `IrohRelayProtocol.alpn`.
+ *
+ * Firestore rules gate this collection so only the owning user can read or
+ * write; see `firestore.rules`.
+ */
+export interface IrohPairingRecordDoc {
+  /** Stable connection ID (matches `HermesConnectionDoc.id` on the Mac side). */
+  id: string;
+
+  /** Base32 NodeId surface form (52 chars) advertised by the Mac. */
+  nodeId: string;
+
+  /** Milliseconds since epoch when the Mac signed and published the record. */
+  publishedAtMillis: number;
+
+  /** Frame schema version the Mac is willing to speak. Default 1. */
+  protocolVersion?: number;
+
+  /**
+   * Base64 Ed25519 signature over the canonical AAD string. The signing key
+   * is the user's `irohPairingPublicKey`, persisted in the Mac Keychain.
+   */
+  signature: string;
+
+  /** Server-stamped time (Cloud Functions/iOS adopt ISO 8601). */
+  createdAt: string;
+  updatedAt: string;
+
+  /** Document schema version for forward compatibility. */
+  schemaVersion: number;
+}
+
+/** Max age (ms) the iOS client will trust an `IrohPairingRecordDoc`. */
+export const IROH_PAIRING_FRESHNESS_MS = 24 * 60 * 60 * 1000;
+
+/** Canonical AAD prefix the Mac signs. Mirrors `IrohPairingSignature` in Swift. */
+export const IROH_PAIRING_SIGNATURE_PREFIX = "openburnbar.iroh.v1";
+
+/**
+ * Audit event the Mac (or the Cloud Functions hosted runner) writes when an
+ * iroh stream is opened, closed, or fails over to the WSS relay. Surfaces
+ * transport health to the user's audit log without exposing payload bytes.
+ */
+export interface IrohTransportAuditEventDoc {
+  id: string;
+  connectionId: string;
+  /** Logical reason this event was emitted. */
+  eventType:
+    | "iroh_stream_opened"
+    | "iroh_stream_closed"
+    | "iroh_stream_failed"
+    | "iroh_pairing_published"
+    | "iroh_pairing_verified"
+    | "iroh_pairing_rejected"
+    | "iroh_fallback_to_wss";
+  /** Observed RTT (ms) of the most recent ping on this stream, if known. */
+  rttMillis?: number;
+  /**
+   * Logical transport actually used for the payload. Mirrors the
+   * `HermesCompositeRelayTransport` selector.
+   */
+  transport?: "iroh-direct" | "iroh-relay" | "wss" | "firestore";
+  observedAt: string;
+  /**
+   * Optional structured detail (e.g., `{ "reason": "alpn_mismatch" }`).
+   * Strings only; never contains payload bytes.
+   */
+  detail?: Record<string, string>;
+  schemaVersion: number;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+}
+
 export type HermesRelayOperation =
   | "chatCompletions"
   | "models"
