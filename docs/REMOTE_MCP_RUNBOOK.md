@@ -59,13 +59,22 @@ the script proves missing-auth denial and exits with a skipped-live-proof code.
 
 ## Monitor
 
-Alert on:
+Configured Cloud Monitoring policies:
 
-- 401/403 spikes.
-- 429 spikes.
+- `OpenBurnBar Hosted MCP 5xx spike`
+- `OpenBurnBar Hosted MCP 429 spike`
+- `OpenBurnBar Hosted MCP auth denial spike`
+
+They are backed by these user log-based metrics:
+
+- `logging.googleapis.com/user/openburnbar_hosted_mcp_5xx`
+- `logging.googleapis.com/user/openburnbar_hosted_mcp_429`
+- `logging.googleapis.com/user/openburnbar_hosted_mcp_auth_denial`
+
+Still required before launch:
+
 - p95 latency above 900 ms for search.
 - p95 body fetch above 2.5 s.
-- 5xx spikes.
 - Cloud Run instance pressure.
 - Firestore read spikes from hosted MCP service account.
 
