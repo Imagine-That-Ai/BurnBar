@@ -234,62 +234,16 @@ struct SessionLogsView: View {
         mainLayout
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.clear)
-            .task {
-                knownDevices = (try? dataStore.fetchDevices()) ?? []
-                await loadLogs()
-                applyJumpTargetIfNeeded(jumpTarget)
-            }
-            .onChange(of: searchText) { _, _ in
-                Task {
-                    if dataSource == .cloud {
-                        await loadLogs()
-                    } else {
-                        await runLocalRetrievalSearchIfNeeded()
-                    }
-                }
-            }
-            .onChange(of: sourceFilter) { _, _ in
-                sectionDisplayLimits = [:]
-                let groups = logGroups
-                expandedSections = Set(groups.prefix(1).map(\.id))
-                selectedId = nil
-                cloudBodyCache = [:]
-                Task {
-                    await runLocalRetrievalSearchIfNeeded()
-                    reconcileSelectionWithFilteredLogs()
-                    await loadLogs()
-                }
-            }
-            .onChange(of: groupMode) { _, _ in
-                sectionDisplayLimits = [:]
-                expandedSections = Set(logGroups.prefix(1).map(\.id))
-            }
-            .onChange(of: dataSource) { _, _ in
-                selectedId = nil
-                cloudBodyCache = [:]
-                Task { await loadLogs() }
-            }
-            .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in
-                refreshRetrievalHealth()
-                Task { await runLocalRetrievalSearchIfNeeded() }
-            }
-            .onChange(of: settingsManager.preferredIndexEmbeddingVersionID) { _, _ in
-                retrievalSearchService = SearchService.makeConversationSearchService(
-                    dataStore: dataStore,
-                    settingsManager: settingsManager
-                )
-                refreshRetrievalHealth()
-                Task { await runLocalRetrievalSearchIfNeeded() }
-            }
-            .onChange(of: accountManager.isSignedIn) { _, _ in
-                refreshRetrievalHealth()
-            }
-            .onChange(of: selectedId) { _, newId in
-                handleSelectedIdChange(newId)
-            }
-            .onChange(of: jumpTarget?.id) { _, _ in
-                applyJumpTargetIfNeeded(jumpTarget)
-            }
+            .task { await initializeSessionLogs() }
+            .onChange(of: searchText) { _, _ in handleSearchTextChange() }
+            .onChange(of: sourceFilter) { _, _ in handleSourceFilterChange() }
+            .onChange(of: groupMode) { _, _ in handleGroupModeChange() }
+            .onChange(of: dataSource) { _, _ in handleDataSourceChange() }
+            .onChange(of: settingsManager.conversationIndexingEnabled) { _, _ in handleConversationIndexingChange() }
+            .onChange(of: settingsManager.preferredIndexEmbeddingVersionID) { _, _ in handleEmbeddingVersionChange() }
+            .onChange(of: accountManager.isSignedIn) { _, _ in refreshRetrievalHealth() }
+            .onChange(of: selectedId) { _, newId in handleSelectedIdChange(newId) }
+            .onChange(of: jumpTarget?.id) { _, _ in applyJumpTargetIfNeeded(jumpTarget) }
     }
 
     private var mainLayout: some View {
@@ -446,119 +400,149 @@ struct SessionLogsView: View {
     private var filterBar: some View {
         HStack(spacing: DesignSystem.Spacing.xs) {
             ForEach(SessionLogSourceFilter.allCases) { filter in
-                Button {
-                    withAnimation(DesignSystem.Animation.snappy) {
-                        sourceFilter = filter
-                    }
-                } label: {
-                    Text(filter.rawValue)
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(
-                            sourceFilter == filter
-                                ? DesignSystem.Colors.textPrimary
-                                : DesignSystem.Colors.textMuted
-                        )
-                        .padding(.horizontal, DesignSystem.Spacing.md)
-                        .padding(.vertical, DesignSystem.Spacing.xs)
-                        .background(
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.full, style: .continuous)
-                                .fill(
-                                    sourceFilter == filter
-                                        ? AnyShapeStyle(filterAccent(for: filter).opacity(0.18))
-                                        : AnyShapeStyle(DesignSystem.Colors.surfaceElevated.opacity(0.4))
-                                )
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.full, style: .continuous)
-                                .strokeBorder(
-                                    sourceFilter == filter
-                                        ? filterAccent(for: filter).opacity(0.45)
-                                        : DesignSystem.Colors.border.opacity(0.3),
-                                    lineWidth: 0.5
-                                )
-                        )
-                }
-                .buttonStyle(.plain)
+                sourceFilterButton(filter)
             }
 
             Spacer()
 
-            HStack(spacing: 2) {
-                ForEach(SessionLogGroupMode.allCases) { mode in
-                    Button {
-                        withAnimation(DesignSystem.Animation.snappy) {
-                            groupMode = mode
-                        }
-                    } label: {
-                        Image(systemName: mode.icon)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(groupMode == mode ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textMuted)
-                            .frame(width: 24, height: 20)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .fill(groupMode == mode ? DesignSystem.Colors.surfaceElevated : Color.clear)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help("Group by \(mode.rawValue.lowercased())")
-                }
-            }
-            .padding(2)
-            .background(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.4))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .strokeBorder(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
-            )
+            groupModePicker
 
             if hasMultipleDevices {
-                Menu {
-                    Button { withAnimation(DesignSystem.Animation.snappy) { deviceFilter = nil } } label: {
-                        Label("All Devices", systemImage: "desktopcomputer")
-                    }
-                    Divider()
-                    ForEach(knownDevices) { device in
-                        Button { withAnimation(DesignSystem.Animation.snappy) { deviceFilter = device.deviceId } } label: {
-                            Label(device.deviceName, systemImage: device.sfSymbolName)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "desktopcomputer")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(deviceFilter == nil ? DesignSystem.Colors.textMuted : DesignSystem.Colors.teal)
-                        .frame(width: 24, height: 20)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(deviceFilter == nil ? Color.clear : DesignSystem.Colors.teal.opacity(0.12))
-                        )
-                }
-                .menuStyle(.borderlessButton)
-                .help(deviceFilter.flatMap { id in knownDevices.first { $0.deviceId == id }?.deviceName } ?? "All Devices")
+                deviceFilterMenu
             }
 
-            Menu {
-                ForEach(SessionLogDataSource.allCases) { source in
-                    Button {
-                        withAnimation(DesignSystem.Animation.snappy) { dataSource = source }
-                    } label: {
-                        Label(source.rawValue, systemImage: source.icon)
-                    }
+            dataSourceMenu
+        }
+    }
+
+    private func sourceFilterButton(_ filter: SessionLogSourceFilter) -> some View {
+        let isActive = sourceFilter == filter
+        let accent = filterAccent(for: filter)
+        return Button {
+            withAnimation(DesignSystem.Animation.snappy) {
+                sourceFilter = filter
+            }
+        } label: {
+            Text(filter.rawValue)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(isActive ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textMuted)
+                .padding(.horizontal, DesignSystem.Spacing.md)
+                .padding(.vertical, DesignSystem.Spacing.xs)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.full, style: .continuous)
+                        .fill(isActive ? AnyShapeStyle(accent.opacity(0.18)) : AnyShapeStyle(DesignSystem.Colors.surfaceElevated.opacity(0.4)))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.full, style: .continuous)
+                        .strokeBorder(isActive ? accent.opacity(0.45) : DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var groupModePicker: some View {
+        HStack(spacing: 2) {
+            ForEach(SessionLogGroupMode.allCases) { mode in
+                groupModeButton(mode)
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.4))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.5)
+        )
+    }
+
+    private func groupModeButton(_ mode: SessionLogGroupMode) -> some View {
+        let isActive = groupMode == mode
+        return Button {
+            withAnimation(DesignSystem.Animation.snappy) {
+                groupMode = mode
+            }
+        } label: {
+            Image(systemName: mode.icon)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(isActive ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textMuted)
+                .frame(width: 24, height: 20)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(isActive ? DesignSystem.Colors.surfaceElevated : Color.clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .help("Group by \(mode.rawValue.lowercased())")
+    }
+
+    private var deviceFilterMenu: some View {
+        Menu {
+            Button {
+                withAnimation(DesignSystem.Animation.snappy) {
+                    deviceFilter = nil
                 }
             } label: {
-                Image(systemName: dataSource.icon)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(dataSource == .local ? DesignSystem.Colors.textMuted : DesignSystem.Colors.ember)
-                    .frame(width: 24, height: 20)
-                    .background(
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(dataSource == .local ? Color.clear : DesignSystem.Colors.ember.opacity(0.12))
-                    )
+                Label("All Devices", systemImage: "desktopcomputer")
             }
-            .menuStyle(.borderlessButton)
-            .help("Data source: \(dataSource.rawValue)")
+            Divider()
+            ForEach(knownDevices) { device in
+                Button {
+                    withAnimation(DesignSystem.Animation.snappy) {
+                        deviceFilter = device.deviceId
+                    }
+                } label: {
+                    Label(device.deviceName, systemImage: device.sfSymbolName)
+                }
+            }
+        } label: {
+            filterIconButton(
+                systemImage: "desktopcomputer",
+                isActive: deviceFilter != nil,
+                activeColor: DesignSystem.Colors.teal
+            )
         }
+        .menuStyle(.borderlessButton)
+        .help(activeDeviceName)
+    }
+
+    private var dataSourceMenu: some View {
+        Menu {
+            ForEach(SessionLogDataSource.allCases) { source in
+                Button {
+                    withAnimation(DesignSystem.Animation.snappy) {
+                        dataSource = source
+                    }
+                } label: {
+                    Label(source.rawValue, systemImage: source.icon)
+                }
+            }
+        } label: {
+            filterIconButton(
+                systemImage: dataSource.icon,
+                isActive: dataSource != .local,
+                activeColor: DesignSystem.Colors.ember
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .help("Data source: \(dataSource.rawValue)")
+    }
+
+    private func filterIconButton(systemImage: String, isActive: Bool, activeColor: Color) -> some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(isActive ? activeColor : DesignSystem.Colors.textMuted)
+            .frame(width: 24, height: 20)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(isActive ? activeColor.opacity(0.12) : Color.clear)
+            )
+    }
+
+    private var activeDeviceName: String {
+        guard let deviceFilter else { return "All Devices" }
+        return knownDevices.first { $0.deviceId == deviceFilter }?.deviceName ?? "All Devices"
     }
 
     private func filterAccent(for filter: SessionLogSourceFilter) -> Color {
@@ -907,6 +891,61 @@ struct SessionLogsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    // MARK: - View Events
+
+    private func initializeSessionLogs() async {
+        knownDevices = (try? dataStore.fetchDevices()) ?? []
+        await loadLogs()
+        applyJumpTargetIfNeeded(jumpTarget)
+    }
+
+    private func handleSearchTextChange() {
+        Task {
+            if dataSource == .cloud {
+                await loadLogs()
+            } else {
+                await runLocalRetrievalSearchIfNeeded()
+            }
+        }
+    }
+
+    private func handleSourceFilterChange() {
+        sectionDisplayLimits = [:]
+        expandedSections = Set(logGroups.prefix(1).map(\.id))
+        selectedId = nil
+        cloudBodyCache = [:]
+        Task {
+            await runLocalRetrievalSearchIfNeeded()
+            reconcileSelectionWithFilteredLogs()
+            await loadLogs()
+        }
+    }
+
+    private func handleGroupModeChange() {
+        sectionDisplayLimits = [:]
+        expandedSections = Set(logGroups.prefix(1).map(\.id))
+    }
+
+    private func handleDataSourceChange() {
+        selectedId = nil
+        cloudBodyCache = [:]
+        Task { await loadLogs() }
+    }
+
+    private func handleConversationIndexingChange() {
+        refreshRetrievalHealth()
+        Task { await runLocalRetrievalSearchIfNeeded() }
+    }
+
+    private func handleEmbeddingVersionChange() {
+        retrievalSearchService = SearchService.makeConversationSearchService(
+            dataStore: dataStore,
+            settingsManager: settingsManager
+        )
+        refreshRetrievalHealth()
+        Task { await runLocalRetrievalSearchIfNeeded() }
     }
 
     // MARK: - Data Loading
