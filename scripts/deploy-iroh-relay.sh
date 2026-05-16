@@ -18,6 +18,7 @@
 # Optional environment:
 #   FIREBASE_TOKEN  CI token for `firebase deploy --token "$FIREBASE_TOKEN"`
 #   IROH_RELAY_FUNCTIONS_REGION   defaults to us-central1
+#   IROH_RELAY_FUNCTIONS          comma-separated deploy list; defaults to rollupIrohTransportDaily
 #
 # Safe to re-run; rules are append-only (`hermes_*` and `pi_agent_*` rules
 # are untouched).
@@ -29,6 +30,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PROJECT_ID="${PROJECT_ID:?Set PROJECT_ID to the BurnBar Firebase/GCP project id}"
 FIREBASE_TOKEN="${FIREBASE_TOKEN:-}"
 IROH_RELAY_FUNCTIONS_REGION="${IROH_RELAY_FUNCTIONS_REGION:-us-central1}"
+IROH_RELAY_FUNCTIONS="${IROH_RELAY_FUNCTIONS:-rollupIrohTransportDaily}"
 
 RULES_ONLY=false
 DRY_RUN=false
@@ -71,6 +73,22 @@ if [[ -n "${FIREBASE_TOKEN}" ]]; then
   firebase_args+=(--token "${FIREBASE_TOKEN}")
 fi
 
+IFS=',' read -r -a function_names <<< "${IROH_RELAY_FUNCTIONS}"
+function_targets=()
+for function_name in "${function_names[@]}"; do
+  function_name="${function_name//[[:space:]]/}"
+  if [[ -n "${function_name}" ]]; then
+    function_targets+=("functions:${function_name}")
+  fi
+done
+if [[ ${#function_targets[@]} -eq 0 ]]; then
+  echo "deploy-iroh-relay: IROH_RELAY_FUNCTIONS produced no deploy targets" >&2
+  exit 1
+fi
+IFS=,
+function_only="${function_targets[*]}"
+unset IFS
+
 echo "→ deploying firestore.rules"
 if "${DRY_RUN}"; then
   firebase "${firebase_args[@]}" deploy --only firestore:rules --dry-run
@@ -89,10 +107,11 @@ if [[ -d functions ]] && [[ -f functions/package.json ]]; then
   npm --prefix functions run build
 
   if "${DRY_RUN}"; then
+    echo "[dry-run] validated functions build; would deploy ${function_only}"
     echo "[dry-run] validated functions build; skipping functions deploy"
   else
-    echo "→ deploying Cloud Functions to ${IROH_RELAY_FUNCTIONS_REGION}"
-    firebase "${firebase_args[@]}" deploy --only functions
+    echo "→ deploying Cloud Functions to ${IROH_RELAY_FUNCTIONS_REGION}: ${function_only}"
+    firebase "${firebase_args[@]}" deploy --only "${function_only}"
   fi
 fi
 

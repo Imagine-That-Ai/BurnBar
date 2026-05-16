@@ -90,8 +90,10 @@ Completed:
   compiles `firestore.rules` successfully.
 - `PROJECT_ID=burnbar ./scripts/deploy-iroh-relay.sh --dry-run` also
   completes the Functions dry-run lane: `npm ci` reports 0 vulnerabilities and
-  `npm run build` succeeds. The local shell emits the existing Node 20 vs
-  package Node 22 engine warning; it does not block the TypeScript build.
+  `npm run build` succeeds, and the helper now scopes any real Functions deploy
+  to `functions:rollupIrohTransportDaily` by default instead of deploying every
+  function. The local shell emits the existing Node 20 vs package Node 22
+  engine warning; it does not block the TypeScript build.
 - Added a Firestore emulator regression for the Iroh collections. It proves
   same-user writes/reads for pairing keys, pairing records, and append-only
   audit events, plus cross-user denial and secret-field rejection.
