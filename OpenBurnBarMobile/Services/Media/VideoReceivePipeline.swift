@@ -105,7 +105,7 @@ final class VideoReceivePipeline {
             sampleBuffer: sampleBuffer,
             flags: [._EnableAsynchronousDecompression],
             infoFlagsOut: &infoFlags,
-            outputHandler: { _, _, _, _ in
+            outputHandler: { (_: OSStatus, _: VTDecodeInfoFlags, _: CVImageBuffer?, _: CMTime, _: CMTime) in
                 // No-op — the receiver's `AVSampleBufferDisplayLayer`
                 // consumes the original sample buffer directly. The
                 // VTDecompressionSession is held primarily to keep an

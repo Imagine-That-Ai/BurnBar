@@ -633,22 +633,26 @@ private struct ProjectHubView: View {
                 await loadProjectMemory(forceRefresh: false)
             }
             .sheet(item: $selectedPage) { page in
-                ProjectMemoryPageDetailSheet(page: page, chatController: chatController)
-                    .frame(minWidth: 640, minHeight: 480)
+                ProjectMemoryPageDetailSheet(
+                    page: page,
+                    projectName: project.displayName,
+                    chatController: chatController
+                )
+                .frame(minWidth: 720, minHeight: 540)
             }
             .sheet(item: $selectedVisual) { visual in
-                ProjectMemoryVisualDetailSheet(visual: visual)
-                    .frame(minWidth: 640, minHeight: 480)
+                ProjectMemoryVisualDetailSheet(visual: visual, chatController: chatController)
+                    .frame(minWidth: 760, minHeight: 560)
             }
             .sheet(isPresented: $showHeroSheet) {
                 if let snapshot = projectMemorySnapshot {
                     ProjectMemoryHeroDetailSheet(snapshot: snapshot, chatController: chatController)
-                        .frame(minWidth: 720, minHeight: 520)
+                        .frame(minWidth: 760, minHeight: 580)
                 }
             }
             .sheet(item: $selectedCitations) { wrapper in
                 CitationInsightSheet(citations: wrapper.citations, chatController: chatController)
-                    .frame(minWidth: 800, minHeight: 600)
+                    .frame(minWidth: 800, minHeight: 620)
             }
         }
     }
@@ -1810,318 +1814,426 @@ private struct ControllerProjectEditorSheet: View {
     }
 }
 
-// MARK: - Citation Wrapper (Identifiable bridge for sheet binding)
+
+// MARK: - Editorial Subviews (shared by all Project Memory detail sheets)
+
+/// Identifiable bridge so multiple citations OR a single citation can drive
+/// `.sheet(item:)`. Each invocation gets a fresh `id` so re-tapping the
+/// same chip presents a new sheet (intentional — the sheet's own controller
+/// re-runs Hermes on every present).
 private struct CitationWrapper: Identifiable {
-    let id = UUID()
+    let id: UUID
     let citations: [ProjectMemoryCitation]
+
+    init(citations: [ProjectMemoryCitation]) {
+        self.id = UUID()
+        self.citations = citations
+    }
+
+    static func single(_ citation: ProjectMemoryCitation) -> CitationWrapper {
+        CitationWrapper(citations: [citation])
+    }
 }
 
-// MARK: - Project Memory Hero Detail Sheet
-private struct ProjectMemoryHeroDetailSheet: View {
-    let snapshot: ProjectMemorySnapshot
-    let chatController: ChatSessionController
-    @Environment(\.dismiss) private var dismiss
-
-    private var coverVisual: ProjectMemoryVisual? {
-        snapshot.visuals.first { $0.kind == .cover }
+@MainActor
+@Observable
+final class ProjectMemoryInsightController {
+    enum State: Equatable {
+        case idle
+        case streaming
+        case complete
+        case failed(String)
     }
+
+    private(set) var streamingContent: String = ""
+    private(set) var state: State = .idle
+
+    private let chat: ChatSessionController
+    private var trackedAssistantID: String?
+    private var trackedAfterMessageCount: Int = 0
+    private var streamTask: Task<Void, Never>?
+
+    init(chatController: ChatSessionController) {
+        self.chat = chatController
+    }
+
+    func generate(prompt: String) {
+        cancel()
+        streamingContent = ""
+        state = .streaming
+        trackedAfterMessageCount = chat.messages.count
+        chat.inputText = prompt
+        streamTask = Task { @MainActor in
+            await chat.send()
+        }
+    }
+
+    func observeStreamingTick(messages: [ChatMessageRecord], activeID: String?, isStreaming: Bool) {
+        guard state == .streaming else { return }
+
+        if trackedAssistantID == nil, let id = activeID {
+            trackedAssistantID = id
+        }
+
+        let candidateID = trackedAssistantID ?? activeID
+        let candidate: ChatMessageRecord? = {
+            if let id = candidateID, let m = messages.first(where: { $0.id == id }) {
+                return m
+            }
+            return messages.dropFirst(trackedAfterMessageCount).first(where: { $0.role == .assistant })
+        }()
+
+        if let msg = candidate {
+            streamingContent = msg.content
+        }
+
+        if !isStreaming, activeID == nil {
+            let trimmed = streamingContent.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                state = .failed("Hermes returned no content. Open the chat panel to retry.")
+            } else {
+                state = .complete
+            }
+        }
+    }
+
+    func cancel() {
+        streamTask?.cancel()
+        streamTask = nil
+        trackedAssistantID = nil
+    }
+}
+
+private struct EditorialHero: View {
+    let eyebrow: String
+    let subtitle: String?
+    let headline: String
+    let metaSegments: [String]
+    let leadAccent: Color
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            ScrollView {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                    heroGradientCard
-
-                    if !snapshot.pages.isEmpty {
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                            sectionHeader("Pages")
-                            ForEach(snapshot.pages) { page in
-                                pageRow(page)
-                            }
-                        }
-                    }
-
-                    if !snapshot.visuals.isEmpty {
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                            sectionHeader("Visuals")
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: DesignSystem.Spacing.md) {
-                                    ForEach(snapshot.visuals) { visual in
-                                        visualThumb(visual)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if !snapshot.keyFiles.isEmpty {
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                            sectionHeader("Key Files")
-                            ForEach(snapshot.keyFiles, id: \.self) { file in
-                                factRow(icon: "doc.text", title: "File", value: file)
-                            }
-                        }
-                    }
-
-                    if !snapshot.keyCommands.isEmpty {
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                            sectionHeader("Key Commands")
-                            ForEach(snapshot.keyCommands, id: \.self) { cmd in
-                                factRow(icon: "terminal", title: "Command", value: cmd)
-                            }
-                        }
-                    }
-
-                    HStack(spacing: DesignSystem.Spacing.sm) {
-                        statusPill(title: snapshot.freshness.label, color: snapshot.freshness.color)
-                        Text("Generated \(snapshot.generatedAt.formatted(date: .abbreviated, time: .shortened))")
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                        Spacer()
-                    }
-                }
-                .padding(DesignSystem.Spacing.xl)
-            }
-        }
-        .background(DesignSystem.Colors.background)
-    }
-
-    private var header: some View {
-        HStack {
-            Text("Project Memory")
-                .font(DesignSystem.Typography.title)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-            Spacer()
-            Button("Ask Hermes") {
-                let prompt = """
-                Project memory summary for \(snapshot.projectDisplayName):
-                \(snapshot.usageSummary)
-                Key files: \(snapshot.keyFiles.joined(separator: ", "))
-                Key commands: \(snapshot.keyCommands.joined(separator: ", "))
-                Give me actionable insights and next steps.
-                """
-                Task {
-                    await sendPromptToHermes(prompt)
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            Button("Done") { dismiss() }
-                .keyboardShortcut(.cancelAction)
-        }
-        .padding(DesignSystem.Spacing.xl)
-    }
-
-    private var heroGradientCard: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            DesignSystem.Colors.hermesMercury.opacity(0.22),
-                            DesignSystem.Colors.hermesAureate.opacity(0.22),
-                            DesignSystem.Colors.surfaceElevated.opacity(0.7),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous)
-                        .stroke(DesignSystem.Colors.mercuryGradient, lineWidth: 1)
-                )
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                Text(snapshot.projectDisplayName)
-                    .font(DesignSystem.Typography.headline)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text(snapshot.usageSummary)
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "scroll.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(leadAccent)
+                Text(eyebrow.uppercased())
                     .font(DesignSystem.Typography.caption)
+                    .tracking(2.0)
+                    .foregroundStyle(leadAccent)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+            }
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(headline)
+                .font(.system(.title2, design: .rounded).weight(.semibold))
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            if !metaSegments.isEmpty {
+                Text(metaSegments.joined(separator: "  ·  "))
+                    .font(DesignSystem.Typography.monoSmall)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-                if let coverVisual {
-                    HStack(spacing: DesignSystem.Spacing.md) {
-                        ForEach(Array(coverVisual.points.prefix(5).enumerated()), id: \.offset) { _, point in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(point.label.uppercased())
-                                    .font(DesignSystem.Typography.tiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                                Text(metric(point))
-                                    .font(DesignSystem.Typography.monoSmall)
-                                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                            }
-                        }
-                    }
-                }
+                    .accessibilityHidden(true)
             }
-            .padding(DesignSystem.Spacing.lg)
+            MercuryHairline()
+                .padding(.top, DesignSystem.Spacing.xs)
         }
-        .clipShape(.rect(cornerRadius: DesignSystem.Radius.lg))
-    }
-
-    private func pageRow(_ page: ProjectMemoryPage) -> some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            Text(page.title)
-                .font(DesignSystem.Typography.headline)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-            Text(page.summary)
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                statusPill(title: "\(page.sections.count) sections", color: DesignSystem.Colors.textMuted)
-                statusPill(title: "\(page.visualIDs.count) visuals", color: DesignSystem.Colors.textMuted)
-            }
-        }
-        .padding(DesignSystem.Spacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .fill(DesignSystem.Colors.surface.opacity(0.55))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
-        )
-    }
-
-    private func visualThumb(_ visual: ProjectMemoryVisual) -> some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            Text(visual.title)
-                .font(DesignSystem.Typography.caption)
-                .fontWeight(.semibold)
-            if let subtitle = visual.subtitle {
-                Text(subtitle)
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-            }
-            Text("\(visual.points.count) points")
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
-        }
-        .padding(DesignSystem.Spacing.md)
-        .frame(width: 180, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.65))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
-                .stroke(DesignSystem.Colors.mercuryGradient, lineWidth: 0.75)
-        )
-    }
-
-    private func metric(_ point: ProjectMemoryVisualPoint) -> String {
-        if point.label.lowercased().contains("spend") {
-            return point.value.formatAsCost()
-        }
-        if point.label.lowercased().contains("token") {
-            return Int(point.value).formatAsTokenVolume()
-        }
-        return String(Int(point.value))
-    }
-
-    @MainActor
-    private func sendPromptToHermes(_ prompt: String) async {
-        chatController.inputText = prompt
-        await chatController.send()
-        dismiss()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-// MARK: - Project Memory Page Detail Sheet
-private struct ProjectMemoryPageDetailSheet: View {
-    let page: ProjectMemoryPage
-    let chatController: ChatSessionController
-    @Environment(\.dismiss) private var dismiss
+private struct MercuryHairline: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var phase: CGFloat = -1
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                    Text(page.summary)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    ForEach(page.sections) { section in
-                        sectionCard(section)
-                    }
-
-                    if !page.visualIDs.isEmpty {
-                        sectionHeader("Referenced Visuals")
-                        Text(page.visualIDs.joined(separator: ", "))
-                            .font(DesignSystem.Typography.monoTiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                    }
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(DesignSystem.Colors.mercuryGradient)
+                    .frame(height: 0.5)
+                if !reduceMotion {
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    DesignSystem.Colors.hermesMercury.opacity(0.0),
+                                    DesignSystem.Colors.hermesAureate.opacity(0.55),
+                                    DesignSystem.Colors.hermesMercury.opacity(0.0)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(40, w * 0.18), height: 0.5)
+                        .offset(x: phase * w)
+                        .blendMode(.plusLighter)
+                        .allowsHitTesting(false)
                 }
-                .padding(DesignSystem.Spacing.xl)
             }
+            .frame(width: w, height: 0.5, alignment: .leading)
+            .clipped()
         }
-        .background(DesignSystem.Colors.background)
+        .frame(height: 0.5)
+        .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 3.0)) { phase = 1 }
+        }
+    }
+}
+
+private struct HermesReadingCard: View {
+    let title: String
+    let placeholder: String
+    let controller: ProjectMemoryInsightController
+    var onRetry: (() -> Void)? = nil
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            header
+            content
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.68))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.mercuryGradient, lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Hermes reading")
+        .accessibilityValue(accessibilityValue)
     }
 
+    private var accessibilityValue: String {
+        switch controller.state {
+        case .idle: return placeholder
+        case .streaming where controller.streamingContent.isEmpty: return "Hermes is reading the evidence."
+        case .streaming: return controller.streamingContent
+        case .complete: return controller.streamingContent
+        case .failed(let err): return "Failed. " + err
+        }
+    }
+
+    @ViewBuilder
     private var header: some View {
-        HStack {
-            Text(page.title)
-                .font(DesignSystem.Typography.title)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-            Spacer()
-            Button("Deep dive with Hermes") {
-                let prompt = """
-                Deep dive into this project memory page:
-                Title: \(page.title)
-                Summary: \(page.summary)
-                Sections:
-                \(page.sections.map { "\($0.title): \($0.body)" }.joined(separator: "\n"))
-                Analyze what this means and suggest next actions.
-                """
-                Task { await sendPromptToHermes(prompt) }
-            }
-            .buttonStyle(.borderedProminent)
-            Button("Done") { dismiss() }
-                .keyboardShortcut(.cancelAction)
+        HStack(spacing: 6) {
+            Image(systemName: headerIcon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+            Text(title.uppercased())
+                .font(DesignSystem.Typography.caption)
+                .tracking(2.0)
+                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+            Spacer(minLength: 0)
+            trailingControl
         }
-        .padding(DesignSystem.Spacing.xl)
     }
 
-    private func sectionCard(_ section: ProjectMemorySection) -> some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            Text(section.title)
-                .font(DesignSystem.Typography.headline)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-            Text(section.body)
+    @ViewBuilder
+    private var trailingControl: some View {
+        switch controller.state {
+        case .streaming:
+            MercuryPoolDots()
+        case .failed:
+            if let onRetry {
+                Button("Retry", action: onRetry)
+                    .buttonStyle(.borderless)
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+            } else {
+                EmptyView()
+            }
+        case .idle, .complete:
+            EmptyView()
+        }
+    }
+
+    private var headerIcon: String {
+        switch controller.state {
+        case .failed: return "exclamationmark.triangle.fill"
+        default:      return "sparkles"
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch controller.state {
+        case .idle:
+            Text(placeholder)
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
-
-            if !section.citations.isEmpty {
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    ForEach(section.citations.prefix(8)) { citation in
-                        Button {
-                            // individual citation tap: route to insight sheet via parent state
-                        } label: {
-                            HStack(spacing: 3) {
-                                Image(systemName: "bubble.left.and.bubble.right")
-                                    .font(.system(size: 9, weight: .medium))
-                                Text(citation.title)
-                                    .font(DesignSystem.Typography.monoTiny)
-                                    .lineLimit(1)
-                            }
-                            .padding(.horizontal, DesignSystem.Spacing.sm)
-                            .padding(.vertical, 3)
-                            .overlay(
-                                Capsule()
-                                    .stroke(DesignSystem.Colors.borderSubtle, lineWidth: 0.5)
-                            )
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+        case .streaming where controller.streamingContent.isEmpty:
+            Text(placeholder)
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+        case .streaming:
+            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                Text(controller.streamingContent)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: controller.streamingContent)
+                MercuryCaret()
+            }
+        case .complete:
+            Text(controller.streamingContent)
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+        case .failed(let err):
+            VStack(alignment: .leading, spacing: 6) {
+                Text(err)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.error)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("If Hermes isn't running, the indexed evidence below is still authoritative.")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
             }
         }
-        .padding(DesignSystem.Spacing.md)
+    }
+}
+
+private struct MercuryPoolDots: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var t: Double = 0
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<3) { i in
+                Circle()
+                    .fill(DesignSystem.Colors.mercuryGradient)
+                    .frame(width: 6, height: 6)
+                    .scaleEffect(scale(at: i))
+                    .opacity(opacity(at: i))
+            }
+        }
+        .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                t = 1
+            }
+        }
+    }
+
+    private func scale(at i: Int) -> CGFloat {
+        let start: [CGFloat] = [1.0, 0.8, 1.0]
+        let target: [CGFloat] = [1.4, 1.0, 0.8]
+        return start[i] + (target[i] - start[i]) * CGFloat(t)
+    }
+
+    private func opacity(at i: Int) -> Double {
+        let start: [Double] = [0.55, 1.0, 0.6]
+        let target: [Double] = [1.0, 0.55, 1.0]
+        return start[i] + (target[i] - start[i]) * t
+    }
+}
+
+private struct MercuryCaret: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var visible = true
+
+    var body: some View {
+        Rectangle()
+            .fill(DesignSystem.Colors.hermesAureate)
+            .frame(width: 6, height: 14)
+            .opacity(visible ? 1 : 0.2)
+            .accessibilityHidden(true)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 0.55).repeatForever(autoreverses: true)) {
+                    visible.toggle()
+                }
+            }
+    }
+}
+
+private struct NumberedSectionRow: View {
+    let index: Int
+    let total: Int
+    let title: String
+    let text: String
+    let accent: Color
+    let citations: [ProjectMemoryCitation]
+    let onCitationTap: (ProjectMemoryCitation) -> Void
+    let onCombinedCitationTap: (() -> Void)?
+
+    private var trimmedBody: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSentinelBody: Bool {
+        let lowered = trimmedBody.lowercased()
+        let sentinels = [
+            "no indexed conversations are available yet",
+            "no explicit decision summaries were found yet",
+            "no key-file evidence found yet",
+            "no reusable commands captured yet",
+            "no unresolved risk language captured yet"
+        ]
+        return sentinels.contains(where: { lowered.hasPrefix($0) }) || trimmedBody.count < 12
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+            Rectangle()
+                .fill(accent)
+                .frame(width: 3)
+                .frame(maxHeight: .infinity)
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
+                    Text(String(format: "%02d", index))
+                        .font(.system(.title3, design: .monospaced).weight(.semibold))
+                        .foregroundStyle(accent)
+                    Text(title)
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Spacer(minLength: 0)
+                    Text("\(index) / \(total)")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                if isSentinelBody {
+                    EmptyEvidenceCallout(message: trimmedBody)
+                } else {
+                    Text(trimmedBody)
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !citations.isEmpty {
+                    citationStrip
+                }
+            }
+            .padding(.vertical, DesignSystem.Spacing.sm)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm)
         .background(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .fill(DesignSystem.Colors.surface.opacity(0.55))
@@ -2130,141 +2242,551 @@ private struct ProjectMemoryPageDetailSheet: View {
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(index) of \(total). \(title)")
+        .accessibilityValue(isSentinelBody ? "Insufficient evidence" : trimmedBody)
     }
 
-    @MainActor
-    private func sendPromptToHermes(_ prompt: String) async {
-        chatController.inputText = prompt
-        await chatController.send()
-        dismiss()
+    @ViewBuilder
+    private var citationStrip: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            HStack(spacing: 6) {
+                Text("FOOTNOTES")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .tracking(1.4)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                if let onCombinedCitationTap {
+                    Button {
+                        onCombinedCitationTap()
+                    } label: {
+                        Text("Read all \(citations.count) →")
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer(minLength: 0)
+            }
+            HFlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
+                ForEach(Array(citations.prefix(8).enumerated()), id: \.element.id) { idx, citation in
+                    FootnoteCitationChip(
+                        ordinal: idx + 1,
+                        citation: citation,
+                        onTap: { onCitationTap(citation) }
+                    )
+                }
+            }
+        }
     }
 }
 
-// MARK: - Project Memory Visual Detail Sheet
-private struct ProjectMemoryVisualDetailSheet: View {
-    let visual: ProjectMemoryVisual
-    @Environment(\.dismiss) private var dismiss
-    @State private var sortAscending = false
+private struct FootnoteCitationChip: View {
+    let ordinal: Int
+    let citation: ProjectMemoryCitation
+    let onTap: () -> Void
+    @State private var hovered = false
 
-    private var sortedPoints: [ProjectMemoryVisualPoint] {
-        visual.points.sorted {
-            sortAscending ? $0.value < $1.value : $0.value > $1.value
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 6) {
+                Text(String(format: "[%02d]", ordinal))
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                Text(citation.title.isEmpty ? citation.sourceKind.rawValue : citation.title)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(hovered ? 0.95 : 0.55))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(
+                        hovered ? DesignSystem.Colors.hermesAureate.opacity(0.5) : DesignSystem.Colors.borderSubtle,
+                        lineWidth: 0.5
+                    )
+            )
         }
+        .buttonStyle(.plain)
+        .scaleEffect(hovered ? 1.02 : 1.0)
+        .animation(DesignSystem.Animation.hover, value: hovered)
+        .onHover { hovered = $0 }
+        .accessibilityLabel("Footnote \(ordinal): \(citation.title)")
+        .accessibilityHint("Opens Hermes analysis of this citation")
+    }
+}
+
+private struct EmptyEvidenceCallout: View {
+    let message: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            HStack(spacing: 6) {
+                Image(systemName: "tray")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                Text("INSUFFICIENT EVIDENCE")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .tracking(1.6)
+                    .foregroundStyle(DesignSystem.Colors.warning)
+            }
+            Text(message.isEmpty ? "This section needs more indexed conversations before it can synthesize a meaningful answer." : message)
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Run Refresh Memory on the project to regenerate this section.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .italic()
+        }
+        .padding(DesignSystem.Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .fill(DesignSystem.Colors.warning.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .stroke(DesignSystem.Colors.warning.opacity(0.25), lineWidth: 0.5)
+        )
+    }
+}
+
+private struct CitationQuoteCard: View {
+    let ordinal: Int
+    let citation: ProjectMemoryCitation
+
+    var body: some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+            Text(String(format: "%02d", ordinal))
+                .font(.system(.title3, design: .monospaced).weight(.semibold))
+                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                .frame(width: 32, alignment: .leading)
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                HStack {
+                    Text(citation.title.isEmpty ? "Untitled" : citation.title)
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                    sourceChip
+                }
+                Text(citation.snippet.isEmpty ? "(no snippet captured)" : citation.snippet)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let createdAt = citation.createdAt {
+                    Text(createdAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+            }
+        }
+        .padding(DesignSystem.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surface.opacity(0.55))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .combine)
     }
 
-    private var maxValue: Double {
-        max(visual.points.map(\.value).max() ?? 1, 1)
+    private var sourceChip: some View {
+        Text(sourceLabel)
+            .font(DesignSystem.Typography.monoTiny)
+            .tracking(0.8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                Capsule().fill(DesignSystem.Colors.hermesAureate.opacity(0.12))
+            )
+            .overlay(
+                Capsule().stroke(DesignSystem.Colors.hermesAureate.opacity(0.35), lineWidth: 0.5)
+            )
+            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+    }
+
+    private var sourceLabel: String {
+        switch citation.sourceKind {
+        case .conversation:    return "TRANSCRIPT"
+        case .skillDoc:        return "SKILL DOC"
+        case .agentDoc:        return "AGENT DOC"
+        case .sharedArtifact:  return "SHARED ARTIFACT"
+        }
+    }
+}
+
+private struct VisualChart: View {
+    let visual: ProjectMemoryVisual
+    let sortAscending: Bool
+
+    private var points: [ProjectMemoryVisualPoint] {
+        visual.points.sorted { sortAscending ? $0.value < $1.value : $0.value > $1.value }
+    }
+
+    var body: some View {
+        Chart {
+            switch visual.kind {
+            case .timeline:
+                ForEach(Array(visual.points.enumerated()), id: \.offset) { idx, point in
+                    LineMark(
+                        x: .value("Bucket", idx),
+                        y: .value("Value", point.value)
+                    )
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    .interpolationMethod(.catmullRom)
+                    PointMark(
+                        x: .value("Bucket", idx),
+                        y: .value("Value", point.value)
+                    )
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    .annotation(position: .top, alignment: .center, spacing: 2) {
+                        Text(Int(point.value).formatAsTokenVolume())
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                }
+            case .providerMix, .hotspots, .cover:
+                ForEach(Array(points.enumerated()), id: \.offset) { idx, point in
+                    BarMark(
+                        x: .value("Label", point.label),
+                        y: .value("Value", point.value)
+                    )
+                    .foregroundStyle(barColor(at: idx))
+                    .cornerRadius(4)
+                    .annotation(position: .top, alignment: .center, spacing: 2) {
+                        Text(valueLabel(point))
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                }
+            }
+        }
+        .frame(height: 220)
+        .chartXAxis {
+            AxisMarks(values: .automatic) { _ in
+                AxisGridLine().foregroundStyle(DesignSystem.Colors.borderSubtle)
+                AxisValueLabel()
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading) { _ in
+                AxisGridLine().foregroundStyle(DesignSystem.Colors.borderSubtle)
+                AxisValueLabel()
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+        }
+        .accessibilityLabel("Chart of \(visual.title)")
+        .accessibilityValue("\(visual.points.count) data points")
+    }
+
+    private func barColor(at idx: Int) -> Color {
+        let palette: [Color] = [
+            DesignSystem.Colors.hermesAureate,
+            DesignSystem.Colors.whimsy,
+            DesignSystem.Colors.ember,
+            DesignSystem.Colors.amber,
+            DesignSystem.Colors.hermesMercury
+        ]
+        return palette[idx % palette.count]
+    }
+
+    private func valueLabel(_ point: ProjectMemoryVisualPoint) -> String {
+        if let s = point.subtitle, !s.isEmpty { return s }
+        if visual.kind == .providerMix { return point.value.formatAsCost() }
+        if visual.kind == .timeline { return Int(point.value).formatAsTokenVolume() }
+        return String(Int(point.value))
+    }
+}
+
+private struct CascadeInModifier: ViewModifier {
+    let index: Int
+    let visible: Int
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        let shown = reduceMotion || visible < 0 || index < visible
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown ? 0 : 8)
+    }
+}
+
+private extension View {
+    func cascadeIn(index: Int, visible: Int, reduceMotion: Bool) -> some View {
+        modifier(CascadeInModifier(index: index, visible: visible, reduceMotion: reduceMotion))
+    }
+}
+
+private struct HFlowLayout: Layout {
+    var horizontalSpacing: CGFloat
+    var verticalSpacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var rowHeight: CGFloat = 0
+        var totalHeight: CGFloat = 0
+        var rowWidth: CGFloat = 0
+        for s in subviews {
+            let size = s.sizeThatFits(.unspecified)
+            if rowWidth + size.width > width, rowWidth > 0 {
+                totalHeight += rowHeight + verticalSpacing
+                rowHeight = size.height
+                rowWidth = size.width + horizontalSpacing
+            } else {
+                rowWidth += size.width + horizontalSpacing
+                rowHeight = max(rowHeight, size.height)
+            }
+        }
+        totalHeight += rowHeight
+        return CGSize(width: width.isFinite ? width : rowWidth, height: totalHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x: CGFloat = bounds.minX
+        var y: CGFloat = bounds.minY
+        var rowHeight: CGFloat = 0
+        for s in subviews {
+            let size = s.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX, x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + verticalSpacing
+                rowHeight = 0
+            }
+            s.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + horizontalSpacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+// MARK: - Project Memory Hero Detail Sheet (Editorial Observatory)
+
+private struct ProjectMemoryHeroDetailSheet: View {
+    let snapshot: ProjectMemorySnapshot
+    let chatController: ChatSessionController
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var insight: ProjectMemoryInsightController
+    @State private var visibleSections: Int = -1
+    @State private var cascadeTask: Task<Void, Never>?
+    @State private var selectedPage: ProjectMemoryPage?
+    @State private var selectedVisual: ProjectMemoryVisual?
+    @State private var citationWrapper: CitationWrapper?
+
+    init(snapshot: ProjectMemorySnapshot, chatController: ChatSessionController) {
+        self.snapshot = snapshot
+        self.chatController = chatController
+        _insight = State(initialValue: ProjectMemoryInsightController(chatController: chatController))
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
+            chrome
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                    barChart
-                    dataTable
+                    EditorialHero(
+                        eyebrow: "PROJECT MEMORY · \(snapshot.freshness.label)",
+                        subtitle: subtitle,
+                        headline: snapshot.projectDisplayName,
+                        metaSegments: metaSegments,
+                        leadAccent: DesignSystem.Colors.hermesAureate
+                    )
+                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    HermesReadingCard(
+                        title: "Hermes Reading",
+                        placeholder: "Hermes is synthesizing the project memory into a three-beat brief: what the team is working on, where the spend is going, what to do next.",
+                        controller: insight,
+                        onRetry: { startInsight() }
+                    )
+                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    if !snapshot.pages.isEmpty {
+                        pagesSection
+                            .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+                    }
+
+                    if !snapshot.visuals.isEmpty {
+                        visualsSection
+                            .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+                    }
+
+                    if !snapshot.keyFiles.isEmpty {
+                        keyFilesSection
+                            .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+                    }
+
+                    if !snapshot.keyCommands.isEmpty {
+                        keyCommandsSection
+                            .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
+                    }
+
+                    auditFooter
+                        .cascadeIn(index: 6, visible: visibleSections, reduceMotion: reduceMotion)
                 }
                 .padding(DesignSystem.Spacing.xl)
             }
         }
         .background(DesignSystem.Colors.background)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .onAppear { startInsight(); runEntranceMotion() }
+        .onDisappear { cascadeTask?.cancel(); insight.cancel() }
+        .onChange(of: chatController.streamingTick) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+        .onChange(of: chatController.isStreaming) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+        .sheet(item: $selectedPage) { page in
+            ProjectMemoryPageDetailSheet(page: page, projectName: snapshot.projectDisplayName, chatController: chatController)
+                .frame(minWidth: 720, minHeight: 540)
+        }
+        .sheet(item: $selectedVisual) { visual in
+            ProjectMemoryVisualDetailSheet(visual: visual, chatController: chatController)
+                .frame(minWidth: 760, minHeight: 560)
+        }
+        .sheet(item: $citationWrapper) { wrapper in
+            CitationInsightSheet(citations: wrapper.citations, chatController: chatController)
+                .frame(minWidth: 800, minHeight: 620)
+        }
     }
 
-    private var header: some View {
+    private var chrome: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(visual.title)
-                    .font(DesignSystem.Typography.title)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                if let subtitle = visual.subtitle {
-                    Text(subtitle)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
-            }
+            Text("Memory · \(snapshot.projectDisplayName)")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
             Spacer()
-            Button("Sort") {
-                sortAscending.toggle()
+            Button {
+                handoffToChat()
+            } label: {
+                Label("Continue in chat", systemImage: "arrow.right.circle.fill")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
             Button("Done") { dismiss() }
                 .keyboardShortcut(.cancelAction)
         }
-        .padding(DesignSystem.Spacing.xl)
+        .padding(.horizontal, DesignSystem.Spacing.xl)
+        .padding(.vertical, DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surface.opacity(0.6))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DesignSystem.Colors.borderSubtle)
+                .frame(height: 0.5)
+        }
     }
 
-    private var barChart: some View {
+    private var subtitle: String {
+        var parts: [String] = []
+        if let end = snapshot.sourceWindowEnd, let start = snapshot.sourceWindowStart {
+            parts.append("\(start.formatted(date: .abbreviated, time: .omitted)) – \(end.formatted(date: .abbreviated, time: .omitted))")
+        }
+        parts.append("Generated \(snapshot.generatedAt.formatted(.relative(presentation: .named)))")
+        return parts.joined(separator: " · ")
+    }
+
+    private var metaSegments: [String] {
+        var parts: [String] = []
+        parts.append("\(snapshot.sourceSessionCount) sessions")
+        parts.append("\(snapshot.sourceConversationCount) transcripts")
+        if let usage = parseUsageSummary() {
+            parts.append(usage.cost)
+            parts.append(usage.tokens)
+        }
+        parts.append("\(snapshot.keyFiles.count) files · \(snapshot.keyCommands.count) cmds")
+        return parts
+    }
+
+    private func parseUsageSummary() -> (cost: String, tokens: String)? {
+        let parts = snapshot.usageSummary.split(separator: " ")
+        var cost: String?
+        var tokens: String?
+        for p in parts {
+            if p.hasPrefix("$") { cost = String(p); continue }
+            if p.contains("tok") || p.contains("M") || p.contains("B") || p.contains("K") {
+                tokens = String(p)
+            }
+        }
+        if let cost, let tokens { return (cost, tokens) }
+        return nil
+    }
+
+    private var pagesSection: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            sectionHeader("Distribution")
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                ForEach(Array(sortedPoints.enumerated()), id: \.offset) { _, point in
-                    HStack(spacing: DesignSystem.Spacing.md) {
-                        Text(point.label)
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .frame(width: 120, alignment: .leading)
-                        Capsule()
-                            .fill(DesignSystem.Colors.hermesAureate.opacity(0.8))
-                            .frame(
-                                width: CGFloat(max(0.05, point.value / maxValue)) * 280,
-                                height: 6
-                            )
-                        Text(pointValueLabel(point))
-                            .font(DesignSystem.Typography.monoSmall)
-                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                        Spacer()
-                    }
+            sectionEyebrow("PAGES")
+            VStack(spacing: DesignSystem.Spacing.md) {
+                ForEach(Array(snapshot.pages.enumerated()), id: \.element.id) { idx, page in
+                    HeroPageRow(
+                        ordinal: idx + 1,
+                        total: snapshot.pages.count,
+                        page: page,
+                        onTap: { selectedPage = page },
+                        onCitationTap: { c in citationWrapper = .single(c) }
+                    )
                 }
             }
         }
     }
 
-    private var dataTable: some View {
+    private var visualsSection: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            sectionHeader("Data Points")
-            VStack(spacing: 0) {
-                HStack {
-                    Text("Label")
-                        .font(DesignSystem.Typography.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Value")
-                        .font(DesignSystem.Typography.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                        .frame(width: 100, alignment: .trailing)
-                    if sortedPoints.contains(where: { $0.subtitle != nil }) {
-                        Text("Detail")
-                            .font(DesignSystem.Typography.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                            .frame(width: 120, alignment: .trailing)
+            sectionEyebrow("VISUALS")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                    ForEach(snapshot.visuals) { visual in
+                        VisualTile(visual: visual, onTap: { selectedVisual = visual })
                     }
                 }
-                .padding(.vertical, DesignSystem.Spacing.sm)
-                Divider().background(DesignSystem.Colors.border)
+                .padding(.vertical, DesignSystem.Spacing.xs)
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
 
-                ForEach(Array(sortedPoints.enumerated()), id: \.offset) { _, point in
-                    HStack {
-                        Text(point.label)
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(pointValueLabel(point))
+    private var keyFilesSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("KEY FILES")
+            VStack(spacing: DesignSystem.Spacing.xs) {
+                ForEach(Array(snapshot.keyFiles.enumerated()), id: \.offset) { idx, file in
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Text(String(format: "%02d", idx + 1))
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .frame(width: 24, alignment: .leading)
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 11))
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                        Text(file)
                             .font(DesignSystem.Typography.monoSmall)
-                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                            .frame(width: 100, alignment: .trailing)
-                        if let subtitle = point.subtitle {
-                            Text(subtitle)
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.textMuted)
-                                .frame(width: 120, alignment: .trailing)
-                        }
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                        Spacer(minLength: 0)
                     }
-                    .padding(.vertical, DesignSystem.Spacing.sm)
-                    Divider().background(DesignSystem.Colors.border.opacity(0.5))
+                    .padding(.vertical, 4)
                 }
             }
             .padding(DesignSystem.Spacing.md)
@@ -2279,240 +2801,1063 @@ private struct ProjectMemoryVisualDetailSheet: View {
         }
     }
 
-    private func pointValueLabel(_ point: ProjectMemoryVisualPoint) -> String {
-        if let subtitle = point.subtitle, subtitle.isEmpty == false {
-            return subtitle
+    private var keyCommandsSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("KEY COMMANDS")
+            VStack(spacing: DesignSystem.Spacing.xs) {
+                ForEach(Array(snapshot.keyCommands.enumerated()), id: \.offset) { idx, cmd in
+                    HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {
+                        Text(String(format: "%02d", idx + 1))
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .frame(width: 24, alignment: .leading)
+                        Image(systemName: "terminal")
+                            .font(.system(size: 11))
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                        Text(cmd)
+                            .font(DesignSystem.Typography.monoSmall)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+            )
         }
-        if visual.kind == .providerMix {
-            return point.value.formatAsCost()
+    }
+
+    private var auditFooter: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Rectangle()
+                .fill(DesignSystem.Colors.mercuryGradient)
+                .frame(height: 0.5)
+            HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
+                Text("Schema v\(snapshot.schemaVersion)  ·  Hash \(String(snapshot.contentHash.prefix(8)))  ·  \(snapshot.freshness.label)")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(2)
+                Spacer(minLength: 0)
+            }
         }
-        if visual.kind == .timeline {
-            return Int(point.value).formatAsTokenVolume()
+    }
+
+    private func sectionEyebrow(_ title: String) -> some View {
+        Text(title)
+            .font(DesignSystem.Typography.caption)
+            .tracking(2.0)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func startInsight() {
+        let prompt = """
+        You are summarizing a local project memory snapshot for a developer.
+        Write a tight three-paragraph brief — no preamble, no headings, no fluff.
+
+        Paragraph 1: What the team is working on right now (use the pages + key files).
+        Paragraph 2: Where the spend and effort are going (use the usage summary).
+        Paragraph 3: What to do next (concrete, actionable, prioritized).
+
+        Project: \(snapshot.projectDisplayName)
+        Window: \(snapshot.usageSummary)
+        Sessions: \(snapshot.sourceSessionCount); Transcripts: \(snapshot.sourceConversationCount)
+        Key files: \(snapshot.keyFiles.prefix(8).joined(separator: ", "))
+        Key commands: \(snapshot.keyCommands.prefix(6).joined(separator: " ; "))
+
+        Page outlines:
+        \(snapshot.pages.map { page in
+            "• \(page.title) — \(page.summary)\n  sections: \(page.sections.map(\.title).joined(separator: ", "))"
+        }.joined(separator: "\n"))
+        """
+        insight.generate(prompt: prompt)
+    }
+
+    @MainActor
+    private func handoffToChat() {
+        let prompt = """
+        Continue analyzing the project memory for \(snapshot.projectDisplayName).
+        Key files: \(snapshot.keyFiles.prefix(8).joined(separator: ", "))
+        \(snapshot.usageSummary)
+        Ask me what I want to dive into.
+        """
+        chatController.inputText = prompt
+        Task { await chatController.send() }
+        dismiss()
+    }
+
+    private func runEntranceMotion() {
+        if reduceMotion {
+            visibleSections = 7
+            return
         }
-        return String(Int(point.value))
+        guard visibleSections < 0 else { return }
+        visibleSections = 0
+        cascadeTask?.cancel()
+        cascadeTask = Task { @MainActor in
+            for i in 0..<7 {
+                if i > 0 {
+                    try? await Task.sleep(nanoseconds: 40_000_000)
+                    if Task.isCancelled { return }
+                }
+                withAnimation(DesignSystem.Animation.gentle) {
+                    visibleSections = i + 1
+                }
+            }
+        }
     }
 }
 
-// MARK: - Citation Insight Sheet (LLM-powered beautiful card)
-private struct CitationInsightSheet: View {
-    let citations: [ProjectMemoryCitation]
+private struct HeroPageRow: View {
+    let ordinal: Int
+    let total: Int
+    let page: ProjectMemoryPage
+    let onTap: () -> Void
+    let onCitationTap: (ProjectMemoryCitation) -> Void
+    @State private var hovered = false
+
+    private var aggregatedCitations: [ProjectMemoryCitation] {
+        Array(page.sections.flatMap(\.citations).prefix(6))
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+                Rectangle()
+                    .fill(DesignSystem.Colors.mercuryGradient)
+                    .frame(width: 3)
+                    .frame(maxHeight: .infinity)
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
+                        Text(String(format: "%02d", ordinal))
+                            .font(.system(.title3, design: .monospaced).weight(.semibold))
+                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                        Text(page.title)
+                            .font(DesignSystem.Typography.headline)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Spacer(minLength: 0)
+                        Text("\(ordinal) / \(total)")
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                    Text(page.summary)
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !page.sections.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(page.sections) { section in
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    Text("·")
+                                        .font(DesignSystem.Typography.monoSmall)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    Text(section.title)
+                                        .font(DesignSystem.Typography.caption)
+                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                }
+                            }
+                        }
+                    }
+                    if !aggregatedCitations.isEmpty {
+                        HFlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
+                            ForEach(Array(aggregatedCitations.prefix(5).enumerated()), id: \.element.id) { idx, c in
+                                FootnoteCitationChip(
+                                    ordinal: idx + 1,
+                                    citation: c,
+                                    onTap: { onCitationTap(c) }
+                                )
+                            }
+                        }
+                    }
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Open page")
+                            .font(DesignSystem.Typography.monoTiny)
+                            .tracking(0.8)
+                    }
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    .padding(.top, 2)
+                }
+                .padding(.vertical, DesignSystem.Spacing.sm)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(hovered ? 0.85 : 0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(
+                        hovered ? DesignSystem.Colors.hermesAureate.opacity(0.45) : DesignSystem.Colors.border.opacity(0.3),
+                        lineWidth: hovered ? 1 : 0.75
+                    )
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(hovered ? 1.005 : 1.0)
+        .animation(DesignSystem.Animation.hover, value: hovered)
+        .onHover { hovered = $0 }
+    }
+}
+
+private struct VisualTile: View {
+    let visual: ProjectMemoryVisual
+    let onTap: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                Text(visualKindLabel.uppercased())
+                    .font(DesignSystem.Typography.monoTiny)
+                    .tracking(1.4)
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                Text(visual.title)
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(2)
+                if let subtitle = visual.subtitle {
+                    Text(subtitle)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                }
+                MiniVisualPreview(visual: visual)
+                    .frame(height: 60)
+                Text("\(visual.points.count) points · open →")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(DesignSystem.Spacing.md)
+            .frame(width: 220, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surfaceElevated.opacity(hovered ? 0.85 : 0.6))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.mercuryGradient, lineWidth: hovered ? 1 : 0.75)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(hovered ? 1.02 : 1.0)
+        .animation(DesignSystem.Animation.hover, value: hovered)
+        .onHover { hovered = $0 }
+    }
+
+    private var visualKindLabel: String {
+        switch visual.kind {
+        case .cover: return "Cover"
+        case .providerMix: return "Provider Mix"
+        case .timeline: return "Timeline"
+        case .hotspots: return "Hotspots"
+        }
+    }
+}
+
+private struct MiniVisualPreview: View {
+    let visual: ProjectMemoryVisual
+
+    var body: some View {
+        Chart {
+            switch visual.kind {
+            case .timeline:
+                ForEach(Array(visual.points.enumerated()), id: \.offset) { idx, p in
+                    LineMark(x: .value("i", idx), y: .value("v", p.value))
+                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                        .interpolationMethod(.catmullRom)
+                }
+            default:
+                ForEach(Array(visual.points.prefix(6).enumerated()), id: \.offset) { idx, p in
+                    BarMark(x: .value("i", idx), y: .value("v", p.value))
+                        .foregroundStyle(barColor(idx))
+                        .cornerRadius(2)
+                }
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
+        .accessibilityHidden(true)
+    }
+
+    private func barColor(_ idx: Int) -> Color {
+        let palette: [Color] = [
+            DesignSystem.Colors.hermesAureate,
+            DesignSystem.Colors.whimsy,
+            DesignSystem.Colors.ember,
+            DesignSystem.Colors.amber,
+            DesignSystem.Colors.hermesMercury
+        ]
+        return palette[idx % palette.count]
+    }
+}
+
+// MARK: - Project Memory Page Detail Sheet (Editorial Observatory)
+
+private struct ProjectMemoryPageDetailSheet: View {
+    let page: ProjectMemoryPage
+    let projectName: String
     let chatController: ChatSessionController
     @Environment(\.dismiss) private var dismiss
-    @State private var insightAnswer: String = ""
-    @State private var isLoading = true
-    @State private var errorMessage: String? = nil
-    @State private var showRawSource = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var insight: ProjectMemoryInsightController
+    @State private var visibleSections: Int = -1
+    @State private var cascadeTask: Task<Void, Never>?
+    @State private var citationWrapper: CitationWrapper?
+
+    init(page: ProjectMemoryPage, projectName: String, chatController: ChatSessionController) {
+        self.page = page
+        self.projectName = projectName
+        self.chatController = chatController
+        _insight = State(initialValue: ProjectMemoryInsightController(chatController: chatController))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
+            chrome
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                    if isLoading {
-                        loadingState
-                    } else if let error = errorMessage {
-                        errorState(error)
+                    EditorialHero(
+                        eyebrow: "MEMORY PAGE · \(page.title)",
+                        subtitle: page.summary,
+                        headline: page.title,
+                        metaSegments: heroMetaSegments,
+                        leadAccent: DesignSystem.Colors.hermesAureate
+                    )
+                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    HermesReadingCard(
+                        title: "Hermes Reading",
+                        placeholder: "Hermes is interpreting this page — what it tells the operator and what to do with it.",
+                        controller: insight,
+                        onRetry: { startInsight() }
+                    )
+                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    if !page.sections.isEmpty {
+                        sectionsSection
+                            .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
                     } else {
-                        insightCard
+                        EmptyEvidenceCallout(message: "This page has no synthesized sections yet.")
+                            .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
                     }
 
-                    rawSourceSection
+                    if !page.visualIDs.isEmpty {
+                        visualsRefsSection
+                            .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+                    }
+
+                    auditFooter
+                        .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
                 }
                 .padding(DesignSystem.Spacing.xl)
             }
         }
         .background(DesignSystem.Colors.background)
-        .task { await generateInsight() }
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .onAppear { startInsight(); runEntranceMotion() }
+        .onDisappear { cascadeTask?.cancel(); insight.cancel() }
+        .onChange(of: chatController.streamingTick) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+        .onChange(of: chatController.isStreaming) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+        .sheet(item: $citationWrapper) { wrapper in
+            CitationInsightSheet(citations: wrapper.citations, chatController: chatController)
+                .frame(minWidth: 800, minHeight: 620)
+        }
     }
 
-    private var header: some View {
+    private var chrome: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Citation Insight")
-                    .font(DesignSystem.Typography.title)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("\(citations.count) citation\(citations.count == 1 ? "" : "s") analyzed")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Text("\(projectName) · Memory page")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Spacer()
+            Button {
+                handoffToChat()
+            } label: {
+                Label("Deep dive in chat", systemImage: "arrow.right.circle.fill")
             }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            Button("Done") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.xl)
+        .padding(.vertical, DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surface.opacity(0.6))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DesignSystem.Colors.borderSubtle)
+                .frame(height: 0.5)
+        }
+    }
+
+    private var heroMetaSegments: [String] {
+        var parts: [String] = []
+        parts.append("\(page.sections.count) sections")
+        let totalCitations = page.sections.reduce(0) { $0 + $1.citations.count }
+        parts.append("\(totalCitations) citations")
+        if !page.visualIDs.isEmpty {
+            parts.append("\(page.visualIDs.count) visuals")
+        }
+        return parts
+    }
+
+    private var sectionsSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("SECTIONS")
+            VStack(spacing: DesignSystem.Spacing.md) {
+                ForEach(Array(page.sections.enumerated()), id: \.element.id) { idx, section in
+                    NumberedSectionRow(
+                        index: idx + 1,
+                        total: page.sections.count,
+                        title: section.title,
+                        text: section.body,
+                        accent: accentColor(for: idx),
+                        citations: section.citations,
+                        onCitationTap: { c in citationWrapper = .single(c) },
+                        onCombinedCitationTap: section.citations.isEmpty ? nil : {
+                            citationWrapper = CitationWrapper(citations: section.citations)
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    private var visualsRefsSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("REFERENCED VISUALS")
+            Text(page.visualIDs.joined(separator: " · "))
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .padding(DesignSystem.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.4))
+                )
+        }
+    }
+
+    private var auditFooter: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Rectangle()
+                .fill(DesignSystem.Colors.mercuryGradient)
+                .frame(height: 0.5)
+            Text("page-id \(page.id)  ·  \(page.sections.count) sections  ·  \(page.visualIDs.count) visuals")
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+        }
+    }
+
+    private func accentColor(for idx: Int) -> Color {
+        let palette: [Color] = [
+            DesignSystem.Colors.hermesAureate,
+            DesignSystem.Colors.ember,
+            DesignSystem.Colors.whimsy,
+            DesignSystem.Colors.amber
+        ]
+        return palette[idx % palette.count]
+    }
+
+    private func sectionEyebrow(_ title: String) -> some View {
+        Text(title)
+            .font(DesignSystem.Typography.caption)
+            .tracking(2.0)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func startInsight() {
+        let prompt = """
+        You are reading a single page from a project memory snapshot. Write a tight 2–3 paragraph reading — no preamble, no headings, no fluff.
+
+        Paragraph 1: What this page is actually saying about the project right now (synthesize across the sections).
+        Paragraph 2: What gaps, risks, or questions the operator should care about (be specific, name files or session ids when relevant).
+        Paragraph 3 (optional): What next move makes sense — a concrete suggestion the operator can take in the next 30 minutes.
+
+        Project: \(projectName)
+        Page: \(page.title)
+        Summary: \(page.summary)
+
+        Sections:
+        \(page.sections.map { section in
+            "• \(section.title)\n  \(section.body)"
+        }.joined(separator: "\n\n"))
+        """
+        insight.generate(prompt: prompt)
+    }
+
+    @MainActor
+    private func handoffToChat() {
+        let prompt = """
+        Deep dive into the project memory page "\(page.title)" for \(projectName).
+        Summary: \(page.summary)
+        Sections to analyze: \(page.sections.map(\.title).joined(separator: ", "))
+        Pull on threads from the body text, surface contradictions, and suggest next investigations.
+        """
+        chatController.inputText = prompt
+        Task { await chatController.send() }
+        dismiss()
+    }
+
+    private func runEntranceMotion() {
+        if reduceMotion {
+            visibleSections = 5
+            return
+        }
+        guard visibleSections < 0 else { return }
+        visibleSections = 0
+        cascadeTask?.cancel()
+        cascadeTask = Task { @MainActor in
+            for i in 0..<5 {
+                if i > 0 {
+                    try? await Task.sleep(nanoseconds: 40_000_000)
+                    if Task.isCancelled { return }
+                }
+                withAnimation(DesignSystem.Animation.gentle) {
+                    visibleSections = i + 1
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Project Memory Visual Detail Sheet (Swift Charts-first)
+
+private struct ProjectMemoryVisualDetailSheet: View {
+    let visual: ProjectMemoryVisual
+    let chatController: ChatSessionController
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var insight: ProjectMemoryInsightController
+    @State private var visibleSections: Int = -1
+    @State private var cascadeTask: Task<Void, Never>?
+    @State private var sortAscending: Bool = false
+
+    init(visual: ProjectMemoryVisual, chatController: ChatSessionController) {
+        self.visual = visual
+        self.chatController = chatController
+        _insight = State(initialValue: ProjectMemoryInsightController(chatController: chatController))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            chrome
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    EditorialHero(
+                        eyebrow: "VISUAL · \(kindLabel.uppercased())",
+                        subtitle: visual.subtitle ?? "Source: local project memory snapshot.",
+                        headline: visual.title,
+                        metaSegments: heroMetaSegments,
+                        leadAccent: DesignSystem.Colors.hermesAureate
+                    )
+                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    chartCard
+                        .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    dataTableSection
+                        .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    HermesReadingCard(
+                        title: "Hermes Reading",
+                        placeholder: "Hermes is interpreting this visual — what the distribution implies and what to do about it.",
+                        controller: insight,
+                        onRetry: { startInsight() }
+                    )
+                    .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    auditFooter
+                        .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+                }
+                .padding(DesignSystem.Spacing.xl)
+            }
+        }
+        .background(DesignSystem.Colors.background)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .onAppear { startInsight(); runEntranceMotion() }
+        .onDisappear { cascadeTask?.cancel(); insight.cancel() }
+        .onChange(of: chatController.streamingTick) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+        .onChange(of: chatController.isStreaming) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+    }
+
+    private var chrome: some View {
+        HStack {
+            Text("Visual · \(kindLabel)")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Spacer()
+            Button {
+                sortAscending.toggle()
+            } label: {
+                Label(sortAscending ? "Sort: ascending" : "Sort: descending",
+                      systemImage: sortAscending ? "arrow.up" : "arrow.down")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            Button("Done") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.xl)
+        .padding(.vertical, DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surface.opacity(0.6))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DesignSystem.Colors.borderSubtle)
+                .frame(height: 0.5)
+        }
+    }
+
+    private var kindLabel: String {
+        switch visual.kind {
+        case .cover: return "Cover"
+        case .providerMix: return "Provider Mix"
+        case .timeline: return "Timeline"
+        case .hotspots: return "Hotspots"
+        }
+    }
+
+    private var heroMetaSegments: [String] {
+        var parts: [String] = []
+        parts.append("\(visual.points.count) points")
+        let sum = visual.points.reduce(0.0) { $0 + $1.value }
+        if visual.kind == .providerMix {
+            parts.append("Σ \(sum.formatAsCost())")
+        } else if visual.kind == .timeline {
+            parts.append("Σ \(Int(sum).formatAsTokenVolume())")
+        } else {
+            parts.append("Σ \(Int(sum))")
+        }
+        if let mx = visual.points.max(by: { $0.value < $1.value }) {
+            parts.append("max · \(mx.label)")
+        }
+        return parts
+    }
+
+    private var chartCard: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("DISTRIBUTION")
+            VisualChart(visual: visual, sortAscending: sortAscending)
+                .padding(DesignSystem.Spacing.md)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .fill(DesignSystem.Colors.surface.opacity(0.55))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                        .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+                )
+        }
+    }
+
+    private var sortedPoints: [ProjectMemoryVisualPoint] {
+        visual.points.sorted {
+            sortAscending ? $0.value < $1.value : $0.value > $1.value
+        }
+    }
+
+    private var hasDetail: Bool {
+        sortedPoints.contains { $0.subtitle != nil }
+    }
+
+    private var dataTableSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            sectionEyebrow("DATA POINTS")
+            VStack(spacing: 0) {
+                HStack {
+                    Text("LABEL")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .tracking(1.4)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("VALUE")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .tracking(1.4)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .frame(width: 120, alignment: .trailing)
+                    if hasDetail {
+                        Text("DETAIL")
+                            .font(DesignSystem.Typography.monoTiny)
+                            .tracking(1.4)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .frame(width: 140, alignment: .trailing)
+                    }
+                }
+                .padding(.vertical, DesignSystem.Spacing.sm)
+                Rectangle()
+                    .fill(DesignSystem.Colors.border.opacity(0.5))
+                    .frame(height: 0.5)
+
+                ForEach(Array(sortedPoints.enumerated()), id: \.offset) { _, point in
+                    HStack {
+                        Text(point.label)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(valueLabel(point))
+                            .font(DesignSystem.Typography.monoSmall)
+                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                            .frame(width: 120, alignment: .trailing)
+                        if hasDetail {
+                            if let subtitle = point.subtitle {
+                                Text(subtitle)
+                                    .font(DesignSystem.Typography.tiny)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                    .frame(width: 140, alignment: .trailing)
+                            } else {
+                                Color.clear.frame(width: 140)
+                            }
+                        }
+                    }
+                    .padding(.vertical, DesignSystem.Spacing.sm)
+                    Rectangle()
+                        .fill(DesignSystem.Colors.border.opacity(0.25))
+                        .frame(height: 0.5)
+                }
+            }
+            .padding(DesignSystem.Spacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+            )
+        }
+    }
+
+    private var auditFooter: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Rectangle()
+                .fill(DesignSystem.Colors.mercuryGradient)
+                .frame(height: 0.5)
+            Text("visual-id \(visual.id)  ·  kind \(visual.kind.rawValue)  ·  \(visual.points.count) points")
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+        }
+    }
+
+    private func valueLabel(_ point: ProjectMemoryVisualPoint) -> String {
+        if let s = point.subtitle, !s.isEmpty { return s }
+        if visual.kind == .providerMix { return point.value.formatAsCost() }
+        if visual.kind == .timeline { return Int(point.value).formatAsTokenVolume() }
+        return String(Int(point.value))
+    }
+
+    private func sectionEyebrow(_ title: String) -> some View {
+        Text(title)
+            .font(DesignSystem.Typography.caption)
+            .tracking(2.0)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private func startInsight() {
+        let topLine = sortedPoints.prefix(5).map { p in
+            "\(p.label): \(valueLabel(p))"
+        }.joined(separator: " · ")
+        let prompt = """
+        You are reading a chart from a project memory snapshot.
+
+        Write a tight 2-paragraph reading — no preamble, no headings, no fluff.
+
+        Paragraph 1: What the distribution means (concentration, skew, outliers, recent shifts).
+        Paragraph 2: What action the developer should take — concrete, specific, with at most one number.
+
+        Visual: \(visual.title) (kind: \(kindLabel))
+        Subtitle: \(visual.subtitle ?? "—")
+        Top points: \(topLine)
+        Total points: \(visual.points.count)
+        """
+        insight.generate(prompt: prompt)
+    }
+
+    private func runEntranceMotion() {
+        if reduceMotion {
+            visibleSections = 5
+            return
+        }
+        guard visibleSections < 0 else { return }
+        visibleSections = 0
+        cascadeTask?.cancel()
+        cascadeTask = Task { @MainActor in
+            for i in 0..<5 {
+                if i > 0 {
+                    try? await Task.sleep(nanoseconds: 40_000_000)
+                    if Task.isCancelled { return }
+                }
+                withAnimation(DesignSystem.Animation.gentle) {
+                    visibleSections = i + 1
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Citation Insight Sheet (LLM-powered, live streaming)
+
+private struct CitationInsightSheet: View {
+    let citations: [ProjectMemoryCitation]
+    let chatController: ChatSessionController
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var insight: ProjectMemoryInsightController
+    @State private var visibleSections: Int = -1
+    @State private var cascadeTask: Task<Void, Never>?
+
+    init(citations: [ProjectMemoryCitation], chatController: ChatSessionController) {
+        self.citations = citations
+        self.chatController = chatController
+        _insight = State(initialValue: ProjectMemoryInsightController(chatController: chatController))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            chrome
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    EditorialHero(
+                        eyebrow: "CITATION INSIGHT · \(citations.count) CITATION\(citations.count == 1 ? "" : "S")",
+                        subtitle: heroSubtitle,
+                        headline: heroHeadline,
+                        metaSegments: heroMetaSegments,
+                        leadAccent: DesignSystem.Colors.hermesAureate
+                    )
+                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    HermesReadingCard(
+                        title: "Hermes Reading",
+                        placeholder: citations.count == 1
+                            ? "Hermes is reading this citation — what it means and why it matters."
+                            : "Hermes is reading the evidence — drawing connections and surfacing what matters.",
+                        controller: insight,
+                        onRetry: { startInsight() }
+                    )
+                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    evidenceSection
+                        .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    handoffFooter
+                        .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+                }
+                .padding(DesignSystem.Spacing.xl)
+            }
+        }
+        .background(DesignSystem.Colors.background)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .onAppear { startInsight(); runEntranceMotion() }
+        .onDisappear { cascadeTask?.cancel(); insight.cancel() }
+        .onChange(of: chatController.streamingTick) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+        .onChange(of: chatController.isStreaming) { _, _ in
+            insight.observeStreamingTick(
+                messages: chatController.messages,
+                activeID: chatController.activeStreamMessageId,
+                isStreaming: chatController.isStreaming
+            )
+        }
+    }
+
+    private var chrome: some View {
+        HStack {
+            Text("Citation insight · live")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
             Spacer()
             Button("Done") { dismiss() }
                 .keyboardShortcut(.cancelAction)
         }
-        .padding(DesignSystem.Spacing.xl)
-    }
-
-    private var loadingState: some View {
-        VStack(spacing: DesignSystem.Spacing.lg) {
-            ProgressView()
-                .controlSize(.small)
-            Text("Hermes is analyzing the evidence…")
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
+        .padding(.horizontal, DesignSystem.Spacing.xl)
+        .padding(.vertical, DesignSystem.Spacing.md)
+        .background(DesignSystem.Colors.surface.opacity(0.6))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DesignSystem.Colors.borderSubtle)
+                .frame(height: 0.5)
         }
-        .frame(maxWidth: .infinity, minHeight: 200)
     }
 
-    private func errorState(_ error: String) -> some View {
-        VStack(spacing: DesignSystem.Spacing.lg) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 36, weight: .light))
-                .foregroundStyle(DesignSystem.Colors.error)
-            Text("Insight generation failed")
-                .font(DesignSystem.Typography.headline)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-            Text(error)
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .multilineTextAlignment(.center)
+    private var heroHeadline: String {
+        if citations.count == 1, let only = citations.first {
+            return only.title.isEmpty ? "Untitled evidence" : only.title
         }
-        .frame(maxWidth: .infinity, minHeight: 200)
+        let trimmed = insight.streamingContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty,
+           let dot = trimmed.firstIndex(where: { ".!?".contains($0) }) {
+            return String(trimmed[..<dot]) + "."
+        }
+        return "Reading the evidence"
     }
 
-    private var insightCard: some View {
+    private var heroSubtitle: String {
+        let kinds = Array(Set(citations.map(\.sourceKind))).map { kind -> String in
+            switch kind {
+            case .conversation:    return "transcripts"
+            case .skillDoc:        return "skill docs"
+            case .agentDoc:        return "agent docs"
+            case .sharedArtifact:  return "shared artifacts"
+            }
+        }
+        return "Across " + kinds.joined(separator: ", ") + " · synthesized by Hermes"
+    }
+
+    private var heroMetaSegments: [String] {
+        var parts: [String] = []
+        parts.append("\(citations.count) cite\(citations.count == 1 ? "" : "s")")
+        let snippetChars = citations.reduce(0) { $0 + $1.snippet.count }
+        parts.append("\(snippetChars) chars evidence")
+        if let oldest = citations.compactMap(\.createdAt).min() {
+            parts.append("since \(oldest.formatted(.relative(presentation: .named)))")
+        }
+        return parts
+    }
+
+    private var evidenceSection: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                Text("HERMES ANALYSIS")
+            sectionEyebrow("EVIDENCE")
+            VStack(spacing: DesignSystem.Spacing.md) {
+                ForEach(Array(citations.enumerated()), id: \.element.id) { idx, citation in
+                    CitationQuoteCard(ordinal: idx + 1, citation: citation)
+                }
+            }
+        }
+    }
+
+    private var handoffFooter: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Rectangle()
+                .fill(DesignSystem.Colors.mercuryGradient)
+                .frame(height: 0.5)
+            HStack {
+                Text("Want to keep pulling on this thread?")
                     .font(DesignSystem.Typography.caption)
-                    .tracking(2.0)
-                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
                 Spacer()
-            }
-            Text(insightAnswer)
-                .font(DesignSystem.Typography.body)
-                .foregroundStyle(DesignSystem.Colors.textPrimary)
-                .lineSpacing(4)
-                .fixedSize(horizontal: false, vertical: true)
-                .animation(.easeOut(duration: 0.08), value: insightAnswer)
-        }
-        .padding(DesignSystem.Spacing.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(DesignSystem.Colors.surface.opacity(0.68))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(DesignSystem.Colors.mercuryGradient, lineWidth: 1)
-        )
-    }
-
-    private var rawSourceSection: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            Button {
-                withAnimation(DesignSystem.Animation.standard) {
-                    showRawSource.toggle()
+                Button {
+                    handoffToChat()
+                } label: {
+                    Label("Continue in chat", systemImage: "arrow.right.circle.fill")
                 }
-            } label: {
-                HStack {
-                    Text("Raw source")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    Spacer()
-                    Image(systemName: showRawSource ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
-            }
-            .buttonStyle(.plain)
-
-            if showRawSource {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                    ForEach(citations) { citation in
-                        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                            HStack(spacing: DesignSystem.Spacing.sm) {
-                                Image(systemName: "bubble.left.and.bubble.right")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                                Text(citation.title)
-                                    .font(DesignSystem.Typography.caption)
-                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                Spacer()
-                                Text(citation.sourceKind.rawValue)
-                                    .font(DesignSystem.Typography.monoTiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                            }
-                            Text(citation.snippet)
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                .lineSpacing(2)
-                                .fixedSize(horizontal: false, vertical: true)
-                            if let createdAt = citation.createdAt {
-                                Text(createdAt.formatted(date: .abbreviated, time: .shortened))
-                                    .font(DesignSystem.Typography.monoTiny)
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                            }
-                        }
-                        .padding(DesignSystem.Spacing.md)
-                        .background(
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.55))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                                .stroke(DesignSystem.Colors.border.opacity(0.25), lineWidth: 0.75)
-                        )
-                    }
-                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
             }
         }
     }
 
-    @MainActor
-    private func generateInsight() async {
-        isLoading = true
-        errorMessage = nil
-        insightAnswer = ""
+    private func sectionEyebrow(_ title: String) -> some View {
+        Text(title)
+            .font(DesignSystem.Typography.caption)
+            .tracking(2.0)
+            .foregroundStyle(DesignSystem.Colors.textSecondary)
+            .accessibilityAddTraits(.isHeader)
+    }
 
-        let citationSummaries = citations.map { citation in
+    private func startInsight() {
+        let citationSummaries = citations.enumerated().map { idx, citation in
             """
-            Title: \(citation.title)
-            Source: \(citation.sourceKind.rawValue) (\(citation.sourceID))
-            Snippet: \(citation.snippet)
+            [\(String(format: "%02d", idx + 1))] \(citation.title) (\(citation.sourceKind.rawValue), id: \(citation.sourceID))
+            \(citation.snippet)
             """
         }.joined(separator: "\n\n")
 
+        let prompt = citations.count == 1 ? """
+            You are reading a single piece of evidence from a project's local memory. Write a tight 2-paragraph reading — no preamble, no headings, no fluff.
+
+            Paragraph 1: What this evidence actually says and why it matters in this project.
+            Paragraph 2: What the operator should do next — concrete, specific, low-friction.
+
+            \(citationSummaries)
+            """ : """
+            You are synthesizing a small evidence pack from a project's local memory. The citations below were grouped because they share a section. Write a tight 2–3 paragraph reading — no preamble, no headings, no fluff. Connect across the citations.
+
+            Paragraph 1: What story this evidence tells, drawing connections (name 1–2 citations by their [01]-style ordinals).
+            Paragraph 2: What pattern or risk this surfaces.
+            Paragraph 3 (optional): What concrete next move makes sense given this evidence.
+
+            \(citationSummaries)
+            """
+        insight.generate(prompt: prompt)
+    }
+
+    @MainActor
+    private func handoffToChat() {
+        let citationTitles = citations.prefix(5).map(\.title).joined(separator: ", ")
         let prompt = """
-        Analyze these project memory citations and provide a concise, insightful summary.
-        Focus on: what the evidence means, why it matters, and what action it suggests.
-        Be specific and actionable. No fluff.
-
-        \(citationSummaries)
+        Continue analyzing these citations — pull on the threads I haven't surfaced yet.
+        Citations: \(citationTitles)
+        Hermes already gave me one reading — give me a deeper one with concrete file/path mentions if you can.
         """
-
         chatController.inputText = prompt
-        let originalMessageCount = chatController.messages.count
+        Task { await chatController.send() }
+        dismiss()
+    }
 
-        do {
-            await chatController.send()
-
-            // Wait a short moment for streaming to begin
-            try? await Task.sleep(nanoseconds: 300_000_000)
-
-            // Poll for answer completion
-            var attempts = 0
-            while chatController.isStreaming && attempts < 60 {
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                attempts += 1
+    private func runEntranceMotion() {
+        if reduceMotion {
+            visibleSections = 4
+            return
+        }
+        guard visibleSections < 0 else { return }
+        visibleSections = 0
+        cascadeTask?.cancel()
+        cascadeTask = Task { @MainActor in
+            for i in 0..<4 {
+                if i > 0 {
+                    try? await Task.sleep(nanoseconds: 40_000_000)
+                    if Task.isCancelled { return }
+                }
+                withAnimation(DesignSystem.Animation.gentle) {
+                    visibleSections = i + 1
+                }
             }
-
-            // Extract the assistant response
-            let newMessages = chatController.messages.dropFirst(originalMessageCount)
-            if let assistantMsg = newMessages.first(where: { $0.role == .assistant }) {
-                insightAnswer = assistantMsg.content
-            } else {
-                insightAnswer = "Analysis complete. Review the chat panel for the full response."
-            }
-
-            if insightAnswer.isEmpty {
-                insightAnswer = "Hermes processed the citations. Open the chat panel to see the full analysis."
-            }
-
-            isLoading = false
         }
     }
 }

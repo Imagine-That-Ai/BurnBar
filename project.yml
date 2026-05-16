@@ -125,6 +125,8 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMedia
       - package: GRDB
         product: GRDB
       - package: Firebase
@@ -371,6 +373,8 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMedia
       - package: Firebase
         product: FirebaseAuth
       - package: Firebase

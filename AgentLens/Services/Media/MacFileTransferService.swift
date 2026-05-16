@@ -27,7 +27,7 @@ import OpenBurnBarMedia
 ///   3. Service runs the fetch into the local inbox.
 ///   4. Service emits `media.blob.ack` back on the same chat stream.
 @MainActor
-final class MacFileTransferService {
+final class MacFileTransferService: ObservableObject {
     enum Failure: Error, LocalizedError {
         case backendUnavailable
         case fileMissing(URL)
@@ -137,7 +137,7 @@ final class MacFileTransferService {
     /// Issues the fetch, then sends `media.blob.ack`.
     func handleAdvertise(
         frame: HermesRealtimeRelayFrame,
-        ackSender: @escaping AdvertiseSender
+        ackSender: AdvertiseSender
     ) async {
         guard settingsProvider() else { return }
         guard let media = frame.media,

@@ -66,7 +66,7 @@ final class CameraCaptureService: NSObject {
         session.stopRunning()
     }
 
-    private static func requestCameraAccess() async -> Bool {
+    static func requestCameraAccess() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized: return true
         case .denied, .restricted: return false

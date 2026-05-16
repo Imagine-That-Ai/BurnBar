@@ -136,16 +136,3 @@ extension iPadMultiCamCaptureService {
     }
 }
 
-extension CameraCaptureService {
-    static func requestCameraAccess() async -> Bool {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized: return true
-        case .denied, .restricted: return false
-        case .notDetermined:
-            return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                AVCaptureDevice.requestAccess(for: .video) { continuation.resume(returning: $0) }
-            }
-        @unknown default: return false
-        }
-    }
-}

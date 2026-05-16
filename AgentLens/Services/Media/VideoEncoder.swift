@@ -133,7 +133,7 @@ final class VideoEncoder {
             duration: duration,
             frameProperties: nil,
             infoFlagsOut: &infoFlags
-        ) { [weak self] _, _, status, _, sampleBuffer in
+        ) { [weak self] (status: OSStatus, _: VTEncodeInfoFlags, sampleBuffer: CMSampleBuffer?) in
             guard let self, status == noErr, let sampleBuffer else { return }
             Task.detached { [weak self] in
                 await self?.handleEncodedSampleBuffer(sampleBuffer)

@@ -8,6 +8,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Mercury media (all 7 phases — source-complete, off by default).**
+  Mac ⇄ iPhone/iPad file transfer, screen share, and 1:1 video calling
+  layered on the existing iroh QUIC mesh as new in-band stream classes.
+  Plan of record: `plans/2026-05-15-mercury-media-master-plan.md`.
+  Per-phase rollout log: `docs/runbooks/media-rollout-status.md`. Real
+  phase activation requires per-phase TestFlight + App Store review +
+  device-matrix soak.
+    * **Phase 1a (substrate):** `OpenBurnBarMedia` SwiftPM target with
+      stream classes, packet codec, frame envelope, bitrate controller,
+      capability gate, budget envelope, telemetry buckets;
+      `HermesRealtimeRelayFrame` extended with `media.classify`,
+      `media.blob.advertise`, `media.blob.ack`; stream-class dispatch
+      across Mac iroh + iOS iroh + WSS legacy paths; `iroh-blobs = "0.92"`
+      pulled into Cargo.toml; `crates/openburnbar-iroh/src/blobs.rs`
+      module; 5 cargo tests + 28 OpenBurnBarMedia XCTests.
+    * **Phase 1b (file transfer end-to-end):** `IrohBlobNode` UniFFI
+      object owning its own iroh `Endpoint` + `FsStore` + `Router`
+      pinned to `iroh_blobs::ALPN`; `IrohBlobBackend` Swift protocol +
+      xcframework-gated bridge; `MediaFileTransferService` actor;
+      `IrohBlobKeyStore` (Mac + iOS) with separate Keychain entry;
+      `MacFileTransferService` + `iOSFileTransferService` adapters with
+      chat-stream advertise/ack flow; `MediaFrameDispatcher` /
+      `IrohMediaFrameDispatcher` typealiases on Mac + iOS dispatch
+      sites; xcframework reshipped via `scripts/build-iroh-xcframework.sh`;
+      7 new MediaFileTransferServiceTests.
+    * **Phase 2 (file UI + SKU + Cloud Functions):** iOS
+      `MediaPartnerSavePreferenceStore` + `AttachmentSaver` (Decision 3);
+      iOS `PerPartnerSavePreferencesView`; Mac `AttachmentChipRow` +
+      `PaperclipButton`; iOS `AttachmentBubble` + `PaperclipButton`;
+      Mac `MacMediaCapabilityGate` (Decision 2 — Mac is source of
+      truth); Cloud Functions `mediaQuota.recomputeMediaQuotaUsage`
+      (hourly), `mediaSku.grantMediaGrandfather`,
+      `mediaSku.validateMediaPurchase`, `mediaMonitoring.rollupMediaSessionDaily`;
+      `firestore.rules` `hasActiveHostedMediaEntitlement` helper +
+      gates for `media_quota_usage`, `media_session_events`,
+      `media_attachment_manifests`, `ops/media_budget_status`,
+      `ops/media_session_daily_rollups`; 6 new
+      `MediaPartnerSavePreferenceStoreTests`.
+    * **Phase 3 (Mac → iOS screen share):** Mac `ScreenCapturePipeline`
+      (ScreenCaptureKit), `VideoEncoder` (VTCompressionSession HEVC +
+      H.264 fallback), `MediaSessionCoordinator` orchestrator; iOS
+      `VideoReceivePipeline` (VTDecompressionSession +
+      AVSampleBufferDisplayLayer) + `ScreenShareViewerView` (full-bleed
+      + three-finger-tap stats overlay); Mac UI `StartMirrorButton` +
+      `MercuryRing` + `MediaPermissionsView`.
+    * **Phase 4 (Mac ⇄ iOS audio):** Mac `MicrophoneCapturePipeline`
+      (AVAudioEngine + Voice-Processing IO) + `AudioEncoder` (Apple's
+      built-in `kAudioFormatOpus` instead of vendoring libopus — same
+      wire profile, no third-party binary); iOS
+      `MicrophoneCaptureService` + `AudioReceivePipeline` (60 ms jitter
+      buffer + AirPods route-change handler); mute via
+      `MediaFrame.Flags.muted` in-band.
+    * **Phase 5 (video + CallKit + budget):** Mac `CameraCapturePipeline`
+      + `VoIPCallTrigger` (Firebase Functions callable wrapper); iOS
+      `CameraCaptureService`, `VoIPCallService` (PKPushRegistry +
+      CXProvider + CXCallController), `MercuryCallTransitionController`
+      (Decision 1 — app-active → Mercury sheet, app-background → direct
+      CallHUD); Mac `IncomingCallSheet` + `CallHUD`; iOS
+      `MercuryIncomingSheet` + `CallHUDView` + `SelfPiPView` (88×128
+      drag-to-corner); Cloud Functions `voipPush.triggerVoIPCall`
+      (verifies Mac entitlement per Decision 2, writes
+      `voip_outbound`); `mediaBudget.evaluateMediaBudget` (hourly,
+      $600 soft / $1000 hard cap per Decision 4, writes
+      `ops/media_budget_status/current`).
+    * **Phase 6 (iPad multicam + PiP):** iOS
+      `iPadMultiCamCaptureService` (AVCaptureMultiCamSession with
+      single-cam fallback), `ScreenSharePiPController`
+      (AVPictureInPictureController), iOS `MediaSettingsView` with
+      back-camera toggle + stats overlay toggle.
+    * **Phase 7 (macOS PiP + WSS retirement):** Mac
+      `ScreenShareViewerWindow` — `NSPanel` `.floating` +
+      `.canJoinAllSpaces + .fullScreenAuxiliary` for cross-Spaces /
+      fullscreen-app overlay with mercury hairline border;
+      `docs/runbooks/wss-retirement-checklist.md` — 14-day gate
+      criteria + 10-step decommission sequence + 7-day rollback window.
+  Verification: `swift test` 687 tests, 0 failures, 2 skipped (was 641
+  before the rollout — 46 new tests across all phases). `cargo test`
+  5 tests, 0 failures. `npx tsc --noEmit` in `functions/` clean.
+  Documentation refreshed: `docs/HERMES_MEDIA_TRANSPORT.md`,
+  `docs/runbooks/media-rollout-status.md`,
+  `docs/runbooks/media-quota.md`, `docs/runbooks/media-budget.md`,
+  `docs/runbooks/media-device-matrix/README.md`,
+  `docs/runbooks/wss-retirement-checklist.md`.
 - **Mercury media (Phase 1a — substrate, off by default).** Lays the
   forward-compatible foundation for Mac ⇄ iPhone/iPad file transfer,
   screen share, and 1:1 video calling — all layered on the existing iroh

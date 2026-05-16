@@ -894,6 +894,21 @@ final class HermesRelayHostService {
                     relayKeyStore: relayKeyStore,
                     urlSession: urlSession
                 )
+                // Mercury Phase 1b — wire the Mac file-transfer service so
+                // inbound `media.blob.advertise` frames trigger a fetch and
+                // emit an ack on the same chat stream. Returns nil on builds
+                // that don't link the xcframework (loopback dev path).
+                if let fileTransferService = MediaFileTransferServiceFactory.make() {
+                    let macFileTransfer = MacFileTransferService(
+                        service: fileTransferService,
+                        settingsProvider: { @MainActor [settingsManager] in
+                            settingsManager.mediaBlobTransferEnabled
+                        }
+                    )
+                    irohClient.mediaDispatcher = { @Sendable frame, ackSender in
+                        await macFileTransfer.handleAdvertise(frame: frame, ackSender: ackSender)
+                    }
+                }
                 self.realtimeRelayClient = HermesRelayHostFanout(
                     primary: irohClient,
                     fallback: wssClient

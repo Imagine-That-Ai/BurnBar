@@ -64,6 +64,14 @@ final class ChatBackendSettings {
         didSet { persistence.set(hermesIrohTransportEnabled, forKey: "hermesIrohTransportEnabled") }
     }
 
+    /// Mercury Phase 1 — gates the inbound `media.blob.advertise` dispatch
+    /// path on the Mac iroh accept loop. Off by default until the rollout
+    /// punch list in `docs/runbooks/media-rollout-status.md` is cleared.
+    /// Mirrored to iOS via Remote Config (`media_blob_transfer_enabled`).
+    var mediaBlobTransferEnabled: Bool = false {
+        didSet { persistence.set(mediaBlobTransferEnabled, forKey: "mediaBlobTransferEnabled") }
+    }
+
     var launchHermesWithOpenBurnBar: Bool = false {
         didSet { persistence.set(launchHermesWithOpenBurnBar, forKey: "launchHermesWithOpenBurnBar") }
     }
@@ -205,6 +213,7 @@ final class ChatBackendSettings {
             defaultValue: HermesRealtimeRelayProtocol.defaultHostedRelayURLString
         )
         self.hermesIrohTransportEnabled = persistence.bool(forKey: "hermesIrohTransportEnabled")
+        self.mediaBlobTransferEnabled = persistence.bool(forKey: "mediaBlobTransferEnabled")
         self.launchHermesWithOpenBurnBar = persistence.bool(forKey: "launchHermesWithOpenBurnBar")
         self.piAgentGatewayBaseURL = persistence.string(forKey: "piAgentGatewayBaseURL", defaultValue: "http://127.0.0.1:8765")
         self.piAgentBearerToken = secretPersistence.load(

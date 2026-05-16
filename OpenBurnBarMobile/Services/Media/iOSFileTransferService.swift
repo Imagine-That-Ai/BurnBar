@@ -81,7 +81,7 @@ final class iOSFileTransferService: ObservableObject {
     /// ack goes back on the same chat stream via `ackSender`.
     func handleAdvertise(
         frame: HermesRealtimeRelayFrame,
-        ackSender: @escaping AdvertiseSender
+        ackSender: AdvertiseSender
     ) async {
         guard settingsProvider() else { return }
         guard let media = frame.media,

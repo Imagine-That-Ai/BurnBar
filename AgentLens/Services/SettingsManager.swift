@@ -393,6 +393,12 @@ final class SettingsManager {
         set { chatBackend.hermesIrohTransportEnabled = newValue }
     }
 
+    /// Mercury Phase 1 — see `ChatBackendSettings.mediaBlobTransferEnabled`.
+    var mediaBlobTransferEnabled: Bool {
+        get { chatBackend.mediaBlobTransferEnabled }
+        set { chatBackend.mediaBlobTransferEnabled = newValue }
+    }
+
     var launchHermesWithOpenBurnBar: Bool {
         get { chatBackend.launchHermesWithOpenBurnBar }
         set { chatBackend.launchHermesWithOpenBurnBar = newValue }

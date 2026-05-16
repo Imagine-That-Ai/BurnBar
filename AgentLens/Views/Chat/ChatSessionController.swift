@@ -20,6 +20,12 @@ final class ChatSessionController {
     var messages: [ChatMessageRecord] = []
     var inputText = ""
     var isStreaming = false
+    /// Monotonic counter bumped every time a streaming text chunk lands in
+    /// the active assistant placeholder. UI surfaces (Project Memory
+    /// detail sheets, etc.) observe this with `.onChange(of:)` to mirror
+    /// the latest content without polling. Cheap, decoupled, and survives
+    /// view rebuilds.
+    var streamingTick: Int = 0
     var streamError: String?
     var chatBackend: ChatBackendID = .codex
     /// Per-backend `model` selection for the active chat. Empty means defaults (Codex: gpt-5.5, Claude: CLI default, Hermes: automatic from gateway/settings, OpenClaw: gpt-4o-mini).
@@ -1087,6 +1093,7 @@ final class ChatSessionController {
                                 cliUsed: old.cliUsed,
                                 transcriptPieces: snapshot
                             )
+                            self.streamingTick &+= 1
                         }
                     }.value
                 }

@@ -4,14 +4,42 @@ import FirebaseCore
 import FirebaseAppCheck
 import GoogleSignIn
 import OpenBurnBarCore
+import OpenBurnBarMedia
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    /// Retained iOS file-transfer service so its `@Published` state
+    /// survives the lifetime of the app and any inbound
+    /// `media.blob.advertise` frames have a live receiver.
+    private var iOSFileTransfer: iOSFileTransferService?
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         configureFirebase()
+        configureMercuryFileTransfer()
         return true
+    }
+
+    /// Mercury Phase 1b — wire the iOS file-transfer service so inbound
+    /// `media.blob.advertise` frames on the chat response stream trigger
+    /// a fetch + ack. Falls back to a no-op dispatcher (frames are
+    /// silently skipped) on builds that don't link the xcframework.
+    @MainActor
+    private func configureMercuryFileTransfer() {
+        guard let service = MediaFileTransferServiceFactory.make() else { return }
+        let receiver = iOSFileTransferService(
+            service: service,
+            settingsProvider: { @MainActor in
+                // Mirrors the Mac `ChatBackendSettings.mediaBlobTransferEnabled`
+                // key so Remote Config + per-device sync stays consistent.
+                UserDefaults.standard.bool(forKey: "mediaBlobTransferEnabled")
+            }
+        )
+        self.iOSFileTransfer = receiver
+        HermesIrohRelayTransport.shared.mediaDispatcher = { @Sendable frame, ackSender in
+            await receiver.handleAdvertise(frame: frame, ackSender: ackSender)
+        }
     }
 
     /// Forward OAuth callback URLs to GoogleSignIn. Without this, the Google
