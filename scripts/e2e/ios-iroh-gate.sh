@@ -107,6 +107,14 @@ fi
 HOST_PID=""
 trap 'if [[ -n "${HOST_PID}" ]] && kill -0 "${HOST_PID}" >/dev/null 2>&1; then kill "${HOST_PID}" >/dev/null 2>&1 || true; fi' EXIT
 
+DEVICE_DETAILS="$(xcrun devicectl device info details --device "${DEVICE_ID}" 2>&1 || true)"
+if ! grep -q "tunnelState: connected" <<<"${DEVICE_DETAILS}"; then
+    echo "Device is not launchable through CoreDevice: ${DEVICE_ID}" >&2
+    echo "For the cellular gate, connect the iPhone to this Mac over USB, unlock it, accept Trust prompts, keep Wi-Fi off, and rerun this command." >&2
+    echo "${DEVICE_DETAILS}" | sed -n '/connectionProperties:/,/capabilities:/p' >&2
+    exit 1
+fi
+
 cat >"${SUMMARY_MD}" <<EOF_SUMMARY
 # iOS iroh Gate Run
 

@@ -1,5 +1,35 @@
 # Hermes iroh Rollout Status
 
+## 2026-05-16T17:59Z — Phase C/D cellular gate preflight
+
+**Gate status:** blocked on physical iPhone availability.
+
+Completed:
+- Resumed the production handoff from the current repo state. Phase A/B remain
+  recorded green, and Phase D remains in hosted-relay validation with the
+  remaining formal requirement being cellular/different-network iOS proof.
+- Rechecked CoreDevice state before attempting the gate. The iPhone
+  `AFB07C15-AD18-5EFA-AD1C-CADB4F286797` is paired but not launchable:
+  `tunnelState: unavailable`. The iPad is launchable over local network, but it
+  does not satisfy the remaining cellular iPhone topology gate.
+- Hardened `scripts/e2e/ios-iroh-chat.sh` and
+  `scripts/e2e/ios-iroh-gate.sh` with a CoreDevice preflight so failed cellular
+  attempts stop before starting the Mac host or writing noisy audit artifacts.
+  The scripts now tell the operator to connect the iPhone over USB, unlock it,
+  accept Trust prompts, keep Wi-Fi off, and rerun the gate.
+
+Verification:
+- `bash -n scripts/e2e/ios-iroh-chat.sh && bash -n scripts/e2e/ios-iroh-gate.sh`
+  passes.
+- `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 1 --interfaces cellular`
+  fails early as intended with `tunnelState: unavailable`, before starting the
+  Mac host.
+
+Next action:
+- Connect the iPhone to this Mac over USB, unlock it, accept any Trust prompt,
+  leave iPhone Wi-Fi off/cellular on, then rerun:
+  `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 10 --interfaces cellular`
+
 ## 2026-05-16 — Phase B (Android) byte parity with iOS
 
 **Gate status:** green.
