@@ -47,7 +47,7 @@ struct DaemonSettingsView: View {
                         icon: "network",
                         iconTint: DesignSystem.Colors.amber,
                         title: "HTTP Gateway",
-                        subtitle: "Expose an OpenAI-compatible API for external tools",
+                        subtitle: "Local gateway used by Connections. Most users don't need to touch this.",
                         value: settingsManager.gatewayEnabled ? gatewayEndpoint : "Off",
                         valueTint: settingsManager.gatewayEnabled
                             ? DesignSystem.Colors.success

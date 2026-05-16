@@ -368,13 +368,14 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     private static func scanJSONLTokenWindows(
         homeDirectoryURL: URL,
         fileManager: FileManager,
+        environment: [String: String],
         now: Date = Date()
     ) throws -> JSONLTokenWindows {
         let calendar = Calendar.current
         let fiveHoursAgo = calendar.date(byAdding: .hour, value: -5, to: now) ?? now
         let sevenDaysAgo = calendar.date(byAdding: .day, value: -7, to: now) ?? now
         let files = findJSONLFiles(
-            in: claudeProjectDirectories(homeDirectoryURL: homeDirectoryURL),
+            in: claudeProjectDirectories(homeDirectoryURL: homeDirectoryURL, environment: environment),
             fileManager: fileManager
         )
 
@@ -408,28 +409,56 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         )
     }
 
-    private static func claudeProjectDirectories(homeDirectoryURL: URL) -> [URL] {
-        var dirs: [URL] = []
-
-        if let env = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !env.isEmpty {
-            for part in env.split(separator: ",") {
-                let raw = String(part).trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !raw.isEmpty else { continue }
-                let url = URL(fileURLWithPath: raw)
-                if url.lastPathComponent == "projects" {
-                    dirs.append(url)
-                } else {
-                    dirs.append(url.appendingPathComponent("projects", isDirectory: true))
-                }
-            }
+    private static func claudeProjectDirectories(
+        homeDirectoryURL: URL,
+        environment: [String: String]
+    ) -> [URL] {
+        let scopedDirectories = scopedClaudeProjectDirectories(environment: environment)
+        if !scopedDirectories.isEmpty {
+            return scopedDirectories
         }
 
+        var dirs: [URL] = []
         dirs.append(homeDirectoryURL.appendingPathComponent(".config/claude/projects", isDirectory: true))
         dirs.append(homeDirectoryURL.appendingPathComponent(".claude/projects", isDirectory: true))
 
         return dirs
+    }
+
+    private static func hasScopedClaudeConfig(environment: [String: String]) -> Bool {
+        !scopedClaudeProjectDirectories(environment: environment).isEmpty
+    }
+
+    private static func scopedClaudeProjectDirectories(environment: [String: String]) -> [URL] {
+        let rawValues = [
+            environment["CLAUDE_CONFIG_DIR"],
+            environment["CLAUDE_CONFIG_PATH"]
+        ]
+
+        var directories: [URL] = []
+        var seen = Set<String>()
+        for value in rawValues {
+            guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty else {
+                continue
+            }
+
+            for part in value.split(separator: ",") {
+                let raw = String(part).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !raw.isEmpty else { continue }
+                var url = URL(fileURLWithPath: raw)
+                if url.pathExtension.lowercased() == "json" {
+                    url.deleteLastPathComponent()
+                }
+                let projectURL = url.lastPathComponent == "projects"
+                    ? url
+                    : url.appendingPathComponent("projects", isDirectory: true)
+                let path = projectURL.standardizedFileURL.path
+                guard seen.insert(path).inserted else { continue }
+                directories.append(projectURL)
+            }
+        }
+        return directories
     }
 
     private static func findJSONLFiles(in directories: [URL], fileManager: FileManager) -> [URL] {
