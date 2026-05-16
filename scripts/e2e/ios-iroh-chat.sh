@@ -25,6 +25,8 @@ cd "$(dirname "$0")/../.."
 
 PROJECT="burnbar"
 DEVICE_ID="AFB07C15-AD18-5EFA-AD1C-CADB4F286797"
+DEVICE_WAIT_SECONDS=0
+DEVICE_WAIT_INTERVAL=5
 BUNDLE_ID="com.openburnbar.app"
 UID_VALUE=""
 EXPECTED_INTERFACE="cellular"
@@ -46,6 +48,10 @@ Usage: scripts/e2e/ios-iroh-chat.sh --uid <firebase-uid> [options]
 Options:
   --project <id>              Firebase/GCP project. Default: burnbar
   --device <id>               CoreDevice identifier. Default: current dev iPhone
+  --wait-for-device-seconds <n>
+                              Wait for CoreDevice tunnel before failing. Default: 0
+  --wait-for-device-interval <n>
+                              Poll interval while waiting for device. Default: 5
   --bundle-id <id>            iOS app bundle id. Default: com.openburnbar.app
   --relay-url <url>           Hosted relay URL.
   --model <id>                Hermes model for the hidden E2E prompt.
@@ -64,6 +70,8 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --project) PROJECT="$2"; shift 2 ;;
         --device) DEVICE_ID="$2"; shift 2 ;;
+        --wait-for-device-seconds) DEVICE_WAIT_SECONDS="$2"; shift 2 ;;
+        --wait-for-device-interval) DEVICE_WAIT_INTERVAL="$2"; shift 2 ;;
         --bundle-id) BUNDLE_ID="$2"; shift 2 ;;
         --uid) UID_VALUE="$2"; shift 2 ;;
         --relay-url) RELAY_URL="$2"; shift 2 ;;
@@ -89,6 +97,14 @@ if [[ -z "${UID_VALUE}" ]]; then
     echo "Missing required --uid <firebase-uid>." >&2
     exit 2
 fi
+if ! [[ "${DEVICE_WAIT_SECONDS}" =~ ^[0-9]+$ ]]; then
+    echo "--wait-for-device-seconds must be a non-negative integer." >&2
+    exit 2
+fi
+if ! [[ "${DEVICE_WAIT_INTERVAL}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "--wait-for-device-interval must be a positive integer." >&2
+    exit 2
+fi
 
 for bin in curl gcloud jq xcrun; do
     if ! command -v "${bin}" >/dev/null 2>&1; then
@@ -97,8 +113,26 @@ for bin in curl gcloud jq xcrun; do
     fi
 done
 
-DEVICE_DETAILS="$(xcrun devicectl device info details --device "${DEVICE_ID}" 2>&1 || true)"
-if ! grep -q "tunnelState: connected" <<<"${DEVICE_DETAILS}"; then
+wait_for_device_tunnel() {
+    DEVICE_DETAILS="$(xcrun devicectl device info details --device "${DEVICE_ID}" 2>&1 || true)"
+    if grep -q "tunnelState: connected" <<<"${DEVICE_DETAILS}"; then
+        return 0
+    fi
+    if [[ "${DEVICE_WAIT_SECONDS}" -gt 0 ]]; then
+        echo "Waiting up to ${DEVICE_WAIT_SECONDS}s for CoreDevice tunnel: ${DEVICE_ID}" >&2
+        local deadline=$((SECONDS + DEVICE_WAIT_SECONDS))
+        while [[ "${SECONDS}" -lt "${deadline}" ]]; do
+            sleep "${DEVICE_WAIT_INTERVAL}"
+            DEVICE_DETAILS="$(xcrun devicectl device info details --device "${DEVICE_ID}" 2>&1 || true)"
+            if grep -q "tunnelState: connected" <<<"${DEVICE_DETAILS}"; then
+                return 0
+            fi
+        done
+    fi
+    return 1
+}
+
+if ! wait_for_device_tunnel; then
     echo "Device is not launchable through CoreDevice: ${DEVICE_ID}" >&2
     echo "For the cellular gate, connect the iPhone to this Mac over USB, unlock it, accept Trust prompts, keep Wi-Fi off, and rerun this command." >&2
     echo "${DEVICE_DETAILS}" | sed -n '/connectionProperties:/,/capabilities:/p' >&2

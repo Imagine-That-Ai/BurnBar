@@ -1,5 +1,37 @@
 # Hermes iroh Rollout Status
 
+## 2026-05-16T18:08Z — Phase C/D gate can now wait for the iPhone tunnel
+
+**Gate status:** blocked on physical iPhone CoreDevice reachability.
+
+Completed:
+- Added optional CoreDevice wait flags to the physical-iPhone smoke and gate
+  scripts:
+  `--wait-for-device-seconds <n>` and
+  `--wait-for-device-interval <n>`.
+- Default behavior remains unchanged. With no wait flag, the scripts fail fast
+  when the iPhone tunnel is unavailable. With a wait flag, the command can be
+  started before the phone is plugged in/unlocked and will continue only after
+  CoreDevice reports `tunnelState: connected`.
+- The gate still creates run artifacts only after the iPhone is launchable, so
+  blocked device attempts do not pollute
+  `docs/runbooks/iroh-dev-validation/`.
+
+Verification:
+- `bash -n scripts/e2e/ios-iroh-chat.sh && bash -n scripts/e2e/ios-iroh-gate.sh`
+  passes.
+- `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 1 --interfaces cellular --output-dir /tmp/openburnbar-ios-iroh-wait-proof --wait-for-device-seconds 1 --wait-for-device-interval 1`
+  waits, fails with `tunnelState: unavailable`, and leaves
+  `artifact_dir_exists=no`.
+- `scripts/e2e/ios-iroh-chat.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --wait-for-device-seconds 1 --wait-for-device-interval 1`
+  waits and fails with the same CoreDevice blocker before launching.
+
+Next action:
+- Preferred unattended command once the iPhone is about to be connected:
+  `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 10 --interfaces cellular --wait-for-device-seconds 600 --wait-for-device-interval 5`
+- Then connect the iPhone to this Mac over USB, unlock it, accept any Trust
+  prompt, and keep iPhone Wi-Fi off/cellular on.
+
 ## 2026-05-16T18:05Z — Phase C/D cellular gate still blocked, artifact preflight tightened
 
 **Gate status:** blocked on physical iPhone CoreDevice reachability.

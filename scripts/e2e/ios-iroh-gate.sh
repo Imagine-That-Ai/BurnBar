@@ -26,6 +26,8 @@ INTERFACES="cellular"
 OUTPUT_DIR="docs/runbooks/iroh-dev-validation/ios-iroh-gate-$(date -u '+%Y%m%dT%H%M%SZ')"
 PROJECT="burnbar"
 DEVICE_ID="AFB07C15-AD18-5EFA-AD1C-CADB4F286797"
+DEVICE_WAIT_SECONDS=0
+DEVICE_WAIT_INTERVAL=5
 MODEL="gpt-5.4-mini"
 PROMPT="Reply exactly: ok"
 RELAY_URL="https://use1-1.relay.alberto8793.burnbar.iroh.link/"
@@ -46,6 +48,10 @@ Options:
   --output-dir <path>          Directory for run logs and Firestore exports.
   --project <id>               Firebase/GCP project. Default: burnbar
   --device <id>                CoreDevice identifier. Default: current dev iPhone
+  --wait-for-device-seconds <n>
+                               Wait for CoreDevice tunnel before failing. Default: 0
+  --wait-for-device-interval <n>
+                               Poll interval while waiting for device. Default: 5
   --relay-url <url>            Hosted relay URL.
   --model <id>                 Hermes model for each run.
   --prompt <text>              Hidden E2E prompt text for each run.
@@ -65,6 +71,8 @@ while [[ $# -gt 0 ]]; do
         --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
         --project) PROJECT="$2"; shift 2 ;;
         --device) DEVICE_ID="$2"; shift 2 ;;
+        --wait-for-device-seconds) DEVICE_WAIT_SECONDS="$2"; shift 2 ;;
+        --wait-for-device-interval) DEVICE_WAIT_INTERVAL="$2"; shift 2 ;;
         --relay-url) RELAY_URL="$2"; shift 2 ;;
         --model) MODEL="$2"; shift 2 ;;
         --prompt) PROMPT="$2"; shift 2 ;;
@@ -90,6 +98,14 @@ if ! [[ "${RUNS}" =~ ^[1-9][0-9]*$ ]]; then
     echo "--runs must be a positive integer." >&2
     exit 2
 fi
+if ! [[ "${DEVICE_WAIT_SECONDS}" =~ ^[0-9]+$ ]]; then
+    echo "--wait-for-device-seconds must be a non-negative integer." >&2
+    exit 2
+fi
+if ! [[ "${DEVICE_WAIT_INTERVAL}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "--wait-for-device-interval must be a positive integer." >&2
+    exit 2
+fi
 
 IFS=',' read -r -a INTERFACE_PLAN <<<"${INTERFACES}"
 if [[ "${#INTERFACE_PLAN[@]}" -eq 0 ]]; then
@@ -101,8 +117,26 @@ LAST_INTERFACE_PLAN_INDEX=$((${#INTERFACE_PLAN[@]} - 1))
 HOST_PID=""
 trap 'if [[ -n "${HOST_PID}" ]] && kill -0 "${HOST_PID}" >/dev/null 2>&1; then kill "${HOST_PID}" >/dev/null 2>&1 || true; fi' EXIT
 
-DEVICE_DETAILS="$(xcrun devicectl device info details --device "${DEVICE_ID}" 2>&1 || true)"
-if ! grep -q "tunnelState: connected" <<<"${DEVICE_DETAILS}"; then
+wait_for_device_tunnel() {
+    DEVICE_DETAILS="$(xcrun devicectl device info details --device "${DEVICE_ID}" 2>&1 || true)"
+    if grep -q "tunnelState: connected" <<<"${DEVICE_DETAILS}"; then
+        return 0
+    fi
+    if [[ "${DEVICE_WAIT_SECONDS}" -gt 0 ]]; then
+        echo "Waiting up to ${DEVICE_WAIT_SECONDS}s for CoreDevice tunnel: ${DEVICE_ID}" >&2
+        local deadline=$((SECONDS + DEVICE_WAIT_SECONDS))
+        while [[ "${SECONDS}" -lt "${deadline}" ]]; do
+            sleep "${DEVICE_WAIT_INTERVAL}"
+            DEVICE_DETAILS="$(xcrun devicectl device info details --device "${DEVICE_ID}" 2>&1 || true)"
+            if grep -q "tunnelState: connected" <<<"${DEVICE_DETAILS}"; then
+                return 0
+            fi
+        done
+    fi
+    return 1
+}
+
+if ! wait_for_device_tunnel; then
     echo "Device is not launchable through CoreDevice: ${DEVICE_ID}" >&2
     echo "For the cellular gate, connect the iPhone to this Mac over USB, unlock it, accept Trust prompts, keep Wi-Fi off, and rerun this command." >&2
     echo "${DEVICE_DETAILS}" | sed -n '/connectionProperties:/,/capabilities:/p' >&2
@@ -174,6 +208,8 @@ for ((run = 1; run <= RUNS; run++)); do
         --uid "${UID_VALUE}" \
         --project "${PROJECT}" \
         --device "${DEVICE_ID}" \
+        --wait-for-device-seconds "${DEVICE_WAIT_SECONDS}" \
+        --wait-for-device-interval "${DEVICE_WAIT_INTERVAL}" \
         --relay-url "${RELAY_URL}" \
         --model "${MODEL}" \
         --prompt "${PROMPT}" \
