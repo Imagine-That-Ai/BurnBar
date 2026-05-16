@@ -84,6 +84,78 @@ function authedDb(uid) {
   return testEnv.authenticatedContext(uid, { email: `${uid}@example.test` }).firestore();
 }
 
+test("owners can publish iroh pairing data and audit events without leaking secrets", async () => {
+  const ownerDb = authedDb("iroh-owner");
+  const otherDb = authedDb("mallory");
+  const publicKeyPath = "users/iroh-owner/iroh_pairing_keys/host";
+  const pairingPath = "users/iroh-owner/iroh_pairing/relay-1";
+  const auditPath = "users/iroh-owner/iroh_audit_events/event-1";
+
+  await assertSucceeds(
+    setDoc(doc(ownerDb, publicKeyPath), {
+      id: "host",
+      publicKeyBase64: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      publishedAtMillis: 1778860800000,
+      protocolVersion: 1,
+      schemaVersion: 1,
+    })
+  );
+  await assertSucceeds(getDoc(doc(ownerDb, publicKeyPath)));
+  await assertFails(getDoc(doc(otherDb, publicKeyPath)));
+
+  await assertSucceeds(
+    setDoc(doc(ownerDb, pairingPath), {
+      id: "relay-1",
+      nodeId: "z".repeat(52),
+      publishedAtMillis: 1778860800000,
+      protocolVersion: 1,
+      signature: "A".repeat(88),
+      createdAt: "2026-05-15T00:00:00.000Z",
+      updatedAt: "2026-05-15T00:00:00.000Z",
+      schemaVersion: 1,
+    })
+  );
+  await assertFails(
+    setDoc(doc(otherDb, "users/iroh-owner/iroh_pairing/relay-2"), {
+      id: "relay-2",
+      nodeId: "z".repeat(52),
+      publishedAtMillis: 1778860800000,
+      protocolVersion: 1,
+      signature: "A".repeat(88),
+      schemaVersion: 1,
+    })
+  );
+
+  await assertSucceeds(
+    setDoc(doc(ownerDb, auditPath), {
+      id: "event-1",
+      connectionId: "relay-1",
+      eventType: "iroh_pairing_published",
+      transport: "iroh-relay",
+      observedAt: "2026-05-15T00:00:00.000Z",
+      detail: { relayUrl: "https://use1-1.relay.alberto8793.burnbar.iroh.link/" },
+      schemaVersion: 1,
+    })
+  );
+  await assertFails(
+    setDoc(
+      doc(ownerDb, auditPath),
+      {
+        eventType: "iroh_stream_closed",
+      },
+      { merge: true }
+    )
+  );
+  await assertFails(
+    setDoc(doc(ownerDb, "users/iroh-owner/iroh_audit_events/event-secret"), {
+      id: "event-secret",
+      eventType: "iroh_stream_failed",
+      secret: "must-not-pass",
+      schemaVersion: 1,
+    })
+  );
+});
+
 test("owner can write free usage rows without hosted cloud entitlement", async () => {
   const db = authedDb("alice");
   await assertSucceeds(

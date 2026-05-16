@@ -92,6 +92,21 @@ Completed:
   completes the Functions dry-run lane: `npm ci` reports 0 vulnerabilities and
   `npm run build` succeeds. The local shell emits the existing Node 20 vs
   package Node 22 engine warning; it does not block the TypeScript build.
+- Added a Firestore emulator regression for the Iroh collections. It proves
+  same-user writes/reads for pairing keys, pairing records, and append-only
+  audit events, plus cross-user denial and secret-field rejection.
+  `npm --prefix functions run test:firestore-rules` passes: 17 tests, 0
+  failures.
+- Re-ran `npm --prefix functions run test:iroh-monitoring`; the TypeScript
+  build and `iroh monitoring rollup ok` check pass.
+- Hardened `scripts/cutover-n0-hosted-relay.sh publish` so it reads the current
+  Firebase Remote Config template, merges only
+  `hermes_iroh_hosted_relay_url`, and supports `--dry-run`. The dry-run command
+  below previews the expected parameter without publishing:
+  `PROJECT_ID=burnbar ./scripts/cutover-n0-hosted-relay.sh publish https://use1-1.relay.alberto8793.burnbar.iroh.link/ --dry-run`.
+- Verified the rollback dry-run previews clearing the same parameter without
+  publishing:
+  `PROJECT_ID=burnbar ./scripts/cutover-n0-hosted-relay.sh rollback --dry-run`.
 
 Current blocker:
 - The live `burnbar` Firestore rules are behind the source rules. The local
