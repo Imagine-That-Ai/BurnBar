@@ -3,16 +3,23 @@
  *
  * `triggerVoIPCall` is called from the Mac when the user starts a 1:1
  * call. It verifies the calling Mac's `hosted_media_sync` entitlement
- * (Decision 2) and forwards an APNs VoIP push to the paired iPhone.
+ * (Decision 2) and forwards an APNs VoIP push to the paired iPhone, or
+ * a high-priority FCM data message to the paired Android device. Phase
+ * 6 added the Android branch: when the request's `voipDeviceToken` is
+ * empty / stale and an FCM token doc under
+ * `users/{uid}/devices/{deviceId}/fcm_token` is fresher, the function
+ * emits an `fcm_outbound` document that `sendFcmOutbound`
+ * (`fcmAndroidSender.ts`) drains through `admin.messaging().send(...)`.
  *
  * Schema:
  *   {
  *     callId: string         — UUID
  *     connectionId: string   — iroh connection id
- *     pairedDeviceId: string — iroh NodeId of the paired iPhone
- *     displayName: string    — what the iPhone CallKit UI shows
+ *     pairedDeviceId: string — iroh NodeId of the paired client
+ *     displayName: string    — what the CallKit / IncomingCallActivity sheet shows
  *     isVideo: boolean
- *     voipDeviceToken: string — hex APNs VoIP token cached from iPhone
+ *     voipDeviceToken?: string — hex APNs VoIP token cached from the paired iPhone, optional
+ *     androidDeviceId?: string — `Settings.Secure.ANDROID_ID` SHA-256 hash for the paired Android
  *   }
  */
 
@@ -28,7 +35,71 @@ interface TriggerRequest {
   pairedDeviceId: string;
   displayName: string;
   isVideo: boolean;
-  voipDeviceToken: string;
+  voipDeviceToken?: string;
+  androidDeviceId?: string;
+}
+
+interface ResolvedFanOut {
+  /** APNs hex token (or undefined when the freshest token is Android). */
+  apnsToken?: string;
+  /** Android device id (`users/{uid}/devices/{deviceId}/fcm_token`). */
+  androidDeviceId?: string;
+  /** FCM registration token resolved from the Android device doc. */
+  fcmToken?: string;
+}
+
+/**
+ * Pick the freshest push channel for the paired client. Reads the
+ * Android FCM token doc under `users/{uid}/devices/{deviceId}/fcm_token`
+ * — when it's strictly newer than the request's APNs token timestamp
+ * (recorded as `voipDeviceTokenUpdatedAtMillis` by the iPhone), the
+ * Android branch wins. The function exports the helper so unit tests
+ * can pin the ordering.
+ */
+export async function resolveFanOut(args: {
+  uid: string;
+  apnsToken?: string;
+  apnsTokenUpdatedAtMillis?: number;
+  androidDeviceId?: string;
+  firestore?: FirebaseFirestore.Firestore;
+}): Promise<ResolvedFanOut> {
+  const firestore = args.firestore ?? getFirestore();
+  const apnsToken = args.apnsToken?.trim();
+  const apnsUpdatedAt = args.apnsTokenUpdatedAtMillis ?? 0;
+  // The iOS client writes its APNs token to `users/{uid}/devices/{deviceId}/voip_token`
+  // and includes `updated_at_millis` for staleness. When the caller didn't
+  // pass either, fall back to the request-provided token.
+  let resolvedApns = apnsToken;
+  let resolvedAndroidDeviceId = args.androidDeviceId?.trim();
+  let fcmToken: string | undefined;
+  if (resolvedAndroidDeviceId) {
+    const snap = await firestore
+      .doc(`users/${args.uid}/devices/${resolvedAndroidDeviceId}`)
+      .get();
+    const data = snap.exists ? (snap.data() as Record<string, unknown>) : undefined;
+    fcmToken = (data?.["fcm_token"] as string | undefined)?.trim() || undefined;
+    const fcmUpdatedAt = Number(data?.["updated_at_millis"] ?? 0);
+    if (fcmToken) {
+      // If we have both, prefer the freshest one. With only an FCM
+      // token, that's our channel. If FCM is older than APNs, drop it
+      // so we don't double-page the user.
+      if (!resolvedApns) {
+        // Android only.
+      } else if (fcmUpdatedAt > apnsUpdatedAt) {
+        resolvedApns = undefined;
+      } else {
+        fcmToken = undefined;
+        resolvedAndroidDeviceId = undefined;
+      }
+    } else {
+      resolvedAndroidDeviceId = undefined;
+    }
+  }
+  return {
+    apnsToken: resolvedApns,
+    androidDeviceId: resolvedAndroidDeviceId,
+    fcmToken,
+  };
 }
 
 async function macHasActiveMediaEntitlement(uid: string): Promise<boolean> {
@@ -56,8 +127,14 @@ export const triggerVoIPCall = onCall(
       throw new HttpsError("unauthenticated", "Sign-in required.");
     }
     const data = request.data as TriggerRequest;
-    if (!data?.callId || !data.connectionId || !data.pairedDeviceId || !data.voipDeviceToken) {
+    if (!data?.callId || !data.connectionId || !data.pairedDeviceId) {
       throw new HttpsError("invalid-argument", "Missing required call fields.");
+    }
+    if (!data.voipDeviceToken && !data.androidDeviceId) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Either voipDeviceToken (APNs) or androidDeviceId (FCM) must be provided."
+      );
     }
     if (!(await macHasActiveMediaEntitlement(request.auth.uid))) {
       throw new HttpsError(
@@ -66,33 +143,79 @@ export const triggerVoIPCall = onCall(
       );
     }
 
-    const payload = {
-      "aps": {
-        "content-available": 1,
-      },
-      "callId": data.callId,
-      "connectionId": data.connectionId,
-      "pairedDeviceId": data.pairedDeviceId,
-      "displayName": data.displayName,
-      "isVideo": data.isVideo,
-    };
-
-    // Forward via APNs HTTP/2 push. The actual sender lives in
-    // `appstore/apnsClient.ts` (existing Apple push infrastructure for
-    // notification flows) — we route through it so the JWT signing +
-    // p8 key handling stays centralized. Phase 5b deliverable: surface
-    // the apnsClient hook here. For now we emit a Firestore event the
-    // existing apnsRouter triggers off so the call surface stays
-    // uniform with hermesPairing notifications.
     const firestore = getFirestore();
-    await firestore.collection("voip_outbound").add({
+    const fanOut = await resolveFanOut({
       uid: request.auth.uid,
-      payload,
-      voipDeviceToken: data.voipDeviceToken,
-      createdAt: Timestamp.now(),
-      status: "pending",
+      apnsToken: data.voipDeviceToken,
+      androidDeviceId: data.androidDeviceId,
+      firestore,
     });
 
-    return { ok: true };
+    const sharedFields = {
+      callId: data.callId,
+      connectionId: data.connectionId,
+      pairedDeviceId: data.pairedDeviceId,
+      displayName: data.displayName,
+      isVideo: data.isVideo,
+    };
+
+    const writes: Array<Promise<unknown>> = [];
+
+    if (fanOut.apnsToken) {
+      const apnsPayload = {
+        "aps": {
+          "content-available": 1,
+        },
+        ...sharedFields,
+      };
+      writes.push(
+        firestore.collection("voip_outbound").add({
+          uid: request.auth.uid,
+          payload: apnsPayload,
+          voipDeviceToken: fanOut.apnsToken,
+          createdAt: Timestamp.now(),
+          status: "pending",
+        })
+      );
+    }
+
+    if (fanOut.fcmToken) {
+      const fcmPayload: Record<string, string> = {
+        type: "media_incoming_call",
+        connection_id: sharedFields.connectionId,
+        caller_name: sharedFields.displayName,
+        caller_initial: (sharedFields.displayName ?? "M").slice(0, 1).toUpperCase(),
+        feature: sharedFields.isVideo ? "videoCall" : "voiceCall",
+        call_id: sharedFields.callId,
+        paired_device_id: sharedFields.pairedDeviceId,
+      };
+      writes.push(
+        firestore.collection("fcm_outbound").add({
+          uid: request.auth.uid,
+          payload: fcmPayload,
+          fcmToken: fanOut.fcmToken,
+          androidDeviceId: fanOut.androidDeviceId ?? null,
+          createdAt: Timestamp.now(),
+          status: "pending",
+        })
+      );
+    }
+
+    if (writes.length === 0) {
+      throw new HttpsError(
+        "failed-precondition",
+        "No push channel available for the paired device."
+      );
+    }
+
+    await Promise.all(writes);
+
+    return {
+      ok: true,
+      channels: {
+        apns: Boolean(fanOut.apnsToken),
+        fcm: Boolean(fanOut.fcmToken),
+      },
+    };
   }
 );

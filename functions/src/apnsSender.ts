@@ -18,7 +18,7 @@
  * Firestore commit lands.
  */
 
-import { createSign } from "node:crypto";
+import { createSign, randomUUID } from "node:crypto";
 import { connect as http2Connect, type ClientHttp2Session } from "node:http2";
 import { Timestamp } from "firebase-admin/firestore";
 import { defineSecret, defineString } from "firebase-functions/params";
@@ -136,12 +136,20 @@ export async function pushToAPNs(args: {
       resolve({ status: "retry", reason: `session error: ${err.message}` });
     });
 
+    // Apple's apns-id MUST be a canonical UUID (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)
+    // or Apple returns 400 BadMessageId. The Firestore docId is *not* a
+    // UUID — passing it raw bricked every push during the smoke test.
+    // Generate a fresh UUID per request; idempotency against duplicate
+    // Eventarc fires is already handled by the Firestore status guard
+    // (`if (data.status !== "pending") return;`) so we don't need the
+    // apns-id to be deterministic for dedupe.
+    const apnsId = randomUUID();
     const req = session.request({
       ":method": "POST",
       ":path": `/3/device/${args.deviceTokenHex}`,
       "apns-topic": topic,
       "apns-push-type": "voip",
-      "apns-id": args.documentId,
+      "apns-id": apnsId,
       "apns-priority": "10",
       "apns-expiration": "0",
       authorization: `bearer ${jwt}`,

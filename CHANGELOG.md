@@ -8,6 +8,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Mobile-selected agent models now bind across Hermes, Pi, OpenClaw, Codex,
+  and Claude missions.** `cli_agent_mission_requests` carries the selected
+  `requestedModelID`, the trusted Mac records `selectedModelID`, Pi/OpenClaw
+  launch with explicit `--model` arguments, Codex/Claude/Hermes set the chat
+  session model before send, and shell-backed direct missions now use
+  non-interactive login shells so GUI-launched Pi jobs do not stop before
+  spawning.
+- **Android reaches full Hermes Square + iroh transport + Mercury Media
+  parity with iOS.** Android now ships the entire Hermes surface that
+  iOS does — Hermes Square (approval inbox, fan-out group cards, pinned
+  grid, Project Memory wiki, active missions, rollback, conversations,
+  subscriptions, 5-tab Discover, voice intent banner, brand zones with
+  parallax + dispatch / forward / subscribe, tablet split layout,
+  upgraded voice sheet with sine breath-pulse), Hermes messaging (atom /
+  mention / code rich bubbles, the 7-case `HermesChatMessageOutcome`
+  chrome, mercury-stroked tool cards with capability grouping, mercury
+  thinking dots + caret, streaming-tick mirror for live Hermes
+  responses, the 5-tool catalog with in-app `HermesAtomNavigator`
+  routing, the empty-response fallback path), iroh transport
+  (`:openburnbar-iroh-relay` Kotlin library mirroring `OpenBurnBarIrohRelay`
+  1:1 — protocol, frame codec, Ed25519 pairing verifier via Tink,
+  loopback transport, JNI/UniFFI backend reflection bridge, `IrohJniTransport`,
+  `HermesIrohRelayTransport`, `HermesCompositeRelayTransport` cascade
+  with kill-switch and Firestore fallback), and Mercury Media (file
+  transfer over iroh-blobs through `AndroidFileTransferService`,
+  `MediaControlStreamCoordinator` with exponential-backoff supervisor,
+  `AttachmentSaver` routing through MediaStore + SAF with per-partner
+  save preferences, HEVC screen-share viewer with PiP, CameraX +
+  `MediaCodec` 1:1 video pipeline, libopus audio pipeline over the new
+  `openburnbar/mercury/audio/1` QUIC datagram ALPN, `CallSessionCoordinator`,
+  `MediaSessionForegroundService` with `microphone|camera|mediaProjection|phoneCall`
+  granular foreground service types, `IncomingCallActivity` +
+  `MercuryFcmService` driving a CallStyle full-screen incoming sheet
+  with `MANAGE_OWN_CALLS` ConnectionService surface, `AndroidMediaCapabilityGate`
+  read-only mirror of Mac authority, and `MediaAnalyticsLogger` routing
+  to the existing `iroh_audit_events` rollup). Rust crate gains a new
+  `datagrams.rs` UniFFI surface (`IrohDatagramChannel`, `mercury_audio_alpn`,
+  `MERCURY_AUDIO_ALPN`); `scripts/build-iroh-android-aar.sh` builds
+  `Vendor/openburnbar-iroh.aar` (arm64-v8a, x86_64, armeabi-v7a, x86)
+  with auto-installed NDK + cargo-ndk + UniFFI Kotlin bindgen, and
+  `scripts/build_opus_android.sh` builds `Vendor/opus-android.aar` from
+  libopus 1.5 for the four ABIs. CI workflows
+  `.github/workflows/build-iroh-android-aar.yml` (and the existing
+  iroh-xcframework workflow) ensure the binaries are reproducible.
+  Cloud Functions gains an FCM Android branch in `functions/src/fcmAndroidSender.ts`
+  with high-priority data-message routing and a `voipPush.ts`
+  `resolveFanOut` helper that picks the freshest channel per device.
+  Tests: 253 JVM unit tests green (`:app:testDebugUnitTest`),
+  full Compose instrumented suite compiles green, the iroh-relay
+  library's own suite is 14/14 green. Docs:
+  `docs/runbooks/android-iroh-transport.md`,
+  `docs/runbooks/android-mercury-media.md`,
+  `docs/runbooks/iroh-rollout-status.md`,
+  `docs/runbooks/media-rollout-status.md`,
+  `docs/runbooks/wss-retirement-checklist.md` all updated. Three new
+  DESIGN.md decision-log entries (Android Mercury incoming-call sheet,
+  per-partner save preferences over MediaStore + SAF, Android iroh
+  transport over UniFFI/JNI AAR).
+- **Codex CLI is wired as a first-class MCP client.**
+  `openburnbar mcp install codex` now emits a complete
+  `~/.codex/config.toml` block with three options — stdio shim over the
+  hosted MCP (recommended; preserves local sealed-content decrypt and
+  pins MCP-Protocol-Version 2025-11-25), native streamable HTTP for
+  users whose Codex build negotiates that version, and the local Python
+  stdio MCP. Quick-add via `codex mcp add openburnbar -- openburnbar-mcp-remote mcp serve`
+  still works. New onboarding doc at
+  [`docs/CODEX_AGENT_ONBOARDING.md`](docs/CODEX_AGENT_ONBOARDING.md);
+  Codex section added to
+  [`tools/openburnbar-mcp/README.md`](tools/openburnbar-mcp/README.md).
+  Installer covered by `installers.test.ts` (4 cases).
 - **Project Memory detail sheets adopt the Editorial Observatory voice
   used by the iOS Intelligence Brief.** The hero card, page rows, visual
   tiles, and citation chips on the macOS Projects hub now open into four

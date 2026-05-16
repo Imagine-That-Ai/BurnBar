@@ -8,6 +8,17 @@ import OpenBurnBarCore
 @MainActor
 final class HermesServiceTests: XCTestCase {
 
+    func testIrohBootstrapStartupTimeoutLeavesRoomForHomeRelayRetry() {
+        XCTAssertGreaterThanOrEqual(
+            HermesIrohRelayTransport.bootstrapStartupTimeout(connectTimeout: 5),
+            30
+        )
+        XCTAssertEqual(
+            HermesIrohRelayTransport.bootstrapStartupTimeout(connectTimeout: 10),
+            35
+        )
+    }
+
     func testInitialState() {
         let service = HermesService()
         XCTAssertTrue(service.messages.isEmpty)
@@ -416,6 +427,21 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(service.messages.last?.toolCalls.first?.name, "read_file")
         XCTAssertEqual(service.messages.last?.toolCalls.first?.status, "done")
         XCTAssertFalse(service.isStreaming)
+    }
+
+    func testRelayStreamingUsesExtendedRemoteHarnessTimeout() async throws {
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"slow harness ok"}}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("Give the selected Mac harness enough time")
+        await waitForStreamToFinish(service)
+
+        XCTAssertEqual(try XCTUnwrap(relay.streamingTimeouts.first), 240, accuracy: 0.001)
     }
 
     func testRelayStreamingAccumulatesToolCallArgumentsAcrossDeltas() async throws {
@@ -1091,6 +1117,121 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertTrue(service.messages.last?.isError ?? false)
     }
 
+    func testExplicitSelectedModelUnavailableStopsBeforeRelayRequest() async {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "openburnbar-local",
+            providerName: "OpenBurnBar Local",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+        let advertised = HermesRuntimeModelOption(
+            providerID: "zai",
+            providerName: "Z.AI",
+            modelID: "glm-5.1",
+            displayName: "GLM-5.1"
+        )
+        let relay = FakeHermesRelayTransport()
+        let service = HermesService(relayTransport: relay, defaults: defaults)
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.modelOptions = [advertised]
+
+        service.sendMessage("Do not silently route this")
+        await waitForStreamToFinish(service)
+
+        XCTAssertTrue(relay.streamingPayloads.isEmpty)
+        XCTAssertEqual(
+            service.lastError,
+            "Selected Hermes model 'gpt-5.5' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
+        )
+        XCTAssertTrue(service.messages.last?.isError ?? false)
+    }
+
+    func testCompositeRelayDoesNotFallbackForUpstreamModelErrors() async throws {
+        let primary = FakeHermesRelayTransport()
+        primary.streamingError = HermesServiceError.upstreamModelError(
+            "Hermes upstream model 'glm-5.1' returned HTTP 429: Weekly/Monthly Limit Exhausted."
+        )
+        let secondary = FakeHermesRelayTransport()
+        secondary.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"should not run"}}]}"#
+        ]
+        let fallback = FakeHermesRelayTransport()
+        let composite = HermesCompositeRelayTransport(
+            primary: primary,
+            secondary: secondary,
+            fallback: fallback,
+            irohEnabled: { true }
+        )
+        let payload = HermesRelayPayload(
+            connectionID: "relay-mac",
+            relayPublicKey: "AAAA",
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            operation: .chatCompletions,
+            method: "POST",
+            path: "/v1/chat/completions",
+            body: Data(#"{"model":"glm-5.1","messages":[]}"#.utf8)
+        )
+
+        do {
+            try await composite.sendStreaming(payload, timeout: 1) { _ in }
+            XCTFail("Expected upstream model error to stop the fallback cascade.")
+        } catch let error as HermesServiceError {
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Hermes upstream model 'glm-5.1' returned HTTP 429: Weekly/Monthly Limit Exhausted."
+            )
+        }
+        XCTAssertEqual(primary.streamingPayloads.count, 1)
+        XCTAssertTrue(secondary.streamingPayloads.isEmpty)
+        XCTAssertTrue(fallback.streamingPayloads.isEmpty)
+    }
+
+    func testCompositeRelayDoesNotFallbackWhenIrohRequestTimesOutAfterDispatch() async throws {
+        let primary = FakeHermesRelayTransport()
+        primary.streamingError = HermesServiceError.relayTimeout
+        let secondary = FakeHermesRelayTransport()
+        secondary.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"should not run"}}]}"#
+        ]
+        let fallback = FakeHermesRelayTransport()
+        let composite = HermesCompositeRelayTransport(
+            primary: primary,
+            secondary: secondary,
+            fallback: fallback,
+            irohEnabled: { true }
+        )
+        let payload = HermesRelayPayload(
+            connectionID: "relay-mac",
+            relayPublicKey: "AAAA",
+            relayKeyVersion: HermesRelayCrypto.keyVersion,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            operation: .chatCompletions,
+            method: "POST",
+            path: "/v1/chat/completions",
+            body: Data(#"{"model":"gpt-5.5","messages":[]}"#.utf8)
+        )
+
+        do {
+            try await composite.sendStreaming(payload, timeout: 1) { _ in }
+            XCTFail("Expected the dispatched Iroh timeout to stop the fallback cascade.")
+        } catch let error as HermesServiceError {
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Remote Hermes relay timed out before the selected Mac harness completed. No fallback was attempted, so the selected model is not silently rerouted."
+            )
+        }
+        XCTAssertEqual(primary.streamingPayloads.count, 1)
+        XCTAssertTrue(secondary.streamingPayloads.isEmpty)
+        XCTAssertTrue(fallback.streamingPayloads.isEmpty)
+    }
+
     func testRelayPayloadFiltersBlankAndErrorAssistantHistory() async throws {
         let relay = FakeHermesRelayTransport()
         relay.streamingEvents = [
@@ -1312,6 +1453,7 @@ private final class FakeHermesRelayTransport: HermesRelayTransporting {
     var streamingError: Error?
     private(set) var unaryPayloads: [HermesRelayPayload] = []
     private(set) var streamingPayloads: [HermesRelayPayload] = []
+    private(set) var streamingTimeouts: [TimeInterval] = []
 
     func sendUnary(_ payload: HermesRelayPayload, timeout: TimeInterval) async throws -> Data {
         unaryPayloads.append(payload)
@@ -1324,6 +1466,7 @@ private final class FakeHermesRelayTransport: HermesRelayTransporting {
         onSSEEvent: @escaping @MainActor (String) -> Void
     ) async throws {
         streamingPayloads.append(payload)
+        streamingTimeouts.append(timeout)
         if let streamingError {
             throw streamingError
         }

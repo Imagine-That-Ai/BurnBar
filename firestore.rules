@@ -714,6 +714,7 @@ service cloud.firestore {
           "prompt",
           "missionKind",
           "requestedRuntime",
+          "requestedModelID",
           "targetProject",
           "depth",
           "approvalMode",
@@ -728,6 +729,7 @@ service cloud.firestore {
           "claimedBy",
           "selectedRuntime",
           "selectedRuntimeName",
+          "selectedModelID",
           "sessionId",
           "approvalRequestId",
           "approvalStatus",
@@ -761,6 +763,7 @@ service cloud.firestore {
         && request.resource.data.prompt.size() <= 20000
         && request.resource.data.missionKind in ["debt", "diligence", "creative", "accretive", "security", "ui_improvement", "modernization", "provider_routing", "cost_efficiency", "project_focus", "custom", "chat"]
         && request.resource.data.requestedRuntime in ["auto", "codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama"]
+        && (!("requestedModelID" in request.resource.data) || (request.resource.data.requestedModelID is string && request.resource.data.requestedModelID.size() <= 240))
         && request.resource.data.source in ["ios-insights", "android-insights", "mac-insights", "ios-chat", "android-chat"]
         && request.resource.data.status in ["pending", "queued", "accepted", "starting", "running", "waiting_for_approval", "completed", "failed", "canceled", "cancelled", "mac_offline", "unauthorized", "agent_launch_failed"]
         && request.resource.data.schemaVersion is int
@@ -772,6 +775,7 @@ service cloud.firestore {
         && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
         && (!("selectedRuntime" in request.resource.data) || request.resource.data.selectedRuntime in ["codex", "claude", "hermes", "openclaw", "piAgent", "pi", "opencode", "ollama"])
         && (!("selectedRuntimeName" in request.resource.data) || (request.resource.data.selectedRuntimeName is string && request.resource.data.selectedRuntimeName.size() <= 80))
+        && (!("selectedModelID" in request.resource.data) || (request.resource.data.selectedModelID is string && request.resource.data.selectedModelID.size() <= 240))
         && (!("sessionId" in request.resource.data) || (request.resource.data.sessionId is string && request.resource.data.sessionId.size() <= 512))
         && (!("approvalRequestId" in request.resource.data) || (request.resource.data.approvalRequestId is string && request.resource.data.approvalRequestId.size() <= 512))
         && (!("approvalStatus" in request.resource.data) || request.resource.data.approvalStatus in ["pending", "approved", "rejected", "canceled", "cancelled"])
@@ -805,6 +809,7 @@ service cloud.firestore {
           && !("claimedBy" in request.resource.data)
           && !("selectedRuntime" in request.resource.data)
           && !("selectedRuntimeName" in request.resource.data)
+          && !("selectedModelID" in request.resource.data)
           && !("sessionId" in request.resource.data)
           && !("approvalRequestId" in request.resource.data)
           && !("approvalStatus" in request.resource.data)

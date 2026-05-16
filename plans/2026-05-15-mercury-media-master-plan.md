@@ -52,7 +52,7 @@ First image attachment from a given paired Mac shows an action sheet "Save to Ph
 
 ### Decision 4 — Hosted-relay budget: $600 soft / $1000 hard
 
-A new Cloud Function `evaluateMediaBudget` runs hourly, reads n0 services API for month-to-date hosted-relay bytes, projects month-end at current daily rate, and writes `ops/media_budget_status/current` with one of three levels: `normal` / `soft_cap` / `hard_cap`.
+A new Cloud Function `evaluateMediaBudget` runs hourly, reads n0 services API for month-to-date hosted-relay bytes, projects month-end at current daily rate, and writes `ops/media_budget_status/state/current` with one of three levels: `normal` / `soft_cap` / `hard_cap`.
 
 **Soft cap (projected ≥ $600/mo):**
 - Quotas tighten automatically. iOS + Mac re-read on session start (cached 60 s).
@@ -183,7 +183,7 @@ Opus packets at 64 kbps mono with 20 ms framing are ~120 bytes — well below da
 | `AudioEncoder.swift` | libopus 64 kbps mono, 20 ms frames. |
 | `FileTransferService.swift` | iroh-blobs adapter; receives `attachment.fetch` over `media.control`. Drag-and-drop entry via `NSItemProvider`. |
 | `MediaSessionCoordinator.swift` | Orchestrates capture → encode → packetize → stream open → BWE feedback → teardown. Publishes `@MainActor` state via Combine / `@Observable`. |
-| `MediaCapabilityGate.swift` | Reads `MacCloudEntitlementStore` for `hosted_media_sync` + local quota counters + `ops/media_budget_status/current`. Returns `.allowed` / `.denied(reason)`. |
+| `MediaCapabilityGate.swift` | Reads `MacCloudEntitlementStore` for `hosted_media_sync` + local quota counters + `ops/media_budget_status/state/current`. Returns `.allowed` / `.denied(reason)`. |
 | `MediaSessionLogger.swift` | Rolling 5-min JSONL in sandbox for RTT, bitrate adapt, encoder errors (never frames). |
 | `VoIPCallTrigger.swift` | Calls the `triggerVoIPCall` Cloud Function to issue APNs VoIP push to the paired iPhone. |
 
@@ -239,7 +239,7 @@ Hardened Runtime entries justified in App Store Connect notes (§G).
 | `FileTransferService.swift` | iroh-blobs fetch on `attachment.advertise`. Background-friendly: handover to `URLSession` background config when QUIC grace period (~30 s) expires (Phase 2 stretch; Phase 1 baseline = "resumable card on next foreground"). |
 | `AttachmentSaver.swift` | Implements Decision 3. Per-partner `UserDefaults` save preference. `UIDocumentPickerViewController` for Files, `PHPhotoLibrary.shared().performChanges` for Photos. Settings → Media → Per-partner save preferences view. |
 | `MediaSessionCoordinator.swift` | Mirror of Mac coordinator. |
-| `MediaCapabilityGate.swift` | Phase-1 placeholder (always-allow on iOS — Mac is source of truth, Decision 2). Reads `media_kill_switch` Remote Config and `ops/media_budget_status/current` to refuse if hard-cap engaged before contacting Mac. |
+| `MediaCapabilityGate.swift` | Phase-1 placeholder (always-allow on iOS — Mac is source of truth, Decision 2). Reads `media_kill_switch` Remote Config and `ops/media_budget_status/state/current` to refuse if hard-cap engaged before contacting Mac. |
 
 ### D.2 Edits to existing iroh path
 
@@ -276,7 +276,7 @@ Hardened Runtime entries justified in App Store Connect notes (§G).
 | App background, screen share active | PiP keeps `AVSampleBufferDisplayLayer` visible system-wide. `UIBackgroundModes: audio` keeps process alive. |
 | App background, blob fetch in flight | < 30 s remaining: continue via iroh QUIC. > 30 s: hand off to `URLSession` background config (Phase 2 stretch) or fail with resumable card on foreground (Phase 1 baseline). |
 | Entitlement revoked mid-session | Mac → `media.terminate(entitlement_revoked)` → toast "Subscription paused — call ended." All streams torn down within 3 s. |
-| Hard-cap engaged mid-session | Mac evaluates `ops/media_budget_status/current` every 60 s. Level `hard_cap` → `media.terminate(budget_hard_cap)` with 60 s grace. iOS toast: "Media paused — try again tomorrow." |
+| Hard-cap engaged mid-session | Mac evaluates `ops/media_budget_status/state/current` every 60 s. Level `hard_cap` → `media.terminate(budget_hard_cap)` with 60 s grace. iOS toast: "Media paused — try again tomorrow." |
 
 ---
 
@@ -458,7 +458,7 @@ Cloud Function `evaluateMediaBudget` (scheduled hourly, `functions/src/mediaBudg
 1. Reads n0 services API for month-to-date hosted-relay bytes.
 2. Reads `ops/media_session_daily_rollups/days/*` for the current month.
 3. Projects month-end at current daily rate.
-4. Writes `ops/media_budget_status/current`:
+4. Writes `ops/media_budget_status/state/current`:
    ```
    {
      level: "normal" | "soft_cap" | "hard_cap",
@@ -477,7 +477,7 @@ Cloud Function `evaluateMediaBudget` (scheduled hourly, `functions/src/mediaBudg
    ```
 5. On level transition, fires `media_budget_level_changed` Analytics event.
 
-Both apps cache `ops/media_budget_status/current` for 60 s and re-read on session-start. At `hard_cap`, `media_kill_switch` Remote Config flag also flips for belt-and-suspenders.
+Both apps cache `ops/media_budget_status/state/current` for 60 s and re-read on session-start. At `hard_cap`, `media_kill_switch` Remote Config flag also flips for belt-and-suspenders.
 
 ### F.4 Enforcement (three layers, Decision 2 applied)
 
@@ -558,7 +558,7 @@ NEW scheduled Cloud Function `rollupMediaSessionDaily` (`functions/src/mediaMoni
 
 ### H.4 Budget monitor
 
-`ops/media_budget_status/current` is the canonical budget surface. Read by Mac + iOS at session start. Written hourly by `evaluateMediaBudget`. Dashboard: BigQuery export to Looker Studio with a `media-budget-status` board showing daily spend trend, projection, kill-switch state.
+`ops/media_budget_status/state/current` is the canonical budget surface. Read by Mac + iOS at session start. Written hourly by `evaluateMediaBudget`. Dashboard: BigQuery export to Looker Studio with a `media-budget-status` board showing daily spend trend, projection, kill-switch state.
 
 ### H.5 On-device debug logger
 
@@ -656,7 +656,7 @@ Per device per phase: 10-min soak call · 100 MB file transfer · 5-min screen s
 
 7. **VoIP push token rotation race** — iPhone re-uploads token via existing iroh control stream on every successful connect. Mac caches; on `triggerVoIPCall` failure (APNs invalid-token), Mac drops cache and requests fresh on next iroh connection. iPhone offline at rotation time → "call invite" via Firestore long-poll fallback transport.
 
-8. **Hosted-relay bandwidth blowout** — Per-user daily envelope + `evaluateMediaBudget` projection + soft/hard caps (Decision 4). n0 dashboard alerts at 75% / 100% / 150%. Kill-switch via Remote Config + `ops/media_budget_status/current`.
+8. **Hosted-relay bandwidth blowout** — Per-user daily envelope + `evaluateMediaBudget` projection + soft/hard caps (Decision 4). n0 dashboard alerts at 75% / 100% / 150%. Kill-switch via Remote Config + `ops/media_budget_status/state/current`.
 
 9. **Encoder-decoder version skew** (Mac on new VT API, iOS on older) — Capability handshake in `media.control` opening frame. Both sides advertise codecs + profiles; encoder picks intersection (HEVC main → H.264 baseline → fail with `unsupported_codec` toast).
 
@@ -938,7 +938,7 @@ Per device per phase: 10-min soak call · 100 MB file transfer · 5-min screen s
 - **Codec fallback**: A13 and below → H.264 outbound. Probed via `MTLDevice.supportsFamily(.apple7)`.
 - **PushKit token sync**: iPhone uploads VoIP token via existing iroh control stream on each successful connect. Mac caches in `MacCloudEntitlementStore` (yes — same store; it's about cached per-peer state). On `triggerVoIPCall` failure with `BadDeviceToken`, Mac requests fresh on next iroh connection.
 - **Entitlement (Decision 2)**: `triggerVoIPCall` Cloud Function verifies the calling Mac's `hosted_media_sync` entitlement before forwarding APNs push. iPhone-side `MediaCapabilityGate` does not check entitlement (Mac-side only).
-- **Budget caps (Decision 4)**: Phase 5 ships `evaluateMediaBudget` + `ops/media_budget_status/current` + `media_kill_switch` Remote Config flag + auto-tightening envelope reading in both Mac and iOS. `MediaBudgetReader.swift` on both sides. Toasts + modal sheets per §E.6.
+- **Budget caps (Decision 4)**: Phase 5 ships `evaluateMediaBudget` + `ops/media_budget_status/state/current` + `media_kill_switch` Remote Config flag + auto-tightening envelope reading in both Mac and iOS. `MediaBudgetReader.swift` on both sides. Toasts + modal sheets per §E.6.
 
 **Cloud / rules:**
 - NEW `functions/src/voipPush.ts` — `triggerVoIPCall` callable with Mac-entitlement check.
@@ -1117,7 +1117,7 @@ Roll back at any time by flipping the phase's Remote Config flag to `false`. Rol
 | 1 | CallKit primary + Mercury foreground sheet | Phase 5 | `MercuryCallTransitionController.swift` |
 | 2 | Mac-side entitlement gate only | Phase 5 | `triggerVoIPCall` Cloud Function · `MediaCapabilityGate` (iOS = placeholder) |
 | 3 | iOS image save: prompt once, remember per partner | Phase 2 | `AttachmentSaver.swift` · `PerPartnerSavePreferencesView.swift` |
-| 4 | $600 soft / $1000 hard hosted-relay budget cap | Phase 5 | `evaluateMediaBudget` · `MediaBudgetReader.swift` · `ops/media_budget_status/current` |
+| 4 | $600 soft / $1000 hard hosted-relay budget cap | Phase 5 | `evaluateMediaBudget` · `MediaBudgetReader.swift` · `ops/media_budget_status/state/current` |
 | 5 | New `hosted_media_sync` SKU (not extending `hosted_quota_sync`) | Phase 2 | StoreKit · `grantMediaGrandfather` · Firestore entitlement doc |
 | 6 | Direct iroh transport, no WebRTC | Phase 3+ | `MediaPacketCodec` · `BitrateController` · libopus |
 | 7 | iroh-blobs for file transfer | Phase 1 | `publish_blob` / `fetch_blob` UniFFI · `attachment.advertise` frame |

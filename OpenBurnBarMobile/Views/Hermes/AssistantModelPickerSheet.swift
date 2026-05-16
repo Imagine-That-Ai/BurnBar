@@ -519,11 +519,11 @@ struct AssistantModelPickerSheet: View {
     private func clearPreference() {
         switch runtime {
         case .hermes:
-            hermesService.selectedModelID = nil
+            hermesService.clearSelectedModel()
         case .pi:
-            piService.selectedModelID = nil
+            piService.clearSelectedModel()
         case .openClaw:
-            OpenClawService.shared.selectedModelID = nil
+            OpenClawService.shared.clearSelectedModel()
         case .codex, .claude:
             CLIAgentModelPreferences.setPreferredModelID(nil, for: runtime)
             cliPreference = nil

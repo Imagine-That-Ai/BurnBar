@@ -2417,7 +2417,7 @@ export type MediaBudgetLevel = "normal" | "soft_cap" | "hard_cap";
 
 /**
  * Current state of the n0 hosted-relay budget guardrail. Single document
- * at `ops/media_budget_status/current`. Server-only writes; both apps cache
+ * at `ops/media_budget_status/state/current`. Server-only writes; both apps cache
  * the value for 60 s and re-read on session start.
  *
  * Operator runbook: `docs/runbooks/media-budget.md`.

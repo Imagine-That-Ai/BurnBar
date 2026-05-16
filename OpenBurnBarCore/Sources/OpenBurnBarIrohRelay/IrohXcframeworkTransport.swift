@@ -11,6 +11,7 @@ public final class IrohXcframeworkTransport: IrohRelayTransport, @unchecked Send
     private let codec: IrohRelayFrameCodec
     private let secretProvider: @Sendable () throws -> IrohSecretKeyMaterial
     private let relayURLProvider: @Sendable () -> String?
+    private let bootstrapRetryDelayNanoseconds: UInt64
     private let state = LoopbackStartedFlag()
     private actor IdentityCache {
         var value: IrohEndpointIdentity?
@@ -24,12 +25,14 @@ public final class IrohXcframeworkTransport: IrohRelayTransport, @unchecked Send
         backend: IrohEndpointBackend,
         codec: IrohRelayFrameCodec = IrohRelayFrameCodec(),
         secretProvider: @escaping @Sendable () throws -> IrohSecretKeyMaterial,
-        relayURLProvider: @escaping @Sendable () -> String? = { nil }
+        relayURLProvider: @escaping @Sendable () -> String? = { nil },
+        bootstrapRetryDelayNanoseconds: UInt64 = 1_500_000_000
     ) {
         self.backend = backend
         self.codec = codec
         self.secretProvider = secretProvider
         self.relayURLProvider = relayURLProvider
+        self.bootstrapRetryDelayNanoseconds = bootstrapRetryDelayNanoseconds
     }
 
     public func start() async throws -> IrohEndpointIdentity {
@@ -37,10 +40,7 @@ public final class IrohXcframeworkTransport: IrohRelayTransport, @unchecked Send
         if wasFirst {
             do {
                 let secret = try secretProvider()
-                let identity = try await backend.bootstrap(
-                    secret: secret.raw,
-                    relayURL: relayURLProvider()
-                )
+                let identity = try await bootstrapEndpoint(secret: secret)
                 await identityCache.set(identity)
                 return identity
             } catch let backendError as IrohBackendError {
@@ -55,6 +55,24 @@ public final class IrohXcframeworkTransport: IrohRelayTransport, @unchecked Send
             return cached
         }
         return try await backend.identity()
+    }
+
+    private func bootstrapEndpoint(secret: IrohSecretKeyMaterial) async throws -> IrohEndpointIdentity {
+        do {
+            return try await backend.bootstrap(
+                secret: secret.raw,
+                relayURL: relayURLProvider()
+            )
+        } catch let error as IrohBackendError where Self.isTransientHomeRelayBootstrapError(error) {
+            await backend.shutdown()
+            if bootstrapRetryDelayNanoseconds > 0 {
+                try await Task.sleep(nanoseconds: bootstrapRetryDelayNanoseconds)
+            }
+            return try await backend.bootstrap(
+                secret: secret.raw,
+                relayURL: relayURLProvider()
+            )
+        }
     }
 
     public func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> any IrohRelayStream {
@@ -118,6 +136,13 @@ public final class IrohXcframeworkTransport: IrohRelayTransport, @unchecked Send
         case .shutdownFailed(let message):
             return .streamRejected("iroh shutdown failed: \(message)")
         }
+    }
+
+    static func isTransientHomeRelayBootstrapError(_ error: IrohBackendError) -> Bool {
+        guard case .runtimeFailed(let message) = error else { return false }
+        let normalized = message.lowercased()
+        return normalized.contains("did not select a home relay")
+            || normalized.contains("home relay within")
     }
 }
 

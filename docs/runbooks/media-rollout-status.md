@@ -2,6 +2,29 @@
 
 Operator log mirroring `docs/runbooks/iroh-rollout-status.md`. Each entry records gate status, what landed, what is blocked or pending, and the next action. New entries are appended at the bottom in reverse chronology so the latest state is always immediately visible from the table of contents at the top of the file.
 
+## 2026-05-16 — Android Mercury Media source-complete (full iOS parity)
+
+**Gate status:** green for Android Phase 1-5 source. Device-matrix soak still owed before flag flips.
+
+Completed:
+- File transfer over iroh-blobs: `AndroidFileTransferService`, `MediaControlStreamCoordinator`, `IrohBlobKeyStore`, `AttachmentSaver` (MediaStore Photos + SAF Files), `MediaPartnerSavePreferenceStore` (DataStore Proto), `AttachmentBubble` mercury-stroked UI, `PaperclipButton` upgrade for unified `OpenDocument` + `PickVisualMedia`.
+- Screen-share viewer: `MediaPacketCodec` 16-byte envelope parity, `VideoReceivePipeline` (HEVC `MediaCodec` async, H.264 fallback via `MediaCodecList`), `ScreenShareViewerScreen` with `AndroidView { SurfaceView }`, PiP support via `ScreenShareViewerActivity.supportsPictureInPicture`.
+- 1:1 video + audio call: `CameraCaptureService` (CameraX 1.4 → HEVC `MediaCodec.createInputSurface`), `MicrophoneCaptureService` (`AudioRecord` 48 kHz mono with `AcousticEchoCanceler` + `NoiseSuppressor`), `OpusCodec` (reflection bridge over `Vendor/opus-android.aar`), `AudioReceivePipeline` (Opus decode + 60 ms jitter buffer + `AudioTrack`), `VideoSendPipeline` with thermal listener bitrate halving, `Pacer` / `JitterBuffer` / `BweEstimator` ports.
+- Mercury incoming-call sheet: `IncomingCallActivity` (showOnLockScreen + turnScreenOn), `MercuryFcmService` (`FirebaseMessagingService` consuming high-priority `media_incoming_call` data messages), `CallKitFacade` (self-managed `ConnectionService` so the call shows in the system call screen via `MANAGE_OWN_CALLS`), `MercuryIncomingSheet` Compose surface mirroring iOS CallKit.
+- Capability gate: `AndroidMediaCapabilityGate` is a read-only mirror of Mac authority (Decision 2 parity).
+- Analytics: `MediaAnalyticsLogger` writes to `iroh_audit_events` so the existing `rollupIrohTransportDaily` aggregates Android telemetry automatically.
+- Manifest: `RECORD_AUDIO`, `CAMERA`, `USE_FULL_SCREEN_INTENT`, `MANAGE_OWN_CALLS`, `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MICROPHONE`, `FOREGROUND_SERVICE_CAMERA`, `FOREGROUND_SERVICE_MEDIA_PROJECTION`, `FOREGROUND_SERVICE_PHONE_CALL` registered alongside `MediaSessionForegroundService`, `MercuryFcmService`, `IncomingCallActivity`, `ScreenShareViewerActivity`.
+- Cloud Functions FCM Android branch: `functions/src/fcmAndroidSender.ts` plus a `resolveFanOut` helper in `voipPush.ts` that picks the freshest channel (APNs vs FCM) per device. 7-assertion unit suite under `npm run test:fcm-android` green.
+
+Pending:
+- Vendor binary AARs (`openburnbar-iroh.aar`, `opus-android.aar`) must be built once on CI and committed. Until then the Android runtime falls back to loopback transport + an Opus codec that throws at runtime.
+- Device-matrix soak on real Android phones (Pixel 9 Pro, Samsung S24, Pixel 7 Tablet, foldables) before flipping `media_*` flags to Android cohorts.
+
+Next action:
+- Open a tracking issue for the binary AARs and wire the AAR build into the Android nightly release pipeline.
+
+---
+
 The plan of record is `plans/2026-05-15-mercury-media-master-plan.md`. The seven phases below correspond directly to phases 1-7 in that plan.
 
 | Phase | Theme | Flag | Gate status |
@@ -23,7 +46,7 @@ The plan of record is `plans/2026-05-15-mercury-media-master-plan.md`. The seven
 
 Completed:
 - Pure-Swift substrate published as a new SwiftPM target `OpenBurnBarMedia` in `OpenBurnBarCore/Package.swift`, conditionally linked alongside the existing `OpenBurnBarIrohRelay` package. Target is buildable from a fresh checkout regardless of whether `Vendor/OpenBurnBarIroh.xcframework` is present.
-- Substrate source files: `MediaStreamClass.swift` (canonical class identifiers shared with the Rust crate), `MediaPacketCodec.swift` (length-prefix codec parallel to `IrohRelayFrameCodec` for binary media frames), `MediaFrame.swift` (typed envelope), `BitrateController.swift` (GCC-lite encoder ceiling), `MediaSessionMetadata.swift`, `MediaCapabilityGate.swift` (protocol surface — Mac and iOS provide implementations in later phases), `MediaBudgetEnvelope.swift` (active envelope from `ops/media_budget_status/current`).
+- Substrate source files: `MediaStreamClass.swift` (canonical class identifiers shared with the Rust crate), `MediaPacketCodec.swift` (length-prefix codec parallel to `IrohRelayFrameCodec` for binary media frames), `MediaFrame.swift` (typed envelope), `BitrateController.swift` (GCC-lite encoder ceiling), `MediaSessionMetadata.swift`, `MediaCapabilityGate.swift` (protocol surface — Mac and iOS provide implementations in later phases), `MediaBudgetEnvelope.swift` (active envelope from `ops/media_budget_status/state/current`).
 - `HermesRealtimeRelayFrame` extended with `media: HermesRealtimeRelayMediaPayload?` and three new frame types (`media.classify`, `media.blob.advertise`, `media.blob.ack`). Forward-compat verified — older decoders ignore the new field, newer decoders accept its absence.
 - Mac + iOS dispatch: `IrohRelayRequestHandler` (Mac) and `HermesIrohRelayTransport` (iOS) handle the new media frame types via stub handlers gated on `media_blob_transfer_enabled` (default off). Phase 1 stubs log + count; the full publish/fetch path activates after the xcframework reships.
 - Rust scaffolding (Phase 1a — substrate): `crates/openburnbar-iroh/src/blobs.rs` module imports `iroh-blobs = "0.92"` (the line that targets `iroh ^0.91`) and publishes `BlobTicketBytes`, `BlobTransferStats`, `parse_blob_ticket`, `iroh_blobs_alpn`, `iroh_blobs_crate_version` as UniFFI surface. 5 cargo unit tests cover round-trip, garbage rejection, whitespace trimming, ALPN constant identity, and crate-version exposure.
@@ -84,7 +107,7 @@ Completed (single-session burst, by phase):
 - iOS `CameraCaptureService`, `VoIPCallService` (PKPushRegistry + CXProvider + CXCallController), `MercuryCallTransitionController` (Decision 1 — app-active → Mercury sheet, app-background → direct CallHUD).
 - Mac UI: `IncomingCallSheet` (96pt avatar, mercury hairline, Decline/Accept), `CallHUD` (mono timer, 44pt control buttons).
 - iOS UI: `MercuryIncomingSheet` (foreground-only per Decision 1), `CallHUDView`, `SelfPiPView` (88×128 drag-to-corner).
-- Cloud Functions: `voipPush.ts` (`triggerVoIPCall` callable verifies Mac entitlement per Decision 2 and writes `voip_outbound` for the existing APNs router); `mediaBudget.ts` (`evaluateMediaBudget` hourly, $600 soft / $1000 hard cap per Decision 4, writes `ops/media_budget_status/current`).
+- Cloud Functions: `voipPush.ts` (`triggerVoIPCall` callable verifies Mac entitlement per Decision 2 and writes `voip_outbound` for the existing APNs router); `mediaBudget.ts` (`evaluateMediaBudget` hourly, $600 soft / $1000 hard cap per Decision 4, writes `ops/media_budget_status/state/current`).
 
 **Phase 6 — iPad multicam + PiP:**
 - iOS `iPadMultiCamCaptureService` (AVCaptureMultiCamSession on iPad Pro M-series; falls back to single-cam silently elsewhere).

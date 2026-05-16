@@ -67,6 +67,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,6 +80,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.AssistantRuntimeID
+import com.openburnbar.data.missions.ApprovalAsk
+import com.openburnbar.data.missions.ApprovalDecision
+import com.openburnbar.data.missions.ApprovalPolicy
+import com.openburnbar.data.missions.ApprovalPolicyStore
+import com.openburnbar.data.missions.MissionGroupObserver
+import com.openburnbar.data.missions.MobileMissionConsoleHost
+import com.openburnbar.data.missions.RollbackService
+import com.openburnbar.data.projects.ProjectsStore
 import com.openburnbar.data.square.AgentAvailability
 import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.data.square.AgentIdentityRegistry
@@ -88,6 +97,8 @@ import com.openburnbar.data.square.PinnedAgentGridConfig
 import com.openburnbar.data.square.ThreadInboxItem
 import com.openburnbar.data.square.ThreadInboxStore
 import com.openburnbar.data.square.splitForInbox
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 // MARK: - Hermes Square Root (Android composable, Hermes Square §3 / §6.2)
 //
@@ -111,6 +122,18 @@ fun HermesSquareScreen(
     val inbox = remember { ThreadInboxStore.shared() }
     val activityStore: ActivityStore = viewModel()
     val cloudHits by activityStore.cloudSearchHits.collectAsStateWithLifecycle()
+
+    val missionHost = remember { MobileMissionConsoleHost.shared() }
+    val rollbackService = remember { RollbackService.shared() }
+    val approvalPolicyStore = remember(context) { ApprovalPolicyStore.shared(context) }
+    val projectsStore = remember { ProjectsStore.shared() }
+    val missionGroupObserver = remember { MissionGroupObserver() }
+
+    val missionSnapshot by missionHost.snapshot.collectAsStateWithLifecycle()
+    val groupSnapshot by missionGroupObserver.snapshot.collectAsStateWithLifecycle()
+    val snapshotsBySession by rollbackService.snapshotsBySession.collectAsStateWithLifecycle()
+    val projectSummaries by projectsStore.summaries.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
 
     val pinnedPrefs = remember {
         context.applicationContext.getSharedPreferences("square.pinned_grid", android.content.Context.MODE_PRIVATE)
@@ -138,8 +161,9 @@ fun HermesSquareScreen(
     var selectedCloudRow by remember { mutableStateOf<CloudConversationSearchRow?>(null) }
     var selectedCliSession by remember { mutableStateOf<CLIAgentSessionRecord?>(null) }
 
-    // Phase A: hydrate availability for built-ins. (Mac-relay runtimes
-    // remain UNKNOWN until the Android mission host publishes.)
+    // Phase A/3: hydrate availability for built-ins + bring up the mission
+    // host + projects store + rollback service so the new sections have
+    // live data on first paint.
     LaunchedEffect(Unit) {
         inbox.refreshFromCloud()
         registry.refreshAvailability(
@@ -148,6 +172,18 @@ fun HermesSquareScreen(
                 AgentIdentity.builtInURI(AssistantRuntimeID.PI) to AgentAvailability.ONLINE
             )
         )
+        missionHost.start()
+        rollbackService.startObservingRequests()
+        projectsStore.load()
+    }
+
+    // Whenever the mission host surfaces new active missions, observe each
+    // session's rollback snapshots so the rollback card shows up the
+    // moment the Mac writes one.
+    LaunchedEffect(missionSnapshot.activeMissions) {
+        for (mission in missionSnapshot.activeMissions) {
+            rollbackService.startObservingSession(mission.id)
+        }
     }
 
     LaunchedEffect(query) {
@@ -272,6 +308,43 @@ fun HermesSquareScreen(
                     )
                 }
             } else {
+                // 1. Approval inbox strip
+                if (missionSnapshot.approvalQueue.isNotEmpty()) {
+                    item {
+                        ApprovalInboxStrip(
+                            asks = missionSnapshot.approvalQueue,
+                            onApprove = { ask ->
+                                scope.launch { missionHost.respond(ask, approve = true) }
+                            },
+                            onDeny = { ask ->
+                                scope.launch { missionHost.respond(ask, approve = false) }
+                            },
+                            onApproveAlways = { ask ->
+                                recordApprovalPolicy(approvalPolicyStore, ask, ApprovalDecision.REMEMBER_ALLOW)
+                                scope.launch { missionHost.respond(ask, approve = true) }
+                            },
+                            onDenyAlways = { ask ->
+                                recordApprovalPolicy(approvalPolicyStore, ask, ApprovalDecision.REMEMBER_DENY)
+                                scope.launch { missionHost.respond(ask, approve = false) }
+                            },
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                    }
+                }
+
+                // 2. Fan-out group card (only when there's an active group)
+                if (groupSnapshot.group != null) {
+                    item {
+                        MissionFanOutGroupCard(
+                            snapshot = groupSnapshot,
+                            onPickWinner = { /* drilldown deferred to follow-up */ },
+                            onMergeAction = { /* merge wiring deferred to follow-up */ },
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                    }
+                }
+
+                // 3. Pinned grid
                 item {
                     PinnedGridSection(
                         config = pinned,
@@ -291,10 +364,41 @@ fun HermesSquareScreen(
                     )
                 }
 
+                // 4. Project Memory Wiki
+                item {
+                    ProjectMemoryWikiSection(
+                        projects = projectSummaries.sortedByDescending { it.totalCost }.take(3),
+                        onOpenProject = { _ -> /* drilldown deferred */ },
+                        onAskWiki = { _ -> /* /wiki stash deferred */ },
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+
+                // 5. Active missions strip
                 item {
                     ActiveMissionsStrip(
+                        missions = missionSnapshot.activeMissions,
                         modifier = Modifier.padding(start = 16.dp, end = 0.dp)
                     )
+                }
+
+                // 6. Rollback sections
+                if (snapshotsBySession.any { it.value.isNotEmpty() }) {
+                    item {
+                        RollbackSectionsList(
+                            snapshotsBySession = snapshotsBySession,
+                            onSubmit = { sessionID, scopeChoice ->
+                                scope.launch {
+                                    rollbackService.submit(
+                                        sessionID = sessionID,
+                                        scope = scopeChoice,
+                                        requestedBy = android.os.Build.MODEL ?: "android-device",
+                                    )
+                                }
+                            },
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                    }
                 }
 
                 item {
@@ -361,7 +465,7 @@ fun HermesSquareScreen(
                 .padding(horizontal = 16.dp)
         ) {
             voiceBanner?.let { intent ->
-                VoiceIntentBanner(
+                VoiceIntentBannerView(
                     intent = intent,
                     onDismiss = { voiceBanner = null }
                 )
@@ -736,47 +840,6 @@ private fun PhaseDVoiceEntry(
     }
 }
 
-@Composable
-private fun VoiceIntentBanner(
-    intent: AndroidVoiceIntent,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        tonalElevation = 1.dp,
-        modifier = modifier.fillMaxWidth().clickableUnit(onClick = onDismiss)
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Text(
-                intent.displayLabel,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            val sub = when (intent) {
-                is AndroidVoiceIntent.OpenAgent -> intent.agentURI
-                is AndroidVoiceIntent.Search -> "“${intent.query}”"
-                is AndroidVoiceIntent.DispatchMission ->
-                    if (intent.runtimeHint != null) "→ ${intent.runtimeHint}: ${intent.prompt}"
-                    else intent.prompt
-                is AndroidVoiceIntent.SendMessageToCurrentThread -> intent.text
-                AndroidVoiceIntent.AmbientBriefing -> "Asking Hermes for the brief…"
-                is AndroidVoiceIntent.FallbackToHermes -> intent.text.ifBlank { "Heard nothing — try again." }
-            }
-            Text(
-                sub,
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
 // MARK: - Phase B fan-out entry
 
 @Composable
@@ -1013,7 +1076,10 @@ private fun PinnedCell(
 // MARK: - Active missions strip (Phase A placeholder)
 
 @Composable
-private fun ActiveMissionsStrip(modifier: Modifier = Modifier) {
+private fun ActiveMissionsStrip(
+    missions: List<com.openburnbar.data.missions.ActiveMission>,
+    modifier: Modifier = Modifier
+) {
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             "Active missions",
@@ -1023,52 +1089,200 @@ private fun ActiveMissionsStrip(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(start = 0.dp, end = 16.dp)
         )
         Spacer(modifier = Modifier.height(8.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            item {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
-                    tonalElevation = 0.5.dp,
+        if (missions.isEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                tonalElevation = 0.5.dp,
+                modifier = Modifier
+                    .width(280.dp)
+                    .height(110.dp)
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.Start,
                     modifier = Modifier
-                        .width(280.dp)
-                        .height(110.dp)
+                        .fillMaxSize()
+                        .padding(14.dp)
                 ) {
-                    Column(
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.Start,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(14.dp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.Bolt,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            "No live missions",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "Compose one from the FAB to fan out across runtimes.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        } else {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(missions, key = { it.id }) { mission ->
+                    HermesSquareMissionTile(
+                        tile = mission,
+                        modifier = Modifier.width(260.dp)
+                    )
+                }
+                item { Spacer(modifier = Modifier.width(0.dp)) }
+            }
+        }
+    }
+}
+
+// MARK: - Project Memory Wiki
+
+@Composable
+private fun ProjectMemoryWikiSection(
+    projects: List<com.openburnbar.data.models.ProjectSummary>,
+    onOpenProject: (com.openburnbar.data.models.ProjectSummary) -> Unit,
+    onAskWiki: (com.openburnbar.data.models.ProjectSummary) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Project Memory Wiki",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                "Ask /wiki",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        if (projects.isEmpty()) {
+            Text(
+                "No project memory yet. Start with `/wiki` in Hermes to build one.",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 6.dp)
+            )
+        } else {
+            for (project in projects) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Filled.Bolt,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "No live missions",
-                                color = MaterialTheme.colorScheme.onSurface,
+                                project.name.ifBlank { project.id },
                                 fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                "${project.totalSessions} sessions · ${project.totalTokens} tokens · $${"%.2f".format(project.totalCost)}",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            "Dispatch from the FAB. Phase B wires fan-out dispatch into this strip.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 11.sp,
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(999.dp))
+                                .clickable { onAskWiki(project) }
+                        ) {
+                            Text(
+                                "/wiki",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
                     }
                 }
             }
-            item { Spacer(modifier = Modifier.width(0.dp)) }
         }
     }
+}
+
+// MARK: - Rollback sections list
+
+@Composable
+private fun RollbackSectionsList(
+    snapshotsBySession: Map<String, List<com.openburnbar.data.missions.RollbackSnapshot>>,
+    onSubmit: (sessionID: String, scope: com.openburnbar.data.missions.RollbackScope) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val sortedSessions = remember(snapshotsBySession) {
+        snapshotsBySession
+            .filter { it.value.isNotEmpty() }
+            .toList()
+            .sortedByDescending { (_, list) -> list.maxOfOrNull { it.takenAtEpoch } ?: 0L }
+    }
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            "Rollback",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        for ((sessionID, snapshots) in sortedSessions) {
+            RollbackCardView(
+                sessionID = sessionID,
+                snapshots = snapshots,
+                onSubmit = { scope -> onSubmit(sessionID, scope) },
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+    }
+}
+
+// MARK: - Helper: record an approval policy from an ask
+
+private fun recordApprovalPolicy(
+    store: ApprovalPolicyStore,
+    ask: ApprovalAsk,
+    decision: ApprovalDecision,
+) {
+    val scopeKey = "runtime=${ask.runtimeID ?: "any"}"
+    val policy = ApprovalPolicy(
+        id = ApprovalPolicyStore.classKey(agentURI = null, scopeKey = scopeKey) + ":" + decision.token,
+        agentURI = null,
+        scopeKey = scopeKey,
+        missionKind = null,
+        toolName = null,
+        fileGlob = null,
+        runtimeID = ask.runtimeID,
+        targetProject = null,
+        decision = decision,
+        displayLabel = "${if (decision == ApprovalDecision.REMEMBER_ALLOW) "Always approve" else "Always deny"} for ${ask.runtimeDisplayLabel}",
+    )
+    store.record(policy)
 }
 
 // MARK: - Sections + rows

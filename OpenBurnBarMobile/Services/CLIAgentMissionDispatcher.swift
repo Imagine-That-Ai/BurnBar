@@ -24,6 +24,7 @@ final class CLIAgentMissionDispatcher {
         approvalMode: String = "existing_policy",
         commandsAllowed: Bool = false,
         fileEditsAllowed: Bool = false,
+        requestedModelID: String? = nil,
         clientThreadID: String? = nil,
         parentSessionID: String? = nil,
         resumeAction: String? = nil
@@ -42,6 +43,8 @@ final class CLIAgentMissionDispatcher {
         guard !trimmedPrompt.isEmpty else {
             throw DispatchError.emptyPrompt
         }
+        let effectiveRequestedModelID = requestedModelID?.nonEmpty
+            ?? Self.selectedModelID(forRequestedRuntime: requestedRuntime)
 
         let payload = CLIAgentMissionRequestPayloadFactory.build(
             id: id,
@@ -54,6 +57,7 @@ final class CLIAgentMissionDispatcher {
             approvalMode: approvalMode,
             commandsAllowed: commandsAllowed,
             fileEditsAllowed: fileEditsAllowed,
+            requestedModelID: effectiveRequestedModelID,
             clientThreadID: clientThreadID,
             parentSessionID: parentSessionID,
             resumeAction: resumeAction
@@ -241,7 +245,8 @@ final class CLIAgentMissionDispatcher {
                 depth: depth,
                 approvalMode: approvalMode,
                 commandsAllowed: commandsAllowed,
-                fileEditsAllowed: fileEditsAllowed
+                fileEditsAllowed: fileEditsAllowed,
+                requestedModelID: Self.selectedModelID(forRequestedRuntime: runtimeToken)
             )
             let overlay = MissionGroupPayloadFactory.childPayloadOverlay(
                 groupID: groupID,
@@ -268,6 +273,38 @@ final class CLIAgentMissionDispatcher {
 
         try await batch.commit()
         return FanOutDispatchResult(groupID: groupID, childMissionIDs: childMissionIDs)
+    }
+
+    private static func selectedModelID(forRequestedRuntime runtimeToken: String) -> String? {
+        let normalized = runtimeToken.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let runtime: AssistantRuntimeID?
+        switch normalized {
+        case "hermes":
+            runtime = .hermes
+        case "pi", "piagent":
+            runtime = .pi
+        case "codex":
+            runtime = .codex
+        case "claude":
+            runtime = .claude
+        case "openclaw":
+            runtime = .openClaw
+        default:
+            runtime = nil
+        }
+        guard let runtime else { return nil }
+
+        switch runtime {
+        case .hermes:
+            return HermesService.shared.selectedModelID?.nonEmpty
+        case .pi:
+            return PiService.shared.selectedModelID?.nonEmpty
+        case .openClaw:
+            return OpenClawService.shared.selectedModelID?.nonEmpty
+                ?? CLIAgentModelPreferences.preferredModelID(for: .openClaw)?.nonEmpty
+        case .codex, .claude:
+            return CLIAgentModelPreferences.preferredModelID(for: runtime)?.nonEmpty
+        }
     }
 
     struct FanOutDispatchResult: Sendable, Equatable {
@@ -475,6 +512,7 @@ enum CLIAgentMissionRequestPayloadFactory {
         approvalMode: String,
         commandsAllowed: Bool,
         fileEditsAllowed: Bool,
+        requestedModelID: String? = nil,
         clientThreadID: String? = nil,
         parentSessionID: String? = nil,
         resumeAction: String? = nil,
@@ -505,6 +543,9 @@ enum CLIAgentMissionRequestPayloadFactory {
         ]
         if let clientThreadID = clientThreadID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
             payload["clientThreadID"] = clientThreadID
+        }
+        if let requestedModelID = requestedModelID?.nonEmpty {
+            payload["requestedModelID"] = requestedModelID
         }
         if let parentSessionID = parentSessionID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
             payload["parentSessionID"] = parentSessionID
@@ -598,8 +639,10 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
     let title: String
     let status: String
     let requestedRuntime: String
+    let requestedModelID: String?
     let selectedRuntime: String?
     let selectedRuntimeName: String?
+    let selectedModelID: String?
     let targetProject: String?
     let liveSummary: String?
     let resultPreview: String?
@@ -621,8 +664,14 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
         self.title = title
         self.status = status
         self.requestedRuntime = (data["requestedRuntime"] as? String) ?? "auto"
+        self.requestedModelID = (data["requestedModelID"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
         self.selectedRuntime = data["selectedRuntime"] as? String
         self.selectedRuntimeName = data["selectedRuntimeName"] as? String
+        self.selectedModelID = (data["selectedModelID"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
         self.targetProject = (data["targetProject"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty

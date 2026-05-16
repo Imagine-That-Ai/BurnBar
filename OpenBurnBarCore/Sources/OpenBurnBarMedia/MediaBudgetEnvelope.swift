@@ -1,6 +1,6 @@
 import Foundation
 
-/// Mirror of the `ops/media_budget_status/current` Firestore document
+/// Mirror of the `ops/media_budget_status/state/current` Firestore document
 /// surfaced to both platforms by `MediaBudgetReader`. Read-only on the
 /// client; the canonical writer is the `evaluateMediaBudget` Cloud
 /// Function (`functions/src/mediaBudget.ts`) running hourly.

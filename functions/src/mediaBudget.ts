@@ -9,7 +9,7 @@
  *   soft_cap   — $600 ≤ projected < $1000  (envelope tightens)
  *   hard_cap   — projected ≥ $1000          (kill-switch flips)
  *
- * Writes `ops/media_budget_status/current`. Operator runbook lives at
+ * Writes `ops/media_budget_status/state/current`. Operator runbook lives at
  * `docs/runbooks/media-budget.md`.
  */
 
@@ -165,7 +165,15 @@ export async function evaluateBudget(now: Date = new Date()): Promise<MediaBudge
     schemaVersion: 1,
   };
 
-  await firestore.doc("ops/media_budget_status/current").set(status, { merge: true });
+  // Path note: Firestore document paths must have an even number of
+  // segments. The original master plan documented this as
+  // `ops/media_budget_status/current` (3 segments — a collection path,
+  // not a doc). The real path uses the canonical
+  // `ops/<topic>/<sub>/<id>` shape that mirrors
+  // `ops/iroh_transport_daily_rollups/days/<date>`.
+  await firestore
+    .doc("ops/media_budget_status/state/current")
+    .set(status, { merge: true });
   return status;
 }
 

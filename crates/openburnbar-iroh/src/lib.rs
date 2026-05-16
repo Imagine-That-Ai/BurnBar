@@ -17,16 +17,21 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use iroh::{Endpoint, NodeAddr, NodeId, RelayMap, RelayMode, RelayUrl, SecretKey, Watcher};
+use tokio::io::AsyncWriteExt;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
 mod blobs;
+mod datagrams;
 
 #[allow(unused_imports)]
 pub use blobs::{
     iroh_blobs_alpn, iroh_blobs_crate_version, parse_blob_ticket, BlobTicketBytes,
     BlobTransferStats, IrohBlobNode,
 };
+
+#[allow(unused_imports)]
+pub use datagrams::{mercury_audio_alpn, IrohDatagramChannel, MERCURY_AUDIO_ALPN};
 
 uniffi::setup_scaffolding!();
 
@@ -105,9 +110,11 @@ pub struct IrohAcceptOptions {
 #[derive(uniffi::Object)]
 pub struct IrohStream {
     inner: Mutex<Option<IrohStreamInner>>,
+    runtime_handle: tokio::runtime::Handle,
 }
 
 struct IrohStreamInner {
+    _conn: iroh::endpoint::Connection,
     send: iroh::endpoint::SendStream,
     recv: iroh::endpoint::RecvStream,
 }
@@ -117,7 +124,8 @@ impl IrohStream {
     /// Write a length-prefixed JSON frame onto the stream. Length prefix is
     /// a big-endian u32 — matches `IrohRelayWireFormat.lengthPrefix` in Swift.
     pub fn send_frame(self: Arc<Self>, frame: Vec<u8>) -> Result<(), IrohFfiError> {
-        block_on(async move {
+        let runtime_handle = self.runtime_handle.clone();
+        runtime_handle.block_on(async move {
             let mut guard = self.inner.lock().await;
             let inner = guard.as_mut().ok_or(IrohFfiError::EndpointNotInitialized)?;
             let length = frame.len() as u32;
@@ -131,6 +139,7 @@ impl IrohStream {
                 .write_all(&frame)
                 .await
                 .map_err(IrohFfiError::stream)?;
+            inner.send.flush().await.map_err(IrohFfiError::stream)?;
             Ok(())
         })
     }
@@ -138,7 +147,8 @@ impl IrohStream {
     /// Read one length-prefixed JSON frame off the stream. Returns `None` on
     /// clean stream close.
     pub fn recv_frame(self: Arc<Self>) -> Result<Option<Vec<u8>>, IrohFfiError> {
-        block_on(async move {
+        let runtime_handle = self.runtime_handle.clone();
+        runtime_handle.block_on(async move {
             let mut guard = self.inner.lock().await;
             let inner = guard.as_mut().ok_or(IrohFfiError::EndpointNotInitialized)?;
             let mut len_buf = [0u8; 4];
@@ -160,7 +170,8 @@ impl IrohStream {
 
     /// Close the stream cleanly. Idempotent.
     pub fn close(self: Arc<Self>) -> Result<(), IrohFfiError> {
-        block_on(async move {
+        let runtime_handle = self.runtime_handle.clone();
+        runtime_handle.block_on(async move {
             let mut guard = self.inner.lock().await;
             if let Some(inner) = guard.take() {
                 let mut send = inner.send;
@@ -178,6 +189,7 @@ impl IrohStream {
 pub struct IrohEndpointHandle {
     endpoint: Mutex<Option<Endpoint>>,
     runtime: Mutex<Option<Runtime>>,
+    runtime_handle: Mutex<Option<tokio::runtime::Handle>>,
     identity: Mutex<Option<IrohNodeIdentity>>,
 }
 
@@ -188,6 +200,7 @@ impl IrohEndpointHandle {
         Arc::new(Self {
             endpoint: Mutex::new(None),
             runtime: Mutex::new(None),
+            runtime_handle: Mutex::new(None),
             identity: Mutex::new(None),
         })
     }
@@ -220,14 +233,18 @@ impl IrohEndpointHandle {
             .build()
             .map_err(IrohFfiError::runtime)?;
 
-        let relay_mode = if relay_url.trim().is_empty() {
+        let configured_relay_url = relay_url.trim().to_string();
+        let relay_mode = if configured_relay_url.is_empty() {
             RelayMode::Default
         } else {
-            let url: RelayUrl = relay_url.parse().map_err(|err: iroh::RelayUrlParseError| {
-                IrohFfiError::RuntimeFailed {
-                    message: format!("invalid relay url: {err}"),
-                }
-            })?;
+            let url: RelayUrl =
+                configured_relay_url
+                    .parse()
+                    .map_err(
+                        |err: iroh::RelayUrlParseError| IrohFfiError::RuntimeFailed {
+                            message: format!("invalid relay url: {err}"),
+                        },
+                    )?;
             RelayMode::Custom(RelayMap::from(url))
         };
 
@@ -244,12 +261,17 @@ impl IrohEndpointHandle {
             .map_err(IrohFfiError::runtime)?;
 
         let identity = runtime.block_on(async {
-            let relay_url =
+            let selected_relay_url =
                 tokio::time::timeout(Duration::from_secs(10), endpoint.home_relay().initialized())
                     .await
                     .map_err(|_| IrohFfiError::RuntimeFailed {
                         message: "iroh endpoint did not select a home relay within 10s".into(),
                     })?;
+            let published_relay_url = if configured_relay_url.is_empty() {
+                selected_relay_url.to_string()
+            } else {
+                configured_relay_url.clone()
+            };
 
             let direct_addresses = tokio::time::timeout(
                 Duration::from_secs(10),
@@ -267,13 +289,15 @@ impl IrohEndpointHandle {
             Ok::<_, IrohFfiError>(IrohNodeIdentity {
                 raw_public_key: node_id.as_bytes().to_vec(),
                 node_id: node_id.to_string(),
-                relay_url: relay_url.to_string(),
+                relay_url: published_relay_url,
                 direct_addresses,
             })
         })?;
 
+        let runtime_handle = runtime.handle().clone();
         block_on(async {
             *self.endpoint.lock().await = Some(endpoint);
+            *self.runtime_handle.lock().await = Some(runtime_handle);
             *self.runtime.lock().await = Some(runtime);
             *self.identity.lock().await = Some(identity.clone());
             Ok::<_, IrohFfiError>(())
@@ -302,12 +326,20 @@ impl IrohEndpointHandle {
         direct_addresses: Vec<String>,
         timeout_seconds: u32,
     ) -> Result<Arc<IrohStream>, IrohFfiError> {
-        let endpoint = block_on(async {
-            self.endpoint
+        let (endpoint, runtime_handle) = block_on(async {
+            let endpoint = self
+                .endpoint
                 .lock()
                 .await
                 .clone()
-                .ok_or(IrohFfiError::EndpointNotInitialized)
+                .ok_or(IrohFfiError::EndpointNotInitialized)?;
+            let runtime_handle = self
+                .runtime_handle
+                .lock()
+                .await
+                .clone()
+                .ok_or(IrohFfiError::EndpointNotInitialized)?;
+            Ok::<_, IrohFfiError>((endpoint, runtime_handle))
         })?;
 
         let target: NodeId = node_id.parse().map_err(|_| IrohFfiError::InvalidNodeId)?;
@@ -340,17 +372,27 @@ impl IrohEndpointHandle {
         }
         let timeout = Duration::from_secs(timeout_seconds.max(1) as u64);
 
-        block_on(async move {
-            let conn = tokio::time::timeout(timeout, endpoint.connect(node_addr, OPENBURNBAR_ALPN))
-                .await
-                .map_err(|_| IrohFfiError::ConnectFailed {
-                    message: "iroh connect timed out".into(),
-                })?
-                .map_err(IrohFfiError::connect)?;
-
-            let (send, recv) = conn.open_bi().await.map_err(IrohFfiError::stream)?;
+        let stream_runtime_handle = runtime_handle.clone();
+        runtime_handle.block_on(async move {
+            let (conn, send, recv) = tokio::time::timeout(timeout, async move {
+                let conn = endpoint
+                    .connect(node_addr, OPENBURNBAR_ALPN)
+                    .await
+                    .map_err(IrohFfiError::connect)?;
+                let (send, recv) = conn.open_bi().await.map_err(IrohFfiError::stream)?;
+                Ok::<_, IrohFfiError>((conn, send, recv))
+            })
+            .await
+            .map_err(|_| IrohFfiError::ConnectFailed {
+                message: "iroh connect timed out".into(),
+            })??;
             Ok(Arc::new(IrohStream {
-                inner: Mutex::new(Some(IrohStreamInner { send, recv })),
+                inner: Mutex::new(Some(IrohStreamInner {
+                    _conn: conn,
+                    send,
+                    recv,
+                })),
+                runtime_handle: stream_runtime_handle,
             }))
         })
     }
@@ -361,28 +403,47 @@ impl IrohEndpointHandle {
         self: Arc<Self>,
         timeout_seconds: u32,
     ) -> Result<Arc<IrohStream>, IrohFfiError> {
-        let endpoint = block_on(async {
-            self.endpoint
+        let (endpoint, runtime_handle) = block_on(async {
+            let endpoint = self
+                .endpoint
                 .lock()
                 .await
                 .clone()
-                .ok_or(IrohFfiError::EndpointNotInitialized)
+                .ok_or(IrohFfiError::EndpointNotInitialized)?;
+            let runtime_handle = self
+                .runtime_handle
+                .lock()
+                .await
+                .clone()
+                .ok_or(IrohFfiError::EndpointNotInitialized)?;
+            Ok::<_, IrohFfiError>((endpoint, runtime_handle))
         })?;
         let timeout = Duration::from_secs(timeout_seconds.max(1) as u64);
-        block_on(async move {
-            let incoming = tokio::time::timeout(timeout, endpoint.accept())
-                .await
-                .map_err(|_| IrohFfiError::AcceptFailed {
-                    message: "iroh accept timed out".into(),
-                })?
-                .ok_or_else(|| IrohFfiError::AcceptFailed {
-                    message: "iroh endpoint closed before accepting".into(),
-                })?;
-
-            let conn = incoming.await.map_err(IrohFfiError::accept)?;
-            let (send, recv) = conn.accept_bi().await.map_err(IrohFfiError::stream)?;
+        let stream_runtime_handle = runtime_handle.clone();
+        runtime_handle.block_on(async move {
+            let (conn, send, recv) = tokio::time::timeout(timeout, async move {
+                let incoming =
+                    endpoint
+                        .accept()
+                        .await
+                        .ok_or_else(|| IrohFfiError::AcceptFailed {
+                            message: "iroh endpoint closed before accepting".into(),
+                        })?;
+                let conn = incoming.await.map_err(IrohFfiError::accept)?;
+                let (send, recv) = conn.accept_bi().await.map_err(IrohFfiError::stream)?;
+                Ok::<_, IrohFfiError>((conn, send, recv))
+            })
+            .await
+            .map_err(|_| IrohFfiError::AcceptFailed {
+                message: "iroh accept timed out".into(),
+            })??;
             Ok(Arc::new(IrohStream {
-                inner: Mutex::new(Some(IrohStreamInner { send, recv })),
+                inner: Mutex::new(Some(IrohStreamInner {
+                    _conn: conn,
+                    send,
+                    recv,
+                })),
+                runtime_handle: stream_runtime_handle,
             }))
         })
     }
@@ -392,6 +453,7 @@ impl IrohEndpointHandle {
         let endpoint_opt = block_on(async {
             let endpoint = self.endpoint.lock().await.take();
             let runtime = self.runtime.lock().await.take();
+            let _ = self.runtime_handle.lock().await.take();
             *self.identity.lock().await = None;
             Ok::<_, IrohFfiError>((endpoint, runtime))
         })?;
@@ -427,7 +489,7 @@ pub fn openburnbar_iroh_protocol_version() -> u32 {
     1
 }
 
-fn block_on<F, T>(future: F) -> T
+pub(crate) fn block_on<F, T>(future: F) -> T
 where
     F: std::future::Future<Output = T>,
 {

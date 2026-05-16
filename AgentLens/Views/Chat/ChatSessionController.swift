@@ -1054,14 +1054,14 @@ final class ChatSessionController {
                             systemPrompt: augmentedSystem,
                             userMessage: trimmed,
                             workspaceDirectory: self.chatWorkspaceURL,
-                            model: self.chatModelCodex
+                            model: requestModel
                         )
                     case .claude:
                         return self.cliBridge.chatClaudeStream(
                             systemPrompt: augmentedSystem,
                             userMessage: trimmed,
                             workspaceDirectory: self.chatWorkspaceURL,
-                            model: self.chatModelClaude
+                            model: requestModel
                         )
                     }
                 }

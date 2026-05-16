@@ -52,12 +52,14 @@ final class OpenClawService {
     private let bearerDefaultsKey = "openClaw.bearerToken"
     private let selectedModelDefaultsKey = "openClaw.selectedModelID"
     private let favoriteModelsDefaultsKey = "openClaw.favoriteModelIDs"
+    private var selectedModelWasExplicit = false
 
     init(urlSession: URLSession = .shared,
          defaults: UserDefaults = .standard) {
         self.urlSession = urlSession
         self.defaults = defaults
         self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        self.selectedModelWasExplicit = self.selectedModelID?.nonEmpty != nil
         self.favoriteModelIDs = Self.decodeStringArray(
             defaults.string(forKey: favoriteModelsDefaultsKey)
         )
@@ -81,7 +83,14 @@ final class OpenClawService {
 
     func selectModel(_ option: HermesRuntimeModelOption) {
         selectedModelID = option.modelID
+        selectedModelWasExplicit = true
         defaults.set(option.modelID, forKey: selectedModelDefaultsKey)
+    }
+
+    func clearSelectedModel() {
+        selectedModelID = nil
+        selectedModelWasExplicit = false
+        defaults.removeObject(forKey: selectedModelDefaultsKey)
     }
 
     func isFavoriteModel(_ option: HermesRuntimeModelOption) -> Bool {
@@ -140,8 +149,16 @@ final class OpenClawService {
         do {
             let (data, _) = try await urlSession.data(for: request)
             modelOptions = Self.parseModels(data: data)
-            if selectedModelID == nil {
-                selectedModelID = modelOptions.first?.modelID
+            if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID }) {
+                if selectedModelWasExplicit {
+                    runtimeErrorText = "Selected OpenClaw model '\(selectedModelID)' is not advertised by this Mac OpenClaw harness. Pick a listed model or refresh the Mac provider catalog."
+                } else {
+                    self.selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
+                    selectedModelWasExplicit = false
+                }
+            } else if selectedModelID == nil {
+                selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
+                selectedModelWasExplicit = false
             }
         } catch {
             runtimeErrorText = "Failed to list OpenClaw models: \(error.localizedDescription)"

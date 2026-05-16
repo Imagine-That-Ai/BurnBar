@@ -146,15 +146,27 @@ enum CLIAgentMissionRuntimePlanner {
         data: [String: Any]
     ) -> CLIAgentMissionDirectLaunchPlan? {
         let hostPrompt = Self.prompt(title: title, prompt: prompt, backend: backend, data: data)
+        let requestedModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         switch backend.rawValue {
         case ChatBackendID.piAgent.rawValue:
+            let modelCommand = """
+            model_args=()
+            if [ -n "${OPENBURNBAR_MISSION_MODEL:-}" ]; then
+              model_args=(--model "$OPENBURNBAR_MISSION_MODEL")
+            fi
+            pi --no-session --no-tools --mode json "${model_args[@]}" -p "$OPENBURNBAR_MISSION_PROMPT"
+            """
+            var env = ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
+            if let requestedModelID {
+                env["OPENBURNBAR_MISSION_MODEL"] = requestedModelID
+            }
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "zsh",
                 arguments: [
-                    "-lic",
-                    "pi --no-session --no-tools --mode json -p \"$OPENBURNBAR_MISSION_PROMPT\""
+                    "-lc",
+                    modelCommand
                 ],
-                extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
+                extraEnvironment: env
             )
         case ChatBackendID.openclaw.rawValue:
             let commandsAllowed = (data["commandsAllowed"] as? Bool) ?? false
@@ -183,6 +195,9 @@ enum CLIAgentMissionRuntimePlanner {
             } else {
                 arguments += ["--permission-mode", "plan", "--tools", ""]
             }
+            if let requestedModelID {
+                arguments += ["--model", requestedModelID]
+            }
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "openclaude",
                 arguments: arguments,
@@ -192,7 +207,7 @@ enum CLIAgentMissionRuntimePlanner {
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "zsh",
                 arguments: [
-                    "-lic",
+                    "-lc",
                     "opencode run \"$OPENBURNBAR_MISSION_PROMPT\""
                 ],
                 extraEnvironment: ["OPENBURNBAR_MISSION_PROMPT": hostPrompt]
@@ -201,7 +216,7 @@ enum CLIAgentMissionRuntimePlanner {
             return CLIAgentMissionDirectLaunchPlan(
                 executableName: "zsh",
                 arguments: [
-                    "-lic",
+                    "-lc",
                     """
                     model="${OPENBURNBAR_OLLAMA_MODEL:-$(ollama list | awk 'NR==2 { print $1 }')}"
                     if [ -z "$model" ]; then
@@ -410,6 +425,7 @@ final class CLIAgentMissionRequestListener {
         }
 
         let requestedRuntime = (data["requestedRuntime"] as? String) ?? "auto"
+        let requestedModelID = (data["requestedModelID"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         let missionKind = (data["missionKind"] as? String) ?? "unknown"
         missionEventSequences[document.documentID] = max(
             data["lastEventSequence"] as? Int ?? 1,
@@ -437,25 +453,31 @@ final class CLIAgentMissionRequestListener {
             return
         }
 
-        logger.info("claiming mission id=\(document.documentID, privacy: .public) kind=\(missionKind, privacy: .public) requested=\(requestedRuntime, privacy: .public) selected=\(backend.rawValue, privacy: .public)")
+        logger.info("claiming mission id=\(document.documentID, privacy: .public) kind=\(missionKind, privacy: .public) requested=\(requestedRuntime, privacy: .public) selected=\(backend.rawValue, privacy: .public) model=\(requestedModelID ?? "auto", privacy: .public)")
         do {
-            try await document.reference.setData([
+            var claimPayload: [String: Any] = [
                 "status": "accepted",
                 "claimedBy": accountManager.deviceId,
                 "selectedRuntime": backend.rawValue,
                 "selectedRuntimeName": backend.displayName,
-                "liveSummary": "\(backend.displayName) claimed the mission on this Mac.",
+                "liveSummary": requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
+                    ?? "\(backend.displayName) claimed the mission on this Mac.",
                 "lastEventSequence": FieldValue.increment(Int64(1)),
                 "startedAt": ISO8601DateFormatter().string(from: Date()),
                 "updatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+            ]
+            if let requestedModelID {
+                claimPayload["selectedModelID"] = requestedModelID
+            }
+            try await document.reference.setData(claimPayload, merge: true)
             await recordEvent(
                 reference: document.reference,
                 requestID: document.documentID,
                 phase: "accepted",
                 kind: "status",
                 title: "Accepted",
-                message: "\(backend.displayName) claimed the mission on this Mac.",
+                message: requestedModelID.map { "\(backend.displayName) claimed the mission on this Mac with model \($0)." }
+                    ?? "\(backend.displayName) claimed the mission on this Mac.",
                 backend: backend
             )
             logger.info("claimed mission id=\(document.documentID, privacy: .public)")
@@ -475,7 +497,8 @@ final class CLIAgentMissionRequestListener {
         do {
             try await document.reference.setData([
                 "status": "starting",
-                "liveSummary": "Starting \(backend.displayName) with the mission prompt.",
+                "liveSummary": requestedModelID.map { "Starting \(backend.displayName) with model \($0)." }
+                    ?? "Starting \(backend.displayName) with the mission prompt.",
                 "updatedAt": FieldValue.serverTimestamp()
             ], merge: true)
         } catch {
@@ -487,7 +510,8 @@ final class CLIAgentMissionRequestListener {
             phase: "starting",
             kind: "status",
             title: "Starting",
-            message: "Starting \(backend.displayName) with the mission prompt.",
+            message: requestedModelID.map { "Starting \(backend.displayName) with model \($0)." }
+                ?? "Starting \(backend.displayName) with the mission prompt.",
             backend: backend
         )
         let missionWorkingDirectoryURL = workingDirectoryURL(from: data)
@@ -495,7 +519,8 @@ final class CLIAgentMissionRequestListener {
         do {
             try await document.reference.setData([
                 "status": "running",
-                "liveSummary": "\(backend.displayName) is running on this Mac.",
+                "liveSummary": requestedModelID.map { "\(backend.displayName) is running \($0) on this Mac." }
+                    ?? "\(backend.displayName) is running on this Mac.",
                 "updatedAt": FieldValue.serverTimestamp()
             ], merge: true)
         } catch {
@@ -510,18 +535,36 @@ final class CLIAgentMissionRequestListener {
                 backend: backend
             )
             let safeDirectOutput = CLIAgentMissionEventFactory.mobileSafeText(directResult.output)
+            let directFailure = directResult.errorMessage.map {
+                modelAwareFailureMessage(
+                    backend: backend,
+                    requestedModelID: requestedModelID,
+                    errorMessage: $0
+                )
+            }
             var payload: [String: Any] = [
                 "status": directResult.status == "failed" ? "agent_launch_failed" : directResult.status,
                 "selectedRuntime": backend.rawValue,
                 "selectedRuntimeName": backend.displayName,
                 "sessionId": directResult.sessionID,
                 "resultPreview": safeDirectOutput,
-                "liveSummary": directResult.status == "completed" ? "\(backend.displayName) returned a result." : "\(backend.displayName) mission failed.",
+                "liveSummary": directResult.status == "completed"
+                    ? modelAwareSuccessMessage(backend: backend, requestedModelID: requestedModelID, fallback: safeDirectOutput)
+                    : directFailure ?? modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: nil),
                 "completedAt": ISO8601DateFormatter().string(from: Date()),
                 "updatedAt": FieldValue.serverTimestamp()
             ]
+            if let requestedModelID {
+                payload["selectedModelID"] = requestedModelID
+            }
             if let errorMessage = directResult.errorMessage {
-                payload["errorMessage"] = CLIAgentMissionEventFactory.mobileSafeText(errorMessage)
+                payload["errorMessage"] = CLIAgentMissionEventFactory.mobileSafeText(
+                    modelAwareFailureMessage(
+                        backend: backend,
+                        requestedModelID: requestedModelID,
+                        errorMessage: errorMessage
+                    )
+                )
             }
             do {
                 try await document.reference.setData(payload, merge: true)
@@ -535,7 +578,9 @@ final class CLIAgentMissionRequestListener {
                 phase: directResult.status == "completed" ? "completed" : "agent_launch_failed",
                 kind: directResult.status == "completed" ? "final_answer" : "error",
                 title: directResult.status == "completed" ? "Completed" : "Agent launch failed",
-                message: directResult.status == "completed" ? resultSummary(from: directResult.output) : (directResult.errorMessage ?? "\(backend.displayName) mission failed."),
+                message: directResult.status == "completed"
+                    ? resultSummary(from: directResult.output)
+                    : (directFailure ?? modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: nil)),
                 backend: backend,
                 isError: directResult.status != "completed"
             )
@@ -548,6 +593,9 @@ final class CLIAgentMissionRequestListener {
         }
 
         chatController.setChatBackend(chatBackend)
+        if let requestedModelID {
+            chatController.setChatModelSelection(requestedModelID, for: chatBackend)
+        }
         chatController.startNewChatThread()
         let threadID = chatController.activeThreadID
         chatController.inputText = missionPrompt(title: title, prompt: prompt, backend: backend, data: data)
@@ -594,8 +642,8 @@ final class CLIAgentMissionRequestListener {
         let finalSummary = chatController.messages.last(where: { $0.role == .assistant })?.content ?? ""
         let safeFinalSummary = CLIAgentMissionEventFactory.mobileSafeText(finalSummary)
         let liveSummary = status == "completed"
-            ? (safeFinalSummary.nilIfEmpty.map { "\(backend.displayName): \($0.prefix(180).description)" } ?? "\(backend.displayName) returned a result.")
-            : "\(backend.displayName) mission failed."
+            ? modelAwareSuccessMessage(backend: backend, requestedModelID: requestedModelID, fallback: safeFinalSummary)
+            : modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: chatController.streamError)
         var payload: [String: Any] = [
             "status": status,
             "selectedRuntime": backend.rawValue,
@@ -605,8 +653,17 @@ final class CLIAgentMissionRequestListener {
             "completedAt": ISO8601DateFormatter().string(from: Date()),
             "updatedAt": FieldValue.serverTimestamp()
         ]
+        if let requestedModelID {
+            payload["selectedModelID"] = requestedModelID
+        }
         if let streamError = chatController.streamError {
-            payload["errorMessage"] = CLIAgentMissionEventFactory.mobileSafeText(streamError)
+            payload["errorMessage"] = CLIAgentMissionEventFactory.mobileSafeText(
+                modelAwareFailureMessage(
+                    backend: backend,
+                    requestedModelID: requestedModelID,
+                    errorMessage: streamError
+                )
+            )
         } else {
             payload["resultPreview"] = safeFinalSummary
         }
@@ -630,10 +687,41 @@ final class CLIAgentMissionRequestListener {
             phase: status == "completed" ? "completed" : "failed",
             kind: status == "completed" ? "final_answer" : "error",
             title: status == "completed" ? "Completed" : "Failed",
-            message: status == "completed" ? resultSummary(from: finalSummary) : (chatController.streamError ?? "\(backend.displayName) mission failed."),
+            message: status == "completed"
+                ? resultSummary(from: finalSummary)
+                : modelAwareFailureMessage(backend: backend, requestedModelID: requestedModelID, errorMessage: chatController.streamError),
             backend: backend,
             isError: status != "completed"
         )
+    }
+
+    private func modelAwareSuccessMessage(
+        backend: CLIAgentMissionBackend,
+        requestedModelID: String?,
+        fallback: String
+    ) -> String {
+        let preview = fallback.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        if let preview {
+            return "\(backend.displayName): \(preview.prefix(180).description)"
+        }
+        if let requestedModelID {
+            return "\(backend.displayName) returned a result from model \(requestedModelID)."
+        }
+        return "\(backend.displayName) returned a result."
+    }
+
+    private func modelAwareFailureMessage(
+        backend: CLIAgentMissionBackend,
+        requestedModelID: String?,
+        errorMessage: String?
+    ) -> String {
+        let safeError = errorMessage
+            .flatMap { CLIAgentMissionEventFactory.mobileSafeText($0, limit: 1800).nilIfEmpty }
+        let prefix = requestedModelID.map {
+            "\(backend.displayName) failed while running selected model \($0)."
+        } ?? "\(backend.displayName) mission failed."
+        guard let safeError else { return prefix }
+        return "\(prefix) \(safeError)"
     }
 
     private func fail(document: QueryDocumentSnapshot, message: String) async {

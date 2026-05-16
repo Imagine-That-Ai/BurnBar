@@ -20,7 +20,7 @@ Per-user usage is recorded in `users/{uid}/media_quota_usage/{YYYY-MM-DD}` per t
 
 Three layers (Decision 2 in the plan applies — Mac is source of truth):
 
-1. **Mac host gate (primary)** — `MediaCapabilityGate.check(feature:duration:bytes:)` reads `MacCloudEntitlementStore.hostedMediaEntitlement`, the local quota counter cache, and `ops/media_budget_status/current`. Returns `.allowed` or `.denied(reason: enum)` synchronously.
+1. **Mac host gate (primary)** — `MediaCapabilityGate.check(feature:duration:bytes:)` reads `MacCloudEntitlementStore.hostedMediaEntitlement`, the local quota counter cache, and `ops/media_budget_status/state/current`. Returns `.allowed` or `.denied(reason: enum)` synchronously.
 2. **Control-plane reconcile** — Cloud Function recomputes from authoritative `iroh_audit_events`. Hourly schedule.
 3. **iroh accept-loop gate (secondary)** — Mac's accept-loop re-checks freshness on each new `media.*` stream open (cached 60 s). Refuses streams when the entitlement, daily envelope, or kill-switch fail.
 
@@ -32,7 +32,7 @@ If a user contacts support claiming "I should still have quota":
 
 1. Verify entitlement state: query `users/{uid}/entitlements/hosted_media_sync` for `active`, `expireAt`, and `features.{fileTransfer,screenShare,videoCall}` flags.
 2. Read today's usage: `users/{uid}/media_quota_usage/{YYYY-MM-DD}`. Reconcile against `users/{uid}/iroh_audit_events` filtered to today's `streamClass: media.*`.
-3. Check budget level: `ops/media_budget_status/current.level`. If `soft_cap` or `hard_cap`, the envelope is intentionally narrowed (auto-recovers when month rolls over and projection drops back under $600).
+3. Check budget level: `ops/media_budget_status/state/current.level`. If `soft_cap` or `hard_cap`, the envelope is intentionally narrowed (auto-recovers when month rolls over and projection drops back under $600).
 4. Check kill-switch: Firebase Remote Config `media_kill_switch`. Override may have been triggered manually.
 5. If genuine drift, manual reset: `gcloud firestore documents delete users/{uid}/media_quota_usage/{YYYY-MM-DD}`. The next session will recompute from `iroh_audit_events` on the Mac, and the hourly Cloud Function will reconcile globally.
 

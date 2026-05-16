@@ -1,5 +1,6 @@
 import FirebaseAppCheck
 @preconcurrency import FirebaseAuth
+import FirebaseRemoteConfig
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
@@ -104,6 +105,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         #endif
         guard settingsManager.hermesIrohTransportEnabled || forceIrohTransport else { return false }
 
+        await HermesIrohHostedRelayConfig.refreshRemoteConfigIfAvailable()
         let newTransport = transportFactory(self)
         #if DEBUG
         if ProcessInfo.processInfo.environment["OPENBURNBAR_ALLOW_IROH_LOOPBACK"] != "1",
@@ -219,7 +221,8 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     urlSession: urlSession,
                     settingsManager: settingsManager,
                     mediaDispatcher: mediaDispatcher,
-                    mediaControlRegistrar: mediaControlRegistrar
+                    mediaControlRegistrar: mediaControlRegistrar,
+                    auditLogger: auditLogger
                 )
                 let serveID = UUID()
                 let task = Task { [weak self, auditLogger] in
@@ -310,7 +313,13 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             try IrohRelayKeyStore.shared.secretKeyMaterial()
         }
         if let backend = OpenBurnBarIrohFFIBackendFactory.make() {
-            return IrohXcframeworkTransport(backend: backend, secretProvider: secretProvider)
+            return IrohXcframeworkTransport(
+                backend: backend,
+                secretProvider: secretProvider,
+                relayURLProvider: {
+                    HermesIrohHostedRelayConfig.currentURL()
+                }
+            )
         }
         // Dev fallback: a process-local loopback transport. Note that in
         // this case `iOSTransport.connect(to:)` is never reachable from a
@@ -319,5 +328,63 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         // simulator.
         let rendezvous = LoopbackIrohRelayRendezvous()
         return LoopbackIrohRelayTransport(rendezvous: rendezvous)
+    }
+}
+
+private enum HermesIrohHostedRelayConfig {
+    private static let remoteConfigKey = "hermes_iroh_hosted_relay_url"
+    private static let userDefaultsKey = "hermes_iroh_hosted_relay_url"
+    private static let environmentKey = "OPENBURNBAR_IROH_HOSTED_RELAY_URL"
+
+    static func refreshRemoteConfigIfAvailable() async {
+        guard !hasLocalOverride else { return }
+        let remoteConfig = RemoteConfig.remoteConfig()
+        remoteConfig.setDefaults([remoteConfigKey: "" as NSObject])
+        await withCheckedContinuation { continuation in
+            let gate = ContinuationGate(continuation)
+            remoteConfig.fetchAndActivate { _, _ in
+                gate.resume()
+            }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) {
+                gate.resume()
+            }
+        }
+    }
+
+    static func currentURL() -> String? {
+        normalized(ProcessInfo.processInfo.environment[environmentKey])
+            ?? normalized(UserDefaults.standard.string(forKey: userDefaultsKey))
+            ?? normalized(RemoteConfig.remoteConfig().configValue(forKey: remoteConfigKey).stringValue)
+    }
+
+    private static func normalized(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private static var hasLocalOverride: Bool {
+        normalized(ProcessInfo.processInfo.environment[environmentKey]) != nil
+            || normalized(UserDefaults.standard.string(forKey: userDefaultsKey)) != nil
+    }
+
+    private final class ContinuationGate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var didResume = false
+        private let continuation: CheckedContinuation<Void, Never>
+
+        init(_ continuation: CheckedContinuation<Void, Never>) {
+            self.continuation = continuation
+        }
+
+        func resume() {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !didResume else { return }
+            didResume = true
+            continuation.resume()
+        }
     }
 }

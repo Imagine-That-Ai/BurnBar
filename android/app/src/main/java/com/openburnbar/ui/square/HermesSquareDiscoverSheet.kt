@@ -1,7 +1,9 @@
 package com.openburnbar.ui.square
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.data.models.ProjectSummary
 import com.openburnbar.data.square.AgentCapabilities
 import com.openburnbar.data.square.AgentIdentity
 import com.openburnbar.data.square.AgentIdentityRegistry
@@ -48,14 +51,21 @@ import com.openburnbar.data.square.AgentTier
 import com.openburnbar.data.square.PinnedAgentGridConfig
 
 // MARK: - Discover Sheet (Hermes Square §3 / §6.2)
+//
+// Phase 3 parity: 5 tabs — Recent · Project Memory · Capabilities ·
+// Marketplace · Agents. Project Memory is backed by `ProjectsStore`.
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun HermesSquareDiscoverSheet(
     registry: AgentIdentityRegistry,
     pinned: PinnedAgentGridConfig,
+    projectSummaries: List<ProjectSummary> = emptyList(),
+    recentAgents: List<AgentIdentity> = registry.identities.take(8),
     onPin: (String) -> Unit,
     onUnpin: (String) -> Unit,
+    onOpenProject: (ProjectSummary) -> Unit = {},
+    onAskWiki: (ProjectSummary) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -67,7 +77,7 @@ internal fun HermesSquareDiscoverSheet(
         containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)) {
-            TabRow(selectedTabIndex = tab.ordinal) {
+            androidx.compose.material3.ScrollableTabRow(selectedTabIndex = tab.ordinal) {
                 DiscoverTab.values().forEach { t ->
                     Tab(
                         selected = tab == t,
@@ -78,18 +88,191 @@ internal fun HermesSquareDiscoverSheet(
             }
             Spacer(modifier = Modifier.height(12.dp))
             when (tab) {
-                DiscoverTab.AGENTS -> AgentsList(registry, pinned, onPin, onUnpin)
+                DiscoverTab.RECENT -> RecentList(recentAgents)
+                DiscoverTab.PROJECT_MEMORY -> ProjectMemoryList(
+                    projects = projectSummaries,
+                    onOpenProject = onOpenProject,
+                    onAskWiki = onAskWiki
+                )
                 DiscoverTab.CAPABILITIES -> CapabilitiesList(registry)
                 DiscoverTab.MARKETPLACE -> MarketplacePlaceholder()
+                DiscoverTab.AGENTS -> AgentsList(registry, pinned, onPin, onUnpin)
             }
         }
     }
 }
 
 private enum class DiscoverTab(val label: String) {
-    AGENTS("Agents"),
+    RECENT("Recent"),
+    PROJECT_MEMORY("Project Memory"),
     CAPABILITIES("Capabilities"),
-    MARKETPLACE("Marketplace")
+    MARKETPLACE("Marketplace"),
+    AGENTS("Agents"),
+}
+
+@Composable
+private fun RecentList(recent: List<AgentIdentity>) {
+    if (recent.isEmpty()) {
+        Column(
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 28.dp)
+        ) {
+            Text(
+                "No recent activity yet.",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(horizontal = 16.dp)
+    ) {
+        items(recent, key = { it.id }) { identity ->
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(hexColor(identity.paletteHex))
+                    ) {
+                        Text(identity.glyph, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            identity.displayName,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        identity.tagline?.let {
+                            Text(
+                                it,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProjectMemoryList(
+    projects: List<ProjectSummary>,
+    onOpenProject: (ProjectSummary) -> Unit,
+    onAskWiki: (ProjectSummary) -> Unit
+) {
+    if (projects.isEmpty()) {
+        Column(
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 28.dp)
+        ) {
+            Text(
+                "Project Memory",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                "No project memory available yet. Start with /wiki in Hermes to build one.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(horizontal = 16.dp)
+    ) {
+        items(projects, key = { it.id }) { project ->
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(12.dp)
+                ) {
+                    Text(
+                        project.name.ifBlank { project.id },
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "${project.totalSessions} sessions · ${project.totalTokens} tokens · $${
+                            "%.2f".format(project.totalCost)
+                        }",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        ProjectActionPill(
+                            label = "Open",
+                            fillColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                            textColor = MaterialTheme.colorScheme.onSurface,
+                            onClick = { onOpenProject(project) }
+                        )
+                        ProjectActionPill(
+                            label = "Ask /wiki",
+                            fillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            textColor = MaterialTheme.colorScheme.primary,
+                            onClick = { onAskWiki(project) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProjectActionPill(
+    label: String,
+    fillColor: Color,
+    textColor: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = fillColor,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Text(
+            label,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = textColor,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+        )
+    }
 }
 
 @Composable
@@ -260,17 +443,18 @@ private fun MarketplacePlaceholder() {
 @Composable
 internal fun HermesSquareSubscriptionsSheet(onDismiss: () -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val store = remember(context) { com.openburnbar.data.square.AgentSubscriptionTopicStore.shared(context) }
+    val topics by store.topics.collectAsStateWithLifecycle()
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = state,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 28.dp, vertical = 30.dp)
+                .padding(horizontal = 20.dp, vertical = 18.dp)
         ) {
             Text(
                 "Subscriptions",
@@ -280,16 +464,73 @@ internal fun HermesSquareSubscriptionsSheet(onDismiss: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "Subscription-tier agents broadcast on a schedule — research scouts, weekly recaps, monitoring agents. Pick one in Discover → Marketplace once Phase C ships, then opt-in per topic.",
-                fontSize = 13.sp,
+                "Subscription-tier agents broadcast on a schedule.",
+                fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                "Platform-enforced cap: ${AgentTier.SUBSCRIPTION_MONTHLY_BUDGET} deliveries / agent / month by default.",
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Spacer(modifier = Modifier.height(14.dp))
+            if (topics.isEmpty()) {
+                Text(
+                    "Nothing subscribed yet. Open an agent in Discover to subscribe to its updates.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    "Platform-enforced cap: ${AgentTier.SUBSCRIPTION_MONTHLY_BUDGET} deliveries / agent / month by default.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().height(360.dp)
+                ) {
+                    items(topics, key = { it.agentURI }) { topic ->
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        topic.displayName.ifBlank { topic.agentURI },
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        "${topic.cadence.displayLabel}${if (topic.muted) " · muted" else ""}",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(999.dp),
+                                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.14f),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(999.dp))
+                                        .clickable { store.unsubscribe(topic.agentURI) }
+                                ) {
+                                    Text(
+                                        "Unsubscribe",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

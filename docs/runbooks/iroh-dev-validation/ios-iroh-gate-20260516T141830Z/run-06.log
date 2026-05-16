@@ -1,0 +1,96 @@
+E2E: iOS Hermes iroh hosted-relay path
+  project=burnbar
+  uid=6YTomKTKdQdpvIJgmz6VTIrrQ4w1
+  device=AFB07C15-AD18-5EFA-AD1C-CADB4F286797
+  model=gpt-5.4-mini
+  expectedNetworkInterface=cellular
+  startedAt=2026-05-16T14:29:14Z
+09:29:14  Acquired tunnel connection to device.
+09:29:14  Enabling developer disk image services.
+09:29:15  Acquired usage assertion.
+Launched application with com.openburnbar.app bundle identifier.
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=4 iosResponseComplete=0
+Waiting: interfaceMatches=4 iosResponseComplete=0
+Waiting: interfaceMatches=4 iosResponseComplete=0
+Waiting: interfaceMatches=4 iosResponseComplete=0
+Waiting: interfaceMatches=4 iosResponseComplete=0
+Waiting: interfaceMatches=5 iosResponseComplete=0
+Waiting: interfaceMatches=5 iosResponseComplete=0
+Waiting: interfaceMatches=5 iosResponseComplete=0
+Waiting: interfaceMatches=5 iosResponseComplete=0
+Waiting: interfaceMatches=5 iosResponseComplete=0
+Waiting: interfaceMatches=5 iosResponseComplete=0
+PASS: expected interface and ios_response_complete observed with no WSS fallback.
+{
+  "id": "6CCFCEDB-BF59-4E6A-8B48-4154D111C802",
+  "observedAt": "2026-05-16T14:31:18.479Z",
+  "eventType": "iroh_stream_closed",
+  "transport": "iroh-direct",
+  "stage": "ios_response_complete",
+  "side": "",
+  "requestId": "iroh_cc077183-3658-4eda-aabc-d4b6036f29bd",
+  "requestedModel": "",
+  "networkInterfaces": "cellular",
+  "error": ""
+}
+{
+  "id": "A64DAD08-06FF-4960-9E6D-45CA2AB881F4",
+  "observedAt": "2026-05-16T14:30:18.474Z",
+  "eventType": "iroh_stream_opened",
+  "transport": "iroh-direct",
+  "stage": "ios_first_response_chunk",
+  "side": "",
+  "requestId": "iroh_cc077183-3658-4eda-aabc-d4b6036f29bd",
+  "requestedModel": "",
+  "networkInterfaces": "cellular",
+  "error": ""
+}
+{
+  "id": "1AD78786-6BDB-4B4A-A5FA-E7BE92469208",
+  "observedAt": "2026-05-16T14:29:18.261Z",
+  "eventType": "iroh_stream_opened",
+  "transport": "iroh-direct",
+  "stage": "",
+  "side": "ios",
+  "requestId": "",
+  "requestedModel": "",
+  "networkInterfaces": "cellular",
+  "error": ""
+}
+{
+  "id": "7308EABB-96F1-4AA5-AFC5-0DDD8F576D2B",
+  "observedAt": "2026-05-16T14:29:17.978Z",
+  "eventType": "iroh_pairing_verified",
+  "transport": "",
+  "stage": "dial_start",
+  "side": "",
+  "requestId": "",
+  "requestedModel": "",
+  "networkInterfaces": "cellular",
+  "error": ""
+}
+{
+  "id": "234E7241-173C-4FA2-B54C-F0ECA6CF075F",
+  "observedAt": "2026-05-16T14:29:17.174Z",
+  "eventType": "iroh_pairing_verified",
+  "transport": "",
+  "stage": "transport_start",
+  "side": "",
+  "requestId": "",
+  "requestedModel": "",
+  "networkInterfaces": "cellular",
+  "error": ""
+}
+{
+  "id": "49733E8F-1CB3-4EB3-AE42-56B9842E0C6F",
+  "observedAt": "2026-05-16T14:29:17.009Z",
+  "eventType": "iroh_pairing_verified",
+  "transport": "",
+  "stage": "",
+  "side": "",
+  "requestId": "",
+  "requestedModel": "",
+  "networkInterfaces": "cellular",
+  "error": ""
+}

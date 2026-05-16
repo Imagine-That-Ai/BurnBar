@@ -35,12 +35,18 @@ Human-oriented Cursor and product context (onboarding, architecture, threat mode
 
 ### Build & run
 
-The Android app is a **read-only Firestore consumer** — it displays burn data that other clients push to Firebase.
+The Android app reaches **full iOS parity** as of 2026-05-16 — Hermes Square, messaging, iroh transport, and Mercury Media (file transfer, screen-share viewer, 1:1 calls) all ship in the same release. Read-only Firestore consumption is still the default Firestore pattern; the new outbound write paths (iroh pairing, media analytics, FCM tokens, mission dispatch, approval policy) follow the schemas in `functions/src/types.ts`.
 
 | Command | What it does |
 |---|---|
 | `cd android && ./gradlew assembleDebug` | Build debug APK (Java 21, `ANDROID_HOME=$HOME/Library/Android`) |
 | `cd android && ./gradlew clean assembleDebug --no-daemon 2>&1 \| grep "^e:\\|BUILD"` | Clean build, errors only |
+| `cd android && ./gradlew :app:testDebugUnitTest --no-daemon` | Run the JVM unit suite (relay + media + missions + atom parser, ~253 tests) |
+| `cd android && ./gradlew :openburnbar-iroh-relay:testDebugUnitTest --no-daemon` | iroh-relay library unit tests (codec + pairing + loopback transport) |
+| `scripts/build-iroh-android-aar.sh` | Build `Vendor/openburnbar-iroh.aar` (auto-installs NDK + cargo-ndk + Rust targets) |
+| `scripts/build_opus_android.sh` | Build `Vendor/opus-android.aar` from libopus 1.5 (4 ABIs) |
+| `scripts/e2e/android-iroh-chat.sh` | Install debug APK + run the iroh chat instrumented suite via `adb` |
+| `scripts/e2e/android-mercury-call.sh` | Install debug APK + run the Mercury call instrumented suite via `adb` |
 
 ### Firebase config
 

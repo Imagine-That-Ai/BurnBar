@@ -12,7 +12,7 @@ import OpenBurnBarMedia
 ///   1. `MacCloudEntitlementStore.hostedMediaEntitlement` (Apple-verified
 ///      `hosted_media_sync` doc).
 ///   2. Local 24-hour quota counter cache from `media_quota_usage`.
-///   3. `ops/media_budget_status/current` (n0 hosted-relay budget
+///   3. `ops/media_budget_status/state/current` (n0 hosted-relay budget
 ///      envelope, see `docs/runbooks/media-budget.md`).
 @MainActor
 final class MacMediaCapabilityGate: MediaCapabilityGate {

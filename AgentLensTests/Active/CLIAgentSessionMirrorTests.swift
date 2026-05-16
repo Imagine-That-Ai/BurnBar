@@ -391,7 +391,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
                 data: data
             ))
             XCTAssertEqual(plan.executableName, "zsh")
-            XCTAssertEqual(plan.arguments.first, "-lic")
+            XCTAssertEqual(plan.arguments.first, "-lc")
             XCTAssertFalse(
                 plan.arguments.joined(separator: " ").contains(hostilePrompt),
                 "\(backend.displayName) must not interpolate mobile prompt text into the shell command."
@@ -417,7 +417,7 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
 
         XCTAssertEqual(plan.executableName, "openclaude")
         XCTAssertEqual(plan.extraEnvironment, [:])
-        XCTAssertFalse(plan.arguments.contains("-lic"))
+        XCTAssertFalse(plan.arguments.contains("-lc"))
         XCTAssertTrue(plan.arguments.contains("-p"))
         XCTAssertTrue(plan.arguments.contains("--permission-mode"))
         XCTAssertTrue(plan.arguments.contains("plan"))
@@ -425,6 +425,44 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         let toolsIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--tools"))
         XCTAssertEqual(plan.arguments[toolsIndex + 1], "")
         XCTAssertTrue(plan.arguments.joined(separator: "\n").contains(hostilePrompt))
+    }
+
+    func test_missionRuntimePlanner_passesRequestedModelToPiDirectCLI() throws {
+        let backend = CLIAgentMissionBackend(chatBackend: .piAgent)
+        let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "Pi selected model mission",
+            prompt: "Use the phone-selected model.",
+            backend: backend,
+            data: [
+                "requestedModelID": "openai/gpt-5.5",
+                "approvalMode": "read_only",
+                "commandsAllowed": false,
+                "fileEditsAllowed": false
+            ]
+        ))
+
+        XCTAssertEqual(plan.executableName, "zsh")
+        XCTAssertEqual(plan.extraEnvironment["OPENBURNBAR_MISSION_MODEL"], "openai/gpt-5.5")
+        XCTAssertTrue(plan.arguments.joined(separator: "\n").contains("--model \"$OPENBURNBAR_MISSION_MODEL\""))
+        XCTAssertFalse(plan.arguments.joined(separator: "\n").contains("openai/gpt-5.5"))
+    }
+
+    func test_missionRuntimePlanner_passesRequestedModelToOpenClawDirectCLI() throws {
+        let backend = CLIAgentMissionBackend(chatBackend: .openclaw)
+        let plan = try XCTUnwrap(CLIAgentMissionRuntimePlanner.directLaunchPlan(
+            title: "OpenClaw selected model mission",
+            prompt: "Use the phone-selected model.",
+            backend: backend,
+            data: [
+                "requestedModelID": "claude-opus-4-7",
+                "approvalMode": "read_only",
+                "commandsAllowed": false,
+                "fileEditsAllowed": false
+            ]
+        ))
+
+        let modelIndex = try XCTUnwrap(plan.arguments.firstIndex(of: "--model"))
+        XCTAssertEqual(plan.arguments[modelIndex + 1], "claude-opus-4-7")
     }
 
     func test_missionRuntimePlanner_constrainsOpenClawEditToolsWhenFileEditsAreDisabled() throws {

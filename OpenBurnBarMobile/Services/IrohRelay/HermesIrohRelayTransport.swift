@@ -1,5 +1,7 @@
 import Foundation
 @preconcurrency import FirebaseAuth
+import FirebaseRemoteConfig
+import Network
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 
@@ -20,6 +22,62 @@ typealias IrohMediaFrameDispatcher = @Sendable (
     _ ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void
 ) async -> Void
 
+private enum IrohNetworkAuditSnapshot {
+    static func capture(timeout: DispatchTimeInterval = .milliseconds(250)) async -> [String: String] {
+        await withCheckedContinuation { continuation in
+            let monitor = NWPathMonitor()
+            let queue = DispatchQueue(label: "com.openburnbar.iroh-network-audit")
+            var didResume = false
+
+            func finish(with path: NWPath) {
+                guard !didResume else { return }
+                didResume = true
+                let detail = auditDetail(for: path)
+                monitor.cancel()
+                continuation.resume(returning: detail)
+            }
+
+            monitor.pathUpdateHandler = { path in
+                finish(with: path)
+            }
+            monitor.start(queue: queue)
+            queue.asyncAfter(deadline: .now() + timeout) {
+                finish(with: monitor.currentPath)
+            }
+        }
+    }
+
+    private static func auditDetail(for path: NWPath) -> [String: String] {
+        let interfaces = [
+            path.usesInterfaceType(.wifi) ? "wifi" : nil,
+            path.usesInterfaceType(.cellular) ? "cellular" : nil,
+            path.usesInterfaceType(.wiredEthernet) ? "wiredEthernet" : nil,
+            path.usesInterfaceType(.loopback) ? "loopback" : nil,
+            path.usesInterfaceType(.other) ? "other" : nil
+        ].compactMap { $0 }
+
+        return [
+            "networkPathStatus": statusLabel(path.status),
+            "networkInterfaces": interfaces.isEmpty ? "none" : interfaces.joined(separator: ","),
+            "networkIsExpensive": path.isExpensive ? "true" : "false",
+            "networkIsConstrained": path.isConstrained ? "true" : "false"
+        ]
+    }
+
+    private static func statusLabel(_ status: NWPath.Status) -> String {
+        switch status {
+        case .satisfied:
+            return "satisfied"
+        case .unsatisfied:
+            return "unsatisfied"
+        case .requiresConnection:
+            return "requiresConnection"
+        @unknown default:
+            return "unknown"
+        }
+    }
+}
+
 @MainActor
 final class HermesIrohRelayTransport: HermesRelayTransporting {
     static let shared = HermesIrohRelayTransport()
@@ -34,6 +92,11 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// back to WSS within 5s instead of after the full chat completion
     /// budget.
     static let defaultConnectTimeout: TimeInterval = 5
+    /// Endpoint startup can legitimately include one Rust-side home-relay
+    /// retry (`10s + retry delay + second bootstrap`). Keep this wider than
+    /// the dial timeout so a transient hosted-relay bootstrap miss does not
+    /// abort before the retry path can recover.
+    static let defaultBootstrapStartupTimeout: TimeInterval = 30
 
     private let directory: any IrohPairingDirectory
     private let transportFactory: @MainActor () -> any IrohRelayTransport
@@ -84,7 +147,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             case .data:
                 fragments[chunk.sequence] = chunk.data ?? chunk.text ?? ""
             case .error:
-                throw HermesServiceError.relayUnavailable(chunk.error ?? "Hermes iroh relay failed.")
+                throw HermesServiceError.relayFailure(chunk.error, fallback: "Hermes iroh relay failed.")
             case .sse:
                 break
             }
@@ -144,7 +207,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                     onSSEEvent(data)
                 }
             case .error:
-                throw HermesServiceError.relayUnavailable(chunk.error ?? "Hermes iroh relay stream failed.")
+                throw HermesServiceError.relayFailure(chunk.error, fallback: "Hermes iroh relay stream failed.")
             case .data:
                 break
             }
@@ -166,6 +229,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         }
 
         let publicKey = try await pairingPublicKeyProvider.fetchPublicKey(uid: uid)
+        let networkAuditDetail = await IrohNetworkAuditSnapshot.capture()
 
         // 1. Fetch + verify the Mac's signed iroh pairing record.
         let publisher = IrohPairingPublisher(directory: directory)
@@ -183,7 +247,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 connectionId: payload.connectionID,
                 transport: nil,
                 rttMillis: nil,
-                detail: [:]
+                detail: networkAuditDetail
             )
         } catch {
             await auditLogger.record(
@@ -198,15 +262,101 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         }
 
         // 2. Bring up the iroh endpoint (idempotent, race-safe) and dial.
-        let transport = try await transport()
-        // The dial uses a tight timeout independent from the request
-        // budget: a quick failure here lets `HermesCompositeRelayTransport`
-        // cascade to WSS without spending the full chat-completion window
-        // waiting for NAT traversal.
-        let stream = try await transport.connect(
-            to: verifiedTarget,
-            timeout: min(connectTimeout, timeout)
-        )
+        // Every await below is explicitly bounded. The Rust transport has
+        // its own timeouts, but the physical-device proof also needs the
+        // Swift task to return even if an FFI call or config bootstrap parks.
+        var stage = "transport_start"
+        do {
+            await auditLogger.record(
+                event: .pairingVerified,
+                uid: uid,
+                connectionId: payload.connectionID,
+                transport: nil,
+                rttMillis: nil,
+                detail: auditDetail(["stage": stage], networkAuditDetail)
+            )
+            let transport = try await withIrohOperationTimeout(
+                seconds: Self.bootstrapStartupTimeout(connectTimeout: connectTimeout)
+            ) {
+                try await self.transport()
+            }
+            stage = "dial_start"
+            let localNodeId = identity?.nodeId ?? ""
+            await auditLogger.record(
+                event: .pairingVerified,
+                uid: uid,
+                connectionId: payload.connectionID,
+                transport: nil,
+                rttMillis: nil,
+                detail: auditDetail([
+                    "stage": stage,
+                    "localNodeId": localNodeId,
+                    "targetNodeId": verifiedTarget.nodeId,
+                    "relayURL": verifiedTarget.relayURL ?? "",
+                    "directAddressCount": "\(verifiedTarget.directAddresses.count)"
+                ], networkAuditDetail)
+            )
+            let dialTarget = IrohDialTarget(
+                nodeId: verifiedTarget.nodeId,
+                relayURL: verifiedTarget.relayURL,
+                directAddresses: []
+            )
+            // The dial uses a tight timeout independent from the request
+            // budget: a quick failure here lets `HermesCompositeRelayTransport`
+            // cascade to WSS without spending the full chat-completion window
+            // waiting for NAT traversal.
+            let stream = try await withIrohOperationTimeout(seconds: min(connectTimeout, timeout)) {
+                try await transport.connect(
+                    to: dialTarget,
+                    timeout: min(self.connectTimeout, timeout)
+                )
+            }
+            await auditLogger.record(
+                event: .streamOpened,
+                uid: uid,
+                connectionId: payload.connectionID,
+                transport: .irohDirect,
+                rttMillis: nil,
+                detail: auditDetail(["side": "ios"], networkAuditDetail)
+            )
+            try await send(
+                payload,
+                uid: uid,
+                publicKey: publicKey,
+                relayPublicKey: relayPublicKey,
+                verifiedTarget: verifiedTarget,
+                stream: stream,
+                timeout: timeout,
+                networkAuditDetail: networkAuditDetail,
+                onChunk: onChunk
+            )
+        } catch {
+            await auditLogger.record(
+                event: .streamFailed,
+                uid: uid,
+                connectionId: payload.connectionID,
+                transport: .irohDirect,
+                rttMillis: nil,
+                detail: [
+                    "stage": stage,
+                    "error": String(error.localizedDescription.prefix(256))
+                ]
+            )
+            throw error
+        }
+    }
+
+    private func send(
+        _ payload: HermesRelayPayload,
+        uid: String,
+        publicKey: Data,
+        relayPublicKey: String,
+        verifiedTarget: IrohDialTarget,
+        stream: any IrohRelayStream,
+        timeout: TimeInterval,
+        networkAuditDetail: [String: String],
+        onChunk: @MainActor (HermesRelayChunkRecord) throws -> Void
+    ) async throws {
         defer { Task { await stream.close() } }
 
         // 2a. Mercury Phase 1b — once we know the pairing-public-key
@@ -269,6 +419,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
 
         let started = Date()
         let deadline = started.addingTimeInterval(timeout)
+        var receivedChunkCount = 0
+        var didRecordFirstChunk = false
         while Date() < deadline {
             guard let frame = try await stream.receive() else {
                 throw HermesServiceError.relayUnavailable("Iroh stream closed before completion.")
@@ -281,6 +433,24 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             switch frame.type {
             case .responseChunk:
                 guard let chunk = try chunkRecord(from: frame, keyData: keyData, uid: uid, connectionID: payload.connectionID, requestID: requestID) else { continue }
+                receivedChunkCount += 1
+                if !didRecordFirstChunk {
+                    didRecordFirstChunk = true
+                    let rtt = Int(Date().timeIntervalSince(started) * 1000)
+                    await auditLogger.record(
+                        event: .streamOpened,
+                        uid: uid,
+                        connectionId: payload.connectionID,
+                        transport: .irohDirect,
+                        rttMillis: rtt,
+                        detail: auditDetail([
+                            "stage": "ios_first_response_chunk",
+                            "requestId": requestID,
+                            "sequence": "\(chunk.sequence)",
+                            "kind": chunk.kind.rawValue
+                        ], networkAuditDetail)
+                    )
+                }
                 try onChunk(chunk)
             case .responseComplete:
                 let rtt = Int(Date().timeIntervalSince(started) * 1000)
@@ -290,11 +460,15 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                     connectionId: payload.connectionID,
                     transport: .irohDirect,
                     rttMillis: rtt,
-                    detail: [:]
+                    detail: auditDetail([
+                        "stage": "ios_response_complete",
+                        "requestId": requestID,
+                        "chunks": "\(receivedChunkCount)"
+                    ], networkAuditDetail)
                 )
                 return
             case .responseError:
-                throw HermesServiceError.relayUnavailable(frame.payload?.error ?? "Hermes iroh relay failed.")
+                throw HermesServiceError.relayFailure(frame.payload?.error, fallback: "Hermes iroh relay failed.")
             case .ping, .pong, .requestCancel, .requestStart, .hostReady, .hostRegister:
                 continue
             case .mediaClassify, .mediaBlobAdvertise, .mediaBlobAck:
@@ -307,7 +481,14 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 continue
             }
         }
-        throw HermesServiceError.relayUnavailable("Iroh relay timed out before response.complete.")
+        throw HermesServiceError.relayTimeout
+    }
+
+    private func auditDetail(
+        _ detail: [String: String],
+        _ networkDetail: [String: String]
+    ) -> [String: String] {
+        detail.merging(networkDetail) { current, _ in current }
     }
 
     @MainActor
@@ -343,6 +524,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         }
         let factory = transportFactory
         let task = Task { @MainActor [factory] () throws -> any IrohRelayTransport in
+            await HermesIrohHostedRelayConfig.refreshRemoteConfigIfAvailable()
             let transport = factory()
             #if DEBUG
             if ProcessInfo.processInfo.environment["OPENBURNBAR_ALLOW_IROH_LOOPBACK"] != "1",
@@ -360,6 +542,10 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         bootstrapTask = task
         defer { bootstrapTask = nil }
         return try await task.value
+    }
+
+    static func bootstrapStartupTimeout(connectTimeout: TimeInterval) -> TimeInterval {
+        max(defaultBootstrapStartupTimeout, connectTimeout + 25)
     }
 
     private func chunkRecord(
@@ -404,10 +590,136 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             try IrohRelayKeyStore.shared.secretKeyMaterial()
         }
         if let backend = OpenBurnBarIrohFFIBackendFactory.make() {
-            return IrohXcframeworkTransport(backend: backend, secretProvider: secretProvider)
+            return IrohXcframeworkTransport(
+                backend: backend,
+                secretProvider: secretProvider,
+                relayURLProvider: {
+                    HermesIrohHostedRelayConfig.currentURL()
+                }
+            )
         }
         let rendezvous = LoopbackIrohRelayRendezvous()
         return LoopbackIrohRelayTransport(rendezvous: rendezvous)
+    }
+}
+
+private enum HermesIrohHostedRelayConfig {
+    private static let remoteConfigKey = "hermes_iroh_hosted_relay_url"
+    private static let userDefaultsKey = "hermes_iroh_hosted_relay_url"
+    private static let environmentKey = "OPENBURNBAR_IROH_HOSTED_RELAY_URL"
+
+    static func refreshRemoteConfigIfAvailable() async {
+        guard !hasLocalOverride else { return }
+        let remoteConfig = RemoteConfig.remoteConfig()
+        remoteConfig.setDefaults([remoteConfigKey: "" as NSObject])
+        await withCheckedContinuation { continuation in
+            let gate = ContinuationGate(continuation)
+            remoteConfig.fetchAndActivate { _, _ in
+                gate.resume()
+            }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) {
+                gate.resume()
+            }
+        }
+    }
+
+    static func currentURL() -> String? {
+        normalized(ProcessInfo.processInfo.environment[environmentKey])
+            ?? normalized(UserDefaults.standard.string(forKey: userDefaultsKey))
+            ?? normalized(RemoteConfig.remoteConfig().configValue(forKey: remoteConfigKey).stringValue)
+    }
+
+    private static func normalized(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
+
+    private static var hasLocalOverride: Bool {
+        normalized(ProcessInfo.processInfo.environment[environmentKey]) != nil
+            || normalized(UserDefaults.standard.string(forKey: userDefaultsKey)) != nil
+    }
+
+    private final class ContinuationGate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var didResume = false
+        private let continuation: CheckedContinuation<Void, Never>
+
+        init(_ continuation: CheckedContinuation<Void, Never>) {
+            self.continuation = continuation
+        }
+
+        func resume() {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !didResume else { return }
+            didResume = true
+            continuation.resume()
+        }
+    }
+}
+
+private func withIrohOperationTimeout<T: Sendable>(
+    seconds: TimeInterval,
+    operation: @escaping @Sendable () async throws -> T
+) async throws -> T {
+    try await withCheckedThrowingContinuation { continuation in
+        let gate = IrohTimeoutGate(continuation)
+        let operationTask = Task {
+            do {
+                gate.resume(returning: try await operation())
+            } catch {
+                gate.resume(throwing: error)
+            }
+        }
+        let timeoutTask = Task {
+            let nanos = UInt64(max(0.001, seconds) * 1_000_000_000)
+            try await Task.sleep(nanoseconds: nanos)
+            gate.resume(throwing: IrohRelayTransportError.timedOut)
+        }
+        gate.onResume = {
+            operationTask.cancel()
+            timeoutTask.cancel()
+        }
+    }
+}
+
+private final class IrohTimeoutGate<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didResume = false
+    private let continuation: CheckedContinuation<T, Error>
+    var onResume: (@Sendable () -> Void)?
+
+    init(_ continuation: CheckedContinuation<T, Error>) {
+        self.continuation = continuation
+    }
+
+    func resume(returning value: T) {
+        finish {
+            continuation.resume(returning: value)
+        }
+    }
+
+    func resume(throwing error: Error) {
+        finish {
+            continuation.resume(throwing: error)
+        }
+    }
+
+    private func finish(_ resumeContinuation: () -> Void) {
+        let callback: (@Sendable () -> Void)?
+        lock.lock()
+        if didResume {
+            lock.unlock()
+            return
+        }
+        didResume = true
+        callback = onResume
+        lock.unlock()
+        resumeContinuation()
+        callback?()
     }
 }
 

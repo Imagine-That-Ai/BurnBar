@@ -1,24 +1,50 @@
 # Hermes Realtime Relay → iroh peer-to-peer transport
 
-> **Status (production rollout, May 15, 2026):** Phase A and Phase B are
-> green on branch `chore/router-brand-coherent-rail`. The Rust crate checks
-> in debug + release, all packaged Apple Rust targets cross-compile, the
-> xcframework recipe produces local artifacts, `OpenBurnBarCore`
-> builds/tests with and without the local binary artifact, macOS + iOS
-> device + iOS Simulator app builds pass, Functions type-checks, and the
-> GitHub `OpenBurnBarIroh xcframework` plus PR harness checks are green on
-> the latest pushed iroh commit.
+> **Status (production rollout, May 15 / May 16 UTC, 2026):** Phase A and
+> Phase B are green on branch `chore/router-brand-coherent-rail`. The Rust
+> crate checks in debug + release, all packaged Apple Rust targets
+> cross-compile, the xcframework recipe produces local artifacts,
+> `OpenBurnBarCore` builds/tests with and without the local binary artifact,
+> macOS + iOS device + iOS Simulator app builds pass, Functions type-checks,
+> and the GitHub `OpenBurnBarIroh xcframework` plus PR harness checks are
+> green on the latest pushed iroh commit.
 >
 > Phase B has a production monitoring path in source:
 > `rollupIrohTransportDaily` aggregates raw Firestore `iroh_audit_events`
 > into daily operator rollups under
-> `ops/iroh_transport_daily_rollups/days/{YYYY-MM-DD}`. The Function is not
-> production-live until the Phase D deploy gate runs.
+> `ops/iroh_transport_daily_rollups/days/{YYYY-MM-DD}`. The Function is now
+> production-live in `burnbar` as a scheduled Node 22 gen2 Function.
 >
-> Phase C is now the active gate: debug builds assert if they resolve the
-> process-local loopback transport instead of the xcframework-backed iroh
-> transport, and the Mac app has a Debug menu toggle for QA. The remaining
-> Phase C work is real Mac to iOS/iPadOS validation with audit-event exports.
+> Phase D hosted-relay validation is now in progress. Production Firestore
+> rules are deployed, including the CLI mission `requestedModelID` /
+> `selectedModelID` rule allowance needed for phone-selected model fidelity.
+> The Iroh Services hosted relay is running at
+> `https://use1-1.relay.alberto8793.burnbar.iroh.link/`, and Firebase Remote
+> Config publishes that URL through `hermes_iroh_hosted_relay_url`. The first
+> physical-iPhone hosted-relay E2E is green: the iPhone verified the Mac
+> pairing, opened an iroh stream, the host decrypted and forwarded
+> `/v1/chat/completions`, local Hermes returned HTTP `200`, the host emitted
+> `response.complete`, and the stream closed without a newer WSS fallback.
+> The mobile mission contract now also carries `requestedModelID` through
+> CLI agent missions, and the trusted Mac runner applies that selected model
+> to Hermes, Pi, OpenClaw, Codex, and Claude rather than falling back silently;
+> live mission proofs completed for all five harnesses on May 16 UTC. Hosted
+> relay response-frame sends currently show ~30 s per audited response frame,
+> so the host/client chat timeouts are intentionally split at 300 s / 360 s
+> while the remaining topology gate is gathered. The first scheduled monitoring
+> readback was repaired after adding the required Firestore timestamp indexes.
+> After the earlier `08:35Z` timeout reset the counter, the same-LAN
+> physical-iPhone hosted-relay quota produced a clean historical 10-run streak:
+> 10 consecutive Hermes completions from `2026-05-16T09:07Z` through `09:42Z`
+> completed over `iroh-direct` with `requestedModel=gpt-5.4-mini`, iOS
+> `ios_response_complete`, zero WSS fallbacks, and zero failure events. The
+> installed iOS debug build now records `NWPath` network-interface audit detail
+> on the iroh path. A later `09:54Z` topology preflight proved the phone was
+> still on `wifi`, not cellular, then failed with `connection lost` and WSS
+> fallback, so the formal Gate C/D streak is not closed. The final rollout gates
+> are a renewed clean sequence that includes different-network/cellular topology
+> and the Phase E TestFlight soak. See
+> `docs/runbooks/iroh-rollout-status.md`.
 
 This document is the engineering reference for migrating
 [`HERMES_REALTIME_RELAY.md`](HERMES_REALTIME_RELAY.md) off Cloud Run +
@@ -83,6 +109,8 @@ reused byte-for-byte.
 | `.github/workflows/iroh-xcframework.yml` | CI: builds + caches the xcframework and uploads it as a workflow artifact. |
 | `scripts/ci/iroh-services.env.example` | Template for the n0 services API secret used by Phase 6+ (owned hosted relay). |
 | `scripts/ci/load-iroh-services-secret.sh` | Loader that materializes `.secrets/iroh-services.env` from CI secrets. |
+| `scripts/e2e/ios-iroh-chat.sh` | Physical-iPhone hosted-relay smoke runner. Starts the debug Mac host, launches the hidden Hermes E2E prompt route on iPhone, polls Firestore `iroh_audit_events`, and fails unless the expected phone `networkInterfaces` value plus `ios_response_complete` appear with no WSS fallback. |
+| `scripts/e2e/ios-iroh-gate.sh` | Gate C/D sequence runner. Starts one debug Mac host, calls `ios-iroh-chat.sh` repeatedly, writes per-run Firestore event exports under `docs/runbooks/iroh-dev-validation/`, and stops on the first stream failure or WSS fallback. |
 | `OpenBurnBarCore/Sources/OpenBurnBarIrohRelay/` | SwiftPM target. Contains the wire codec, transport protocol, in-process loopback transport, pairing helpers, audit contract, and the encrypted echo path. |
 | `OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/` | UniFFI-generated Swift/C/modulemap bindings. Used only when `Vendor/OpenBurnBarIroh.xcframework` exists locally or in CI. |
 | `OpenBurnBarCore/Tests/OpenBurnBarIrohRelayTests/` | XCTest suite (18 tests, all green on macOS arm64). |

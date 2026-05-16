@@ -23,15 +23,26 @@ enum OpenBurnBarRuntime {
     /// True when the current process is an XCTest host. Detected via the well-known
     /// XCTest environment variables that Apple injects into the test runner.
     static var isRunningTests: Bool {
-        let environment = ProcessInfo.processInfo.environment
+        isRunningTests(
+            environment: ProcessInfo.processInfo.environment,
+            loadedBundlePaths: Bundle.allBundles.map(\.bundlePath),
+            mainBundleContainsXCTestPlugin: mainBundleContainsXCTestPlugin()
+        )
+    }
+
+    static func isRunningTests(
+        environment: [String: String],
+        loadedBundlePaths: [String],
+        mainBundleContainsXCTestPlugin: Bool
+    ) -> Bool {
         return environment["XCTestConfigurationFilePath"] != nil
             || environment["XCTestSessionIdentifier"] != nil
             || environment["XCTestBundlePath"] != nil
             || environment["TEST_RUNNER_CI"] == "true"
             || environment["TEST_RUNNER_GITHUB_ACTIONS"] == "true"
             || environment["TEST_RUNNER_RUNNER_OS"] != nil
-            || Bundle.allBundles.contains { $0.bundlePath.hasSuffix(".xctest") }
-            || mainBundleContainsXCTestPlugin()
+            || loadedBundlePaths.contains { $0.hasSuffix(".xctest") }
+            || mainBundleContainsXCTestPlugin
     }
 
     private static func mainBundleContainsXCTestPlugin() -> Bool {
@@ -54,6 +65,10 @@ enum OpenBurnBarRuntime {
     /// True when we should bypass the live menu-bar scene and present `EmptyScene()` instead.
     /// This is the gate that protects the XCTest runner-connect window.
     static var shouldUseTestStubScene: Bool {
+        shouldUseTestStubScene(isRunningTests: isRunningTests, forceLiveScene: forceLiveScene)
+    }
+
+    static func shouldUseTestStubScene(isRunningTests: Bool, forceLiveScene: Bool) -> Bool {
         isRunningTests && !forceLiveScene
     }
 }

@@ -28,7 +28,7 @@ enum CodexModelCatalog {
             return canonical
         }
 
-        return fallback
+        return trimmedModel
     }
 }
 

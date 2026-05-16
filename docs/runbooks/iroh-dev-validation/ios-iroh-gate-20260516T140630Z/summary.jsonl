@@ -1,0 +1,10 @@
+{
+  "run": 1,
+  "startedAt": "2026-05-16T14:06:35Z",
+  "completedAt": "2026-05-16T14:13:44Z",
+  "expectedInterface": "cellular",
+  "result": "failed",
+  "exitCode": 1,
+  "log": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T140630Z/run-01.log",
+  "events": "docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260516T140630Z/run-01-events.json"
+}

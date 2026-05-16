@@ -76,6 +76,27 @@ final class OpenClawServiceTests: XCTestCase {
                        "qwen3-coder:30b")
     }
 
+    func test_clearSelectedModelRemovesPersistedDefault() {
+        let defaults = UserDefaults(suiteName: "OpenClawServiceTests-clear")!
+        defaults.removePersistentDomain(forName: "OpenClawServiceTests-clear")
+        let service = OpenClawService(urlSession: .shared, defaults: defaults)
+        let option = HermesRuntimeModelOption(
+            providerID: "ollama",
+            providerName: "Ollama",
+            modelID: "qwen3-coder:30b",
+            displayName: "Qwen 3 Coder 30B"
+        )
+
+        service.selectModel(option)
+        XCTAssertEqual(defaults.string(forKey: "openClaw.selectedModelID"),
+                       "qwen3-coder:30b")
+
+        service.clearSelectedModel()
+
+        XCTAssertNil(service.selectedModelID)
+        XCTAssertNil(defaults.string(forKey: "openClaw.selectedModelID"))
+    }
+
     func test_toggleFavoriteAddsAndRemoves() {
         let defaults = UserDefaults(suiteName: "OpenClawServiceTests-fav")!
         defaults.removePersistentDomain(forName: "OpenClawServiceTests-fav")

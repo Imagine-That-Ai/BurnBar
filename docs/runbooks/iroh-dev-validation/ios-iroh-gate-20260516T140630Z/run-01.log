@@ -1,0 +1,55 @@
+E2E: iOS Hermes iroh hosted-relay path
+  project=burnbar
+  uid=6YTomKTKdQdpvIJgmz6VTIrrQ4w1
+  device=AFB07C15-AD18-5EFA-AD1C-CADB4F286797
+  model=gpt-5.4-mini
+  expectedNetworkInterface=cellular
+  startedAt=2026-05-16T14:06:35Z
+09:06:36  Acquired tunnel connection to device.
+09:06:36  Enabling developer disk image services.
+09:06:36  Acquired usage assertion.
+Launched application with com.openburnbar.app bundle identifier.
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+Waiting: interfaceMatches=0 iosResponseComplete=0
+FAIL: timed out waiting for expected interface and ios_response_complete.
+Launch JSON: /tmp/openburnbar-mobile-hermes-ios-iroh-20260516T140635Z.json
+Launch log: /tmp/openburnbar-mobile-hermes-ios-iroh-20260516T140635Z.log
+[]

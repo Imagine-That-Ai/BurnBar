@@ -136,6 +136,8 @@ targets:
       - package: Firebase
         product: FirebaseFunctions
       - package: Firebase
+        product: FirebaseRemoteConfig
+      - package: Firebase
         product: FirebaseAppCheck
       - package: GoogleSignIn
         product: GoogleSignIn
@@ -384,6 +386,8 @@ targets:
         product: FirebaseFirestore
       - package: Firebase
         product: FirebaseFunctions
+      - package: Firebase
+        product: FirebaseRemoteConfig
       - package: Firebase
         product: FirebaseAppCheck
       - package: GoogleSignIn

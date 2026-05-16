@@ -414,7 +414,7 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
         )
     }
 
-    func test_cliBridge_codexArguments_fallbackToSupportedModelWhenInvalidModelProvided() {
+    func test_cliBridge_codexArguments_preservesExplicitModelWhenUnknown() {
         XCTAssertEqual(
             CLIBridge.codexArguments(prompt: "hello", model: "MiniMax-M2.7-highspeed"),
             [
@@ -423,7 +423,7 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
                 "--ephemeral",
                 "--skip-git-repo-check",
                 "-m",
-                "gpt-5.5",
+                "MiniMax-M2.7-highspeed",
                 "-c",
                 #"model_reasoning_effort="high""#,
                 "hello"

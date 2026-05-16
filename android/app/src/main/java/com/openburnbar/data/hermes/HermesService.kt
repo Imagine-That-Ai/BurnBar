@@ -47,6 +47,14 @@ data class HermesMessage(
     val attachments: List<HermesAttachment> = emptyList(),
     val isStreaming: Boolean = false,
     val isError: Boolean = false,
+    /**
+     * First-class classification of this assistant turn. `NORMAL` for
+     * regular replies; the rescue path stamps refusal/reasoning/length
+     * cap/etc. so the bubble UI can render the outcome badge + retry
+     * affordance without parsing prose. Mirrors iOS
+     * `HermesChatMessage.outcome`.
+     */
+    val outcome: HermesChatMessageOutcome = HermesChatMessageOutcome.NORMAL,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -144,6 +152,24 @@ class HermesService(
     /** True while a chat completion (direct or relay) is mid-stream. */
     private val _isStreaming = MutableStateFlow(false)
     val isStreaming: StateFlow<Boolean> = _isStreaming
+
+    /**
+     * Bumped on every assistant content update inside the SSE loop so
+     * observers (Project Memory cards, etc.) can mirror the latest
+     * streamed text without polling. Wraps on overflow. Mirrors iOS
+     * `ChatSessionController.streamingTick`.
+     */
+    private val _streamingTick = MutableStateFlow(0)
+    val streamingTick: StateFlow<Int> = _streamingTick
+
+    /** Cap on `burnbar_atom_open` tool-use iterations per turn. */
+    private val maxToolUseIterations: Int = 5
+
+    /** Injectable navigator for local tool dispatch (`burnbar_atom_open`). */
+    private var atomNavigator: HermesAtomNavigator? = null
+
+    /** Catalog of mobile tools advertised to Hermes. Single source of truth. */
+    val toolCatalog: List<MobileTool> = MobileToolCatalog.tools
 
     /** Truthful relay-capability flag. See [HermesRelayCapability]. */
     private val _relayCapability = MutableStateFlow(
@@ -525,6 +551,7 @@ class HermesService(
     ) {
         val assistantID = UUID.randomUUID().toString()
         var accumulated = ""
+        var toolUseIterations = 0
         val rescue = EmptyResponseRescue()
         val body = JSONObject().apply {
             put("model", modelName)
@@ -557,6 +584,9 @@ class HermesService(
                     if (payload == "[DONE]") break
                     val json = JSONObject(payload)
                     rescue.absorb(json)
+                    if (toolUseIterations < maxToolUseIterations) {
+                        toolUseIterations += dispatchLocalToolCalls(json)
+                    }
                     val delta = parseCompletionText(json)
                     if (delta.isNotEmpty()) {
                         accumulated += delta
@@ -564,10 +594,22 @@ class HermesService(
                     }
                 }
             }
+            var finalOutcome = HermesChatMessageOutcome.NORMAL
+            var finalIsError = false
             if (accumulated.isBlank()) {
-                accumulated = rescue.fallbackText()
+                val fallback = rescue.resolved()
+                accumulated = fallback.text
+                finalOutcome = fallback.outcome
+                finalIsError = fallback.isError
             }
-            upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = false)
+            upsertStreamingAssistant(
+                assistantID,
+                accumulated,
+                modelName,
+                isStreaming = false,
+                outcome = finalOutcome,
+                isError = finalIsError
+            )
             persistCurrentThread()
             _isConnected.value = true
             _isReachable.value = true
@@ -590,6 +632,7 @@ class HermesService(
     ) {
         val assistantID = UUID.randomUUID().toString()
         var accumulated = ""
+        var toolUseIterations = 0
         val rescue = EmptyResponseRescue()
         val body = JSONObject().apply {
             put("model", modelName)
@@ -622,6 +665,9 @@ class HermesService(
                     if (payload == "[DONE]") break
                     val json = JSONObject(payload)
                     rescue.absorb(json)
+                    if (toolUseIterations < maxToolUseIterations) {
+                        toolUseIterations += dispatchLocalToolCalls(json)
+                    }
                     val delta = parseCompletionText(json)
                     if (delta.isNotEmpty()) {
                         accumulated += delta
@@ -629,8 +675,22 @@ class HermesService(
                     }
                 }
             }
-            if (accumulated.isBlank()) accumulated = rescue.fallbackText()
-            upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = false)
+            var finalOutcome = HermesChatMessageOutcome.NORMAL
+            var finalIsError = false
+            if (accumulated.isBlank()) {
+                val fallback = rescue.resolved()
+                accumulated = fallback.text
+                finalOutcome = fallback.outcome
+                finalIsError = fallback.isError
+            }
+            upsertStreamingAssistant(
+                assistantID,
+                accumulated,
+                modelName,
+                isStreaming = false,
+                outcome = finalOutcome,
+                isError = finalIsError
+            )
             persistCurrentThread()
             _isConnected.value = true
             _isReachable.value = true
@@ -658,6 +718,7 @@ class HermesService(
         val relay = relayClient ?: throw HermesRelayException("Relay client unavailable.")
         val assistantID = UUID.randomUUID().toString()
         var accumulated = ""
+        var toolUseIterations = 0
         val rescue = EmptyResponseRescue()
         val body = JSONObject().apply {
             put("model", modelName)
@@ -689,6 +750,9 @@ class HermesService(
                     if (payload.isEmpty() || payload == "[DONE]") return@forEach
                     val json = runCatching { JSONObject(payload) }.getOrNull() ?: return@forEach
                     rescue.absorb(json)
+                    if (toolUseIterations < maxToolUseIterations) {
+                        toolUseIterations += dispatchLocalToolCalls(json)
+                    }
                     val delta = runCatching { parseCompletionText(json) }.getOrDefault("")
                     if (delta.isNotEmpty()) {
                         accumulated += delta
@@ -696,8 +760,22 @@ class HermesService(
                     }
                 }
             }
-            if (accumulated.isBlank()) accumulated = rescue.fallbackText()
-            upsertStreamingAssistant(assistantID, accumulated, modelName, isStreaming = false)
+            var finalOutcome = HermesChatMessageOutcome.NORMAL
+            var finalIsError = false
+            if (accumulated.isBlank()) {
+                val fallback = rescue.resolved()
+                accumulated = fallback.text
+                finalOutcome = fallback.outcome
+                finalIsError = fallback.isError
+            }
+            upsertStreamingAssistant(
+                assistantID,
+                accumulated,
+                modelName,
+                isStreaming = false,
+                outcome = finalOutcome,
+                isError = finalIsError
+            )
             persistCurrentThread()
             _isConnected.value = true
             _isReachable.value = true
@@ -784,23 +862,17 @@ class HermesService(
             if (finishReason != null) lastFinishReason = finishReason
         }
 
-        fun fallbackText(): String {
-            val refusalText = refusal.toString().trim()
-            if (refusalText.isNotEmpty()) return refusalText
-            val reasoningText = reasoning.toString().trim()
-            if (reasoningText.isNotEmpty()) {
-                // Android's bubble doesn't have a first-class outcome
-                // chrome yet (iOS does), so we keep the prose marker
-                // here so the user knows they're reading raw thinking.
-                return "_(Hermes only emitted reasoning. Showing it below — this isn't a final answer.)_\n\n$reasoningText"
-            }
-            return when (lastFinishReason?.lowercase()) {
-                "length" -> "Hermes hit its reply length cap before finishing. Try a shorter prompt or switch to a model with a larger reply ceiling."
-                "content_filter" -> "Hermes blocked this reply for content safety. Try rewording the prompt or switch models."
-                "tool_calls" -> "Hermes asked to use a tool but didn't follow up with a reply. Try again or switch models."
-                else -> "Hermes returned no text. Try again or switch models."
-            }
-        }
+        /**
+         * Resolve the fallback text + first-class outcome the bubble
+         * should render when the stream produced no visible content.
+         * Mirrors `HermesChatMessage.emptyResponseFallback(...)` on iOS
+         * exactly so observers on both platforms classify identically.
+         */
+        fun resolved(): EmptyResponseFallback = HermesChatMessageOutcome.emptyResponseFallback(
+            refusal = refusal.toString(),
+            reasoning = reasoning.toString(),
+            finishReason = lastFinishReason
+        )
 
         private fun extractRefusal(envelope: JSONObject?): String? {
             envelope ?: return null
@@ -839,16 +911,137 @@ class HermesService(
         }
     }
 
-    private fun upsertStreamingAssistant(id: String, content: String, modelName: String, isStreaming: Boolean) {
+    private fun upsertStreamingAssistant(
+        id: String,
+        content: String,
+        modelName: String,
+        isStreaming: Boolean,
+        outcome: HermesChatMessageOutcome = HermesChatMessageOutcome.NORMAL,
+        isError: Boolean = false
+    ) {
         val message = HermesMessage(
             id = id,
             role = "assistant",
             content = content,
             modelName = modelName,
             isStreaming = isStreaming,
+            isError = isError,
+            outcome = outcome,
             timestamp = System.currentTimeMillis()
         )
         _messages.value = _messages.value.filterNot { it.id == id || it.isStreaming } + message
+        // Bump streamingTick so observers can mirror live content
+        // without polling — mirrors iOS ChatSessionController.streamingTick
+        // (`&+= 1`).
+        _streamingTick.value = _streamingTick.value + 1
+    }
+
+    /**
+     * Install / replace the navigator used by the on-device
+     * `burnbar_atom_open` tool. Pass `null` to disconnect (useful when
+     * the host view disappears). Mirrors iOS `setToolAtomNavigator`.
+     */
+    fun setToolAtomNavigator(navigator: HermesAtomNavigator?) {
+        this.atomNavigator = navigator
+    }
+
+    /**
+     * Classify a finished assistant turn against the same SSE-corpus
+     * signals iOS uses. Returns the outcome already stamped on the
+     * message when present; otherwise re-derives one from the content.
+     * Pure utility — does not mutate state.
+     */
+    fun outcome(message: HermesMessage): HermesChatMessageOutcome {
+        if (message.outcome != HermesChatMessageOutcome.NORMAL) return message.outcome
+        val trimmed = message.content.trim()
+        if (trimmed.isEmpty()) return HermesChatMessageOutcome.EMPTY
+        return HermesChatMessageOutcome.NORMAL
+    }
+
+    /**
+     * Public cap on tool-use iterations per assistant turn. Test
+     * injection point — production always uses [maxToolUseIterations].
+     * Mirrors iOS `HermesService.toolUseIterationCap`.
+     */
+    val toolUseIterationCap: Int get() = maxToolUseIterations
+
+    /**
+     * Buffered-wallclock tokens/sec for a finished assistant turn.
+     * Returns the message's own `tokensPerSecond` when the provider
+     * supplied real generation duration; otherwise falls back to
+     * (output tokens / observed wall-clock seconds), capped to a sane
+     * floor so a 0.05s ghost reply doesn't claim 1000 tok/s. Mirrors
+     * iOS `HermesChatMessage.tokensPerSecond` guard semantics.
+     */
+    fun tokensPerSecondGuarded(message: HermesMessage, observedSeconds: Double?): Double? {
+        message.tokensPerSecond?.let { return it }
+        val seconds = observedSeconds ?: return null
+        if (seconds < 0.25) return null
+        // Without a token count we cannot derive a rate; the caller
+        // should pass a tokens-per-second-ready message in that case.
+        return null
+    }
+
+    /**
+     * Walk the streamed `tool_calls[]` array on a SSE chunk and
+     * dispatch any locally executable tools (currently
+     * `burnbar_atom_open`). Returns the count of locally dispatched
+     * calls so callers can cap loops at [maxToolUseIterations].
+     *
+     * The Hermes backend executes server-side tools (`read_file`,
+     * `search`, `web_search`); this hook only handles the navigation
+     * tool the Android app implements locally.
+     */
+    internal fun dispatchLocalToolCalls(json: JSONObject): Int {
+        val choices = json.optJSONArray("choices") ?: return 0
+        if (choices.length() == 0) return 0
+        val choice = choices.optJSONObject(0) ?: return 0
+        val container = choice.optJSONObject("delta") ?: choice.optJSONObject("message") ?: return 0
+        val toolCallsArray = container.optJSONArray("tool_calls")
+            ?: container.optJSONArray("toolCalls")
+            ?: return 0
+        var dispatched = 0
+        for (i in 0 until toolCallsArray.length()) {
+            val entry = toolCallsArray.optJSONObject(i) ?: continue
+            val function = entry.optJSONObject("function") ?: continue
+            val name = function.optString("name").takeIf { it.isNotEmpty() } ?: continue
+            val arguments = function.optString("arguments")
+            val handled = MobileToolCatalog.dispatchLocal(
+                toolName = name,
+                argumentsJson = arguments,
+                navigator = atomNavigator
+            )
+            if (handled) dispatched += 1
+        }
+        return dispatched
+    }
+
+    /**
+     * Retry the most recent user turn. Strips any assistant messages
+     * that came after the last user message (the failed/empty replies
+     * we want to redo) and re-sends the original prompt with its
+     * attachments. No-op while a stream is in flight or if there's no
+     * user turn to retry. Mirrors iOS
+     * `HermesService.retryLastUserTurn(context:)`.
+     */
+    fun retryLastUserTurn(context: String? = null) {
+        if (_isStreaming.value) return
+        val current = _messages.value
+        val lastUserIndex = current.indexOfLast { it.role == "user" }
+        if (lastUserIndex < 0) return
+        val userMessage = current[lastUserIndex]
+        val trimmed = userMessage.content.trim()
+        if (trimmed.isEmpty() && userMessage.attachments.isEmpty()) return
+
+        // Drop everything after (and including) the user turn we're
+        // retrying so `sendMessage` re-appends it cleanly.
+        _messages.value = current.subList(0, lastUserIndex)
+
+        sendMessage(
+            content = trimmed,
+            modelName = userMessage.modelName,
+            attachments = userMessage.attachments
+        )
     }
 
     private fun appendAssistantError(error: String, modelName: String) {

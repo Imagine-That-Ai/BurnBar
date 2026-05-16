@@ -62,10 +62,9 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertTrue(args.contains("gpt-5.4"))
     }
 
-    func test_cliBridge_codexArguments_fallbackToSupportedModelWhenInvalidModelProvided() {
+    func test_cliBridge_codexArguments_preservesExplicitModelWhenUnknown() {
         let args = CLIBridge.codexArguments(prompt: "test", model: "MiniMax-M2.7-highspeed")
-        XCTAssertTrue(args.contains("gpt-5.5"))
-        XCTAssertFalse(args.contains("MiniMax-M2.7-highspeed"))
+        XCTAssertTrue(args.contains("MiniMax-M2.7-highspeed"))
     }
 
     func test_settingsManager_resolvedHermesChatModel_minimaxAdvertised_usesCodexCompatibleDefault() {

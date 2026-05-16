@@ -12,7 +12,7 @@ import Foundation
 /// 2. The local 24-hour quota counters cached in `media_quota_usage` for
 ///    today — never trusted as the only signal because the cache lags the
 ///    Cloud Function's hourly reconcile.
-/// 3. `ops/media_budget_status/current` — the n0 hosted-relay budget
+/// 3. `ops/media_budget_status/state/current` — the n0 hosted-relay budget
 ///    envelope (see `docs/runbooks/media-budget.md`).
 public protocol MediaCapabilityGate: Sendable {
     func check(

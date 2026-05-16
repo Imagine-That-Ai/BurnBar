@@ -107,6 +107,28 @@ final class IrohXcframeworkTransportTests: XCTestCase {
             XCTAssertEqual(error as? IrohRelayTransportError, .endpointNotReady)
         }
     }
+
+    func testStartRetriesTransientHomeRelayBootstrapTimeoutOnce() async throws {
+        let rendezvous = FakeBackendRendezvous()
+        let backend = FakeEndpointBackend(nodeId: "ios-retry", rendezvous: rendezvous)
+        backend.bootstrapErrors = [
+            .runtimeFailed("iroh endpoint did not select a home relay within 10s")
+        ]
+        let transport = IrohXcframeworkTransport(
+            backend: backend,
+            secretProvider: {
+                IrohSecretKeyMaterial(raw: Data(repeating: 0x66, count: 32))
+            },
+            bootstrapRetryDelayNanoseconds: 0
+        )
+
+        let identity = try await transport.start()
+
+        XCTAssertEqual(identity.nodeId, "ios-retry")
+        XCTAssertEqual(backend.bootstrapAttempts, 2)
+        XCTAssertEqual(backend.shutdownCount, 1)
+        await transport.shutdown()
+    }
 }
 
 // MARK: - Fakes
@@ -138,7 +160,10 @@ final class FakeEndpointBackend: IrohEndpointBackend, @unchecked Sendable {
     private let nodeId: String
     private let rendezvous: FakeBackendRendezvous
     private var registered = false
-    private let acceptQueue = FakeBackendAcceptQueue()
+    private var acceptQueue = FakeBackendAcceptQueue()
+    var bootstrapErrors: [IrohBackendError] = []
+    private(set) var bootstrapAttempts = 0
+    private(set) var shutdownCount = 0
 
     init(nodeId: String, rendezvous: FakeBackendRendezvous) {
         self.nodeId = nodeId
@@ -146,6 +171,10 @@ final class FakeEndpointBackend: IrohEndpointBackend, @unchecked Sendable {
     }
 
     func bootstrap(secret: Data, relayURL: String?) async throws -> IrohEndpointIdentity {
+        bootstrapAttempts += 1
+        if !bootstrapErrors.isEmpty {
+            throw bootstrapErrors.removeFirst()
+        }
         guard secret.count == 32 else { throw IrohBackendError.invalidSecretKey }
         await rendezvous.register(self, nodeId: nodeId)
         registered = true
@@ -187,9 +216,11 @@ final class FakeEndpointBackend: IrohEndpointBackend, @unchecked Sendable {
     }
 
     func shutdown() async {
+        shutdownCount += 1
         registered = false
         await rendezvous.unregister(nodeId: nodeId)
         await acceptQueue.close()
+        acceptQueue = FakeBackendAcceptQueue()
     }
 
     func enqueueInbound(_ stream: FakeBackendStream) async {

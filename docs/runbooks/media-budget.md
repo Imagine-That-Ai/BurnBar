@@ -24,7 +24,7 @@ Operator runbook for the n0 hosted-relay budget guardrail. Plan of record: `plan
 1. After each n0 invoice lands, compute `actualUSD ÷ totalRelayedGB` from the invoice + `ops/media_session_daily_rollups` aggregation.
 2. Update `media_cost_per_gb_usd` via `firebase remoteconfig:get` → edit → `firebase remoteconfig:set`.
 3. Next `evaluateMediaBudget` run (hourly) picks up the new value automatically.
-4. Verify the new `projectedMonthEndUSD` in `ops/media_budget_status/current` matches a hand calculation.
+4. Verify the new `projectedMonthEndUSD` in `ops/media_budget_status/state/current` matches a hand calculation.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Operator runbook for the n0 hosted-relay budget guardrail. Plan of record: `plan
 1. Reads n0 services API for month-to-date hosted-relay bytes.
 2. Reads `ops/media_session_daily_rollups/days/*` for the current month.
 3. Projects month-end at the current daily rate.
-4. Writes `ops/media_budget_status/current`:
+4. Writes `ops/media_budget_status/state/current`:
    ```jsonc
    {
      "level": "normal" | "soft_cap" | "hard_cap",
@@ -52,7 +52,7 @@ Operator runbook for the n0 hosted-relay budget guardrail. Plan of record: `plan
    ```
 5. On level transition, fires `media_budget_level_changed` Firebase Analytics event with `fromLevel`, `toLevel`, `projectedMonthEndUSDBucket`.
 
-Both apps cache `ops/media_budget_status/current` for 60 s and re-read on session start. At `hard_cap`, `media_kill_switch` Remote Config also flips for belt-and-suspenders.
+Both apps cache `ops/media_budget_status/state/current` for 60 s and re-read on session start. At `hard_cap`, `media_kill_switch` Remote Config also flips for belt-and-suspenders.
 
 ## Operator playbook
 
@@ -64,7 +64,7 @@ Expected behavior:
 - Toast (once per day per user): "High demand — your media quota is reduced today. Daily allowance: 30 min screen share, 20 min/call. Quotas restore when demand drops."
 - Existing in-flight sessions continue to their per-session cap then terminate normally.
 
-Operator action: monitor n0 dashboard; verify projection re-converges to under $600 within 24-48 hours. If it does not, escalate by manually tightening the envelope further via direct edit of `ops/media_budget_status/current`'s `activeEnvelope` (write through the admin console; the Cloud Function re-overwrites on its next hourly tick, so this is a temporary nudge not a permanent override).
+Operator action: monitor n0 dashboard; verify projection re-converges to under $600 within 24-48 hours. If it does not, escalate by manually tightening the envelope further via direct edit of `ops/media_budget_status/state/current`'s `activeEnvelope` (write through the admin console; the Cloud Function re-overwrites on its next hourly tick, so this is a temporary nudge not a permanent override).
 
 ### Hard cap engaged
 
@@ -91,7 +91,7 @@ The override is overwritten by the next hourly `evaluateMediaBudget` run if the 
 
 ## Telemetry
 
-- **Per-event**: `media_budget_level_changed` Firebase Analytics, `ops/media_budget_status/current` Firestore doc.
+- **Per-event**: `media_budget_level_changed` Firebase Analytics, `ops/media_budget_status/state/current` Firestore doc.
 - **Daily aggregate**: `ops/media_session_daily_rollups/days/{YYYY-MM-DD}` (per-feature p50/p95/p99 RTT, freeze rate, success rate, fallback rate, total minutes, total bytes).
 - **Dashboard**: BigQuery export to Looker Studio with a `media-budget-status` board showing daily spend trend, projection, kill-switch state.
 

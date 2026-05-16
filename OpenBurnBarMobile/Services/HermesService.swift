@@ -667,6 +667,8 @@ final class HermesService {
     private let selectedConnectionDefaultsKey = "hermes.selectedConnectionID"
     private let selectedModelDefaultsKey = "hermes.selectedModelID"
     private let favoriteModelsDefaultsKey = "hermes.favoriteModelIDs"
+    private var selectedModelWasExplicit = false
+    private let remoteRelayChatCompletionTimeout: TimeInterval = 360
     /// Catalog of `MobileTool` implementations the chat surface advertises to
     /// the upstream LLM. Defaults to the canonical production set; tests
     /// inject custom catalogs (empty for "no tools" runs, fakes for
@@ -731,6 +733,7 @@ final class HermesService {
         self.history = history
         self.toolCatalog = toolCatalog
         self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        self.selectedModelWasExplicit = self.selectedModelID?.nilIfBlank != nil
         self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
         history.loadFromDiskIfNeeded()
     }
@@ -839,6 +842,7 @@ final class HermesService {
         selectedConnection = connection
         selectedSessionID = nil
         selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        selectedModelWasExplicit = selectedModelID?.nilIfBlank != nil
         sessions = []
         profiles = []
         modelOptions = []
@@ -1190,8 +1194,23 @@ final class HermesService {
 
     func selectModel(_ option: HermesRuntimeModelOption) {
         selectedModelID = option.modelID
+        selectedModelWasExplicit = true
         defaults.set(option.modelID, forKey: selectedModelDefaultsKey)
     }
+
+    func clearSelectedModel() {
+        selectedModelID = nil
+        selectedModelWasExplicit = false
+        defaults.removeObject(forKey: selectedModelDefaultsKey)
+    }
+
+    #if DEBUG
+    func selectModelIDForAutomation(_ modelID: String) {
+        guard let trimmed = modelID.nilIfBlank else { return }
+        selectedModelID = trimmed
+        selectedModelWasExplicit = true
+    }
+    #endif
 
     func isFavoriteModel(_ option: HermesRuntimeModelOption) -> Bool {
         favoriteModelIDs.contains(option.modelID)
@@ -1357,7 +1376,7 @@ final class HermesService {
     }
 
     private func completionRequestBody(context: String?) throws -> Data {
-        let model = selectedModelID ?? selectedConnection.advertisedModel ?? "hermes"
+        let model = try activeModelIDForRequest()
 
         // Build encoder messages from history. We load attachment bytes for
         // each user message that carries attachments so the encoder can emit
@@ -1487,7 +1506,7 @@ final class HermesService {
 
         try await relayTransport.sendStreaming(
             relayPayload(operation: .chatCompletions, method: "POST", path: "/v1/chat/completions", body: body),
-            timeout: 120
+            timeout: remoteRelayChatCompletionTimeout
         ) { event in
             self.processSSEPayload(event, into: &assistantMessage)
         }
@@ -2035,6 +2054,18 @@ final class HermesService {
             ?? selectedConnection.advertisedModel?.nilIfBlank
     }
 
+    private func activeModelIDForRequest() throws -> String {
+        if let selectedModelID = selectedModelID?.nilIfBlank {
+            if selectedModelWasExplicit,
+               !modelOptions.isEmpty,
+               !modelOptions.contains(where: { $0.modelID == selectedModelID }) {
+                throw HermesServiceError.selectedModelUnavailable(selectedModelID)
+            }
+            return selectedModelID
+        }
+        return selectedConnection.advertisedModel?.nilIfBlank ?? "hermes"
+    }
+
     func checkReachability(generation: Int? = nil) async {
         do {
             guard generation == nil || generation == runtimeGeneration else { return }
@@ -2101,9 +2132,15 @@ final class HermesService {
             }
             modelOptions = options
             if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID }) {
-                self.selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
+                if selectedModelWasExplicit {
+                    runtimeErrorText = "Selected Hermes model '\(selectedModelID)' is not advertised by this Mac relay. Pick a listed model or refresh the Mac provider catalog."
+                } else {
+                    self.selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
+                    selectedModelWasExplicit = false
+                }
             } else if selectedModelID == nil {
                 selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
+                selectedModelWasExplicit = false
             }
         } catch {
             guard generation == runtimeGeneration else { return }
@@ -2716,12 +2753,18 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
             do {
                 return try await primary.sendUnary(payload, timeout: timeout)
             } catch {
+                if HermesServiceError.shouldStopRelayFallback(error) {
+                    throw error
+                }
                 await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-wss")
             }
         }
         do {
             return try await secondary.sendUnary(payload, timeout: timeout)
         } catch {
+            if HermesServiceError.shouldStopRelayFallback(error) {
+                throw error
+            }
             await Self.recordFallback(payload: payload, error: error, hop: "wss-to-firestore")
         }
         return try await fallback.sendUnary(payload, timeout: timeout)
@@ -2737,6 +2780,9 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
                 try await primary.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
                 return
             } catch {
+                if HermesServiceError.shouldStopRelayFallback(error) {
+                    throw error
+                }
                 await Self.recordFallback(payload: payload, error: error, hop: "iroh-to-wss")
             }
         }
@@ -2744,6 +2790,9 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
             try await secondary.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
             return
         } catch {
+            if HermesServiceError.shouldStopRelayFallback(error) {
+                throw error
+            }
             await Self.recordFallback(payload: payload, error: error, hop: "wss-to-firestore")
         }
         try await fallback.sendStreaming(payload, timeout: timeout, onSSEEvent: onSSEEvent)
@@ -2784,7 +2833,7 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
             case .data:
                 fragments[chunk.sequence] = chunk.data ?? chunk.text ?? ""
             case .error:
-                throw HermesServiceError.relayUnavailable(chunk.error ?? "Hermes realtime relay failed.")
+                throw HermesServiceError.relayFailure(chunk.error, fallback: "Hermes realtime relay failed.")
             case .sse:
                 break
             }
@@ -2808,7 +2857,7 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                     onSSEEvent(data)
                 }
             case .error:
-                throw HermesServiceError.relayUnavailable(chunk.error ?? "Hermes realtime relay stream failed.")
+                throw HermesServiceError.relayFailure(chunk.error, fallback: "Hermes realtime relay stream failed.")
             case .data:
                 break
             }
@@ -2903,7 +2952,7 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
             case .responseComplete:
                 return
             case .responseError:
-                throw HermesServiceError.relayUnavailable(frame.payload?.error ?? "Hermes realtime relay failed.")
+                throw HermesServiceError.relayFailure(frame.payload?.error, fallback: "Hermes realtime relay failed.")
             case .ping:
                 try await task.send(.data(encoder.encode(HermesRealtimeRelayFrame(
                     type: .pong,
@@ -3092,7 +3141,7 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
                     case .data:
                         fragments[chunk.sequence] = chunk.data ?? chunk.text ?? ""
                     case .error:
-                        throw HermesServiceError.relayUnavailable(chunk.error ?? "Hermes relay request failed.")
+                        throw HermesServiceError.relayFailure(chunk.error, fallback: "Hermes relay request failed.")
                     case .sse:
                         break
                     }
@@ -3126,7 +3175,7 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
                             onSSEEvent(data)
                         }
                     case .error:
-                        throw HermesServiceError.relayUnavailable(chunk.error ?? "Hermes relay stream failed.")
+                        throw HermesServiceError.relayFailure(chunk.error, fallback: "Hermes relay stream failed.")
                     case .data:
                         break
                     }
@@ -3255,7 +3304,7 @@ final class FirestoreHermesRelayTransport: HermesRelayTransporting {
                 try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
             case .failed:
                 let error = requestData["error"] as? String
-                throw HermesServiceError.relayUnavailable(error ?? "Remote Hermes relay failed.")
+                throw HermesServiceError.relayFailure(error, fallback: "Remote Hermes relay failed.")
             case .cancelled, .expired:
                 throw HermesServiceError.relayUnavailable("Remote Hermes relay request was \(status.rawValue).")
             case .pending, .claimed, .streaming:
@@ -3357,6 +3406,8 @@ enum HermesServiceError: LocalizedError {
     case decodingFailed
     case invalidURL
     case keychain(OSStatus)
+    case selectedModelUnavailable(String)
+    case upstreamModelError(String)
     case relayUnavailable(String)
     case relayTimeout
 
@@ -3375,11 +3426,70 @@ enum HermesServiceError: LocalizedError {
             return "Use HTTPS, or HTTP only for localhost/private LAN Hermes hosts."
         case .keychain(let status):
             return "Could not update the Hermes API key in Keychain (\(status))."
+        case .selectedModelUnavailable(let modelID):
+            return "Selected Hermes model '\(modelID)' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
+        case .upstreamModelError(let message):
+            return message
         case .relayUnavailable(let message):
             return message
         case .relayTimeout:
-            return "Remote Hermes relay timed out. Keep OpenBurnBar running on your Mac and try again."
+            return "Remote Hermes relay timed out before the selected Mac harness completed. No fallback was attempted, so the selected model is not silently rerouted."
         }
+    }
+
+    var stopsRelayFallback: Bool {
+        switch self {
+        case .selectedModelUnavailable, .upstreamModelError, .relayTimeout:
+            return true
+        case .invalidResponse,
+             .httpStatus,
+             .decodingFailed,
+             .invalidURL,
+             .keychain,
+             .relayUnavailable:
+            return false
+        }
+    }
+
+    static func relayFailure(_ message: String?, fallback: String) -> HermesServiceError {
+        let raw = message?.nilIfBlank ?? fallback
+        if let upstream = upstreamModelErrorMessage(from: raw) {
+            return .upstreamModelError(upstream)
+        }
+        return .relayUnavailable(raw)
+    }
+
+    static func shouldStopRelayFallback(_ error: Error) -> Bool {
+        (error as? HermesServiceError)?.stopsRelayFallback ?? false
+    }
+
+    static func upstreamModelErrorMessage(from raw: String?) -> String? {
+        guard let message = raw?.nilIfBlank else { return nil }
+        let lower = message.lowercased()
+        if lower.hasPrefix("hermes upstream model") {
+            return message
+        }
+
+        let modelOrQuotaSignal = lower.contains("model")
+            || lower.contains("quota")
+            || lower.contains("limit")
+        guard modelOrQuotaSignal else { return nil }
+
+        let upstreamSignals = [
+            "weekly/monthly limit exhausted",
+            "limit exhausted",
+            "quota",
+            "insufficient_quota",
+            "rate limit",
+            "model_not_found",
+            "model not found",
+            "does not exist",
+            "unsupported model"
+        ]
+        guard upstreamSignals.contains(where: { lower.contains($0) }) else {
+            return nil
+        }
+        return "Hermes upstream model failed: \(message)"
     }
 }
 

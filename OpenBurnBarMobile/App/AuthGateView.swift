@@ -2,11 +2,16 @@ import SwiftUI
 import OpenBurnBarCore
 #if DEBUG
 import FirebaseAuth
+import OSLog
 #endif
 
 /// Top-level routing based on auth state.
 /// Branches between iPhone (`RootTabView`) and iPad (`RootNavigationView`) layouts.
 struct AuthGateView: View {
+    #if DEBUG
+    private static let hermesE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesE2E")
+    #endif
+
     @State private var authStore = AuthStore()
     @State private var syncHealthStore = CloudSyncHealthStore()
     @State private var providerSummaryStore = ProviderSummaryStore()
@@ -35,6 +40,14 @@ struct AuthGateView: View {
         }
         .animation(.snappy(duration: 0.25), value: authStore.state)
         .environment(\.uiMode, UIMode(rawValue: uiMode) ?? .standard)
+        #if DEBUG
+        .onAppear {
+            logHermesE2EAuthState("auth-gate-appeared")
+        }
+        .onChange(of: authStore.state) { _, _ in
+            logHermesE2EAuthState("auth-state-changed")
+        }
+        #endif
     }
 
     @ViewBuilder
@@ -103,6 +116,49 @@ struct AuthGateView: View {
             )
         }
     }
+
+    #if DEBUG
+    private func logHermesE2EAuthState(_ context: String) {
+        guard hasHermesE2EPrompt else { return }
+        Self.hermesE2ELogger.info("Hermes E2E \(context, privacy: .public) authState=\(authStateLabel(authStore.state), privacy: .public) onboardingComplete=\(hasCompletedOnboarding, privacy: .public) horizontalSizeClass=\(horizontalSizeClassLabel, privacy: .public)")
+    }
+
+    private var hasHermesE2EPrompt: Bool {
+        let prompt = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_HERMES_PROMPT"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return prompt?.isEmpty == false
+    }
+
+    private var horizontalSizeClassLabel: String {
+        switch horizontalSizeClass {
+        case .compact:
+            return "compact"
+        case .regular:
+            return "regular"
+        case nil:
+            return "nil"
+        @unknown default:
+            return "unknown"
+        }
+    }
+
+    private func authStateLabel(_ state: AuthState) -> String {
+        switch state {
+        case .signedOut:
+            return "signedOut"
+        case .signingIn:
+            return "signingIn"
+        case .signedIn:
+            return "signedIn"
+        case .deletingAccount:
+            return "deletingAccount"
+        case .firebaseUnavailable:
+            return "firebaseUnavailable"
+        case .firestoreUnavailable:
+            return "firestoreUnavailable"
+        }
+    }
+    #endif
 }
 
 #if DEBUG

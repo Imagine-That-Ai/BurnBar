@@ -31,6 +31,66 @@ Optional: `export BURNBAR_DB_PATH="/path/to/openburnbar.sqlite"` if the DB is no
 
 Restart Cursor. Enable **openburnbar-local** for the chat that should use it.
 
+## Codex CLI
+
+Codex CLI's "plugin" surface is MCP itself. Configure each server as a
+`[mcp_servers.<name>]` table in `~/.codex/config.toml` (user) or a
+trusted project's `.codex/config.toml`. Three options, from highest to
+lowest fidelity:
+
+**A. Hosted MCP via the stdio shim (recommended).** Forwards JSON-RPC to
+`https://mcp.burnbar.ai/mcp`, decrypts sealed search results locally,
+and pins the protocol version. Reads the bearer from macOS Keychain or
+`OPENBURNBAR_MCP_ACCESS_TOKEN`. Run `openburnbar mcp login <bearer>`
+once first.
+
+```toml
+[mcp_servers.openburnbar]
+command = "openburnbar-mcp-remote"
+args = ["mcp", "serve"]
+startup_timeout_sec = 15
+tool_timeout_sec = 60
+```
+
+**B. Hosted MCP via native streamable HTTP (no subprocess).** Skips the
+shim — Codex talks directly to `https://mcp.burnbar.ai/mcp`. Sealed
+search/body fields arrive as ciphertext (no local decrypt). Only works
+when your Codex build negotiates protocolVersion `2025-11-25`;
+otherwise the server returns `400 unsupported_protocol_version`.
+
+```toml
+[mcp_servers.openburnbar-http]
+url = "https://mcp.burnbar.ai/mcp"
+bearer_token_env_var = "OPENBURNBAR_MCP_ACCESS_TOKEN"
+startup_timeout_sec = 15
+tool_timeout_sec = 60
+```
+
+**C. Local SQLite — no network, no auth.** Read-only access to
+`~/Library/Application Support/OpenBurnBar/openburnbar.sqlite`.
+
+```toml
+[mcp_servers.openburnbar-local]
+command = "/absolute/path/to/OpenBurnBar/tools/openburnbar-mcp/.venv/bin/python"
+args = ["/absolute/path/to/OpenBurnBar/tools/openburnbar-mcp/server.py"]
+```
+
+Quick-add for Option A via CLI:
+
+```bash
+codex mcp add openburnbar -- openburnbar-mcp-remote mcp serve
+```
+
+Or print the full config block straight from the installer:
+
+```bash
+openburnbar mcp install codex >> ~/.codex/config.toml
+```
+
+Confirm with `/mcp` inside the Codex TUI. See
+[`docs/CODEX_AGENT_ONBOARDING.md`](../../docs/CODEX_AGENT_ONBOARDING.md)
+for scope, recovery paths, and security guidance.
+
 ## Hermes Agent
 
 `setup.sh` automatically symlinks the `burnbar-operator` skill into `~/.hermes/skills/software-development/burnbar-operator/SKILL.md`. Add the MCP server to `~/.hermes/config.yaml`:

@@ -20,6 +20,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
 import com.openburnbar.data.stores.UserStore
@@ -31,12 +32,17 @@ import com.openburnbar.ui.components.AuroraNavIcon
 import com.openburnbar.ui.components.BurnBarLogo
 import com.openburnbar.ui.components.FloatingChatMode
 import com.openburnbar.ui.components.FloatingChatPill
+import com.openburnbar.data.square.AgentIdentityRegistry
 import com.openburnbar.data.square.HermesSquareFeatureFlags
+import com.openburnbar.data.missions.MobileMissionConsoleHost
 import com.openburnbar.ui.hermes.AssistantsScreen
 import com.openburnbar.ui.hermes.HermesView
+import com.openburnbar.ui.square.AgentBrandZoneScreen
 import com.openburnbar.ui.square.HermesSquareScreen
+import com.openburnbar.ui.square.HermesSquareSplitLayout
 import androidx.compose.ui.platform.LocalContext
 import com.openburnbar.ui.insights.MissionActivityOverlay
+import com.openburnbar.ui.media.CallHUDView
 import com.openburnbar.ui.pulse.PulseView
 import com.openburnbar.ui.streams.StreamsView
 import com.openburnbar.ui.theme.AuroraSpacing
@@ -347,9 +353,58 @@ private fun BurnBarContent(
                 navDeepLink { uriPattern = "burnbar://assistants" }
             )
         ) {
-            // Hermes Square is the only Assistants surface. Deep links
-            // and widget chips route here directly.
-            HermesSquareScreen()
+            // Hermes Square is the only Assistants surface. Tablet /
+            // foldable widths render the two-column split layout via
+            // `HermesSquareSplitLayout`; phones fall back to the
+            // single-column `HermesSquareScreen` inside that helper.
+            HermesSquareSplitLayout(
+                onOpenBrandZone = { uri ->
+                    val encoded = java.net.URLEncoder.encode(uri, Charsets.UTF_8.name())
+                    navController.navigate("agent/$encoded")
+                }
+            )
+        }
+        composable(
+            "agent/{uri}",
+            arguments = listOf(navArgument("uri") { type = NavType.StringType }),
+            deepLinks = listOf(navDeepLink { uriPattern = "burnbar://agent/{uri}" })
+        ) { entry ->
+            val raw = entry.arguments?.getString("uri").orEmpty()
+            val decoded = runCatching { java.net.URLDecoder.decode(raw, Charsets.UTF_8.name()) }
+                .getOrDefault(raw)
+            val registry = remember { AgentIdentityRegistry.shared() }
+            val identity = registry.identity(decoded)
+            if (identity != null) {
+                AgentBrandZoneScreen(
+                    identity = identity,
+                    registry = registry,
+                    missionHost = MobileMissionConsoleHost.shared(),
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                LaunchedEffect(decoded) { navController.popBackStack() }
+            }
+        }
+        composable(
+            "mercury/call/{connectionId}",
+            arguments = listOf(navArgument("connectionId") { type = NavType.StringType }),
+            deepLinks = listOf(navDeepLink { uriPattern = "burnbar://mercury/call/{connectionId}" })
+        ) { entry ->
+            val connectionId = entry.arguments?.getString("connectionId").orEmpty()
+            // The CallSessionCoordinator is dialed by services/media when the
+            // call accepts; this destination just hosts the HUD. Until the
+            // coordinator surfaces a shared StateFlow we render with a
+            // local state so accept / mute / end flow through the same
+            // bindings as the in-call surface.
+            val hudState = remember(connectionId) { com.openburnbar.ui.media.CallHUDState() }
+            CallHUDView(
+                state = hudState,
+                onMuteMic = { hudState.setMicMuted(!hudState.isMicMuted.value) },
+                onMuteCamera = { hudState.setCameraMuted(!hudState.isCameraMuted.value) },
+                onShareScreen = { hudState.setSharingScreen(!hudState.isSharingScreen.value) },
+                onEnd = { navController.popBackStack() },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
         composable(
             BurnBarTab.YOU.route,

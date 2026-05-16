@@ -10,10 +10,10 @@ state.
 
 ## Gate (must hold for 14 consecutive days)
 
-- [ ] `ops/iroh_transport_daily_rollups/days/*.successRate ≥ 0.995`.
-- [ ] `ops/iroh_transport_daily_rollups/days/*.transportCounts.wss === 0`.
+- [ ] `ops/iroh_transport_daily_rollups/days/*.successRate ≥ 0.995` on iOS, macOS, **and Android** (Android joined the rollup 2026-05-16 via the new `:openburnbar-iroh-relay` library).
+- [ ] `ops/iroh_transport_daily_rollups/days/*.transportCounts.wss === 0` on iOS, macOS, **and Android**.
 - [ ] `ops/iroh_transport_daily_rollups/days/*.directShare ≥ 0.75`.
-- [ ] `ops/media_budget_status/current.projectedMonthEndUSD ≤ 600`.
+- [ ] `ops/media_budget_status/state/current.projectedMonthEndUSD ≤ 600`.
 - [ ] No P0/P1 incidents tagged `relay` in the prior 14 days.
 
 ## Decommission steps

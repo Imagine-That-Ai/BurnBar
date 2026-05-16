@@ -5,14 +5,31 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- Hermes Square Phase D voice command surface. Requested at first
-         use via the in-app voice sheet's hold-to-talk affordance; no
-         background recording. -->
+    <!-- Hermes Square Phase D voice command surface + Mercury Media (1:1
+         video + audio call) microphone capture. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
-    <uses-permission
-        android:name="android.permission.FOREGROUND_SERVICE"
-        tools:node="remove" />
+
+    <!-- Mercury Media Phase 5: camera capture for 1:1 video call. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
+
+    <!-- Mercury Media Phase 5: foreground service while a call session
+         is active. Granular sub-types per Android 14 + 15 enforcement. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+
+    <!-- Mercury Media Phase 5: incoming-call sheet from FCM data push. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Android 14: Picture-in-Picture is opt-in via this feature flag. -->
+    <uses-feature android:name="android.software.picture_in_picture" android:required="false" />
 
     <queries>
         <!-- Hermes Square Phase D — RecognizerIntent.ACTION_RECOGNIZE_SPEECH
@@ -142,6 +159,48 @@
                 <data android:scheme="burnbar" android:host="quickglance" />
             </intent-filter>
         </activity>
+
+        <!-- Mercury Media — incoming-call full-screen sheet. Lock-screen
+             friendly so a Mac → Android call wakes the screen. -->
+        <activity
+            android:name=".services.media.IncomingCallActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:showOnLockScreen="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
+        <!-- Mercury Media — Picture-in-Picture screen-share viewer
+             survives backgrounding so the user can keep glancing at the
+             Mac while replying in another app. -->
+        <activity
+            android:name=".ui.media.ScreenShareViewerActivity"
+            android:exported="false"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
+            android:launchMode="singleTask" />
+
+        <!-- Mercury Media — call session foreground service. Aggregates
+             microphone, camera, and (when sharing) media-projection sub
+             types so a single notification covers the active call. -->
+        <service
+            android:name=".services.media.MediaSessionForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|camera|mediaProjection|phoneCall" />
+
+        <!-- Mercury Media — high-priority FCM data messages from
+             `triggerVoIPCall` Cloud Function. Same envelope shape the
+             iOS PushKit branch consumes. -->
+        <service
+            android:name=".services.media.MercuryFcmService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
     </application>
 </manifest>

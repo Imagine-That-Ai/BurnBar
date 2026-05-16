@@ -496,6 +496,55 @@ final class PiServicePersistenceTests: XCTestCase {
         XCTAssertNil(service.currentThreadID)
     }
 
+    func testPiServiceClearSelectedModelRemovesPersistedPreference() {
+        let defaults = makeDefaults()
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: defaults, history: store)
+        let option = HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+
+        service.selectModel(option)
+        XCTAssertEqual(defaults.string(forKey: "pi.selectedModelID"), "gpt-5.5")
+
+        service.clearSelectedModel()
+
+        XCTAssertNil(service.selectedModelID)
+        XCTAssertNil(defaults.string(forKey: "pi.selectedModelID"))
+    }
+
+    func testPiServiceFailsBeforeSendingWhenExplicitModelIsMissing() {
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: makeDefaults(), history: store)
+        let stale = HermesRuntimeModelOption(
+            providerID: "zai",
+            providerName: "Z.AI",
+            modelID: "glm-5.1",
+            displayName: "GLM 5.1"
+        )
+        let available = HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+
+        service.modelOptions = [stale]
+        service.selectModel(stale)
+        service.modelOptions = [available]
+        service.send(prompt: "Use the selected Pi model")
+
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertTrue(service.lastError?.contains("Selected Pi model 'glm-5.1'") ?? false)
+        XCTAssertTrue(service.messages.last?.isError ?? false)
+        XCTAssertTrue(service.messages.last?.text.contains("Selected Pi model 'glm-5.1'") ?? false)
+    }
+
     func testPiServiceMergeToolCallsAccumulatesArgumentsAcrossDeltas() {
         // OpenAI-compatible streaming sends a single tool call as a sequence
         // of `tool_calls` chunks — name first, then partial argument strings

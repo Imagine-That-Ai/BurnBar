@@ -214,6 +214,25 @@ final class IntelligenceBriefWiringTests: XCTestCase {
         XCTAssertNil(payload["events"])
     }
 
+    func test_cliAgentMissionRequestPayloadIncludesRequestedModelID() throws {
+        let payload = CLIAgentMissionRequestPayloadFactory.build(
+            id: "mission-model",
+            title: "Run Codex",
+            prompt: "Answer using the selected model.",
+            missionKind: "chat",
+            requestedRuntime: "codex",
+            targetProject: nil,
+            depth: "standard",
+            approvalMode: "existing_policy",
+            commandsAllowed: false,
+            fileEditsAllowed: false,
+            requestedModelID: "  gpt-5.5  "
+        )
+
+        XCTAssertEqual(payload["requestedRuntime"] as? String, "codex")
+        XCTAssertEqual(payload["requestedModelID"] as? String, "gpt-5.5")
+    }
+
     func test_cliAgentMissionInitialQueuedEventTargetsDurableSubcollection() throws {
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-05-14T10:00:00Z"))
         let event = CLIAgentMissionRequestPayloadFactory.initialQueuedEvent(now: now)

@@ -33,6 +33,7 @@ class CLIAgentMissionDispatcher(
         fileEditsAllowed: Boolean = false,
         parallelismLimit: Int? = null,
         mergeStrategy: String = "pick_one",
+        requestedModelIDsByRuntime: Map<String, String> = emptyMap(),
     ): FanOutDispatchResult {
         val uid = auth.currentUser?.uid
             ?: throw DispatchException("Sign in before dispatching Mac agent missions.")
@@ -90,6 +91,7 @@ class CLIAgentMissionDispatcher(
                 approvalMode = approvalMode,
                 commandsAllowed = commandsAllowed,
                 fileEditsAllowed = fileEditsAllowed,
+                requestedModelID = requestedModelIDsByRuntime[runtimeToken]?.trim()?.takeIf { it.isNotEmpty() },
             ).toMutableMap().apply {
                 put("groupID", groupID)
                 put("siblingIndex", index)
@@ -124,6 +126,7 @@ class CLIAgentMissionDispatcher(
         approvalMode: String = "existing_policy",
         commandsAllowed: Boolean = false,
         fileEditsAllowed: Boolean = false,
+        requestedModelID: String? = null,
         clientThreadID: String? = null,
         parentSessionID: String? = null,
         resumeAction: String? = null,
@@ -144,6 +147,7 @@ class CLIAgentMissionDispatcher(
             approvalMode = approvalMode,
             commandsAllowed = commandsAllowed,
             fileEditsAllowed = fileEditsAllowed,
+            requestedModelID = requestedModelID,
             clientThreadID = clientThreadID,
             parentSessionID = parentSessionID,
             resumeAction = resumeAction,
@@ -318,6 +322,7 @@ object CLIAgentMissionRequestPayloadFactory {
         approvalMode: String,
         commandsAllowed: Boolean,
         fileEditsAllowed: Boolean,
+        requestedModelID: String? = null,
         clientThreadID: String? = null,
         parentSessionID: String? = null,
         resumeAction: String? = null,
@@ -330,6 +335,7 @@ object CLIAgentMissionRequestPayloadFactory {
             put("prompt", prompt.trim())
             put("missionKind", missionKind)
             put("requestedRuntime", requestedRuntime)
+            requestedModelID?.trim()?.takeIf { it.isNotEmpty() }?.let { put("requestedModelID", it) }
             put("targetProject", targetProject.orEmpty().trim())
             put("depth", depth)
             put("approvalMode", approvalMode)
@@ -377,8 +383,10 @@ data class CLIAgentMissionSnapshot(
     val title: String,
     val status: String,
     val requestedRuntime: String,
+    val requestedModelID: String?,
     val selectedRuntime: String?,
     val selectedRuntimeName: String?,
+    val selectedModelID: String?,
     val liveSummary: String?,
     val resultPreview: String?,
     val errorMessage: String?,
@@ -459,6 +467,12 @@ data class CLIAgentMissionEvent(
     val isError: Boolean,
 )
 
+/** Public alias used by mission/host code outside this file. Mirrors
+ *  the iOS `CLIAgentMissionSnapshot` decoder so the mission console host
+ *  can decode list-listener documents without re-implementing the parser. */
+fun DocumentSnapshot.toMissionSnapshotOrNull(): CLIAgentMissionSnapshot? =
+    toMissionSnapshot(fallbackID = id)
+
 private fun DocumentSnapshot.toMissionSnapshot(
     fallbackID: String,
     eventOverride: List<CLIAgentMissionEvent>? = null,
@@ -475,8 +489,10 @@ private fun DocumentSnapshot.toMissionSnapshot(
         title = title,
         status = status,
         requestedRuntime = getString("requestedRuntime") ?: "auto",
+        requestedModelID = getString("requestedModelID")?.trim()?.takeIf { it.isNotEmpty() },
         selectedRuntime = getString("selectedRuntime"),
         selectedRuntimeName = getString("selectedRuntimeName"),
+        selectedModelID = getString("selectedModelID")?.trim()?.takeIf { it.isNotEmpty() },
         liveSummary = getString("liveSummary"),
         resultPreview = getString("resultPreview"),
         errorMessage = getString("errorMessage"),

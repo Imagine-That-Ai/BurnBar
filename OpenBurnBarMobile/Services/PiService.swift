@@ -183,6 +183,17 @@ enum PiChatMessageOutcome: String, Equatable, Sendable {
     }
 }
 
+enum PiServiceError: LocalizedError {
+    case selectedModelUnavailable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .selectedModelUnavailable(let modelID):
+            return "Selected Pi model '\(modelID)' is not available on this Mac Pi harness. Pick another model or refresh/restart the Mac Pi gateway."
+        }
+    }
+}
+
 // MARK: - Pi Service
 
 @MainActor
@@ -219,6 +230,7 @@ final class PiService {
     private let selectedModelDefaultsKey = "pi.selectedModelID"
     private let favoriteModelsDefaultsKey = "pi.favoriteModelIDs"
     private let savedConnectionsDefaultsKey = "pi.savedConnections"
+    private var selectedModelWasExplicit = false
 
     /// Catalog the service advertises to the upstream Pi runtime. Same
     /// catalog Hermes uses; injectable for tests.
@@ -245,6 +257,7 @@ final class PiService {
         self.history = history
         self.toolCatalog = toolCatalog
         self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        self.selectedModelWasExplicit = self.selectedModelID?.nilIfBlank != nil
         self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
         // Restore previously-added direct URLs.
         if let saved = Self.decodeRecords(defaults.data(forKey: savedConnectionsDefaultsKey)) {
@@ -288,6 +301,9 @@ final class PiService {
     func selectConnection(_ connection: PiConnectionRecord) -> Bool {
         guard connections.contains(where: { $0.id == connection.id }) else { return false }
         selectedConnection = connection
+        selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        selectedModelWasExplicit = selectedModelID?.nilIfBlank != nil
+        modelOptions = []
         defaults.set(connection.id, forKey: selectedConnectionDefaultsKey)
         Task { @MainActor in await refreshRuntime() }
         return true
@@ -333,7 +349,14 @@ final class PiService {
 
     func selectModel(_ option: HermesRuntimeModelOption) {
         selectedModelID = option.modelID
+        selectedModelWasExplicit = true
         defaults.set(option.modelID, forKey: selectedModelDefaultsKey)
+    }
+
+    func clearSelectedModel() {
+        selectedModelID = nil
+        selectedModelWasExplicit = false
+        defaults.removeObject(forKey: selectedModelDefaultsKey)
     }
 
     func isFavoriteModel(_ option: HermesRuntimeModelOption) -> Bool {
@@ -378,7 +401,22 @@ final class PiService {
 
         let baseURL = resolvedBaseURL
         let bearer = resolvedBearerToken
-        let model = selectedModelID
+        let model: String
+        do {
+            model = try activeModelIDForRequest()
+        } catch {
+            lastError = error.localizedDescription
+            messages.append(
+                PiChatMessage(
+                    role: .assistant,
+                    text: "Pi error: \(error.localizedDescription)",
+                    isError: true
+                )
+            )
+            persistCurrentThread()
+            isStreaming = false
+            return
+        }
 
         currentTask?.cancel()
         currentTask = Task { @MainActor [weak self] in
@@ -429,7 +467,7 @@ final class PiService {
         let assistant = PiChatMessage(
             role: .assistant,
             text: "",
-            modelName: selectedModelID,
+            modelName: model,
             isStreaming: true
         )
         messages.append(assistant)
@@ -724,12 +762,32 @@ final class PiService {
             let (data, _) = try await urlSession.data(for: request)
             let decoded = Self.parseModels(data: data)
             modelOptions = decoded
-            if selectedModelID == nil {
-                selectedModelID = decoded.first?.modelID
+            if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID }) {
+                if selectedModelWasExplicit {
+                    runtimeErrorText = "Selected Pi model '\(selectedModelID)' is not advertised by this Mac Pi harness. Pick a listed model or refresh the Mac provider catalog."
+                } else {
+                    self.selectedModelID = favoriteModelOptions.first?.modelID ?? decoded.first?.modelID
+                    selectedModelWasExplicit = false
+                }
+            } else if selectedModelID == nil {
+                selectedModelID = favoriteModelOptions.first?.modelID ?? decoded.first?.modelID
+                selectedModelWasExplicit = false
             }
         } catch {
             runtimeErrorText = "Failed to list Pi models: \(error.localizedDescription)"
         }
+    }
+
+    private func activeModelIDForRequest() throws -> String {
+        if let selectedModelID = selectedModelID?.nilIfBlank {
+            if selectedModelWasExplicit,
+               !modelOptions.isEmpty,
+               !modelOptions.contains(where: { $0.modelID == selectedModelID }) {
+                throw PiServiceError.selectedModelUnavailable(selectedModelID)
+            }
+            return selectedModelID
+        }
+        return selectedConnection.advertisedModel?.nilIfBlank ?? "pi"
     }
 
     private func streamChat(
