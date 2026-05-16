@@ -6,7 +6,7 @@ import OpenBurnBarIrohRelay
 /// iOS-side iroh transport. Conforms to `HermesRelayTransporting` so it
 /// slots into `HermesCompositeRelayTransport` next to the existing
 /// `HermesRealtimeRelayTransport` (WSS) and `FirestoreHermesRelayTransport`
-/// (fallback). Picks up the Mac's NodeId from the signed
+/// (fallback). Picks up the Mac's NodeAddr material from the signed
 /// `iroh_pairing` Firestore record, verifies the Ed25519 signature, then
 /// dials the iroh QUIC stream and serves one frame round-trip per request.
 /// Closure injected by the iOS app coordinator so the chat-receive loop
@@ -43,6 +43,15 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     private let decoder = JSONDecoder()
     private var endpoint: (any IrohRelayTransport)?
     private var identity: IrohEndpointIdentity?
+    /// Mercury Phase 1b — single-shot installer for the persistent media
+    /// control stream. AppDelegate calls
+    /// `installMediaControlStream(into:)` at boot; the actual coordinator
+    /// is constructed and started after the first successful relay
+    /// `send(...)` so we have a verified `(uid, connectionID, relayPublicKey)`
+    /// triple to dial with. Once installed, the transport keeps the
+    /// coordinator alive for the rest of the app's lifetime.
+    private weak var mediaControlReceiver: iOSFileTransferService?
+    private var mediaControlCoordinator: MediaControlStreamCoordinator?
     /// Outstanding bootstrap promise so concurrent callers reuse the same
     /// `transport.start()` invocation rather than racing to spin up two
     /// endpoints and leaking one of them.
@@ -87,6 +96,42 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         return Data(body.utf8)
     }
 
+    /// Mercury Phase 1b — single-method install. AppDelegate calls
+    /// this at boot, immediately after constructing
+    /// `iOSFileTransferService`. The transport defers building the
+    /// `MediaControlStreamCoordinator` until the first successful
+    /// `send(...)` so it has a verified Mac NodeId + relay public key
+    /// to dial with — no premature dial against an unauthenticated
+    /// peer.
+    func installMediaControlStream(into receiver: iOSFileTransferService) {
+        self.mediaControlReceiver = receiver
+    }
+
+    /// Boot-time entry point used by the coordinator dialer + tests.
+    /// Open a fresh bi-stream against the paired Mac, classify it as the
+    /// long-lived media control stream, and return the open stream so
+    /// the coordinator can drive both the inbound read loop and
+    /// outbound sends. Mirrors the auth + verify path of `send(...)`
+    /// but skips the chat encrypt/seal envelope.
+    func openMediaControlStream(
+        uid: String,
+        connectionID: String,
+        relayPublicKey: Data
+    ) async throws -> any IrohRelayStream {
+        let publisher = IrohPairingPublisher(directory: directory)
+        let verifiedTarget = try await publisher.fetchAndVerify(
+            uid: uid,
+            connectionId: connectionID,
+            publicKey: relayPublicKey,
+            now: now()
+        )
+        let transport = try await transport()
+        return try await transport.connect(
+            to: verifiedTarget,
+            timeout: connectTimeout
+        )
+    }
+
     func sendStreaming(
         _ payload: HermesRelayPayload,
         timeout: TimeInterval,
@@ -124,9 +169,9 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
 
         // 1. Fetch + verify the Mac's signed iroh pairing record.
         let publisher = IrohPairingPublisher(directory: directory)
-        let verifiedNodeId: String
+        let verifiedTarget: IrohDialTarget
         do {
-            verifiedNodeId = try await publisher.fetchAndVerify(
+            verifiedTarget = try await publisher.fetchAndVerify(
                 uid: uid,
                 connectionId: payload.connectionID,
                 publicKey: publicKey,
@@ -159,10 +204,24 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         // cascade to WSS without spending the full chat-completion window
         // waiting for NAT traversal.
         let stream = try await transport.connect(
-            to: verifiedNodeId,
+            to: verifiedTarget,
             timeout: min(connectTimeout, timeout)
         )
         defer { Task { await stream.close() } }
+
+        // 2a. Mercury Phase 1b — once we know the pairing-public-key
+        // triple is good (i.e., the dial above succeeded), kick off
+        // the persistent media control stream exactly once. Subsequent
+        // sends short-circuit because the coordinator keeps itself
+        // alive + reconnects on its own.
+        if mediaControlCoordinator == nil, let receiver = mediaControlReceiver {
+            startMediaControlCoordinator(
+                uid: uid,
+                connectionID: payload.connectionID,
+                pairingPublicKey: publicKey,
+                receiver: receiver
+            )
+        }
 
         let requestID = "iroh_\(UUID().uuidString.lowercased())"
         let keyData = try HermesRelayCrypto.generateSymmetricKeyData()
@@ -249,6 +308,30 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             }
         }
         throw HermesServiceError.relayUnavailable("Iroh relay timed out before response.complete.")
+    }
+
+    @MainActor
+    private func startMediaControlCoordinator(
+        uid: String,
+        connectionID: String,
+        pairingPublicKey: Data,
+        receiver: iOSFileTransferService
+    ) {
+        let dialer: MediaControlStreamCoordinator.StreamDialer = { [weak self] uid, connectionID in
+            guard let self else { throw IrohRelayTransportError.shutdown }
+            return try await self.openMediaControlStream(
+                uid: uid,
+                connectionID: connectionID,
+                relayPublicKey: pairingPublicKey
+            )
+        }
+        let coordinator = MediaControlStreamCoordinator(
+            dialer: dialer,
+            receiver: receiver
+        )
+        coordinator.start(uid: uid, connectionID: connectionID)
+        receiver.attachControlStream(coordinator)
+        self.mediaControlCoordinator = coordinator
     }
 
     private func transport() async throws -> any IrohRelayTransport {

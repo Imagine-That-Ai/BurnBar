@@ -7,23 +7,32 @@ import SwiftUI
 struct MercuryRing: View {
     let isActive: Bool
     @State private var pulseTrigger: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
             Circle()
                 .strokeBorder(borderGradient, lineWidth: 1.5)
                 .frame(width: 14, height: 14)
-                .scaleEffect(isActive && pulseTrigger ? 1.18 : 1.0)
-                .opacity(isActive ? (pulseTrigger ? 0.9 : 0.6) : 0.45)
-                .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: pulseTrigger)
+                .scaleEffect(isActive && pulseTrigger && !reduceMotion ? 1.18 : 1.0)
+                .opacity(isActive ? (pulseTrigger && !reduceMotion ? 0.9 : 0.6) : 0.45)
+                .animation(
+                    reduceMotion
+                        ? .none
+                        : .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                    value: pulseTrigger
+                )
         }
+        .accessibilityElement()
         .accessibilityLabel(isActive ? "Mercury session live" : "Mercury idle")
+        .accessibilityValue(isActive ? "Active" : "Idle")
+        .accessibilityHint("Indicates whether a screen share, call, or file transfer is in progress.")
         .help(isActive ? "Mercury session live — Mirror, Call, or Transfer." : "Mercury idle.")
         .onAppear {
-            if isActive { pulseTrigger.toggle() }
+            if isActive && !reduceMotion { pulseTrigger.toggle() }
         }
         .onChange(of: isActive) { _, newValue in
-            if newValue { pulseTrigger.toggle() }
+            if newValue && !reduceMotion { pulseTrigger.toggle() }
         }
     }
 

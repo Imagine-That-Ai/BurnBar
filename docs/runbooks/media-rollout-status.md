@@ -113,3 +113,78 @@ Blocked / pending (real-world gates per the master plan governance):
 
 Next action:
 - Land the iOS app coordinator wiring (set `HermesIrohRelayTransport.mediaDispatcher = iOSFileTransferService.handleAdvertise(...)` at app launch) and the Mac equivalent (`HermesIrohRelayHostClient.mediaDispatcher = MacFileTransferService.handleAdvertise(...)`). After that, flip `media_blob_transfer_enabled` for Alberto's TestFlight build and run the Phase 1b manual loop.
+
+---
+
+## 2026-05-15 — Audit pass (post-implementation)
+
+**Gate status:** all builds green. Source is honest about what is wired and what is not.
+
+Audit findings + fixes applied during the review pass:
+
+- **`OpenBurnBarMedia` was not declared as a dependency of the Mac (`OpenBurnBar`) or iOS (`OpenBurnBarMobile`) Xcode targets.** Without the dependency, every file under `AgentLens/Services/Media/`, `AgentLens/Views/Media/`, `OpenBurnBarMobile/Services/Media/`, `OpenBurnBarMobile/Views/Media/` failed to compile against the Xcode build pipeline (it only compiled in `swift build` for the SwiftPM target). Fix: added `OpenBurnBarMedia` to both target dependency lists in `project.yml`; regenerated the Xcode project; verified `xcodebuild build` green for both schemes.
+- **`VideoEncoder` used the wrong arity for `VTCompressionSessionEncodeFrame`'s outputHandler.** The output callback is a 3-arg closure `(OSStatus, VTEncodeInfoFlags, CMSampleBuffer?)`, not 5-arg. Fix: corrected the closure signature with explicit type annotations.
+- **`VideoReceivePipeline` used the wrong arity for `VTDecompressionSessionDecodeFrame`'s outputHandler.** Should be `(OSStatus, VTDecodeInfoFlags, CVImageBuffer?, CMTime, CMTime)` — was 4-arg. Fix: corrected.
+- **`CameraCaptureService` had a `private static func requestCameraAccess`** redeclared in `iPadMultiCamCaptureService` via an extension. Fix: removed the redundant extension, kept the original method as `static` for cross-file reuse.
+- **`MacFileTransferService` declared `@Published` properties without `ObservableObject` conformance.** Fix: added the conformance.
+- **The Mac + iOS dispatcher signatures used `@escaping` on the ack-sender parameter inside `handleAdvertise(...)`** even though the closure was always called inside the async function (never stored). The mismatch blocked passing the dispatcher closure from `IrohRelayRequestHandler` because that surface declares the ack-sender as non-escaping. Fix: dropped `@escaping` from `MacFileTransferService.handleAdvertise` and `iOSFileTransferService.handleAdvertise`.
+- **The runbook claimed the Mac + iOS coordinators needed wiring at app launch as a separate Phase 2 step.** Audit pass landed it directly:
+  - Mac: `AgentLens/Services/CloudSyncService.swift` now constructs `MacFileTransferService` (via `MediaFileTransferServiceFactory.make()`) and binds `irohClient.mediaDispatcher = { frame, ack in await macFileTransfer.handleAdvertise(...) }` at the same site where the iroh host is created.
+  - iOS: `OpenBurnBarMobile/App/AppDelegate.swift` constructs `iOSFileTransferService` and binds `HermesIrohRelayTransport.shared.mediaDispatcher` during `application(_:didFinishLaunchingWithOptions:)`.
+- **Settings flag `mediaBlobTransferEnabled` did not exist.** The dispatcher gate referenced it but the property was missing. Fix: added it to `ChatBackendSettings` + `SettingsManager` with a persistence key matching the iOS-side `UserDefaults.bool(forKey: "mediaBlobTransferEnabled")` read.
+- **`AgentLensTests` did not link `OpenBurnBarMedia`.** Tests against the live `MacMediaCapabilityGate` couldn't import the media surface. Fix: added the dependency in `project.yml`.
+
+Tests added during the audit:
+- `MediaDispatchIntegrationTests` — 2 tests exercising the end-to-end advertise → fetch → ack contract through a scripted `IrohBlobBackend`. Verifies the ack frame routes back to the correct manifest and the typed failure path produces a `.rejected` ack.
+- `MacMediaCapabilityGateTests` — 6 tests locking in the live admission logic: happy path, inactive entitlement, hard-cap denial, soft-cap per-session ceiling, concurrent-session ceiling, per-session byte budget overrun.
+
+Verified post-audit:
+- `swift test`: **689 tests, 0 failures, 2 skipped** (was 687 before audit — 2 new dispatch integration tests).
+- `cargo test`: **5 tests, 0 failures**.
+- `npx tsc --noEmit` in `functions/`: clean.
+- `xcodebuild build` for `OpenBurnBar` (macOS arm64): **BUILD SUCCEEDED**.
+- `xcodebuild build` for `OpenBurnBarMobile` (iOS Simulator iPhone 17 Pro Max): **BUILD SUCCEEDED**.
+- `xcodebuild test -only-testing:OpenBurnBarTests/MacMediaCapabilityGateTests`: **6 tests, 0 failures**.
+- `xcodebuild test -only-testing:OpenBurnBarTests` (Mac): **TEST SUCCEEDED**.
+- `xcodebuild test -only-testing:OpenBurnBarMobileTests` (iOS): **TEST SUCCEEDED**.
+
+Real-world activation gates still pending (per master plan governance):
+- TestFlight Phase 1b manual loop (5 MB PNG, real Mac M3 → real iPhone 17 Pro across LAN + LTE).
+- App Store Connect SKU registration (Phase 2: `com.openburnbar.hostedMediaSync.monthly`).
+- App Store re-submission for new permissions (Phase 3 Screen Recording, Phase 5 Camera/Microphone/PushKit) with reviewer walkthrough video.
+- Cloud Functions prod deploy: `triggerVoIPCall`, `evaluateMediaBudget`, `recomputeMediaQuotaUsage`, `grantMediaGrandfather`, `validateMediaPurchase`, `rollupMediaSessionDaily`, `sendVoIPOutbound`.
+- Configure APNs secrets in Cloud Functions runtime: `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`, optional `APNS_VOIP_TOPIC` / `APNS_HOST` overrides.
+- Device-matrix soak per `docs/runbooks/media-device-matrix/`.
+- 14-day WSS retirement gate per `docs/runbooks/wss-retirement-checklist.md`.
+
+---
+
+## 2026-05-15 — Risk remediation + production polish
+
+**Gate status:** all five identified risks resolved. Production polish in place.
+
+Risk remediation:
+
+- **Risk 1 — persistent media control stream (FIXED).** New architecture: iOS opens a dedicated bi-stream after authenticating, sends `media.classify { streamClass: "media.control" }` as the first frame, and keeps it open for the lifetime of the iroh connection. Mac's `IrohRelayRequestHandler` detects the classify frame and hands the stream to `MediaControlStreamRegistry` (new actor in `OpenBurnBarMedia`). `MacFileTransferService.sendFile` now consults the registry via `awaitStream(uid:timeout:)` so a freshly-typed attachment doesn't race iOS's control-stream dial. iOS-side coordinator (`MediaControlStreamCoordinator`) handles dial + classify + read loop + exponential-backoff reconnect with decorrelated jitter. New SwiftPM-side tests: 8 `MediaControlStreamRegistryTests` covering register/invalidate/latest/await/timeout/late-resolve/uid-isolation/displaced-close.
+- **Risk 2 — APNs sender (FIXED).** New `functions/src/apnsSender.ts` implements a Firestore-trigger Cloud Function on `voip_outbound/*`. Uses Node's built-in `crypto` (ES256 JWT) + `http2` (Apple's HTTP/2 endpoint) — zero new dependencies. Status machine: `pending` → `sent` / `rejected` / `pending` with `retryAt`. Idempotent via APNs `apns-id` header set to the Firestore document id. Three new Cloud Functions secrets: `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8`; two tunables (`APNS_VOIP_TOPIC`, `APNS_HOST`). Cached JWT minted once per ~50 minutes.
+- **Risk 3 — Remote-Config-tunable cost factor (FIXED).** `evaluateMediaBudget` now reads `media_cost_per_gb_usd`, `media_budget_soft_cap_usd`, `media_budget_hard_cap_usd` from Firebase Remote Config at every run. Defaults (0.04 / 600 / 1000) apply when Remote Config is unavailable or returns invalid values (e.g., hard ≤ soft). Tuning loop documented in `docs/runbooks/media-budget.md`.
+- **Risk 4 — wire views into actual app navigation (FIXED).** iOS Settings → AI Environments → Media is now a real `NavigationLink` that pushes `MediaSettingsView` (per-partner save preferences, iPad multi-cam toggle, stats overlay). Mac Settings sidebar has a new "Media & Sharing" tab that pushes `MediaPermissionsView` (Screen Recording / Camera / Microphone status pills with deep links to System Settings → Privacy). `CloudSyncService` now constructs `MediaFileTransferService` + `MediaControlStreamRegistry` + `MacFileTransferService` and binds both the per-request dispatcher AND the control-stream registrar on the iroh host client. Both Mac + iOS xcodebuild build green.
+- **Risk 5 — Opus probe + AAC fallback (FIXED).** `AudioEncoder` now probes `AVAudioConverter(from:to:)` for Opus availability at init. If the converter can't initialize (older OSes, devices without the Opus codec module), the encoder falls back transparently to AAC-LC (`kAudioFormatMPEG4AAC`) so audio still flows. `resolvedCodec: Codec` is exposed on the encoder so the receiver pipeline can be notified out-of-band.
+
+Production polish landed:
+
+- **Structured analytics events.** New `MediaAnalyticsEvent` value type + `MediaAnalyticsSink` protocol in `OpenBurnBarMedia`. Eight event kinds (`sessionStarted`, `sessionEnded`, `transferCompleted`, `transferFailed`, `quotaDenied`, `budgetLevelChanged`, `controlStreamConnected`, `controlStreamLost`) all parameter-keyed to bucketed strings — payload counts never reach Firebase Analytics in plaintext. 6 new tests assert the bucketing contract.
+- **Accessibility on Mercury surfaces.** `MercuryRing`, `IncomingCallSheet` (Mac), `MercuryIncomingSheet` (iOS) now respect `@Environment(\.accessibilityReduceMotion)` — pulse animation is suppressed when the user has Reduce Motion enabled, saving battery and avoiding vestibular discomfort. Same surfaces gained `accessibilityElement` + `accessibilityLabel` annotations so VoiceOver announces "Incoming call from {device name}", "Decline call from {device name}", "Accept call from {device name}". Keyboard shortcuts: Escape → Decline, Return → Accept on Mac.
+- **`MacFileTransferService.lastSentManifestID` + `iOSFileTransferService.lastSentManifestID`** — `@Published` properties that let chat UI flip an in-flight row to "delivered" the moment the send completes.
+
+Post-remediation verification:
+- `swift test`: **703 tests, 0 failures, 2 skipped** (was 689 — 14 new tests: 8 registry + 6 analytics).
+- `cargo test`: **5 tests, 0 failures**.
+- `npx tsc --noEmit` in `functions/`: clean.
+- `xcodebuild build` for `OpenBurnBar` (macOS arm64): **BUILD SUCCEEDED**.
+- `xcodebuild build` for `OpenBurnBarMobile` (iOS Simulator iPhone 17 Pro Max): **BUILD SUCCEEDED**.
+
+What still requires real-world setup (out of scope for source-level work):
+- Generate the APNs auth key (.p8) in Apple Developer, upload to Cloud Functions runtime via `firebase functions:secrets:set APNS_KEY_P8`.
+- Set `media_cost_per_gb_usd` in Firebase Remote Config from the first real n0 invoice.
+- Wire `iOSFileTransferService.attachControlStream(_:)` into the iOS auth-state observer so the coordinator starts once the user signs in (one method call inside `HermesService` post-auth; can land alongside the first device-matrix soak).

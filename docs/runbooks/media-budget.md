@@ -9,6 +9,23 @@ Operator runbook for the n0 hosted-relay budget guardrail. Plan of record: `plan
 - **n0 dashboard alerts**: 75% / 100% / 150% of $600.
 - **Baseline iroh tier**: $199/mo (`docs/runbooks/iroh-rollout-status.md`).
 
+## Tunable parameters (Remote Config)
+
+`evaluateMediaBudget` reads three Remote Config parameters every run so ops can recalibrate against an actual n0 invoice without a code deploy. All three fall back to the defaults below if Remote Config is unavailable or the value is non-positive / non-numeric — under-billing is preferable to skipping the gate.
+
+| Remote Config parameter | Default | Purpose |
+|---|---|---|
+| `media_cost_per_gb_usd` | `0.04` | USD billed per GB of relayed media. Tune from n0 monthly invoice ÷ total relayed bytes (see `ops/media_session_daily_rollups`). |
+| `media_budget_soft_cap_usd` | `600` | Projected month-end at which envelope tightens. Decision 4 of the master plan. |
+| `media_budget_hard_cap_usd` | `1000` | Projected month-end at which the kill-switch flips. Must be strictly greater than the soft cap — if not, both fall back to defaults. |
+
+### Tuning loop
+
+1. After each n0 invoice lands, compute `actualUSD ÷ totalRelayedGB` from the invoice + `ops/media_session_daily_rollups` aggregation.
+2. Update `media_cost_per_gb_usd` via `firebase remoteconfig:get` → edit → `firebase remoteconfig:set`.
+3. Next `evaluateMediaBudget` run (hourly) picks up the new value automatically.
+4. Verify the new `projectedMonthEndUSD` in `ops/media_budget_status/current` matches a hand calculation.
+
 ## Architecture
 
 `evaluateMediaBudget` Cloud Function runs hourly (`functions/src/mediaBudget.ts`):

@@ -98,16 +98,15 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
         ScrollView {
             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xl) {
                 heroStrip
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 composerColumn
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, UnifiedDesignSystem.Spacing.lg)
                 situationColumn
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, UnifiedDesignSystem.Spacing.lg)
             }
-            .padding(.horizontal, UnifiedDesignSystem.Spacing.lg)
             .padding(.bottom, UnifiedDesignSystem.Spacing.xxl)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollIndicators(.hidden)
     }
 
     // MARK: Pieces
@@ -158,10 +157,12 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
                     MissionApprovalLever(mode: $approvalMode)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.md) {
                     MissionDepthDial(depth: $depth)
                     MissionApprovalLever(mode: $approvalMode)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             MissionPermissionsRow(
@@ -187,6 +188,7 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
                 action: { dispatch() }
             )
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var situationColumn: some View {

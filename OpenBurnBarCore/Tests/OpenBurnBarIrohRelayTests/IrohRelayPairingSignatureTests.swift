@@ -40,6 +40,34 @@ final class IrohRelayPairingSignatureTests: XCTestCase {
         }
     }
 
+    func testTamperedRelayAddressRejected() throws {
+        let keypair = IrohPairingKeypair()
+        let now = Date(timeIntervalSince1970: 1_714_200_000)
+        var record = try IrohPairingSignature.sign(
+            uid: "u-1",
+            connectionId: "relay-mac",
+            nodeId: "abc123",
+            relayURL: "https://relay.good.example./",
+            directAddresses: ["127.0.0.1:1111"],
+            publishedAtMillis: Int64(now.timeIntervalSince1970 * 1000),
+            with: keypair.signingKey
+        )
+        record = IrohPairingRecord(
+            uid: record.uid,
+            connectionId: record.connectionId,
+            nodeId: record.nodeId,
+            relayURL: "https://relay.bad.example./",
+            directAddresses: record.directAddresses,
+            publishedAtMillis: record.publishedAtMillis,
+            protocolVersion: record.protocolVersion,
+            signature: record.signature
+        )
+
+        XCTAssertThrowsError(try IrohPairingSignature.verify(record, publicKey: keypair.publicKeyRaw, now: now)) { error in
+            XCTAssertEqual(error as? IrohPairingError, .invalidSignature)
+        }
+    }
+
     func testStaleRecordRejected() throws {
         let keypair = IrohPairingKeypair()
         let signedAt = Date(timeIntervalSince1970: 1_714_000_000)

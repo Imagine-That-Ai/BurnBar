@@ -50,7 +50,10 @@ public struct MissionRuntimeConstellation: View {
                 .padding(.trailing, UnifiedDesignSystem.Spacing.xl)
                 .fixedSize(horizontal: true, vertical: false)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .scrollClipDisabled(false)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var sectionHeader: some View {
@@ -67,6 +70,8 @@ public struct MissionRuntimeConstellation: View {
                 Text("Planner will route based on \(selectedKind.displayName.uppercased())")
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
         }
     }

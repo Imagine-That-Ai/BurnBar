@@ -66,6 +66,8 @@ public struct IrohPairingPublisher: Sendable {
         uid: String,
         connectionId: String,
         nodeId: String,
+        relayURL: String? = nil,
+        directAddresses: [String] = [],
         publishedAt: Date = Date(),
         with keypair: IrohPairingKeypair
     ) async throws -> IrohPairingRecord {
@@ -73,6 +75,8 @@ public struct IrohPairingPublisher: Sendable {
             uid: uid,
             connectionId: connectionId,
             nodeId: nodeId,
+            relayURL: relayURL,
+            directAddresses: directAddresses,
             publishedAtMillis: Int64(publishedAt.timeIntervalSince1970 * 1000),
             with: keypair.signingKey
         )
@@ -80,7 +84,7 @@ public struct IrohPairingPublisher: Sendable {
         return record
     }
 
-    /// iOS-side fetch + verify. Returns the verified NodeId, or throws.
+    /// iOS-side fetch + verify. Returns the verified dial target, or throws.
     /// Missing records surface as `IrohPairingDirectoryError.recordNotFound`
     /// so callers can distinguish "Mac never published" from "Mac published
     /// but the signature didn't verify" — both surface to the user with
@@ -90,12 +94,12 @@ public struct IrohPairingPublisher: Sendable {
         connectionId: String,
         publicKey: Data,
         now: Date = Date()
-    ) async throws -> String {
+    ) async throws -> IrohDialTarget {
         guard let record = try await directory.fetch(uid: uid, connectionId: connectionId) else {
             throw IrohPairingDirectoryError.recordNotFound
         }
         try IrohPairingSignature.verify(record, publicKey: publicKey, now: now)
-        return record.nodeId
+        return record.dialTarget
     }
 }
 

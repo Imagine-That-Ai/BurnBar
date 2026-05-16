@@ -1821,7 +1821,7 @@ private struct ControllerProjectEditorSheet: View {
 /// `.sheet(item:)`. Each invocation gets a fresh `id` so re-tapping the
 /// same chip presents a new sheet (intentional — the sheet's own controller
 /// re-runs Hermes on every present).
-private struct CitationWrapper: Identifiable {
+struct CitationWrapper: Identifiable {
     let id: UUID
     let citations: [ProjectMemoryCitation]
 
@@ -2181,6 +2181,8 @@ private struct NumberedSectionRow: View {
     let citations: [ProjectMemoryCitation]
     let onCitationTap: (ProjectMemoryCitation) -> Void
     let onCombinedCitationTap: (() -> Void)?
+    var pivotQueries: [WikiQuery] = []
+    var onPivotTap: ((WikiQuery) -> Void)? = nil
 
     private var trimmedBody: String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2199,45 +2201,51 @@ private struct NumberedSectionRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
-            Rectangle()
-                .fill(accent)
-                .frame(width: 3)
-                .frame(maxHeight: .infinity)
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
-                    Text(String(format: "%02d", index))
-                        .font(.system(.title3, design: .monospaced).weight(.semibold))
-                        .foregroundStyle(accent)
-                    Text(title)
-                        .font(DesignSystem.Typography.headline)
-                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    Spacer(minLength: 0)
-                    Text("\(index) / \(total)")
-                        .font(DesignSystem.Typography.monoTiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                }
-                if isSentinelBody {
-                    EmptyEvidenceCallout(message: trimmedBody)
-                } else {
-                    Text(trimmedBody)
-                        .font(DesignSystem.Typography.body)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if !citations.isEmpty {
-                    citationStrip
-                }
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
+                Text(String(format: "%02d", index))
+                    .font(.system(.title3, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(accent)
+                Text(title)
+                    .font(DesignSystem.Typography.headline)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Spacer(minLength: 0)
+                Text("\(index) / \(total)")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
             }
-            .padding(.vertical, DesignSystem.Spacing.sm)
+            if isSentinelBody {
+                EmptyEvidenceCallout(message: trimmedBody)
+            } else {
+                Text(trimmedBody)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !pivotQueries.isEmpty, let onPivotTap {
+                WikiPivotPillRow(queries: pivotQueries, onTap: onPivotTap)
+                    .padding(.top, 2)
+            }
+            if !citations.isEmpty {
+                citationStrip
+            }
         }
-        .padding(.horizontal, DesignSystem.Spacing.md)
-        .padding(.vertical, DesignSystem.Spacing.sm)
+        .padding(.leading, DesignSystem.Spacing.md + 3 + DesignSystem.Spacing.sm)
+        .padding(.trailing, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .fill(DesignSystem.Colors.surface.opacity(0.55))
         )
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(accent)
+                .frame(width: 3)
+                .padding(.leading, DesignSystem.Spacing.md)
+                .padding(.vertical, 1)
+        }
         .overlay(
             RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                 .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
@@ -2517,11 +2525,14 @@ private struct CascadeInModifier: ViewModifier {
     let visible: Int
     let reduceMotion: Bool
 
+    // Cascade-in must never hide content — content rendering is always
+    // synchronous; the modifier is now a no-op so a stalled cascade
+    // Task (e.g. when the MainActor is busy assembling the Hermes
+    // system prompt) can't trap the sheet in an invisible state. Keep
+    // the parameters so call sites compile, but let the view through.
     func body(content: Content) -> some View {
-        let shown = reduceMotion || visible < 0 || index < visible
-        content
-            .opacity(shown ? 1 : 0)
-            .offset(y: shown ? 0 : 8)
+        _ = (index, visible, reduceMotion)
+        return content
     }
 }
 
@@ -2573,6 +2584,331 @@ private struct HFlowLayout: Layout {
     }
 }
 
+// MARK: - Wiki Primitives
+// Editorial-Observatory + Wikipedia hybrid: breadcrumbs, anchor TOCs, pivot
+// pills with curated Hermes queries, see-also rails. Used by every Project
+// Memory detail sheet so the sheets form a clickable, navigable spiderweb
+// instead of dead-end cards.
+
+struct WikiQuery: Identifiable, Equatable {
+    let id: UUID
+    let label: String
+    let prompt: String
+
+    init(label: String, prompt: String) {
+        self.id = UUID()
+        self.label = label
+        self.prompt = prompt
+    }
+
+    static func == (lhs: WikiQuery, rhs: WikiQuery) -> Bool { lhs.id == rhs.id }
+}
+
+extension WikiQuery {
+    static func curated(forSectionTitle title: String, projectName: String) -> [WikiQuery] {
+        let lower = title.lowercased()
+        if lower.contains("executive") {
+            return [
+                .init(label: "Why now?", prompt: "Why does this executive brief describe \(projectName) the way it does — what changed this week vs last?"),
+                .init(label: "What's at stake?", prompt: "What is the single highest-leverage decision facing \(projectName) right now? Be specific and name files or sessions."),
+                .init(label: "Show evidence", prompt: "Surface the three strongest pieces of evidence behind this executive brief for \(projectName) with verbatim quotes.")
+            ]
+        }
+        if lower.contains("recent") && lower.contains("agent") {
+            return [
+                .init(label: "Open latest session", prompt: "Open the most recent agent session in \(projectName) and summarize what the agent did, what it spent, and what's still open."),
+                .init(label: "Who spent the most?", prompt: "Which model or provider drove the highest spend in \(projectName) over the last week, and what was it doing?"),
+                .init(label: "What blocked?", prompt: "What errors, retries, or blocked tool calls hit recent agent runs in \(projectName)?")
+            ]
+        }
+        if lower.contains("decision") {
+            return [
+                .init(label: "Show the receipt", prompt: "For every decision listed for \(projectName) here, cite the verbatim conversation excerpt that locked it in."),
+                .init(label: "What dissented?", prompt: "Were there rejected alternatives behind these \(projectName) decisions? Surface them with quotes."),
+                .init(label: "What's next?", prompt: "Given these decisions in \(projectName), what is the natural next call the operator should make?")
+            ]
+        }
+        if lower.contains("architecture") || lower.contains("map") {
+            return [
+                .init(label: "Where are the seams?", prompt: "Where are the architecture seams and coupling points in \(projectName)? Name files."),
+                .init(label: "Recent changes", prompt: "What architectural changes have happened recently in \(projectName) based on the indexed sessions?"),
+                .init(label: "What's at risk?", prompt: "Which parts of the \(projectName) architecture look risky right now and why?")
+            ]
+        }
+        if lower.contains("command") || lower.contains("runbook") {
+            return [
+                .init(label: "Walk me through", prompt: "Walk me through running the most important command in \(projectName) end-to-end, with the prerequisites."),
+                .init(label: "What can break?", prompt: "What are the failure modes for the listed commands in \(projectName)?"),
+                .init(label: "Add to runbook", prompt: "Suggest one command we should add to the \(projectName) runbook based on recent agent work.")
+            ]
+        }
+        if lower.contains("risk") || lower.contains("question") || lower.contains("open") {
+            return [
+                .init(label: "Triage all", prompt: "Triage the open risks and questions for \(projectName) by severity and what they block."),
+                .init(label: "Who can answer?", prompt: "For each open question in \(projectName), name the file, session, or person likely to have the answer."),
+                .init(label: "What blocks progress?", prompt: "Of the open items in \(projectName), which one is currently blocking the next forward move?")
+            ]
+        }
+        return [
+            .init(label: "Why?", prompt: "Explain why this section matters for \(projectName) right now and what it implies."),
+            .init(label: "Show evidence", prompt: "Surface the strongest evidence behind the claims in this section for \(projectName) with verbatim quotes."),
+            .init(label: "What's next?", prompt: "Given this section about \(projectName), what concrete next move makes sense in the next 30 minutes?")
+        ]
+    }
+
+    static func curatedForVisual(_ visual: ProjectMemoryVisual, projectName: String) -> [WikiQuery] {
+        [
+            .init(label: "Why this shape?", prompt: "Why does the \(visual.title.lowercased()) for \(projectName) look the way it does? Name 2–3 drivers."),
+            .init(label: "What's the outlier?", prompt: "Which point on the \(visual.title) for \(projectName) is the outlier, and what made it happen?"),
+            .init(label: "What changed?", prompt: "What changed in \(projectName) recently that would shift this \(visual.title.lowercased()) next week?")
+        ]
+    }
+
+    static func curatedForCitations(_ citations: [ProjectMemoryCitation]) -> [WikiQuery] {
+        let firstTitle = citations.first?.title.prefix(80) ?? "this evidence"
+        return [
+            .init(label: "Connect the dots", prompt: "Across these \(citations.count) citation\(citations.count == 1 ? "" : "s"), connect them and tell me the single story they tell. Start with: \(firstTitle)"),
+            .init(label: "What did I miss?", prompt: "Read these citations more aggressively than Hermes already did and surface a non-obvious risk, contradiction, or opportunity."),
+            .init(label: "Open in chat", prompt: "Let's keep pulling on this thread. Citations: \(citations.prefix(3).map(\.title).joined(separator: ", ")). Ask me the right next question.")
+        ]
+    }
+}
+
+struct WikiBreadcrumbItem: Identifiable {
+    let id: UUID = UUID()
+    let label: String
+    let action: (() -> Void)?
+}
+
+struct WikiBreadcrumb: View {
+    let crumbs: [WikiBreadcrumbItem]
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(Array(crumbs.enumerated()), id: \.element.id) { idx, crumb in
+                if idx > 0 {
+                    Text("›")
+                        .font(DesignSystem.Typography.monoSmall)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+                if let action = crumb.action, idx < crumbs.count - 1 {
+                    Button(action: action) {
+                        Text(crumb.label)
+                            .font(DesignSystem.Typography.monoSmall)
+                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                            .underline()
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text(crumb.label)
+                        .font(DesignSystem.Typography.monoSmall)
+                        .foregroundStyle(idx == crumbs.count - 1
+                                         ? DesignSystem.Colors.textPrimary
+                                         : DesignSystem.Colors.textSecondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(crumbs.map(\.label).joined(separator: ", "))
+    }
+}
+
+struct WikiPivotPillRow: View {
+    let queries: [WikiQuery]
+    let onTap: (WikiQuery) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                Text("PIVOT")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .tracking(1.4)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            ForEach(queries) { q in
+                Button {
+                    onTap(q)
+                } label: {
+                    Text(q.label)
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                        .padding(.horizontal, DesignSystem.Spacing.sm)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(DesignSystem.Colors.hermesAureate.opacity(0.08))
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(DesignSystem.Colors.hermesAureate.opacity(0.45), lineWidth: 0.5)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Pivot: \(q.label)")
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+struct WikiTOCItem: Identifiable {
+    let id: String
+    let ordinal: Int
+    let title: String
+    let citationCount: Int
+    let body: String
+}
+
+struct WikiTableOfContents: View {
+    let items: [WikiTOCItem]
+    let onJump: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "list.number")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                Text("CONTENTS")
+                    .font(DesignSystem.Typography.caption)
+                    .tracking(2.0)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+                Text("\(items.count) section\(items.count == 1 ? "" : "s")")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            VStack(spacing: 0) {
+                ForEach(items) { item in
+                    Button {
+                        onJump(item.id)
+                    } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.md) {
+                            Text(String(format: "%02d", item.ordinal))
+                                .font(.system(.body, design: .monospaced).weight(.semibold))
+                                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                                .frame(width: 28, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.title)
+                                    .font(DesignSystem.Typography.body)
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    .lineLimit(1)
+                                if !item.body.isEmpty {
+                                    Text(item.body)
+                                        .font(DesignSystem.Typography.monoTiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .lineLimit(1)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                            if item.citationCount > 0 {
+                                Text("\(item.citationCount) cite\(item.citationCount == 1 ? "" : "s")")
+                                    .font(DesignSystem.Typography.monoTiny)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                            }
+                            Image(systemName: "arrow.down.right")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.hermesAureate.opacity(0.7))
+                        }
+                        .padding(.vertical, DesignSystem.Spacing.sm)
+                        .padding(.horizontal, DesignSystem.Spacing.md)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Jump to section \(item.ordinal), \(item.title)")
+                    if item.id != items.last?.id {
+                        Rectangle()
+                            .fill(DesignSystem.Colors.borderSubtle)
+                            .frame(height: 0.5)
+                            .padding(.horizontal, DesignSystem.Spacing.md)
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(DesignSystem.Colors.surface.opacity(0.55))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .stroke(DesignSystem.Colors.border.opacity(0.3), lineWidth: 0.75)
+            )
+        }
+    }
+}
+
+struct WikiSeeAlsoItem: Identifiable {
+    let id: UUID = UUID()
+    let label: String
+    let detail: String?
+    let symbol: String
+    let action: () -> Void
+}
+
+struct WikiSeeAlsoRail: View {
+    let title: String
+    let items: [WikiSeeAlsoItem]
+    var symbol: String = "link"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                Text(title.uppercased())
+                    .font(DesignSystem.Typography.caption)
+                    .tracking(2.0)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+            }
+            HFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
+                ForEach(items) { item in
+                    Button(action: item.action) {
+                        HStack(spacing: 6) {
+                            Image(systemName: item.symbol)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(item.label)
+                                    .font(DesignSystem.Typography.monoSmall)
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                    .lineLimit(1)
+                                if let detail = item.detail {
+                                    Text(detail)
+                                        .font(DesignSystem.Typography.monoTiny)
+                                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                                        .lineLimit(1)
+                                }
+                            }
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.hermesAureate.opacity(0.7))
+                        }
+                        .padding(.horizontal, DesignSystem.Spacing.md)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(DesignSystem.Colors.surface.opacity(0.45))
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(DesignSystem.Colors.hermesAureate.opacity(0.35), lineWidth: 0.6)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(title), \(item.label)")
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Project Memory Hero Detail Sheet (Editorial Observatory)
 
 private struct ProjectMemoryHeroDetailSheet: View {
@@ -2598,6 +2934,13 @@ private struct ProjectMemoryHeroDetailSheet: View {
             chrome
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    WikiBreadcrumb(crumbs: [
+                        WikiBreadcrumbItem(label: "Projects", action: { dismiss() }),
+                        WikiBreadcrumbItem(label: snapshot.projectDisplayName, action: { dismiss() }),
+                        WikiBreadcrumbItem(label: "Project memory", action: nil)
+                    ])
+                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+
                     EditorialHero(
                         eyebrow: "PROJECT MEMORY · \(snapshot.freshness.label)",
                         subtitle: subtitle,
@@ -2605,7 +2948,7 @@ private struct ProjectMemoryHeroDetailSheet: View {
                         metaSegments: metaSegments,
                         leadAccent: DesignSystem.Colors.hermesAureate
                     )
-                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
 
                     HermesReadingCard(
                         title: "Hermes Reading",
@@ -2613,30 +2956,35 @@ private struct ProjectMemoryHeroDetailSheet: View {
                         controller: insight,
                         onRetry: { startInsight() }
                     )
-                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
 
                     if !snapshot.pages.isEmpty {
                         pagesSection
-                            .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+                            .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
                     }
 
                     if !snapshot.visuals.isEmpty {
                         visualsSection
-                            .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+                            .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
                     }
 
                     if !snapshot.keyFiles.isEmpty {
                         keyFilesSection
-                            .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+                            .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
                     }
 
                     if !snapshot.keyCommands.isEmpty {
                         keyCommandsSection
-                            .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
+                            .cascadeIn(index: 6, visible: visibleSections, reduceMotion: reduceMotion)
+                    }
+
+                    if !heroSeeAlsoItems.isEmpty {
+                        WikiSeeAlsoRail(title: "Spider out", items: heroSeeAlsoItems, symbol: "point.3.connected.trianglepath.dotted")
+                            .cascadeIn(index: 7, visible: visibleSections, reduceMotion: reduceMotion)
                     }
 
                     auditFooter
-                        .cascadeIn(index: 6, visible: visibleSections, reduceMotion: reduceMotion)
+                        .cascadeIn(index: 8, visible: visibleSections, reduceMotion: reduceMotion)
                 }
                 .padding(DesignSystem.Spacing.xl)
             }
@@ -2718,6 +3066,51 @@ private struct ProjectMemoryHeroDetailSheet: View {
         }
         parts.append("\(snapshot.keyFiles.count) files · \(snapshot.keyCommands.count) cmds")
         return parts
+    }
+
+    private var heroSeeAlsoItems: [WikiSeeAlsoItem] {
+        var items: [WikiSeeAlsoItem] = []
+        for page in snapshot.pages.prefix(3) {
+            items.append(
+                WikiSeeAlsoItem(
+                    label: page.title,
+                    detail: "\(page.sections.count) section\(page.sections.count == 1 ? "" : "s")",
+                    symbol: "book.pages",
+                    action: { selectedPage = page }
+                )
+            )
+        }
+        for visual in snapshot.visuals.prefix(3) {
+            let detail: String = {
+                switch visual.kind {
+                case .cover:        return "cover"
+                case .providerMix:  return "provider mix"
+                case .timeline:     return "timeline"
+                case .hotspots:     return "hotspots"
+                }
+            }()
+            items.append(
+                WikiSeeAlsoItem(
+                    label: visual.title,
+                    detail: detail,
+                    symbol: "chart.bar",
+                    action: { selectedVisual = visual }
+                )
+            )
+        }
+        let allCitations = snapshot.pages.flatMap { $0.sections.flatMap(\.citations) }
+        if let firstCitation = allCitations.first {
+            items.append(
+                WikiSeeAlsoItem(
+                    label: "Open \(allCitations.count) citation\(allCitations.count == 1 ? "" : "s") together",
+                    detail: "synthesize evidence",
+                    symbol: "quote.bubble",
+                    action: { citationWrapper = CitationWrapper(citations: Array(allCitations.prefix(8))) }
+                )
+            )
+            _ = firstCitation
+        }
+        return items
     }
 
     private func parseUsageSummary() -> (cost: String, tokens: String)? {
@@ -2896,14 +3289,14 @@ private struct ProjectMemoryHeroDetailSheet: View {
 
     private func runEntranceMotion() {
         if reduceMotion {
-            visibleSections = 7
+            visibleSections = 9
             return
         }
         guard visibleSections < 0 else { return }
         visibleSections = 0
         cascadeTask?.cancel()
         cascadeTask = Task { @MainActor in
-            for i in 0..<7 {
+            for i in 0..<9 {
                 if i > 0 {
                     try? await Task.sleep(nanoseconds: 40_000_000)
                     if Task.isCancelled { return }
@@ -2930,72 +3323,74 @@ private struct HeroPageRow: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
-                Rectangle()
-                    .fill(DesignSystem.Colors.mercuryGradient)
-                    .frame(width: 3)
-                    .frame(maxHeight: .infinity)
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                    HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
-                        Text(String(format: "%02d", ordinal))
-                            .font(.system(.title3, design: .monospaced).weight(.semibold))
-                            .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                        Text(page.title)
-                            .font(DesignSystem.Typography.headline)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-                        Spacer(minLength: 0)
-                        Text("\(ordinal) / \(total)")
-                            .font(DesignSystem.Typography.monoTiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                    }
-                    Text(page.summary)
-                        .font(DesignSystem.Typography.body)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if !page.sections.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(page.sections) { section in
-                                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                    Text("·")
-                                        .font(DesignSystem.Typography.monoSmall)
-                                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                                    Text(section.title)
-                                        .font(DesignSystem.Typography.caption)
-                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                }
-                            }
-                        }
-                    }
-                    if !aggregatedCitations.isEmpty {
-                        HFlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
-                            ForEach(Array(aggregatedCitations.prefix(5).enumerated()), id: \.element.id) { idx, c in
-                                FootnoteCitationChip(
-                                    ordinal: idx + 1,
-                                    citation: c,
-                                    onTap: { onCitationTap(c) }
-                                )
-                            }
-                        }
-                    }
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 10, weight: .semibold))
-                        Text("Open page")
-                            .font(DesignSystem.Typography.monoTiny)
-                            .tracking(0.8)
-                    }
-                    .foregroundStyle(DesignSystem.Colors.hermesAureate)
-                    .padding(.top, 2)
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                HStack(alignment: .firstTextBaseline, spacing: DesignSystem.Spacing.sm) {
+                    Text(String(format: "%02d", ordinal))
+                        .font(.system(.title3, design: .monospaced).weight(.semibold))
+                        .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                    Text(page.title)
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Spacer(minLength: 0)
+                    Text("\(ordinal) / \(total)")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
                 }
-                .padding(.vertical, DesignSystem.Spacing.sm)
+                Text(page.summary)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !page.sections.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(page.sections) { section in
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text("·")
+                                    .font(DesignSystem.Typography.monoSmall)
+                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                Text(section.title)
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            }
+                        }
+                    }
+                }
+                if !aggregatedCitations.isEmpty {
+                    HFlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
+                        ForEach(Array(aggregatedCitations.prefix(5).enumerated()), id: \.element.id) { idx, c in
+                            FootnoteCitationChip(
+                                ordinal: idx + 1,
+                                citation: c,
+                                onTap: { onCitationTap(c) }
+                            )
+                        }
+                    }
+                }
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Open page")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .tracking(0.8)
+                }
+                .foregroundStyle(DesignSystem.Colors.hermesAureate)
+                .padding(.top, 2)
             }
-            .padding(.horizontal, DesignSystem.Spacing.md)
-            .padding(.vertical, DesignSystem.Spacing.sm)
+            .padding(.leading, DesignSystem.Spacing.md + 3 + DesignSystem.Spacing.sm)
+            .padding(.trailing, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                     .fill(DesignSystem.Colors.surface.opacity(hovered ? 0.85 : 0.55))
             )
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(DesignSystem.Colors.mercuryGradient)
+                    .frame(width: 3)
+                    .padding(.leading, DesignSystem.Spacing.md)
+                    .padding(.vertical, 1)
+            }
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
                     .stroke(
@@ -3130,42 +3525,62 @@ private struct ProjectMemoryPageDetailSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             chrome
-            ScrollView {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
-                    EditorialHero(
-                        eyebrow: "MEMORY PAGE · \(page.title)",
-                        subtitle: page.summary,
-                        headline: page.title,
-                        metaSegments: heroMetaSegments,
-                        leadAccent: DesignSystem.Colors.hermesAureate
-                    )
-                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                        WikiBreadcrumb(crumbs: breadcrumbs)
+                            .id("__top")
+                            .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
 
-                    HermesReadingCard(
-                        title: "Hermes Reading",
-                        placeholder: "Hermes is interpreting this page — what it tells the operator and what to do with it.",
-                        controller: insight,
-                        onRetry: { startInsight() }
-                    )
-                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+                        EditorialHero(
+                            eyebrow: "MEMORY PAGE · \(page.title)",
+                            subtitle: page.summary,
+                            headline: page.title,
+                            metaSegments: heroMetaSegments,
+                            leadAccent: DesignSystem.Colors.hermesAureate
+                        )
+                        .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
 
-                    if !page.sections.isEmpty {
-                        sectionsSection
-                            .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
-                    } else {
-                        EmptyEvidenceCallout(message: "This page has no synthesized sections yet.")
-                            .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
-                    }
+                        HermesReadingCard(
+                            title: "Hermes Reading",
+                            placeholder: "Hermes is interpreting this page — what it tells the operator and what to do with it.",
+                            controller: insight,
+                            onRetry: { startInsight() }
+                        )
+                        .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
 
-                    if !page.visualIDs.isEmpty {
-                        visualsRefsSection
+                        if page.sections.count > 1 {
+                            WikiTableOfContents(items: tocItems) { anchor in
+                                withAnimation(DesignSystem.Animation.gentle) {
+                                    proxy.scrollTo(anchor, anchor: .top)
+                                }
+                            }
                             .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
-                    }
+                        }
 
-                    auditFooter
-                        .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+                        if !page.sections.isEmpty {
+                            sectionsSection
+                                .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+                        } else {
+                            EmptyEvidenceCallout(message: "This page has no synthesized sections yet.")
+                                .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+                        }
+
+                        if !seeAlsoItems.isEmpty {
+                            WikiSeeAlsoRail(title: "See also", items: seeAlsoItems, symbol: "link")
+                                .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
+                        }
+
+                        if !page.visualIDs.isEmpty {
+                            visualsRefsSection
+                                .cascadeIn(index: 6, visible: visibleSections, reduceMotion: reduceMotion)
+                        }
+
+                        auditFooter
+                            .cascadeIn(index: 7, visible: visibleSections, reduceMotion: reduceMotion)
+                    }
+                    .padding(DesignSystem.Spacing.xl)
                 }
-                .padding(DesignSystem.Spacing.xl)
             }
         }
         .background(DesignSystem.Colors.background)
@@ -3190,6 +3605,67 @@ private struct ProjectMemoryPageDetailSheet: View {
             CitationInsightSheet(citations: wrapper.citations, chatController: chatController)
                 .frame(minWidth: 800, minHeight: 620)
         }
+    }
+
+    private var breadcrumbs: [WikiBreadcrumbItem] {
+        [
+            WikiBreadcrumbItem(label: projectName, action: { dismiss() }),
+            WikiBreadcrumbItem(label: "Project memory", action: { dismiss() }),
+            WikiBreadcrumbItem(label: page.title, action: nil)
+        ]
+    }
+
+    private var tocItems: [WikiTOCItem] {
+        page.sections.enumerated().map { idx, section in
+            WikiTOCItem(
+                id: sectionAnchorID(section),
+                ordinal: idx + 1,
+                title: section.title,
+                citationCount: section.citations.count,
+                body: section.body
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .components(separatedBy: .newlines)
+                    .first ?? ""
+            )
+        }
+    }
+
+    private var seeAlsoItems: [WikiSeeAlsoItem] {
+        var items: [WikiSeeAlsoItem] = []
+        let allCitations = page.sections.flatMap(\.citations)
+        let topCitations = Array(allCitations.prefix(3))
+        for c in topCitations {
+            let detail: String
+            switch c.sourceKind {
+            case .conversation:    detail = "transcript"
+            case .skillDoc:        detail = "skill doc"
+            case .agentDoc:        detail = "agent doc"
+            case .sharedArtifact:  detail = "shared artifact"
+            }
+            items.append(
+                WikiSeeAlsoItem(
+                    label: c.title.isEmpty ? "Untitled" : c.title,
+                    detail: detail,
+                    symbol: "quote.bubble",
+                    action: { citationWrapper = .single(c) }
+                )
+            )
+        }
+        if !page.visualIDs.isEmpty {
+            items.append(
+                WikiSeeAlsoItem(
+                    label: "\(page.visualIDs.count) referenced visual\(page.visualIDs.count == 1 ? "" : "s")",
+                    detail: "in this snapshot",
+                    symbol: "chart.bar",
+                    action: { handoffToChat() }
+                )
+            )
+        }
+        return items
+    }
+
+    private func sectionAnchorID(_ section: ProjectMemorySection) -> String {
+        "section-\(section.id)"
     }
 
     private var chrome: some View {
@@ -3244,11 +3720,20 @@ private struct ProjectMemoryPageDetailSheet: View {
                         onCitationTap: { c in citationWrapper = .single(c) },
                         onCombinedCitationTap: section.citations.isEmpty ? nil : {
                             citationWrapper = CitationWrapper(citations: section.citations)
-                        }
+                        },
+                        pivotQueries: WikiQuery.curated(forSectionTitle: section.title, projectName: projectName),
+                        onPivotTap: { query in runPivot(query) }
                     )
+                    .id(sectionAnchorID(section))
                 }
             }
         }
+    }
+
+    private func runPivot(_ query: WikiQuery) {
+        chatController.inputText = query.prompt
+        Task { await chatController.send() }
+        dismiss()
     }
 
     private var visualsRefsSection: some View {
@@ -3330,14 +3815,14 @@ private struct ProjectMemoryPageDetailSheet: View {
 
     private func runEntranceMotion() {
         if reduceMotion {
-            visibleSections = 5
+            visibleSections = 8
             return
         }
         guard visibleSections < 0 else { return }
         visibleSections = 0
         cascadeTask?.cancel()
         cascadeTask = Task { @MainActor in
-            for i in 0..<5 {
+            for i in 0..<8 {
                 if i > 0 {
                     try? await Task.sleep(nanoseconds: 40_000_000)
                     if Task.isCancelled { return }
@@ -3373,6 +3858,13 @@ private struct ProjectMemoryVisualDetailSheet: View {
             chrome
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    WikiBreadcrumb(crumbs: [
+                        WikiBreadcrumbItem(label: "Project memory", action: { dismiss() }),
+                        WikiBreadcrumbItem(label: "Visuals", action: { dismiss() }),
+                        WikiBreadcrumbItem(label: visual.title, action: nil)
+                    ])
+                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+
                     EditorialHero(
                         eyebrow: "VISUAL · \(kindLabel.uppercased())",
                         subtitle: visual.subtitle ?? "Source: local project memory snapshot.",
@@ -3380,13 +3872,19 @@ private struct ProjectMemoryVisualDetailSheet: View {
                         metaSegments: heroMetaSegments,
                         leadAccent: DesignSystem.Colors.hermesAureate
                     )
-                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    WikiPivotPillRow(
+                        queries: WikiQuery.curatedForVisual(visual, projectName: "this project"),
+                        onTap: { runPivot($0) }
+                    )
+                    .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
 
                     chartCard
-                        .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+                        .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
 
                     dataTableSection
-                        .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+                        .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
 
                     HermesReadingCard(
                         title: "Hermes Reading",
@@ -3394,10 +3892,10 @@ private struct ProjectMemoryVisualDetailSheet: View {
                         controller: insight,
                         onRetry: { startInsight() }
                     )
-                    .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
 
                     auditFooter
-                        .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
+                        .cascadeIn(index: 6, visible: visibleSections, reduceMotion: reduceMotion)
                 }
                 .padding(DesignSystem.Spacing.xl)
             }
@@ -3420,6 +3918,13 @@ private struct ProjectMemoryVisualDetailSheet: View {
                 isStreaming: chatController.isStreaming
             )
         }
+    }
+
+    @MainActor
+    private func runPivot(_ query: WikiQuery) {
+        chatController.inputText = query.prompt
+        Task { await chatController.send() }
+        dismiss()
     }
 
     private var chrome: some View {
@@ -3616,14 +4121,14 @@ private struct ProjectMemoryVisualDetailSheet: View {
 
     private func runEntranceMotion() {
         if reduceMotion {
-            visibleSections = 5
+            visibleSections = 7
             return
         }
         guard visibleSections < 0 else { return }
         visibleSections = 0
         cascadeTask?.cancel()
         cascadeTask = Task { @MainActor in
-            for i in 0..<5 {
+            for i in 0..<7 {
                 if i > 0 {
                     try? await Task.sleep(nanoseconds: 40_000_000)
                     if Task.isCancelled { return }
@@ -3658,6 +4163,13 @@ private struct CitationInsightSheet: View {
             chrome
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    WikiBreadcrumb(crumbs: [
+                        WikiBreadcrumbItem(label: "Project memory", action: { dismiss() }),
+                        WikiBreadcrumbItem(label: "Citations", action: { dismiss() }),
+                        WikiBreadcrumbItem(label: citations.count == 1 ? (citations.first?.title ?? "Citation") : "\(citations.count) citations", action: nil)
+                    ])
+                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+
                     EditorialHero(
                         eyebrow: "CITATION INSIGHT · \(citations.count) CITATION\(citations.count == 1 ? "" : "S")",
                         subtitle: heroSubtitle,
@@ -3665,7 +4177,13 @@ private struct CitationInsightSheet: View {
                         metaSegments: heroMetaSegments,
                         leadAccent: DesignSystem.Colors.hermesAureate
                     )
-                    .cascadeIn(index: 0, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+
+                    WikiPivotPillRow(
+                        queries: WikiQuery.curatedForCitations(citations),
+                        onTap: { runPivot($0) }
+                    )
+                    .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
 
                     HermesReadingCard(
                         title: "Hermes Reading",
@@ -3675,13 +4193,13 @@ private struct CitationInsightSheet: View {
                         controller: insight,
                         onRetry: { startInsight() }
                     )
-                    .cascadeIn(index: 1, visible: visibleSections, reduceMotion: reduceMotion)
+                    .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
 
                     evidenceSection
-                        .cascadeIn(index: 2, visible: visibleSections, reduceMotion: reduceMotion)
+                        .cascadeIn(index: 4, visible: visibleSections, reduceMotion: reduceMotion)
 
                     handoffFooter
-                        .cascadeIn(index: 3, visible: visibleSections, reduceMotion: reduceMotion)
+                        .cascadeIn(index: 5, visible: visibleSections, reduceMotion: reduceMotion)
                 }
                 .padding(DesignSystem.Spacing.xl)
             }
@@ -3842,14 +4360,14 @@ private struct CitationInsightSheet: View {
 
     private func runEntranceMotion() {
         if reduceMotion {
-            visibleSections = 4
+            visibleSections = 6
             return
         }
         guard visibleSections < 0 else { return }
         visibleSections = 0
         cascadeTask?.cancel()
         cascadeTask = Task { @MainActor in
-            for i in 0..<4 {
+            for i in 0..<6 {
                 if i > 0 {
                     try? await Task.sleep(nanoseconds: 40_000_000)
                     if Task.isCancelled { return }
@@ -3859,5 +4377,12 @@ private struct CitationInsightSheet: View {
                 }
             }
         }
+    }
+
+    @MainActor
+    private func runPivot(_ query: WikiQuery) {
+        chatController.inputText = query.prompt
+        Task { await chatController.send() }
+        dismiss()
     }
 }

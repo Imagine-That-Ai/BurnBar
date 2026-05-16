@@ -53,6 +53,8 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, @unchecked Send
             uid: uid,
             connectionId: id,
             nodeId: nodeId,
+            relayURL: data["relayURL"] as? String,
+            directAddresses: data["directAddresses"] as? [String] ?? [],
             publishedAtMillis: publishedAtMillis,
             protocolVersion: protocolVersion,
             signature: signature

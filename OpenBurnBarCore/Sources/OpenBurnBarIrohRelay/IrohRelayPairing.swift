@@ -3,10 +3,10 @@ import Foundation
 import OpenBurnBarCore
 
 /// Pairing record published by the Mac host to `hermes_connections/{id}`.
-/// iOS reads it, verifies the Ed25519 signature, then dials the iroh NodeId.
+/// iOS reads it, verifies the Ed25519 signature, then dials the iroh NodeAddr.
 ///
 /// The signed payload is a single canonical string —
-/// `"openburnbar.iroh.pairing.v1|<uid>|<connectionId>|<nodeId>|<publishedAtMs>"` —
+/// `"openburnbar.iroh.pairing.v1|<uid>|<connectionId>|<nodeId>|<relayURL>|<directAddresses>|<publishedAtMs>"` —
 /// because that's the smallest surface we can canonicalize across Swift,
 /// Kotlin (Android), and TypeScript (Cloud Functions) without leaning on a
 /// JSON canonical-form library. The fields are bounded, ascii-safe, and the
@@ -15,6 +15,8 @@ public struct IrohPairingRecord: Codable, Sendable, Equatable {
     public let uid: String
     public let connectionId: String
     public let nodeId: String
+    public let relayURL: String?
+    public let directAddresses: [String]
     public let publishedAtMillis: Int64
     public let protocolVersion: Int
     public let signature: String
@@ -23,6 +25,8 @@ public struct IrohPairingRecord: Codable, Sendable, Equatable {
         uid: String,
         connectionId: String,
         nodeId: String,
+        relayURL: String? = nil,
+        directAddresses: [String] = [],
         publishedAtMillis: Int64,
         protocolVersion: Int = IrohRelayProtocol.frameProtocolVersion,
         signature: String
@@ -30,9 +34,26 @@ public struct IrohPairingRecord: Codable, Sendable, Equatable {
         self.uid = uid
         self.connectionId = connectionId
         self.nodeId = nodeId
+        self.relayURL = Self.normalizedRelayURL(relayURL)
+        self.directAddresses = Self.normalizedDirectAddresses(directAddresses)
         self.publishedAtMillis = publishedAtMillis
         self.protocolVersion = protocolVersion
         self.signature = signature
+    }
+
+    public var dialTarget: IrohDialTarget {
+        IrohDialTarget(nodeId: nodeId, relayURL: relayURL, directAddresses: directAddresses)
+    }
+
+    static func normalizedRelayURL(_ relayURL: String?) -> String? {
+        let normalized = relayURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    static func normalizedDirectAddresses(_ directAddresses: [String]) -> [String] {
+        Array(Set(directAddresses.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }))
+            .sorted()
     }
 }
 
@@ -60,12 +81,18 @@ public enum IrohPairingSignature {
         uid: String,
         connectionId: String,
         nodeId: String,
+        relayURL: String?,
+        directAddresses: [String],
         publishedAtMillis: Int64,
         protocolVersion: Int
     ) -> Data {
+        let relayURL = IrohPairingRecord.normalizedRelayURL(relayURL) ?? ""
+        let directAddresses = IrohPairingRecord
+            .normalizedDirectAddresses(directAddresses)
+            .joined(separator: ",")
         let payload =
             "openburnbar.iroh.pairing.v\(protocolVersion)|" +
-            "\(uid)|\(connectionId)|\(nodeId)|\(publishedAtMillis)"
+            "\(uid)|\(connectionId)|\(nodeId)|\(relayURL)|\(directAddresses)|\(publishedAtMillis)"
         return Data(payload.utf8)
     }
 
@@ -73,6 +100,8 @@ public enum IrohPairingSignature {
         uid: String,
         connectionId: String,
         nodeId: String,
+        relayURL: String? = nil,
+        directAddresses: [String] = [],
         publishedAtMillis: Int64,
         protocolVersion: Int = IrohRelayProtocol.frameProtocolVersion,
         with signingKey: Curve25519.Signing.PrivateKey
@@ -81,6 +110,8 @@ public enum IrohPairingSignature {
             uid: uid,
             connectionId: connectionId,
             nodeId: nodeId,
+            relayURL: relayURL,
+            directAddresses: directAddresses,
             publishedAtMillis: publishedAtMillis,
             protocolVersion: protocolVersion
         )
@@ -89,6 +120,8 @@ public enum IrohPairingSignature {
             uid: uid,
             connectionId: connectionId,
             nodeId: nodeId,
+            relayURL: relayURL,
+            directAddresses: directAddresses,
             publishedAtMillis: publishedAtMillis,
             protocolVersion: protocolVersion,
             signature: signature.base64EncodedString()
@@ -117,6 +150,8 @@ public enum IrohPairingSignature {
             uid: record.uid,
             connectionId: record.connectionId,
             nodeId: record.nodeId,
+            relayURL: record.relayURL,
+            directAddresses: record.directAddresses,
             publishedAtMillis: record.publishedAtMillis,
             protocolVersion: record.protocolVersion
         )

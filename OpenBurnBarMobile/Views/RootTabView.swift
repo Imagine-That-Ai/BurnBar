@@ -16,6 +16,9 @@ struct RootTabView: View {
 
     @State private var selection: AuroraNavDestination = .pulse
     @State private var didApplyScreenshotRoute = false
+    #if DEBUG
+    @State private var didApplyHermesE2EPrompt = false
+    #endif
     @State private var router = PulseRouter()
     @State private var motionStore = MotionStore()
     @State private var hermesService = HermesService()
@@ -98,6 +101,7 @@ struct RootTabView: View {
         .environment(\.chartStudioPresenter, studioPresenter)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
         .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
+        .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task { missionActivityCenter.start() }
         .task { missionConsoleHost.start() }
         .sheet(isPresented: $isMissionConsolePresented) {
@@ -107,9 +111,19 @@ struct RootTabView: View {
         }
         .onAppear {
             applyScreenshotRouteIfNeeded()
+            applyHermesE2EPromptIfNeeded()
         }
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowHermesChat"))) { _ in
+            selection = .hermes
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ShowAssistantsTab"))) { notification in
+            let runtime = notification.userInfo?["runtime"] as? String
+            if runtime == nil || runtime == AssistantRuntimeID.hermes.rawValue {
+                selection = .hermes
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .hermesKeyboardFocusChanged)) { notification in
             isHermesKeyboardVisible = notification.userInfo?["focused"] as? Bool ?? false
@@ -233,6 +247,23 @@ struct RootTabView: View {
         default:
             selection = .pulse
         }
+    }
+
+    private func applyHermesE2EPromptIfNeeded() {
+        #if DEBUG
+        guard !didApplyHermesE2EPrompt else { return }
+        guard authStore.currentIdentity?.uid != nil else { return }
+        let prompt = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_HERMES_PROMPT"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let prompt, !prompt.isEmpty else { return }
+        didApplyHermesE2EPrompt = true
+        selection = .hermes
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            await hermesService.refreshRuntime()
+            hermesService.sendMessage(prompt)
+        }
+        #endif
     }
 
     // MARK: - Destination Mapping (for external router compatibility)

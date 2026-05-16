@@ -57,10 +57,10 @@ public final class IrohXcframeworkTransport: IrohRelayTransport, @unchecked Send
         return try await backend.identity()
     }
 
-    public func connect(to peer: String, timeout: TimeInterval) async throws -> any IrohRelayStream {
+    public func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> any IrohRelayStream {
         guard await state.isStarted() else { throw IrohRelayTransportError.endpointNotReady }
         do {
-            let stream = try await backend.connect(to: peer, timeout: timeout)
+            let stream = try await backend.connect(to: target, timeout: timeout)
             return IrohBackendStreamAdapter(stream: stream, codec: codec)
         } catch let backendError as IrohBackendError {
             throw IrohXcframeworkTransport.surface(backendError)

@@ -26,8 +26,8 @@ public protocol IrohEndpointBackend: AnyObject, Sendable {
     /// called.
     func identity() async throws -> IrohEndpointIdentity
 
-    /// Dial a remote NodeId and return a stream handle.
-    func connect(to nodeId: String, timeout: TimeInterval) async throws -> IrohBackendStream
+    /// Dial a remote NodeAddr and return a stream handle.
+    func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> IrohBackendStream
 
     /// Wait for one inbound bi-stream after a successful ALPN handshake.
     func acceptOne(timeout: TimeInterval) async throws -> IrohBackendStream
@@ -35,6 +35,12 @@ public protocol IrohEndpointBackend: AnyObject, Sendable {
     /// Cleanly close the endpoint. After shutdown the backend is unusable
     /// and a fresh instance must be bootstrapped.
     func shutdown() async
+}
+
+public extension IrohEndpointBackend {
+    func connect(to nodeId: String, timeout: TimeInterval) async throws -> IrohBackendStream {
+        try await connect(to: IrohDialTarget(nodeId: nodeId), timeout: timeout)
+    }
 }
 
 /// Backend stream handle. Length-prefixed JSON envelopes are pushed through

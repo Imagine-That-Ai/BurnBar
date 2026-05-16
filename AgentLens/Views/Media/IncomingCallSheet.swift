@@ -10,6 +10,7 @@ struct IncomingCallSheet: View {
     let onDecline: () -> Void
 
     @State private var pulseTrigger: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 24) {
@@ -18,12 +19,21 @@ struct IncomingCallSheet: View {
                     Circle()
                         .strokeBorder(borderGradient, lineWidth: 1.5)
                         .frame(width: 96, height: 96)
-                        .scaleEffect(pulseTrigger ? 1.08 : 1.0)
-                        .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: pulseTrigger)
+                        .scaleEffect(pulseTrigger && !reduceMotion ? 1.08 : 1.0)
+                        .animation(
+                            reduceMotion
+                                ? .none
+                                : .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                            value: pulseTrigger
+                        )
                     Text(initial)
                         .font(.system(size: 36, weight: .semibold))
                         .foregroundStyle(borderGradient)
+                        .accessibilityHidden(true)
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Incoming call from \(pairedDeviceName)")
+
                 Text(pairedDeviceName)
                     .font(.system(size: 20, weight: .semibold))
                 Text("Pair-debug call")
@@ -41,6 +51,8 @@ struct IncomingCallSheet: View {
                 .buttonStyle(.bordered)
                 .controlSize(.large)
                 .tint(.red)
+                .accessibilityLabel("Decline call from \(pairedDeviceName)")
+                .keyboardShortcut(.escape, modifiers: [])
 
                 Button {
                     onAccept()
@@ -51,6 +63,8 @@ struct IncomingCallSheet: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .tint(Color(red: 0.63, green: 0.67, blue: 0.73))
+                .accessibilityLabel("Accept call from \(pairedDeviceName)")
+                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(40)
@@ -63,7 +77,9 @@ struct IncomingCallSheet: View {
                         .strokeBorder(borderGradient, lineWidth: 1)
                 )
         )
-        .onAppear { pulseTrigger.toggle() }
+        .onAppear {
+            if !reduceMotion { pulseTrigger.toggle() }
+        }
     }
 
     private var borderGradient: LinearGradient {

@@ -264,7 +264,7 @@ void uniffi_openburnbar_iroh_fn_free_irohblobnode(void*_Nonnull ptr, RustCallSta
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_CONSTRUCTOR_IROHBLOBNODE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_CONSTRUCTOR_IROHBLOBNODE_NEW
 void*_Nonnull uniffi_openburnbar_iroh_fn_constructor_irohblobnode_new(RustCallStatus *_Nonnull out_status
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_METHOD_IROHBLOBNODE_BOOTSTRAP
@@ -305,7 +305,7 @@ void uniffi_openburnbar_iroh_fn_free_irohendpointhandle(void*_Nonnull ptr, RustC
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_CONSTRUCTOR_IROHENDPOINTHANDLE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_CONSTRUCTOR_IROHENDPOINTHANDLE_NEW
 void*_Nonnull uniffi_openburnbar_iroh_fn_constructor_irohendpointhandle_new(RustCallStatus *_Nonnull out_status
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_METHOD_IROHENDPOINTHANDLE_ACCEPT_ONE
@@ -320,7 +320,7 @@ RustBuffer uniffi_openburnbar_iroh_fn_method_irohendpointhandle_bootstrap(void*_
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_METHOD_IROHENDPOINTHANDLE_CONNECT
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_METHOD_IROHENDPOINTHANDLE_CONNECT
-void*_Nonnull uniffi_openburnbar_iroh_fn_method_irohendpointhandle_connect(void*_Nonnull ptr, RustBuffer node_id, uint32_t timeout_seconds, RustCallStatus *_Nonnull out_status
+void*_Nonnull uniffi_openburnbar_iroh_fn_method_irohendpointhandle_connect(void*_Nonnull ptr, RustBuffer node_id, RustBuffer relay_url, RustBuffer direct_addresses, uint32_t timeout_seconds, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_METHOD_IROHENDPOINTHANDLE_IDENTITY
@@ -361,31 +361,31 @@ void uniffi_openburnbar_iroh_fn_method_irohstream_send_frame(void*_Nonnull ptr, 
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_GENERATE_SECRET_KEY_MATERIAL
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_GENERATE_SECRET_KEY_MATERIAL
 RustBuffer uniffi_openburnbar_iroh_fn_func_generate_secret_key_material(RustCallStatus *_Nonnull out_status
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_IROH_BLOBS_ALPN
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_IROH_BLOBS_ALPN
 RustBuffer uniffi_openburnbar_iroh_fn_func_iroh_blobs_alpn(RustCallStatus *_Nonnull out_status
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_IROH_BLOBS_CRATE_VERSION
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_IROH_BLOBS_CRATE_VERSION
 RustBuffer uniffi_openburnbar_iroh_fn_func_iroh_blobs_crate_version(RustCallStatus *_Nonnull out_status
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_OPENBURNBAR_ALPN
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_OPENBURNBAR_ALPN
 RustBuffer uniffi_openburnbar_iroh_fn_func_openburnbar_alpn(RustCallStatus *_Nonnull out_status
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_OPENBURNBAR_IROH_PROTOCOL_VERSION
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_OPENBURNBAR_IROH_PROTOCOL_VERSION
 uint32_t uniffi_openburnbar_iroh_fn_func_openburnbar_iroh_protocol_version(RustCallStatus *_Nonnull out_status
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_FN_FUNC_PARSE_BLOB_TICKET
@@ -676,133 +676,133 @@ void ffi_openburnbar_iroh_rust_future_complete_void(uint64_t handle, RustCallSta
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_GENERATE_SECRET_KEY_MATERIAL
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_GENERATE_SECRET_KEY_MATERIAL
 uint16_t uniffi_openburnbar_iroh_checksum_func_generate_secret_key_material(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_IROH_BLOBS_ALPN
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_IROH_BLOBS_ALPN
 uint16_t uniffi_openburnbar_iroh_checksum_func_iroh_blobs_alpn(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_IROH_BLOBS_CRATE_VERSION
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_IROH_BLOBS_CRATE_VERSION
 uint16_t uniffi_openburnbar_iroh_checksum_func_iroh_blobs_crate_version(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_OPENBURNBAR_ALPN
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_OPENBURNBAR_ALPN
 uint16_t uniffi_openburnbar_iroh_checksum_func_openburnbar_alpn(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_OPENBURNBAR_IROH_PROTOCOL_VERSION
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_OPENBURNBAR_IROH_PROTOCOL_VERSION
 uint16_t uniffi_openburnbar_iroh_checksum_func_openburnbar_iroh_protocol_version(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_PARSE_BLOB_TICKET
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_FUNC_PARSE_BLOB_TICKET
 uint16_t uniffi_openburnbar_iroh_checksum_func_parse_blob_ticket(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_BOOTSTRAP
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_BOOTSTRAP
 uint16_t uniffi_openburnbar_iroh_checksum_method_irohblobnode_bootstrap(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_FETCH_BLOB
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_FETCH_BLOB
 uint16_t uniffi_openburnbar_iroh_checksum_method_irohblobnode_fetch_blob(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_IDENTITY
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_IDENTITY
 uint16_t uniffi_openburnbar_iroh_checksum_method_irohblobnode_identity(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_PUBLISH_BLOB
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_PUBLISH_BLOB
 uint16_t uniffi_openburnbar_iroh_checksum_method_irohblobnode_publish_blob(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_SHUTDOWN
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHBLOBNODE_SHUTDOWN
 uint16_t uniffi_openburnbar_iroh_checksum_method_irohblobnode_shutdown(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_ACCEPT_ONE
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_ACCEPT_ONE
 uint16_t uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_one(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_BOOTSTRAP
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_BOOTSTRAP
 uint16_t uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_bootstrap(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_CONNECT
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_CONNECT
 uint16_t uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_connect(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_IDENTITY
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_IDENTITY
 uint16_t uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_identity(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_SHUTDOWN
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHENDPOINTHANDLE_SHUTDOWN
 uint16_t uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_shutdown(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_CLOSE
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_CLOSE
 uint16_t uniffi_openburnbar_iroh_checksum_method_irohstream_close(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_RECV_FRAME
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_RECV_FRAME
 uint16_t uniffi_openburnbar_iroh_checksum_method_irohstream_recv_frame(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_SEND_FRAME
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_METHOD_IROHSTREAM_SEND_FRAME
 uint16_t uniffi_openburnbar_iroh_checksum_method_irohstream_send_frame(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_CONSTRUCTOR_IROHBLOBNODE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_CONSTRUCTOR_IROHBLOBNODE_NEW
 uint16_t uniffi_openburnbar_iroh_checksum_constructor_irohblobnode_new(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_CONSTRUCTOR_IROHENDPOINTHANDLE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_OPENBURNBAR_IROH_CHECKSUM_CONSTRUCTOR_IROHENDPOINTHANDLE_NEW
 uint16_t uniffi_openburnbar_iroh_checksum_constructor_irohendpointhandle_new(void
-
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_OPENBURNBAR_IROH_UNIFFI_CONTRACT_VERSION
 #define UNIFFI_FFIDEF_FFI_OPENBURNBAR_IROH_UNIFFI_CONTRACT_VERSION
 uint32_t ffi_openburnbar_iroh_uniffi_contract_version(void
-
+    
 );
 #endif
 

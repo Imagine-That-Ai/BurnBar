@@ -12,10 +12,14 @@ final class IrohPairingDirectoryTests: XCTestCase {
             uid: "u-1",
             connectionId: "c-1",
             nodeId: "node-abc",
+            relayURL: "https://relay.example./",
+            directAddresses: ["127.0.0.1:1234"],
             publishedAt: now,
             with: macKeypair
         )
         XCTAssertEqual(record.nodeId, "node-abc")
+        XCTAssertEqual(record.relayURL, "https://relay.example./")
+        XCTAssertEqual(record.directAddresses, ["127.0.0.1:1234"])
         XCTAssertEqual(record.publishedAtMillis, Int64(now.timeIntervalSince1970 * 1000))
 
         let verified = try await publisher.fetchAndVerify(
@@ -24,7 +28,11 @@ final class IrohPairingDirectoryTests: XCTestCase {
             publicKey: macKeypair.publicKeyRaw,
             now: now.addingTimeInterval(60)
         )
-        XCTAssertEqual(verified, "node-abc")
+        XCTAssertEqual(verified, IrohDialTarget(
+            nodeId: "node-abc",
+            relayURL: "https://relay.example./",
+            directAddresses: ["127.0.0.1:1234"]
+        ))
     }
 
     func testFetchAndVerifyRejectsExpiredRecord() async throws {

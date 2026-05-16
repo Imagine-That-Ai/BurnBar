@@ -16,6 +16,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case devicesAndSync
     case switcher
     case hermes
+    case media
 
     var id: String { rawValue }
 
@@ -32,6 +33,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .devicesAndSync: return MacCopy.devicesAndSyncTitle
         case .switcher: return "Account Switcher"
         case .hermes: return "AI Environments"
+        case .media: return "Media & Sharing"
         }
     }
 
@@ -61,6 +63,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "Browser and CLI profile launcher"
         case .hermes:
             return "Hermes, Pi, gateways, remote relay"
+        case .media:
+            return "Mercury file transfer, screen share, calls — permissions and partner preferences"
         }
     }
 
@@ -77,6 +81,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .devicesAndSync: return "macbook.and.iphone"
         case .switcher: return "arrow.triangle.2.circlepath"
         case .hermes: return "antenna.radiowaves.left.and.right"
+        case .media: return "play.rectangle.on.rectangle"
         }
     }
 
@@ -93,6 +98,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .devicesAndSync: return DesignSystem.Colors.teal
         case .switcher: return DesignSystem.Colors.amber
         case .hermes: return DesignSystem.Colors.hermesAureate
+        case .media: return DesignSystem.Colors.hermesMercury
         }
     }
 

@@ -59,10 +59,16 @@ final class iOSFileTransferService: ObservableObject {
 
     private let service: MediaFileTransferService
     private let settingsProvider: @MainActor () -> Bool
+    /// Long-lived media control stream owner. Set via
+    /// `attachControlStream(_:)` once iOS auth + Hermes connection
+    /// reach an authenticated state. Optional so tests can drive the
+    /// receive path without spinning up an iroh dialer.
+    private var controlCoordinator: MediaControlStreamCoordinator?
 
     @Published private(set) var lastError: Failure?
     @Published private(set) var inFlightCount: Int = 0
     @Published private(set) var lastReceivedAttachment: ReceivedAttachment?
+    @Published private(set) var lastSentManifestID: String?
 
     init(
         service: MediaFileTransferService,
@@ -70,6 +76,17 @@ final class iOSFileTransferService: ObservableObject {
     ) {
         self.service = service
         self.settingsProvider = settingsProvider
+    }
+
+    func attachControlStream(_ coordinator: MediaControlStreamCoordinator) {
+        self.controlCoordinator = coordinator
+    }
+
+    func detachControlStream() async {
+        if let coordinator = controlCoordinator {
+            await coordinator.stop()
+        }
+        controlCoordinator = nil
     }
 
     func bootstrapBlobEndpoint() async throws -> IrohEndpointIdentity {
@@ -135,14 +152,18 @@ final class iOSFileTransferService: ObservableObject {
         try? await ackSender(ackFrame)
     }
 
-    /// Reverse direction (Phase 2 stretch): iOS publishes a file and
-    /// emits an advertise frame so the Mac fetches it.
+    /// Publish a file from iOS and emit a `media.blob.advertise` frame
+    /// to Mac. Resolution order:
+    ///   1. Explicit `advertiseSender` override (tests).
+    ///   2. The persistent media-control coordinator (production).
+    ///   3. `.dispatchUnavailable` failure — never silently drops a
+    ///      user-initiated send.
     func sendFile(
         at fileURL: URL,
         uid: String,
         connectionID: String,
         peerDeviceID: String?,
-        advertiseSender: @escaping AdvertiseSender
+        advertiseSender: AdvertiseSender? = nil
     ) async throws -> HermesRealtimeRelayAttachmentManifest {
         guard settingsProvider() else { throw Failure.settingDisabled }
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
@@ -173,7 +194,24 @@ final class iOSFileTransferService: ObservableObject {
             )
         )
 
-        try await advertiseSender(frame)
+        do {
+            if let advertiseSender {
+                try await advertiseSender(frame)
+            } else if let controlCoordinator {
+                try await controlCoordinator.send(frame: frame)
+            } else {
+                lastError = .dispatchUnavailable
+                throw Failure.dispatchUnavailable
+            }
+        } catch let failure as Failure {
+            throw failure
+        } catch {
+            let failure = Failure.publishFailed("advertise emit: \(error.localizedDescription)")
+            lastError = failure
+            throw failure
+        }
+
+        lastSentManifestID = publish.manifest.manifestId
         return publish.manifest
     }
 }

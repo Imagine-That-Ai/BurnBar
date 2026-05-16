@@ -271,7 +271,8 @@ export interface HermesConnectionAuditEventDoc {
 
 /**
  * Iroh transport pairing record. Published by the Mac (AgentLens) once it
- * has bootstrapped an iroh endpoint and signed the NodeId with the user's
+ * has bootstrapped an iroh endpoint and signed the dialable NodeAddr fields
+ * with the user's
  * Ed25519 pairing key (`provider_accounts/{uid}.irohPairingPublicKey`).
  *
  * Lives at:
@@ -280,10 +281,10 @@ export interface HermesConnectionAuditEventDoc {
  * Read-side (iOS / iPadOS):
  *   1. Look up the user's `irohPairingPublicKey` (32 raw bytes, base64).
  *   2. Verify `signature` over
- *      `openburnbar.iroh.pairing.v1|{uid}|{connectionId}|{nodeId}|{publishedAtMillis}`.
+ *      `openburnbar.iroh.pairing.v1|{uid}|{connectionId}|{nodeId}|{relayURL}|{directAddresses}|{publishedAtMillis}`.
  *   3. Reject records older than `IROH_PAIRING_FRESHNESS_MS` (24h) or with
  *      a `protocolVersion` newer than the client understands.
- *   4. Dial `nodeId` over the QUIC ALPN advertised by
+ *   4. Dial `nodeId` plus the signed relay/direct addresses over the QUIC ALPN advertised by
  *      `IrohRelayProtocol.alpn`.
  *
  * Firestore rules gate this collection so only the owning user can read or
@@ -295,6 +296,12 @@ export interface IrohPairingRecordDoc {
 
   /** Base32 NodeId surface form (52 chars) advertised by the Mac. */
   nodeId: string;
+
+  /** Home relay URL selected by the Mac endpoint. Required for reliable mobile dialing. */
+  relayURL?: string;
+
+  /** Optional direct socket addresses observed by the Mac endpoint. */
+  directAddresses?: string[];
 
   /** Milliseconds since epoch when the Mac signed and published the record. */
   publishedAtMillis: number;

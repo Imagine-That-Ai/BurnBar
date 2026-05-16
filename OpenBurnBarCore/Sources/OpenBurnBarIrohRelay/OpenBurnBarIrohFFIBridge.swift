@@ -40,7 +40,9 @@ public final class OpenBurnBarIrohFFIBackend: IrohEndpointBackend, @unchecked Se
             )
             return IrohEndpointIdentity(
                 nodeId: identity.nodeId,
-                rawPublicKey: Data(identity.rawPublicKey)
+                rawPublicKey: Data(identity.rawPublicKey),
+                relayURL: identity.relayUrl,
+                directAddresses: identity.directAddresses
             )
         }
     }
@@ -50,15 +52,19 @@ public final class OpenBurnBarIrohFFIBackend: IrohEndpointBackend, @unchecked Se
             let identity = try handle.identity()
             return IrohEndpointIdentity(
                 nodeId: identity.nodeId,
-                rawPublicKey: Data(identity.rawPublicKey)
+                rawPublicKey: Data(identity.rawPublicKey),
+                relayURL: identity.relayUrl,
+                directAddresses: identity.directAddresses
             )
         }
     }
 
-    public func connect(to nodeId: String, timeout: TimeInterval) async throws -> IrohBackendStream {
+    public func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> IrohBackendStream {
         try await withFFI { [handle] in
             let stream = try handle.connect(
-                nodeId: nodeId,
+                nodeId: target.nodeId,
+                relayUrl: target.relayURL ?? "",
+                directAddresses: target.directAddresses,
                 timeoutSeconds: UInt32(max(1, Int(timeout.rounded(.up))))
             )
             return OpenBurnBarIrohFFIStream(stream: stream, queue: self.queue)

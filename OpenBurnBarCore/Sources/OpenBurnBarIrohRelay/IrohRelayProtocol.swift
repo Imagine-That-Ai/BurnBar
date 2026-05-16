@@ -50,3 +50,24 @@ public enum IrohRelayTransportError: Error, Equatable, Sendable {
     case timedOut
     case shutdown
 }
+
+extension IrohRelayTransportError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .endpointNotReady:
+            return "Iroh endpoint is not ready."
+        case .nodeIdUnreachable(let nodeId):
+            return "Iroh node is unreachable: \(nodeId)."
+        case .streamRejected(let message):
+            return message
+        case .protocolMismatch:
+            return "Iroh protocol version mismatch."
+        case .decodeFailed(let message):
+            return "Iroh frame decode failed: \(message)"
+        case .timedOut:
+            return "Iroh connection timed out."
+        case .shutdown:
+            return "Iroh endpoint is shut down."
+        }
+    }
+}

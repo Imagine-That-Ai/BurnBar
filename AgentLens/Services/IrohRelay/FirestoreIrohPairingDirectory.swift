@@ -13,6 +13,8 @@ import OpenBurnBarIrohRelay
 /// {
 ///   id: <connectionId>,
 ///   nodeId: <base32 NodeId>,
+///   relayURL: <home relay URL>,
+///   directAddresses: <direct socket addresses>,
 ///   publishedAtMillis: <ms since epoch>,
 ///   protocolVersion: 1,
 ///   signature: <base64 Ed25519 signature>,
@@ -37,9 +39,10 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, @unchecked Send
 
     func publish(_ record: IrohPairingRecord, for uid: String) async throws {
         let now = isoFormatter.string(from: Date())
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "id": record.connectionId,
             "nodeId": record.nodeId,
+            "directAddresses": record.directAddresses,
             "publishedAtMillis": record.publishedAtMillis,
             "protocolVersion": record.protocolVersion,
             "signature": record.signature,
@@ -47,6 +50,9 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, @unchecked Send
             "updatedAt": now,
             "schemaVersion": 1
         ]
+        if let relayURL = record.relayURL {
+            payload["relayURL"] = relayURL
+        }
         try await firestoreProvider()
             .collection("users")
             .document(uid)
@@ -90,6 +96,8 @@ final class FirestoreIrohPairingDirectory: IrohPairingDirectory, @unchecked Send
             uid: uid,
             connectionId: id,
             nodeId: nodeId,
+            relayURL: data["relayURL"] as? String,
+            directAddresses: data["directAddresses"] as? [String] ?? [],
             publishedAtMillis: publishedAtMillis,
             protocolVersion: protocolVersion,
             signature: signature

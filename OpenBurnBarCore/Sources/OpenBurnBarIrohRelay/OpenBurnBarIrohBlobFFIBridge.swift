@@ -33,7 +33,9 @@ public final class OpenBurnBarIrohBlobFFIBackend: IrohBlobBackend, @unchecked Se
             )
             return IrohEndpointIdentity(
                 nodeId: identity.nodeId,
-                rawPublicKey: Data(identity.rawPublicKey)
+                rawPublicKey: Data(identity.rawPublicKey),
+                relayURL: identity.relayUrl,
+                directAddresses: identity.directAddresses
             )
         }
     }
@@ -62,7 +64,9 @@ public final class OpenBurnBarIrohBlobFFIBackend: IrohBlobBackend, @unchecked Se
             let identity = try node.identity()
             return IrohEndpointIdentity(
                 nodeId: identity.nodeId,
-                rawPublicKey: Data(identity.rawPublicKey)
+                rawPublicKey: Data(identity.rawPublicKey),
+                relayURL: identity.relayUrl,
+                directAddresses: identity.directAddresses
             )
         }
     }

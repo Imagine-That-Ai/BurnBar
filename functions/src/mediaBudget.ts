@@ -13,13 +13,73 @@
  * `docs/runbooks/media-budget.md`.
  */
 
+import { getRemoteConfig } from "firebase-admin/remote-config";
 import { Timestamp, getFirestore } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { MediaBudgetStatusDoc, MediaSessionDailyRollupDoc } from "./types.js";
 
 const SOFT_CAP_USD = 600;
 const HARD_CAP_USD = 1000;
-const COST_PER_GB_USD = 0.04; // Conservative n0 hosted-relay rate; tune from invoices.
+const DEFAULT_COST_PER_GB_USD = 0.04;
+
+interface BudgetTunings {
+  costPerGBUSD: number;
+  softCapUSD: number;
+  hardCapUSD: number;
+}
+
+/**
+ * Load tunable budget parameters from Firebase Remote Config so ops can
+ * recalibrate against an actual n0 invoice without redeploying. Falls
+ * back to the conservative defaults if Remote Config is unavailable
+ * (cold start, offline, missing parameter) so the function never
+ * crashes — under-billing is preferable to skipping the gate entirely.
+ *
+ * Remote Config parameters consumed:
+ *   - `media_cost_per_gb_usd` — number, default 0.04
+ *   - `media_budget_soft_cap_usd` — number, default 600
+ *   - `media_budget_hard_cap_usd` — number, default 1000
+ */
+async function loadBudgetTunings(): Promise<BudgetTunings> {
+  let costPerGB = DEFAULT_COST_PER_GB_USD;
+  let softCap = SOFT_CAP_USD;
+  let hardCap = HARD_CAP_USD;
+  try {
+    const template = await getRemoteConfig().getTemplate();
+    const params = template.parameters ?? {};
+    const tryNumber = (key: string, fallback: number): number => {
+      const raw = params[key]?.defaultValue;
+      if (raw && "value" in raw) {
+        const parsed = Number(raw.value);
+        if (Number.isFinite(parsed) && parsed > 0) return parsed;
+      }
+      return fallback;
+    };
+    costPerGB = tryNumber("media_cost_per_gb_usd", DEFAULT_COST_PER_GB_USD);
+    softCap = tryNumber("media_budget_soft_cap_usd", SOFT_CAP_USD);
+    hardCap = tryNumber("media_budget_hard_cap_usd", HARD_CAP_USD);
+    if (hardCap <= softCap) {
+      // Configuration sanity — refuse to set a hard cap below or equal
+      // to the soft cap, since that would skip the soft-cap level
+      // entirely. Fall back to defaults instead of trusting the bad
+      // value.
+      console.warn(
+        `mediaBudget: invalid Remote Config (hard=${hardCap} <= soft=${softCap}); using defaults`
+      );
+      softCap = SOFT_CAP_USD;
+      hardCap = HARD_CAP_USD;
+    }
+  } catch (err) {
+    console.warn(
+      `mediaBudget: Remote Config unavailable, using defaults (${(err as Error).message})`
+    );
+  }
+  return {
+    costPerGBUSD: costPerGB,
+    softCapUSD: softCap,
+    hardCapUSD: hardCap,
+  };
+}
 
 const NORMAL_ENVELOPE = {
   screenShareDailyMinutes: 120,
@@ -60,6 +120,7 @@ export async function evaluateBudget(now: Date = new Date()): Promise<MediaBudge
   const firestore = getFirestore();
   const monthStart = startOfMonthUTC(now);
   const monthEnd = endOfMonthUTC(now);
+  const tunings = await loadBudgetTunings();
 
   const rollups = await firestore
     .collection("ops/media_session_daily_rollups/days")
@@ -76,7 +137,7 @@ export async function evaluateBudget(now: Date = new Date()): Promise<MediaBudge
   }
 
   const totalGB = totalBytes / 1_000_000_000;
-  const monthToDateUSD = totalGB * COST_PER_GB_USD;
+  const monthToDateUSD = totalGB * tunings.costPerGBUSD;
 
   const elapsedDays = Math.max(1, Math.ceil((now.getTime() - monthStart.getTime()) / (24 * 60 * 60 * 1000)));
   const totalDaysInMonth = Math.max(1, Math.ceil((monthEnd.getTime() - monthStart.getTime()) / (24 * 60 * 60 * 1000)));
@@ -84,10 +145,10 @@ export async function evaluateBudget(now: Date = new Date()): Promise<MediaBudge
 
   let level: MediaBudgetStatusDoc["level"];
   let envelope: typeof NORMAL_ENVELOPE;
-  if (projectedMonthEndUSD >= HARD_CAP_USD) {
+  if (projectedMonthEndUSD >= tunings.hardCapUSD) {
     level = "hard_cap";
     envelope = HARD_CAP_ENVELOPE;
-  } else if (projectedMonthEndUSD >= SOFT_CAP_USD) {
+  } else if (projectedMonthEndUSD >= tunings.softCapUSD) {
     level = "soft_cap";
     envelope = SOFT_CAP_ENVELOPE;
   } else {

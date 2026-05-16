@@ -151,7 +151,8 @@ final class FakeEndpointBackend: IrohEndpointBackend, @unchecked Sendable {
         registered = true
         return IrohEndpointIdentity(
             nodeId: nodeId,
-            rawPublicKey: Data(repeating: 0xAB, count: 32)
+            rawPublicKey: Data(repeating: 0xAB, count: 32),
+            relayURL: relayURL
         )
     }
 
@@ -163,12 +164,12 @@ final class FakeEndpointBackend: IrohEndpointBackend, @unchecked Sendable {
         )
     }
 
-    func connect(to nodeId: String, timeout: TimeInterval) async throws -> IrohBackendStream {
+    func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> IrohBackendStream {
         guard registered else { throw IrohBackendError.notInitialized }
         let dialerSelf = self
         return try await withThrowingTaskGroup(of: FakeBackendStream.self) { group in
             group.addTask {
-                try await self.rendezvous.dial(to: nodeId, from: dialerSelf)
+                try await self.rendezvous.dial(to: target.nodeId, from: dialerSelf)
             }
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
@@ -307,7 +308,7 @@ final class FailingBootstrapBackend: IrohEndpointBackend, @unchecked Sendable {
     func identity() async throws -> IrohEndpointIdentity {
         throw IrohBackendError.notInitialized
     }
-    func connect(to nodeId: String, timeout: TimeInterval) async throws -> IrohBackendStream {
+    func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> IrohBackendStream {
         throw IrohBackendError.notInitialized
     }
     func acceptOne(timeout: TimeInterval) async throws -> IrohBackendStream {

@@ -1391,7 +1391,7 @@ service cloud.firestore {
 
     // Iroh transport pairing records. Mac publishes; iOS reads + verifies the
     // Ed25519 signature using `iroh_pairing_keys/host.publicKeyBase64` before
-    // dialing the NodeId. Schema lives in `functions/src/types.ts`
+    // dialing the signed NodeAddr material. Schema lives in `functions/src/types.ts`
     // (`IrohPairingRecordDoc`); the Mac is the sole writer.
     match /users/{userId}/iroh_pairing/{connectionId} {
       allow read: if ownsUserNamespace(userId);
@@ -1399,6 +1399,8 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           "id",
           "nodeId",
+          "relayURL",
+          "directAddresses",
           "publishedAtMillis",
           "protocolVersion",
           "signature",
@@ -1410,6 +1412,12 @@ service cloud.firestore {
         && request.resource.data.id == connectionId
         && request.resource.data.nodeId is string
         && request.resource.data.nodeId.size() <= 64
+        && (!("relayURL" in request.resource.data)
+          || (request.resource.data.relayURL is string
+            && request.resource.data.relayURL.size() <= 512))
+        && (!("directAddresses" in request.resource.data)
+          || (request.resource.data.directAddresses is list
+            && request.resource.data.directAddresses.size() <= 16))
         && request.resource.data.publishedAtMillis is int
         && request.resource.data.publishedAtMillis > 0
         && request.resource.data.signature is string

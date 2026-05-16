@@ -118,6 +118,7 @@ export { rollupMediaSessionDaily } from "./mediaMonitoring.js";
 export { grantMediaGrandfather, validateMediaPurchase } from "./mediaSku.js";
 export { triggerVoIPCall } from "./voipPush.js";
 export { evaluateMediaBudget } from "./mediaBudget.js";
+export { sendVoIPOutbound } from "./apnsSender.js";
 
 // ---------------------------------------------------------------------------
 // Admin initialization

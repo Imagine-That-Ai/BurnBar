@@ -10,6 +10,7 @@ struct MercuryIncomingSheet: View {
     let onDecline: () -> Void
 
     @State private var pulseTrigger: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 24) {
@@ -17,12 +18,21 @@ struct MercuryIncomingSheet: View {
                 Circle()
                     .strokeBorder(borderGradient, lineWidth: 1.5)
                     .frame(width: 96, height: 96)
-                    .scaleEffect(pulseTrigger ? 1.08 : 1.0)
-                    .animation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true), value: pulseTrigger)
+                    .scaleEffect(pulseTrigger && !reduceMotion ? 1.08 : 1.0)
+                    .animation(
+                        reduceMotion
+                            ? .none
+                            : .easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                        value: pulseTrigger
+                    )
                 Text(initial)
                     .font(.system(size: 36, weight: .semibold))
                     .foregroundStyle(borderGradient)
+                    .accessibilityHidden(true)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Incoming call from \(pairedDeviceName)")
+
             VStack(spacing: 4) {
                 Text(pairedDeviceName).font(.system(size: 20, weight: .semibold))
                 Text("Pair-debug call").font(.callout).foregroundStyle(.secondary)
@@ -35,6 +45,7 @@ struct MercuryIncomingSheet: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
+                .accessibilityLabel("Decline call from \(pairedDeviceName)")
 
                 Button {
                     onAccept()
@@ -44,6 +55,7 @@ struct MercuryIncomingSheet: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .tint(Color(red: 0.63, green: 0.67, blue: 0.73))
+                .accessibilityLabel("Accept call from \(pairedDeviceName)")
             }
         }
         .padding(36)
@@ -56,8 +68,10 @@ struct MercuryIncomingSheet: View {
                 )
         )
         .padding(24)
-        .onAppear { pulseTrigger.toggle() }
-        .transition(.scale.combined(with: .opacity))
+        .onAppear {
+            if !reduceMotion { pulseTrigger.toggle() }
+        }
+        .transition(reduceMotion ? .identity : .scale.combined(with: .opacity))
     }
 
     private var borderGradient: LinearGradient {

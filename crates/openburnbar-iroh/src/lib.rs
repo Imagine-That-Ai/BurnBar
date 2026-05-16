@@ -12,10 +12,11 @@
 // lets us pin iroh, drift on our schedule, and keep the binding green for
 // macOS arm64 + iOS arm64 + iOS Simulator arm64/x86_64.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use iroh::{Endpoint, NodeAddr, NodeId, RelayMap, RelayMode, RelayUrl, SecretKey};
+use iroh::{Endpoint, NodeAddr, NodeId, RelayMap, RelayMode, RelayUrl, SecretKey, Watcher};
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
@@ -55,16 +56,24 @@ pub enum IrohFfiError {
 
 impl IrohFfiError {
     fn connect<E: std::fmt::Display>(error: E) -> Self {
-        Self::ConnectFailed { message: error.to_string() }
+        Self::ConnectFailed {
+            message: error.to_string(),
+        }
     }
     fn stream<E: std::fmt::Display>(error: E) -> Self {
-        Self::StreamFailed { message: error.to_string() }
+        Self::StreamFailed {
+            message: error.to_string(),
+        }
     }
     fn accept<E: std::fmt::Display>(error: E) -> Self {
-        Self::AcceptFailed { message: error.to_string() }
+        Self::AcceptFailed {
+            message: error.to_string(),
+        }
     }
     fn runtime<E: std::fmt::Display>(error: E) -> Self {
-        Self::RuntimeFailed { message: error.to_string() }
+        Self::RuntimeFailed {
+            message: error.to_string(),
+        }
     }
 }
 
@@ -80,6 +89,8 @@ pub struct IrohSecretKeyMaterial {
 pub struct IrohNodeIdentity {
     pub raw_public_key: Vec<u8>,
     pub node_id: String,
+    pub relay_url: String,
+    pub direct_addresses: Vec<String>,
 }
 
 /// Per-call options for inbound connection acceptance. Today only the
@@ -212,12 +223,11 @@ impl IrohEndpointHandle {
         let relay_mode = if relay_url.trim().is_empty() {
             RelayMode::Default
         } else {
-            let url: RelayUrl =
-                relay_url
-                    .parse()
-                    .map_err(|err: iroh::RelayUrlParseError| IrohFfiError::RuntimeFailed {
-                        message: format!("invalid relay url: {err}"),
-                    })?;
+            let url: RelayUrl = relay_url.parse().map_err(|err: iroh::RelayUrlParseError| {
+                IrohFfiError::RuntimeFailed {
+                    message: format!("invalid relay url: {err}"),
+                }
+            })?;
             RelayMode::Custom(RelayMap::from(url))
         };
 
@@ -227,16 +237,40 @@ impl IrohEndpointHandle {
                     .secret_key(secret_key.clone())
                     .alpns(vec![OPENBURNBAR_ALPN.to_vec()])
                     .relay_mode(relay_mode)
+                    .discovery_n0()
                     .bind()
                     .await
             })
             .map_err(IrohFfiError::runtime)?;
 
-        let node_id = endpoint.node_id();
-        let identity = IrohNodeIdentity {
-            raw_public_key: node_id.as_bytes().to_vec(),
-            node_id: node_id.to_string(),
-        };
+        let identity = runtime.block_on(async {
+            let relay_url =
+                tokio::time::timeout(Duration::from_secs(10), endpoint.home_relay().initialized())
+                    .await
+                    .map_err(|_| IrohFfiError::RuntimeFailed {
+                        message: "iroh endpoint did not select a home relay within 10s".into(),
+                    })?;
+
+            let direct_addresses = tokio::time::timeout(
+                Duration::from_secs(10),
+                endpoint.direct_addresses().initialized(),
+            )
+            .await
+            .map_err(|_| IrohFfiError::RuntimeFailed {
+                message: "iroh endpoint did not publish direct addresses within 10s".into(),
+            })?
+            .into_iter()
+            .map(|addr| addr.addr.to_string())
+            .collect();
+
+            let node_id = endpoint.node_id();
+            Ok::<_, IrohFfiError>(IrohNodeIdentity {
+                raw_public_key: node_id.as_bytes().to_vec(),
+                node_id: node_id.to_string(),
+                relay_url: relay_url.to_string(),
+                direct_addresses,
+            })
+        })?;
 
         block_on(async {
             *self.endpoint.lock().await = Some(endpoint);
@@ -264,6 +298,8 @@ impl IrohEndpointHandle {
     pub fn connect(
         self: Arc<Self>,
         node_id: String,
+        relay_url: String,
+        direct_addresses: Vec<String>,
         timeout_seconds: u32,
     ) -> Result<Arc<IrohStream>, IrohFfiError> {
         let endpoint = block_on(async {
@@ -275,23 +311,44 @@ impl IrohEndpointHandle {
         })?;
 
         let target: NodeId = node_id.parse().map_err(|_| IrohFfiError::InvalidNodeId)?;
+        let relay_url = relay_url.trim();
+        let relay_url = if relay_url.is_empty() {
+            None
+        } else {
+            Some(relay_url.parse().map_err(|err: iroh::RelayUrlParseError| {
+                IrohFfiError::ConnectFailed {
+                    message: format!("invalid relay url: {err}"),
+                }
+            })?)
+        };
+        let direct_addresses = direct_addresses
+            .into_iter()
+            .filter(|addr| !addr.trim().is_empty())
+            .map(|addr| {
+                addr.parse::<SocketAddr>()
+                    .map_err(|err| IrohFfiError::ConnectFailed {
+                        message: format!("invalid direct address {addr}: {err}"),
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut node_addr = NodeAddr::new(target);
+        if let Some(relay_url) = relay_url {
+            node_addr = node_addr.with_relay_url(relay_url);
+        }
+        if !direct_addresses.is_empty() {
+            node_addr = node_addr.with_direct_addresses(direct_addresses);
+        }
         let timeout = Duration::from_secs(timeout_seconds.max(1) as u64);
 
         block_on(async move {
-            let conn = tokio::time::timeout(
-                timeout,
-                endpoint.connect(NodeAddr::from(target), OPENBURNBAR_ALPN),
-            )
-            .await
-            .map_err(|_| IrohFfiError::ConnectFailed {
-                message: "iroh connect timed out".into(),
-            })?
-            .map_err(IrohFfiError::connect)?;
-
-            let (send, recv) = conn
-                .open_bi()
+            let conn = tokio::time::timeout(timeout, endpoint.connect(node_addr, OPENBURNBAR_ALPN))
                 .await
-                .map_err(IrohFfiError::stream)?;
+                .map_err(|_| IrohFfiError::ConnectFailed {
+                    message: "iroh connect timed out".into(),
+                })?
+                .map_err(IrohFfiError::connect)?;
+
+            let (send, recv) = conn.open_bi().await.map_err(IrohFfiError::stream)?;
             Ok(Arc::new(IrohStream {
                 inner: Mutex::new(Some(IrohStreamInner { send, recv })),
             }))
@@ -323,10 +380,7 @@ impl IrohEndpointHandle {
                 })?;
 
             let conn = incoming.await.map_err(IrohFfiError::accept)?;
-            let (send, recv) = conn
-                .accept_bi()
-                .await
-                .map_err(IrohFfiError::stream)?;
+            let (send, recv) = conn.accept_bi().await.map_err(IrohFfiError::stream)?;
             Ok(Arc::new(IrohStream {
                 inner: Mutex::new(Some(IrohStreamInner { send, recv })),
             }))
@@ -344,9 +398,7 @@ impl IrohEndpointHandle {
 
         if let (Some(endpoint), Some(runtime)) = endpoint_opt {
             runtime.block_on(async move {
-                endpoint
-                    .close()
-                    .await;
+                endpoint.close().await;
             });
             // Drop the runtime explicitly so any spawned tasks are shut down
             // before this function returns. Swift never reuses the handle
@@ -392,5 +444,3 @@ where
             .block_on(future),
     }
 }
-
-

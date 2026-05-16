@@ -316,6 +316,9 @@ struct SettingsView: View {
                 iCloudSessionMirrorService: iCloudSessionMirrorService
             )
                 .navigationTitle("Hermes")
+        case .media:
+            MediaPermissionsView()
+                .navigationTitle("Media & Sharing")
         }
     }
 

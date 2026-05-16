@@ -35,7 +35,7 @@ final class HermesIrohRelayCompositeTests: XCTestCase {
             publicKey: pairingKeypair.publicKeyRaw,
             now: Date()
         )
-        XCTAssertEqual(verified, "mac-spine")
+        XCTAssertEqual(verified.nodeId, "mac-spine")
 
         // Run one encrypted echo round trip through that NodeId.
         let relayPrivateKey = HermesRelayCrypto.generatePrivateKey()

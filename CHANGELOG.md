@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Project Memory detail sheets adopt the Editorial Observatory voice
+  used by the iOS Intelligence Brief.** The hero card, page rows, visual
+  tiles, and citation chips on the macOS Projects hub now open into four
+  full editorial sheets (`ProjectMemoryHeroDetailSheet`,
+  `ProjectMemoryPageDetailSheet`, `ProjectMemoryVisualDetailSheet`,
+  `CitationInsightSheet`) with eyebrow + subtitle + 22pt headline + mono
+  meta strip + mercury hairline hero, numbered 01/02/03 section rows
+  with severity-bar leading edge and footnote-chip citations, a live
+  Hermes "Reading" card streaming the model's response in real time
+  via a new `streamingTick` on `ChatSessionController`, Swift Charts
+  visuals with annotations, evidence callouts that explain empty
+  sentinels instead of rendering empty bodies, cascade-in motion (with
+  `accessibilityReduceMotion` opt-out), and "Continue in chat" footers
+  that pipe directly into the existing chat panel. Citation chips and
+  the hero card are now fully tappable surfaces. Covered by
+  `ProjectMemoryDetailSheetTests` (10 cases).
+
 ### Added
 - **Mercury media (all 7 phases — source-complete, off by default).**
   Mac ⇄ iPhone/iPad file transfer, screen share, and 1:1 video calling

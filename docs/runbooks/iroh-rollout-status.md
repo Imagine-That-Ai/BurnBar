@@ -111,12 +111,23 @@ Completed:
   publishing:
   `PROJECT_ID=burnbar ./scripts/cutover-n0-hosted-relay.sh rollback --dry-run`.
 
-Current blocker:
-- The live `burnbar` Firestore rules are behind the source rules. The local
-  Mac app currently fails to publish `users/{uid}/iroh_pairing_keys/host` with
-  `Missing or insufficient permissions`, and logs
-  `hermes_iroh_relay_start_failed`. A production rules-only deploy is required
-  before real Mac to iOS iroh round-trip validation can continue.
+Production rules deploy:
+- 2026-05-16 production deploy completed after explicit user approval:
+  `PROJECT_ID=burnbar ./scripts/deploy-iroh-relay.sh --rules-only`. Firebase
+  compiled `firestore.rules` and released it to `cloud.firestore`.
+- Post-deploy live readback: Firebase Rules REST reports
+  `projects/burnbar/releases/cloud.firestore` on ruleset
+  `projects/burnbar/rulesets/29b082f7-f3d3-4ded-986c-4d4c597f14a9`
+  (`updateTime` `2026-05-16T02:47:43.865306Z`). Fetching that live ruleset and
+  searching for `iroh_pairing`, `iroh_pairing_keys`, and `iroh_audit_events`
+  returns the expected source rules.
+
+Resolved blocker:
+- The previous live `burnbar` Firestore rules were behind the source rules.
+  The local Mac app failed to publish `users/{uid}/iroh_pairing_keys/host` with
+  `Missing or insufficient permissions`, and logged
+  `hermes_iroh_relay_start_failed`. The rules-only production deploy above
+  should unblock the next Mac to iOS iroh round-trip validation attempt.
 - 2026-05-16 live readback: Firebase Rules REST reports
   `projects/burnbar/releases/cloud.firestore` on ruleset
   `projects/burnbar/rulesets/dc7a3762-e566-40a5-be98-9cd14329e25d`
@@ -128,8 +139,6 @@ Current blocker:
   not been cut over to production clients.
 
 Pending:
-- Deploy the Firestore rules update to `burnbar` after explicit production
-  rules-only deploy approval.
 - Re-launch the dev Mac and iOS/iPadOS device as the same Firebase user after
   live rules accept the iroh pairing collections.
 - Capture at least 10 consecutive iroh Hermes chat completions across same-LAN

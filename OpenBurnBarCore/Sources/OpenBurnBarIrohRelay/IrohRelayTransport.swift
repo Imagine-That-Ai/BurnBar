@@ -21,15 +21,51 @@ public protocol IrohRelayStream: Sendable {
 public struct IrohEndpointIdentity: Sendable, Equatable, Hashable {
     /// Base32 NodeId surface form (52 chars). What we publish to Firestore.
     public let nodeId: String
+    /// Home relay URL selected by the endpoint. This is what lets a remote
+    /// device dial deterministically instead of relying on delayed discovery.
+    public let relayURL: String?
+    /// Direct socket addresses observed by iroh. These are opportunistic;
+    /// the relay URL is the required cross-network path.
+    public let directAddresses: [String]
 
     /// Raw 32-byte public key. Equal to `Data(base32Decoded: nodeId)` for
     /// the iroh NodeId encoding; surfaced explicitly so signature verifiers
     /// can avoid re-decoding on every check.
     public let rawPublicKey: Data
 
-    public init(nodeId: String, rawPublicKey: Data) {
+    public init(
+        nodeId: String,
+        rawPublicKey: Data,
+        relayURL: String? = nil,
+        directAddresses: [String] = []
+    ) {
         self.nodeId = nodeId
         self.rawPublicKey = rawPublicKey
+        self.relayURL = relayURL?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        self.directAddresses = directAddresses
+    }
+}
+
+/// Dialable address material for a remote iroh endpoint.
+public struct IrohDialTarget: Sendable, Equatable, Hashable {
+    public let nodeId: String
+    public let relayURL: String?
+    public let directAddresses: [String]
+
+    public init(nodeId: String, relayURL: String? = nil, directAddresses: [String] = []) {
+        self.nodeId = nodeId
+        self.relayURL = relayURL?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        self.directAddresses = directAddresses
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    public init(identity: IrohEndpointIdentity) {
+        self.init(
+            nodeId: identity.nodeId,
+            relayURL: identity.relayURL,
+            directAddresses: identity.directAddresses
+        )
     }
 }
 
@@ -44,7 +80,7 @@ public protocol IrohRelayTransport: AnyObject, Sendable {
     /// Dial a remote endpoint and open one bidirectional stream. iOS uses
     /// this both for the initial `host.register` exchange (one persistent
     /// stream) and per request stream.
-    func connect(to peer: String, timeout: TimeInterval) async throws -> any IrohRelayStream
+    func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> any IrohRelayStream
 
     /// Wait for the next inbound bidirectional stream. Mac uses this in a
     /// loop. Cancellation honored.
@@ -52,4 +88,16 @@ public protocol IrohRelayTransport: AnyObject, Sendable {
 
     /// Tear the endpoint down. Pending streams are closed.
     func shutdown() async
+}
+
+public extension IrohRelayTransport {
+    func connect(to peer: String, timeout: TimeInterval) async throws -> any IrohRelayStream {
+        try await connect(to: IrohDialTarget(nodeId: peer), timeout: timeout)
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
 }

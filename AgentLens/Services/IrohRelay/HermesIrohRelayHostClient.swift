@@ -41,13 +41,20 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     /// frames to `MacFileTransferService` without this class importing
     /// the media surface.
     var mediaDispatcher: MediaFrameDispatcher?
+
+    /// Mercury media control-stream registrar (Risk-1 fix). Invoked when
+    /// iOS opens a stream and classifies it as `media.control`. The
+    /// owner registers the stream and drives a long-lived read loop so
+    /// Mac can push `media.blob.advertise` frames at any time without
+    /// waiting for an active iOS-initiated chat request.
+    var mediaControlRegistrar: MediaControlStreamRegistrar?
     /// Per-stream serve tasks spawned by `acceptLoop`. Tracked so `stop()`
     /// can cancel them deterministically instead of letting them outlive the
     /// host.
     private var serveTasks: [UUID: Task<Void, Never>] = [:]
     private var readyUID: String?
     private var readyConnectionID: String?
-    private var publishedNodeId: String?
+    private var publishedIdentity: IrohEndpointIdentity?
     private let pairingPublishInterval: TimeInterval
 
     init(
@@ -109,7 +116,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         do {
             let identity = try await newTransport.start()
             transport = newTransport
-            publishedNodeId = identity.nodeId
+            publishedIdentity = identity
 
             let pairingKeypair = try pairingKeyStore.keypair()
             // Publish the verifier key BEFORE the pairing record so iOS
@@ -124,6 +131,8 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 uid: uid,
                 connectionId: connectionID,
                 nodeId: identity.nodeId,
+                relayURL: identity.relayURL,
+                directAddresses: identity.directAddresses,
                 with: pairingKeypair
             )
             await auditLogger.record(
@@ -132,7 +141,11 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 connectionId: connectionID,
                 transport: nil,
                 rttMillis: nil,
-                detail: ["nodeId": identity.nodeId]
+                detail: [
+                    "nodeId": identity.nodeId,
+                    "relayURL": identity.relayURL ?? "",
+                    "directAddressCount": "\(identity.directAddresses.count)"
+                ]
             )
 
             readyUID = uid
@@ -172,8 +185,8 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         transport = nil
         readyUID = nil
         readyConnectionID = nil
-        let revokedNodeId = publishedNodeId
-        publishedNodeId = nil
+        let revokedNodeId = publishedIdentity?.nodeId
+        publishedIdentity = nil
 
         Task { [directory, auditLogger] in
             if let transportToStop {
@@ -205,7 +218,8 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     relayKeyStore: relayKeyStore,
                     urlSession: urlSession,
                     settingsManager: settingsManager,
-                    mediaDispatcher: mediaDispatcher
+                    mediaDispatcher: mediaDispatcher,
+                    mediaControlRegistrar: mediaControlRegistrar
                 )
                 let serveID = UUID()
                 let task = Task { [weak self, auditLogger] in
@@ -263,7 +277,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     }
 
     private func refreshPairingRecord(uid: String, connectionID: String) async {
-        guard let nodeId = publishedNodeId else { return }
+        guard let identity = publishedIdentity else { return }
         do {
             let pairingKeypair = try pairingKeyStore.keypair()
             try await publicKeyPublisher.publish(
@@ -274,7 +288,9 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             _ = try await publisher.publish(
                 uid: uid,
                 connectionId: connectionID,
-                nodeId: nodeId,
+                nodeId: identity.nodeId,
+                relayURL: identity.relayURL,
+                directAddresses: identity.directAddresses,
                 with: pairingKeypair
             )
         } catch {

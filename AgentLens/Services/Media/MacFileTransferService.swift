@@ -62,22 +62,35 @@ final class MacFileTransferService: ObservableObject {
 
     private let service: MediaFileTransferService
     private let settingsProvider: @MainActor () -> Bool
-    private var advertiseSender: AdvertiseSender?
+    private let controlStreamRegistry: MediaControlStreamRegistry?
+    private let advertiseTimeout: TimeInterval
+    private var advertiseSenderOverride: AdvertiseSender?
 
     @Published private(set) var lastError: Failure?
     @Published private(set) var inFlightCount: Int = 0
     @Published private(set) var lastReceivedManifestID: String?
+    /// Last completed outbound publish — surfaced as a Mercury toast
+    /// confirmation in the chat input.
+    @Published private(set) var lastSentManifestID: String?
 
     init(
         service: MediaFileTransferService,
-        settingsProvider: @escaping @MainActor () -> Bool
+        settingsProvider: @escaping @MainActor () -> Bool,
+        controlStreamRegistry: MediaControlStreamRegistry? = nil,
+        advertiseTimeout: TimeInterval = 6.0
     ) {
         self.service = service
         self.settingsProvider = settingsProvider
+        self.controlStreamRegistry = controlStreamRegistry
+        self.advertiseTimeout = advertiseTimeout
     }
 
+    /// Test seam — production code leaves this `nil` and relies on the
+    /// persistent control-stream registry. Tests inject a recording
+    /// closure here to capture the advertise frame without spinning up
+    /// a real iroh stream.
     func setAdvertiseSender(_ sender: @escaping AdvertiseSender) {
-        self.advertiseSender = sender
+        self.advertiseSenderOverride = sender
     }
 
     func bootstrapBlobEndpoint() async throws -> IrohEndpointIdentity {
@@ -85,7 +98,14 @@ final class MacFileTransferService: ObservableObject {
     }
 
     /// Publish a file from the Mac and emit an advertise frame to the
-    /// paired iPhone over the active chat stream.
+    /// paired iPhone. Resolution order for the advertise send:
+    ///   1. Explicit override (`setAdvertiseSender`) — tests only.
+    ///   2. Persistent media control stream via
+    ///      `MediaControlStreamRegistry.awaitStream`, blocking up to
+    ///      `advertiseTimeout` seconds so a freshly-typed attachment
+    ///      doesn't race iOS's control-stream dial.
+    ///   3. Failure with `.dispatchUnavailable` and a user-readable
+    ///      message — surfaced by the chat input as a Mercury toast.
     func sendFile(
         at fileURL: URL,
         uid: String,
@@ -96,7 +116,6 @@ final class MacFileTransferService: ObservableObject {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             throw Failure.fileMissing(fileURL)
         }
-        guard let advertiseSender else { throw Failure.dispatchUnavailable }
 
         inFlightCount += 1
         defer { inFlightCount -= 1 }
@@ -123,14 +142,89 @@ final class MacFileTransferService: ObservableObject {
         )
 
         do {
-            try await advertiseSender(frame)
+            try await emitAdvertise(frame: frame, uid: uid)
         } catch {
             let failure = Failure.publishFailed("advertise emit: \(error.localizedDescription)")
             lastError = failure
             throw failure
         }
 
+        lastSentManifestID = publish.manifest.manifestId
         return publish.manifest
+    }
+
+    private func emitAdvertise(
+        frame: HermesRealtimeRelayFrame,
+        uid: String
+    ) async throws {
+        if let advertiseSenderOverride {
+            try await advertiseSenderOverride(frame)
+            return
+        }
+        guard let registry = controlStreamRegistry else {
+            lastError = .dispatchUnavailable
+            throw Failure.dispatchUnavailable
+        }
+        guard let stream = await registry.awaitStream(uid: uid, timeout: advertiseTimeout) else {
+            lastError = .dispatchUnavailable
+            throw Failure.dispatchUnavailable
+        }
+        try await stream.send(frame)
+    }
+
+    /// Take ownership of a freshly-classified iOS-side media-control
+    /// stream: register it with the registry, then drive a long-lived
+    /// read loop that dispatches inbound advertise/ack frames. When the
+    /// stream closes (peer disconnect, app background timeout, etc.),
+    /// invalidate the registry entry so the next outbound send re-waits
+    /// for a fresh dial.
+    func mountControlStream(
+        _ stream: any IrohRelayStream,
+        uid: String,
+        connectionID: String
+    ) async {
+        guard let registry = controlStreamRegistry else {
+            // Misconfigured — no registry to register with. Close
+            // defensively so we don't leak the stream.
+            await stream.close()
+            return
+        }
+        await registry.register(stream: stream, uid: uid, connectionID: connectionID)
+        // Bind a Sendable ack-sender to the same stream so inbound
+        // advertise frames can write their ack back over the same path
+        // the dispatcher expects.
+        let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
+            [stream] outbound in
+            try await stream.send(outbound)
+        }
+        do {
+            while let frame = try await stream.receive() {
+                guard frame.uid == uid, frame.connectionId == connectionID else { continue }
+                switch frame.type {
+                case .mediaBlobAdvertise:
+                    await handleAdvertise(frame: frame, ackSender: ackSender)
+                case .mediaBlobAck:
+                    // Mac is the originator of the ack-emitting flow's
+                    // counterpart frame; if iOS acks one of OUR sends,
+                    // surface the manifest id so the chat row can flip
+                    // from "in flight" to "delivered". Phase 2 polish
+                    // will hook this into per-row state.
+                    if let manifestID = frame.media?.ack?.manifestId {
+                        lastReceivedManifestID = manifestID
+                    }
+                case .mediaClassify:
+                    // Re-classification mid-stream is a protocol
+                    // violation; ignore rather than abort.
+                    continue
+                default:
+                    continue
+                }
+            }
+        } catch {
+            lastError = .publishFailed("control stream read: \(error.localizedDescription)")
+        }
+        await registry.invalidate(uid: uid, connectionID: connectionID)
+        await stream.close()
     }
 
     /// Handle an inbound `media.blob.advertise` frame from a peer (iOS).

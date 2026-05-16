@@ -225,6 +225,9 @@ targets:
       - package: OpenBurnBarCore
         product: OpenBurnBarCore
         link: false
+      - package: OpenBurnBarCore
+        product: OpenBurnBarMedia
+        link: false
       - package: ViewInspector
         product: ViewInspector
       - package: SnapshotTesting

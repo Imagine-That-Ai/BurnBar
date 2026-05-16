@@ -226,9 +226,9 @@ public final class LoopbackIrohRelayTransport: IrohRelayTransport, @unchecked Se
         return identity
     }
 
-    public func connect(to peer: String, timeout: TimeInterval) async throws -> any IrohRelayStream {
+    public func connect(to target: IrohDialTarget, timeout: TimeInterval) async throws -> any IrohRelayStream {
         guard await state.isStarted() else { throw IrohRelayTransportError.endpointNotReady }
-        return try await rendezvous.dial(toPeer: peer, timeout: timeout)
+        return try await rendezvous.dial(toPeer: target.nodeId, timeout: timeout)
     }
 
     public func accept(timeout: TimeInterval) async throws -> any IrohRelayStream {

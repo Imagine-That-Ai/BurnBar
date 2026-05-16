@@ -1,0 +1,110 @@
+{
+  "capturedAt": "2026-05-16T02:51:48Z",
+  "project": "burnbar",
+  "phase": "C/D",
+  "rulesetName": "projects/burnbar/rulesets/29b082f7-f3d3-4ded-986c-4d4c597f14a9",
+  "release": {
+    "releases": [
+      {
+        "name": "projects/burnbar/releases/cloud.firestore",
+        "rulesetName": "projects/burnbar/rulesets/29b082f7-f3d3-4ded-986c-4d4c597f14a9",
+        "createTime": "2026-03-22T06:31:23.833908Z",
+        "updateTime": "2026-05-16T02:47:43.865306Z"
+      }
+    ]
+  },
+  "liveRulesContainIrohCollections": true,
+  "pairingKeys": [
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_pairing_keys/host",
+      "fields": {
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "publishedAtMillis": {
+          "integerValue": "1778899683504"
+        },
+        "protocolVersion": {
+          "integerValue": "1"
+        },
+        "id": {
+          "stringValue": "host"
+        },
+        "publicKeyBase64": {
+          "stringValue": "5Pji216PJAdIfBBvtFj0O/umTjzpHvb1r3VHWT640bc="
+        }
+      },
+      "createTime": "2026-05-16T02:48:03.744734Z",
+      "updateTime": "2026-05-16T02:48:03.744734Z"
+    }
+  ],
+  "pairingRecords": [
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_pairing/relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa",
+      "fields": {
+        "createdAt": {
+          "stringValue": "2026-05-16T02:48:03.754Z"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        },
+        "publishedAtMillis": {
+          "integerValue": "1778899683754"
+        },
+        "signature": {
+          "stringValue": "IYbUoJV/IGXrQQ4az44pmOSQ47DACc8LREalB518IAohUrwxhcWnF3KBoRviYOrSYeG0VEtfbMtq7WCv5+DxCg=="
+        },
+        "protocolVersion": {
+          "integerValue": "1"
+        },
+        "id": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "nodeId": {
+          "stringValue": "4e003a80f9a1e30e492c62cc2134e7a33aab52390c5449f7766d44a26d8a3085"
+        },
+        "updatedAt": {
+          "stringValue": "2026-05-16T02:48:03.754Z"
+        }
+      },
+      "createTime": "2026-05-16T02:48:03.994498Z",
+      "updateTime": "2026-05-16T02:48:03.994498Z"
+    }
+  ],
+  "auditEvents": [
+    {
+      "name": "projects/burnbar/databases/(default)/documents/users/6YTomKTKdQdpvIJgmz6VTIrrQ4w1/iroh_audit_events/E32717EB-019D-4042-89E1-19C1530A10A3",
+      "fields": {
+        "connectionId": {
+          "stringValue": "relay-23aa015d-b6c5-434c-8eba-e33b8b8e4aaa"
+        },
+        "detail": {
+          "mapValue": {
+            "fields": {
+              "nodeId": {
+                "stringValue": "4e003a80f9a1e30e492c62cc2134e7a33aab52390c5449f7766d44a26d8a3085"
+              }
+            }
+          }
+        },
+        "eventType": {
+          "stringValue": "iroh_pairing_published"
+        },
+        "expireAt": {
+          "timestampValue": "2026-06-15T02:48:03.905632Z"
+        },
+        "id": {
+          "stringValue": "E32717EB-019D-4042-89E1-19C1530A10A3"
+        },
+        "observedAt": {
+          "stringValue": "2026-05-16T02:48:03.906Z"
+        },
+        "schemaVersion": {
+          "integerValue": "1"
+        }
+      },
+      "createTime": "2026-05-16T02:48:04.140178Z",
+      "updateTime": "2026-05-16T02:48:04.140178Z"
+    }
+  ]
+}

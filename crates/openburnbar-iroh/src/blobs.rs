@@ -75,7 +75,9 @@ struct BlobNodeInner {
 impl IrohBlobNode {
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { inner: Mutex::new(None) })
+        Arc::new(Self {
+            inner: Mutex::new(None),
+        })
     }
 
     /// Spin up the blob endpoint with the supplied secret key + on-disk
@@ -107,7 +109,9 @@ impl IrohBlobNode {
             RelayMode::Default
         } else {
             let url: RelayUrl = relay_url.parse().map_err(|err: iroh::RelayUrlParseError| {
-                IrohFfiError::RuntimeFailed { message: format!("invalid relay url: {err}") }
+                IrohFfiError::RuntimeFailed {
+                    message: format!("invalid relay url: {err}"),
+                }
             })?;
             RelayMode::Custom(RelayMap::from(url))
         };
@@ -117,34 +121,36 @@ impl IrohBlobNode {
             message: format!("create store dir {store_dir}: {err}"),
         })?;
 
-        let (endpoint, store, router, identity) = runtime
-            .block_on(async {
-                let endpoint = Endpoint::builder()
-                    .secret_key(secret_key.clone())
-                    .alpns(vec![iroh_blobs::ALPN.to_vec()])
-                    .relay_mode(relay_mode)
-                    .bind()
+        let (endpoint, store, router, identity) = runtime.block_on(async {
+            let endpoint = Endpoint::builder()
+                .secret_key(secret_key.clone())
+                .alpns(vec![iroh_blobs::ALPN.to_vec()])
+                .relay_mode(relay_mode)
+                .bind()
+                .await
+                .map_err(IrohFfiError::runtime)?;
+
+            let store =
+                FsStore::load(&store_path)
                     .await
-                    .map_err(IrohFfiError::runtime)?;
-
-                let store = FsStore::load(&store_path).await.map_err(|err| {
-                    IrohFfiError::RuntimeFailed {
+                    .map_err(|err| IrohFfiError::RuntimeFailed {
                         message: format!("FsStore::load({store_dir}): {err}"),
-                    }
-                })?;
+                    })?;
 
-                let blobs = BlobsProtocol::new(&store, endpoint.clone(), None);
-                let router = Router::builder(endpoint.clone())
-                    .accept(iroh_blobs::ALPN, blobs)
-                    .spawn();
+            let blobs = BlobsProtocol::new(&store, endpoint.clone(), None);
+            let router = Router::builder(endpoint.clone())
+                .accept(iroh_blobs::ALPN, blobs)
+                .spawn();
 
-                let node_id = endpoint.node_id();
-                let identity = IrohNodeIdentity {
-                    raw_public_key: node_id.as_bytes().to_vec(),
-                    node_id: node_id.to_string(),
-                };
-                Ok::<_, IrohFfiError>((endpoint, store, router, identity))
-            })?;
+            let node_id = endpoint.node_id();
+            let identity = IrohNodeIdentity {
+                raw_public_key: node_id.as_bytes().to_vec(),
+                node_id: node_id.to_string(),
+                relay_url: String::new(),
+                direct_addresses: Vec::new(),
+            };
+            Ok::<_, IrohFfiError>((endpoint, store, router, identity))
+        })?;
 
         block_on(async {
             *self.inner.lock().await = Some(BlobNodeInner {
@@ -181,19 +187,22 @@ impl IrohBlobNode {
         }
 
         block_on(async move {
-            let abs_path = std::path::absolute(&path).map_err(|err| {
-                IrohFfiError::RuntimeFailed {
+            let abs_path =
+                std::path::absolute(&path).map_err(|err| IrohFfiError::RuntimeFailed {
                     message: format!("absolute({}): {err}", path.display()),
-                }
-            })?;
+                })?;
 
             let tag = store.blobs().add_path(abs_path).await.map_err(|err| {
-                IrohFfiError::RuntimeFailed { message: format!("add_path: {err}") }
+                IrohFfiError::RuntimeFailed {
+                    message: format!("add_path: {err}"),
+                }
             })?;
 
             let node_id = endpoint.node_id();
             let ticket = BlobTicket::new(NodeAddr::from(node_id), tag.hash, tag.format);
-            Ok(BlobTicketBytes { text: ticket.to_string() })
+            Ok(BlobTicketBytes {
+                text: ticket.to_string(),
+            })
         })
     }
 
@@ -219,17 +228,14 @@ impl IrohBlobNode {
         let dest_path = PathBuf::from(&destination);
 
         block_on(async move {
-            let abs_dest = std::path::absolute(&dest_path).map_err(|err| {
-                IrohFfiError::RuntimeFailed {
+            let abs_dest =
+                std::path::absolute(&dest_path).map_err(|err| IrohFfiError::RuntimeFailed {
                     message: format!("absolute({}): {err}", dest_path.display()),
-                }
-            })?;
+                })?;
 
             // Resume probe: if the destination already exists, capture
             // its current size so we can flag the transfer as a resume.
-            let pre_existing_size = std::fs::metadata(&abs_dest)
-                .map(|m| m.len())
-                .unwrap_or(0);
+            let pre_existing_size = std::fs::metadata(&abs_dest).map(|m| m.len()).unwrap_or(0);
             let did_resume = pre_existing_size > 0;
 
             let started = Instant::now();
@@ -249,9 +255,7 @@ impl IrohBlobNode {
                     message: format!("blob export: {err}"),
                 })?;
 
-            let bytes_total = std::fs::metadata(&abs_dest)
-                .map(|m| m.len())
-                .unwrap_or(0);
+            let bytes_total = std::fs::metadata(&abs_dest).map(|m| m.len()).unwrap_or(0);
             let duration_millis = started.elapsed().as_millis() as u64;
 
             Ok(BlobTransferStats {
@@ -282,7 +286,13 @@ impl IrohBlobNode {
             Ok::<_, IrohFfiError>(guard.take())
         })?;
 
-        if let Some(BlobNodeInner { runtime, router, endpoint, .. }) = inner {
+        if let Some(BlobNodeInner {
+            runtime,
+            router,
+            endpoint,
+            ..
+        }) = inner
+        {
             runtime.block_on(async move {
                 let _ = router.shutdown().await;
                 endpoint.close().await;
@@ -302,7 +312,9 @@ pub fn parse_blob_ticket(text: String) -> Result<BlobTicketBytes, IrohFfiError> 
     let ticket = BlobTicket::from_str(trimmed).map_err(|err| IrohFfiError::StreamFailed {
         message: format!("invalid blob ticket: {err}"),
     })?;
-    Ok(BlobTicketBytes { text: ticket.to_string() })
+    Ok(BlobTicketBytes {
+        text: ticket.to_string(),
+    })
 }
 
 /// Returns the iroh-blobs ALPN. Mac and iOS surface this so Swift code

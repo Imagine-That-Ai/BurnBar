@@ -4,6 +4,7 @@ import FirebaseFirestore
 import FirebaseFunctions
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarMedia
 
 // MARK: - CloudSyncService
 
@@ -857,6 +858,12 @@ final class HermesRelayHostService {
     private var listenerUID: String?
     private var requestTasks: [String: Task<Void, Never>] = [:]
     private var processingRequestIDs: Set<String> = []
+    /// Retained Mercury file-transfer service so its persistent control
+    /// stream + `@Published` state survive the lifetime of the Hermes
+    /// session. The Mac chat input reads this property via
+    /// `HermesRelayHostService` to drive paperclip + drag-and-drop
+    /// sends.
+    @MainActor private(set) var mercuryFileTransfer: MacFileTransferService?
 
     init(
         db: Firestore = Firestore.firestore(),
@@ -894,20 +901,39 @@ final class HermesRelayHostService {
                     relayKeyStore: relayKeyStore,
                     urlSession: urlSession
                 )
-                // Mercury Phase 1b — wire the Mac file-transfer service so
-                // inbound `media.blob.advertise` frames trigger a fetch and
-                // emit an ack on the same chat stream. Returns nil on builds
-                // that don't link the xcframework (loopback dev path).
+                // Mercury Phase 1b + Risk-1 fix — wire the Mac
+                // file-transfer service AND the persistent media
+                // control-stream registry. Returns nil on builds that
+                // don't link the xcframework (loopback dev path).
                 if let fileTransferService = MediaFileTransferServiceFactory.make() {
+                    let controlRegistry = MediaControlStreamRegistry()
                     let macFileTransfer = MacFileTransferService(
                         service: fileTransferService,
                         settingsProvider: { @MainActor [settingsManager] in
                             settingsManager.mediaBlobTransferEnabled
-                        }
+                        },
+                        controlStreamRegistry: controlRegistry
                     )
+                    // Per-request dispatch (chat-piggyback path) — used
+                    // when an advertise rides an active chat response
+                    // stream rather than the long-lived control stream.
                     irohClient.mediaDispatcher = { @Sendable frame, ackSender in
                         await macFileTransfer.handleAdvertise(frame: frame, ackSender: ackSender)
                     }
+                    // Control-stream registrar (Risk-1 fix) — when iOS
+                    // dials a stream and classifies it as
+                    // `media.control`, the request handler hands it
+                    // here. MacFileTransferService owns the long-lived
+                    // read loop and uses the same stream for outbound
+                    // pushes.
+                    irohClient.mediaControlRegistrar = { @Sendable stream, uid, connectionID in
+                        await macFileTransfer.mountControlStream(
+                            stream,
+                            uid: uid,
+                            connectionID: connectionID
+                        )
+                    }
+                    self.mercuryFileTransfer = macFileTransfer
                 }
                 self.realtimeRelayClient = HermesRelayHostFanout(
                     primary: irohClient,

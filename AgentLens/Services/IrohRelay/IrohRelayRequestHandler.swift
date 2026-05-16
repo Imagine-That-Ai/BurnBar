@@ -13,6 +13,17 @@ typealias MediaFrameDispatcher = @Sendable (
     _ ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void
 ) async -> Void
 
+/// Closure type the host client injects when iOS opens a stream and
+/// classifies it as the long-lived media control stream. The handler
+/// hands the stream off, returns from `serve()`, and the registered
+/// owner drives the read loop + outbound sends from then on. Sendable so
+/// it survives the per-stream task boundary.
+typealias MediaControlStreamRegistrar = @Sendable (
+    _ stream: any IrohRelayStream,
+    _ uid: String,
+    _ connectionID: String
+) async -> Void
+
 /// Serves one inbound iroh stream: decrypts an inbound `request.start`
 /// frame, forwards the request to the local Hermes gateway, and streams
 /// the response back as `response.chunk` + `response.complete` frames. The
@@ -23,18 +34,21 @@ final class IrohRelayRequestHandler: Sendable {
     private let urlSession: URLSession
     private let settingsManager: any SettingsManagerProtocol
     private let mediaDispatcher: MediaFrameDispatcher?
+    private let mediaControlRegistrar: MediaControlStreamRegistrar?
 
     @MainActor
     init(
         relayKeyStore: HermesRelayKeyStore,
         urlSession: URLSession,
         settingsManager: any SettingsManagerProtocol,
-        mediaDispatcher: MediaFrameDispatcher? = nil
+        mediaDispatcher: MediaFrameDispatcher? = nil,
+        mediaControlRegistrar: MediaControlStreamRegistrar? = nil
     ) {
         self.relayKeyStore = relayKeyStore
         self.urlSession = urlSession
         self.settingsManager = settingsManager
         self.mediaDispatcher = mediaDispatcher
+        self.mediaControlRegistrar = mediaControlRegistrar
     }
 
     func serve(
@@ -42,8 +56,22 @@ final class IrohRelayRequestHandler: Sendable {
         uid: String,
         connectionID: String
     ) async throws {
+        var classifiedAsMediaControl = false
         while let frame = try await stream.receive() {
             guard frame.uid == uid, frame.connectionId == connectionID else { continue }
+
+            // First-frame classification — when iOS opens a stream and
+            // declares it the long-lived media control stream, hand
+            // ownership to the registry and return. The registry's
+            // owner drives the read loop from there.
+            if !classifiedAsMediaControl,
+               frame.type == .mediaClassify,
+               let mediaControlRegistrar,
+               frame.media?.streamClass == "media.control" {
+                classifiedAsMediaControl = true
+                await mediaControlRegistrar(stream, uid, connectionID)
+                return
+            }
             switch frame.type {
             case .requestStart:
                 guard let requestID = frame.requestId else {

@@ -44,7 +44,10 @@ public struct MissionKindChooser: View {
                 .padding(.vertical, 2)
                 .fixedSize(horizontal: true, vertical: false)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .scrollClipDisabled(false)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var sectionHeader: some View {
