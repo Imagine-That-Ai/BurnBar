@@ -1,5 +1,25 @@
 # Hermes iroh Rollout Status
 
+## 2026-05-16T18:20Z — Phase C/D 10-minute wait exhausted
+
+**Gate status:** blocked on physical iPhone CoreDevice reachability.
+
+Completed:
+- Started the preferred unattended cellular gate command with a 600-second
+  CoreDevice wait:
+  `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 10 --interfaces cellular --wait-for-device-seconds 600 --wait-for-device-interval 5`
+- The iPhone never reached `tunnelState: connected`; the command exited in the
+  device preflight with `tunnelState: unavailable`.
+- Confirmed the post-fix wait attempt did not start the Mac host and did not
+  create a new validation artifact directory. Removed two empty pre-fix
+  `ios-iroh-gate-*` directories that had been created by earlier blocked
+  attempts before the artifact-ordering fix.
+
+Next action:
+- Connect the iPhone to this Mac over USB, unlock it, accept any Trust prompt,
+  leave iPhone Wi-Fi off/cellular on, then rerun:
+  `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 10 --interfaces cellular --wait-for-device-seconds 600 --wait-for-device-interval 5`
+
 ## 2026-05-16T18:08Z — Phase C/D gate can now wait for the iPhone tunnel
 
 **Gate status:** blocked on physical iPhone CoreDevice reachability.
