@@ -41,6 +41,11 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: "ndk;${{ env.ANDROID_NDK_VERSION }}"
+
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
         with:
@@ -66,12 +71,15 @@ jobs:
             cargo install cargo-ndk --locked --version "^3.5"
           fi
 
-      - name: Install Android NDK ${{ env.ANDROID_NDK_VERSION }}
+      - name: Export Android NDK ${{ env.ANDROID_NDK_VERSION }}
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "ndk;${ANDROID_NDK_VERSION}"
-          echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}" >> "${GITHUB_ENV}"
+          ndk_path="${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}"
+          if [[ ! -d "${ndk_path}" ]]; then
+            echo "Expected Android NDK missing: ${ndk_path}" >&2
+            exit 1
+          fi
+          echo "ANDROID_NDK_HOME=${ndk_path}" >> "${GITHUB_ENV}"
 
       - name: Host-side cargo check (sanity)
         run: cargo check -p openburnbar-iroh

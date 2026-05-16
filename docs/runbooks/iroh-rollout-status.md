@@ -1,5 +1,32 @@
 # Hermes iroh Rollout Status
 
+## 2026-05-16T18:24Z — Android AAR CI setup repair
+
+**Gate status:** CI repair in progress; cellular iPhone gate remains blocked on
+physical CoreDevice reachability.
+
+Completed:
+- Refreshed GitHub Actions state for branch `chore/router-brand-coherent-rail`.
+  The latest `openburnbar-iroh AAR (Android)` run failed before build/test
+  execution because `sdkmanager` was not available on PATH in the Ubuntu
+  runner.
+- Patched `.github/workflows/build-iroh-android-aar.yml` to mirror the
+  repository's Android PR harness setup: install the Android SDK via pinned
+  `android-actions/setup-android`, request `ndk;26.3.11579264`, then export
+  `ANDROID_NDK_HOME` only after verifying the expected NDK path exists.
+
+Verification:
+- `ruby -e 'require "yaml"; YAML.load_file(ARGV[0]); puts "yaml ok"' .github/workflows/build-iroh-android-aar.yml`
+  passes.
+- `actionlint -color .github/workflows/build-iroh-android-aar.yml` passes.
+- `bash -n scripts/build-iroh-android-aar.sh` passes.
+- `./scripts/build-iroh-android-aar.sh --dry-run` passes.
+
+Next action:
+- Push the workflow fix and watch the `openburnbar-iroh AAR (Android)` workflow
+  on the new commit. If CI advances past SDK setup and fails in the actual Rust
+  or AAR build, diagnose that as a real Phase A/Android portability issue.
+
 ## 2026-05-16T18:20Z — Phase C/D 10-minute wait exhausted
 
 **Gate status:** blocked on physical iPhone CoreDevice reachability.
