@@ -1152,6 +1152,58 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertTrue(service.messages.last?.isError ?? false)
     }
 
+    func testExplicitSelectedModelUnverifiedCatalogStopsBeforeRelayRequest() async {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "openburnbar-local",
+            providerName: "OpenBurnBar Local",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+        let relay = FakeHermesRelayTransport()
+        let service = HermesService(relayTransport: relay, defaults: defaults)
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.modelOptions = []
+
+        service.sendMessage("Do not send until this model is verified")
+        await waitForStreamToFinish(service)
+
+        XCTAssertTrue(relay.streamingPayloads.isEmpty)
+        XCTAssertEqual(
+            service.lastError,
+            "Selected Hermes model 'gpt-5.5' has not been verified against this Mac relay's model catalog yet. Refresh the Mac Hermes gateway before sending, so the selected model is not silently rerouted."
+        )
+        XCTAssertTrue(service.messages.last?.isError ?? false)
+    }
+
+    func testExplicitSelectedModelUnverifiedCatalogStopsMissionDispatchModel() throws {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let selected = HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+        let service = HermesService(relayTransport: FakeHermesRelayTransport(), defaults: defaults)
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        service.modelOptions = []
+
+        XCTAssertThrowsError(try service.validatedModelIDForMissionDispatch()) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Selected Hermes model 'gpt-5.5' has not been verified against this Mac relay's model catalog yet. Refresh the Mac Hermes gateway before sending, so the selected model is not silently rerouted."
+            )
+        }
+    }
+
     func testCompositeRelayDoesNotFallbackForUpstreamModelErrors() async throws {
         let primary = FakeHermesRelayTransport()
         primary.streamingError = HermesServiceError.upstreamModelError(

@@ -58,7 +58,7 @@ class MediaSessionForegroundService : Service() {
         )
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_phone_call)
+            .setSmallIcon(com.openburnbar.R.drawable.ic_mercury_call)
             .setContentTitle("Mercury call in progress")
             .setContentText("Tap to return to the call")
             .setContentIntent(launchPending)

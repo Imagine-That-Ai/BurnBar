@@ -545,6 +545,51 @@ final class PiServicePersistenceTests: XCTestCase {
         XCTAssertTrue(service.messages.last?.text.contains("Selected Pi model 'glm-5.1'") ?? false)
     }
 
+    func testPiServiceFailsBeforeSendingWhenExplicitModelCatalogIsUnverified() {
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: makeDefaults(), history: store)
+        let selected = HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        service.modelOptions = []
+        service.send(prompt: "Use the selected Pi model")
+
+        XCTAssertFalse(service.isStreaming)
+        XCTAssertTrue(service.lastError?.contains("has not been verified") ?? false)
+        XCTAssertTrue(service.messages.last?.isError ?? false)
+        XCTAssertTrue(service.messages.last?.text.contains("Selected Pi model 'gpt-5.5'") ?? false)
+    }
+
+    func testPiServiceFailsMissionDispatchModelWhenExplicitCatalogIsUnverified() throws {
+        let local = InMemoryLocalStore()
+        let store = MobileChatHistoryStore(local: local, cloud: nil)
+        let service = PiService(defaults: makeDefaults(), history: store)
+        let selected = HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5.5",
+            displayName: "GPT-5.5"
+        )
+
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        service.modelOptions = []
+
+        XCTAssertThrowsError(try service.validatedModelIDForMissionDispatch()) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "Selected Pi model 'gpt-5.5' has not been verified against this Mac Pi harness catalog yet. Refresh the Mac Pi gateway before sending, so the selected model is not silently rerouted."
+            )
+        }
+    }
+
     func testPiServiceMergeToolCallsAccumulatesArgumentsAcrossDeltas() {
         // OpenAI-compatible streaming sends a single tool call as a sequence
         // of `tool_calls` chunks — name first, then partial argument strings

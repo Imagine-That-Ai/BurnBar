@@ -1340,10 +1340,41 @@ final class AccountManagerTests: XCTestCase {
         XCTAssertEqual(query[kSecAttrSynchronizable as String] as? Bool, true)
     }
 
+    func test_firebaseAuthDefaultStoredUserDeleteQuery_targetsCurrentFirebaseSwiftRow() {
+        let query = AccountManager.firebaseAuthDefaultStoredUserDeleteQueryForTesting(
+            service: "firebase_auth_1:123:ios:abc",
+            appName: "__FIRAPP_DEFAULT"
+        )
+
+        XCTAssertEqual(query[kSecClass as String] as? String, kSecClassGenericPassword as String)
+        XCTAssertEqual(query[kSecAttrService as String] as? String, "firebase_auth_1:123:ios:abc")
+        XCTAssertEqual(
+            query[kSecAttrAccount as String] as? String,
+            "firebase_auth_1___FIRAPP_DEFAULT_firebase_user"
+        )
+        XCTAssertEqual(query[kSecUseDataProtectionKeychain as String] as? Bool, true)
+    }
+
+    func test_firebaseAuthLegacyDefaultStoredUserDeleteQuery_targetsLegacyNoServiceRow() {
+        let query = AccountManager.firebaseAuthLegacyDefaultStoredUserDeleteQueryForTesting(
+            appName: "__FIRAPP_DEFAULT"
+        )
+
+        XCTAssertEqual(query[kSecClass as String] as? String, kSecClassGenericPassword as String)
+        XCTAssertNil(query[kSecAttrService as String])
+        XCTAssertEqual(query[kSecAttrAccount as String] as? String, "__FIRAPP_DEFAULT_firebase_user")
+    }
+
     func test_recoverableFirebaseAuthKeychainDeleteStatus_isStrict() {
         XCTAssertTrue(AccountManager.isRecoverableFirebaseAuthKeychainDeleteStatusForTesting(errSecSuccess))
         XCTAssertTrue(AccountManager.isRecoverableFirebaseAuthKeychainDeleteStatusForTesting(errSecItemNotFound))
         XCTAssertFalse(AccountManager.isRecoverableFirebaseAuthKeychainDeleteStatusForTesting(errSecMissingEntitlement))
+    }
+
+    func test_recoverableDefaultFirebaseAuthKeychainDeleteStatus_allowsMissingEntitlement() {
+        XCTAssertTrue(AccountManager.isRecoverableDefaultFirebaseAuthKeychainDeleteStatusForTesting(errSecSuccess))
+        XCTAssertTrue(AccountManager.isRecoverableDefaultFirebaseAuthKeychainDeleteStatusForTesting(errSecItemNotFound))
+        XCTAssertTrue(AccountManager.isRecoverableDefaultFirebaseAuthKeychainDeleteStatusForTesting(errSecMissingEntitlement))
     }
 
     func test_googleAuthPresentationWindow_returnsVisibleWindow() {

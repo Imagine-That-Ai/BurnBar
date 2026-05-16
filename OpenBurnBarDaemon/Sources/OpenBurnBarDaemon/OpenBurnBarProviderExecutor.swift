@@ -653,9 +653,15 @@ private enum BurnBarFakeProviderExecution {
 
 public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     private let service: String
+    private let hermesCredentialPoolURL: URL?
 
-    public init(service: String = "com.openburnbar.cursor-connector") {
+    public init(
+        service: String = "com.openburnbar.cursor-connector",
+        hermesCredentialPoolURL: URL? = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".hermes/auth.json", isDirectory: false)
+    ) {
         self.service = service
+        self.hermesCredentialPoolURL = hermesCredentialPoolURL
     }
 
     public func secret(for providerID: String) async throws -> String? {
@@ -688,15 +694,17 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             || status == errSecInteractionNotAllowed
             || status == errSecUserCanceled
             || status == errSecAuthFailed {
-            return nil
+            return hermesCredentialPoolSecret(for: providerID)
         }
         guard status == errSecSuccess else {
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
         }
         guard let data = item as? Data else {
-            return nil
+            return hermesCredentialPoolSecret(for: providerID)
         }
-        return String(data: data, encoding: .utf8)
+        let decoded = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return decoded?.isEmpty == false ? decoded : hermesCredentialPoolSecret(for: providerID)
     }
 
     public func setSecret(_ secret: String?, for providerID: String) async throws {
@@ -718,12 +726,16 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
                 kSecValueData as String: data,
                 kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             ]
-            let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+            let updateStatus = withKeychainUserInteractionDisabled {
+                SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+            }
             if updateStatus == errSecItemNotFound {
                 var createQuery = query
                 createQuery[kSecValueData as String] = data
                 createQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-                let addStatus = SecItemAdd(createQuery as CFDictionary, nil)
+                let addStatus = withKeychainUserInteractionDisabled {
+                    SecItemAdd(createQuery as CFDictionary, nil)
+                }
                 guard addStatus == errSecSuccess else {
                     throw NSError(domain: NSOSStatusErrorDomain, code: Int(addStatus))
                 }
@@ -731,11 +743,43 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(updateStatus))
             }
         } else {
-            let deleteStatus = SecItemDelete(query as CFDictionary)
+            let deleteStatus = withKeychainUserInteractionDisabled {
+                SecItemDelete(query as CFDictionary)
+            }
             guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(deleteStatus))
             }
         }
+    }
+
+    private func hermesCredentialPoolSecret(for providerID: String) -> String? {
+        guard let hermesCredentialPoolURL else { return nil }
+        let normalizedProviderID = providerID
+            .components(separatedBy: ".slot.")
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let normalizedProviderID, !normalizedProviderID.isEmpty else { return nil }
+        guard let data = try? Data(contentsOf: hermesCredentialPoolURL),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let pool = root["credential_pool"] as? [String: Any],
+              let entries = pool[normalizedProviderID] as? [[String: Any]] else {
+            return nil
+        }
+
+        for entry in entries {
+            let status = (entry["last_status"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            if status == "exhausted" || status == "disabled" {
+                continue
+            }
+            guard let token = entry["access_token"] as? String else { continue }
+            let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+        return nil
     }
 }
 

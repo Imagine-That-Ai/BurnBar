@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Pi Agent runtime mark. Direct port of the iOS asset
+    `OpenBurnBarMobile/Resources/Assets.xcassets/PiAgentLogo.imageset/PiAgentLogo-Light.svg`,
+    so the Android pill / pinned grid / brand zone / model picker now
+    render the exact same sigil the iOS app uses (stepped pyramid + one
+    offset square — Pi Agent's house mark, not the Greek letter π).
+
+    Paths copied 1:1 from the iOS SVG (viewBox 0 0 800 800, fill #000000).
+    The Android VectorDrawable path grammar (M / H / V / Z) is a strict
+    subset of SVG so the absolute coordinates work as-is. BundledLogo
+    (ProviderLogo.kt) wraps every logo in a white squircle, so black
+    linework reads correctly on every surface that hosts the asset.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="800"
+    android:viewportHeight="800">
+
+    <!-- Stepped pyramid (the body of the sigil). Even-odd fill carves
+         out the inner notch at 282.65,282.65 → 400,400. -->
+    <path
+        android:fillColor="#000000"
+        android:fillType="evenOdd"
+        android:pathData="M165.29,165.29 H517.36 V400 H400 V517.36 H282.65 V634.72 H165.29 Z M282.65,282.65 V400 H400 V282.65 Z" />
+
+    <!-- Detached square anchoring the lower-right corner. -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M517.36,400 H634.72 V634.72 H517.36 Z" />
+</vector>

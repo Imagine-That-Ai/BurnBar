@@ -47,6 +47,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     }
 
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+        let usesScopedConfig = Self.hasScopedClaudeConfig(environment: context.environment)
         let bridgeStatus = context.refreshClaudeBridgeStatus()
 
         // Auto-install the statusline bridge on the first refresh that
@@ -54,7 +55,7 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         // no UI prompts. If installation fails (permissions, etc.) we
         // fall through to OAuth / JSONL paths so the user still gets
         // a usable snapshot.
-        if shouldAutoInstallBridge(for: bridgeStatus, context: context) {
+        if !usesScopedConfig, shouldAutoInstallBridge(for: bridgeStatus, context: context) {
             // Record the attempt BEFORE installing so a thrown error
             // doesn't leave us in a retry loop. Worst case the user
             // can manually install via Settings.
@@ -71,7 +72,8 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         // 1. Statusline bridge — most current when the CLI has fired
         //    at least once. Returns immediately if a fresh payload is
         //    available.
-        if postInstallStatus.state == .ready,
+        if !usesScopedConfig,
+           postInstallStatus.state == .ready,
            let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL),
            let rateLimitsDict = payload["rate_limits"] as? [String: Any] {
             let rateLimits = ClaudeRateLimits(from: rateLimitsDict)
@@ -148,7 +150,8 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         //    buckets with the published cap.
         let jsonlWindows = (try? Self.scanJSONLTokenWindows(
             homeDirectoryURL: context.homeDirectoryURL,
-            fileManager: context.fileManager
+            fileManager: context.fileManager,
+            environment: context.environment
         )) ?? JSONLTokenWindows(fiveHourTokens: 0, sevenDayTokens: 0, latestTimestamp: nil, filesScanned: 0)
 
         if jsonlWindows.fiveHourTokens > 0 || jsonlWindows.sevenDayTokens > 0 {

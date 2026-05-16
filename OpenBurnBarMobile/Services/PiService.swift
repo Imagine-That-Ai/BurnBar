@@ -185,11 +185,14 @@ enum PiChatMessageOutcome: String, Equatable, Sendable {
 
 enum PiServiceError: LocalizedError {
     case selectedModelUnavailable(String)
+    case selectedModelCatalogUnavailable(String)
 
     var errorDescription: String? {
         switch self {
         case .selectedModelUnavailable(let modelID):
             return "Selected Pi model '\(modelID)' is not available on this Mac Pi harness. Pick another model or refresh/restart the Mac Pi gateway."
+        case .selectedModelCatalogUnavailable(let modelID):
+            return "Selected Pi model '\(modelID)' has not been verified against this Mac Pi harness catalog yet. Refresh the Mac Pi gateway before sending, so the selected model is not silently rerouted."
         }
     }
 }
@@ -357,6 +360,19 @@ final class PiService {
         selectedModelID = nil
         selectedModelWasExplicit = false
         defaults.removeObject(forKey: selectedModelDefaultsKey)
+    }
+
+    func validatedModelIDForMissionDispatch() throws -> String? {
+        guard let selectedModelID = selectedModelID?.nilIfBlank else { return nil }
+        if selectedModelWasExplicit {
+            guard !modelOptions.isEmpty else {
+                throw PiServiceError.selectedModelCatalogUnavailable(selectedModelID)
+            }
+            guard modelOptions.contains(where: { $0.modelID == selectedModelID }) else {
+                throw PiServiceError.selectedModelUnavailable(selectedModelID)
+            }
+        }
+        return selectedModelID
     }
 
     func isFavoriteModel(_ option: HermesRuntimeModelOption) -> Bool {
@@ -780,10 +796,13 @@ final class PiService {
 
     private func activeModelIDForRequest() throws -> String {
         if let selectedModelID = selectedModelID?.nilIfBlank {
-            if selectedModelWasExplicit,
-               !modelOptions.isEmpty,
-               !modelOptions.contains(where: { $0.modelID == selectedModelID }) {
-                throw PiServiceError.selectedModelUnavailable(selectedModelID)
+            if selectedModelWasExplicit {
+                guard !modelOptions.isEmpty else {
+                    throw PiServiceError.selectedModelCatalogUnavailable(selectedModelID)
+                }
+                guard modelOptions.contains(where: { $0.modelID == selectedModelID }) else {
+                    throw PiServiceError.selectedModelUnavailable(selectedModelID)
+                }
             }
             return selectedModelID
         }

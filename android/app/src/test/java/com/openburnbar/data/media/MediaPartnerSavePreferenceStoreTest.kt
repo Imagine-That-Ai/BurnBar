@@ -4,6 +4,7 @@ import android.content.Context
 import io.mockk.every
 import io.mockk.mockk
 import java.io.File
+import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
@@ -23,7 +24,7 @@ class MediaPartnerSavePreferenceStoreTest {
 
     @Before
     fun setUp() {
-        tempDir = createTempDir(prefix = "mercury-partner-prefs")
+        tempDir = createTempDirectory("mercury-partner-prefs").toFile()
         context = mockk(relaxed = true)
         every { context.applicationContext } returns context
         every { context.filesDir } returns tempDir

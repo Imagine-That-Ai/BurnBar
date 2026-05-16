@@ -67,7 +67,7 @@ object ProviderLogo {
     @DrawableRes
     fun drawableFor(runtime: AssistantRuntimeID): Int = when (runtime) {
         AssistantRuntimeID.HERMES     -> R.drawable.hermes_logo
-        AssistantRuntimeID.PI         -> R.drawable.pi_agent_logo
+        AssistantRuntimeID.PI         -> R.drawable.pi_runtime_glyph
         AssistantRuntimeID.CODEX      -> R.drawable.codex_logo
         AssistantRuntimeID.CLAUDE     -> R.drawable.claude_code_logo
         AssistantRuntimeID.OPEN_CLAW  -> R.drawable.open_claw_logo
@@ -86,7 +86,7 @@ object ProviderLogo {
             // Pi as a runtime token shows up as exact "pi" / "pi-agent".
             // Restrict it to whole-token matches so "openai" / "perplexity"
             // don't fall into this bucket.
-            k == "pi" || k.startsWith("pi-") || k.endsWith("/pi")     -> R.drawable.pi_agent_logo
+            k == "pi" || k.startsWith("pi-") || k.endsWith("/pi")     -> R.drawable.pi_runtime_glyph
             k == "hermes" || k.endsWith("/hermes")                    -> R.drawable.hermes_logo
             "claude"     in k || "anthropic" in k             -> R.drawable.anthropic_logo
             "gpt"        in k || "chatgpt"   in k             -> R.drawable.open_ai_logo

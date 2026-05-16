@@ -54,6 +54,46 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertFalse(openPlatform?.unlocksQuotaRefresh ?? true)
     }
 
+    func test_openAI_exposesAPIKeyAdminKeyAndCodexOAuthMethods() {
+        let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "openai")
+        XCTAssertEqual(descriptor?.primaryMethod.id, "openai-api-key")
+
+        let apiKey = descriptor?.method(id: "openai-api-key")
+        XCTAssertEqual(apiKey?.kind, .apiKey)
+        XCTAssertTrue(apiKey?.unlocksProxyRouting ?? false)
+
+        let adminKey = descriptor?.method(id: "openai-admin-key")
+        XCTAssertEqual(adminKey?.kind, .apiKey)
+        XCTAssertFalse(adminKey?.unlocksProxyRouting ?? true)
+        XCTAssertTrue(adminKey?.unlocksQuotaRefresh ?? false)
+
+        let oauth = descriptor?.method(id: "openai-codex-oauth")
+        XCTAssertEqual(oauth?.kind, .browserLogin)
+        XCTAssertFalse(oauth?.unlocksProxyRouting ?? true)
+        XCTAssertTrue(oauth?.unlocksQuotaRefresh ?? false)
+        XCTAssertFalse(oauth?.storage.usesDaemonSlot ?? true)
+    }
+
+    func test_anthropic_exposesAPIKeyOAuthBearerAndClaudeCodeLoginMethods() {
+        let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "claude")
+        XCTAssertEqual(descriptor?.providerID, "anthropic")
+
+        let apiKey = descriptor?.method(id: "anthropic-api-key")
+        XCTAssertEqual(apiKey?.kind, .apiKey)
+        XCTAssertTrue(apiKey?.unlocksProxyRouting ?? false)
+
+        let oauthBearer = descriptor?.method(id: "anthropic-claude-oauth")
+        XCTAssertEqual(oauthBearer?.kind, .bearerToken)
+        XCTAssertTrue(oauthBearer?.unlocksProxyRouting ?? false)
+        XCTAssertTrue(oauthBearer?.unlocksQuotaRefresh ?? false)
+
+        let login = descriptor?.method(id: "anthropic-claude-code-login")
+        XCTAssertEqual(login?.kind, .browserLogin)
+        XCTAssertFalse(login?.unlocksProxyRouting ?? true)
+        XCTAssertTrue(login?.unlocksQuotaRefresh ?? false)
+        XCTAssertFalse(login?.storage.usesDaemonSlot ?? true)
+    }
+
     func test_kimiSessionMethodMirrorsToKimiAuthTokenKeychainAccount() {
         let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "moonshot")
         let session = descriptor?.method(id: "kimi-session-token")

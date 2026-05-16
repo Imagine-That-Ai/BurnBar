@@ -1232,6 +1232,19 @@ final class HermesService {
         return favoriteModelIDs.compactMap { optionsByID[$0] }
     }
 
+    func validatedModelIDForMissionDispatch() throws -> String? {
+        guard let selectedModelID = selectedModelID?.nilIfBlank else { return nil }
+        if selectedModelWasExplicit {
+            guard !modelOptions.isEmpty else {
+                throw HermesServiceError.selectedModelCatalogUnavailable(selectedModelID)
+            }
+            guard modelOptions.contains(where: { $0.modelID == selectedModelID }) else {
+                throw HermesServiceError.selectedModelUnavailable(selectedModelID)
+            }
+        }
+        return selectedModelID
+    }
+
     /// Retry the most recent user turn. Strips any assistant messages
     /// that came after the last user message (the failed/empty replies
     /// we want to redo) and re-sends the original prompt with its
@@ -2056,10 +2069,13 @@ final class HermesService {
 
     private func activeModelIDForRequest() throws -> String {
         if let selectedModelID = selectedModelID?.nilIfBlank {
-            if selectedModelWasExplicit,
-               !modelOptions.isEmpty,
-               !modelOptions.contains(where: { $0.modelID == selectedModelID }) {
-                throw HermesServiceError.selectedModelUnavailable(selectedModelID)
+            if selectedModelWasExplicit {
+                guard !modelOptions.isEmpty else {
+                    throw HermesServiceError.selectedModelCatalogUnavailable(selectedModelID)
+                }
+                guard modelOptions.contains(where: { $0.modelID == selectedModelID }) else {
+                    throw HermesServiceError.selectedModelUnavailable(selectedModelID)
+                }
             }
             return selectedModelID
         }
@@ -3407,6 +3423,7 @@ enum HermesServiceError: LocalizedError {
     case invalidURL
     case keychain(OSStatus)
     case selectedModelUnavailable(String)
+    case selectedModelCatalogUnavailable(String)
     case upstreamModelError(String)
     case relayUnavailable(String)
     case relayTimeout
@@ -3428,6 +3445,8 @@ enum HermesServiceError: LocalizedError {
             return "Could not update the Hermes API key in Keychain (\(status))."
         case .selectedModelUnavailable(let modelID):
             return "Selected Hermes model '\(modelID)' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
+        case .selectedModelCatalogUnavailable(let modelID):
+            return "Selected Hermes model '\(modelID)' has not been verified against this Mac relay's model catalog yet. Refresh the Mac Hermes gateway before sending, so the selected model is not silently rerouted."
         case .upstreamModelError(let message):
             return message
         case .relayUnavailable(let message):
@@ -3439,7 +3458,10 @@ enum HermesServiceError: LocalizedError {
 
     var stopsRelayFallback: Bool {
         switch self {
-        case .selectedModelUnavailable, .upstreamModelError, .relayTimeout:
+        case .selectedModelUnavailable,
+             .selectedModelCatalogUnavailable,
+             .upstreamModelError,
+             .relayTimeout:
             return true
         case .invalidResponse,
              .httpStatus,

@@ -84,7 +84,7 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
 
         // Lane-segregated accumulators. Sessions are filtered by
         // FactorySessionClassifier so user-configured custom proxies
-        // (VibeProxy, localhost Ollama, BYOK keys, etc.) never poison
+        // (third-party proxies, localhost Ollama, BYOK keys, etc.) never poison
         // the Factory plan cap. Standard + Droid Core both count against
         // Standard Usage until it's exhausted, but we track them
         // separately so the popover can show which lane is burning.
@@ -136,7 +136,7 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
             guard let sessionDate else { continue }
 
             // Track models — only for sessions that actually counted, to
-            // avoid the "top model" line being dominated by VibeProxy
+            // avoid the "top model" line being dominated by custom proxy
             // entries that don't touch Factory billing.
             let lane = FactorySessionClassifier.lane(for: json)
             laneCounts[lane, default: 0] += 1
@@ -340,7 +340,7 @@ struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         }
 
         // Top model — only across Factory-billed sessions so the line
-        // isn't dominated by VibeProxy / OpenCode-Go entries that don't
+        // isn't dominated by custom proxy / OpenCode-Go entries that don't
         // touch Factory's plan.
         let topModel = modelCounts.max(by: { $0.value < $1.value }).map { "\($0.key) (\($0.value) sessions)" } ?? ""
 

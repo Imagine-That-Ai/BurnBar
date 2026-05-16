@@ -102,25 +102,31 @@ final class AccountManager {
     ///
     /// We discover the team-prefixed group at runtime (instead of hardcoding the
     /// 10-character Team ID) so the fix follows whatever signing identity Xcode
-    /// selects. If the bundle has no keychain entitlement (e.g. notarized
-    /// Developer ID release lane — see `OpenBurnBarRelease.entitlements`), the
-    /// probe returns nil and we leave Firebase Auth on its default keychain path.
+    /// selects, including the default app access group when Keychain Sharing is
+    /// not explicitly configured. If the data-protection keychain is unavailable,
+    /// the probe returns nil and we leave Firebase Auth on its default path.
     private func configureFirebaseAuthAccessGroup() {
         guard let group = Self.discoverKeychainAccessGroup() else { return }
         do {
-            try Auth.auth().useUserAccessGroup(group)
-            firebaseAuthAccessGroup = group
+            try bindFirebaseAuthAccessGroup(group)
         } catch {
-            // Non-fatal: Firebase Auth falls back to its default keychain path.
-            // Log so we can spot misconfigured signing without crashing the app.
-            os_log(
-                "Firebase Auth useUserAccessGroup failed for %{public}@: %{public}@",
-                log: .default,
-                type: .error,
-                group,
-                error.localizedDescription
-            )
+            Self.logAuthFailure("Firebase Auth useUserAccessGroup", error)
+            guard Self.isFirebaseAuthKeychainError(error),
+                  Self.clearFirebaseAuthKeychainState(accessGroup: group) else {
+                return
+            }
+            do {
+                try bindFirebaseAuthAccessGroup(group)
+                Self.authLogger.info("Firebase Auth access-group binding recovered after keychain cleanup.")
+            } catch {
+                Self.logAuthKeychainFailure(error)
+            }
         }
+    }
+
+    private func bindFirebaseAuthAccessGroup(_ group: String) throws {
+        try Auth.auth().useUserAccessGroup(group)
+        firebaseAuthAccessGroup = group
     }
 
     /// Probes the keychain to discover the bundle's access group prefix
@@ -597,15 +603,22 @@ final class AccountManager {
 
     private static func clearFirebaseAuthKeychainState(accessGroup: String) -> Bool {
         guard let firebase = firebaseAuthKeychainIdentifiers() else { return false }
-        let statuses = [
+        let accessGroupStatuses = [
             deleteAuthStoredUser(accessGroup: accessGroup, service: firebase.apiKey, synchronizable: false),
-            deleteAuthStoredUser(accessGroup: accessGroup, service: firebase.apiKey, synchronizable: true),
-            deleteLegacyAuthUser(service: "firebase_auth_\(firebase.googleAppID)")
+            deleteAuthStoredUser(accessGroup: accessGroup, service: firebase.apiKey, synchronizable: true)
         ]
-        for (index, status) in statuses.enumerated() {
+        let defaultStatuses = [
+            deleteDefaultAuthUser(service: firebase.serviceName, appName: firebase.appName),
+            deleteLegacyDefaultAuthUser(appName: firebase.appName),
+            deleteServiceScopedLegacyAuthUser(service: firebase.serviceName, appName: firebase.appName)
+        ]
+
+        for (index, status) in (accessGroupStatuses + defaultStatuses).enumerated() {
             authLogger.info("Firebase Auth keychain cleanup index=\(index) status=\(status)")
         }
-        return statuses.allSatisfy(isRecoverableFirebaseAuthKeychainDeleteStatus)
+
+        return accessGroupStatuses.allSatisfy(isRecoverableFirebaseAuthKeychainDeleteStatus)
+            && defaultStatuses.allSatisfy(isRecoverableDefaultFirebaseAuthKeychainDeleteStatus)
     }
 
     private static func deleteAuthStoredUser(accessGroup: String, service: String, synchronizable: Bool) -> OSStatus {
@@ -634,11 +647,43 @@ final class AccountManager {
         return query
     }
 
-    private static func deleteLegacyAuthUser(service: String) -> OSStatus {
+    private static func deleteDefaultAuthUser(service: String, appName: String) -> OSStatus {
+        SecItemDelete(firebaseAuthDefaultStoredUserDeleteQuery(
+            service: service,
+            appName: appName
+        ) as CFDictionary)
+    }
+
+    private static func firebaseAuthDefaultStoredUserDeleteQuery(
+        service: String,
+        appName: String
+    ) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: "firebase_auth_1_\(appName)_firebase_user",
+            kSecUseDataProtectionKeychain as String: true
+        ]
+    }
+
+    private static func deleteLegacyDefaultAuthUser(appName: String) -> OSStatus {
+        SecItemDelete(firebaseAuthLegacyDefaultStoredUserDeleteQuery(
+            appName: appName
+        ) as CFDictionary)
+    }
+
+    private static func firebaseAuthLegacyDefaultStoredUserDeleteQuery(appName: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: "\(appName)_firebase_user"
+        ]
+    }
+
+    private static func deleteServiceScopedLegacyAuthUser(service: String, appName: String) -> OSStatus {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: "__FIRAPP_DEFAULT_firebase_user",
+            kSecAttrAccount as String: "\(appName)_firebase_user",
             kSecUseDataProtectionKeychain as String: true
         ]
         return SecItemDelete(query as CFDictionary)
@@ -646,6 +691,10 @@ final class AccountManager {
 
     private static func isRecoverableFirebaseAuthKeychainDeleteStatus(_ status: OSStatus) -> Bool {
         isRecoverableKeychainDeleteStatus(status, allowMissingEntitlement: false)
+    }
+
+    private static func isRecoverableDefaultFirebaseAuthKeychainDeleteStatus(_ status: OSStatus) -> Bool {
+        isRecoverableKeychainDeleteStatus(status, allowMissingEntitlement: true)
     }
 
     private static func isRecoverableKeychainDeleteStatus(
@@ -657,7 +706,12 @@ final class AccountManager {
             || (allowMissingEntitlement && status == errSecMissingEntitlement)
     }
 
-    private static func firebaseAuthKeychainIdentifiers() -> (apiKey: String, googleAppID: String)? {
+    private static func firebaseAuthKeychainIdentifiers() -> (
+        apiKey: String,
+        googleAppID: String,
+        serviceName: String,
+        appName: String
+    )? {
         guard let url = Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist"),
               let data = try? Data(contentsOf: url),
               let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
@@ -666,7 +720,12 @@ final class AccountManager {
               let googleAppID = values["GOOGLE_APP_ID"] as? String else {
             return nil
         }
-        return (apiKey, googleAppID)
+        return (
+            apiKey: apiKey,
+            googleAppID: googleAppID,
+            serviceName: "firebase_auth_\(googleAppID)",
+            appName: FirebaseApp.app()?.name ?? "__FIRAPP_DEFAULT"
+        )
     }
 
     private static func logAuthKeychainFailure(_ error: Error) {
@@ -714,6 +773,10 @@ final class AccountManager {
         isRecoverableFirebaseAuthKeychainDeleteStatus(status)
     }
 
+    static func isRecoverableDefaultFirebaseAuthKeychainDeleteStatusForTesting(_ status: OSStatus) -> Bool {
+        isRecoverableDefaultFirebaseAuthKeychainDeleteStatus(status)
+    }
+
     static func firebaseAuthStoredUserDeleteQueryForTesting(
         accessGroup: String,
         service: String,
@@ -724,6 +787,19 @@ final class AccountManager {
             service: service,
             synchronizable: synchronizable
         )
+    }
+
+    static func firebaseAuthDefaultStoredUserDeleteQueryForTesting(
+        service: String,
+        appName: String
+    ) -> [String: Any] {
+        firebaseAuthDefaultStoredUserDeleteQuery(service: service, appName: appName)
+    }
+
+    static func firebaseAuthLegacyDefaultStoredUserDeleteQueryForTesting(
+        appName: String
+    ) -> [String: Any] {
+        firebaseAuthLegacyDefaultStoredUserDeleteQuery(appName: appName)
     }
 
     static func googleAuthPresentationWindowForTesting(from window: NSWindow) -> NSWindow {

@@ -466,12 +466,25 @@ public enum BurnBarProviderAuthRegistry {
                 storage: .daemonSlot,
                 unlocksProxyRouting: false,
                 unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "openai-codex-oauth",
+                kind: .browserLogin,
+                displayName: "Sign in with OpenAI / Codex",
+                summary: "Use your local Codex ChatGPT login for account and quota visibility.",
+                helperText: "Launch Codex login from Account Switcher or run `codex login`; OpenBurnBar detects the OAuth session locally. OpenAI API proxy routing still requires an API key because ChatGPT OAuth tokens are not OpenAI API keys.",
+                placeholder: "Codex ChatGPT OAuth session",
+                dashboardURL: "https://chatgpt.com/",
+                dashboardLabel: "Open ChatGPT sign-in",
+                storage: .appKeychain(account: "codex_oauth_session"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
             )
         ],
         primaryMethodID: "openai-api-key",
-        summary: "OpenAI — proxy routing with API keys, usage reporting with admin keys.",
+        summary: "OpenAI — API-key routing plus Codex OAuth sign-in for plan visibility.",
         proxyHint: "Routed through api.openai.com (OpenAI-compatible).",
-        quotaHint: "Usage reporting requires an org admin key."
+        quotaHint: "Usage reporting requires an org admin key; Codex OAuth quota comes from your local ChatGPT login."
     )
 
     private static let anthropicDescriptor = BurnBarProviderAuthDescriptor(
@@ -483,20 +496,46 @@ public enum BurnBarProviderAuthRegistry {
                 id: "anthropic-api-key",
                 kind: .apiKey,
                 displayName: "Anthropic API Key",
-                summary: "Tracks Claude usage and cost.",
-                helperText: "Anthropic keys start with sk-ant-…. Proxy routing for Anthropic uses its native protocol and is currently disabled in the gateway.",
+                summary: "Routes Claude Messages API traffic and records usage.",
+                helperText: "Anthropic keys start with sk-ant-…. OpenBurnBar routes Claude Code through the Anthropic-family /v1/messages gateway without translating request shape.",
                 placeholder: "sk-ant-…",
                 prefixHint: "sk-ant-",
                 dashboardURL: "https://console.anthropic.com/settings/keys",
                 dashboardLabel: "Anthropic API keys",
                 storage: .daemonSlot,
-                unlocksProxyRouting: false,
+                unlocksProxyRouting: true,
                 unlocksQuotaRefresh: false
+            ),
+            BurnBarProviderAuthMethod(
+                id: "anthropic-claude-oauth",
+                kind: .bearerToken,
+                displayName: "Claude OAuth Bearer",
+                summary: "Routes Claude Pro/Team OAuth bearer traffic through /v1/messages.",
+                helperText: "Paste a Claude Code or claude.ai OAuth access token. OAuth bearers are sent as Authorization: Bearer for Anthropic-family routing; use the Claude Code sign-in flow when you only need local CLI account switching.",
+                placeholder: "Bearer access token",
+                dashboardURL: "https://claude.ai/",
+                dashboardLabel: "Open Claude sign-in",
+                storage: .daemonSlot,
+                unlocksProxyRouting: true,
+                unlocksQuotaRefresh: true
+            ),
+            BurnBarProviderAuthMethod(
+                id: "anthropic-claude-code-login",
+                kind: .browserLogin,
+                displayName: "Sign in with Claude Code",
+                summary: "Use local Claude Code OAuth for CLI account and quota visibility.",
+                helperText: "Launch Claude Code login from Account Switcher or run `claude auth login`; OpenBurnBar detects the local CLI account and status-line quota bridge. Use Claude OAuth Bearer above when you want the gateway to route Claude Code requests.",
+                placeholder: "Claude Code OAuth session",
+                dashboardURL: "https://claude.ai/",
+                dashboardLabel: "Open Claude sign-in",
+                storage: .appKeychain(account: "claude_code_oauth_session"),
+                unlocksProxyRouting: false,
+                unlocksQuotaRefresh: true
             )
         ],
-        summary: "Anthropic Claude — tracking and accounting only.",
-        proxyHint: "Tracking only — Anthropic uses a non-OpenAI protocol the proxy doesn't speak yet.",
-        quotaHint: nil
+        summary: "Anthropic Claude — API keys, OAuth bearers, and Claude Code sign-in.",
+        proxyHint: "Routed through the Anthropic-family /v1/messages gateway for Claude Code and other Anthropic-shape clients.",
+        quotaHint: "Claude Code sign-in feeds local quota visibility; OAuth bearers can also route through the gateway."
     )
 
     private static let openCodeDescriptor = BurnBarProviderAuthDescriptor(

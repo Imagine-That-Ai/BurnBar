@@ -393,7 +393,9 @@ public actor BurnBarConfigStore {
         for settings in orderedProviders {
             let provider = try catalogSupport.requiredProvider(id: settings.providerID)
             var mutableSettings = settings
-            let legacySecret = try await secretStore.secret(for: settings.providerID)
+            let legacySecret = mutableSettings.credentialSlots.isEmpty
+                ? try await secretStore.secret(for: settings.providerID)
+                : nil
             if mutableSettings.credentialSlots.isEmpty,
                let legacySecret,
                legacySecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {

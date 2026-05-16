@@ -43,7 +43,7 @@ final class CLIAgentMissionDispatcher {
         guard !trimmedPrompt.isEmpty else {
             throw DispatchError.emptyPrompt
         }
-        let effectiveRequestedModelID = requestedModelID?.nonEmpty
+        let effectiveRequestedModelID = try requestedModelID?.nonEmpty
             ?? Self.selectedModelID(forRequestedRuntime: requestedRuntime)
 
         let payload = CLIAgentMissionRequestPayloadFactory.build(
@@ -246,7 +246,7 @@ final class CLIAgentMissionDispatcher {
                 approvalMode: approvalMode,
                 commandsAllowed: commandsAllowed,
                 fileEditsAllowed: fileEditsAllowed,
-                requestedModelID: Self.selectedModelID(forRequestedRuntime: runtimeToken)
+                requestedModelID: try Self.selectedModelID(forRequestedRuntime: runtimeToken)
             )
             let overlay = MissionGroupPayloadFactory.childPayloadOverlay(
                 groupID: groupID,
@@ -275,7 +275,7 @@ final class CLIAgentMissionDispatcher {
         return FanOutDispatchResult(groupID: groupID, childMissionIDs: childMissionIDs)
     }
 
-    private static func selectedModelID(forRequestedRuntime runtimeToken: String) -> String? {
+    private static func selectedModelID(forRequestedRuntime runtimeToken: String) throws -> String? {
         let normalized = runtimeToken.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let runtime: AssistantRuntimeID?
         switch normalized {
@@ -296,14 +296,14 @@ final class CLIAgentMissionDispatcher {
 
         switch runtime {
         case .hermes:
-            return HermesService.shared.selectedModelID?.nonEmpty
+            return try HermesService.shared.validatedModelIDForMissionDispatch()
         case .pi:
-            return PiService.shared.selectedModelID?.nonEmpty
+            return try PiService.shared.validatedModelIDForMissionDispatch()
         case .openClaw:
-            return OpenClawService.shared.selectedModelID?.nonEmpty
+            return try OpenClawService.shared.validatedModelIDForMissionDispatch()
                 ?? CLIAgentModelPreferences.preferredModelID(for: .openClaw)?.nonEmpty
         case .codex, .claude:
-            return CLIAgentModelPreferences.preferredModelID(for: runtime)?.nonEmpty
+            return try CLIAgentModelPreferences.validatedPreferredModelID(for: runtime)?.nonEmpty
         }
     }
 

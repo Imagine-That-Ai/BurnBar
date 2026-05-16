@@ -125,7 +125,7 @@ lives in `OpenBurnBarHTTPGatewayServerTests.swift`:
 1. Open OpenBurnBar on the Mac that will run the client.
 2. Open Settings -> Routing pools and use **Use local defaults** if the
    gateway is not already on. This enables the loopback gateway at
-   `127.0.0.1:8317`, matching the VibeProxy-style local setup.
+   `127.0.0.1:8317`.
 3. Add at least one provider account in the matching pool. Add a second
    account or key in that pool if you want failover to have somewhere to go.
 4. In Settings -> Routing pools -> Client apps:
@@ -153,7 +153,7 @@ before replacing prior OpenBurnBar entries.
 | OpenCode | `~/.config/opencode/opencode.json` | `provider.openburnbar`; default `model` only when no model is set |
 | Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_AUTH_TOKEN`, plus a marker key `env.OPENBURNBAR_WIRED` so the helper can detect its own previous wiring |
 | Codex CLI | `~/.codex/config.toml` | Sentinel-fenced `[model_providers.openburnbar]` block bounded by `# openburnbar:routing — start` / `# openburnbar:routing — end`. Activate by setting `model_provider = "openburnbar"` in the Codex profile you want routed. |
-| Forge CLI | `~/forge/.forge.toml` | Sentinel-fenced VibeProxy-style `[[providers]]` block named `openburnbar` with `url = http://127.0.0.1:8317/v1/chat/completions`, `models = http://127.0.0.1:8317/v1/models`, `api_key_var = OPENBURNBAR_GATEWAY_TOKEN`, and `response_type = OpenAI` |
+| Forge CLI | `~/forge/.forge.toml` | Sentinel-fenced OpenBurnBar-owned `[[providers]]` block named `openburnbar` with `url = http://127.0.0.1:8317/v1/chat/completions`, `models = http://127.0.0.1:8317/v1/models`, `api_key_var = OPENBURNBAR_GATEWAY_TOKEN`, and `response_type = OpenAI` |
 
 The client config receives the local gateway URL and either the gateway auth
 token or the harmless `openburnbar-local` placeholder when the loopback gateway
@@ -165,7 +165,7 @@ reversible by hand if the helper is ever uninstalled.
 
 ## Wiring routed CLI clients from the Mac app
 
-`Settings → Routing pools` exposes a setup checklist and VibeProxy-style client
+`Settings → Routing pools` exposes a setup checklist and OpenBurnBar-owned client
 rows for each pool. Two modes:
 
 1. **Config-file mode (toggle)** — writes the env / TOML block listed above,
@@ -178,9 +178,9 @@ rows for each pool. Two modes:
    users on managed dotfiles or non-standard shells. No file writes.
 
 Droid/Factory uses a sync button instead of a toggle because Factory consumes
-custom model arrays, not a sentinel block. OpenBurnBar writes the same
-`provider: "openai"` local gateway shape VibeProxy documents for Factory, then
-uses the shared OpenAI-family probe to prove the pool responds.
+custom model arrays, not a sentinel block. OpenBurnBar writes `provider:
+"openai"` custom models pointed at the local Hydrant gateway, then uses the
+shared OpenAI-family probe to prove the pool responds.
 
 Codex's ChatGPT-auth mode (browser session cookies) cannot be routed through
 a generic proxy; only the API-key path participates in the OpenAI-family pool

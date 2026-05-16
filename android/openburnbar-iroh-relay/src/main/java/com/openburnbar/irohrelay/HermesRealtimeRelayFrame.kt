@@ -63,13 +63,23 @@ data class HermesRealtimeRelayPayload(
     val capabilities: List<String>? = null,
 )
 
+/**
+ * Wire-form chunk kind for `HermesRealtimeRelayPayload.kind`.
+ *
+ * Matches the Swift `HermesRelayChunkKind` declared in
+ * `OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesConnectionTypes.swift`
+ * — three cases, lower-case raw values, no aliases. Adding cases here
+ * without also adding them on Swift will silently drop incoming chunks
+ * because Mac decodes `nil` for unknown kinds.
+ */
 @Serializable
-enum class HermesRelayChunkKind {
-    @SerialName("text") TEXT,
-    @SerialName("toolUse") TOOL_USE,
-    @SerialName("reasoning") REASONING,
-    @SerialName("tool_result") TOOL_RESULT,
-    @SerialName("event") EVENT,
+enum class HermesRelayChunkKind(val wireValue: String) {
+    /** Server-Sent Events fragment (text token). Used by streaming chat. */
+    @SerialName("sse") SSE("sse"),
+    /** Binary blob (currently base64 in JSON). Used by unary forwards. */
+    @SerialName("data") DATA("data"),
+    /** Terminal error chunk. */
+    @SerialName("error") ERROR("error"),
 }
 
 @Serializable

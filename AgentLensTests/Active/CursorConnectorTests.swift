@@ -230,6 +230,35 @@ final class CursorConnectorTests: XCTestCase {
         XCTAssertFalse(script.contains("/usr/bin/security"))
     }
 
+    func test_keychainStoreDisablesSystemPromptsForBackgroundReads() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourceURL = repoRoot.appendingPathComponent("AgentLens/Services/CursorConnector/KeychainStore.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("SecKeychainSetUserInteractionAllowed"))
+        XCTAssertTrue(source.contains("if allowUserInteraction"))
+        XCTAssertTrue(source.contains("status = withKeychainInteractionDisabled"))
+        XCTAssertTrue(
+            source.contains("withKeychainInteractionDisabled {\n                SecItemCopyMatching"),
+            "Background Cursor connector keychain reads must keep Security.framework UI disabled."
+        )
+        XCTAssertTrue(
+            source.contains("withKeychainInteractionDisabled {\n            SecItemUpdate"),
+            "Cursor connector keychain rewrites must not be able to show login-keychain prompts."
+        )
+        XCTAssertTrue(
+            source.contains("withKeychainInteractionDisabled {\n            SecItemAdd"),
+            "Cursor connector keychain migrations must not be able to show login-keychain prompts."
+        )
+        XCTAssertTrue(
+            source.contains("withKeychainInteractionDisabled {\n            SecItemDelete"),
+            "Cursor connector keychain deletes must not be able to show login-keychain prompts."
+        )
+    }
+
     func test_proxyScript_preservesDeepSeekReasoningContentAcrossResponsesConversion() {
         let script = CursorConnectorManager.proxyScript()
 

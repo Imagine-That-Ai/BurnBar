@@ -9,8 +9,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case daemon
     case account
     case cloud
-    case providers
-    case routingPools
+    case connections
     case alerts
     case notifications
     case devicesAndSync
@@ -26,8 +25,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .daemon: return "Daemon"
         case .account: return "Account"
         case .cloud: return "Cloud"
-        case .providers: return "Providers"
-        case .routingPools: return "Routing pools"
+        case .connections: return "Connections"
         case .alerts: return "Alerts"
         case .notifications: return "Notifications"
         case .devicesAndSync: return MacCopy.devicesAndSyncTitle
@@ -49,10 +47,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "Sign-in, subscription, account actions"
         case .cloud:
             return "OpenBurnBar Cloud — hosted refresh, backup, Hermes anywhere"
-        case .providers:
-            return "Routed plans, accounts, CLI auth, log sources"
-        case .routingPools:
-            return "Fire Hydrant pools, Claude Code + Codex wiring"
+        case .connections:
+            return "Your AI keys and the CLIs that use them"
         case .alerts:
             return "Spend thresholds, daily digest"
         case .notifications:
@@ -74,8 +70,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .daemon: return "cpu.fill"
         case .account: return "person.crop.circle.fill"
         case .cloud: return "sparkles"
-        case .providers: return "externaldrive.connected.to.line.below"
-        case .routingPools: return "point.3.connected.trianglepath.dotted"
+        case .connections: return "link.circle.fill"
         case .alerts: return "bell.fill"
         case .notifications: return "bell.badge.fill"
         case .devicesAndSync: return "macbook.and.iphone"
@@ -91,8 +86,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .daemon: return DesignSystem.Colors.teal
         case .account: return DesignSystem.Colors.whimsy
         case .cloud: return DesignSystem.Colors.hermesAureate
-        case .providers: return DesignSystem.Colors.ember
-        case .routingPools: return DesignSystem.Colors.hermesMercury
+        case .connections: return DesignSystem.Colors.ember
         case .alerts: return DesignSystem.Colors.blaze
         case .notifications: return DesignSystem.Colors.whimsy
         case .devicesAndSync: return DesignSystem.Colors.teal
@@ -104,9 +98,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var logoProviders: [AgentProvider] {
         switch self {
-        case .providers:
-            return [.claudeCode, .openCode, .factory, .openAI]
-        case .routingPools:
+        case .connections:
             return [.claudeCode, .codex, .openCode, .openAI]
         case .hermes:
             return [.hermes, .piAgent, .openClaw]
@@ -114,6 +106,21 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return [.claudeCode, .codex, .openCode, .factory]
         default:
             return []
+        }
+    }
+}
+
+extension SettingsTab {
+    /// Legacy raw values that used to identify sidebar tabs. Resolved to the
+    /// new tab they were rolled into so deep links saved as
+    /// `UserDefaults["settings.pendingTab"]` still land somewhere sensible.
+    static func resolving(legacyRawValue raw: String) -> SettingsTab? {
+        if let exact = SettingsTab(rawValue: raw) { return exact }
+        switch raw {
+        case "providers", "routingPools":
+            return .connections
+        default:
+            return nil
         }
     }
 }

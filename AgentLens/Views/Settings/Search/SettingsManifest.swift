@@ -144,7 +144,7 @@ enum SettingsManifest {
             anchorID: SettingsAnchor.gatewayEnabled,
             title: "HTTP Gateway",
             subtitle: "Expose an OpenAI-compatible API on a local port",
-            keywords: ["api", "openai", "gateway", "endpoint", "vibeproxy"]
+            keywords: ["api", "openai", "gateway", "endpoint", "hydrant"]
         ),
         SettingsItem(
             id: "daemon.gateway.host",
@@ -164,7 +164,7 @@ enum SettingsManifest {
             focusID: SettingsFocus.gatewayPort,
             title: "Gateway Port",
             subtitle: "TCP port the gateway listens on",
-            keywords: ["port", "tcp", "8317", "vibeproxy"]
+            keywords: ["port", "tcp", "8317", "hydrant"]
         ),
         SettingsItem(
             id: "daemon.gateway.token",
@@ -249,50 +249,53 @@ enum SettingsManifest {
             keywords: ["cloud", "member", "pro", "hosted", "backup", "remote mcp", "subscription", "billing", "relay"]
         ),
 
-        // MARK: Providers
+        // MARK: Connections (unified Providers + Routing Pools page)
 
         SettingsItem(
-            id: "providers.add",
-            tab: .providers,
-            pageRoute: .providersRoot,
-            anchorID: SettingsAnchor.providersAdd,
-            title: "Add Provider Account",
-            subtitle: "Connect Claude, OpenCode, Factory, OpenAI, Kimi, and more",
-            keywords: ["add", "account", "provider", "claude", "opencode", "open code", "opencode go", "factory", "openai", "anthropic"],
-            logoProviders: [.claudeCode, .openCode, .factory, .openAI]
+            id: "connections.accounts",
+            tab: .connections,
+            pageRoute: .connectionsRoot,
+            anchorID: SettingsAnchor.connectionsAccounts,
+            title: "Add Account",
+            subtitle: "Bring API keys for OpenAI, Anthropic, and other providers — add many keys per provider for automatic failover",
+            keywords: [
+                "connect", "connections", "account", "accounts", "add", "key", "api key",
+                "openai", "anthropic", "claude", "claude code", "opencode", "open code",
+                "factory", "kimi", "moonshot", "minimax", "zai", "z.ai", "deepseek", "ollama",
+                "provider", "providers", "plan", "plans"
+            ],
+            logoProviders: [.claudeCode, .openAI, .openCode, .factory]
         ),
         SettingsItem(
-            id: "providers.cli",
-            tab: .providers,
-            pageRoute: .providersRoot,
-            anchorID: SettingsAnchor.providersCLI,
-            title: "CLI Authentication",
-            subtitle: "OAuth and API key management for local CLIs",
-            keywords: ["cli", "oauth", "api key", "anthropic", "openai", "opencode", "open code", "auth"],
-            logoProviders: [.claudeCode, .codex, .openCode]
-        ),
-        SettingsItem(
-            id: "providers.logSources",
-            tab: .providers,
-            pageRoute: .providersRoot,
-            anchorID: SettingsAnchor.providersLogSources,
-            title: "Log Sources",
-            subtitle: "Enable or disable individual on-disk log scans",
-            keywords: ["logs", "sources", "scan", "claude code", "factory droid", "codex", "opencode", "open code"],
+            id: "connections.apps",
+            tab: .connections,
+            pageRoute: .connectionsRoot,
+            anchorID: SettingsAnchor.connectionsApps,
+            title: "Connect a CLI",
+            subtitle: "Wire Claude Code, Codex, OpenCode, Forge, or Droid to your local gateway with one click",
+            keywords: [
+                "cli", "app", "apps", "connect", "wire", "wiring", "claude code", "codex",
+                "opencode", "open code", "forge", "droid", "factory",
+                // Legacy "routing pool" / "hydrant" vocabulary still resolves here.
+                "routing", "routing pool", "routing pools", "pool", "pools",
+                "fire hydrant", "hydrant", "gateway", "failover", "fallback",
+                "oauth", "api key", "auth"
+            ],
             logoProviders: [.claudeCode, .codex, .openCode, .factory]
         ),
-
-        // MARK: Routing pools
-
         SettingsItem(
-            id: "routingPools.overview",
-            tab: .routingPools,
-            pageRoute: .routingPoolsRoot,
-            anchorID: SettingsAnchor.routingPoolsOverview,
-            title: "Routing Pools",
-            subtitle: "Wire Claude Code, OpenCode, and OpenAI-compatible clients through routed provider pools",
-            keywords: ["routing", "fire hydrant", "pools", "failover", "claude code", "codex", "opencode", "open code", "gateway"],
-            logoProviders: [.claudeCode, .codex, .openCode, .openAI]
+            id: "connections.advanced",
+            tab: .connections,
+            pageRoute: .connectionsRoot,
+            anchorID: SettingsAnchor.connectionsAdvanced,
+            title: "Advanced Routing & Local Gateway",
+            subtitle: "Routing strategy, local gateway host/port/token, log sources — most users never touch these",
+            keywords: [
+                "advanced", "router", "router mode", "routing strategy", "intelligent",
+                "provider family", "gateway", "host", "port", "token", "bearer",
+                "loopback", "log sources", "logs", "smart hubs", "quota"
+            ],
+            logoProviders: [.claudeCode, .openAI]
         ),
 
         // MARK: Alerts
@@ -509,10 +512,9 @@ enum SettingsManifest {
         SettingsAnchor.accountSubscription,
         SettingsAnchor.accountDelete,
         SettingsAnchor.cloudOverview,
-        SettingsAnchor.providersAdd,
-        SettingsAnchor.providersCLI,
-        SettingsAnchor.providersLogSources,
-        SettingsAnchor.routingPoolsOverview,
+        SettingsAnchor.connectionsAccounts,
+        SettingsAnchor.connectionsApps,
+        SettingsAnchor.connectionsAdvanced,
         SettingsAnchor.alertsDailySpend,
         SettingsAnchor.alertsDigest,
         SettingsAnchor.notificationsLocal,
@@ -538,11 +540,11 @@ enum SettingsManifest {
             .map { provider in
                 SettingsItem(
                     id: providerItemID(for: provider),
-                    tab: .providers,
-                    pageRoute: .providersRoot,
-                    anchorID: providerAnchor(for: provider),
+                    tab: .connections,
+                    pageRoute: .connectionsRoot,
+                    anchorID: SettingsAnchor.connectionsAccounts,
                     title: provider.displayName,
-                    subtitle: "\(provider.displayName) provider setup, logs, accounts, and quota signals",
+                    subtitle: "\(provider.displayName) accounts, keys, and quota signals",
                     keywords: providerKeywords(for: provider),
                     logoProviders: [provider]
                 )
@@ -551,19 +553,6 @@ enum SettingsManifest {
 
     private static func providerItemID(for provider: AgentProvider) -> String {
         provider == .openCode ? "providers.openCode" : "providers.\(provider.persistedToken)"
-    }
-
-    private static func providerAnchor(for provider: AgentProvider) -> String {
-        switch provider {
-        case .claudeCode:
-            return SettingsAnchor.providerCLI(SwitcherCLIProfileType.claude.rawValue)
-        case .codex:
-            return SettingsAnchor.providerCLI(SwitcherCLIProfileType.codex.rawValue)
-        case .openCode:
-            return SettingsAnchor.providersOpenCode
-        default:
-            return SettingsAnchor.providerLogSource(provider.persistedToken)
-        }
     }
 
     private static func providerKeywords(for provider: AgentProvider) -> [String] {

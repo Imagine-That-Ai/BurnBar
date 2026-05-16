@@ -22,6 +22,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
+import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
 import com.openburnbar.data.stores.UserStore
 import com.openburnbar.ui.auth.LoginScreen
@@ -361,8 +362,26 @@ private fun BurnBarContent(
                 onOpenBrandZone = { uri ->
                     val encoded = java.net.URLEncoder.encode(uri, Charsets.UTF_8.name())
                     navController.navigate("agent/$encoded")
+                },
+                onOpenLegacyRuntime = { runtime ->
+                    // Pinned agent tap → push the AssistantsScreen
+                    // chat surface with the right runtime preselected.
+                    // The same route also serves long-press "Open chat"
+                    // affordances from `AgentBrandZoneScreen`.
+                    navController.navigate("assistants/${runtime.token}")
                 }
             )
+        }
+        composable(
+            "assistants/{runtime}",
+            arguments = listOf(navArgument("runtime") { type = NavType.StringType }),
+            deepLinks = listOf(
+                navDeepLink { uriPattern = "burnbar://assistants/{runtime}" }
+            )
+        ) { entry ->
+            val token = entry.arguments?.getString("runtime").orEmpty()
+            val runtime = AssistantRuntimeID.fromToken(token)
+            AssistantsScreen(initialRuntime = runtime)
         }
         composable(
             "agent/{uri}",

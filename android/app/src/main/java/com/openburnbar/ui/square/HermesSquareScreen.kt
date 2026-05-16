@@ -350,9 +350,18 @@ fun HermesSquareScreen(
                         config = pinned,
                         registry = registry,
                         onTap = { uri ->
-                            val identity = registry.identity(uri)
-                            val runtime = identity?.runtimeID
-                            if (runtime == AssistantRuntimeID.HERMES || runtime == AssistantRuntimeID.PI) {
+                            // Tapping a pinned agent opens its chat
+                            // surface (the user's primary intent).
+                            // `AssistantsScreen` handles every known
+                            // runtime: Hermes / Pi natively, Codex /
+                            // Claude / OpenClaw via the Mac-bridged
+                            // tile. Long-press still routes to the
+                            // brand zone for capability / subscription
+                            // / dispatch flows. Pinned URIs without a
+                            // recognized runtime fall through to brand
+                            // zone since they have no chat surface.
+                            val runtime = registry.identity(uri)?.runtimeID
+                            if (runtime != null) {
                                 onOpenLegacyRuntime(runtime)
                             } else {
                                 showBrandZoneURI = uri

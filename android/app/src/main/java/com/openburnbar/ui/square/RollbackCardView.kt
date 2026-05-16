@@ -22,7 +22,7 @@ import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Restore
-import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -115,7 +115,7 @@ internal fun RollbackCardView(
                     )
                     RollbackAction(
                         label = "Last action",
-                        icon = Icons.Filled.Undo,
+                        icon = Icons.AutoMirrored.Filled.Undo,
                         onClick = { onSubmit(RollbackScope.LastN(count = 1)) }
                     )
                     RollbackAction(
@@ -270,7 +270,7 @@ private fun RollbackFilePickerSheet(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Icon(
-                                    imageVector = Icons.Filled.Undo,
+                                    imageVector = Icons.AutoMirrored.Filled.Undo,
                                     contentDescription = null,
                                     tint = AuroraColors.whimsy,
                                     modifier = Modifier.size(14.dp)

@@ -11,7 +11,10 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -35,6 +38,18 @@ import kotlinx.coroutines.tasks.await
  * ```
  */
 class MercuryFcmService : FirebaseMessagingService() {
+
+    /**
+     * Service-scoped coroutine context. Cancelled in `onDestroy()` so a
+     * token refresh that arrives just as the service stops doesn't leak
+     * the in-flight Firestore write.
+     */
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
+    }
 
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
@@ -60,7 +75,7 @@ class MercuryFcmService : FirebaseMessagingService() {
             applicationContext.contentResolver,
             android.provider.Settings.Secure.ANDROID_ID,
         ) ?: "android"
-        GlobalScope.launch {
+        scope.launch {
             runCatching {
                 FirebaseFirestore.getInstance()
                     .collection("users").document(uid)
@@ -100,7 +115,7 @@ class MercuryFcmService : FirebaseMessagingService() {
         val fullScreenPending = PendingIntent.getActivity(this, 3, acceptIntent, pendingFlags)
 
         val builder = NotificationCompat.Builder(this, MediaSessionForegroundService.CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_phone_call)
+            .setSmallIcon(com.openburnbar.R.drawable.ic_mercury_call)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -118,8 +133,11 @@ class MercuryFcmService : FirebaseMessagingService() {
                 NotificationCompat.CallStyle.forIncomingCall(person, declinePending, acceptPending)
             )
         } else {
-            builder.addAction(android.R.drawable.ic_menu_call, "Accept", acceptPending)
-            builder.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Decline", declinePending)
+            // Pre-Android 12 fallback. CallStyle isn't available before
+            // API 31 — use the same Mercury vector glyphs so the
+            // notification still looks first-party.
+            builder.addAction(com.openburnbar.R.drawable.ic_mercury_call, "Accept", acceptPending)
+            builder.addAction(com.openburnbar.R.drawable.ic_mercury_call_end, "Decline", declinePending)
         }
 
         val notification: Notification = builder.build()

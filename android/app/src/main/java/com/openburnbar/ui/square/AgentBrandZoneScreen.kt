@@ -29,7 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddComment
 import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -296,7 +296,7 @@ private fun QuickActions(
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         QuickAction(label = "New thread", icon = Icons.Filled.AddComment, accent = accent, onClick = onNewThread, modifier = Modifier.weight(1f))
-        QuickAction(label = "Dispatch", icon = Icons.Filled.Send, accent = accent, onClick = onDispatch, modifier = Modifier.weight(1f))
+        QuickAction(label = "Dispatch", icon = Icons.AutoMirrored.Filled.Send, accent = accent, onClick = onDispatch, modifier = Modifier.weight(1f))
         QuickAction(label = "Forward", icon = Icons.Filled.Share, accent = accent, onClick = onForward, modifier = Modifier.weight(1f))
         QuickAction(label = "Subscribe", icon = Icons.Filled.NotificationsActive, accent = accent, onClick = onSubscribe, modifier = Modifier.weight(1f))
     }

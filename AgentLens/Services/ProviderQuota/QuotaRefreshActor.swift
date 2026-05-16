@@ -19,6 +19,15 @@ private struct ProviderQuotaAccountCredential: Sendable {
     let apiKey: String
 }
 
+private struct SwitcherCLIQuotaProfile: Sendable {
+    let provider: AgentProvider
+    let providerID: ProviderID
+    let accountID: String
+    let label: String
+    let sourceID: String
+    let configDirectory: String
+}
+
 /// Actor that owns all HTTP fetching for provider quota adapters.
 /// Heavy I/O runs here, off the main thread.
 actor QuotaRefreshActor {
@@ -111,10 +120,15 @@ actor QuotaRefreshActor {
     func fetchAllSnapshots(dataStoreActor: DataStoreActor) async -> ProviderQuotaRefreshBatch {
         let context = await makeContext(dataStoreActor: dataStoreActor)
         let providerSnapshots = await fetchProviderSnapshots(for: refreshProviders, context: context)
-        let accountSnapshots = await fetchAccountSnapshots(
+        var accountSnapshots = await fetchAccountSnapshots(
             using: context,
             providers: Set(refreshProviders)
         )
+        let switcherSnapshots = await fetchSwitcherProfileSnapshots(
+            using: context,
+            providers: Set(refreshProviders)
+        )
+        accountSnapshots.merge(switcherSnapshots) { _, replacement in replacement }
         return ProviderQuotaRefreshBatch(
             providerSnapshots: providerSnapshots,
             accountSnapshots: accountSnapshots
@@ -126,10 +140,16 @@ actor QuotaRefreshActor {
         dataStoreActor: DataStoreActor
     ) async -> [String: ProviderQuotaSnapshot] {
         let context = await makeContext(dataStoreActor: dataStoreActor)
-        return await fetchAccountSnapshots(
+        var snapshots = await fetchAccountSnapshots(
             using: context,
             providers: [provider]
         )
+        let switcherSnapshots = await fetchSwitcherProfileSnapshots(
+            using: context,
+            providers: [provider]
+        )
+        snapshots.merge(switcherSnapshots) { _, replacement in replacement }
+        return snapshots
     }
 
     private func makeContext(dataStoreActor: DataStoreActor) async -> ProviderQuotaAdapterContext {
@@ -327,6 +347,84 @@ actor QuotaRefreshActor {
 
         return snapshots
     }
+
+    private func fetchSwitcherProfileSnapshots(
+        using context: ProviderQuotaAdapterContext,
+        providers: Set<AgentProvider>
+    ) async -> [String: ProviderQuotaSnapshot] {
+        let profiles = resolveSwitcherCLIQuotaProfiles(dataStoreActor: context.dataStoreActor)
+            .filter { providers.contains($0.provider) }
+        guard !profiles.isEmpty else { return [:] }
+
+        var snapshots: [String: ProviderQuotaSnapshot] = [:]
+        var iterator = profiles.makeIterator()
+        await withTaskGroup(of: (String, ProviderQuotaSnapshot).self) { group in
+            for _ in 0..<min(Self.maxConcurrentQuotaFetches, profiles.count) {
+                guard let profile = iterator.next() else { break }
+                group.addTask {
+                    await self.fetchSwitcherProfileSnapshot(profile, context: context)
+                }
+            }
+
+            for await (key, snapshot) in group {
+                snapshots[key] = snapshot
+                if let profile = iterator.next() {
+                    group.addTask {
+                        await self.fetchSwitcherProfileSnapshot(profile, context: context)
+                    }
+                }
+            }
+        }
+
+        return snapshots
+    }
+
+    private func fetchSwitcherProfileSnapshot(
+        _ profile: SwitcherCLIQuotaProfile,
+        context: ProviderQuotaAdapterContext
+    ) async -> (String, ProviderQuotaSnapshot) {
+        var environment = context.environment
+        switch profile.provider {
+        case .codex:
+            environment["CODEX_HOME"] = profile.configDirectory
+            environment["CODEX_CONFIG_PATH"] = profile.configDirectory
+        case .claudeCode:
+            environment["CLAUDE_CONFIG_PATH"] = profile.configDirectory
+            environment["CLAUDE_CONFIG_DIR"] = profile.configDirectory
+        default:
+            break
+        }
+
+        let profileContext = context.withEnvironment(environment)
+        let snapshot: ProviderQuotaSnapshot
+        do {
+            snapshot = try await fetchSnapshot(for: profile.provider, context: profileContext)
+                .withAccountMetadata(
+                    providerID: profile.providerID,
+                    accountID: profile.accountID,
+                    accountLabel: profile.label,
+                    accountStorageScope: .localOnly,
+                    sourceId: profile.sourceID
+                )
+        } catch {
+            snapshot = ProviderQuotaSnapshot(
+                provider: profile.provider,
+                providerID: profile.providerID,
+                accountID: profile.accountID,
+                accountLabel: profile.label,
+                accountStorageScope: .localOnly,
+                fetchedAt: Date(),
+                source: .unavailable,
+                sourceId: profile.sourceID,
+                confidence: .unavailable,
+                managementURL: nil,
+                statusMessage: error.localizedDescription,
+                buckets: []
+            )
+        }
+
+        return (ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot), snapshot)
+    }
 }
 
 // MARK: - API Key Resolution Helpers
@@ -457,6 +555,46 @@ private func resolveDaemonAccountCredentials(
     }
 
     return credentials
+}
+
+private func resolveSwitcherCLIQuotaProfiles(dataStoreActor: DataStoreActor) -> [SwitcherCLIQuotaProfile] {
+    let profiles = (try? dataStoreActor.switcherStore.fetchAllProfiles()) ?? []
+
+    return profiles.compactMap { profile in
+        guard profile.targetKind == .cli,
+              !profile.isDisabled,
+              let cliType = profile.cliType,
+              cliType == .codex || cliType == .claude,
+              let provider = quotaProvider(for: cliType),
+              let configDirectory = quotaNonEmpty(profile.cliMetadata?.configDirectory) else {
+            return nil
+        }
+
+        let label = quotaNonEmpty(profile.cliMetadata?.accountDescription)
+            ?? quotaNonEmpty(profile.cliMetadata?.displayLabel)
+            ?? quotaNonEmpty(profile.displayName)
+            ?? "\(cliType.displayName) OAuth profile"
+
+        return SwitcherCLIQuotaProfile(
+            provider: provider,
+            providerID: provider.providerID,
+            accountID: profile.id,
+            label: label,
+            sourceID: "switcher-cli:\(cliType.rawValue):\(profile.id)",
+            configDirectory: configDirectory
+        )
+    }
+}
+
+private func quotaProvider(for cliType: SwitcherCLIProfileType) -> AgentProvider? {
+    switch cliType {
+    case .codex:
+        return .codex
+    case .claude:
+        return .claudeCode
+    case .opencode:
+        return nil
+    }
 }
 
 private func quotaCapableProvider(for providerID: String) -> AgentProvider? {

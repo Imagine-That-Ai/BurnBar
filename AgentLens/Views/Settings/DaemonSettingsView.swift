@@ -225,7 +225,7 @@ struct HTTPGatewayDetailView: View {
     var body: some View {
         SettingsDetailContainer(
             title: "HTTP Gateway",
-            subtitle: "Expose an OpenAI-compatible API on a local port for external tools (Vibe Proxy on 8317 is the typical setup).",
+            subtitle: "Expose OpenBurnBar's OpenAI-compatible Hydrant API on a local port for external tools.",
             searchRoute: .httpGateway
         ) {
             GlassCard {

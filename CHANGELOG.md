@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **macOS Google SSO keychain recovery.** Firebase Auth access-group binding
+  now retries after clearing stale default Firebase Auth keychain rows, including
+  the current `firebase_auth_1_<app>_firebase_user` row used by Firebase 11.x.
+  This prevents Google sign-in from completing the browser handoff but leaving
+  Settings stuck on "Anonymous Account" with the generic Firebase keychain error.
+- **Android Hermes relay wire-protocol parity with iOS / macOS.** The first
+  pass shipped Android crypto that derived per-request keys directly from a
+  static ECDH shared secret and put that raw secret in the `wrappedKey`
+  field. That diverges from the Mac/iOS contract on every wire-visible
+  surface — AAD strings, per-request symmetric key + ECIES key wrap, JSON
+  field names, chunk kinds — so Mac ⇄ Android decryption silently failed.
+  `HermesRelayCrypto.kt`, `HermesIrohRelayTransport.kt`, and
+  `HermesRelayClient.kt` now port iOS' `wrapSymmetricKey`/
+  `unwrapSymmetricKey` (X9.63 ephemeral pub || sealed key, HKDF-derived
+  wrapping key under `OpenBurnBar-HermesRelay-KeyWrap-v1|<keyAAD>`),
+  canonical `requestAAD` / `keyAAD` / `chunkAAD` shapes, camel-cased
+  Firestore envelope (`connectionId`, `payloadCiphertext`, `wrappedKey`,
+  `relayEncryption`, `relayKeyVersion`, `expireAt`, `schemaVersion`), and
+  the `sse | data | error` chunk-kind enum. A deterministic Swift fixture
+  (`OpenBurnBarCore/Tests/.../Fixtures/HermesRelayWireVector.json`) is
+  pinned into the Android test resources and replayed by the new
+  `HermesRelayWireVectorTest` so a future drift fails CI on both
+  platforms.
+
 ### Changed
 - **Mobile-selected agent models now bind across Hermes, Pi, OpenClaw, Codex,
   and Claude missions.** `cli_agent_mission_requests` carries the selected
@@ -692,14 +717,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bearers (sent via `Authorization: Bearer`) and never logs the secret.
   Codex's ChatGPT-auth mode is honestly documented as
   **track-only, not routed**.
-- **VibeProxy-style routed client setup and failover proof.** Routing pools
+- **OpenBurnBar-native routed client setup and failover proof.** Routing pools
   now starts with a setup checklist, a one-click loopback gateway default
   (`127.0.0.1:8317`), and explicit client rows for Codex CLI, Droid/Factory,
   Forge CLI, and Claude Code. Local loopback clients can be wired with the
   harmless `openburnbar-local` placeholder when gateway auth is intentionally
-  off, matching the VibeProxy local-proxy convention. Droid/Factory sync now
-  writes Factory custom models with `provider: "openai"` and the local
-  `/v1` gateway shape VibeProxy documents, while Forge gets a sentinel-fenced
+  off. Droid/Factory sync now writes Factory custom models with
+  `provider: "openai"` and the local `/v1` Hydrant gateway shape, while Forge
+  gets a sentinel-fenced
   `[[providers]]` block in `~/forge/.forge.toml` with chat-completions and
   models URLs. Gateway tests now explicitly simulate quota exhaustion for
   Codex, Droid, Forge, and Claude Code and prove each request retries the
@@ -978,7 +1003,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   field Factory actually exposes lands in the popover, and so the headline
   burn number reflects what's truly billed against the plan:
   - **Lane-aware filtering (CRITICAL correctness fix).** Sessions with
-    `providerLock != "factory"` are user-configured proxies (VibeProxy,
+    `providerLock != "factory"` are user-configured proxies (third-party proxy,
     OpenCode-Go, localhost Ollama, BYOK keys, …) routed through
     `config.json.custom_models[]`. They never touch Factory's billing,
     but the old reader summed every session into the Pro monthly cap.
@@ -1021,7 +1046,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     surfaces `trial` / `past_due` / `canceled` states from the Orb
     subscription block when not `active`.
   - **Tests:** Seven new `ProviderQuotaServiceTests` cover the proxy
-    filter (multi-session fixture with VibeProxy + anthropic + factory
+    filter (multi-session fixture with custom-proxy + anthropic + factory
     rows), the Droid Core classification, the plan auto-detection
     matrix (Pro / Plus / Max / ultra-alias / Enterprise →
     `.unknown` / casing), the classifier's `custom:` and `:cloud-N`

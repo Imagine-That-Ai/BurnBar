@@ -1146,6 +1146,8 @@
 		FF1D30F01FE7203306CBF757 /* OpenAICompatibleChatGatewayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE6FFBC700D218430E47C7C2 /* OpenAICompatibleChatGatewayClient.swift */; };
 		FF2193EC287F315EF5B4959B /* DataStoreCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C1332856DEA3C1BE127FCBC /* DataStoreCoordinator.swift */; };
 		FFA7903A67AE17FD933C644C /* CursorLoginHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54A6AD6AE1CB3C1474E6099D /* CursorLoginHelper.swift */; };
+		D5C0AAA100000000C0FFEE00 /* ConnectionsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5C0AAA000000000C0FFEE00 /* ConnectionsSettingsView.swift */; };
+		D5C0AAA300000000C0FFEE00 /* ConnectionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5C0AAA200000000C0FFEE00 /* ConnectionsViewModel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2348,6 +2350,8 @@
 		FF32767ACBECDC438098C51A /* AssistantModelPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantModelPickerSheet.swift; sourceTree = "<group>"; };
 		FFB4C714340AB5C7EF8AB2BE /* MobileInsightAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileInsightAggregator.swift; sourceTree = "<group>"; };
 		FFFDD98A3EE525028068947D /* HermesLiveGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesLiveGlyph.swift; sourceTree = "<group>"; };
+		D5C0AAA000000000C0FFEE00 /* ConnectionsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionsSettingsView.swift; sourceTree = "<group>"; };
+		D5C0AAA200000000C0FFEE00 /* ConnectionsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionsViewModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -2484,6 +2488,8 @@
 				0500AD8EAC28B3F3EC72BC39 /* AppearanceCorkboardSection.swift */,
 				0C6DF0552835A8915F863E07 /* AppearanceModePickerView.swift */,
 				CA1E34836ADB475D8A76353C /* ChatGatewaySettingsView.swift */,
+			D5C0AAA000000000C0FFEE00 /* ConnectionsSettingsView.swift */,
+			D5C0AAA200000000C0FFEE00 /* ConnectionsViewModel.swift */,
 				37BA5ED164D384834314130C /* CloudStoreSettingsView.swift */,
 				4D4B13F4358076971DE47E63 /* DaemonSettingsView.swift */,
 				0DF2C963713055A8E4A34751 /* DevicesAndSyncSettingsView.swift */,
@@ -5757,6 +5763,8 @@
 				DA2E795787563092D3B3D964 /* ChatExpandedPanel.swift in Sources */,
 				6B1E31DCE9C55658E586B9DB /* ChatFAB.swift in Sources */,
 				9C0D99B72CE336B25D7A08CD /* ChatGatewaySettingsView.swift in Sources */,
+				D5C0AAA100000000C0FFEE00 /* ConnectionsSettingsView.swift in Sources */,
+				D5C0AAA300000000C0FFEE00 /* ConnectionsViewModel.swift in Sources */,
 				A6C173601A4A5672BA495E56 /* ChatHistoryRow.swift in Sources */,
 				B091E2634B4ED8DE7A46AA0F /* ChatInlineContextRibbon.swift in Sources */,
 				EF059C49C345708D7E613F0B /* ChatInputRow.swift in Sources */,

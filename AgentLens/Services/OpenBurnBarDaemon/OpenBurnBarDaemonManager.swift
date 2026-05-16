@@ -388,6 +388,34 @@ final class OpenBurnBarDaemonManager {
         }
     }
 
+    func performRequiredBusyWork<T: Sendable>(_ operation: () async throws -> T) async throws -> T {
+        var attempts = 0
+        while isBusy && attempts < 50 {
+            try await Task.sleep(nanoseconds: 100_000_000)
+            attempts += 1
+        }
+
+        guard !isBusy else {
+            throw OpenBurnBarDaemonManagerError.rpcError(
+                "OpenBurnBar is still finishing another daemon update. Wait a moment and try Save & Connect again."
+            )
+        }
+
+        isBusy = true
+        defer { isBusy = false }
+
+        do {
+            let result = try await operation()
+            await refreshHealth()
+            return result
+        } catch {
+            status = .unhealthy(error.localizedDescription)
+            lastError = error.localizedDescription
+            await refreshRuntimeSnapshot()
+            throw error
+        }
+    }
+
     func loadRecentDaemonEvents(limit: Int = 6) -> [String] {
         guard let content = try? String(contentsOf: paths.logURL, encoding: .utf8) else {
             return []

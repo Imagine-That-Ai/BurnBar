@@ -391,17 +391,47 @@ fun ChatView(
                     Spacer(modifier = Modifier.width(AuroraSpacing.sm.dp))
 
                     val canSend = inputText.isNotBlank() && !isStreaming
+                    // Three visual states so the user always understands
+                    // why a tap landed (or didn't):
+                    //   • Mercury-filled circle  → ready to send.
+                    //   • Outlined ring          → empty input, tap is
+                    //                              a no-op by design.
+                    //   • Half-opacity fill      → streaming, sends are
+                    //                              blocked until the
+                    //                              current response
+                    //                              finishes.
+                    val sendBg = when {
+                        canSend -> AuroraColors.hermesMercury
+                        isStreaming -> AuroraColors.hermesMercury.copy(alpha = 0.35f)
+                        else -> Color.Transparent
+                    }
+                    val sendTint = when {
+                        canSend -> Color.White
+                        isStreaming -> Color.White.copy(alpha = 0.7f)
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                    }
+                    val outline = if (!canSend && !isStreaming)
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                    else
+                        Color.Transparent
                     IconButton(
                         onClick = sendMessage,
                         enabled = canSend,
-                        modifier = Modifier.size(40.dp).clip(CircleShape).background(
-                            if (canSend) AuroraColors.hermesMercury else Color.Transparent
-                        )
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(sendBg)
+                            .border(1.dp, outline, CircleShape)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Send",
-                            tint = if (canSend) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                            contentDescription = if (canSend)
+                                "Send message"
+                            else if (isStreaming)
+                                "Waiting for response — send disabled"
+                            else
+                                "Type a message to enable send",
+                            tint = sendTint
                         )
                     }
                 }

@@ -2,6 +2,20 @@ import Foundation
 import Observation
 import OpenBurnBarCore
 
+enum OpenClawServiceError: LocalizedError {
+    case selectedModelUnavailable(String)
+    case selectedModelCatalogUnavailable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .selectedModelUnavailable(let modelID):
+            return "Selected OpenClaw model '\(modelID)' is not available on this Mac OpenClaw harness. Pick another model or refresh/restart the Mac OpenClaw gateway."
+        case .selectedModelCatalogUnavailable(let modelID):
+            return "Selected OpenClaw model '\(modelID)' has not been verified against this Mac OpenClaw harness catalog yet. Refresh the Mac OpenClaw gateway before sending, so the selected model is not silently rerouted."
+        }
+    }
+}
+
 // MARK: - OpenClaw Service
 //
 // Minimal mobile-side discovery client for the OpenClaw harness running on
@@ -91,6 +105,19 @@ final class OpenClawService {
         selectedModelID = nil
         selectedModelWasExplicit = false
         defaults.removeObject(forKey: selectedModelDefaultsKey)
+    }
+
+    func validatedModelIDForMissionDispatch() throws -> String? {
+        guard let selectedModelID = selectedModelID?.nonEmpty else { return nil }
+        if selectedModelWasExplicit {
+            guard !modelOptions.isEmpty else {
+                throw OpenClawServiceError.selectedModelCatalogUnavailable(selectedModelID)
+            }
+            guard modelOptions.contains(where: { $0.modelID == selectedModelID }) else {
+                throw OpenClawServiceError.selectedModelUnavailable(selectedModelID)
+            }
+        }
+        return selectedModelID
     }
 
     func isFavoriteModel(_ option: HermesRuntimeModelOption) -> Bool {

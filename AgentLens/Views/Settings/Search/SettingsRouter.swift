@@ -109,9 +109,12 @@ final class SettingsRouter {
         case .daemonLifecycle, .httpGateway, .controllerRuntime:
             return [route]
 
-        // Tabs whose root view *is* the destination.
+        // Tabs whose root view *is* the destination. `providersRoot` and
+        // `routingPoolsRoot` are legacy aliases — both resolve to the
+        // unified Connections page.
         case .accountRoot,
              .cloudRoot,
+             .connectionsRoot,
              .providersRoot,
              .routingPoolsRoot,
              .alertsRoot,

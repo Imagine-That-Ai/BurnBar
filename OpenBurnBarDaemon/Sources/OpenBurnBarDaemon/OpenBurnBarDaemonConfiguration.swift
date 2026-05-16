@@ -142,7 +142,7 @@ public struct BurnBarDaemonConfiguration: Sendable {
     public let catalog: BurnBarCatalog
     /// Read-only path to the OpenBurnBar app SQLite database (`openburnbar.sqlite`) for indexed search RPC.
     public let indexDatabasePath: String?
-    /// HTTP gateway configuration for external client access (Vibe Proxy style).
+    /// HTTP gateway configuration for OpenBurnBar Hydrant client access.
     public let gateway: BurnBarGatewayConfiguration
     /// Rate limiting configuration for Unix domain socket RPC.
     /// Default: 60 req/s sustained, 100 burst.

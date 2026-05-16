@@ -83,13 +83,15 @@ class HermesIrohRelayTransport(
     private var startedOnce: Boolean = false
 
     override suspend fun sendUnary(payload: HermesRelayPayload, timeoutMillis: Long): String {
+        // Unary forwards arrive as `.data` chunks. The Mac splits the
+        // body into ~16 KiB fragments emitted in `sequence` order; we
+        // sort defensively and concatenate them into one string.
         val fragments = sortedMapOf<Int, String>()
         send(payload, timeoutMillis) { chunk ->
             when (chunk.kind) {
-                RelayChunkKind.TEXT -> fragments[chunk.sequence] = chunk.text.orEmpty()
-                RelayChunkKind.EVENT -> {} // SSE-style; ignored on unary path
-                RelayChunkKind.TOOL_USE, RelayChunkKind.TOOL_RESULT, RelayChunkKind.REASONING ->
-                    fragments[chunk.sequence] = chunk.text.orEmpty()
+                RelayChunkKind.DATA -> fragments[chunk.sequence] = chunk.text.orEmpty()
+                RelayChunkKind.SSE -> fragments[chunk.sequence] = chunk.text.orEmpty()
+                RelayChunkKind.ERROR -> throw HermesRelayException(chunk.text.orEmpty().ifBlank { "Hermes iroh relay returned an error chunk." })
             }
         }
         return fragments.values.joinToString("")
@@ -100,9 +102,18 @@ class HermesIrohRelayTransport(
         timeoutMillis: Long,
         onSseEvent: suspend (String) -> Unit,
     ) {
+        // Streaming chat (`POST /v1/chat/completions`) arrives as
+        // `.sse` chunks, each carrying one SSE event payload. `.error`
+        // is terminal.
         send(payload, timeoutMillis) { chunk ->
-            val text = chunk.text.orEmpty()
-            if (text.isNotEmpty()) onSseEvent(text)
+            when (chunk.kind) {
+                RelayChunkKind.SSE, RelayChunkKind.DATA -> {
+                    val text = chunk.text.orEmpty()
+                    if (text.isNotEmpty()) onSseEvent(text)
+                }
+                RelayChunkKind.ERROR ->
+                    throw HermesRelayException(chunk.text.orEmpty().ifBlank { "Hermes iroh relay returned an error chunk." })
+            }
         }
     }
 
@@ -188,21 +199,26 @@ class HermesIrohRelayTransport(
 
         try {
             val requestId = "iroh_${UUID.randomUUID().toString().lowercase()}"
-            val keyPair = keyStore.loadOrCreateClientKeyPair()
-            val relayPub = HermesRelayCrypto.decodeUncompressedPublicKey(
-                Base64.decode(payload.relayPublicKey, Base64.NO_WRAP)
-            )
-            val shared = HermesRelayCrypto.ecdh(keyPair.private, relayPub)
+            val relayPubBytes = Base64.decode(payload.relayPublicKey, Base64.NO_WRAP)
+
+            // Fresh AES-256 symmetric key per request. The Mac unwraps it
+            // with its static P-256 private key and uses it for both the
+            // request body (with requestAAD) and every response chunk
+            // (with chunkAAD). Wire shape is identical to iOS' Hermes
+            // relay (`OpenBurnBarMobile/Services/IrohRelay/`).
+            val symmetricKey = HermesRelayCrypto.generateSymmetricKey()
 
             val bodyString = payload.body?.let { String(it, Charsets.UTF_8) }
             val plaintext = JSONObject().apply {
                 put("path", payload.path)
-                payload.sessionID?.let { put("session_id", it) }
+                payload.sessionID?.let { put("sessionId", it) }
                 bodyString?.let { put("body", it) }
             }.toString().toByteArray(Charsets.UTF_8)
-            val requestAad = HermesRelayCrypto.aad(payload.operation, requestId, "request")
-            val key = HermesRelayCrypto.deriveKey(shared, requestAad)
-            val sealed = HermesRelayCrypto.seal(plaintext, key, requestAad)
+
+            val requestAad = HermesRelayCrypto.requestAAD(uid, payload.connectionID, requestId)
+            val keyAad = HermesRelayCrypto.keyAAD(uid, payload.connectionID, requestId)
+            val payloadCiphertextB64 = HermesRelayCrypto.sealToBase64(plaintext, symmetricKey, requestAad)
+            val wrappedKeyB64 = HermesRelayCrypto.wrapSymmetricKey(symmetricKey, relayPubBytes, keyAad)
 
             val startFrame = HermesRealtimeRelayFrame(
                 type = HermesRealtimeRelayFrameType.REQUEST_START,
@@ -212,12 +228,10 @@ class HermesIrohRelayTransport(
                 payload = HermesRealtimeRelayPayload(
                     operation = payload.operation,
                     method = payload.method,
-                    payloadCiphertext = Base64.encodeToString(
-                        sealed.nonce + sealed.ciphertext, Base64.NO_WRAP,
-                    ),
-                    wrappedKey = Base64.encodeToString(shared, Base64.NO_WRAP),
+                    payloadCiphertext = payloadCiphertextB64,
+                    wrappedKey = wrappedKeyB64,
                     relayEncryption = payload.relayEncryption,
-                    relayKeyVersion = payload.relayKeyVersion ?: 1,
+                    relayKeyVersion = payload.relayKeyVersion ?: HermesRelayCrypto.KEY_VERSION,
                 ),
             )
             stream.send(startFrame)
@@ -228,7 +242,13 @@ class HermesIrohRelayTransport(
                 if (frame.uid != uid || frame.connectionId != payload.connectionID || frame.requestId != requestId) continue
                 when (frame.type) {
                     HermesRealtimeRelayFrameType.RESPONSE_CHUNK -> {
-                        val chunk = chunkRecord(frame, shared = shared, requestId = requestId, uid = uid, connectionId = payload.connectionID) ?: continue
+                        val chunk = chunkRecord(
+                            frame = frame,
+                            keyData = symmetricKey,
+                            requestId = requestId,
+                            uid = uid,
+                            connectionId = payload.connectionID,
+                        ) ?: continue
                         onChunk(chunk)
                     }
                     HermesRealtimeRelayFrameType.RESPONSE_COMPLETE -> {
@@ -266,7 +286,7 @@ class HermesIrohRelayTransport(
 
     private fun chunkRecord(
         frame: HermesRealtimeRelayFrame,
-        shared: ByteArray,
+        keyData: ByteArray,
         requestId: String,
         uid: String,
         connectionId: String,
@@ -275,13 +295,18 @@ class HermesIrohRelayTransport(
         val kind = payload.kind ?: return null
         val sequence = payload.sequence ?: return null
         val ciphertext = payload.ciphertext ?: return null
-        val cipherBytes = Base64.decode(ciphertext, Base64.NO_WRAP)
-        if (cipherBytes.size < 13) return null
-        val nonce = cipherBytes.copyOfRange(0, 12)
-        val body = cipherBytes.copyOfRange(12, cipherBytes.size)
-        val aad = HermesRelayCrypto.aad(payload.operation ?: "", requestId, "chunk:$sequence")
-        val key = HermesRelayCrypto.deriveKey(shared, aad)
-        val plaintext = try { HermesRelayCrypto.open(nonce, body, key, aad) } catch (_: Throwable) { return null }
+        val aad = HermesRelayCrypto.chunkAAD(
+            uid = uid,
+            connectionId = connectionId,
+            requestId = requestId,
+            sequence = sequence,
+            kind = kind.wireValue,
+        )
+        val plaintext = try {
+            HermesRelayCrypto.openBase64(ciphertext, keyData, aad)
+        } catch (_: Throwable) {
+            return null
+        }
         return StreamingChunk(
             kind = kind,
             sequence = sequence,

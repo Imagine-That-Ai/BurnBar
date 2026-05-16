@@ -246,7 +246,7 @@ struct RoutingPoolsView: View {
                     .font(DesignSystem.Typography.headline)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
             }
-            Text("This works like VibeProxy, but with OpenBurnBar's provider accounts and quota truth underneath: enable the local gateway, add at least two usable accounts in a pool, wire each CLI to the local endpoint, then let the daemon fail over when the active account is exhausted.")
+            Text("This is OpenBurnBar's native routing layer: enable the Hydrant gateway, add at least two usable accounts in a pool, wire each CLI to the local endpoint, then let the daemon fail over when the active account is exhausted.")
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -284,7 +284,7 @@ struct RoutingPoolsView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .help("Enable the loopback gateway at 127.0.0.1:8317, matching VibeProxy's local-endpoint setup.")
+                .help("Enable OpenBurnBar's loopback Hydrant gateway at 127.0.0.1:8317.")
             }
 
             setupStepRow(
@@ -679,7 +679,7 @@ struct RoutingPoolsView: View {
         } else if gateway.authToken.isEmpty {
             gatewayCallout(
                 title: "Loopback auth is off.",
-                detail: "This matches VibeProxy's local setup: clients get a dummy key and the daemon accepts local requests without bearer auth.",
+                detail: "This is OpenBurnBar's local-only mode: clients get a harmless placeholder key and the daemon accepts loopback requests without bearer auth.",
                 icon: "checkmark.shield.fill",
                 tint: DesignSystem.Colors.success
             )
@@ -767,7 +767,7 @@ struct RoutingPoolsView: View {
         case .droid:
             return "Adds OpenBurnBar customModels to ~/.factory/settings.local.json so Droid sends selected OpenAI-family traffic through the local gateway while preserving your base Factory settings. After wiring, same-tier account failover happens in the gateway without editing Droid again."
         case .forge:
-            return "Adds a VibeProxy-style [[providers]] entry named openburnbar to ~/forge/.forge.toml with a chat-completions URL, models URL, and OPENBURNBAR_GATEWAY_TOKEN env var. Your existing Forge session provider is left alone so you can opt in deliberately."
+            return "Adds an OpenBurnBar-owned [[providers]] entry named openburnbar to ~/forge/.forge.toml with a chat-completions URL, models URL, and OPENBURNBAR_GATEWAY_TOKEN env var. Your existing Forge session provider is left alone so you can opt in deliberately."
         }
     }
 

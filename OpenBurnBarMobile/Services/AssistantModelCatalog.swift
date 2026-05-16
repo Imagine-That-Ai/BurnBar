@@ -238,4 +238,36 @@ public enum CLIAgentModelPreferences {
         }
         return options.first
     }
+
+    public static func validatedPreferredModelID(
+        for runtime: AssistantRuntimeID,
+        defaults: UserDefaults = .standard,
+        options explicitOptions: [AssistantModelOption]? = nil
+    ) throws -> String? {
+        guard let preferredID = preferredModelID(for: runtime, defaults: defaults)?.nonEmpty else {
+            return nil
+        }
+        let options = explicitOptions ?? AssistantModelCatalog.options(for: runtime)
+        guard !options.isEmpty else {
+            throw CLIAgentModelPreferenceError.catalogUnverified(runtime: runtime, modelID: preferredID)
+        }
+        guard options.contains(where: { $0.modelID.caseInsensitiveCompare(preferredID) == .orderedSame }) else {
+            throw CLIAgentModelPreferenceError.selectedModelUnavailable(runtime: runtime, modelID: preferredID)
+        }
+        return preferredID
+    }
+}
+
+public enum CLIAgentModelPreferenceError: LocalizedError, Equatable {
+    case catalogUnverified(runtime: AssistantRuntimeID, modelID: String)
+    case selectedModelUnavailable(runtime: AssistantRuntimeID, modelID: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .catalogUnverified(runtime, modelID):
+            return "Selected \(runtime.displayName) model '\(modelID)' has not been verified against this Mac \(runtime.displayName) harness catalog yet. Refresh the Mac \(runtime.displayName) gateway before sending, so the selected model is not silently rerouted."
+        case let .selectedModelUnavailable(runtime, modelID):
+            return "Selected \(runtime.displayName) model '\(modelID)' is no longer advertised by this Mac \(runtime.displayName) harness catalog. Pick an available model before sending, so the request is not silently rerouted."
+        }
+    }
 }

@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.openburnbar.data.hermes.AssistantRuntimeID
 import com.openburnbar.data.models.AgentProvider
 import com.openburnbar.data.models.LLMModelBrand
 import com.openburnbar.data.models.logoRes
@@ -54,6 +55,29 @@ fun ProviderLogo(
         resId = provider.logoRes,
         fallbackInitials = provider.displayName.take(2).uppercase(),
         fallbackColors = listOf(Color(provider.brandColor), Color(provider.accentColor)),
+        size = size,
+        circular = circular,
+        modifier = modifier
+    )
+}
+
+// Runtime-aware overload. Built-in runtimes (Hermes / Pi / Codex / Claude /
+// OpenClaw) have a one-to-one drawable mapping owned by the `ProviderLogo`
+// object in ProviderLogoView.kt — this composable wraps that drawable in
+// the same white squircle every other ProviderLogo call uses, so the runtime
+// pill / chat hero render with consistent chrome regardless of whether the
+// caller hands us an `AgentProvider` or an `AssistantRuntimeID`.
+@Composable
+fun ProviderLogo(
+    runtime: AssistantRuntimeID,
+    size: Dp = 24.dp,
+    modifier: Modifier = Modifier,
+    circular: Boolean = false
+) {
+    BundledLogo(
+        resId = ProviderLogo.drawableFor(runtime),
+        fallbackInitials = runtime.displayName.take(2).uppercase(),
+        fallbackColors = listOf(Color.Black, Color.DarkGray),
         size = size,
         circular = circular,
         modifier = modifier

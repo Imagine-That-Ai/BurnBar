@@ -82,12 +82,16 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
                 kSecValueData as String: data,
                 kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             ]
-            let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+            let updateStatus = withKeychainUserInteractionDisabled {
+                SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+            }
             if updateStatus == errSecItemNotFound {
                 var createQuery = query
                 createQuery[kSecValueData as String] = data
                 createQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-                let addStatus = SecItemAdd(createQuery as CFDictionary, nil)
+                let addStatus = withKeychainUserInteractionDisabled {
+                    SecItemAdd(createQuery as CFDictionary, nil)
+                }
                 guard addStatus == errSecSuccess else {
                     throw NSError(domain: NSOSStatusErrorDomain, code: Int(addStatus))
                 }
@@ -95,7 +99,9 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(updateStatus))
             }
         } else {
-            let deleteStatus = SecItemDelete(query as CFDictionary)
+            let deleteStatus = withKeychainUserInteractionDisabled {
+                SecItemDelete(query as CFDictionary)
+            }
             guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
                 throw NSError(domain: NSOSStatusErrorDomain, code: Int(deleteStatus))
             }

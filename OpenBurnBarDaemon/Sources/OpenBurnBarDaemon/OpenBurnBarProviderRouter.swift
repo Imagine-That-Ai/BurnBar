@@ -226,6 +226,7 @@ public enum BurnBarProviderRouterError: Error, LocalizedError {
     case unsupportedProvider(String)
     case providerDisabled(String)
     case missingCredential(String)
+    case credentialsUnavailable(providerID: String, reason: String)
     case unsupportedModel(String)
 
     public var errorDescription: String? {
@@ -238,6 +239,8 @@ public enum BurnBarProviderRouterError: Error, LocalizedError {
             return "Provider '\(providerID)' is disabled in the daemon config."
         case .missingCredential(let providerID):
             return "Provider '\(providerID)' is missing credentials."
+        case .credentialsUnavailable(let providerID, let reason):
+            return "Provider '\(providerID)' has no usable credentials: \(reason)"
         case .unsupportedModel(let modelName):
             return "Model '\(modelName)' is not supported by the configured OpenBurnBar providers."
         }
@@ -413,13 +416,99 @@ public struct BurnBarProviderRouter: Sendable {
         }
         if !routes.isEmpty { return routes }
 
-        if let matchingProviderWithoutCredential = scopedConfigurations.first(where: {
-            resolveModel(named: trimmedModelName, in: $0) != nil && effectiveAPIKey(for: $0) == nil
-        }) {
-            throw BurnBarProviderRouterError.missingCredential(matchingProviderWithoutCredential.provider.id)
+        if let unavailable = credentialUnavailableError(
+            for: trimmedModelName,
+            configurations: scopedConfigurations
+        ) {
+            throw unavailable
         }
 
         return []
+    }
+
+    private func credentialUnavailableError(
+        for modelName: String,
+        configurations: [BurnBarResolvedProviderConfiguration]
+    ) -> BurnBarProviderRouterError? {
+        let now = Date()
+        for configuration in configurations where resolveModel(named: modelName, in: configuration) != nil {
+            if configuration.credentialSlots.isEmpty {
+                if effectiveAPIKey(for: configuration) == nil {
+                    return .missingCredential(configuration.provider.id)
+                }
+                continue
+            }
+
+            let enabledSlots = configuration.credentialSlots.filter { $0.slot.isEnabled }
+            if enabledSlots.isEmpty {
+                return .credentialsUnavailable(
+                    providerID: configuration.provider.id,
+                    reason: "all configured credential slots are disabled."
+                )
+            }
+
+            let slotsWithSecret = enabledSlots.filter { resolvedSlot in
+                guard let key = resolvedSlot.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                    return false
+                }
+                return !key.isEmpty
+            }
+            if slotsWithSecret.isEmpty {
+                return .missingCredential(configuration.provider.id)
+            }
+
+            if slotsWithSecret.allSatisfy({ $0.slot.status == .exhausted }) {
+                return .credentialsUnavailable(
+                    providerID: configuration.provider.id,
+                    reason: unavailableCredentialReason(
+                        prefix: "all configured credential slots are exhausted",
+                        slots: slotsWithSecret
+                    )
+                )
+            }
+
+            let coolingSlots = slotsWithSecret.filter { resolvedSlot in
+                guard let cooldownUntil = resolvedSlot.slot.cooldownUntil else { return false }
+                return cooldownUntil > now
+            }
+            if coolingSlots.count == slotsWithSecret.count {
+                let nextRetry = coolingSlots
+                    .compactMap(\.slot.cooldownUntil)
+                    .sorted()
+                    .first
+                let suffix = nextRetry.map { " Retry after \($0.formatted(date: .abbreviated, time: .standard))." } ?? ""
+                return .credentialsUnavailable(
+                    providerID: configuration.provider.id,
+                    reason: "all configured credential slots are cooling down.\(suffix)"
+                )
+            }
+
+            if slotsWithSecret.allSatisfy({ $0.slot.status == .missingSecret }) {
+                return .missingCredential(configuration.provider.id)
+            }
+
+            return .credentialsUnavailable(
+                providerID: configuration.provider.id,
+                reason: unavailableCredentialReason(
+                    prefix: "configured credential slots are not ready",
+                    slots: slotsWithSecret
+                )
+            )
+        }
+        return nil
+    }
+
+    private func unavailableCredentialReason(
+        prefix: String,
+        slots: [BurnBarResolvedProviderConfiguration.ResolvedCredentialSlot]
+    ) -> String {
+        let message = slots
+            .compactMap { $0.slot.lastStatusMessage?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty })
+        if let message {
+            return "\(prefix). Last error: \(message)"
+        }
+        return "\(prefix)."
     }
 
     public func markRouteFailure(
@@ -810,7 +899,7 @@ extension BurnBarProviderRouter {
         // to compute which lower-class routes were excluded. Used by callers (gateway)
         // to report "downgrade disabled" when the same-class pool is exhausted.
         let blockedByCapabilityClass: [BurnBarProviderRoute]
-        if let requiredCapabilityClassID {
+        if requiredCapabilityClassID != nil {
             let unfilteredCandidates = try candidateRoutes(
                 modelName: modelName,
                 preferredProviderID: effectivePreferredProviderID,

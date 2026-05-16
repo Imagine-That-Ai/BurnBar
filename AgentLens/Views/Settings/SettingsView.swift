@@ -56,9 +56,12 @@ struct SettingsView: View {
                 // Consume a deep-link tab parked in UserDefaults by callers
                 // like the menu-bar popover whisper — e.g. tapping "Cloud
                 // Member" should drop the user straight on the Cloud pane.
+                // `resolving(legacyRawValue:)` maps the retired `providers`
+                // and `routingPools` raw values onto the unified
+                // `.connections` tab so old deep links still resolve.
                 let key = "settings.pendingTab"
                 if let raw = UserDefaults.standard.string(forKey: key),
-                   let tab = SettingsTab(rawValue: raw) {
+                   let tab = SettingsTab.resolving(legacyRawValue: raw) {
                     router.selectedTab = tab
                     UserDefaults.standard.removeObject(forKey: key)
                 }
@@ -206,12 +209,14 @@ struct SettingsView: View {
             RemoteRelayDetailView(settingsManager: settingsManager)
         case .hermesPiRelay:
             RemoteRelayPiDetailView(settingsManager: settingsManager)
-        case .generalRoot, .daemonRoot, .accountRoot, .cloudRoot, .providersRoot,
-             .routingPoolsRoot,
+        case .generalRoot, .daemonRoot, .accountRoot, .cloudRoot,
+             .connectionsRoot, .providersRoot, .routingPoolsRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,
              .switcherRoot, .hermesRoot:
             // Roots are reachable via the sidebar tab selection — the path
-            // stays empty for these.
+            // stays empty for these. `providersRoot` and `routingPoolsRoot`
+            // are legacy aliases that resolve to the unified Connections
+            // tab.
             detailContent
         }
     }
@@ -276,20 +281,14 @@ struct SettingsView: View {
         case .cloud:
             CloudStoreSettingsView()
                 .navigationTitle("OpenBurnBar Cloud")
-        case .providers:
-            ProvidersSettingsView(
+        case .connections:
+            ConnectionsSettingsView(
                 settingsManager: settingsManager,
                 daemonManager: .shared,
                 dataStore: dataStore,
                 accountManager: accountManager
             )
-                .navigationTitle("Providers")
-        case .routingPools:
-            RoutingPoolsView(
-                settingsManager: settingsManager,
-                dataStore: dataStore
-            )
-                .navigationTitle("Routing pools")
+                .navigationTitle("Connections")
         case .alerts:
             AlertsSettingsView(settingsManager: settingsManager)
                 .navigationTitle("Alerts")

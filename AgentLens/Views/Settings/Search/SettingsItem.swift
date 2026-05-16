@@ -103,10 +103,13 @@ enum SettingsPageRoute: Hashable, Codable {
     // Cloud
     case cloudRoot
 
-    // Providers
-    case providersRoot
+    // Connections (the unified Providers + Routing Pools page).
+    case connectionsRoot
 
-    // Routing pools
+    // Legacy aliases kept so existing deep links resolve. The router maps
+    // both of these to `.connectionsRoot` at navigation time — they no
+    // longer have a dedicated UI surface.
+    case providersRoot
     case routingPoolsRoot
 
     // Alerts
@@ -178,11 +181,18 @@ enum SettingsAnchor {
     // Cloud
     static let cloudOverview = "cloud.overview"
 
-    // Providers
-    static let providersAdd = "providers.add"
-    static let providersCLI = "providers.cliAuth"
-    static let providersLogSources = "providers.logSources"
-    static let providersOpenCode = "providers.cli.opencode"
+    // Connections (unified Providers + Routing Pools page)
+    static let connectionsAccounts = "connections.accounts"
+    static let connectionsApps = "connections.apps"
+    static let connectionsAdvanced = "connections.advanced"
+
+    // Legacy anchors — kept as aliases for back-compat search and deep links.
+    // Each one resolves to a section inside the new Connections page.
+    static let providersAdd = connectionsAccounts
+    static let providersCLI = connectionsApps
+    static let providersLogSources = connectionsAdvanced
+    static let providersOpenCode = connectionsApps
+    static let routingPoolsOverview = connectionsApps
 
     static func providerLogSource(_ persistedToken: String) -> String {
         "providers.logSource.\(persistedToken)"
@@ -191,9 +201,6 @@ enum SettingsAnchor {
     static func providerCLI(_ cliToken: String) -> String {
         "providers.cli.\(cliToken)"
     }
-
-    // Routing pools
-    static let routingPoolsOverview = "routingPools.overview"
 
     // Alerts
     static let alertsDailySpend = "alerts.dailySpend"

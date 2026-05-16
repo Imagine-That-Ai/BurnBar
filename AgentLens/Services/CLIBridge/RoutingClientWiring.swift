@@ -17,8 +17,8 @@ import Foundation
 ///   - `.opencode` — OpenAI-compatible provider entry in
 ///     `~/.config/opencode/opencode.json`.
 ///   - `.forge` — OpenAI Chat Completions shape (`/v1/chat/completions`).
-///     Reads a Forge `[[providers]]` entry at `~/forge/.forge.toml`, matching
-///     the VibeProxy provider shape Forge already supports locally.
+///     Reads an OpenBurnBar-owned Forge `[[providers]]` entry at
+///     `~/forge/.forge.toml`.
 ///   - `.droid` — Factory Droid custom-model override in
 ///     `~/.factory/settings.local.json` (`customModels` entries).
 enum RoutingClientWiringTarget: String, CaseIterable, Identifiable, Sendable {
@@ -73,8 +73,8 @@ struct RoutingClientGateway: Sendable {
     }
 
     /// Local loopback gateways may intentionally run without auth. CLI tools
-    /// still expect an API-key string, so we give them the same harmless
-    /// placeholder VibeProxy uses for local custom model wiring.
+    /// still expect an API-key string, so we give them a harmless
+    /// OpenBurnBar-local placeholder.
     var effectiveClientToken: String {
         authToken.isEmpty ? "openburnbar-local" : authToken
     }
@@ -630,9 +630,9 @@ struct RoutingClientWiring {
     }
 
     private func forgeTOMLBlock(gateway: RoutingClientGateway) -> String {
-        // Mirrors the VibeProxy provider entry shape Forge already supports:
-        // a chat-completions URL plus a separate models URL. We do not change
-        // the active `[session]` provider so users can opt in deliberately.
+        // Forge supports a chat-completions URL plus a separate models URL.
+        // We do not change the active `[session]` provider so users can opt
+        // in deliberately.
         """
         \(Self.sentinelStart)
         # Managed by OpenBurnBar. Edit Settings → Routing pools to change.

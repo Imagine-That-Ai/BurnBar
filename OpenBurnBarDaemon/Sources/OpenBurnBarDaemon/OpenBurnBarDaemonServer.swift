@@ -146,7 +146,7 @@ public actor BurnBarDaemonServer {
             self.indexedSearch = nil
         }
 
-        // HTTP gateway (Vibe Proxy style) — only initialized if enabled
+        // HTTP gateway — only initialized if enabled.
         if configuration.gateway.isEnabled {
             self.gatewayServer = BurnBarHTTPGatewayServer(
                 configuration: configuration.gateway,

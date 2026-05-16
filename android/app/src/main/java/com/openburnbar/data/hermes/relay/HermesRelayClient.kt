@@ -1,16 +1,24 @@
 package com.openburnbar.data.hermes.relay
 
 import android.util.Base64
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import java.time.Instant
+import java.time.format.DateTimeFormatter
+import java.util.Date
+import java.util.UUID
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
-import java.util.UUID
 
 class HermesRelayException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
+/**
+ * Operation rawValues recognised by the Mac (`HermesRelayOperation` in
+ * `OpenBurnBarCore/SharedModels/HermesConnectionTypes.swift`).
+ */
 object HermesRelayOperationName {
     const val CHAT_COMPLETIONS = "chatCompletions"
     const val MODELS = "models"
@@ -20,9 +28,13 @@ object HermesRelayOperationName {
     const val JOBS = "jobs"
 }
 
-object HermesRelayChunkKind {
-    const val STREAM = "stream"
-    const val FINAL = "final"
+/**
+ * Chunk-kind rawValues on Firestore-relay chunk docs. Must match the
+ * Swift `HermesRelayChunkKind` enum (`sse`, `data`, `error`).
+ */
+object HermesRelayChunkKindWire {
+    const val SSE = "sse"
+    const val DATA = "data"
     const val ERROR = "error"
 }
 
@@ -35,18 +47,34 @@ data class HermesRelayConnectionDescriptor(
     val advertisedModel: String? = null,
     val capabilities: List<String> = emptyList(),
     val status: String = "online",
-    val updatedAt: Long? = null
+    val updatedAt: Long? = null,
 )
 
 /**
- * Firestore-backed transport. Wire-format identical to the iOS
- * `HermesRelayClient.swift` so a Mac host can decrypt
+ * Firestore-backed Hermes relay client. Wire-shape identical to the iOS
+ * `HermesService` Firestore-relay path so a Mac host can decrypt
  * Android-originated requests and vice-versa.
+ *
+ * Envelope contract (`users/{uid}/hermes_relay_connections/{id}.*`) for
+ * connection discovery:
+ *   - `relay_public_key`, `relay_encryption`, `relay_key_version`,
+ *     `display_name`, `advertised_model`, `capabilities`, `status`.
+ *
+ * Envelope contract (`users/{uid}/hermes_relay_requests/{id}.*`) for
+ * outbound requests:
+ *   - `id`, `connectionId`, `operation`, `method`, `status`,
+ *     `relayEncryption`, `relayKeyVersion`, `payloadCiphertext`,
+ *     `wrappedKey`, `chunkCount`, `createdAt`, `updatedAt`, `expiresAt`,
+ *     `expireAt`, `schemaVersion=2`.
+ *
+ * Response chunks live in `.../{requestId}/chunks/{seq}` with fields
+ * `requestId`, `sequence`, `kind` (`sse`|`data`|`error`), `ciphertext`,
+ * `schemaVersion`.
  */
 class HermesRelayClient(
     private val keyStore: HermesRelayKeyStore,
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) {
 
     fun isUsable(): Boolean {
@@ -74,7 +102,7 @@ class HermesRelayClient(
                 capabilities = (doc.get("capabilities") as? List<*>)?.mapNotNull { it as? String }
                     ?: emptyList(),
                 status = doc.getString("status") ?: "online",
-                updatedAt = doc.getTimestamp("updated_at")?.toDate()?.time
+                updatedAt = doc.getTimestamp("updated_at")?.toDate()?.time,
             )
         }
     }
@@ -85,37 +113,18 @@ class HermesRelayClient(
         method: String,
         path: String,
         body: ByteArray = ByteArray(0),
-        sessionId: String? = null
+        sessionId: String? = null,
     ): String {
-        val (envelope, sharedKey, requestId) = buildEnvelope(connection, operation, method, path, body, sessionId)
-        val docRef = firestore.collection("users")
-            .document(auth.currentUser?.uid ?: throw HermesRelayException("Not signed in."))
-            .collection("hermes_relay_requests")
-            .document(requestId)
-        docRef.set(envelope).await()
-
-        val deadline = System.currentTimeMillis() + DEFAULT_TIMEOUT_MILLIS
-        while (System.currentTimeMillis() < deadline) {
-            val snap = docRef.get().await()
-            val status = snap.getString("status")
-            if (status == "error") {
-                throw HermesRelayException(snap.getString("error_message") ?: "Hermes relay failed.")
+        val handle = sendEnvelope(connection, operation, method, path, body, sessionId)
+        val fragments = sortedMapOf<Int, String>()
+        poll(handle = handle) { chunk ->
+            when (chunk.kind) {
+                HermesRelayChunkKindWire.ERROR -> throw HermesRelayException(chunk.text)
+                HermesRelayChunkKindWire.SSE, HermesRelayChunkKindWire.DATA ->
+                    fragments[chunk.sequence] = chunk.text
             }
-            val nonce = snap.getString("response_nonce")
-            val ct = snap.getString("response_ciphertext")
-            if (nonce != null && ct != null) {
-                val aad = HermesRelayCrypto.aad(operation, requestId, "response")
-                val plain = HermesRelayCrypto.open(
-                    nonce = Base64.decode(nonce, Base64.NO_WRAP),
-                    ciphertext = Base64.decode(ct, Base64.NO_WRAP),
-                    key = HermesRelayCrypto.deriveKey(sharedKey, aad),
-                    aad = aad
-                )
-                return String(plain, Charsets.UTF_8)
-            }
-            kotlinx.coroutines.delay(POLL_INTERVAL_MILLIS)
         }
-        throw HermesRelayException("Hermes relay timed out waiting for a response.")
+        return fragments.values.joinToString("")
     }
 
     suspend fun sendStreaming(
@@ -125,101 +134,131 @@ class HermesRelayClient(
         path: String,
         body: ByteArray,
         sessionId: String? = null,
-        onChunk: suspend (kind: String, text: String) -> Unit
+        onChunk: suspend (kind: String, text: String) -> Unit,
     ) {
-        val (envelope, sharedKey, requestId) = buildEnvelope(connection, operation, method, path, body, sessionId)
-        val streamingEnvelope = envelope.toMutableMap().apply { put("streaming", true) }
-        val docRef = firestore.collection("users")
-            .document(auth.currentUser?.uid ?: throw HermesRelayException("Not signed in."))
-            .collection("hermes_relay_requests")
-            .document(requestId)
-        docRef.set(streamingEnvelope).await()
-
-        val deadline = System.currentTimeMillis() + DEFAULT_TIMEOUT_MILLIS
-        var seen = 0
-        while (System.currentTimeMillis() < deadline) {
-            val chunks = docRef.collection("chunks")
-                .orderBy("seq", Query.Direction.ASCENDING)
-                .get()
-                .await()
-                .documents
-            for (chunk in chunks.drop(seen)) {
-                val kind = chunk.getString("kind") ?: continue
-                val nonce = chunk.getString("nonce") ?: continue
-                val ct = chunk.getString("ciphertext") ?: continue
-                val seq = chunk.getLong("seq")?.toInt() ?: seen
-                val aad = HermesRelayCrypto.aad(operation, requestId, "chunk:$seq")
-                val plain = HermesRelayCrypto.open(
-                    nonce = Base64.decode(nonce, Base64.NO_WRAP),
-                    ciphertext = Base64.decode(ct, Base64.NO_WRAP),
-                    key = HermesRelayCrypto.deriveKey(sharedKey, aad),
-                    aad = aad
-                )
-                val text = String(plain, Charsets.UTF_8)
-                onChunk(kind, text)
-                seen += 1
-                if (kind == HermesRelayChunkKind.FINAL || kind == HermesRelayChunkKind.ERROR) {
-                    if (kind == HermesRelayChunkKind.ERROR) {
-                        throw HermesRelayException(text)
-                    }
-                    return
-                }
+        val handle = sendEnvelope(connection, operation, method, path, body, sessionId)
+        poll(handle = handle) { chunk ->
+            when (chunk.kind) {
+                HermesRelayChunkKindWire.ERROR -> throw HermesRelayException(chunk.text)
+                else -> onChunk(chunk.kind, chunk.text)
             }
-            kotlinx.coroutines.delay(POLL_INTERVAL_MILLIS)
         }
-        throw HermesRelayException("Hermes relay timed out mid-stream.")
     }
 
-    private fun buildEnvelope(
+    /** Returns a handle holding the symmetric `keyData` so polling can decrypt chunks. */
+    private suspend fun sendEnvelope(
         connection: HermesRelayConnectionDescriptor,
         operation: String,
         method: String,
         path: String,
         body: ByteArray,
-        sessionId: String?
-    ): Triple<Map<String, Any?>, ByteArray, String> {
-        val requestId = UUID.randomUUID().toString()
-        val keyPair = keyStore.loadOrCreateClientKeyPair()
-        val relayPublic = HermesRelayCrypto.decodeUncompressedPublicKey(
-            Base64.decode(connection.relayPublicKey, Base64.NO_WRAP)
-        )
-        val shared = HermesRelayCrypto.ecdh(keyPair.private, relayPublic)
-        val aad = HermesRelayCrypto.aad(operation, requestId, "request")
-        val key = HermesRelayCrypto.deriveKey(shared, aad)
+        sessionId: String?,
+    ): RelayRequestHandle {
+        val uid = auth.currentUser?.uid
+            ?: throw HermesRelayException("Iroh relay requires a signed-in Firebase user.")
+        val requestId = "relay_${UUID.randomUUID().toString().lowercase()}"
+        val now = System.currentTimeMillis()
+        val expiresAt = now + DEFAULT_TIMEOUT_MILLIS + 30_000L
 
+        val keyData = HermesRelayCrypto.generateSymmetricKey()
+        val bodyString = if (body.isNotEmpty()) String(body, Charsets.UTF_8) else null
         val plaintext = JSONObject().apply {
-            put("method", method)
             put("path", path)
-            if (body.isNotEmpty()) {
-                put("body", Base64.encodeToString(body, Base64.NO_WRAP))
-            }
-            sessionId?.let { put("session_id", it) }
+            sessionId?.let { put("sessionId", it) }
+            bodyString?.let { put("body", it) }
         }.toString().toByteArray(Charsets.UTF_8)
 
-        val sealed = HermesRelayCrypto.seal(plaintext, key, aad)
-        val clientPub = HermesRelayCrypto.encodeUncompressedPublicKey(
-            keyPair.public as java.security.interfaces.ECPublicKey
-        )
+        val requestAad = HermesRelayCrypto.requestAAD(uid, connection.id, requestId)
+        val keyAad = HermesRelayCrypto.keyAAD(uid, connection.id, requestId)
+        val relayPubBytes = Base64.decode(connection.relayPublicKey, Base64.NO_WRAP)
+        val payloadCiphertextB64 = HermesRelayCrypto.sealToBase64(plaintext, keyData, requestAad)
+        val wrappedKeyB64 = HermesRelayCrypto.wrapSymmetricKey(keyData, relayPubBytes, keyAad)
 
         val envelope = mapOf(
+            "id" to requestId,
+            "connectionId" to connection.id,
             "operation" to operation,
-            "connection_id" to connection.id,
-            "method" to method,
-            "path" to path,
-            "algorithm" to (connection.relayEncryption.ifBlank { HermesRelayCrypto.ALGORITHM }),
-            "client_pub" to Base64.encodeToString(clientPub, Base64.NO_WRAP),
-            "key_version" to (connection.relayKeyVersion ?: 1),
-            "request_nonce" to Base64.encodeToString(sealed.nonce, Base64.NO_WRAP),
-            "request_ciphertext" to Base64.encodeToString(sealed.ciphertext, Base64.NO_WRAP),
+            "method" to method.uppercase(),
             "status" to "pending",
-            "created_at" to FieldValue.serverTimestamp(),
-            "session_id" to (sessionId ?: "")
+            "payloadCiphertext" to payloadCiphertextB64,
+            "wrappedKey" to wrappedKeyB64,
+            "relayEncryption" to (connection.relayEncryption.ifBlank { HermesRelayCrypto.ALGORITHM }),
+            "relayKeyVersion" to (connection.relayKeyVersion ?: HermesRelayCrypto.KEY_VERSION),
+            "chunkCount" to 0,
+            "createdAt" to ISO8601.format(Instant.ofEpochMilli(now)),
+            "updatedAt" to ISO8601.format(Instant.ofEpochMilli(now)),
+            "expiresAt" to ISO8601.format(Instant.ofEpochMilli(expiresAt)),
+            "expireAt" to Timestamp(Date(expiresAt)),
+            "schemaVersion" to 2,
         )
-        return Triple(envelope, shared, requestId)
+
+        firestore.collection("users").document(uid)
+            .collection("hermes_relay_requests").document(requestId)
+            .set(envelope)
+            .await()
+
+        return RelayRequestHandle(uid = uid, requestId = requestId, connectionId = connection.id, keyData = keyData)
     }
+
+    private data class DecryptedChunk(val kind: String, val sequence: Int, val text: String)
+
+    private suspend fun poll(handle: RelayRequestHandle, onChunk: suspend (DecryptedChunk) -> Unit) {
+        val requestRef = firestore.collection("users").document(handle.uid)
+            .collection("hermes_relay_requests").document(handle.requestId)
+        val deadline = System.currentTimeMillis() + DEFAULT_TIMEOUT_MILLIS
+        var lastSequence = -1
+        while (System.currentTimeMillis() < deadline) {
+            val chunks = requestRef.collection("chunks")
+                .whereGreaterThan("sequence", lastSequence)
+                .orderBy("sequence", Query.Direction.ASCENDING)
+                .get()
+                .await()
+                .documents
+            for (doc in chunks) {
+                val sequence = doc.getLong("sequence")?.toInt() ?: continue
+                val kindText = doc.getString("kind") ?: continue
+                val ciphertext = doc.getString("ciphertext") ?: continue
+                val aad = HermesRelayCrypto.chunkAAD(
+                    uid = handle.uid,
+                    connectionId = handle.connectionId,
+                    requestId = handle.requestId,
+                    sequence = sequence,
+                    kind = kindText,
+                )
+                val plain = HermesRelayCrypto.openBase64(ciphertext, handle.keyData, aad)
+                onChunk(DecryptedChunk(kind = kindText, sequence = sequence, text = String(plain, Charsets.UTF_8)))
+                lastSequence = maxOf(lastSequence, sequence)
+            }
+
+            val request = requestRef.get().await()
+            val status = request.getString("status")
+            when (status) {
+                "completed" -> {
+                    val expectedCount = request.getLong("chunkCount")?.toInt() ?: 0
+                    if (expectedCount == 0 || lastSequence + 1 >= expectedCount) return
+                }
+                "failed" -> throw HermesRelayException(request.getString("error") ?: "Remote Hermes relay failed.")
+                "cancelled", "expired" -> throw HermesRelayException("Remote Hermes relay request was $status.")
+                else -> Unit
+            }
+            delay(POLL_INTERVAL_MILLIS)
+        }
+        runCatching {
+            requestRef.set(mapOf("status" to "cancelled", "updatedAt" to ISO8601.format(Instant.now())), com.google.firebase.firestore.SetOptions.merge()).await()
+        }
+        throw HermesRelayException("Hermes relay timed out waiting for a response.")
+    }
+
+    private data class RelayRequestHandle(
+        val uid: String,
+        val requestId: String,
+        val connectionId: String,
+        val keyData: ByteArray,
+    )
 
     companion object {
         private const val DEFAULT_TIMEOUT_MILLIS = 30_000L
         private const val POLL_INTERVAL_MILLIS = 350L
+        private val ISO8601: DateTimeFormatter = DateTimeFormatter.ISO_INSTANT
     }
 }

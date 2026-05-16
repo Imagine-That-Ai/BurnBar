@@ -7,7 +7,6 @@ import com.openburnbar.irohrelay.HermesRealtimeRelayFrameType
 import com.openburnbar.irohrelay.HermesRealtimeRelayPayload
 import com.openburnbar.irohrelay.HermesRelayChunkKind
 import com.openburnbar.irohrelay.InMemoryIrohPairingDirectory
-import com.openburnbar.irohrelay.IrohEndpointIdentity
 import com.openburnbar.irohrelay.IrohPairingRecord
 import com.openburnbar.irohrelay.IrohPairingSignature
 import com.openburnbar.irohrelay.IrohRelayProtocol
@@ -19,15 +18,16 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
+import java.security.KeyPair
 import java.security.interfaces.ECPublicKey
 import java.util.Base64
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeoutOrNull
+import net.i2p.crypto.eddsa.EdDSAEngine
 import net.i2p.crypto.eddsa.EdDSAPrivateKey
 import net.i2p.crypto.eddsa.EdDSAPublicKey
-import net.i2p.crypto.eddsa.EdDSAEngine
 import net.i2p.crypto.eddsa.spec.EdDSANamedCurveTable
 import net.i2p.crypto.eddsa.spec.EdDSAPrivateKeySpec
 import net.i2p.crypto.eddsa.spec.EdDSAPublicKeySpec
@@ -40,21 +40,21 @@ import org.junit.Test
 
 /**
  * Loopback-backed unit tests for `HermesIrohRelayTransport`. The test
- * dials a fake Mac via the in-process `LoopbackIrohRelayTransport`,
- * decrypts the framed payload with the relay-private key, and replays
- * encrypted chunk/complete frames so the transport produces an output
- * string identical to what an iOS sender would.
- *
- * The AAD strings are pinned by the production crypto path; this suite
- * additionally pins them as constants in the assertions so a Mac-side
- * drift would be caught here.
+ * dials a fake Mac via `LoopbackIrohRelayTransport`, unwraps the
+ * request-side symmetric key using the relay-private key + `keyAAD`,
+ * decrypts the request body with `requestAAD`, then re-seals response
+ * chunks with `chunkAAD` and `sse`/`data` kind. The Mac's exact contract
+ * — pinned in production against
+ * `AgentLens/Services/IrohRelay/IrohRelayRequestHandler.swift`.
  */
 class HermesIrohRelayTransportTest {
 
     private val pairingSpec = EdDSANamedCurveTable.ED_25519_CURVE_SPEC
     private val pairingPrivateKey: EdDSAPrivateKey
     private val pairingPublicKeyRaw: ByteArray
-    private val relayKeyPair = HermesRelayCrypto.generateEphemeralKeyPair()
+    private val relayKeyPair: KeyPair = HermesRelayCrypto.generateEphemeralKeyPair()
+    private val relayPublicX963: ByteArray =
+        HermesRelayCrypto.encodeUncompressedPublicKey(relayKeyPair.public as ECPublicKey)
     private val rendezvous = LoopbackIrohRelayRendezvous()
 
     init {
@@ -80,77 +80,19 @@ class HermesIrohRelayTransportTest {
         unmockkStatic(android.util.Base64::class)
     }
 
-    private fun signPairing(payload: ByteArray): String {
-        val engine = EdDSAEngine()
-        engine.initSign(pairingPrivateKey)
-        engine.update(payload)
-        return Base64.getEncoder().encodeToString(engine.sign())
-    }
-
-    private fun makePairingRecord(uid: String, connectionId: String, nodeId: String): IrohPairingRecord {
-        val now = System.currentTimeMillis()
-        val payload = IrohPairingSignature.canonicalPayload(
-            uid = uid,
-            connectionId = connectionId,
-            nodeId = nodeId,
-            relayURL = null,
-            directAddresses = emptyList(),
-            publishedAtMillis = now,
-            protocolVersion = IrohRelayProtocol.FRAME_PROTOCOL_VERSION,
-        )
-        return IrohPairingRecord(
-            uid = uid,
-            connectionId = connectionId,
-            nodeId = nodeId,
-            publishedAtMillis = now,
-            signature = signPairing(payload),
-        )
-    }
-
-    private fun fakeAuth(uid: String): FirebaseAuth {
-        val firebaseUser = mockk<FirebaseUser>()
-        every { firebaseUser.uid } returns uid
-        val auth = mockk<FirebaseAuth>()
-        every { auth.currentUser } returns firebaseUser
-        return auth
-    }
-
-    private fun makeTransport(
-        uid: String,
-        connectionId: String,
-        clientTransport: IrohRelayTransport,
-    ): Pair<HermesIrohRelayTransport, InMemoryIrohPairingDirectory> {
-        val directory = InMemoryIrohPairingDirectory()
-        val nodeId = "host-${connectionId}"
-        runBlocking { directory.publish(makePairingRecord(uid, connectionId, nodeId), uid) }
-        val keyStore = mockk<HermesRelayKeyStore>()
-        every { keyStore.loadOrCreateClientKeyPair() } returns relayKeyPair
-        val publicKeyProvider = object : IrohPairingPublicKeyProviding {
-            override suspend fun fetchPublicKey(uid: String): ByteArray = pairingPublicKeyRaw
-        }
-        val transport = HermesIrohRelayTransport(
-            context = mockk(relaxed = true),
-            keyStore = keyStore,
-            pairingDirectory = directory,
-            pairingPublicKeyProvider = publicKeyProvider,
-            transportFactory = { clientTransport },
-            auth = fakeAuth(uid),
-            connectTimeoutMillis = 2_000,
-        )
-        return transport to directory
-    }
-
     @Test
     fun aad_strings_match_canonical_prefix() {
-        // Pin: `OpenBurnBar-HermesRelay-v1|<op>|<reqId>|<part>`.
-        val req = HermesRelayCrypto.aad("op", "rid", "request")
-        assertEquals("OpenBurnBar-HermesRelay-v1|op|rid|request", String(req, Charsets.UTF_8))
-        val chunk = HermesRelayCrypto.aad("op", "rid", "chunk:3")
-        assertEquals("OpenBurnBar-HermesRelay-v1|op|rid|chunk:3", String(chunk, Charsets.UTF_8))
+        // Pinned by the Mac via OpenBurnBar-HermesRelay-v1|<part>|<uid>|<cid>|<rid>.
+        val req = HermesRelayCrypto.requestAAD("u1", "c1", "r1")
+        assertEquals("OpenBurnBar-HermesRelay-v1|request|u1|c1|r1", String(req, Charsets.UTF_8))
+        val key = HermesRelayCrypto.keyAAD("u1", "c1", "r1")
+        assertEquals("OpenBurnBar-HermesRelay-v1|key|u1|c1|r1", String(key, Charsets.UTF_8))
+        val chunk = HermesRelayCrypto.chunkAAD("u1", "c1", "r1", sequence = 3, kind = "sse")
+        assertEquals("OpenBurnBar-HermesRelay-v1|chunk|u1|c1|r1|3|sse", String(chunk, Charsets.UTF_8))
     }
 
     @Test
-    fun unary_send_returns_concatenated_text() = runTest {
+    fun unary_send_returns_concatenated_data_chunks() = runTest {
         val uid = "uid-1"
         val connectionId = "conn-1"
         val nodeId = "host-${connectionId}"
@@ -166,21 +108,18 @@ class HermesIrohRelayTransportTest {
         )
 
         val payload = HermesRelayPayload(
-            operation = "chatCompletions",
-            method = "POST",
-            path = "/v1/chat/completions",
+            operation = "models",
+            method = "GET",
+            path = "/v1/models",
             connectionID = connectionId,
-            relayPublicKey = Base64.getEncoder().encodeToString(
-                HermesRelayCrypto.encodeUncompressedPublicKey(relayKeyPair.public as ECPublicKey)
-            ),
+            relayPublicKey = Base64.getEncoder().encodeToString(relayPublicX963),
         )
 
         val server = async {
             val stream = hostTransport.accept(timeoutMillis = 5_000)
-            handleSingleUnary(
+            handleSingleRequest(
                 stream = stream,
-                shared = HermesRelayCrypto.ecdh(relayKeyPair.private, relayKeyPair.public),
-                chunks = listOf("Hello ", "world"),
+                chunks = listOf("Hello " to HermesRelayChunkKind.DATA, "world" to HermesRelayChunkKind.DATA),
             )
         }
         val result = transport.sendUnary(payload = payload, timeoutMillis = 5_000)
@@ -212,17 +151,17 @@ class HermesIrohRelayTransportTest {
             method = "POST",
             path = "/v1/chat/completions",
             connectionID = connectionId,
-            relayPublicKey = Base64.getEncoder().encodeToString(
-                HermesRelayCrypto.encodeUncompressedPublicKey(relayKeyPair.public as ECPublicKey)
-            ),
+            relayPublicKey = Base64.getEncoder().encodeToString(relayPublicX963),
         )
 
         val server = async {
             val stream = hostTransport.accept(timeoutMillis = 5_000)
-            handleSingleUnary(
+            handleSingleRequest(
                 stream = stream,
-                shared = HermesRelayCrypto.ecdh(relayKeyPair.private, relayKeyPair.public),
-                chunks = listOf("delta-1", "delta-2"),
+                chunks = listOf(
+                    "delta-1" to HermesRelayChunkKind.SSE,
+                    "delta-2" to HermesRelayChunkKind.SSE,
+                ),
             )
         }
         val received = mutableListOf<String>()
@@ -234,6 +173,78 @@ class HermesIrohRelayTransportTest {
         server.await()
         assertEquals(listOf("delta-1", "delta-2"), received)
 
+        clientTransport.shutdown()
+        hostTransport.shutdown()
+    }
+
+    @Test
+    fun mac_can_decrypt_request_payload_with_keyAAD_then_requestAAD() = runTest {
+        // Equivalent end-to-end: the Mac receiver must (a) unwrap the
+        // symmetric key with the keyAAD-derived wrapping key, then (b)
+        // open the request body with requestAAD. If either AAD drifts
+        // this test fails.
+        val uid = "uid-decrypt"
+        val connectionId = "conn-decrypt"
+        val nodeId = "host-${connectionId}"
+        val hostTransport = LoopbackIrohRelayTransport(rendezvous, nodeId = nodeId)
+        val clientTransport = LoopbackIrohRelayTransport(rendezvous, nodeId = "client-${connectionId}")
+        hostTransport.start()
+        clientTransport.start()
+
+        val (transport, _) = makeTransport(
+            uid = uid,
+            connectionId = connectionId,
+            clientTransport = clientTransport,
+        )
+
+        val payload = HermesRelayPayload(
+            operation = "chatCompletions",
+            method = "POST",
+            path = "/v1/chat/completions",
+            body = "{\"messages\":[]}".toByteArray(),
+            sessionID = "sess-1",
+            connectionID = connectionId,
+            relayPublicKey = Base64.getEncoder().encodeToString(relayPublicX963),
+        )
+
+        var decodedPath: String? = null
+        var decodedBody: String? = null
+        var decodedSessionId: String? = null
+
+        val server = async {
+            val stream = hostTransport.accept(timeoutMillis = 5_000)
+            val incoming = stream.receive() ?: error("no frame")
+            val framePayload = incoming.payload ?: error("no payload")
+            val keyData = HermesRelayCrypto.unwrapSymmetricKey(
+                wrappedKeyBase64 = framePayload.wrappedKey ?: error("missing wrappedKey"),
+                privateKey = relayKeyPair.private,
+                aad = HermesRelayCrypto.keyAAD(incoming.uid, incoming.connectionId, incoming.requestId.orEmpty()),
+            )
+            val plaintext = HermesRelayCrypto.openBase64(
+                ciphertext = framePayload.payloadCiphertext ?: error("missing payloadCiphertext"),
+                keyData = keyData,
+                aad = HermesRelayCrypto.requestAAD(incoming.uid, incoming.connectionId, incoming.requestId.orEmpty()),
+            )
+            val json = org.json.JSONObject(String(plaintext, Charsets.UTF_8))
+            decodedPath = json.optString("path")
+            decodedBody = json.optString("body")
+            decodedSessionId = json.optString("sessionId")
+            // Send one terminal chunk so the client returns.
+            sendChunk(
+                stream = stream,
+                frame = incoming,
+                keyData = keyData,
+                sequence = 0,
+                kind = HermesRelayChunkKind.DATA,
+                text = "ok",
+            )
+            sendComplete(stream = stream, frame = incoming, chunkCount = 1)
+        }
+        transport.sendUnary(payload, timeoutMillis = 5_000)
+        server.await()
+        assertEquals("/v1/chat/completions", decodedPath)
+        assertEquals("{\"messages\":[]}", decodedBody)
+        assertEquals("sess-1", decodedSessionId)
         clientTransport.shutdown()
         hostTransport.shutdown()
     }
@@ -295,15 +306,12 @@ class HermesIrohRelayTransportTest {
             method = "POST",
             path = "/v1/chat/completions",
             connectionID = connectionId,
-            relayPublicKey = Base64.getEncoder().encodeToString(
-                HermesRelayCrypto.encodeUncompressedPublicKey(relayKeyPair.public as ECPublicKey)
-            ),
+            relayPublicKey = Base64.getEncoder().encodeToString(relayPublicX963),
         )
 
-        // Server accepts but never sends anything → unary call should
-        // surface a HermesRelayException after `timeoutMillis`.
+        // Server accepts but never replies → unary should surface a
+        // HermesRelayException after `timeoutMillis`.
         val server = async { hostTransport.accept(timeoutMillis = 2_000) }
-
         val outcome = runCatching {
             withTimeoutOrNull(2_000) {
                 transport.sendUnary(payload, timeoutMillis = 150)
@@ -319,62 +327,140 @@ class HermesIrohRelayTransportTest {
         hostTransport.shutdown()
     }
 
+    // --- Helpers ------------------------------------------------------
+
+    private fun signPairing(payload: ByteArray): String {
+        val engine = EdDSAEngine()
+        engine.initSign(pairingPrivateKey)
+        engine.update(payload)
+        return Base64.getEncoder().encodeToString(engine.sign())
+    }
+
+    private fun makePairingRecord(uid: String, connectionId: String, nodeId: String): IrohPairingRecord {
+        val now = System.currentTimeMillis()
+        val payload = IrohPairingSignature.canonicalPayload(
+            uid = uid,
+            connectionId = connectionId,
+            nodeId = nodeId,
+            relayURL = null,
+            directAddresses = emptyList(),
+            publishedAtMillis = now,
+            protocolVersion = IrohRelayProtocol.FRAME_PROTOCOL_VERSION,
+        )
+        return IrohPairingRecord(
+            uid = uid,
+            connectionId = connectionId,
+            nodeId = nodeId,
+            publishedAtMillis = now,
+            signature = signPairing(payload),
+        )
+    }
+
+    private fun fakeAuth(uid: String): FirebaseAuth {
+        val firebaseUser = mockk<FirebaseUser>()
+        every { firebaseUser.uid } returns uid
+        val auth = mockk<FirebaseAuth>()
+        every { auth.currentUser } returns firebaseUser
+        return auth
+    }
+
+    private fun makeTransport(
+        uid: String,
+        connectionId: String,
+        clientTransport: IrohRelayTransport,
+    ): Pair<HermesIrohRelayTransport, InMemoryIrohPairingDirectory> {
+        val directory = InMemoryIrohPairingDirectory()
+        val nodeId = "host-${connectionId}"
+        runBlocking { directory.publish(makePairingRecord(uid, connectionId, nodeId), uid) }
+        val keyStore = mockk<HermesRelayKeyStore>(relaxed = true)
+        val publicKeyProvider = object : IrohPairingPublicKeyProviding {
+            override suspend fun fetchPublicKey(uid: String): ByteArray = pairingPublicKeyRaw
+        }
+        val transport = HermesIrohRelayTransport(
+            context = mockk(relaxed = true),
+            keyStore = keyStore,
+            pairingDirectory = directory,
+            pairingPublicKeyProvider = publicKeyProvider,
+            transportFactory = { clientTransport },
+            auth = fakeAuth(uid),
+            connectTimeoutMillis = 2_000,
+        )
+        return transport to directory
+    }
+
     /**
-     * Drive one server-side exchange: read the `request.start`, decrypt
-     * it with the relay-private key (ECDH on the same keypair), then send
-     * `response.chunk` frames followed by `response.complete`.
+     * Drive one server-side exchange that matches the Mac iroh handler:
+     * read REQUEST_START → unwrap symmetric key (keyAAD) → open body
+     * (requestAAD) → emit `chunks` then RESPONSE_COMPLETE.
      */
-    private suspend fun handleSingleUnary(
+    private suspend fun handleSingleRequest(
         stream: IrohRelayStream,
-        shared: ByteArray,
-        chunks: List<String>,
+        chunks: List<Pair<String, HermesRelayChunkKind>>,
     ) {
         val incoming = stream.receive() ?: return
-        val payload = incoming.payload ?: return
-        val nonceAndCipher = Base64.getDecoder().decode(payload.payloadCiphertext)
-        // We don't need to decrypt; only need the requestId + connection
-        // ids to address response frames back to the same logical stream.
-        val nonce = nonceAndCipher.copyOfRange(0, 12)
-        val ciphertext = nonceAndCipher.copyOfRange(12, nonceAndCipher.size)
-        val operation = payload.operation.orEmpty()
-        val requestId = incoming.requestId.orEmpty()
-        val requestKey = HermesRelayCrypto.deriveKey(
-            shared,
-            HermesRelayCrypto.aad(operation, requestId, "request"),
+        val framePayload = incoming.payload ?: return
+        val keyData = HermesRelayCrypto.unwrapSymmetricKey(
+            wrappedKeyBase64 = framePayload.wrappedKey ?: error("missing wrappedKey"),
+            privateKey = relayKeyPair.private,
+            aad = HermesRelayCrypto.keyAAD(incoming.uid, incoming.connectionId, incoming.requestId.orEmpty()),
         )
-        HermesRelayCrypto.open(
-            nonce = nonce,
-            ciphertext = ciphertext,
-            key = requestKey,
-            aad = HermesRelayCrypto.aad(operation, requestId, "request"),
+        // Decrypt request body just to assert it parses (catches AAD drift).
+        HermesRelayCrypto.openBase64(
+            ciphertext = framePayload.payloadCiphertext ?: error("missing payloadCiphertext"),
+            keyData = keyData,
+            aad = HermesRelayCrypto.requestAAD(incoming.uid, incoming.connectionId, incoming.requestId.orEmpty()),
         )
 
-        chunks.forEachIndexed { index, text ->
-            val aad = HermesRelayCrypto.aad(operation, requestId, "chunk:${index}")
-            val key = HermesRelayCrypto.deriveKey(shared, aad)
-            val sealed = HermesRelayCrypto.seal(text.toByteArray(Charsets.UTF_8), key, aad)
-            val response = HermesRealtimeRelayFrame(
-                type = HermesRealtimeRelayFrameType.RESPONSE_CHUNK,
-                uid = incoming.uid,
-                connectionId = incoming.connectionId,
-                requestId = incoming.requestId,
-                payload = HermesRealtimeRelayPayload(
-                    operation = operation,
-                    sequence = index,
-                    kind = HermesRelayChunkKind.TEXT,
-                    ciphertext = Base64.getEncoder().encodeToString(sealed.nonce + sealed.ciphertext),
-                ),
-            )
-            stream.send(response)
+        chunks.forEachIndexed { index, (text, kind) ->
+            sendChunk(stream = stream, frame = incoming, keyData = keyData, sequence = index, kind = kind, text = text)
         }
+        sendComplete(stream = stream, frame = incoming, chunkCount = chunks.size)
+    }
+
+    private suspend fun sendChunk(
+        stream: IrohRelayStream,
+        frame: HermesRealtimeRelayFrame,
+        keyData: ByteArray,
+        sequence: Int,
+        kind: HermesRelayChunkKind,
+        text: String,
+    ) {
+        val aad = HermesRelayCrypto.chunkAAD(
+            uid = frame.uid,
+            connectionId = frame.connectionId,
+            requestId = frame.requestId.orEmpty(),
+            sequence = sequence,
+            kind = kind.wireValue,
+        )
+        val sealed = HermesRelayCrypto.sealToBase64(text.toByteArray(Charsets.UTF_8), keyData, aad)
+        stream.send(
+            HermesRealtimeRelayFrame(
+                type = HermesRealtimeRelayFrameType.RESPONSE_CHUNK,
+                uid = frame.uid,
+                connectionId = frame.connectionId,
+                requestId = frame.requestId,
+                payload = HermesRealtimeRelayPayload(
+                    sequence = sequence,
+                    kind = kind,
+                    ciphertext = sealed,
+                ),
+            ),
+        )
+    }
+
+    private suspend fun sendComplete(
+        stream: IrohRelayStream,
+        frame: HermesRealtimeRelayFrame,
+        chunkCount: Int,
+    ) {
         stream.send(
             HermesRealtimeRelayFrame(
                 type = HermesRealtimeRelayFrameType.RESPONSE_COMPLETE,
-                uid = incoming.uid,
-                connectionId = incoming.connectionId,
-                requestId = incoming.requestId,
-                payload = HermesRealtimeRelayPayload(operation = operation, chunkCount = chunks.size),
-            )
+                uid = frame.uid,
+                connectionId = frame.connectionId,
+                requestId = frame.requestId,
+                payload = HermesRealtimeRelayPayload(chunkCount = chunkCount),
+            ),
         )
     }
 }

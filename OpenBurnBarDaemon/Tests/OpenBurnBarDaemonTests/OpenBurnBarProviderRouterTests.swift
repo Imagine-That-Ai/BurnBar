@@ -381,11 +381,16 @@ final class BurnBarProviderRouterTests: XCTestCase {
         // Simulate primary failure (quota - retryable)
         await harness.router.markRouteFailure(primaryRoute, error: BurnBarProviderExecutorError.upstreamError(429, "rate limited"))
 
-        // Now route again - should get primary if not exhausted, or fallback
-        let afterFailureRoute = try await harness.router.route(modelName: "glm-5")
-
-        // Route should still work (failover to same or alternative)
-        XCTAssertNotNil(afterFailureRoute.providerID)
+        do {
+            _ = try await harness.router.route(modelName: "glm-5")
+            XCTFail("Expected cooling credential error")
+        } catch let error as BurnBarProviderRouterError {
+            guard case .credentialsUnavailable(let providerID, let reason) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(providerID, "zai")
+            XCTAssertTrue(reason.contains("cooling down"))
+        }
     }
 
     func test_VAL_EXEC_008_singleTerminalOutcomeUnderFailover() async throws {
@@ -436,6 +441,42 @@ final class BurnBarProviderRouterTests: XCTestCase {
         // After exhausting one slot, at least one candidate should remain (the other slot)
         let afterExhaustCandidates = try await harness.router.candidateRoutes(modelName: "glm-5")
         XCTAssertEqual(afterExhaustCandidates.count, 1, "One slot exhausted, one should remain")
+    }
+
+    func testRouterReportsExhaustedSlotsInsteadOfMissingCredentials() async throws {
+        let harness = try makeHarness(name: "exhausted-error")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://api.z.ai/api/coding/paas/v4",
+                preferredModelIDs: ["glm-5"]
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "default",
+            label: "Z.ai Coding Plan",
+            apiKey: "zai-key"
+        )
+
+        let route = try await harness.router.route(modelName: "glm-5")
+        await harness.router.markRouteFailure(
+            route,
+            error: BurnBarProviderExecutorError.upstreamError(429, "Weekly/Monthly Limit Exhausted")
+        )
+
+        do {
+            _ = try await harness.router.route(modelName: "glm-5", preferredProviderID: "zai")
+            XCTFail("Expected exhausted credential error")
+        } catch let error as BurnBarProviderRouterError {
+            guard case .credentialsUnavailable(let providerID, let reason) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(providerID, "zai")
+            XCTAssertTrue(reason.contains("exhausted"))
+            XCTAssertTrue(reason.contains("Weekly/Monthly Limit Exhausted"))
+        }
     }
 
     func testProviderFamilyModeScopesUnpinnedRoutingToCatalogVendor() async throws {

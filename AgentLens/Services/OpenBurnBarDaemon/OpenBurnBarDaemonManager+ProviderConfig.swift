@@ -67,40 +67,64 @@ extension OpenBurnBarDaemonManager {
         label: String,
         apiKey: String
     ) async {
+        do {
+            _ = try await addProviderCredentialSlotReturningID(
+                providerID: providerID,
+                label: label,
+                apiKey: apiKey
+            )
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    @discardableResult
+    func addProviderCredentialSlotReturningID(
+        providerID: String,
+        label: String,
+        apiKey: String
+    ) async throws -> String {
         guard case .healthy = status else {
-            lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
-            return
+            throw OpenBurnBarDaemonManagerError.rpcError(
+                "OpenBurnBar daemon must be healthy before provider plans can be updated."
+            )
         }
 
-        await performBusyWork {
-            let normalizedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
-            let normalizedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !normalizedLabel.isEmpty, !normalizedKey.isEmpty else {
-                throw OpenBurnBarDaemonManagerError.rpcError("Plan label and API key are required.")
-            }
+        let normalizedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedLabel.isEmpty, !normalizedKey.isEmpty else {
+            throw OpenBurnBarDaemonManagerError.rpcError("Plan label and API key are required.")
+        }
 
-            let slotID = UUID().uuidString
-            let newSlot = BurnBarProviderCredentialSlot(
-                slotID: slotID,
-                label: normalizedLabel,
-                isEnabled: true,
-                status: .ready
-            )
+        let slotID = UUID().uuidString
+        let account = slotSecretAccount(providerID: providerID, slotID: slotID)
+        try Self.providerRuntimeSecrets.set(normalizedKey, for: account)
 
-            try await mutateProviderSettingsSnapshot(providerID: providerID) { settings in
-                var mutable = settings
-                mutable.credentialSlots.append(newSlot)
-                if mutable.preferredCredentialSlotID == nil {
-                    mutable.preferredCredentialSlotID = slotID
+        do {
+            try await performRequiredBusyWork {
+                let newSlot = BurnBarProviderCredentialSlot(
+                    slotID: slotID,
+                    label: normalizedLabel,
+                    isEnabled: true,
+                    status: .ready
+                )
+
+                try await mutateProviderSettingsSnapshot(providerID: providerID) { settings in
+                    var mutable = settings
+                    mutable.isEnabled = true
+                    mutable.credentialSlots.append(newSlot)
+                    if mutable.preferredCredentialSlotID == nil {
+                        mutable.preferredCredentialSlotID = slotID
+                    }
+                    return mutable
                 }
-                return mutable
             }
-
-            try Self.providerRuntimeSecrets.set(
-                normalizedKey,
-                for: slotSecretAccount(providerID: providerID, slotID: slotID)
-            )
+        } catch {
+            try? Self.providerRuntimeSecrets.delete(account: account)
+            throw error
         }
+
+        return slotID
     }
 
     func updateProviderCredentialSlot(
@@ -110,12 +134,33 @@ extension OpenBurnBarDaemonManager {
         isEnabled: Bool? = nil,
         apiKey: String? = nil
     ) async {
+        do {
+            try await updateProviderCredentialSlotOrThrow(
+                providerID: providerID,
+                slotID: slotID,
+                label: label,
+                isEnabled: isEnabled,
+                apiKey: apiKey
+            )
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func updateProviderCredentialSlotOrThrow(
+        providerID: String,
+        slotID: String,
+        label: String? = nil,
+        isEnabled: Bool? = nil,
+        apiKey: String? = nil
+    ) async throws {
         guard case .healthy = status else {
-            lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
-            return
+            throw OpenBurnBarDaemonManagerError.rpcError(
+                "OpenBurnBar daemon must be healthy before provider plans can be updated."
+            )
         }
 
-        await performBusyWork {
+        try await performRequiredBusyWork {
             try await mutateProviderSettingsSnapshot(providerID: providerID) { settings in
                 var mutable = settings
                 guard let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
@@ -181,12 +226,24 @@ extension OpenBurnBarDaemonManager {
         providerID: String,
         slotID: String?
     ) async {
+        do {
+            try await setPreferredProviderCredentialSlotOrThrow(providerID: providerID, slotID: slotID)
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func setPreferredProviderCredentialSlotOrThrow(
+        providerID: String,
+        slotID: String?
+    ) async throws {
         guard case .healthy = status else {
-            lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
-            return
+            throw OpenBurnBarDaemonManagerError.rpcError(
+                "OpenBurnBar daemon must be healthy before provider plans can be updated."
+            )
         }
 
-        await performBusyWork {
+        try await performRequiredBusyWork {
             try await mutateProviderSettingsSnapshot(providerID: providerID) { settings in
                 var mutable = settings
                 if let slotID {

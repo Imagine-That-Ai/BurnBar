@@ -14,6 +14,9 @@ struct ProvidersSettingsView: View {
     @State private var wizardProviderID: ProviderWizardTarget?
     @State private var providerAccounts: [ProviderAccountDoc] = []
     @State private var providerAccountLoadError: String?
+    @State private var switcherProfiles: [SwitcherProfileRecord] = []
+    @State private var switcherProfileLoadError: String?
+    @State private var externalAuthStates: [String: CLIAuthInfo] = [:]
 
     init(
         settingsManager: SettingsManager,
@@ -55,9 +58,21 @@ struct ProvidersSettingsView: View {
                                 }
                                 Spacer()
                                 Button("Refresh") {
-                                    Task { await daemonManager.refreshHealth() }
+                                    Task {
+                                        await daemonManager.refreshHealth()
+                                        loadSwitcherProfiles()
+                                        refreshExternalAuthStates()
+                                        await quotaService.refreshIfNeeded(dataStore: dataStore, maxAge: 0)
+                                    }
                                 }
                                 .buttonStyle(.bordered)
+                            }
+
+                            if let switcherProfileLoadError {
+                                Text("OAuth profiles unavailable: \(switcherProfileLoadError)")
+                                    .font(DesignSystem.Typography.tiny)
+                                    .foregroundStyle(DesignSystem.Colors.warning)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
 
                             if daemonManager.providerConfigurations.isEmpty {
@@ -130,13 +145,19 @@ struct ProvidersSettingsView: View {
         .sheet(item: $wizardProviderID) { target in
             ProviderPlanWizardView(
                 daemonManager: daemonManager,
+                dataStore: dataStore,
                 initialProviderID: target.providerID
             ) {
                 wizardProviderID = nil
+                loadSwitcherProfiles()
+                refreshExternalAuthStates()
+                Task { await quotaService.refreshIfNeeded(dataStore: dataStore, maxAge: 0) }
             }
         }
         .task {
             await daemonManager.refreshHealth()
+            loadSwitcherProfiles()
+            refreshExternalAuthStates()
             loadProviderAccounts()
             await quotaService.refreshIfNeeded(dataStore: dataStore)
         }
@@ -478,6 +499,8 @@ struct ProvidersSettingsView: View {
 
     @ViewBuilder
     private func providerCard(_ config: OpenBurnBarDaemonProviderConfiguration) -> some View {
+        let externalAccounts = externalOAuthSummaries(for: config)
+
         Button {
             wizardProviderID = ProviderWizardTarget(providerID: config.providerID)
         } label: {
@@ -500,24 +523,36 @@ struct ProvidersSettingsView: View {
                         }
                     }
 
-                    if config.credentialSlots.isEmpty {
+                    if config.credentialSlots.isEmpty && externalAccounts.isEmpty {
                         Text("No plans configured")
                             .font(DesignSystem.Typography.caption)
                             .foregroundStyle(DesignSystem.Colors.textMuted)
                     } else {
-                        HStack(spacing: DesignSystem.Spacing.sm) {
-                            ForEach(config.credentialSlots) { slot in
-                                HStack(spacing: 4) {
-                                    Circle()
-                                        .fill(slotStatusColor(for: slot.status))
-                                        .frame(width: 6, height: 6)
-                                    Text(slot.label)
-                                        .font(DesignSystem.Typography.tiny)
-                                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                                    if let pct = slot.lastQuotaRemainingPercent {
-                                        Text("\(Int(pct.rounded()))%")
-                                            .font(DesignSystem.Typography.monoTiny)
-                                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                        VStack(alignment: .leading, spacing: 4) {
+                            if !config.credentialSlots.isEmpty {
+                                HStack(spacing: DesignSystem.Spacing.sm) {
+                                    ForEach(config.credentialSlots) { slot in
+                                        HStack(spacing: 4) {
+                                            Circle()
+                                                .fill(slotStatusColor(for: slot.status))
+                                                .frame(width: 6, height: 6)
+                                            Text(slot.label)
+                                                .font(DesignSystem.Typography.tiny)
+                                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                            if let pct = slot.lastQuotaRemainingPercent {
+                                                Text("\(Int(pct.rounded()))%")
+                                                    .font(DesignSystem.Typography.monoTiny)
+                                                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if !externalAccounts.isEmpty {
+                                HStack(spacing: DesignSystem.Spacing.sm) {
+                                    ForEach(externalAccounts) { account in
+                                        externalOAuthSummaryChip(account)
                                     }
                                 }
                             }
@@ -536,6 +571,171 @@ struct ProvidersSettingsView: View {
             .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    private func loadSwitcherProfiles() {
+        do {
+            switcherProfiles = try dataStore.switcherStore.fetchAllProfiles()
+            switcherProfileLoadError = nil
+        } catch {
+            switcherProfiles = []
+            switcherProfileLoadError = error.localizedDescription
+        }
+    }
+
+    private func refreshExternalAuthStates() {
+        var next: [String: CLIAuthInfo] = [:]
+        for cliType in [SwitcherCLIProfileType.codex, .claude] {
+            next[cliType.rawValue] = CLIAuthDiscovery.discoverAuthState(for: cliType)
+        }
+        externalAuthStates = next
+    }
+
+    private func externalCLIType(forProviderID providerID: String) -> SwitcherCLIProfileType? {
+        switch ProviderID.normalize(providerID) {
+        case "openai", "codex":
+            return .codex
+        case "anthropic", "claude", "claude-code":
+            return .claude
+        case "opencode", "open-code":
+            return .opencode
+        default:
+            return nil
+        }
+    }
+
+    private func externalOAuthSummaries(for config: OpenBurnBarDaemonProviderConfiguration) -> [ProviderExternalOAuthSummary] {
+        guard let cliType = externalCLIType(forProviderID: config.providerID) else {
+            return []
+        }
+
+        let stored = switcherProfiles
+            .filter { $0.targetKind == .cli && $0.cliType == cliType }
+            .map { profile in
+                ProviderExternalOAuthSummary(
+                    id: profile.id,
+                    cliType: cliType,
+                    label: externalOAuthLabel(for: profile, cliType: cliType),
+                    detail: normalizedString(profile.cliMetadata?.configDirectory),
+                    isCurrentLogin: false,
+                    isDisabled: profile.isDisabled,
+                    profileID: profile.id
+                )
+            }
+
+        let current = externalAuthStates[cliType.rawValue] ?? CLIAuthDiscovery.discoverAuthState(for: cliType)
+        guard isConnectedExternalAuth(current),
+              !storedProfileDuplicatesCurrentAuth(cliType: cliType, authInfo: current) else {
+            return stored
+        }
+
+        let currentLabel = normalizedString(current.accountDescription) ?? "Current \(cliType.displayName) login"
+        let currentSummary = ProviderExternalOAuthSummary(
+            id: "current-\(cliType.rawValue)-\(currentLabel)",
+            cliType: cliType,
+            label: currentLabel,
+            detail: normalizedString(current.configDirectory),
+            isCurrentLogin: true,
+            isDisabled: false,
+            profileID: nil
+        )
+        return [currentSummary] + stored
+    }
+
+    private func externalOAuthLabel(for profile: SwitcherProfileRecord, cliType: SwitcherCLIProfileType) -> String {
+        normalizedString(profile.cliMetadata?.accountDescription)
+            ?? normalizedString(profile.cliMetadata?.displayLabel)
+            ?? normalizedString(profile.displayName)
+            ?? "\(cliType.displayName) OAuth profile"
+    }
+
+    private func storedProfileDuplicatesCurrentAuth(cliType: SwitcherCLIProfileType, authInfo: CLIAuthInfo) -> Bool {
+        let authAccount = normalizedString(authInfo.accountDescription)
+        let authDirectory = normalizedString(authInfo.configDirectory)
+
+        return switcherProfiles.contains { profile in
+            guard profile.targetKind == .cli,
+                  profile.cliType == cliType else {
+                return false
+            }
+
+            if let authAccount,
+               let profileAccount = normalizedString(profile.cliMetadata?.accountDescription),
+               profileAccount.caseInsensitiveCompare(authAccount) == .orderedSame {
+                return true
+            }
+
+            if let authDirectory,
+               let profileDirectory = normalizedString(profile.cliMetadata?.configDirectory),
+               profileDirectory == authDirectory {
+                return true
+            }
+
+            return false
+        }
+    }
+
+    private func isConnectedExternalAuth(_ authInfo: CLIAuthInfo) -> Bool {
+        switch authInfo.authState {
+        case .authenticated, .apiKeyPresent:
+            return true
+        case .notAuthenticated, .notInstalled:
+            return false
+        }
+    }
+
+    @ViewBuilder
+    private func externalOAuthSummaryChip(_ account: ProviderExternalOAuthSummary) -> some View {
+        let quotaWindows = externalQuotaWindows(for: account)
+        HStack(spacing: 4) {
+            Circle()
+                .fill(account.isDisabled ? DesignSystem.Colors.textMuted : DesignSystem.Colors.success)
+                .frame(width: 6, height: 6)
+            Text(account.label)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Text(account.isCurrentLogin ? "OAuth" : "OAuth profile")
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.success)
+            ForEach(Array(quotaWindows.prefix(2))) { window in
+                Text("\(window.label) \(window.remaining)")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+        }
+    }
+
+    private func externalQuotaWindows(for account: ProviderExternalOAuthSummary) -> [SwitcherQuotaWindowDisplay] {
+        guard let provider = account.cliType.agentProvider else { return [] }
+
+        if let profileID = account.profileID,
+           let accountSnapshot = quotaService.snapshot(accountID: profileID) {
+            let windows = switcherQuotaWindowDisplays(snapshot: accountSnapshot)
+            if !windows.isEmpty { return windows }
+        }
+
+        if let accountSnapshot = quotaService.snapshots(for: provider.providerID)
+            .first(where: { snapshot in
+                normalizedString(snapshot.accountLabel)?.caseInsensitiveCompare(account.label) == .orderedSame
+                    || normalizedString(snapshot.accountID) == account.profileID
+            }) {
+            let windows = switcherQuotaWindowDisplays(snapshot: accountSnapshot)
+            if !windows.isEmpty { return windows }
+        }
+
+        if account.isCurrentLogin || account.cliType == .claude {
+            return switcherQuotaWindowDisplays(snapshot: quotaService.snapshot(for: provider))
+        }
+
+        return []
+    }
+
+    private func normalizedString(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func slotStatusColor(for status: BurnBarProviderCredentialSlotStatus) -> Color {
@@ -594,6 +794,16 @@ struct ProvidersSettingsView: View {
 private struct ProviderWizardTarget: Identifiable {
     let providerID: String
     var id: String { providerID }
+}
+
+private struct ProviderExternalOAuthSummary: Identifiable {
+    let id: String
+    let cliType: SwitcherCLIProfileType
+    let label: String
+    let detail: String?
+    let isCurrentLogin: Bool
+    let isDisabled: Bool
+    let profileID: String?
 }
 
 // MARK: - Provider Account Row

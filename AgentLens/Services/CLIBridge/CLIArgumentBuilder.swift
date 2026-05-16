@@ -18,9 +18,30 @@ enum CodexModelCatalog {
         "gpt-5.1-codex-max"
     ]
 
+    private static let slugAliases: [String: String] = [
+        "gpt-5-5": "gpt-5.5",
+        "gpt-5-5-mini": "gpt-5.5-mini",
+        "gpt-5-5-nano": "gpt-5.5-nano",
+        "gpt-5-5-pro": "gpt-5.5-pro",
+        "gpt-5-4": "gpt-5.4",
+        "gpt-5-4-mini": "gpt-5.4-mini",
+        "gpt-5-4-nano": "gpt-5.4-nano",
+        "gpt-5-4-pro": "gpt-5.4-pro",
+        "gpt-5-3-codex": "gpt-5.3-codex",
+        "gpt-5-2-codex": "gpt-5.2-codex",
+        "gpt-5-2-pro": "gpt-5.2-pro",
+        "gpt-5-1-codex": "gpt-5.1-codex",
+        "gpt-5-1-codex-mini": "gpt-5.1-codex-mini",
+        "gpt-5-1-codex-max": "gpt-5.1-codex-max"
+    ]
+
     static func normalizedModel(_ model: String, fallback: String = "gpt-5.5") -> String {
         let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedModel.isEmpty == false else { return fallback }
+
+        if let canonical = slugAliases[trimmedModel.lowercased()] {
+            return canonical
+        }
 
         if let canonical = chatModelIDs.first(where: {
             $0.caseInsensitiveCompare(trimmedModel) == .orderedSame
