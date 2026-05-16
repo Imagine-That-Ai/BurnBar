@@ -117,6 +117,13 @@ Current blocker:
   `Missing or insufficient permissions`, and logs
   `hermes_iroh_relay_start_failed`. A production rules-only deploy is required
   before real Mac to iOS iroh round-trip validation can continue.
+- 2026-05-16 live readback: Firebase Rules REST reports
+  `projects/burnbar/releases/cloud.firestore` on ruleset
+  `projects/burnbar/rulesets/dc7a3762-e566-40a5-be98-9cd14329e25d`
+  (`updateTime` `2026-05-15T07:23:45.040464Z`). Fetching that ruleset and
+  searching for `iroh_pairing`, `iroh_pairing_keys`, and `iroh_audit_events`
+  returns zero matches, while the source `firestore.rules` contains all three
+  collection rules.
 - Firebase Remote Config has not been published, and the hosted relay URL has
   not been cut over to production clients.
 
