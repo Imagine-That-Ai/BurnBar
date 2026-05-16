@@ -3,8 +3,12 @@
 import PackageDescription
 import Foundation
 
+let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
 let hasIrohXCFramework = FileManager.default.fileExists(
-    atPath: "../Vendor/OpenBurnBarIroh.xcframework"
+    atPath: packageRoot
+        .appendingPathComponent("../Vendor/OpenBurnBarIroh.xcframework")
+        .standardizedFileURL
+        .path
 )
 
 let packageProducts: [Product] = [
@@ -18,6 +22,15 @@ let packageProducts: [Product] = [
     .library(
         name: "OpenBurnBarIrohRelay",
         targets: ["OpenBurnBarIrohRelay"]
+    ),
+    // Mercury media substrate (file transfer, screen share, 1:1 video) —
+    // see `plans/2026-05-15-mercury-media-master-plan.md`. Pure-Swift
+    // shared types (frame codec, stream classes, bitrate controller,
+    // capability gate, budget envelope). Platform implementations live
+    // in `AgentLens/Services/Media/` and `OpenBurnBarMobile/Services/Media/`.
+    .library(
+        name: "OpenBurnBarMedia",
+        targets: ["OpenBurnBarMedia"]
     )
 ] + (hasIrohXCFramework ? [
     .library(
@@ -75,6 +88,10 @@ let package = Package(
                 .linkedFramework("SystemConfiguration")
             ]
         ),
+        .target(
+            name: "OpenBurnBarMedia",
+            dependencies: ["OpenBurnBarCore", "OpenBurnBarIrohRelay"]
+        ),
         .testTarget(
             name: "OpenBurnBarCoreTests",
             dependencies: ["OpenBurnBarCore"]
@@ -82,6 +99,10 @@ let package = Package(
         .testTarget(
             name: "OpenBurnBarIrohRelayTests",
             dependencies: ["OpenBurnBarIrohRelay", "OpenBurnBarCore"]
+        ),
+        .testTarget(
+            name: "OpenBurnBarMediaTests",
+            dependencies: ["OpenBurnBarMedia", "OpenBurnBarCore", "OpenBurnBarIrohRelay"]
         )
     ]
 )

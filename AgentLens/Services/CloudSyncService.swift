@@ -880,7 +880,14 @@ final class HermesRelayHostService {
                 relayKeyStore: relayKeyStore,
                 urlSession: urlSession
             )
-            if settingsManager.hermesIrohTransportEnabled {
+            let forceIrohTransport: Bool = {
+                #if DEBUG
+                ProcessInfo.processInfo.environment["OPENBURNBAR_ENABLE_IROH_TRANSPORT"] == "1"
+                #else
+                false
+                #endif
+            }()
+            if settingsManager.hermesIrohTransportEnabled || forceIrohTransport {
                 let irohClient = HermesIrohRelayHostClient(
                     accountManager: accountManager,
                     settingsManager: settingsManager,

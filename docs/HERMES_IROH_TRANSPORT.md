@@ -1,21 +1,24 @@
 # Hermes Realtime Relay → iroh peer-to-peer transport
 
-> **Status (production rollout, May 15, 2026):** Phase A local proof is
-> green. The Rust crate checks in debug + release, all packaged Apple Rust
-> targets cross-compile, the xcframework recipe produces local artifacts,
-> `OpenBurnBarCore` builds/tests with and without the local binary artifact,
-> macOS + iOS device + iOS Simulator app builds pass, and Functions
-> type-checks.
+> **Status (production rollout, May 15, 2026):** Phase A and Phase B are
+> green on branch `chore/router-brand-coherent-rail`. The Rust crate checks
+> in debug + release, all packaged Apple Rust targets cross-compile, the
+> xcframework recipe produces local artifacts, `OpenBurnBarCore`
+> builds/tests with and without the local binary artifact, macOS + iOS
+> device + iOS Simulator app builds pass, Functions type-checks, and the
+> GitHub `OpenBurnBarIroh xcframework` plus PR harness checks are green on
+> the latest pushed iroh commit.
 >
-> The remaining Phase A gate is the GitHub `OpenBurnBarIroh xcframework`
-> workflow on the latest pushed commit. Hosted n0 relay provisioning and
-> Remote Config cutover remain later rollout phases.
->
-> Phase B now has a production monitoring path in source:
+> Phase B has a production monitoring path in source:
 > `rollupIrohTransportDaily` aggregates raw Firestore `iroh_audit_events`
 > into daily operator rollups under
 > `ops/iroh_transport_daily_rollups/days/{YYYY-MM-DD}`. The Function is not
 > production-live until the Phase D deploy gate runs.
+>
+> Phase C is now the active gate: debug builds assert if they resolve the
+> process-local loopback transport instead of the xcframework-backed iroh
+> transport, and the Mac app has a Debug menu toggle for QA. The remaining
+> Phase C work is real Mac to iOS/iPadOS validation with audit-event exports.
 
 This document is the engineering reference for migrating
 [`HERMES_REALTIME_RELAY.md`](HERMES_REALTIME_RELAY.md) off Cloud Run +
@@ -112,6 +115,21 @@ Two independent guards:
 explicitly re-base their buffers through `Data(buffer)` so the JSON
 decoder always sees a zero-based view (see commit notes for the regression
 test that exposed the bug).
+
+## Media stream classes
+
+The Mercury media rollout (`plans/2026-05-15-mercury-media-master-plan.md`) layers three new capabilities — file transfer, screen share, 1:1 video calling — onto this transport without bumping the ALPN. Stream classes are negotiated **in band** via the first frame on each new bi-stream.
+
+| Stream class | Cardinality | Direction | QUIC discipline | Phase |
+|---|---|---|---|---|
+| `media.blob.advertise` | 1 per attachment, on existing Hermes control stream | Sender → receiver | Reliable, ordered (JSON envelope) | 1 |
+| `media.blob.fetch` | 1 per attachment, dedicated stream | Receiver dials sender | Reliable, ordered (iroh-blobs) | 1 |
+| `media.screen.video` | 1 per GOP (~60 frames at 30 fps) | Mac → iOS | Reliable, ordered, stream-per-GOP for head-of-line isolation | 3 |
+| `media.video.{out,in}` | 1 per direction per GOP | Bidirectional | Reliable, ordered, stream-per-GOP | 5 |
+| `media.audio.{out,in}` | none — datagrams | Bidirectional | QUIC datagrams (RTP-style) | 4 |
+| `media.control` | 1 per session | Bidirectional | Reliable — RTCP-style sender reports, BWE, mute, terminate | 3 |
+
+The chat-stream JSON envelope is extended (without breaking older peers) with three new `HermesRealtimeRelayFrameType` cases — `media.classify`, `media.blob.advertise`, `media.blob.ack` — and one new optional field `media: HermesRealtimeRelayMediaPayload?` on `HermesRealtimeRelayFrame`. Older clients omit the field on encode and skip the unknown frame types on decode, so chat traffic stays byte-identical pre-rollout. Full architecture, on-disk contract, and forward-compat reasoning live in `docs/HERMES_MEDIA_TRANSPORT.md`.
 
 ## Pairing
 

@@ -2697,7 +2697,12 @@ final class HermesCompositeRelayTransport: HermesRelayTransporting {
         secondary: HermesRelayTransporting,
         fallback: HermesRelayTransporting,
         irohEnabled: @escaping @Sendable () -> Bool = {
-            UserDefaults.standard.bool(forKey: HermesCompositeRelayTransport.irohEnabledDefaultsKey)
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["OPENBURNBAR_ENABLE_IROH_TRANSPORT"] == "1" {
+                return true
+            }
+            #endif
+            return UserDefaults.standard.bool(forKey: HermesCompositeRelayTransport.irohEnabledDefaultsKey)
         }
     ) {
         self.primary = primary
@@ -2907,6 +2912,10 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
                     requestId: requestID
                 ))))
             case .hostRegister, .hostReady, .requestStart, .requestCancel, .pong:
+                break
+            case .mediaClassify, .mediaBlobAdvertise, .mediaBlobAck:
+                // Mercury media frames are iroh-transport-only and never
+                // appear on the WSS dialer's chat response stream.
                 break
             }
         }

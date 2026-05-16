@@ -140,6 +140,11 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
                     ))))
                 case .hostReady, .pong, .hostRegister, .responseChunk, .responseComplete, .responseError:
                     break
+                case .mediaClassify, .mediaBlobAdvertise, .mediaBlobAck:
+                    // Mercury media frames ride the iroh transport, not WSS.
+                    // If a peer sends one here it is either a misrouted
+                    // frame or an old-format probe; ignore.
+                    break
                 }
             } catch {
                 if Task.isCancelled || (error as NSError).code == NSURLErrorCancelled {

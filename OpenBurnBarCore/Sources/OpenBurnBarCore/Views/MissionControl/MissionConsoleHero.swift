@@ -63,6 +63,7 @@ public struct MissionConsoleHero: View {
         }
         .padding(.horizontal, UnifiedDesignSystem.Spacing.xl)
         .padding(.vertical, UnifiedDesignSystem.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .opacity(heroAppeared ? 1 : 0)
         .offset(y: heroAppeared ? 0 : 8)
         .animation(UnifiedDesignSystem.Animation.gentle, value: heroAppeared)
@@ -127,6 +128,9 @@ public struct MissionConsoleHero: View {
             .kerning(-0.6)
             .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
             .lineLimit(2)
+            .minimumScaleFactor(0.7)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var headlineText: String {

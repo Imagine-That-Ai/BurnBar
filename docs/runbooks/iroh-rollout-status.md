@@ -2,7 +2,8 @@
 
 ## 2026-05-15 — Phase A local proof
 
-**Gate status:** local proof green; GitHub workflow rerunning on commit `cb9f865fd`.
+**Gate status:** green. Local proof passed and GitHub checks are green on
+commit `d1d5a1058`.
 
 Completed:
 - Rust host checks passed for `openburnbar-iroh` in debug and release.
@@ -14,6 +15,10 @@ Completed:
 - `OpenBurnBarMobile` iPhone 17 Pro Max simulator build passed.
 - `functions` completed `npm ci && npx tsc --noEmit`.
 - `OpenBurnBarCore` completed `swift build && swift test`: 641 tests passed, 2 skipped, 0 failures.
+- GitHub `OpenBurnBarIroh xcframework` passed on commit `d1d5a1058`.
+- GitHub `OpenBurnBar PR Harness` passed on commit `d1d5a1058`, including
+  Functions lint/build/tests, Swift tests, app tests, TypeScript/eval suites,
+  Firestore rules emulator tests, and Android APK build.
 
 Notes:
 - The generated xcframework is intentionally ignored at `Vendor/OpenBurnBarIroh.xcframework/` because the local artifact is 442 MB; CI and release lanes should regenerate/upload it rather than commit it.
@@ -21,11 +26,13 @@ Notes:
 - The iOS adapter now has its own Keychain-backed `IrohRelayKeyStore` and Firestore audit logger; the audit protocol and event enums live in the shared relay package.
 
 Next action:
-- Watch the latest GitHub checks. Phase A is not complete until the `OpenBurnBarIroh xcframework` workflow and PR harness are green on commit `cb9f865fd`.
+- Phase A is closed. Continue Phase C dev round-trip validation; do not publish
+  the hosted relay URL to production Remote Config until the Phase C gate is
+  green.
 
 ## 2026-05-15 — Phase B infrastructure wiring
 
-**Gate status:** in progress.
+**Gate status:** green.
 
 Completed:
 - Verified local `IROH_SERVICES_API_SECRET` exists at `.secrets/iroh-services.env`, is mode `600`, and loads to a non-empty environment value.
@@ -44,3 +51,65 @@ Blocked / pending:
 - Wire dev builds to the hosted relay only after Phase C's real Mac to iOS iroh round trip is green on the default/public relay path.
 - Publish the hosted relay URL to Firebase Remote Config only after Phase C dev validation and Phase D approval gates.
 - Deploy the new monitoring Function only in Phase D after dry-run review and explicit production deploy approval.
+
+## 2026-05-15 — Phase C dev round-trip coding guardrails
+
+**Gate status:** blocked on production Firestore rules rollout. Coding
+guardrails are present, the real Iroh FFI is linked in the local Mac build,
+and the next Phase C validation attempt reached Firebase before live rules
+rejected the pairing-key write.
+
+Completed:
+- Added DEBUG-only assertions on Mac host startup and iOS transport bootstrap
+  that flag `LoopbackIrohRelayTransport` when the `OpenBurnBarIrohFFI`
+  xcframework is not linked. QA/dev runs must use `IrohXcframeworkTransport`;
+  the loopback fallback now requires explicit
+  `OPENBURNBAR_ALLOW_IROH_LOOPBACK=1` opt-in.
+- Added a DEBUG-only AgentLens command-menu toggle:
+  `Debug -> Enable/Disable Hermes iroh Transport`. It also enables the Hermes
+  Remote Relay host flag so QA can flip the iroh path without navigating the
+  Settings UI.
+- Added a DEBUG-only launch override:
+  `OPENBURNBAR_ENABLE_IROH_TRANSPORT=1`. This lets physical-device and Mac QA
+  opt into the hidden iroh flags from `devicectl` / a clean app launch without
+  depending on persisted-default timing.
+- Fixed `OpenBurnBarCore/Package.swift` so the optional
+  `OpenBurnBarIrohFFI` xcframework is detected from the package directory
+  instead of the caller's current working directory. A clean macOS build now
+  includes `OpenBurnBarIrohFFI` and links `-lopenburnbar_iroh`.
+- Launched a DEBUG macOS app build with
+  `OPENBURNBAR_ENABLE_IROH_TRANSPORT=1`; the DEBUG loopback assertion did not
+  fire, confirming the app resolved the real Iroh transport path.
+- Confirmed the source `firestore.rules` contains the required
+  `/users/{uid}/iroh_pairing_keys/{roleId}`,
+  `/users/{uid}/iroh_pairing/{connectionId}`, and
+  `/users/{uid}/iroh_audit_events/{eventId}` rules.
+- Updated `scripts/deploy-iroh-relay.sh --dry-run` to run Firebase's real
+  `firestore:rules` dry-run instead of only echoing commands.
+- `PROJECT_ID=burnbar ./scripts/deploy-iroh-relay.sh --rules-only --dry-run`
+  compiles `firestore.rules` successfully.
+- `PROJECT_ID=burnbar ./scripts/deploy-iroh-relay.sh --dry-run` also
+  completes the Functions dry-run lane: `npm ci` reports 0 vulnerabilities and
+  `npm run build` succeeds. The local shell emits the existing Node 20 vs
+  package Node 22 engine warning; it does not block the TypeScript build.
+
+Current blocker:
+- The live `burnbar` Firestore rules are behind the source rules. The local
+  Mac app currently fails to publish `users/{uid}/iroh_pairing_keys/host` with
+  `Missing or insufficient permissions`, and logs
+  `hermes_iroh_relay_start_failed`. A production rules-only deploy is required
+  before real Mac to iOS iroh round-trip validation can continue.
+- Firebase Remote Config has not been published, and the hosted relay URL has
+  not been cut over to production clients.
+
+Pending:
+- Deploy the Firestore rules update to `burnbar` after explicit production
+  rules-only deploy approval.
+- Re-launch the dev Mac and iOS/iPadOS device as the same Firebase user after
+  live rules accept the iroh pairing collections.
+- Capture at least 10 consecutive iroh Hermes chat completions across same-LAN
+  and different-network topologies.
+- Export the expected `iroh_pairing_published`,
+  `iroh_pairing_verified`, `iroh_stream_opened`, and
+  `iroh_stream_closed` audit sequences under
+  `docs/runbooks/iroh-dev-validation/`.

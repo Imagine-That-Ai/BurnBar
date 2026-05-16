@@ -962,6 +962,18 @@ struct OpenBurnBarApp: App {
         NSApplication.shared.terminate(nil)
     }
 
+    #if DEBUG
+    @MainActor
+    private func toggleHermesIrohTransportFromDebugMenu() {
+        guard let context = startupState.runtimeContext else {
+            NSSound.beep()
+            return
+        }
+        context.settingsManager.hermesRemoteRelayEnabled = true
+        context.settingsManager.hermesIrohTransportEnabled.toggle()
+    }
+    #endif
+
     @SceneBuilder
     private var liveMenuBarScene: some Scene {
         let _ = installCommandRouter()
@@ -1246,6 +1258,20 @@ struct OpenBurnBarApp: App {
     /// SwiftUI's `SceneBuilder` if/else inference quirks.
     var body: some Scene {
         liveMenuBarScene
+            .commands {
+                #if DEBUG
+                CommandMenu("Debug") {
+                    Button(
+                        startupState.runtimeContext?.settingsManager.hermesIrohTransportEnabled == true
+                            ? "Disable Hermes iroh Transport"
+                            : "Enable Hermes iroh Transport"
+                    ) {
+                        toggleHermesIrohTransportFromDebugMenu()
+                    }
+                    .keyboardShortcut("i", modifiers: [.command, .option, .control])
+                }
+                #endif
+            }
     }
 }
 

@@ -8,6 +8,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Mercury media (Phase 1a — substrate, off by default).** Lays the
+  forward-compatible foundation for Mac ⇄ iPhone/iPad file transfer,
+  screen share, and 1:1 video calling — all layered on the existing iroh
+  QUIC mesh as new in-band stream classes (no ALPN bump). Plan of record:
+  `plans/2026-05-15-mercury-media-master-plan.md`. This entry covers the
+  substrate that ships in Phase 1a; the multi-ALPN endpoint router,
+  `publish_blob`/`fetch_blob` UniFFI methods, xcframework reship, and
+  Mac/iOS attachment UI land in Phase 1b. Touches:
+    * **New SwiftPM target** `OpenBurnBarMedia` in `OpenBurnBarCore/Package.swift`
+      — pure-Swift substrate (`MediaStreamClass`, `MediaPacketCodec`,
+      `MediaFrame`, `BitrateController`, `MediaSessionMetadata`,
+      `MediaCapabilityGate` protocol, `MediaBudgetEnvelope`).
+    * **Frame protocol extension** in `OpenBurnBarCore` —
+      `HermesRealtimeRelayFrameType` adds `media.classify`,
+      `media.blob.advertise`, `media.blob.ack` cases. New optional
+      `media: HermesRealtimeRelayMediaPayload?` field on
+      `HermesRealtimeRelayFrame`. Wire is byte-identical to pre-rollout
+      for chat-only frames; older decoders skip unknown frame types.
+    * **Stream-class dispatch** wired on Mac
+      (`AgentLens/Services/IrohRelay/IrohRelayRequestHandler.swift`),
+      iOS (`OpenBurnBarMobile/Services/IrohRelay/HermesIrohRelayTransport.swift`),
+      and the WSS legacy paths (`HermesRealtimeRelayHostClient.swift`,
+      `HermesService.swift`) so every existing exhaustive switch handles
+      the new cases without a build break.
+    * **Rust crate** `crates/openburnbar-iroh/` — adds `iroh-blobs = "0.92"`
+      (the line that targets `iroh ^0.91`), creates `src/blobs.rs`
+      exposing `parse_blob_ticket`, `iroh_blobs_alpn`,
+      `iroh_blobs_crate_version`, `BlobTicketBytes`, `BlobTransferStats`
+      via UniFFI. 5 cargo unit tests cover ticket round-trip, garbage
+      rejection, whitespace trimming, ALPN identity, version exposure.
+    * **Cloud Functions schema** `functions/src/types.ts` —
+      `MediaSessionEventDoc`, `MediaQuotaUsageDoc`,
+      `MediaAttachmentManifestDoc`, `MediaSessionDailyRollupDoc`,
+      `MediaBudgetStatusDoc`. Compile-only in Phase 1, no server writes
+      yet.
+    * **Documentation**: new `docs/HERMES_MEDIA_TRANSPORT.md` (architecture
+      spec), `docs/runbooks/media-rollout-status.md` (phase log),
+      `docs/runbooks/media-quota.md` (operator quota runbook),
+      `docs/runbooks/media-budget.md` (n0 hosted-relay $600 soft / $1000
+      hard cap operations), `docs/runbooks/media-device-matrix/README.md`.
+      `docs/HERMES_IROH_TRANSPORT.md` extended with a "Media stream
+      classes" section.
+  28 new XCTests + 5 new cargo tests; existing 641 OpenBurnBarCore +
+  IrohRelay tests still pass with 0 regressions. See
+  `docs/runbooks/media-rollout-status.md` for the Phase 1b queue.
 - **Hermes iroh production monitoring rollups.** Added the scheduled
   `rollupIrohTransportDaily` Function to summarize daily
   `iroh_audit_events` into operator telemetry for rollout gates, with focused

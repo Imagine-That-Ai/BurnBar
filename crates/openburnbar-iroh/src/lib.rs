@@ -19,6 +19,14 @@ use iroh::{Endpoint, NodeAddr, NodeId, RelayMap, RelayMode, RelayUrl, SecretKey}
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
+mod blobs;
+
+#[allow(unused_imports)]
+pub use blobs::{
+    iroh_blobs_alpn, iroh_blobs_crate_version, parse_blob_ticket, BlobTicketBytes,
+    BlobTransferStats, IrohBlobNode,
+};
+
 uniffi::setup_scaffolding!();
 
 /// ALPN we negotiate over QUIC. Bumping this string forces a clean upgrade

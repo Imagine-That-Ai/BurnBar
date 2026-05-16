@@ -98,11 +98,15 @@ public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
         ScrollView {
             VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xl) {
                 heroStrip
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 composerColumn
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 situationColumn
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, UnifiedDesignSystem.Spacing.lg)
             .padding(.bottom, UnifiedDesignSystem.Spacing.xxl)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

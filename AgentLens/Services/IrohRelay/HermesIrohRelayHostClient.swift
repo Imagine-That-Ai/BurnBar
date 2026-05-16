@@ -36,6 +36,11 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     private var transport: (any IrohRelayTransport)?
     private var acceptTask: Task<Void, Never>?
     private var heartbeatTask: Task<Void, Never>?
+    /// Mercury media dispatcher (Phase 1b). Set by the host owner so the
+    /// per-stream `IrohRelayRequestHandler` can hand inbound `media.blob.*`
+    /// frames to `MacFileTransferService` without this class importing
+    /// the media surface.
+    var mediaDispatcher: MediaFrameDispatcher?
     /// Per-stream serve tasks spawned by `acceptLoop`. Tracked so `stop()`
     /// can cancel them deterministically instead of letting them outlive the
     /// host.
@@ -85,9 +90,22 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
             return true
         }
         stop()
-        guard settingsManager.hermesIrohTransportEnabled else { return false }
+        #if DEBUG
+        let forceIrohTransport = ProcessInfo.processInfo.environment["OPENBURNBAR_ENABLE_IROH_TRANSPORT"] == "1"
+        #else
+        let forceIrohTransport = false
+        #endif
+        guard settingsManager.hermesIrohTransportEnabled || forceIrohTransport else { return false }
 
         let newTransport = transportFactory(self)
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["OPENBURNBAR_ALLOW_IROH_LOOPBACK"] != "1",
+           newTransport is LoopbackIrohRelayTransport {
+            assertionFailure(
+                "Hermes iroh host resolved LoopbackIrohRelayTransport. Build/link Vendor/OpenBurnBarIroh.xcframework so QA/dev devices use IrohXcframeworkTransport."
+            )
+        }
+        #endif
         do {
             let identity = try await newTransport.start()
             transport = newTransport
@@ -186,7 +204,8 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                 let handler = IrohRelayRequestHandler(
                     relayKeyStore: relayKeyStore,
                     urlSession: urlSession,
-                    settingsManager: settingsManager
+                    settingsManager: settingsManager,
+                    mediaDispatcher: mediaDispatcher
                 )
                 let serveID = UUID()
                 let task = Task { [weak self, auditLogger] in

@@ -195,6 +195,37 @@ service cloud.firestore {
         );
     }
 
+    // --- Mercury media entitlement (Phase 2 SKU rollout) ---
+    // Mirrors `hasActiveHostedQuotaEntitlement` for the new
+    // `hosted_media_sync` SKU. The Mac is the source of truth at session
+    // time (Decision 2), but the rules-side helper is what gates the
+    // owner-writable metadata collections (`media_attachment_manifests`,
+    // `media_session_events`).
+    function hostedMediaEntitlementPath(userId) {
+      return /databases/$(database)/documents/users/$(userId)/entitlements/hosted_media_sync;
+    }
+
+    function activeMediaEntitlementData(entitlement) {
+      return entitlement.active == true
+        && entitlement.productID in [
+          "com.openburnbar.hostedMediaSync.monthly",
+          "com.openburnbar.pro.monthly"
+        ]
+        && entitlement.expireAt is timestamp
+        && entitlement.expireAt > request.time;
+    }
+
+    function hasActiveHostedMediaEntitlement(userId) {
+      return (
+          exists(hostedMediaEntitlementPath(userId))
+          && activeMediaEntitlementData(get(hostedMediaEntitlementPath(userId)).data)
+        )
+        || (
+          exists(burnBarProEntitlementPath(userId))
+          && activePremiumEntitlementData(get(burnBarProEntitlementPath(userId)).data)
+        );
+    }
+
     function ownerWritableHostedCloudBackup(userId) {
       return ownerWritableNonSecret(userId)
         && hasActiveHostedQuotaEntitlement(userId);
@@ -1423,6 +1454,67 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // --- Mercury media (Phase 2) ---
+    // Per-session metadata. Bucketed enums only, never payload bytes.
+    // Schema in `functions/src/types.ts` (`MediaSessionEventDoc`).
+    match /users/{userId}/media_session_events/{eventId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && hasActiveHostedMediaEntitlement(userId)
+        && request.resource.data.id == eventId
+        && request.resource.data.feature in ["fileTransfer", "screenShare", "videoCall"]
+        && request.resource.data.startedAt is string
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && !("body" in request.resource.data)
+        && !("payloadCiphertext" in request.resource.data)
+        && !("ciphertext" in request.resource.data)
+        && !("filename" in request.resource.data);
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Owner-writable daily quota counter. The Mac batches updates every
+    // 30 s during active sessions; the hourly `recomputeMediaQuotaUsage`
+    // Cloud Function reconciles drift from `iroh_audit_events`.
+    match /users/{userId}/media_quota_usage/{day} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.id == day
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && request.resource.data.bytesUploadedFile is number
+        && request.resource.data.bytesDownloadedFile is number
+        && request.resource.data.fileTransfersInitiated is number
+        && request.resource.data.fileTransfersFailed is number
+        && request.resource.data.screenShareSecondsUsed is number
+        && request.resource.data.screenShareSessions is number
+        && request.resource.data.videoCallSecondsUsed is number
+        && request.resource.data.videoCallSessions is number;
+      allow delete: if false;
+    }
+
+    // Per-attachment manifest. No payload bytes — the file flows
+    // peer-to-peer over iroh-blobs. This doc is the audit record so DSR
+    // exports + admin tooling can answer "what files have been sent."
+    match /users/{userId}/media_attachment_manifests/{manifestId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && hasActiveHostedMediaEntitlement(userId)
+        && request.resource.data.id == manifestId
+        && request.resource.data.blobHash is string
+        && request.resource.data.filename is string
+        && request.resource.data.mime is string
+        && request.resource.data.size is number
+        && request.resource.data.peerDeviceIdHash is string
+        && request.resource.data.direction in ["macToIos", "iosToMac"]
+        && request.resource.data.schemaVersion is int
+        && !("body" in request.resource.data)
+        && !("ciphertext" in request.resource.data);
+      allow update: if false;
+      allow delete: if false;
+    }
+
     match /users/{userId}/pi_agent_connections/{connectionId} {
       allow read: if ownsUserNamespace(userId);
       allow create: if piRelayConnectionWrite(userId, connectionId);
@@ -1806,6 +1898,21 @@ service cloud.firestore {
         allow create, update: if sharedArtifactOwnerWrite(workspaceId, teamId);
         allow delete: if sharedArtifactOwnerRead();
       }
+    }
+
+    // --- Operator-owned Mercury observability ---
+    // Public read so both apps can cache the budget envelope and the
+    // session daily rollups for status-bar display. Server-only writes —
+    // the canonical writers are `evaluateMediaBudget` and
+    // `rollupMediaSessionDaily`.
+    match /ops/media_budget_status/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    match /ops/media_session_daily_rollups/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if false;
     }
   }
 }

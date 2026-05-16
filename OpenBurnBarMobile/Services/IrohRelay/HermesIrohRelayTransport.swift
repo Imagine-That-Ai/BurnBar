@@ -9,9 +9,24 @@ import OpenBurnBarIrohRelay
 /// (fallback). Picks up the Mac's NodeId from the signed
 /// `iroh_pairing` Firestore record, verifies the Ed25519 signature, then
 /// dials the iroh QUIC stream and serves one frame round-trip per request.
+/// Closure injected by the iOS app coordinator so the chat-receive loop
+/// can hand a Mercury media frame to `iOSFileTransferService` (or, in
+/// later phases, the call/screen-share coordinator). Sendable so it
+/// survives MainActor + iroh runtime hops. `ackSender` lets the
+/// dispatcher write the corresponding `media.blob.ack` frame back on the
+/// same chat stream.
+typealias IrohMediaFrameDispatcher = @Sendable (
+    _ frame: HermesRealtimeRelayFrame,
+    _ ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void
+) async -> Void
+
 @MainActor
 final class HermesIrohRelayTransport: HermesRelayTransporting {
     static let shared = HermesIrohRelayTransport()
+    /// Set once at app launch by the coordinator that owns
+    /// `iOSFileTransferService`. Optional so the chat path keeps working
+    /// even if Mercury media is disabled or unavailable on the device.
+    var mediaDispatcher: IrohMediaFrameDispatcher?
 
     /// Hard cap on iroh dial latency. Keeping this independent from the
     /// request `timeout` (which is per-completion and can be 60-120s) means
@@ -223,6 +238,14 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 throw HermesServiceError.relayUnavailable(frame.payload?.error ?? "Hermes iroh relay failed.")
             case .ping, .pong, .requestCancel, .requestStart, .hostReady, .hostRegister:
                 continue
+            case .mediaClassify, .mediaBlobAdvertise, .mediaBlobAck:
+                guard let dispatcher = mediaDispatcher else { continue }
+                let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
+                    [stream] outboundFrame in
+                    try await stream.send(outboundFrame)
+                }
+                await dispatcher(frame, ackSender)
+                continue
             }
         }
         throw HermesServiceError.relayUnavailable("Iroh relay timed out before response.complete.")
@@ -238,6 +261,14 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         let factory = transportFactory
         let task = Task { @MainActor [factory] () throws -> any IrohRelayTransport in
             let transport = factory()
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["OPENBURNBAR_ALLOW_IROH_LOOPBACK"] != "1",
+               transport is LoopbackIrohRelayTransport {
+                assertionFailure(
+                    "Hermes iroh mobile resolved LoopbackIrohRelayTransport. Build/link Vendor/OpenBurnBarIroh.xcframework so QA/dev devices use IrohXcframeworkTransport."
+                )
+            }
+            #endif
             let identity = try await transport.start()
             self.endpoint = transport
             self.identity = identity

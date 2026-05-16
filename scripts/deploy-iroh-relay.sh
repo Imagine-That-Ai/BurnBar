@@ -10,7 +10,7 @@
 # Usage:
 #   ./scripts/deploy-iroh-relay.sh                  # full deploy
 #   ./scripts/deploy-iroh-relay.sh --rules-only     # rules-only fast lane
-#   ./scripts/deploy-iroh-relay.sh --dry-run        # plan only, no apply
+#   ./scripts/deploy-iroh-relay.sh --dry-run        # validate deploy plan, no apply
 #
 # Required environment:
 #   PROJECT_ID   Firebase / GCP project id (e.g. openburnbar-prod)
@@ -66,21 +66,17 @@ if ! grep -q 'IrohPairingRecordDoc' functions/src/types.ts; then
   exit 1
 fi
 
-run() {
-  if "${DRY_RUN}"; then
-    echo "[dry-run] $*"
-  else
-    "$@"
-  fi
-}
-
 firebase_args=(--project "${PROJECT_ID}" --non-interactive)
 if [[ -n "${FIREBASE_TOKEN}" ]]; then
   firebase_args+=(--token "${FIREBASE_TOKEN}")
 fi
 
 echo "→ deploying firestore.rules"
-run firebase "${firebase_args[@]}" deploy --only firestore:rules
+if "${DRY_RUN}"; then
+  firebase "${firebase_args[@]}" deploy --only firestore:rules --dry-run
+else
+  firebase "${firebase_args[@]}" deploy --only firestore:rules
+fi
 
 if "${RULES_ONLY}"; then
   echo "✓ rules deploy complete (rules-only)"
@@ -89,11 +85,15 @@ fi
 
 if [[ -d functions ]] && [[ -f functions/package.json ]]; then
   echo "→ building Cloud Functions"
-  run npm --prefix functions ci
-  run npm --prefix functions run build
+  npm --prefix functions ci
+  npm --prefix functions run build
 
-  echo "→ deploying Cloud Functions to ${IROH_RELAY_FUNCTIONS_REGION}"
-  run firebase "${firebase_args[@]}" deploy --only functions
+  if "${DRY_RUN}"; then
+    echo "[dry-run] validated functions build; skipping functions deploy"
+  else
+    echo "→ deploying Cloud Functions to ${IROH_RELAY_FUNCTIONS_REGION}"
+    firebase "${firebase_args[@]}" deploy --only functions
+  fi
 fi
 
 echo "→ smoke-checking new collections via Firestore REST"

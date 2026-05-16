@@ -2,6 +2,17 @@ import Foundation
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 
+/// Closure type the host client injects so this handler can hand a
+/// Mercury media frame off to the file-transfer service (or, in later
+/// phases, the screen-share / call coordinator). Sendable so it survives
+/// the actor boundary of the spawned per-stream task. `ackSender` lets
+/// the dispatcher write the corresponding ack frame back on the same
+/// chat stream without re-importing the stream protocol.
+typealias MediaFrameDispatcher = @Sendable (
+    _ frame: HermesRealtimeRelayFrame,
+    _ ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void
+) async -> Void
+
 /// Serves one inbound iroh stream: decrypts an inbound `request.start`
 /// frame, forwards the request to the local Hermes gateway, and streams
 /// the response back as `response.chunk` + `response.complete` frames. The
@@ -11,16 +22,19 @@ final class IrohRelayRequestHandler: Sendable {
     private let relayKeyStore: HermesRelayKeyStore
     private let urlSession: URLSession
     private let settingsManager: any SettingsManagerProtocol
+    private let mediaDispatcher: MediaFrameDispatcher?
 
     @MainActor
     init(
         relayKeyStore: HermesRelayKeyStore,
         urlSession: URLSession,
-        settingsManager: any SettingsManagerProtocol
+        settingsManager: any SettingsManagerProtocol,
+        mediaDispatcher: MediaFrameDispatcher? = nil
     ) {
         self.relayKeyStore = relayKeyStore
         self.urlSession = urlSession
         self.settingsManager = settingsManager
+        self.mediaDispatcher = mediaDispatcher
     }
 
     func serve(
@@ -73,6 +87,17 @@ final class IrohRelayRequestHandler: Sendable {
                  .responseChunk,
                  .responseComplete,
                  .responseError:
+                continue
+            case .mediaClassify, .mediaBlobAdvertise, .mediaBlobAck:
+                guard let mediaDispatcher else { continue }
+                // Wrap the stream send in a Sendable closure so the
+                // dispatcher can ack without holding a reference to the
+                // stream object directly.
+                let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
+                    [stream] outboundFrame in
+                    try await stream.send(outboundFrame)
+                }
+                await mediaDispatcher(frame, ackSender)
                 continue
             }
         }

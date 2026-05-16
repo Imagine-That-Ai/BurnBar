@@ -61,7 +61,8 @@ struct DashboardDetailView: View {
                     ProjectsView(
                         dataStore: dataStore,
                         settingsManager: settingsManager,
-                        operatingLayer: operatingLayer
+                        operatingLayer: operatingLayer,
+                        chatController: chatController
                     )
                 case .missions:
                     MissionsLaneView(
