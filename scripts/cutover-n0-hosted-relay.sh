@@ -63,6 +63,25 @@ require_jq() {
   fi
 }
 
+require_curl() {
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "cutover-n0-hosted-relay: curl is required to publish Remote Config through the REST API" >&2
+    exit 1
+  fi
+}
+
+remote_config_access_token() {
+  if [[ -n "${FIREBASE_TOKEN}" ]]; then
+    printf '%s\n' "${FIREBASE_TOKEN}"
+    return
+  fi
+  if ! command -v gcloud >/dev/null 2>&1; then
+    echo "cutover-n0-hosted-relay: gcloud is required for Remote Config REST auth when FIREBASE_TOKEN is unset" >&2
+    exit 1
+  fi
+  gcloud auth print-access-token
+}
+
 provision() {
   require_secret
   cat <<EOF
@@ -95,6 +114,7 @@ EOF
 publish() {
   require_project
   require_jq
+  require_curl
   if [[ $# -lt 1 ]]; then
     echo "cutover-n0-hosted-relay: publish requires a relay URL" >&2
     exit 64
@@ -113,21 +133,35 @@ publish() {
   done
   echo "→ publishing iroh hosted relay URL via Firebase Remote Config (project=${PROJECT_ID})"
 
-  local firebase_args=(--project "${PROJECT_ID}" --non-interactive)
-  if [[ -n "${FIREBASE_TOKEN}" ]]; then
-    firebase_args+=(--token "${FIREBASE_TOKEN}")
-  fi
-
   local current_path
   current_path="$(mktemp -t iroh-rc-current-XXXXXX.json)"
+  local headers_path
+  headers_path="$(mktemp -t iroh-rc-headers-XXXXXX.txt)"
   local template_path
   template_path="$(mktemp -t iroh-rc-XXXXXX.json)"
+  local response_path
+  response_path="$(mktemp -t iroh-rc-response-XXXXXX.json)"
+  local token
+  token="$(remote_config_access_token)"
+  local remote_config_url="https://firebaseremoteconfig.googleapis.com/v1/projects/${PROJECT_ID}/remoteConfig"
 
-  firebase "${firebase_args[@]}" remoteconfig:get --json > "${current_path}"
+  curl --fail --silent --show-error --compressed \
+    --dump-header "${headers_path}" \
+    --header "Authorization: Bearer ${token}" \
+    --header "Accept: application/json" \
+    --header "x-goog-user-project: ${PROJECT_ID}" \
+    "${remote_config_url}" \
+    --output "${current_path}"
+  local etag
+  etag="$(awk 'BEGIN { IGNORECASE = 1 } $1 == "etag:" { print $2; exit }' "${headers_path}" | tr -d '\r')"
+  if [[ -z "${etag}" ]]; then
+    echo "cutover-n0-hosted-relay: Remote Config GET did not return an ETag; refusing to publish" >&2
+    rm -f "${current_path}" "${headers_path}" "${template_path}" "${response_path}"
+    exit 1
+  fi
+
   jq --arg url "${url}" '
-    (.result // .) as $template
-    | $template
-    | .parameters = (.parameters // {})
+    .parameters = (.parameters // {})
     | .parameters.hermes_iroh_hosted_relay_url = {
         defaultValue: { value: $url },
         valueType: "STRING",
@@ -138,12 +172,21 @@ publish() {
   if "${dry_run}"; then
     echo "[dry-run] Remote Config template preview:"
     jq '.parameters.hermes_iroh_hosted_relay_url' "${template_path}"
-    rm -f "${current_path}" "${template_path}"
+    echo "[dry-run] Remote Config ETag: ${etag}"
+    rm -f "${current_path}" "${headers_path}" "${template_path}" "${response_path}"
     return
   fi
 
-  firebase "${firebase_args[@]}" remoteconfig:templates:set "${template_path}"
-  rm -f "${current_path}" "${template_path}"
+  curl --fail --silent --show-error --compressed \
+    --request PUT \
+    --header "Authorization: Bearer ${token}" \
+    --header "Content-Type: application/json; UTF8" \
+    --header "If-Match: ${etag}" \
+    --header "x-goog-user-project: ${PROJECT_ID}" \
+    "${remote_config_url}" \
+    --data-binary @"${template_path}" \
+    --output "${response_path}"
+  rm -f "${current_path}" "${headers_path}" "${template_path}" "${response_path}"
   echo "✓ Remote Config updated; clients will pick up the new relay URL on next boot"
 }
 

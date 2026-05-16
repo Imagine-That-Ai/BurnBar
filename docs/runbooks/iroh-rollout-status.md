@@ -100,9 +100,10 @@ Completed:
 - Re-ran `npm --prefix functions run test:iroh-monitoring`; the TypeScript
   build and `iroh monitoring rollup ok` check pass.
 - Hardened `scripts/cutover-n0-hosted-relay.sh publish` so it reads the current
-  Firebase Remote Config template, merges only
-  `hermes_iroh_hosted_relay_url`, and supports `--dry-run`. The dry-run command
-  below previews the expected parameter without publishing:
+  Firebase Remote Config template through the official REST API, preserves the
+  returned ETag with `If-Match`, merges only `hermes_iroh_hosted_relay_url`, and
+  supports `--dry-run`. The dry-run command below previews the expected
+  parameter and ETag without publishing:
   `PROJECT_ID=burnbar ./scripts/cutover-n0-hosted-relay.sh publish https://use1-1.relay.alberto8793.burnbar.iroh.link/ --dry-run`.
 - Verified the rollback dry-run previews clearing the same parameter without
   publishing:
