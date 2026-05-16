@@ -60,7 +60,7 @@ for arg in "$@"; do
   esac
 done
 
-log() { printf '[iroh-aar] %s\n' "$*"; }
+log() { printf '[iroh-aar] %s\n' "$*" >&2; }
 
 abort() {
   echo "[iroh-aar] FATAL: $*" >&2
@@ -108,9 +108,9 @@ ensure_ndk() {
   fi
   log "installing Android NDK ${desired_version} via sdkmanager"
   yes | "${sdkmanager_bin}" --licenses >/dev/null 2>&1 || true
-  "${sdkmanager_bin}" "ndk;${desired_version}"
+  "${sdkmanager_bin}" "ndk;${desired_version}" >&2
   [[ -d "${ndk_root}" ]] || abort "NDK install failed; ${ndk_root} not present"
-  echo "${ndk_root}"
+  printf '%s\n' "${ndk_root}"
 }
 
 if [[ "${DRY_RUN}" -eq 1 ]]; then
@@ -121,6 +121,7 @@ fi
 
 ANDROID_NDK_HOME="$(ensure_ndk)"
 export ANDROID_NDK_HOME
+export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME}"
 log "using NDK at ${ANDROID_NDK_HOME}"
 
 # --- Rust targets --------------------------------------------------------------
@@ -160,12 +161,18 @@ publish = false
 [dependencies]
 anyhow = "1"
 camino = "1"
+cargo_metadata = "0.15"
 uniffi_bindgen = "=0.28.3"
 EOF
   cat > "${UNIFFI_HELPER_DIR}/src/main.rs" <<'EOF'
 use anyhow::Context;
 use camino::Utf8PathBuf;
-use uniffi_bindgen::bindings::{generate_bindings, KotlinBindingGenerator};
+use cargo_metadata::MetadataCommand;
+use uniffi_bindgen::{
+    bindings::KotlinBindingGenerator,
+    cargo_metadata::CrateConfigSupplier,
+    library_mode::generate_bindings,
+};
 
 fn main() -> anyhow::Result<()> {
     let library_path = Utf8PathBuf::from(
@@ -174,12 +181,16 @@ fn main() -> anyhow::Result<()> {
     let out_dir = Utf8PathBuf::from(
         std::env::var("UNIFFI_OUT_DIR").context("UNIFFI_OUT_DIR is required")?,
     );
+    let metadata = MetadataCommand::new().exec().context("cargo metadata failed")?;
+    let config_supplier = CrateConfigSupplier::from(metadata);
+
     generate_bindings(
-        library_path,
+        &library_path,
         None,
-        KotlinBindingGenerator,
+        &KotlinBindingGenerator,
+        &config_supplier,
         None,
-        Some(out_dir),
+        &out_dir,
         false,
     )?;
     Ok(())
@@ -215,12 +226,14 @@ done
 
 # --- Generate Kotlin bindings from one ABI's .so -------------------------------
 ensure_uniffi_bindgen_kotlin_helper
-HOST_SO="${ARCHS_DIR}/arm64-v8a/libopenburnbar_iroh.so"
-[[ -f "${HOST_SO}" ]] || HOST_SO="${ARCHS_DIR}/${ABIS[0]}/libopenburnbar_iroh.so"
+BINDGEN_ABI="${ABIS[0]}"
+BINDGEN_TARGET="$(abi_to_rust_target "${BINDGEN_ABI}")"
+HOST_SO="${CRATE_DIR}/target/${BINDGEN_TARGET}/${PROFILE_DIR}/libopenburnbar_iroh.so"
+[[ -f "${HOST_SO}" ]] || HOST_SO="${ARCHS_DIR}/${BINDGEN_ABI}/libopenburnbar_iroh.so"
 
 rm -rf "${GENERATED_KT_DIR}"
 mkdir -p "${GENERATED_KT_DIR}"
-log "generating kotlin bindings via pinned UniFFI helper"
+log "generating kotlin bindings via pinned UniFFI helper (${BINDGEN_ABI})"
 (
   cd "${CRATE_DIR}"
   UNIFFI_LIBRARY_PATH="${HOST_SO}" \

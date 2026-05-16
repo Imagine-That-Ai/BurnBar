@@ -1,5 +1,60 @@
 # Hermes iroh Rollout Status
 
+## 2026-05-16T18:35Z — Android AAR bindgen repair validated locally
+
+**Gate status:** Android AAR CI repair ready to push; cellular iPhone gate
+remains blocked on physical CoreDevice reachability.
+
+Completed:
+- Local focused AAR build exposed two more script issues after the CI
+  `sdkmanager` fix:
+  - When `scripts/build-iroh-android-aar.sh` auto-installs the NDK locally,
+    `sdkmanager` stdout can contaminate the command-substituted NDK path.
+  - UniFFI Kotlin bindgen was reading the copied JNI `.so`, which cargo-ndk
+    strips. UniFFI metadata is present in the unstripped Rust target `.so`, not
+    the stripped AAR staging copy.
+- Patched the script so all NDK install status output goes to stderr, keeping
+  stdout clean for the returned path.
+- Updated the Kotlin bindgen helper to use UniFFI 0.28's library-mode API via
+  `uniffi_bindgen::library_mode::generate_bindings`, matching the current
+  crate API.
+- Switched Kotlin bindgen to inspect
+  `crates/openburnbar-iroh/target/<android-target>/<profile>/libopenburnbar_iroh.so`
+  before falling back to the stripped copied JNI library.
+
+Verification:
+- `IROH_ANDROID_ABIS=arm64-v8a IROH_BUILD_PROFILE=debug ./scripts/build-iroh-android-aar.sh`
+  passes locally, including Android Rust target build, Kotlin binding
+  generation, and `Vendor/openburnbar-iroh.aar` packaging for the focused ABI.
+
+Next action:
+- Push the script repair and watch the full CI workflow build all four Android
+  ABIs and upload the AAR plus generated Kotlin bindings.
+
+## 2026-05-16T18:29Z — Android AAR CI reached real build, script path fix
+
+**Gate status:** CI repair in progress; cellular iPhone gate remains blocked on
+physical CoreDevice reachability.
+
+Completed:
+- The rerun of `openburnbar-iroh AAR (Android)` on commit `62af70e92`
+  advanced past Android SDK setup, NDK export, host-side `cargo check`, and
+  host-side `cargo test`.
+- The next failure occurred in the real `Build AAR` step. Root cause:
+  `scripts/build-iroh-android-aar.sh` captured `ensure_ndk` stdout as
+  `ANDROID_NDK_HOME`, but `ensure_ndk` also emitted human log lines to stdout.
+  That produced a multi-line NDK path and made `cargo-ndk` fail while detecting
+  the NDK version.
+- Patched the AAR script so human logs go to stderr, leaving stdout clean for
+  command-substitution return values.
+- Exported `ANDROID_NDK_ROOT` alongside `ANDROID_NDK_HOME` in both the workflow
+  and the script so `cargo-ndk` sees one consistent NDK path.
+
+Next action:
+- Push the script/path fix and watch the AAR workflow again. The prior
+  `sdkmanager` failure is resolved; the current validation target is a complete
+  Android AAR artifact and uploaded Kotlin bindings.
+
 ## 2026-05-16T18:24Z — Android AAR CI setup repair
 
 **Gate status:** CI repair in progress; cellular iPhone gate remains blocked on

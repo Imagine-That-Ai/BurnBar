@@ -80,6 +80,7 @@ jobs:
             exit 1
           fi
           echo "ANDROID_NDK_HOME=${ndk_path}" >> "${GITHUB_ENV}"
+          echo "ANDROID_NDK_ROOT=${ndk_path}" >> "${GITHUB_ENV}"
 
       - name: Host-side cargo check (sanity)
         run: cargo check -p openburnbar-iroh
