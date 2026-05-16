@@ -1,5 +1,32 @@
 # Hermes iroh Rollout Status
 
+## 2026-05-16T18:05Z — Phase C/D cellular gate still blocked, artifact preflight tightened
+
+**Gate status:** blocked on physical iPhone CoreDevice reachability.
+
+Completed:
+- Rechecked the physical-device state before rerunning the cellular gate. The
+  iPhone `AFB07C15-AD18-5EFA-AD1C-CADB4F286797` is still paired but not
+  launchable: `tunnelState: unavailable`. `xcrun xcdevice list` reports the
+  same device as unavailable with the recovery suggestion to unlock it and
+  attach it with a cable or keep it on the same local network.
+- Reran the cellular gate command; it failed in the intended CoreDevice
+  preflight before starting the Mac host.
+- Moved `scripts/e2e/ios-iroh-gate.sh` artifact setup until after the
+  CoreDevice preflight. A failed "device not launchable" attempt now leaves no
+  empty `docs/runbooks/iroh-dev-validation/ios-iroh-gate-*` directory.
+
+Verification:
+- `bash -n scripts/e2e/ios-iroh-gate.sh` passes.
+- `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 1 --interfaces cellular --output-dir /tmp/openburnbar-ios-iroh-preflight-proof`
+  fails early with `tunnelState: unavailable` and
+  `artifact_dir_exists=no`.
+
+Next action:
+- Connect the iPhone to this Mac over USB, unlock it, accept any Trust prompt,
+  leave iPhone Wi-Fi off/cellular on, then rerun:
+  `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 10 --interfaces cellular`
+
 ## 2026-05-16T17:59Z — Phase C/D cellular gate preflight
 
 **Gate status:** blocked on physical iPhone availability.

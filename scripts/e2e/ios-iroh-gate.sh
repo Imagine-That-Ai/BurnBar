@@ -98,12 +98,6 @@ if [[ "${#INTERFACE_PLAN[@]}" -eq 0 ]]; then
 fi
 LAST_INTERFACE_PLAN_INDEX=$((${#INTERFACE_PLAN[@]} - 1))
 
-mkdir -p "${OUTPUT_DIR}"
-SUMMARY_JSONL="${OUTPUT_DIR}/summary.jsonl"
-SUMMARY_MD="${OUTPUT_DIR}/README.md"
-if [[ -z "${MAC_HOST_LOG}" ]]; then
-    MAC_HOST_LOG="${OUTPUT_DIR}/mac-host.log"
-fi
 HOST_PID=""
 trap 'if [[ -n "${HOST_PID}" ]] && kill -0 "${HOST_PID}" >/dev/null 2>&1; then kill "${HOST_PID}" >/dev/null 2>&1 || true; fi' EXIT
 
@@ -113,6 +107,13 @@ if ! grep -q "tunnelState: connected" <<<"${DEVICE_DETAILS}"; then
     echo "For the cellular gate, connect the iPhone to this Mac over USB, unlock it, accept Trust prompts, keep Wi-Fi off, and rerun this command." >&2
     echo "${DEVICE_DETAILS}" | sed -n '/connectionProperties:/,/capabilities:/p' >&2
     exit 1
+fi
+
+mkdir -p "${OUTPUT_DIR}"
+SUMMARY_JSONL="${OUTPUT_DIR}/summary.jsonl"
+SUMMARY_MD="${OUTPUT_DIR}/README.md"
+if [[ -z "${MAC_HOST_LOG}" ]]; then
+    MAC_HOST_LOG="${OUTPUT_DIR}/mac-host.log"
 fi
 
 cat >"${SUMMARY_MD}" <<EOF_SUMMARY
