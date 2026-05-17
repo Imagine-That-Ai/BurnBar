@@ -75,6 +75,7 @@ struct ProviderPlanWizardView: View {
     let daemonManager: OpenBurnBarDaemonManager
     let dataStore: DataStore
     let initialProviderID: String?
+    let startsAtProviderSelection: Bool
     let onDismiss: () -> Void
 
     @State private var currentStep: ProviderPlanWizardStep = .dashboard
@@ -335,6 +336,16 @@ struct ProviderPlanWizardView: View {
     }
 
     private func primeWizardOnAppear() {
+        if startsAtProviderSelection {
+            activeProviderID = nil
+            selectedProviderID = nil
+            selectedAuthMethodID = nil
+            credentialStorageOverride = nil
+            credentialStorageOverrideVisibleToken = nil
+            currentStep = .provider
+            return
+        }
+
         if let initialID = initialProviderID {
             activeProviderID = initialID
         } else if eligibleProviders.count == 1 {

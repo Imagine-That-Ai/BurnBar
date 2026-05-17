@@ -39,7 +39,6 @@ struct ConnectionsSettingsView: View {
     @State private var switcherProfiles: [SwitcherProfileRecord] = []
     @State private var switcherProfileLoadError: String?
     @State private var externalAuthStates: [String: CLIAuthInfo] = [:]
-    @State private var isShowingAddPicker = false
     @State private var isAdvancedExpanded = false
 
     init(
@@ -91,22 +90,13 @@ struct ConnectionsSettingsView: View {
             ProviderPlanWizardView(
                 daemonManager: daemonManager,
                 dataStore: dataStore,
-                initialProviderID: target.providerID
+                initialProviderID: target.providerID,
+                startsAtProviderSelection: target.startsAtProviderSelection
             ) {
                 wizardProviderID = nil
                 loadAccountData()
                 Task { await quotaService.refreshIfNeeded(dataStore: dataStore, maxAge: 0) }
             }
-        }
-        .sheet(isPresented: $isShowingAddPicker) {
-            AddAccountProviderPicker(
-                daemonManager: daemonManager,
-                onSelectProvider: { providerID in
-                    isShowingAddPicker = false
-                    wizardProviderID = ProviderWizardTarget(providerID: providerID)
-                },
-                onCancel: { isShowingAddPicker = false }
-            )
         }
         .sheet(item: snippetTargetBinding) { boxed in
             SnippetSheet(
@@ -159,7 +149,7 @@ struct ConnectionsSettingsView: View {
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                 Spacer()
                 Button {
-                    isShowingAddPicker = true
+                    wizardProviderID = .addAccount
                 } label: {
                     Label("Add account", systemImage: "plus")
                 }
@@ -230,7 +220,7 @@ struct ConnectionsSettingsView: View {
             HStack {
                 Spacer()
                 Button {
-                    isShowingAddPicker = true
+                    wizardProviderID = .addAccount
                 } label: {
                     Label("Add your first account", systemImage: "plus.circle.fill")
                 }
@@ -1545,92 +1535,30 @@ private struct SnippetSheet: View {
     }
 }
 
-// MARK: - Add Account Provider Picker
-
-/// Minimal provider chooser for the top-level `+ Add account` CTA. Picks the
-/// provider, then hands off to the existing ProviderPlanWizardView for the
-/// credential-entry flow (which is unchanged structurally — only its copy is
-/// polished elsewhere in this change).
-private struct AddAccountProviderPicker: View {
-    let daemonManager: OpenBurnBarDaemonManager
-    let onSelectProvider: (String) -> Void
-    let onCancel: () -> Void
-
-    @State private var query: String = ""
-
-    private var filtered: [OpenBurnBarDaemonProviderConfiguration] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let sorted = daemonManager.providerConfigurations.sorted {
-            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
-        }
-        if q.isEmpty { return sorted }
-        return sorted.filter {
-            $0.displayName.lowercased().contains(q)
-                || $0.providerID.lowercased().contains(q)
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-            HStack {
-                Text("Add an account")
-                    .font(DesignSystem.Typography.headline)
-                Spacer()
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-            }
-
-            Text("Pick which provider this key is for. You can come back and add more keys for the same provider any time.")
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-
-            TextField("Search providers", text: $query)
-                .textFieldStyle(.roundedBorder)
-
-            ScrollView {
-                LazyVStack(spacing: 6) {
-                    ForEach(filtered) { config in
-                        Button {
-                            onSelectProvider(config.providerID)
-                        } label: {
-                            HStack(spacing: DesignSystem.Spacing.sm) {
-                                CatalogProviderLogoView(brand: config.brand, size: 26)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(config.displayName)
-                                        .font(DesignSystem.Typography.body)
-                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                    Text("\(config.credentialSlots.count) account\(config.credentialSlots.count == 1 ? "" : "s") connected")
-                                        .font(DesignSystem.Typography.tiny)
-                                        .foregroundStyle(DesignSystem.Colors.textMuted)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(DesignSystem.Colors.textMuted)
-                            }
-                            .padding(DesignSystem.Spacing.sm)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(
-                                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                                    .fill(DesignSystem.Colors.surfaceElevated.opacity(0.4))
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            .frame(minHeight: 280)
-        }
-        .padding(DesignSystem.Spacing.lg)
-        .frame(minWidth: 520, idealHeight: 540)
-    }
-}
-
 // MARK: - Sheet target wrapper
 
 /// Identifiable wrapper so the wizard sheet can present-by-item without
 /// dropping the provider ID across navigation churn.
 private struct ProviderWizardTarget: Identifiable {
-    let providerID: String
-    var id: String { providerID }
+    let providerID: String?
+    let startsAtProviderSelection: Bool
+
+    var id: String {
+        startsAtProviderSelection ? "add-account" : providerID ?? "provider-dashboard"
+    }
+
+    static let addAccount = ProviderWizardTarget(
+        providerID: nil,
+        startsAtProviderSelection: true
+    )
+
+    init(providerID: String) {
+        self.providerID = providerID
+        self.startsAtProviderSelection = false
+    }
+
+    private init(providerID: String?, startsAtProviderSelection: Bool) {
+        self.providerID = providerID
+        self.startsAtProviderSelection = startsAtProviderSelection
+    }
 }
