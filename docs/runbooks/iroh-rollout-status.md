@@ -1,5 +1,41 @@
 # Hermes iroh Rollout Status
 
+## 2026-05-17T09:30Z — CodeQL timeout repaired and final fresh CI green
+
+**Gate status:** all automatable branch gates are green on
+`chore/router-brand-coherent-rail` at commit
+`a86a59fbd ci(codeql): give swift analysis enough headroom`. Production rollout
+still waits on renewed cellular/different-network iPhone Gate C/D, Phase E
+TestFlight soak, and explicit approvals for deploy, Remote Config rollout,
+hosted relay spend, or WSS retirement.
+
+Completed:
+- Repaired the final pushed CI blocker: Swift CodeQL had completed the traced
+  Swift build but was canceled at the previous 60-minute job cap during TRAP
+  import. The workflow now uses `github/codeql-action` v4 and a 90-minute job
+  timeout.
+- Pushed the repair in `a86a59fbd`.
+- Confirmed the fresh pushed CI run is green:
+  - Workflow Lint `25987136534`
+  - OpenBurnBar Functional QA `25987136545`
+  - OpenBurnBarIroh xcframework `25987136533`
+  - openburnbar-iroh AAR (Android) `25987136532`
+  - OpenBurnBar PR Harness `25987136535`
+  - CodeQL `25987136518`
+
+Verification:
+- `.github/workflows/codeql.yml` parses as YAML.
+- `git diff --check -- .github/workflows/codeql.yml` passed before commit.
+- CodeQL `25987136518` passed in 49m58s, proving the Swift analysis no longer
+  dies at the old 60-minute cap.
+
+Next action:
+- Start from the renewed physical-iPhone cellular gate:
+  `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 10 --interfaces cellular --wait-for-device-seconds 600 --wait-for-device-interval 5`.
+  The iPhone must be connected to this Mac over USB, unlocked, trusted, and on
+  cellular/different-network topology. If that gate passes, proceed to Phase E
+  only with explicit user approval for TestFlight/internal soak.
+
 ## 2026-05-17T08:26Z — repaired branch pushed and full CI green
 
 **Gate status:** the repaired `chore/router-brand-coherent-rail` branch is

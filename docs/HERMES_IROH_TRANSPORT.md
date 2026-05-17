@@ -6,9 +6,13 @@
 > cross-compile, the xcframework recipe produces local artifacts,
 > `OpenBurnBarCore` builds/tests with and without the local binary artifact,
 > macOS + iOS device + iOS Simulator app builds pass, Functions type-checks,
-> and fresh GitHub checks are green on the repaired pushed branch head:
-> Workflow Lint, OpenBurnBar Functional QA, OpenBurnBarIroh xcframework,
-> openburnbar-iroh AAR (Android), OpenBurnBar PR Harness, and CodeQL.
+> and fresh GitHub checks are green on repaired pushed branch head
+> `a86a59fbd`: Workflow Lint `25987136534`, OpenBurnBar Functional QA
+> `25987136545`, OpenBurnBarIroh xcframework `25987136533`,
+> openburnbar-iroh AAR (Android) `25987136532`, OpenBurnBar PR Harness
+> `25987136535`, and CodeQL `25987136518`. The CodeQL workflow now uses the v4
+> action line and a 90-minute cap so Swift analysis can finish after TRAP import
+> on hosted macOS runners.
 >
 > Phase B has a production monitoring path in source:
 > `rollupIrohTransportDaily` aggregates raw Firestore `iroh_audit_events`

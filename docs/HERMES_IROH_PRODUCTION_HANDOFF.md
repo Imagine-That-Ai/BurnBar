@@ -13,11 +13,16 @@
 > model-routing failures, preserve exact catalog model matching, keep Kimi /
 > Moonshot quota snapshots visible, isolate Claude OAuth importing from quota
 > credential readers, and restore the app harness manifest/control-frame
-> contracts. Local verification: `OpenBurnBarDaemon` passes 264 SwiftPM tests,
-> `OpenBurnBarCore` passes 768 SwiftPM tests with 2 skips, and the targeted
-> app/Xcode regression suites pass. Fresh GitHub CI on the pushed head is green:
-> Workflow Lint, OpenBurnBar Functional QA, OpenBurnBarIroh xcframework,
-> openburnbar-iroh AAR (Android), OpenBurnBar PR Harness, and CodeQL.
+> contracts. A final CI workflow repair in
+> `a86a59fbd ci(codeql): give swift analysis enough headroom` moved CodeQL to
+> v4 and raised the Swift analysis timeout after the previous 60-minute cap
+> canceled during TRAP import. Local verification: `OpenBurnBarDaemon` passes
+> 264 SwiftPM tests, `OpenBurnBarCore` passes 768 SwiftPM tests with 2 skips,
+> and the targeted app/Xcode regression suites pass. Fresh GitHub CI on the
+> pushed head is green: Workflow Lint `25987136534`, OpenBurnBar Functional QA
+> `25987136545`, OpenBurnBarIroh xcframework `25987136533`,
+> openburnbar-iroh AAR (Android) `25987136532`, OpenBurnBar PR Harness
+> `25987136535`, and CodeQL `25987136518`.
 >
 > The rollout is still **not production complete**. The remaining hard gates
 > are the renewed different-network/cellular iPhone Gate C/D sequence, Phase E
@@ -77,11 +82,12 @@ Verified state now:
 - Physical iOS and Android selected-model hosted-relay smoke tests are green
   for `minimax-m2.7-highspeed`, with explicit requested-model fidelity and no
   silent reroute to a default GPT model.
-- Latest pushed branch verification after the PR-harness repair:
+- Latest pushed branch verification after the PR-harness and CodeQL workflow
+  repairs:
   `OpenBurnBarDaemon` passes 264 SwiftPM tests, `OpenBurnBarCore` passes 768
   SwiftPM tests with 2 skips, targeted app/Xcode regression suites pass, and
   fresh GitHub CI is green across Workflow Lint, Functional QA, Iroh
-  xcframework, Android AAR, PR Harness, and CodeQL.
+  xcframework, Android AAR, PR Harness, and CodeQL on commit `a86a59fbd`.
 
 Feature flag (off by default): `SettingsManager.hermesIrohTransportEnabled` on Mac, `UserDefaults` key `hermes_iroh_transport_enabled` on iOS. Until this flag is on, the iroh code paths are dormant.
 
