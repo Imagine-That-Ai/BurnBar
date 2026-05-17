@@ -103,6 +103,18 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertEqual(session?.storage.mirrorAccountIdentifier, "kimi_auth_token")
     }
 
+    func test_ollamaCloudAPIKeyIsRoutingCredentialNotBrowserLoginSession() {
+        let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "ollama")
+        let method = descriptor?.method(id: "ollama-cloud-key")
+
+        XCTAssertEqual(descriptor?.displayName, "Ollama Cloud")
+        XCTAssertEqual(method?.kind, .apiKey)
+        XCTAssertTrue(method?.storage.usesDaemonSlot ?? false)
+        XCTAssertTrue(method?.unlocksProxyRouting ?? false)
+        XCTAssertTrue(method?.unlocksQuotaRefresh ?? false)
+        XCTAssertTrue(descriptor?.proxyHint?.localizedCaseInsensitiveContains("API key") ?? false)
+    }
+
     func test_apiKeyValidation_warnsOnMissingPrefix() {
         let method = BurnBarProviderAuthMethod(
             id: "test",

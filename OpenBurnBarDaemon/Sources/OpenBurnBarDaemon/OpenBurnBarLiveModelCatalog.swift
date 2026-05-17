@@ -349,11 +349,13 @@ public struct BurnBarLiveModelCatalog: Sendable {
             return nil
         }
 
-        let endpoint = baseURL.appending(path: "models")
+        let endpoint = liveModelEndpoint(for: configuration.provider, baseURL: baseURL)
         var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
         request.timeoutInterval = refreshTimeoutSeconds
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        let endpointLabel = liveModelEndpointLabel(for: configuration.provider)
+        let sourceKind = liveModelSourceKind(for: configuration.provider)
 
         do {
             let (data, response) = try await session.data(for: request)
@@ -362,7 +364,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
                     advertisedModels: [],
                     sourceKind: "daemon_provider_config",
                     refreshedAt: Date(),
-                    error: "Live /models refresh returned an invalid response.",
+                    error: "Live \(endpointLabel) refresh returned an invalid response.",
                     isAuthoritative: false
                 )
             }
@@ -371,14 +373,14 @@ public struct BurnBarLiveModelCatalog: Sendable {
                     advertisedModels: [],
                     sourceKind: "daemon_provider_config",
                     refreshedAt: Date(),
-                    error: "Live /models refresh failed with HTTP \(httpResponse.statusCode).",
+                    error: "Live \(endpointLabel) refresh failed with HTTP \(httpResponse.statusCode).",
                     isAuthoritative: false
                 )
             }
-            let discovered = try Self.parseModelsResponse(data)
+            let discovered = try Self.parseModelsResponse(data, providerID: configuration.provider.id)
             return LiveRefreshResult(
                 advertisedModels: discovered,
-                sourceKind: "upstream_models_endpoint",
+                sourceKind: sourceKind,
                 refreshedAt: Date(),
                 error: nil,
                 isAuthoritative: true
@@ -388,13 +390,35 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 advertisedModels: [],
                 sourceKind: "daemon_provider_config",
                 refreshedAt: Date(),
-                error: "Live /models refresh failed: \(error.localizedDescription)",
+                error: "Live \(endpointLabel) refresh failed: \(error.localizedDescription)",
                 isAuthoritative: false
             )
         }
     }
 
-    private static func parseModelsResponse(_ data: Data) throws -> [DiscoveredModel] {
+    private func liveModelEndpoint(for provider: BurnBarCatalogProvider, baseURL: URL) -> URL {
+        if provider.id.lowercased() == "ollama" {
+            return baseURL.appending(path: "tags")
+        }
+        return baseURL.appending(path: "models")
+    }
+
+    private func liveModelEndpointLabel(for provider: BurnBarCatalogProvider) -> String {
+        provider.id.lowercased() == "ollama" ? "/api/tags" : "/models"
+    }
+
+    private func liveModelSourceKind(for provider: BurnBarCatalogProvider) -> String {
+        provider.id.lowercased() == "ollama" ? "ollama_cloud_tags_endpoint" : "upstream_models_endpoint"
+    }
+
+    private static func parseModelsResponse(_ data: Data, providerID: String) throws -> [DiscoveredModel] {
+        if providerID.lowercased() == "ollama" {
+            return try parseOllamaTagsResponse(data)
+        }
+        return try parseOpenAIModelsResponse(data)
+    }
+
+    private static func parseOpenAIModelsResponse(_ data: Data) throws -> [DiscoveredModel] {
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let rows = object["data"] as? [[String: Any]] else {
             return []
@@ -414,6 +438,46 @@ public struct BurnBarLiveModelCatalog: Sendable {
             models.append(DiscoveredModel(id: id, displayName: displayName.isEmpty ? id : displayName))
         }
         return models
+    }
+
+    private static func parseOllamaTagsResponse(_ data: Data) throws -> [DiscoveredModel] {
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rows = object["models"] as? [[String: Any]] else {
+            return []
+        }
+        var seen = Set<String>()
+        var models: [DiscoveredModel] = []
+        for row in rows {
+            let rawID = ((row["name"] as? String)
+                ?? (row["model"] as? String)
+                ?? (row["id"] as? String)
+                ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawID.isEmpty else { continue }
+            let id = normalizedOllamaCloudModelID(rawID)
+            let normalized = id.lowercased()
+            guard seen.insert(normalized).inserted else { continue }
+            let displayName = ((row["display_name"] as? String)
+                ?? (row["name"] as? String)
+                ?? id)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            models.append(DiscoveredModel(id: id, displayName: displayName.isEmpty ? id : displayName))
+        }
+        return models
+    }
+
+    private static func normalizedOllamaCloudModelID(_ rawID: String) -> String {
+        let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowercased = trimmed.lowercased()
+        if lowercased.hasSuffix(":cloud") {
+            let direct = String(trimmed.dropLast(":cloud".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            return direct.isEmpty ? trimmed : direct
+        }
+        if lowercased.hasSuffix("-cloud") {
+            let direct = String(trimmed.dropLast("-cloud".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            return direct.isEmpty ? trimmed : direct
+        }
+        return trimmed
     }
 
     private func quotaState(

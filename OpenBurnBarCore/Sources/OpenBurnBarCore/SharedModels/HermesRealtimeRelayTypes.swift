@@ -25,6 +25,15 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     case mediaClassify = "media.classify"
     case mediaBlobAdvertise = "media.blob.advertise"
     case mediaBlobAck = "media.blob.ack"
+    // Computer Use control plane — see
+    // plans/2026-05-16-computer-use-master-plan.md. Same
+    // forward-compatibility contract as the media frame types.
+    case controlClassify = "control.classify"
+    case controlActionLogEntry = "control.action.log.entry"
+    case controlInputIntent = "control.input.intent"
+    case controlApprovalRequest = "control.approval.request"
+    case controlApprovalResponse = "control.approval.response"
+    case controlDenied = "control.denied"
 }
 
 public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
@@ -40,6 +49,10 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
     // when non-nil so chat-only traffic stays byte-identical to the
     // pre-rollout wire form.
     public var media: HermesRealtimeRelayMediaPayload?
+    // Optional sibling to `payload` and `media`. Carries Computer Use
+    // control-plane metadata. Encoded only when non-nil so pre-Computer
+    // Use traffic stays byte-identical to the existing wire form.
+    public var control: HermesRealtimeRelayControlPayload?
 
     public init(
         type: HermesRealtimeRelayFrameType,
@@ -49,7 +62,8 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
         protocolVersion: Int = HermesRealtimeRelayProtocol.version,
         runtime: String? = nil,
         payload: HermesRealtimeRelayPayload? = nil,
-        media: HermesRealtimeRelayMediaPayload? = nil
+        media: HermesRealtimeRelayMediaPayload? = nil,
+        control: HermesRealtimeRelayControlPayload? = nil
     ) {
         self.type = type
         self.uid = uid
@@ -59,6 +73,239 @@ public struct HermesRealtimeRelayFrame: Codable, Sendable, Equatable {
         self.runtime = runtime
         self.payload = payload
         self.media = media
+        self.control = control
+    }
+}
+
+/// Computer Use control-plane payload — see Phase 8/9/12 of
+/// `plans/2026-05-16-computer-use-master-plan.md`. Fields are mutually
+/// optional so a single struct can carry any of the four control frame
+/// types without forcing receivers to learn about cases they don't yet
+/// support. The `kind` discriminator pairs with the outer frame's
+/// `HermesRealtimeRelayFrameType` for explicit dispatch.
+public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
+    public var streamClass: String?
+    public var sessionId: String?
+    public var actionLogEntry: HermesRealtimeRelayActionLogEntry?
+    public var inputIntent: HermesRealtimeRelayInputIntent?
+    public var approvalRequest: HermesRealtimeRelayApprovalRequest?
+    public var approvalResponse: HermesRealtimeRelayApprovalResponse?
+    public var denied: HermesRealtimeRelayControlDenied?
+
+    public init(
+        streamClass: String? = nil,
+        sessionId: String? = nil,
+        actionLogEntry: HermesRealtimeRelayActionLogEntry? = nil,
+        inputIntent: HermesRealtimeRelayInputIntent? = nil,
+        approvalRequest: HermesRealtimeRelayApprovalRequest? = nil,
+        approvalResponse: HermesRealtimeRelayApprovalResponse? = nil,
+        denied: HermesRealtimeRelayControlDenied? = nil
+    ) {
+        self.streamClass = streamClass
+        self.sessionId = sessionId
+        self.actionLogEntry = actionLogEntry
+        self.inputIntent = inputIntent
+        self.approvalRequest = approvalRequest
+        self.approvalResponse = approvalResponse
+        self.denied = denied
+    }
+}
+
+public struct HermesRealtimeRelayActionLogEntry: Codable, Sendable, Equatable {
+    public enum Status: String, Codable, Sendable, Equatable {
+        case planned
+        case awaitingApproval = "awaiting_approval"
+        case executing
+        case completed
+        case failed
+        case rejected
+        case panicHalted = "panic_halted"
+    }
+
+    public var entryIndex: Int
+    public var gopOrdinal: UInt32?
+    public var timestamp: Date
+    public var actionKind: String
+    public var summary: String
+    public var status: Status
+    public var screenshotHashBlake3: String?
+    public var parentEntryBlake3: String?
+    public var errorCategory: String?
+
+    public init(
+        entryIndex: Int,
+        gopOrdinal: UInt32? = nil,
+        timestamp: Date,
+        actionKind: String,
+        summary: String,
+        status: Status,
+        screenshotHashBlake3: String? = nil,
+        parentEntryBlake3: String? = nil,
+        errorCategory: String? = nil
+    ) {
+        self.entryIndex = entryIndex
+        self.gopOrdinal = gopOrdinal
+        self.timestamp = timestamp
+        self.actionKind = actionKind
+        self.summary = summary
+        self.status = status
+        self.screenshotHashBlake3 = screenshotHashBlake3
+        self.parentEntryBlake3 = parentEntryBlake3
+        self.errorCategory = errorCategory
+    }
+}
+
+public struct HermesRealtimeRelayInputIntent: Codable, Sendable, Equatable {
+    public enum Kind: String, Codable, Sendable, Equatable {
+        case tap
+        case dragStart = "drag_start"
+        case dragMove = "drag_move"
+        case dragEnd = "drag_end"
+        case type
+        case shortcut
+        case scroll
+        case panic
+    }
+
+    public var kind: Kind
+    public var normalizedX: Double?
+    public var normalizedY: Double?
+    public var normalizedX2: Double?
+    public var normalizedY2: Double?
+    public var text: String?
+    public var key: String?
+    public var modifiers: [String]?
+    public var authority: HermesRealtimeRelayAuthorityEnvelope
+
+    public init(
+        kind: Kind,
+        normalizedX: Double? = nil,
+        normalizedY: Double? = nil,
+        normalizedX2: Double? = nil,
+        normalizedY2: Double? = nil,
+        text: String? = nil,
+        key: String? = nil,
+        modifiers: [String]? = nil,
+        authority: HermesRealtimeRelayAuthorityEnvelope
+    ) {
+        self.kind = kind
+        self.normalizedX = normalizedX
+        self.normalizedY = normalizedY
+        self.normalizedX2 = normalizedX2
+        self.normalizedY2 = normalizedY2
+        self.text = text
+        self.key = key
+        self.modifiers = modifiers
+        self.authority = authority
+    }
+}
+
+public struct HermesRealtimeRelayAuthorityEnvelope: Codable, Sendable, Equatable {
+    public var peerNodeId: String
+    public var counter: UInt64
+    public var timestamp: Date
+    public var intentHashBlake3: String
+    public var signatureEd25519: String
+
+    public init(
+        peerNodeId: String,
+        counter: UInt64,
+        timestamp: Date,
+        intentHashBlake3: String,
+        signatureEd25519: String
+    ) {
+        self.peerNodeId = peerNodeId
+        self.counter = counter
+        self.timestamp = timestamp
+        self.intentHashBlake3 = intentHashBlake3
+        self.signatureEd25519 = signatureEd25519
+    }
+}
+
+public struct HermesRealtimeRelayApprovalRequest: Codable, Sendable, Equatable {
+    public var approvalId: String
+    public var runId: String
+    public var sessionId: String
+    public var toolKind: String
+    public var title: String
+    public var message: String
+    public var beforeScreenshotBlake3: String?
+    public var actionSummary: String
+    public var requestedAt: Date
+
+    public init(
+        approvalId: String,
+        runId: String,
+        sessionId: String,
+        toolKind: String,
+        title: String,
+        message: String,
+        beforeScreenshotBlake3: String? = nil,
+        actionSummary: String,
+        requestedAt: Date
+    ) {
+        self.approvalId = approvalId
+        self.runId = runId
+        self.sessionId = sessionId
+        self.toolKind = toolKind
+        self.title = title
+        self.message = message
+        self.beforeScreenshotBlake3 = beforeScreenshotBlake3
+        self.actionSummary = actionSummary
+        self.requestedAt = requestedAt
+    }
+}
+
+public struct HermesRealtimeRelayApprovalResponse: Codable, Sendable, Equatable {
+    public enum Decision: String, Codable, Sendable, Equatable {
+        case approve
+        case reject
+        case rejectAndHalt = "reject_and_halt"
+    }
+
+    public var approvalId: String
+    public var decision: Decision
+    public var respondedBy: String
+    public var respondedAt: Date
+    public var note: String?
+
+    public init(
+        approvalId: String,
+        decision: Decision,
+        respondedBy: String,
+        respondedAt: Date,
+        note: String? = nil
+    ) {
+        self.approvalId = approvalId
+        self.decision = decision
+        self.respondedBy = respondedBy
+        self.respondedAt = respondedAt
+        self.note = note
+    }
+}
+
+public struct HermesRealtimeRelayControlDenied: Codable, Sendable, Equatable {
+    public enum Reason: String, Codable, Sendable, Equatable {
+        case entitlement
+        case sessionLimit = "session_limit"
+        case dailyLimit = "daily_limit"
+        case softCap = "soft_cap"
+        case hardCap = "hard_cap"
+        case scope
+        case denyRegion = "deny_region"
+        case killSwitch = "kill_switch"
+        case signatureFailure = "signature_failure"
+        case counterReplay = "counter_replay"
+        case staleTimestamp = "stale_timestamp"
+        case unknown
+    }
+
+    public var reason: Reason
+    public var detail: String?
+
+    public init(reason: Reason, detail: String? = nil) {
+        self.reason = reason
+        self.detail = detail
     }
 }
 

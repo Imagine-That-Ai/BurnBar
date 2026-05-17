@@ -541,9 +541,9 @@ final class RoutingClientWiringTests: XCTestCase {
                 routeEligible: true
             ),
             RoutingClientAdvertisedModel(
-                id: "gpt-oss-120b",
+                id: "gpt-oss:120b",
                 displayName: "GPT OSS 120B",
-                providerID: "ollama_cloud",
+                providerID: "ollama",
                 providerName: "Ollama Cloud",
                 routeEligible: true
             ),

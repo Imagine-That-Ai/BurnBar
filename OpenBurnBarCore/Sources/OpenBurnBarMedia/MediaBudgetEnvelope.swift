@@ -101,6 +101,8 @@ extension MediaBudgetEnvelope {
             return fileTransferDailyGBIn > 0 || fileTransferDailyGBOut > 0
         case .screenShare:
             return screenSharePerSessionMinutes > 0
+        case .computerUse:
+            return screenSharePerSessionMinutes > 0
         case .videoCall:
             return videoCallPerCallMinutes > 0
         }

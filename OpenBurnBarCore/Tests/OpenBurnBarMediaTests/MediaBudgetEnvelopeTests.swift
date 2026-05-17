@@ -7,6 +7,7 @@ final class MediaBudgetEnvelopeTests: XCTestCase {
         XCTAssertTrue(envelope.allowsSession(for: .fileTransfer))
         XCTAssertTrue(envelope.allowsSession(for: .screenShare))
         XCTAssertTrue(envelope.allowsSession(for: .videoCall))
+        XCTAssertTrue(envelope.allowsSession(for: .computerUse))
     }
 
     func testSoftCapTightensButAllowsAllFeatures() {
@@ -14,6 +15,7 @@ final class MediaBudgetEnvelopeTests: XCTestCase {
         XCTAssertTrue(envelope.allowsSession(for: .fileTransfer))
         XCTAssertTrue(envelope.allowsSession(for: .screenShare))
         XCTAssertTrue(envelope.allowsSession(for: .videoCall))
+        XCTAssertTrue(envelope.allowsSession(for: .computerUse))
         // Caps actually drop versus normal.
         XCTAssertLessThan(envelope.screenSharePerSessionMinutes,
                           MediaBudgetEnvelope.normal.screenSharePerSessionMinutes)
@@ -26,6 +28,7 @@ final class MediaBudgetEnvelopeTests: XCTestCase {
         XCTAssertFalse(envelope.allowsSession(for: .fileTransfer))
         XCTAssertFalse(envelope.allowsSession(for: .screenShare))
         XCTAssertFalse(envelope.allowsSession(for: .videoCall))
+        XCTAssertFalse(envelope.allowsSession(for: .computerUse))
     }
 
     func testStatusRoundTripsThroughCodable() throws {

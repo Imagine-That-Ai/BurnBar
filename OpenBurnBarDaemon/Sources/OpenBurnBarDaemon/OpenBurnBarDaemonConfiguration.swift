@@ -44,6 +44,10 @@ public enum BurnBarDaemonPaths {
         supportDirectoryURL.appendingPathComponent("provider-routing-decisions.jsonl", isDirectory: false)
     }
 
+    public static var defaultGatewayModelHealthURL: URL {
+        supportDirectoryURL.appendingPathComponent("gateway-model-health.json", isDirectory: false)
+    }
+
     public static var defaultRunCheckpointDirectoryURL: URL {
         supportDirectoryURL.appendingPathComponent("run-checkpoints", isDirectory: true)
     }

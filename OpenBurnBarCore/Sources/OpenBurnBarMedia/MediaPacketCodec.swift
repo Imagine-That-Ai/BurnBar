@@ -15,6 +15,7 @@ public struct MediaPacketCodec: Sendable {
         case payloadTooLarge(actual: Int, max: Int)
         case headerTruncated
         case unknownKind(UInt8)
+        case cursorTruncated
     }
 
     /// Hard ceiling on a single media frame. Matches the iroh-blobs default
@@ -29,7 +30,13 @@ public struct MediaPacketCodec: Sendable {
     }
 
     public func encode(_ frame: MediaFrame) throws -> Data {
-        let totalPayloadCount = MediaFrame.headerByteCount + frame.payload.count
+        let cursorBytes: Int
+        if frame.flags.contains(.hasCursorMetadata) && frame.cursor != nil {
+            cursorBytes = MediaFrame.cursorMetadataByteCount
+        } else {
+            cursorBytes = 0
+        }
+        let totalPayloadCount = MediaFrame.headerByteCount + cursorBytes + frame.payload.count
         guard totalPayloadCount <= maxPayloadBytes else {
             throw CodecError.payloadTooLarge(actual: totalPayloadCount, max: maxPayloadBytes)
         }
@@ -43,6 +50,18 @@ public struct MediaPacketCodec: Sendable {
         appendUInt32BigEndian(frame.gopID, to: &envelope)
         appendUInt32BigEndian(frame.frameIndex, to: &envelope)
         appendUInt64BigEndian(frame.presentationTimestampMillis, to: &envelope)
+
+        // Optional cursor extension. The producer may set `hasCursorMetadata`
+        // without populating `cursor`; in that case we honor the flag the
+        // producer set and write 0,0 rather than silently dropping the
+        // extension — so receivers can round-trip frames they cannot yet
+        // interpret without losing the bit.
+        if frame.flags.contains(.hasCursorMetadata) {
+            let cursor = frame.cursor ?? MediaFrame.CursorMetadata(x: 0, y: 0)
+            appendInt16BigEndian(cursor.x, to: &envelope)
+            appendInt16BigEndian(cursor.y, to: &envelope)
+        }
+
         envelope.append(frame.payload)
 
         return envelope
@@ -81,7 +100,20 @@ public struct MediaPacketCodec: Sendable {
         let frameIndex = readUInt32BigEndian(from: normalized, at: headerStart + 6)
         let pts = readUInt64BigEndian(from: normalized, at: headerStart + 10)
 
-        let payloadStart = headerStart + MediaFrame.headerByteCount
+        var afterHeader = headerStart + MediaFrame.headerByteCount
+        var cursor: MediaFrame.CursorMetadata? = nil
+        if flags.contains(.hasCursorMetadata) {
+            let cursorEnd = afterHeader + MediaFrame.cursorMetadataByteCount
+            guard cursorEnd <= lengthPrefixBytes + totalPayloadCount else {
+                throw CodecError.cursorTruncated
+            }
+            let cursorX = readInt16BigEndian(from: normalized, at: afterHeader)
+            let cursorY = readInt16BigEndian(from: normalized, at: afterHeader + 2)
+            cursor = MediaFrame.CursorMetadata(x: cursorX, y: cursorY)
+            afterHeader = cursorEnd
+        }
+
+        let payloadStart = afterHeader
         let payloadEnd = lengthPrefixBytes + totalPayloadCount
         let payload = normalized.subdata(in: payloadStart..<payloadEnd)
 
@@ -91,6 +123,7 @@ public struct MediaPacketCodec: Sendable {
             gopID: gopID,
             frameIndex: frameIndex,
             presentationTimestampMillis: pts,
+            cursor: cursor,
             payload: payload
         )
         return (frame, totalEnvelopeBytes)
@@ -104,6 +137,11 @@ public struct MediaPacketCodec: Sendable {
     }
 
     private func appendUInt64BigEndian(_ value: UInt64, to data: inout Data) {
+        var be = value.bigEndian
+        withUnsafeBytes(of: &be) { data.append(contentsOf: $0) }
+    }
+
+    private func appendInt16BigEndian(_ value: Int16, to data: inout Data) {
         var be = value.bigEndian
         withUnsafeBytes(of: &be) { data.append(contentsOf: $0) }
     }
@@ -122,5 +160,13 @@ public struct MediaPacketCodec: Sendable {
             data.copyBytes(to: dest, from: offset..<(offset + 8))
         }
         return UInt64(bigEndian: raw)
+    }
+
+    private func readInt16BigEndian(from data: Data, at offset: Int) -> Int16 {
+        var raw: Int16 = 0
+        _ = withUnsafeMutableBytes(of: &raw) { dest in
+            data.copyBytes(to: dest, from: offset..<(offset + 2))
+        }
+        return Int16(bigEndian: raw)
     }
 }

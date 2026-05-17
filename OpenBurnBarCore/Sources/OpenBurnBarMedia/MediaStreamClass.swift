@@ -59,16 +59,43 @@ extension MediaStreamClass {
     /// bi-stream after `request.start`-style handshake. Always carried as
     /// a JSON envelope alongside `streamClass`.
     public static let classify = MediaStreamClass("media.classify")
+
+    // Phase 8+ — Computer Use control plane. See
+    // `plans/2026-05-16-computer-use-master-plan.md` § A.1. Mechanically
+    // identical to the Mercury Phase 3 stream-class extension: receivers
+    // route an unknown class to a no-op handler, so older peers without
+    // Computer Use support refuse the stream cleanly rather than crashing.
+
+    /// Mac → phone read-only mirror frame. Wire-identical to
+    /// `media.screen.video` but carries cursor coordinates in the codec
+    /// header (see `MediaFrame.Flags.hasCursorMetadata`). Receivers route
+    /// to `AgentWatchReceiver` instead of `ScreenShareViewerCoordinator`.
+    public static let controlSurfaceFrame = MediaStreamClass("control.surface.frame")
+
+    /// Mac → phone reliable-ordered JSON envelope describing planned /
+    /// executing / completed / failed agent actions, anchored to the
+    /// surface stream by GOP ordinal.
+    public static let controlActionLog = MediaStreamClass("control.action.log")
+
+    /// Phone → Mac reliable-ordered JSON envelope carrying signed
+    /// `PhoneControlAuthority` intents. Phase 12.
+    public static let controlInput = MediaStreamClass("control.input")
+
+    /// Bidirectional reliable-ordered approval request / response stream.
+    /// Wraps `BurnBarApprovalRequest` and `BurnBarApprovalResponse`
+    /// verbatim. Phase 12.
+    public static let controlApproval = MediaStreamClass("control.approval")
 }
 
 extension MediaStreamClass {
     /// Top-level capability bucket the receiver should consult. Maps each
-    /// class onto one of the three Mercury features so quota gates can
-    /// charge the right counter without knowing about every wire-class.
+    /// class onto one of the four feature areas so quota gates can charge
+    /// the right counter without knowing about every wire-class.
     public enum Feature: String, Sendable, Codable, Equatable {
         case fileTransfer
         case screenShare
         case videoCall
+        case computerUse
     }
 
     public var feature: Feature? {
@@ -84,6 +111,11 @@ extension MediaStreamClass {
              Self.audioOut.rawValue,
              Self.audioIn.rawValue:
             return .videoCall
+        case Self.controlSurfaceFrame.rawValue,
+             Self.controlActionLog.rawValue,
+             Self.controlInput.rawValue,
+             Self.controlApproval.rawValue:
+            return .computerUse
         case Self.control.rawValue,
              Self.classify.rawValue:
             return nil
@@ -111,6 +143,12 @@ extension MediaStreamClass {
         case Self.videoOut.rawValue,
              Self.videoIn.rawValue:
             return phase >= 5
+        case Self.controlSurfaceFrame.rawValue,
+             Self.controlActionLog.rawValue:
+            return phase >= 8
+        case Self.controlInput.rawValue,
+             Self.controlApproval.rawValue:
+            return phase >= 12
         default:
             return false
         }

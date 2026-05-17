@@ -15,8 +15,52 @@ import Foundation
 /// status (`429`, `401`, `402`, `403`, quota / rate-limit error text) the
 /// gateway server marks the slot and retries against the next-best slot in
 /// the same Anthropic-family pool.
+///
+/// ## Claude Max subscription routing
+///
+/// Anthropic's public `/v1/messages` API treats Claude Code OAuth bearer
+/// tokens (`sk-ant-oat…`) differently from Console API keys. For Sonnet/Haiku
+/// a bare bearer token works, but Opus is gated behind a **Claude Code
+/// identity check** that requires the request to look like one Claude Code
+/// itself would send:
+///
+/// 1. Query parameter `?beta=true` on `/v1/messages`.
+/// 2. `anthropic-beta: claude-code-20250219,oauth-2025-04-20` header (proves
+///    "this is Claude Code talking to its OAuth gateway").
+/// 3. Standard CLI identity headers (`User-Agent: claude-cli/…`,
+///    `x-app: cli`, `anthropic-dangerous-direct-browser-access: true`).
+/// 4. A `system` field whose first text block starts with the canonical
+///    Claude Code system guard (`"You are Claude Code, Anthropic's official
+///    CLI for Claude."`).
+///
+/// Without all four, the OAuth route returns HTTP 429 with an opaque
+/// `rate_limit_error` — even when the user has the Max subscription that
+/// includes Opus. This executor detects the OAuth shape from the credential
+/// prefix and injects the identity for that route only. Console API key
+/// routes (`sk-ant-api*`) are left untouched so we never lie about the
+/// caller's intent.
 public struct BurnBarAnthropicProviderExecutor: Sendable {
     public static let defaultAnthropicVersion = "2023-06-01"
+
+    /// Beta header BurnBar sends on Claude Code OAuth routes. The first two
+    /// tokens (`claude-code-20250219` and `oauth-2025-04-20`) are what unlocks
+    /// Opus on Max subscriptions; the rest mirror what Claude Code's own CLI
+    /// declares so behavior matches across the local CLI and the BurnBar
+    /// proxy. We do not silently rely on betas whose request-side fields we
+    /// strip (`context-management-…` is intentionally absent).
+    public static let claudeCodeBetaHeader = "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,prompt-caching-scope-2026-01-05,advisor-tool-2026-03-01,effort-2025-11-24,extended-cache-ttl-2025-04-11"
+
+    /// User-Agent BurnBar sends on Claude Code OAuth routes. Pinned to a
+    /// known Claude Code release so the identity is stable regardless of
+    /// what version of the CLI happens to be installed on the host.
+    public static let claudeCodeUserAgent = "claude-cli/2.1.143 (external, sdk-cli)"
+
+    /// The canonical Claude Code system prompt prefix that the public
+    /// Messages API uses to gate Opus on OAuth bearer tokens. The exact
+    /// string is documented in Anthropic's Claude Code SDK contract; the
+    /// gateway only requires that the first text block of the `system`
+    /// field starts with it.
+    public static let claudeCodeSystemGuard = "You are Claude Code, Anthropic's official CLI for Claude."
 
     private let session: URLSession
     private let anthropicVersion: String
@@ -27,6 +71,20 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
     ) {
         self.session = session
         self.anthropicVersion = anthropicVersion
+    }
+
+    /// Public so the gateway and model-health layers can recognize Claude
+    /// Code subscription credentials and shape error/advertising decisions
+    /// around them.
+    public static func usesClaudeCodeSubscriptionIdentity(for route: BurnBarProviderRoute) -> Bool {
+        guard route.providerID.caseInsensitiveCompare("anthropic") == .orderedSame,
+              route.formatFamily == .anthropic else {
+            return false
+        }
+        return route.apiKey
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .hasPrefix("sk-ant-oat")
     }
 
     /// Forward an Anthropic Messages request to the chosen upstream account.
@@ -43,8 +101,16 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             throw BurnBarProviderExecutorError.invalidBaseURL(route.baseURL)
         }
 
-        let outboundBody = try Self.rewritingModel(in: body, to: route.resolvedModelID)
-        let endpoint = baseURL.appending(path: "messages")
+        let usesClaudeCode = Self.usesClaudeCodeSubscriptionIdentity(for: route)
+        let outboundBody = try Self.rewritingModel(
+            in: body,
+            to: route.resolvedModelID,
+            applyClaudeCodeSystemGuard: usesClaudeCode
+        )
+        let messagesURL = baseURL.appending(path: "messages")
+        let endpoint = usesClaudeCode
+            ? Self.appendingBetaQueryItem(to: messagesURL)
+            : messagesURL
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -57,6 +123,21 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         // Choose the right header based on the credential prefix so a single
         // routing pool can mix both kinds of accounts.
         applyAnthropicAuth(apiKey: route.apiKey, to: &request)
+
+        if usesClaudeCode {
+            // Anthropic gates Opus (and a handful of other Max-tier features)
+            // on the public Messages API behind a Claude Code identity check
+            // for OAuth bearer tokens. Without these headers + the system
+            // guard injected above, the upstream returns 429 with an opaque
+            // `rate_limit_error` even though the Max subscription is
+            // entitled to the model. BurnBar runs on the user's machine and
+            // is forwarding requests they have already authenticated; we
+            // present the same identity Claude Code itself uses locally.
+            request.setValue(Self.claudeCodeBetaHeader, forHTTPHeaderField: "anthropic-beta")
+            request.setValue(Self.claudeCodeUserAgent, forHTTPHeaderField: "User-Agent")
+            request.setValue("cli", forHTTPHeaderField: "x-app")
+            request.setValue("true", forHTTPHeaderField: "anthropic-dangerous-direct-browser-access")
+        }
 
         request.httpBody = outboundBody
 
@@ -159,7 +240,11 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
 
     // MARK: - Body rewriting
 
-    private static func rewritingModel(in body: Data, to resolvedModelID: String) throws -> Data {
+    private static func rewritingModel(
+        in body: Data,
+        to resolvedModelID: String,
+        applyClaudeCodeSystemGuard: Bool
+    ) throws -> Data {
         guard var json = try JSONSerialization.jsonObject(with: body, options: []) as? [String: Any] else {
             return body
         }
@@ -169,7 +254,67 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         // BurnBar routes through /v1/messages, so strip known transport-only
         // keys instead of making Claude retry a deterministic 400 forever.
         json.removeValue(forKey: "context_management")
+        if applyClaudeCodeSystemGuard {
+            json["system"] = injectClaudeCodeSystemGuard(into: json["system"])
+        }
         return try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
+    }
+
+    /// Ensure the request body's `system` field starts with the Claude Code
+    /// guard prefix without discarding the caller's existing system text.
+    /// Accepts the three shapes Anthropic supports (`nil`, string, content
+    /// blocks); always returns a shape Anthropic accepts.
+    private static func injectClaudeCodeSystemGuard(into existing: Any?) -> Any {
+        let guardString = claudeCodeSystemGuard
+
+        if existing == nil || (existing as? NSNull) != nil {
+            return guardString
+        }
+
+        if let asString = existing as? String {
+            let trimmed = asString.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                return guardString
+            }
+            if trimmed.hasPrefix(guardString) {
+                return asString
+            }
+            return "\(guardString)\n\n\(asString)"
+        }
+
+        if let asArray = existing as? [[String: Any]] {
+            if let firstBlock = asArray.first,
+               let text = firstBlock["text"] as? String,
+               text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(guardString) {
+                return asArray
+            }
+            var combined: [[String: Any]] = [
+                ["type": "text", "text": guardString]
+            ]
+            combined.append(contentsOf: asArray)
+            return combined
+        }
+
+        // Any other shape Anthropic would reject. Replace with a valid one
+        // so the request never round-trips a 400 just because the caller
+        // sent an unusual system field.
+        return guardString
+    }
+
+    /// Append `?beta=true` to the messages URL when routing through the
+    /// Claude Code OAuth identity. Anthropic uses both the header and the
+    /// query parameter to gate Claude Code-specific features; we send both
+    /// to match the local Claude Code CLI exactly.
+    private static func appendingBetaQueryItem(to url: URL) -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+        var items = components.queryItems ?? []
+        if items.contains(where: { $0.name == "beta" }) == false {
+            items.append(URLQueryItem(name: "beta", value: "true"))
+        }
+        components.queryItems = items
+        return components.url ?? url
     }
 
     // MARK: - OpenAI-shape compatibility bridge

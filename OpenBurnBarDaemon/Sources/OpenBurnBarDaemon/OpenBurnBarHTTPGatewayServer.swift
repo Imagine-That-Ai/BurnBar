@@ -18,6 +18,7 @@ public actor BurnBarHTTPGatewayServer {
     private let usageRecorder: BurnBarUsageRecorder?
     private let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
     private let anthropicExecutor: BurnBarAnthropicProviderExecutor
+    private let modelHealthStore: BurnBarGatewayModelHealthStore
     private let modelCatalogSession: URLSession
     private let logger: BurnBarDaemonLogger
     private let rateLimiter: BurnBarRateLimiter?
@@ -29,6 +30,7 @@ public actor BurnBarHTTPGatewayServer {
         usageRecorder: BurnBarUsageRecorder? = nil,
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
+        modelHealthStore: BurnBarGatewayModelHealthStore = BurnBarGatewayModelHealthStore(),
         modelCatalogSession: URLSession = .shared,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "http-gateway"),
         rateLimiter: BurnBarRateLimiter? = nil
@@ -38,6 +40,7 @@ public actor BurnBarHTTPGatewayServer {
         self.usageRecorder = usageRecorder
         self.providerExecutor = providerExecutor
         self.anthropicExecutor = anthropicExecutor
+        self.modelHealthStore = modelHealthStore
         self.modelCatalogSession = modelCatalogSession
         self.logger = logger
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
@@ -345,6 +348,24 @@ public actor BurnBarHTTPGatewayServer {
         do {
             let requiredCapabilityClassID = capabilityClassID(forModelName: model.id, catalog: catalog)
             let formatFamily = advertisedFormatFamily(for: model, catalog: catalog)
+            if let failure = await modelHealthStore.activeFailure(
+                modelID: model.id,
+                providerID: model.providerID,
+                accountID: model.accountID,
+                formatFamily: formatFamily
+            ) {
+                logger.warning(
+                    "gateway_models_route_recently_failed",
+                    metadata: [
+                        "model": model.id,
+                        "provider": model.providerID,
+                        "account": model.accountID,
+                        "status": "\(failure.statusCode)",
+                        "blocked_until": "\(failure.blockedUntil)"
+                    ]
+                )
+                return false
+            }
             let routes = try await router.candidateRoutes(
                 modelName: model.id,
                 requestedFormatFamily: formatFamily,
@@ -482,6 +503,7 @@ public actor BurnBarHTTPGatewayServer {
                 catalog: catalog
             )
             var lastError: Error?
+            var lastFailedRoute: BurnBarProviderRoute?
             for formatFamily in preferredGatewayFormatFamilies(for: modelID, advertised: advertisedRouteKeysByFamily) {
                 guard let advertisedRouteKeys = advertisedRouteKeysByFamily[formatFamily], !advertisedRouteKeys.isEmpty else {
                     continue
@@ -538,6 +560,11 @@ public actor BurnBarHTTPGatewayServer {
                             )
                         }
                         await router.markRouteSuccess(route)
+                        await modelHealthStore.recordSuccess(
+                            modelID: modelID,
+                            formatFamily: formatFamily,
+                            route: route
+                        )
                         await recordUsageIfAvailable(response.usage, route: route)
                         return GatewayHTTPResponse(
                             status: response.statusCode,
@@ -546,6 +573,13 @@ public actor BurnBarHTTPGatewayServer {
                         )
                     } catch {
                         lastError = error
+                        lastFailedRoute = route
+                        await modelHealthStore.recordFailure(
+                            modelID: modelID,
+                            formatFamily: formatFamily,
+                            route: route,
+                            error: error
+                        )
                         await router.markRouteFailure(route, error: error)
                         let hasMoreCandidates = index < routes.count - 1
                         if shouldFailOverProviderError(error), hasMoreCandidates {
@@ -568,12 +602,12 @@ public actor BurnBarHTTPGatewayServer {
                 }
 
                 if let lastError {
-                    return providerFailureResponse(lastError)
+                    return providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute)
                 }
             }
 
             if let lastError {
-                return providerFailureResponse(lastError)
+                return providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute)
             }
             return noEligibleRouteResponse(modelID: modelID)
         } catch let error as BurnBarProviderRouterError {
@@ -626,6 +660,7 @@ public actor BurnBarHTTPGatewayServer {
                 catalog: catalog
             )
             var lastError: Error?
+            var lastFailedRoute: BurnBarProviderRoute?
             for formatFamily in preferredGatewayFormatFamilies(for: modelID, advertised: advertisedRouteKeysByFamily) {
                 guard let advertisedRouteKeys = advertisedRouteKeysByFamily[formatFamily], !advertisedRouteKeys.isEmpty else {
                     continue
@@ -679,6 +714,11 @@ public actor BurnBarHTTPGatewayServer {
                             )
                         }
                         await router.markRouteSuccess(route)
+                        await modelHealthStore.recordSuccess(
+                            modelID: modelID,
+                            formatFamily: formatFamily,
+                            route: route
+                        )
                         await recordUsageIfAvailable(response.usage, route: route)
                         return GatewayHTTPResponse(
                             status: response.statusCode,
@@ -687,6 +727,13 @@ public actor BurnBarHTTPGatewayServer {
                         )
                     } catch {
                         lastError = error
+                        lastFailedRoute = route
+                        await modelHealthStore.recordFailure(
+                            modelID: modelID,
+                            formatFamily: formatFamily,
+                            route: route,
+                            error: error
+                        )
                         await router.markRouteFailure(route, error: error)
                         let hasMoreCandidates = index < routes.count - 1
                         if shouldFailOverProviderError(error), hasMoreCandidates {
@@ -709,12 +756,12 @@ public actor BurnBarHTTPGatewayServer {
                 }
 
                 if let lastError {
-                    return providerFailureResponse(lastError)
+                    return providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute)
                 }
             }
 
             if let lastError {
-                return providerFailureResponse(lastError)
+                return providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute)
             }
             return noEligibleRouteResponse(modelID: modelID)
         } catch let error as BurnBarProviderRouterError {
@@ -792,6 +839,7 @@ public actor BurnBarHTTPGatewayServer {
             }
 
             var lastError: Error?
+            var lastFailedRoute: BurnBarProviderRoute?
             for (index, route) in anthropicRoutes.enumerated() {
                 if let slotID = route.credentialSlotID {
                     try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
@@ -803,6 +851,11 @@ public actor BurnBarHTTPGatewayServer {
                         route: route
                     )
                     await router.markRouteSuccess(route)
+                    await modelHealthStore.recordSuccess(
+                        modelID: modelID,
+                        formatFamily: .anthropic,
+                        route: route
+                    )
                     await recordUsageIfAvailable(response.usage, route: route)
                     return GatewayHTTPResponse(
                         status: response.statusCode,
@@ -811,6 +864,13 @@ public actor BurnBarHTTPGatewayServer {
                     )
                 } catch {
                     lastError = error
+                    lastFailedRoute = route
+                    await modelHealthStore.recordFailure(
+                        modelID: modelID,
+                        formatFamily: .anthropic,
+                        route: route,
+                        error: error
+                    )
                     await router.markRouteFailure(route, error: error)
                     let hasMoreCandidates = index < anthropicRoutes.count - 1
                     if shouldFailOverProviderError(error), hasMoreCandidates {
@@ -833,7 +893,7 @@ public actor BurnBarHTTPGatewayServer {
             }
 
             if let lastError {
-                return providerFailureResponse(lastError)
+                return providerFailureResponse(lastError, modelID: modelID, route: lastFailedRoute)
             }
             return noEligibleRouteResponse(modelID: modelID)
         } catch {
@@ -842,9 +902,24 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
-    private func providerFailureResponse(_ error: Error) -> GatewayHTTPResponse {
+    private func providerFailureResponse(
+        _ error: Error,
+        modelID: String,
+        route: BurnBarProviderRoute?
+    ) -> GatewayHTTPResponse {
         if let providerError = error as? BurnBarProviderExecutorError,
            case .upstreamError(let statusCode, let body) = providerError {
+            if let route {
+                let contextualMessage = BurnBarGatewayModelHealthStore.routeFailureMessage(
+                    modelID: modelID,
+                    statusCode: statusCode,
+                    body: body,
+                    route: route
+                )
+                if shouldPreferContextualProviderError(body: body, statusCode: statusCode) {
+                    return jsonResponse(status: statusCode, body: errorBody(contextualMessage))
+                }
+            }
             let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedBody.isEmpty {
                 return GatewayHTTPResponse(
@@ -859,6 +934,22 @@ public actor BurnBarHTTPGatewayServer {
             )
         }
         return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
+    }
+
+    private func shouldPreferContextualProviderError(body: String, statusCode: Int) -> Bool {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        guard let data = trimmed.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dictionary = object as? [String: Any] else {
+            return false
+        }
+        let message = ((dictionary["error"] as? [String: Any])?["message"] as? String)
+            ?? (dictionary["message"] as? String)
+            ?? (dictionary["error"] as? String)
+            ?? ""
+        let normalizedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return statusCode == 429 && (normalizedMessage.isEmpty || normalizedMessage == "error")
     }
 
     private func noEligibleRouteResponse(modelID: String) -> GatewayHTTPResponse {

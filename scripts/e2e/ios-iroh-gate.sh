@@ -17,7 +17,7 @@
 # cellular. Use a longer explicit plan when switching topologies mid-sequence.
 #
 # By default the gate resolves --model auto from the live BurnBar daemon
-# /v1/models catalog and skips local-only runtimes such as Ollama.
+# /v1/models catalog and skips local-only runtimes; Ollama Cloud is allowed.
 
 set -euo pipefail
 
@@ -155,16 +155,19 @@ resolve_model_if_needed() {
         jq -r '
           [ .data[]?
             | select((.route_eligible // true) == true)
+            | . as $model
             | select(([
-                (.id // ""),
-                (.owned_by // ""),
-                (.provider_id // ""),
-                (.providerID // ""),
-                (.provider_name // ""),
-                (.providerName // ""),
-                (.source_kind // ""),
-                (.capabilities // [] | join(" "))
-              ] | join(" ") | test("ollama|lmstudio|lm studio|local"; "i") | not))
+                ($model.id // ""),
+                ($model.provider_name // ""),
+                ($model.providerName // ""),
+                ($model.source_kind // ""),
+                ($model.capabilities // [] | join(" "))
+              ] | join(" ") | test("lmstudio|lm studio|local"; "i") | not))
+            | select(
+                ((($model.provider_id // $model.providerID // $model.owned_by // "") | test("^ollama$"; "i")) | not)
+                or (($model.provider_name // $model.providerName // "") | test("ollama cloud"; "i"))
+                or (($model.source_kind // "") | test("ollama_cloud"; "i"))
+              )
           ][0].id // empty
         ' <<<"${models_json}"
     )"

@@ -230,6 +230,11 @@ struct SettingsView: View {
                 cloudSyncService: cloudSyncService,
                 iCloudSessionMirrorService: iCloudSessionMirrorService
             )
+        case .agentsModels:
+            AgentsModelsView(
+                settingsManager: settingsManager,
+                daemonManager: .shared
+            )
         case .agentsAdvanced:
             AgentsAdvancedView(
                 settingsManager: settingsManager,
@@ -243,7 +248,7 @@ struct SettingsView: View {
              .agentsRoot,
              .connectionsRoot, .providersRoot, .routingPoolsRoot,
              .switcherRoot, .hermesRoot,
-             .alertsRoot, .notificationsRoot, .devicesAndSyncRoot:
+             .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .mediaRoot:
             // Roots are reachable via the sidebar tab selection — the path
             // stays empty for these. Legacy roots (`connectionsRoot`,
             // `providersRoot`, `routingPoolsRoot`, `switcherRoot`,

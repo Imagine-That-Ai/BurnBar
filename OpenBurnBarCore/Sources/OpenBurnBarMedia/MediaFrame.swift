@@ -42,6 +42,18 @@ public struct MediaFrame: Sendable, Equatable {
         /// kept on the wire for sample-clock alignment but the receiver
         /// renders silence.
         public static let muted = Flags(rawValue: 1 << 2)
+
+        /// Phase 8 — Computer Use Agent Watch: this frame carries 4 extra
+        /// bytes (i16 cursorX + i16 cursorY, big-endian, in display
+        /// pixels) appended immediately after the fixed header and before
+        /// the payload. Receivers that do not set this bit ignore the 4
+        /// trailing bytes — codec stays backward-compatible.
+        ///
+        /// The plan's draft labels this bit `0x04`, but `0x04` is already
+        /// taken by `.muted`. The wire bit is `0x08`. This is captured in
+        /// `docs/HERMES_COMPUTER_USE.md` and the Phase 8 decision-log
+        /// entry in `DESIGN.md`.
+        public static let hasCursorMetadata = Flags(rawValue: 1 << 3)
     }
 
     public var kind: Kind
@@ -49,6 +61,11 @@ public struct MediaFrame: Sendable, Equatable {
     public var gopID: UInt32
     public var frameIndex: UInt32
     public var presentationTimestampMillis: UInt64
+    /// Cursor coordinates in display pixels at the moment the frame was
+    /// captured. Encoded inline on the wire as two big-endian i16 values
+    /// immediately after the 18-byte header when `flags.hasCursorMetadata`
+    /// is set. `nil` everywhere else.
+    public var cursor: CursorMetadata?
     public var payload: Data
 
     public init(
@@ -57,6 +74,7 @@ public struct MediaFrame: Sendable, Equatable {
         gopID: UInt32 = 0,
         frameIndex: UInt32 = 0,
         presentationTimestampMillis: UInt64 = 0,
+        cursor: CursorMetadata? = nil,
         payload: Data = Data()
     ) {
         self.kind = kind
@@ -64,7 +82,23 @@ public struct MediaFrame: Sendable, Equatable {
         self.gopID = gopID
         self.frameIndex = frameIndex
         self.presentationTimestampMillis = presentationTimestampMillis
+        self.cursor = cursor
         self.payload = payload
+    }
+}
+
+extension MediaFrame {
+    /// Cursor coordinates in display pixels. Carried on
+    /// `control.surface.frame` frames so the phone overlay can render the
+    /// agent's cursor without an out-of-band sync channel (Decision 4).
+    public struct CursorMetadata: Sendable, Codable, Equatable {
+        public var x: Int16
+        public var y: Int16
+
+        public init(x: Int16, y: Int16) {
+            self.x = x
+            self.y = y
+        }
     }
 }
 
@@ -72,4 +106,8 @@ extension MediaFrame {
     /// Fixed header size in bytes. Pinned in `MediaPacketCodec` and exposed
     /// here so test code never has to rederive the wire layout.
     public static let headerByteCount = 18
+
+    /// Number of trailing bytes appended after the fixed header when
+    /// `flags.hasCursorMetadata` is set. Two big-endian i16 values.
+    public static let cursorMetadataByteCount = 4
 }

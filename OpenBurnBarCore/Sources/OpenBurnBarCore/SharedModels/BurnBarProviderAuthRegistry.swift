@@ -421,8 +421,8 @@ public enum BurnBarProviderAuthRegistry {
                 id: "ollama-cloud-key",
                 kind: .apiKey,
                 displayName: "Ollama Cloud Key",
-                summary: "Routes traffic through ollama.com gateway and tracks quota.",
-                helperText: "Generate a key at ollama.com/settings/keys. Local Ollama runtimes don't need this — they're auto-detected.",
+                summary: "Routes CLI traffic through the Ollama Cloud gateway.",
+                helperText: "Generate a key at ollama.com/settings/keys. Signing in to Ollama Cloud shows quota and account state; this API key is what makes BurnBar proxy requests.",
                 placeholder: "sk-ollama-…",
                 dashboardURL: "https://ollama.com/settings/keys",
                 dashboardLabel: "Ollama Cloud keys",
@@ -432,8 +432,8 @@ public enum BurnBarProviderAuthRegistry {
             )
         ],
         summary: "Ollama Cloud — managed inference for open models.",
-        proxyHint: "Routed via the Ollama Cloud gateway (OpenAI-compatible).",
-        quotaHint: "Quota windows pulled from the Ollama Cloud dashboard."
+        proxyHint: "Proxy routing requires an Ollama Cloud API key; browser sign-in alone is quota/account visibility.",
+        quotaHint: "Quota windows come from the Ollama Cloud dashboard sign-in."
     )
 
     private static let openAIDescriptor = BurnBarProviderAuthDescriptor(

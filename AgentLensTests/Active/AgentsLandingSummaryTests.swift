@@ -117,6 +117,57 @@ final class AgentsLandingSummaryTests: XCTestCase {
         )
     }
 
+    // MARK: - Models summary
+
+    func test_modelsSummary_idle() {
+        XCTAssertEqual(
+            AgentsSummaries.models(state: .idle, modelCount: 0, readyCount: 0, providerCount: 0),
+            "Tap to see every model BurnBar advertises through the local gateway"
+        )
+    }
+
+    func test_modelsSummary_loading() {
+        XCTAssertEqual(
+            AgentsSummaries.models(state: .loading, modelCount: 0, readyCount: 0, providerCount: 0),
+            "Reading live /v1/models from the local gateway…"
+        )
+    }
+
+    func test_modelsSummary_error() {
+        XCTAssertEqual(
+            AgentsSummaries.models(state: .error, modelCount: 0, readyCount: 0, providerCount: 0),
+            "Could not read /v1/models — start the gateway to see your catalog"
+        )
+    }
+
+    func test_modelsSummary_loadedButEmpty() {
+        XCTAssertEqual(
+            AgentsSummaries.models(state: .loaded, modelCount: 0, readyCount: 0, providerCount: 0),
+            "Gateway is up but no models are advertised — add an account first"
+        )
+    }
+
+    func test_modelsSummary_loadedAllReady() {
+        XCTAssertEqual(
+            AgentsSummaries.models(state: .loaded, modelCount: 12, readyCount: 12, providerCount: 4),
+            "12 models · 12 route ready · 4 providers"
+        )
+    }
+
+    func test_modelsSummary_loadedPartialReady() {
+        XCTAssertEqual(
+            AgentsSummaries.models(state: .loaded, modelCount: 8, readyCount: 3, providerCount: 3),
+            "8 models · 3 route ready · 3 providers"
+        )
+    }
+
+    func test_modelsSummary_loadedSingularBoundaries() {
+        XCTAssertEqual(
+            AgentsSummaries.models(state: .loaded, modelCount: 1, readyCount: 1, providerCount: 1),
+            "1 model · 1 route ready · 1 provider"
+        )
+    }
+
     // MARK: - Test helpers
 
     private func freshSettingsManager() -> SettingsManager {

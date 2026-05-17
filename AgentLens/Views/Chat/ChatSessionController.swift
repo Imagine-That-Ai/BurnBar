@@ -864,21 +864,7 @@ final class ChatSessionController {
             }
         }
 
-        if let routingError = selectedModelRoutingError(for: chatBackend) {
-            let err = ChatMessageRecord(
-                role: .assistant,
-                content: routingError,
-                cliUsed: nil
-            )
-            messages.append(err)
-            do {
-                try dataStore.saveChatMessage(err, threadID: activeThreadID)
-            } catch {
-                AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
-            }
-            refreshHistory()
-            return
-        }
+        let pendingModelRoutingError = selectedModelRoutingError(for: chatBackend)
 
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
 
@@ -893,7 +879,23 @@ final class ChatSessionController {
             OpenBurnBarChatContextBudget.chatRetrievalMaxResultLimit
         )
 
-        guard let searchSvc = typedSearchService else { return }
+        guard let searchSvc = typedSearchService else {
+            if let routingError = pendingModelRoutingError {
+                let err = ChatMessageRecord(
+                    role: .assistant,
+                    content: routingError,
+                    cliUsed: nil
+                )
+                messages.append(err)
+                do {
+                    try dataStore.saveChatMessage(err, threadID: activeThreadID)
+                } catch {
+                    AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
+                }
+                refreshHistory()
+            }
+            return
+        }
 
         let queryRun = await searchSvc.runBurnBarQuery(
             RetrievalQuery(
@@ -945,6 +947,23 @@ final class ChatSessionController {
                 try dataStore.saveChatMessage(assistant, threadID: activeThreadID)
             } catch {
                 AppLogger.chat.silentFailure("saveChatMessage (oracle response)", error: error)
+            }
+            refreshHistory()
+            selectedContext = nil
+            return
+        }
+
+        if let routingError = pendingModelRoutingError {
+            let err = ChatMessageRecord(
+                role: .assistant,
+                content: routingError,
+                cliUsed: nil
+            )
+            messages.append(err)
+            do {
+                try dataStore.saveChatMessage(err, threadID: activeThreadID)
+            } catch {
+                AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
             }
             refreshHistory()
             selectedContext = nil

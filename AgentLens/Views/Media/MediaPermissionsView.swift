@@ -59,6 +59,7 @@ struct MediaPermissionsView: View {
             .font(DesignSystem.Typography.body)
             .foregroundStyle(DesignSystem.Colors.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
+            .id(SettingsAnchor.mediaPermissions)
     }
 
     // MARK: - Capability cards

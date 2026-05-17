@@ -13,6 +13,17 @@ typealias MediaFrameDispatcher = @Sendable (
     _ ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void
 ) async -> Void
 
+/// Same shape as `MediaFrameDispatcher` but for Computer Use control
+/// frames (`control.classify`, `control.action.log.entry`,
+/// `control.input.intent`, `control.approval.{request,response}`,
+/// `control.denied`). The dispatcher decides whether to validate the
+/// Phone-Control authority envelope, write to the audit chain, fan out
+/// to a phone overlay, or hand the request to `BurnBarApprovalRequest`.
+typealias ControlFrameDispatcher = @Sendable (
+    _ frame: HermesRealtimeRelayFrame,
+    _ replySender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void
+) async -> Void
+
 /// Closure type the host client injects when iOS opens a stream and
 /// classifies it as the long-lived media control stream. The handler
 /// hands the stream off, returns from `serve()`, and the registered
@@ -39,6 +50,7 @@ final class IrohRelayRequestHandler: Sendable {
     private let settingsManager: any SettingsManagerProtocol
     private let mediaDispatcher: MediaFrameDispatcher?
     private let mediaControlRegistrar: MediaControlStreamRegistrar?
+    private let controlDispatcher: ControlFrameDispatcher?
     private let auditLogger: (any IrohTransportAuditLogging)?
 
     @MainActor
@@ -48,6 +60,7 @@ final class IrohRelayRequestHandler: Sendable {
         settingsManager: any SettingsManagerProtocol,
         mediaDispatcher: MediaFrameDispatcher? = nil,
         mediaControlRegistrar: MediaControlStreamRegistrar? = nil,
+        controlDispatcher: ControlFrameDispatcher? = nil,
         auditLogger: (any IrohTransportAuditLogging)? = nil
     ) {
         self.relayKeyStore = relayKeyStore
@@ -55,6 +68,7 @@ final class IrohRelayRequestHandler: Sendable {
         self.settingsManager = settingsManager
         self.mediaDispatcher = mediaDispatcher
         self.mediaControlRegistrar = mediaControlRegistrar
+        self.controlDispatcher = controlDispatcher
         self.auditLogger = auditLogger
     }
 
@@ -159,6 +173,19 @@ final class IrohRelayRequestHandler: Sendable {
                     try await stream.send(outboundFrame)
                 }
                 await mediaDispatcher(frame, ackSender)
+                continue
+            case .controlClassify,
+                 .controlActionLogEntry,
+                 .controlInputIntent,
+                 .controlApprovalRequest,
+                 .controlApprovalResponse,
+                 .controlDenied:
+                guard let controlDispatcher else { continue }
+                let replySender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
+                    [stream] outboundFrame in
+                    try await stream.send(outboundFrame)
+                }
+                await controlDispatcher(frame, replySender)
                 continue
             }
         }

@@ -144,7 +144,33 @@ final class ProviderQuotaService {
     }
 
     func snapshots(for provider: AgentProvider) -> [ProviderQuotaSnapshot] {
-        snapshots(for: provider.providerID)
+        let providerIDs = Self.snapshotProviderIDs(for: provider)
+        var snapshotsByIdentity: [String: ProviderQuotaSnapshot] = [:]
+
+        for snapshot in providerIDs.flatMap({ snapshots(for: $0) }) {
+            let key = [
+                snapshot.providerID.rawValue,
+                snapshot.accountID?.lowercased() ?? "",
+                snapshot.sourceId.lowercased()
+            ].joined(separator: ":")
+            guard let incumbent = snapshotsByIdentity[key] else {
+                snapshotsByIdentity[key] = snapshot
+                continue
+            }
+            if snapshot.fetchedAt > incumbent.fetchedAt {
+                snapshotsByIdentity[key] = snapshot
+            }
+        }
+
+        return snapshotsByIdentity.values.sorted { lhs, rhs in
+            let lhsLabel = lhs.accountLabel ?? lhs.accountID ?? lhs.sourceId
+            let rhsLabel = rhs.accountLabel ?? rhs.accountID ?? rhs.sourceId
+            let labelOrder = lhsLabel.localizedCaseInsensitiveCompare(rhsLabel)
+            if labelOrder != .orderedSame {
+                return labelOrder == .orderedAscending
+            }
+            return lhs.fetchedAt > rhs.fetchedAt
+        }
     }
 
     func snapshots(for providerID: ProviderID) -> [ProviderQuotaSnapshot] {
@@ -210,6 +236,15 @@ final class ProviderQuotaService {
                 return labelOrder == .orderedAscending
             }
             return lhs.fetchedAt > rhs.fetchedAt
+        }
+    }
+
+    private static func snapshotProviderIDs(for provider: AgentProvider) -> [ProviderID] {
+        switch provider {
+        case .kimi:
+            return [provider.providerID, ProviderID(rawValue: "moonshot")]
+        default:
+            return [provider.providerID]
         }
     }
 

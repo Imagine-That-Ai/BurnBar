@@ -258,6 +258,12 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
     public let schemaVersion: Int
     public let providers: [BurnBarCatalogProvider]
 
+    private struct ModelMatch {
+        let provider: BurnBarCatalogProvider
+        let model: BurnBarCatalogModel
+        let rank: Int
+    }
+
     public init(schemaVersion: Int, providers: [BurnBarCatalogProvider]) {
         self.schemaVersion = schemaVersion
         self.providers = providers
@@ -283,25 +289,14 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
         let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalized.isEmpty else { return nil }
 
-        for provider in providers {
-            for model in provider.models where model.matches(modelName: normalized) {
-                return model.pricing
-            }
-        }
-
-        return nil
+        return bestModelMatch(named: normalized)?.model.pricing
     }
 
     /// Returns the catalog provider (vendor) that owns a given model name, if any.
     public func vendorForModel(named modelName: String) -> BurnBarCatalogProvider? {
         let normalized = modelName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalized.isEmpty else { return nil }
-        for provider in providers {
-            for model in provider.models where model.matches(modelName: normalized) {
-                return provider
-            }
-        }
-        return nil
+        return bestModelMatch(named: normalized)?.provider
     }
 
     public func supportsModel(named modelName: String, providerID: String? = nil, includeHidden: Bool = true) -> Bool {
@@ -339,16 +334,49 @@ public struct BurnBarCatalog: Codable, Hashable, Sendable {
             providersToSearch = providers
         }
 
-        for provider in providersToSearch {
-            for model in provider.models where model.matches(modelName: normalized) {
-                let classID = model.capabilityClassID?.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let classID, !classID.isEmpty {
-                    return classID.lowercased()
+        if let match = bestModelMatch(named: normalized, providersToSearch: providersToSearch) {
+            let classID = match.model.capabilityClassID?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let classID, !classID.isEmpty {
+                return classID.lowercased()
+            }
+            return match.model.id.lowercased()
+        }
+
+        return nil
+    }
+
+    private func bestModelMatch(
+        named normalizedModelName: String,
+        providersToSearch: [BurnBarCatalogProvider]? = nil
+    ) -> ModelMatch? {
+        let searchableProviders = providersToSearch ?? providers
+        var best: ModelMatch?
+
+        for provider in searchableProviders {
+            for model in provider.models {
+                guard let rank = matchRank(for: model, normalizedModelName: normalizedModelName) else {
+                    continue
                 }
-                return model.id.lowercased()
+                let candidate = ModelMatch(provider: provider, model: model, rank: rank)
+                if best == nil || candidate.rank < best!.rank {
+                    best = candidate
+                }
             }
         }
 
+        return best
+    }
+
+    private func matchRank(for model: BurnBarCatalogModel, normalizedModelName: String) -> Int? {
+        if model.id.lowercased() == normalizedModelName {
+            return 0
+        }
+        if model.aliases.contains(where: { $0.lowercased() == normalizedModelName }) {
+            return 1
+        }
+        if model.matchers.contains(where: { $0.matches(normalizedModelName) }) {
+            return 2
+        }
         return nil
     }
 

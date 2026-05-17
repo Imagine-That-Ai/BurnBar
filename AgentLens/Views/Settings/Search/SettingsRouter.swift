@@ -115,11 +115,12 @@ final class SettingsRouter {
              .agentsRoot,
              .alertsRoot,
              .notificationsRoot,
-             .devicesAndSyncRoot:
+             .devicesAndSyncRoot,
+             .mediaRoot:
             return []
 
         // Agents sub-pages: single drill from the agents landing.
-        case .agentsAccounts, .agentsCLIs, .agentsRuntimes, .agentsAdvanced:
+        case .agentsAccounts, .agentsCLIs, .agentsRuntimes, .agentsModels, .agentsAdvanced:
             return [route]
 
         // Legacy roots: forward into the merged Agents tab. Search results

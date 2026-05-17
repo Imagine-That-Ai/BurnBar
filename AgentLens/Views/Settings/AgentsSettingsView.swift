@@ -33,6 +33,8 @@ struct AgentsSettingsView: View {
     @State private var providerAccounts: [ProviderAccountDoc] = []
     @State private var switcherProfiles: [SwitcherProfileRecord] = []
     @State private var wiringSnapshot: WiringSnapshot = .empty
+    @State private var modelsSnapshot: ModelsSnapshot = .empty
+    @State private var modelsViewModel = ConnectionsViewModel()
 
     init(
         settingsManager: SettingsManager,
@@ -122,10 +124,27 @@ struct AgentsSettingsView: View {
             .buttonStyle(.plain)
             .settingsAnchor(SettingsAnchor.agentsRuntimes)
 
+            NavigationLink(value: SettingsPageRoute.agentsModels) {
+                AgentsDrillRow(
+                    title: "Models",
+                    summary: AgentsSummaries.models(
+                        state: modelsSnapshot.phase,
+                        modelCount: modelsSnapshot.totalCount,
+                        readyCount: modelsSnapshot.readyCount,
+                        providerCount: modelsSnapshot.providerCount
+                    ),
+                    iconName: "point.3.connected.trianglepath.dotted",
+                    iconTint: DesignSystem.Colors.teal,
+                    statusTint: modelsSnapshot.statusTint
+                )
+            }
+            .buttonStyle(.plain)
+            .settingsAnchor(SettingsAnchor.agentsModels)
+
             NavigationLink(value: SettingsPageRoute.agentsAdvanced) {
                 AgentsDrillRow(
                     title: "Advanced",
-                    summary: "Routing strategy, gateway, browser profiles, chat engines, models, inventory",
+                    summary: "Routing strategy, gateway, browser profiles, chat engines, inventory, setup wizard",
                     iconName: "gearshape.2.fill",
                     iconTint: DesignSystem.Colors.textMuted,
                     statusTint: DesignSystem.Colors.textMuted
@@ -174,6 +193,36 @@ struct AgentsSettingsView: View {
         }
     }
 
+    struct ModelsSnapshot {
+        enum Phase {
+            case idle
+            case loading
+            case loaded
+            case error
+        }
+
+        let phase: Phase
+        let totalCount: Int
+        let readyCount: Int
+        let providerCount: Int
+
+        static let empty = ModelsSnapshot(phase: .idle, totalCount: 0, readyCount: 0, providerCount: 0)
+
+        var statusTint: Color {
+            switch phase {
+            case .idle, .loading:
+                return DesignSystem.Colors.textMuted
+            case .error:
+                return DesignSystem.Colors.error
+            case .loaded:
+                if totalCount == 0 { return DesignSystem.Colors.warning }
+                if readyCount == 0 { return DesignSystem.Colors.warning }
+                if readyCount < totalCount { return DesignSystem.Colors.warning }
+                return DesignSystem.Colors.success
+            }
+        }
+    }
+
     private func refreshAll() async {
         await daemonManager.refreshHealth()
         await quotaService.refreshIfNeeded(dataStore: dataStore)
@@ -187,6 +236,22 @@ struct AgentsSettingsView: View {
             connectedCount: connected,
             totalCount: RoutingClientWiringTarget.allCases.count
         )
+        await modelsViewModel.refreshProxyModelCatalog(settings: settingsManager)
+        modelsSnapshot = ModelsSnapshot(
+            phase: AgentsSettingsView.phase(from: modelsViewModel.proxyModelCatalogState),
+            totalCount: modelsViewModel.proxyModels.count,
+            readyCount: modelsViewModel.proxyModels.filter(\.routeEligible).count,
+            providerCount: Set(modelsViewModel.proxyModels.map(\.providerID)).count
+        )
+    }
+
+    fileprivate static func phase(from state: ProxyModelCatalogState) -> ModelsSnapshot.Phase {
+        switch state {
+        case .idle: return .idle
+        case .loading: return .loading
+        case .loaded: return .loaded
+        case .error: return .error
+        }
     }
 }
 
@@ -294,6 +359,32 @@ enum AgentsSummaries {
             return DesignSystem.Colors.success
         }
         return DesignSystem.Colors.textMuted
+    }
+
+    /// One-line live-catalog summary for the Models drill row. Tracks the
+    /// state machine on `ConnectionsViewModel` so the landing page reads
+    /// exactly like the dedicated detail page would.
+    static func models(
+        state: AgentsSettingsView.ModelsSnapshot.Phase,
+        modelCount: Int,
+        readyCount: Int,
+        providerCount: Int
+    ) -> String {
+        switch state {
+        case .idle:
+            return "Tap to see every model BurnBar advertises through the local gateway"
+        case .loading:
+            return "Reading live /v1/models from the local gateway…"
+        case .error:
+            return "Could not read /v1/models — start the gateway to see your catalog"
+        case .loaded:
+            if modelCount == 0 {
+                return "Gateway is up but no models are advertised — add an account first"
+            }
+            let modelLabel = modelCount == 1 ? "model" : "models"
+            let providerLabel = providerCount == 1 ? "provider" : "providers"
+            return "\(modelCount) \(modelLabel) · \(readyCount) route ready · \(providerCount) \(providerLabel)"
+        }
     }
 }
 

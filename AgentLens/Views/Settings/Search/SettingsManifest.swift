@@ -304,6 +304,23 @@ enum SettingsManifest {
             logoProviders: [.hermes, .piAgent, .openClaw]
         ),
         SettingsItem(
+            id: "agents.models",
+            tab: .agents,
+            pageRoute: .agentsModels,
+            anchorID: SettingsAnchor.agentsModels,
+            title: "Models & Providers",
+            subtitle: "Every model the local gateway can serve right now — grouped by provider and account, with route-readiness and quota state",
+            keywords: [
+                "agent", "agents",
+                "model", "models", "model catalog", "catalog", "directory",
+                "provider", "providers", "advertised", "exposed", "proxy",
+                "gateway", "v1/models", "endpoint", "routes", "routing",
+                "claude", "gpt", "sonnet", "opus", "kimi", "minimax", "deepseek",
+                "openai", "anthropic", "browse", "list", "view", "see"
+            ],
+            logoProviders: [.claudeCode, .openAI, .openCode, .kimi]
+        ),
+        SettingsItem(
             id: "agents.advanced",
             tab: .agents,
             pageRoute: .agentsAdvanced,
@@ -402,6 +419,22 @@ enum SettingsManifest {
             title: "Smart Displays",
             subtitle: "Cast cost glances to Nest Hub, Pixel Tablet, and Pixel Clock",
             keywords: ["nest", "hub", "pixel", "clock", "display", "cast"]
+        ),
+
+        // MARK: Media & Sharing
+
+        SettingsItem(
+            id: "media.permissions",
+            tab: .media,
+            pageRoute: .mediaRoot,
+            anchorID: SettingsAnchor.mediaPermissions,
+            title: "Media Permissions",
+            subtitle: "Camera, microphone, screen sharing, and file-transfer readiness for Mercury sessions",
+            keywords: [
+                "media", "mercury", "permissions", "camera", "microphone", "mic",
+                "screen recording", "screen share", "file transfer", "voice call",
+                "video call", "sharing", "iroh"
+            ]
         ),
 
         // MARK: Account Switcher — now lives inside Agents → CLIs / Advanced.
@@ -539,6 +572,7 @@ enum SettingsManifest {
         SettingsAnchor.agentsAccounts,
         SettingsAnchor.agentsCLIs,
         SettingsAnchor.agentsRuntimes,
+        SettingsAnchor.agentsModels,
         SettingsAnchor.agentsAdvanced,
         SettingsAnchor.alertsDailySpend,
         SettingsAnchor.alertsDigest,
@@ -548,6 +582,7 @@ enum SettingsManifest {
         SettingsAnchor.cloudSyncToggle,
         SettingsAnchor.trustedDevices,
         SettingsAnchor.smartDisplays,
+        SettingsAnchor.mediaPermissions,
         SettingsAnchor.switcherBrowser,
         SettingsAnchor.switcherCLI,
         SettingsAnchor.hermesConnections,

@@ -108,6 +108,7 @@ enum SettingsPageRoute: Hashable, Codable {
     case agentsAccounts
     case agentsCLIs
     case agentsRuntimes
+    case agentsModels
     case agentsAdvanced
 
     // Legacy aliases kept so existing deep links resolve. The router maps
@@ -132,6 +133,9 @@ enum SettingsPageRoute: Hashable, Codable {
 
     // Devices & Sync
     case devicesAndSyncRoot
+
+    // Media & Sharing
+    case mediaRoot
 }
 
 // MARK: - Anchor IDs
@@ -186,6 +190,7 @@ enum SettingsAnchor {
     static let agentsAccounts = "agents.accounts"
     static let agentsCLIs = "agents.clis"
     static let agentsRuntimes = "agents.runtimes"
+    static let agentsModels = "agents.models"
     static let agentsAdvanced = "agents.advanced"
 
     // Legacy anchors — every one aliases to an agents anchor so back-compat
@@ -220,6 +225,9 @@ enum SettingsAnchor {
     static let cloudSyncToggle = "devices.cloudSync"
     static let trustedDevices = "devices.trusted"
     static let smartDisplays = "devices.smartDisplays"
+
+    // Media & Sharing
+    static let mediaPermissions = "media.permissions"
 
     // Switcher
     static let switcherBrowser = "switcher.browser"

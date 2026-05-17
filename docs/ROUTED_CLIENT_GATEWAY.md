@@ -76,9 +76,11 @@ those local endpoints.
 A request for a model not advertised for that local endpoint returns `503`
 with `No eligible route for <model>. Add or enable an account/provider that
 serves this model.` Within a compatible pool, the existing in-flight failover
-loop applies — on `429` / `quota_exceeded` / `auth_failed` the gateway marks
-the slot, parks it in a five-minute cool-down, and retries against the next
-healthy candidate in the same pool.
+loop applies. When a real upstream route proves that a provider/account/model
+pair cannot serve the selected model, BurnBar records that model-level gateway
+health result and stops advertising that exact row from `/v1/models` until the
+block expires. Other models on the same account remain visible if their own
+route is still healthy.
 
 ## What routes today
 
@@ -138,6 +140,10 @@ lives in `OpenBurnBarHTTPGatewayServerTests.swift`:
 - `testGatewayResponsesRoutesAdvertisedClaudeThroughAnthropicBridge` —
   Responses API clients can call an advertised Claude model through the same
   bridge.
+- `testGatewayStopsAdvertisingAnthropicModelAfterRealRouteFailure` —
+  a Claude OAuth model/account row that returns an opaque upstream 429 stops
+  appearing in `/v1/models`, while healthy sibling Claude models remain
+  advertised.
 - `testClaudeCodeAnthropicRequestFailsOverWhenPrimaryQuotaExhausted` —
   Claude Code-shaped `/v1/messages` request fails over from primary to backup.
 - `testGatewayMessagesReturns503WhenOnlyOpenAICompatProvidersConfigured` —
@@ -232,6 +238,12 @@ charged at most one output token for the verification.
 Ollama Cloud is an upstream routed provider. OpenBurnBar stores the Ollama API
 key as a normal provider-plan slot, then proxies gateway chat requests to
 `https://ollama.com/api/chat` with `Authorization: Bearer ...`.
+
+When an enabled Ollama API-key slot exists, `/v1/models` refreshes the live
+cloud catalog from `https://ollama.com/api/tags` and advertises the returned
+models as route-eligible BurnBar models. Browser sign-in to Ollama Cloud is
+still useful for quota/account visibility, but it is not treated as a proxy
+credential unless an API key is also saved.
 
 Direct Ollama Cloud model IDs omit the local `-cloud` suffix. The catalog still
 accepts common client-facing aliases such as `deepseek-v4-flash:cloud`,

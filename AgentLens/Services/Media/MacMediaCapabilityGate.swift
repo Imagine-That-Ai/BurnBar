@@ -62,6 +62,8 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
                 if !entitlement.screenShare { return .denied(reason: .entitlementMissing) }
             case .videoCall:
                 if !entitlement.videoCall { return .denied(reason: .entitlementMissing) }
+            case .computerUse:
+                if !entitlement.screenShare { return .denied(reason: .entitlementMissing) }
             }
 
             let budget = budgetProvider()
@@ -120,6 +122,7 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
         case .fileTransfer: return 4
         case .screenShare: return 1
         case .videoCall: return 1
+        case .computerUse: return 1
         }
     }
 
@@ -159,6 +162,15 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
                sessionDurationLimitSeconds > envelope.videoCallPerCallMinutes * 60 {
                 return .denied(reason: .sessionCapReached)
             }
+        case .computerUse:
+            let dailyCapSeconds = envelope.screenShareDailyMinutes * 60
+            if usage.screenShareSecondsUsed >= dailyCapSeconds {
+                return .denied(reason: .dailyCapReached)
+            }
+            if let sessionDurationLimitSeconds,
+               sessionDurationLimitSeconds > envelope.screenSharePerSessionMinutes * 60 {
+                return .denied(reason: .sessionCapReached)
+            }
         }
         let allowance = MediaCapabilityEnvelope(feature: feature)
         return .allowed(envelope: allowance)
@@ -173,6 +185,7 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
         case .fileTransfer: return nil
         case .screenShare: return max(0, envelope.screenShareDailyMinutes * 60 - usage.screenShareSecondsUsed)
         case .videoCall: return max(0, envelope.videoCallDailyMinutes * 60 - usage.videoCallSecondsUsed)
+        case .computerUse: return max(0, envelope.screenShareDailyMinutes * 60 - usage.screenShareSecondsUsed)
         }
     }
 
@@ -194,6 +207,7 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
         case .fileTransfer: return nil
         case .screenShare: return envelope.screenSharePerSessionMinutes * 60
         case .videoCall: return envelope.videoCallPerCallMinutes * 60
+        case .computerUse: return envelope.screenSharePerSessionMinutes * 60
         }
     }
 
