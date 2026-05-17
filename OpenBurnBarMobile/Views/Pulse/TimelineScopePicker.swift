@@ -26,7 +26,7 @@ enum PulseTimelineScope: String, CaseIterable, Identifiable {
         switch self {
         case .minute: return "LIVE · MINUTE"
         case .hour:   return "LAST HOUR · LIVE"
-        case .day:    return "TODAY · LIVE"
+        case .day:    return "LAST 24H · LIVE"
         case .week:   return "7 DAYS"
         case .month:  return "30 DAYS"
         }

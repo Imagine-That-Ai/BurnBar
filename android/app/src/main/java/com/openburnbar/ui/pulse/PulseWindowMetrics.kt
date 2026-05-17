@@ -37,7 +37,7 @@ fun pulseWindowMetrics(
         )
         PulseTimelineScope.DAY -> usageMetricsForWindow(
             recentUsages = recentUsages,
-            cutoffMillis = startOfLocalDayMillis(nowMillis, zoneId),
+            cutoffMillis = nowMillis - DAY_WINDOW_MILLIS,
             nowMillis = nowMillis,
             trailingValue = rollups.sevenDays,
             trailingTokenValue = rollups.sevenDayTokens
@@ -100,6 +100,22 @@ fun startOfLocalPulseDayMillis(
     nowMillis: Long = System.currentTimeMillis(),
     zoneId: ZoneId = ZoneId.systemDefault()
 ): Long = startOfLocalDayMillis(nowMillis, zoneId)
+
+fun livePulseUsageQueryStartMillis(
+    nowMillis: Long = System.currentTimeMillis(),
+    zoneId: ZoneId = ZoneId.systemDefault()
+): Long {
+    val rollingStart = nowMillis - DAY_WINDOW_MILLIS
+    return Instant.ofEpochMilli(rollingStart)
+        .atZone(zoneId)
+        .withMinute(0)
+        .withSecond(0)
+        .withNano(0)
+        .toInstant()
+        .toEpochMilli()
+}
+
+private const val DAY_WINDOW_MILLIS: Long = 24L * 60L * 60L * 1_000L
 
 private fun startOfLocalDayMillis(nowMillis: Long, zoneId: ZoneId): Long {
     return Instant.ofEpochMilli(nowMillis)

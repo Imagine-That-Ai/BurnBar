@@ -364,22 +364,23 @@ final class RoutingClientWiringTests: XCTestCase {
 
         let root = try loadJSONObject(at: configURL)
         let customModels = try XCTUnwrap(root["customModels"] as? [[String: Any]])
-        XCTAssertEqual(customModels.count, 2)
+        XCTAssertEqual(customModels.count, 3)
         XCTAssertEqual(customModels.first?["model"] as? String, "glm-5")
         XCTAssertEqual(customModels.first?["displayName"] as? String, "OpenBurnBar GLM-5")
         XCTAssertEqual(customModels.first?["baseUrl"] as? String, "http://127.0.0.1:8317/v1")
         XCTAssertEqual(customModels.first?["apiKey"] as? String, "droid-token")
         XCTAssertEqual(customModels.first?["provider"] as? String, "generic-chat-completion-api")
         XCTAssertEqual(customModels.first?["id"] as? String, "custom:OpenBurnBar-glm-5-0")
+        XCTAssertEqual(root["model"] as? String, "custom:OpenBurnBar-glm-5-0")
 
         let settingsRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/settings.json"))
         let settingsModels = try XCTUnwrap(settingsRoot["customModels"] as? [[String: Any]])
-        XCTAssertEqual(settingsModels.map { $0["model"] as? String }, ["glm-5", "minimax-m2.7"])
+        XCTAssertEqual(settingsModels.map { $0["model"] as? String }, ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"])
         XCTAssertEqual(settingsModels.first?["baseUrl"] as? String, "http://127.0.0.1:8317/v1")
 
         let factoryConfigRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/config.json"))
         let factoryConfigModels = try XCTUnwrap(factoryConfigRoot["custom_models"] as? [[String: Any]])
-        XCTAssertEqual(factoryConfigModels.map { $0["model"] as? String }, ["glm-5", "minimax-m2.7"])
+        XCTAssertEqual(factoryConfigModels.map { $0["model"] as? String }, ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"])
         XCTAssertEqual(factoryConfigModels.first?["base_url"] as? String, "http://127.0.0.1:8317/v1")
         XCTAssertEqual(factoryConfigModels.first?["api_key"] as? String, "droid-token")
         XCTAssertEqual(factoryConfigModels.first?["provider"] as? String, "generic-chat-completion-api")
@@ -391,7 +392,7 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertThrowsError(
             try wiring.wire(target: .droid, gateway: exampleGateway(token: "droid-token"))
         ) { error in
-            XCTAssertTrue(error.localizedDescription.contains("No route-eligible OpenAI-compatible models"))
+            XCTAssertTrue(error.localizedDescription.contains("No route-eligible gateway models"))
         }
     }
 
@@ -430,17 +431,95 @@ final class RoutingClientWiringTests: XCTestCase {
 
         let settingsLocalRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/settings.local.json"))
         let settingsLocalModels = try XCTUnwrap(settingsLocalRoot["customModels"] as? [[String: Any]])
-        XCTAssertEqual(settingsLocalModels.map { $0["model"] as? String }, ["kimi-k2.6"])
+        XCTAssertEqual(settingsLocalModels.map { $0["model"] as? String }, ["kimi-k2.6", "claude-sonnet-4-6"])
         XCTAssertFalse(settingsLocalModels.contains { ($0["model"] as? String) == "glm-5" })
         XCTAssertFalse(settingsLocalModels.contains { ($0["model"] as? String) == "minimax-m2.7" })
 
         let settingsRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/settings.json"))
         let settingsModels = try XCTUnwrap(settingsRoot["customModels"] as? [[String: Any]])
-        XCTAssertEqual(settingsModels.map { $0["model"] as? String }, ["kimi-k2.6"])
+        XCTAssertEqual(settingsModels.map { $0["model"] as? String }, ["kimi-k2.6", "claude-sonnet-4-6"])
 
         let configRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/config.json"))
         let configModels = try XCTUnwrap(configRoot["custom_models"] as? [[String: Any]])
-        XCTAssertEqual(configModels.map { $0["model"] as? String }, ["kimi-k2.6"])
+        XCTAssertEqual(configModels.map { $0["model"] as? String }, ["kimi-k2.6", "claude-sonnet-4-6"])
+    }
+
+    func test_droidModelSyncStatusFlagsStaleCachedOpenBurnBarModels() throws {
+        let wiring = makeWiring()
+        let gateway = exampleGateway(token: "droid-token")
+        let settingsURL = tempHome.appendingPathComponent(".factory/settings.local.json")
+        try FileManager.default.createDirectory(
+            at: settingsURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("""
+        {
+          "customModels": [
+            {"model": "MiniMax-M2.5", "id": "custom:OpenBurnBar-MiniMax-M2.5-0", "displayName": "OpenBurnBar MiniMax M2.5", "provider": "generic-chat-completion-api", "baseUrl": "http://127.0.0.1:8317/v1"}
+          ]
+        }
+        """.utf8).write(to: settingsURL)
+
+        let status = wiring.modelSyncStatus(
+            target: .droid,
+            gateway: gateway,
+            advertisedModels: liveGatewayModels()
+        )
+
+        guard case .stale(let installedModelIDs, let expectedModelIDs) = status else {
+            return XCTFail("Expected stale Droid sync status, got \(status)")
+        }
+        XCTAssertEqual(installedModelIDs, ["MiniMax-M2.5"])
+        XCTAssertEqual(expectedModelIDs, ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"])
+        XCTAssertTrue(status.userMessage.contains("Press Sync models"))
+    }
+
+    func test_droidModelSyncStatusCurrentAfterWire() throws {
+        let wiring = makeWiring()
+        let gateway = exampleGateway(token: "droid-token")
+        _ = try wiring.wire(
+            target: .droid,
+            gateway: gateway,
+            advertisedModels: liveGatewayModels()
+        )
+
+        let status = wiring.modelSyncStatus(
+            target: .droid,
+            gateway: gateway,
+            advertisedModels: liveGatewayModels()
+        )
+
+        XCTAssertEqual(status, .current(modelIDs: ["glm-5", "minimax-m2.7", "claude-sonnet-4-6"]))
+    }
+
+    func test_wireDroid_updatesStaleOpenBurnBarDefaultModelToLiveEntry() throws {
+        let wiring = makeWiring()
+        let gateway = exampleGateway(token: "droid-token")
+        let settingsURL = tempHome.appendingPathComponent(".factory/settings.json")
+        try FileManager.default.createDirectory(
+            at: settingsURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("""
+        {
+          "sessionDefaultSettings": {
+            "model": "custom:OpenBurnBar-MiniMax-M2.5-0"
+          },
+          "customModels": [
+            {"model": "MiniMax-M2.5", "id": "custom:OpenBurnBar-MiniMax-M2.5-0", "displayName": "OpenBurnBar MiniMax M2.5", "provider": "generic-chat-completion-api", "baseUrl": "http://127.0.0.1:8317/v1"}
+          ]
+        }
+        """.utf8).write(to: settingsURL)
+
+        _ = try wiring.wire(
+            target: .droid,
+            gateway: gateway,
+            advertisedModels: liveGatewayModels()
+        )
+
+        let root = try loadJSONObject(at: settingsURL)
+        let sessionDefaults = try XCTUnwrap(root["sessionDefaultSettings"] as? [String: Any])
+        XCTAssertEqual(sessionDefaults["model"] as? String, "custom:OpenBurnBar-glm-5-0")
     }
 
     func test_wireDroid_usesFactoryProviderAdapterMatchingModelFamily() throws {
@@ -467,6 +546,15 @@ final class RoutingClientWiringTests: XCTestCase {
                 providerID: "ollama_cloud",
                 providerName: "Ollama Cloud",
                 routeEligible: true
+            ),
+            RoutingClientAdvertisedModel(
+                id: "claude-sonnet-4-6",
+                displayName: "Claude Sonnet 4.6",
+                providerID: "anthropic",
+                providerName: "Anthropic",
+                formatFamily: "anthropic",
+                servedEndpoints: ["/v1/messages", "/v1/chat/completions", "/v1/responses"],
+                routeEligible: true
             )
         ]
 
@@ -478,11 +566,11 @@ final class RoutingClientWiringTests: XCTestCase {
 
         let settingsRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/settings.local.json"))
         let settingsModels = try XCTUnwrap(settingsRoot["customModels"] as? [[String: Any]])
-        XCTAssertEqual(settingsModels.map { $0["provider"] as? String }, ["openai", "generic-chat-completion-api", "generic-chat-completion-api"])
+        XCTAssertEqual(settingsModels.map { $0["provider"] as? String }, ["openai", "generic-chat-completion-api", "generic-chat-completion-api", "generic-chat-completion-api"])
 
         let configRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/config.json"))
         let configModels = try XCTUnwrap(configRoot["custom_models"] as? [[String: Any]])
-        XCTAssertEqual(configModels.map { $0["provider"] as? String }, ["openai", "generic-chat-completion-api", "generic-chat-completion-api"])
+        XCTAssertEqual(configModels.map { $0["provider"] as? String }, ["openai", "generic-chat-completion-api", "generic-chat-completion-api", "generic-chat-completion-api"])
     }
 
     func test_wireDroid_resyncRemovesCurrentGatewayEntriesOnCustomPort() throws {
@@ -537,7 +625,7 @@ final class RoutingClientWiringTests: XCTestCase {
         let models = try XCTUnwrap(openburnbar["models"] as? [String: Any])
         XCTAssertNotNil(models["glm-5"])
         XCTAssertNotNil(models["minimax-m2.7"])
-        XCTAssertNil(models["claude-sonnet-4-6"])
+        XCTAssertNotNil(models["claude-sonnet-4-6"])
         XCTAssertTrue(wiring.isWired(target: .opencode))
     }
 
@@ -611,11 +699,13 @@ final class RoutingClientWiringTests: XCTestCase {
         let customModels = try XCTUnwrap(root["customModels"] as? [[String: Any]])
         XCTAssertEqual(customModels.count, 1)
         XCTAssertEqual(customModels.first?["model"] as? String, "existing-model")
+        XCTAssertNil(root["model"])
 
         let settingsRoot = try loadJSONObject(at: settingsURL)
         let settingsModels = try XCTUnwrap(settingsRoot["customModels"] as? [[String: Any]])
         XCTAssertEqual(settingsModels.count, 1)
         XCTAssertEqual(settingsModels.first?["model"] as? String, "existing-settings-model")
+        XCTAssertNil(settingsRoot["model"])
 
         let configRoot = try loadJSONObject(at: configURL)
         let configModels = try XCTUnwrap(configRoot["custom_models"] as? [[String: Any]])

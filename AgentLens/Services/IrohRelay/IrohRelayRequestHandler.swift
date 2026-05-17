@@ -481,6 +481,21 @@ final class IrohRelayRequestHandler: Sendable {
                 "elapsedMs": String(Int(Date().timeIntervalSince(startedAt) * 1000))
             ]
         )
+        if receivedDone {
+            await auditStage(
+                "host_forward_chat_complete",
+                uid: uid,
+                connectionID: connectionID,
+                requestID: requestID,
+                extra: [
+                    "chunks": String(sequence),
+                    "done": "true",
+                    "completedBy": "terminal_sse",
+                    "elapsedMs": String(Int(Date().timeIntervalSince(startedAt) * 1000))
+                ]
+            )
+            return
+        }
         try await sendComplete(
             uid: uid,
             connectionID: connectionID,

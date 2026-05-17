@@ -337,6 +337,236 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
     }
 
+    func testGatewayModelsAdvertisesAnthropicRoutesWithRealBridgeEndpoints() async throws {
+        let harness = try GatewayHarness()
+        try await harness.configureAnthropicProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        let claude = try XCTUnwrap(data.first {
+            ($0["id"] as? String) == "claude-sonnet-4-6"
+                && ($0["provider_id"] as? String) == "anthropic"
+        })
+        XCTAssertEqual(claude["format_family"] as? String, "anthropic")
+        XCTAssertEqual(claude["route_eligible"] as? Bool, true)
+        XCTAssertTrue((claude["capabilities"] as? [String] ?? []).contains("anthropic"))
+        let endpoints = try XCTUnwrap(claude["served_endpoints"] as? [String])
+        XCTAssertTrue(endpoints.contains("/v1/messages"))
+        XCTAssertTrue(endpoints.contains("/v1/chat/completions"))
+        XCTAssertTrue(endpoints.contains("/v1/responses"))
+
+        let codexModels = try XCTUnwrap(object["models"] as? [[String: Any]])
+        let codexClaude = try XCTUnwrap(codexModels.first {
+            ($0["slug"] as? String) == "claude-sonnet-4-6"
+        })
+        XCTAssertEqual(codexClaude["supported_in_api"] as? Bool, true)
+        XCTAssertEqual(codexClaude["context_window"] as? Int, 200_000)
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().count, 0)
+    }
+
+    func testGatewayChatCompletionsRoutesAdvertisedClaudeThroughAnthropicBridge() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_openai_bridge",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-sonnet-4-6",
+              "content": [{"type": "text", "text": "hello through bridge"}],
+              "stop_reason": "end_turn",
+              "usage": {
+                "input_tokens": 7,
+                "output_tokens": 3,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        try await harness.configureAnthropicProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"claude-sonnet-4-6","messages":[{"role":"system","content":"Be terse."},{"role":"user","content":"hi"}],"max_tokens":12}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        let responseObject = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(responseObject["object"] as? String, "chat.completion")
+        XCTAssertEqual(responseObject["model"] as? String, "claude-sonnet-4-6")
+        let choices = try XCTUnwrap(responseObject["choices"] as? [[String: Any]])
+        let message = try XCTUnwrap(choices.first?["message"] as? [String: Any])
+        XCTAssertEqual(message["content"] as? String, "hello through bridge")
+        let usage = try XCTUnwrap(responseObject["usage"] as? [String: Any])
+        XCTAssertEqual(usage["prompt_tokens"] as? Int, 7)
+        XCTAssertEqual(usage["completion_tokens"] as? Int, 3)
+
+        let upstreamRequest = try XCTUnwrap(GatewayUpstreamURLProtocol.recordedRequests().first)
+        XCTAssertEqual(upstreamRequest.path, "/anthropic/v1/messages")
+        XCTAssertEqual(upstreamRequest.xApiKey, "sk-ant-api03-primary-key")
+        XCTAssertTrue(upstreamRequest.body.contains(#""max_tokens":12"#), upstreamRequest.body)
+        XCTAssertTrue(upstreamRequest.body.contains(#""system":"Be terse.""#), upstreamRequest.body)
+        XCTAssertTrue(upstreamRequest.body.contains(#""model":"claude-sonnet-4-6""#), upstreamRequest.body)
+    }
+
+    func testGatewayChatCompletionsTranslatesClaudeToolUseToOpenAIStyleToolCalls() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_tool_bridge",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-sonnet-4-6",
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "toolu_123",
+                  "name": "shell_command",
+                  "input": {"cmd": "pwd"}
+                }
+              ],
+              "stop_reason": "tool_use",
+              "usage": {
+                "input_tokens": 9,
+                "output_tokens": 4,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        try await harness.configureAnthropicProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(
+                #"""
+                {
+                  "model": "claude-sonnet-4-6",
+                  "messages": [{"role":"user","content":"run pwd"}],
+                  "tools": [{
+                    "type": "function",
+                    "function": {
+                      "name": "shell_command",
+                      "description": "Run a shell command.",
+                      "parameters": {
+                        "type": "object",
+                        "properties": {"cmd": {"type": "string"}}
+                      }
+                    }
+                  }],
+                  "tool_choice": {"type":"function","function":{"name":"shell_command"}}
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        let responseObject = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let choices = try XCTUnwrap(responseObject["choices"] as? [[String: Any]])
+        XCTAssertEqual(choices.first?["finish_reason"] as? String, "tool_calls")
+        let message = try XCTUnwrap(choices.first?["message"] as? [String: Any])
+        let toolCalls = try XCTUnwrap(message["tool_calls"] as? [[String: Any]])
+        XCTAssertEqual(toolCalls.first?["id"] as? String, "toolu_123")
+        let function = try XCTUnwrap(toolCalls.first?["function"] as? [String: Any])
+        XCTAssertEqual(function["name"] as? String, "shell_command")
+        XCTAssertTrue((function["arguments"] as? String ?? "").contains(#""cmd":"pwd""#))
+
+        let upstreamRequest = try XCTUnwrap(GatewayUpstreamURLProtocol.recordedRequests().first)
+        XCTAssertTrue(upstreamRequest.body.contains(#""tools""#), upstreamRequest.body)
+        XCTAssertTrue(upstreamRequest.body.contains(#""input_schema""#), upstreamRequest.body)
+        XCTAssertTrue(upstreamRequest.body.contains(#""tool_choice":{"name":"shell_command","type":"tool"}"#), upstreamRequest.body)
+    }
+
+    func testGatewayResponsesRoutesAdvertisedClaudeThroughAnthropicBridge() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_responses_bridge",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-sonnet-4-6",
+              "content": [{"type": "text", "text": "responses bridge answered"}],
+              "stop_reason": "end_turn",
+              "usage": {
+                "input_tokens": 5,
+                "output_tokens": 4,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        try await harness.configureAnthropicProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/responses",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"claude-sonnet-4-6","instructions":"Be direct.","input":"hello","max_output_tokens":16}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        let responseObject = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(responseObject["object"] as? String, "response")
+        XCTAssertEqual(responseObject["model"] as? String, "claude-sonnet-4-6")
+        XCTAssertEqual(responseObject["output_text"] as? String, "responses bridge answered")
+        let usage = try XCTUnwrap(responseObject["usage"] as? [String: Any])
+        XCTAssertEqual(usage["input_tokens"] as? Int, 5)
+        XCTAssertEqual(usage["output_tokens"] as? Int, 4)
+
+        let upstreamRequest = try XCTUnwrap(GatewayUpstreamURLProtocol.recordedRequests().first)
+        XCTAssertEqual(upstreamRequest.path, "/anthropic/v1/messages")
+        XCTAssertTrue(upstreamRequest.body.contains(#""max_tokens":16"#), upstreamRequest.body)
+        XCTAssertTrue(upstreamRequest.body.contains(#""system":"Be direct.""#), upstreamRequest.body)
+    }
+
     func testGatewayRoutesModelDiscoveredFromLiveModelsEndpoint() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]

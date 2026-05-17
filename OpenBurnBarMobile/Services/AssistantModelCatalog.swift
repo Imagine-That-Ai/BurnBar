@@ -76,6 +76,16 @@ enum AssistantModelIDCanonicalizer {
         }
     }
 
+    static func canonicalizedPersistedSelection(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch trimmed.lowercased() {
+        case "gpt-5-5", "gpt-5-4", "gpt-5-4-mini", "gpt-5-3-codex", "minimax-m2-7", "kimi-k2-5":
+            return canonicalized(trimmed)
+        default:
+            return trimmed
+        }
+    }
+
     static func lookupKey(_ raw: String) -> String {
         canonicalized(raw)
             .lowercased()

@@ -37,19 +37,22 @@ models into the client config automatically:
   `custom_models` entries for the live advertised catalog in
   `~/.factory/settings.local.json`, `~/.factory/settings.json`, and
   `~/.factory/config.json`, using Factory's `openai` custom model provider
-  for models served by OpenAI-shaped upstream accounts and
-  `generic-chat-completion-api` for other OpenAI-compatible chat models.
+  for models served by OpenAI-owned upstream accounts and
+  `generic-chat-completion-api` for other gateway-served chat models, including
+  Claude models bridged through BurnBar.
 
 ## Behavior
 
 - `/v1/models` is derived from BurnBar's live provider/account configuration and only includes models that can route right now.
 - For OpenAI-compatible providers that expose `/models`, BurnBar lists upstream-advertised models for eligible accounts and hides missing-credential, disabled, exhausted, and cooling-down rows.
+- Anthropic/Claude models appear in `/v1/models` when an enabled Anthropic route exists. Their model rows include `format_family = anthropic` and `served_endpoints` so clients can tell whether BurnBar can serve `/v1/messages`, `/v1/chat/completions`, and `/v1/responses` for that model.
 - Each model row includes provider id, account id, account label, capabilities, quota state, enabled state, route eligibility, and last refresh fields.
 - `/v1/chat/completions` and `/v1/responses` stop before contacting an upstream provider when the selected model has no eligible route.
 - `/v1/responses` first uses an upstream Responses endpoint when the provider has one. If an advertised OpenAI-compatible provider only exposes chat completions, BurnBar translates the request through `/v1/chat/completions` and returns a Responses-shaped JSON or SSE stream so Codex-style clients still work.
+- For advertised Anthropic models, `/v1/chat/completions` and `/v1/responses` translate local OpenAI-style requests to Anthropic Messages and translate the response back. Basic function tool requests and Anthropic `tool_use` blocks are bridged to OpenAI-style tool calls.
 - Same-provider account failover can happen only through eligible accounts that advertise the requested model.
 - BurnBar does not silently substitute a stale default model.
-- CLI wiring fails before editing a client when BurnBar has no route-eligible advertised models for that client family.
+- CLI wiring fails before editing a client when BurnBar has no route-eligible advertised models for that client's local gateway endpoint.
 
 ## Troubleshooting
 

@@ -255,6 +255,58 @@ final class ConnectionsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.state(for: .codex), .notConnected)
     }
 
+    func test_refreshWiringState_marksDroidStaleWhenCachedModelsNoLongerMatchLiveCatalog() async throws {
+        settings.gatewayEnabled = true
+        settings.gatewayHost = "127.0.0.1"
+        settings.gatewayPort = 8317
+        settings.gatewayAuthToken = ""
+
+        let settingsURL = tempHome.appendingPathComponent(".factory/settings.local.json")
+        try FileManager.default.createDirectory(
+            at: settingsURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("""
+        {
+          "customModels": [
+            {"model": "MiniMax-M2.5", "id": "custom:OpenBurnBar-MiniMax-M2.5-0", "displayName": "OpenBurnBar MiniMax M2.5", "provider": "generic-chat-completion-api", "baseUrl": "http://127.0.0.1:8317/v1"}
+          ]
+        }
+        """.utf8).write(to: settingsURL)
+
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyCatalogFetcher: { _ in
+                [
+                    ProxyAdvertisedModel(
+                        modelID: "MiniMax-M2.7",
+                        displayName: "MiniMax M2.7",
+                        providerID: "minimax",
+                        providerName: "MiniMax",
+                        accountID: "acct_minimax",
+                        accountLabel: "MiniMax primary",
+                        sourceID: "minimax#acct_minimax",
+                        sourceKind: "provider_account",
+                        quotaState: "healthy",
+                        routeEligible: true,
+                        capabilities: ["openai_compat", "routing"],
+                        lastError: nil
+                    )
+                ]
+            }
+        )
+
+        await viewModel.refreshProxyModelCatalog(settings: settings)
+        await viewModel.refreshWiringState(settings: settings)
+
+        if case .degraded(let message) = viewModel.state(for: .droid) {
+            XCTAssertTrue(message.contains("Droid's BurnBar model list is stale"))
+            XCTAssertTrue(message.contains("Sync models"))
+        } else {
+            XCTFail("Expected Droid row to show stale/degraded, got \(viewModel.state(for: .droid))")
+        }
+    }
+
     // MARK: - Route-ready truth
 
     func test_routeReadiness_requiresRouteReadyAnthropicDaemonCredentialForClaude() {

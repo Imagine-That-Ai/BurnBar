@@ -1214,9 +1214,10 @@ final class HermesService {
     }
 
     func selectModel(_ option: HermesRuntimeModelOption) {
-        let requested = AssistantModelIDCanonicalizer.canonicalized(option.modelID)
+        let raw = option.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requested = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(raw)
         let resolved = !modelOptions.isEmpty
-            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(requested, in: modelOptions)
+            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(raw, in: modelOptions)
             : requested
         if !modelOptions.isEmpty, resolved == nil {
             let message = "Selected Hermes model '\(option.modelID)' is not advertised by this Mac relay. Pick a live model from the relay list or refresh/restart the Mac Hermes gateway."
@@ -1240,7 +1241,7 @@ final class HermesService {
 
     private static func restoredModelID(_ stored: String?, defaults: UserDefaults, key: String) -> String? {
         guard let stored = stored?.nilIfBlank else { return nil }
-        let canonical = AssistantModelIDCanonicalizer.canonicalized(stored)
+        let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(stored)
         if canonical != stored {
             defaults.set(canonical, forKey: key)
         }
@@ -1248,7 +1249,7 @@ final class HermesService {
     }
 
     private func canonicalizedSelectedModelID(_ modelID: String) -> String {
-        let canonical = AssistantModelIDCanonicalizer.canonicalized(modelID)
+        let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(modelID)
         persistResolvedSelectedModelID(canonical)
         return canonical
     }
@@ -1276,9 +1277,9 @@ final class HermesService {
             }
             return
         }
-        let canonical = AssistantModelIDCanonicalizer.canonicalized(trimmed)
+        let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(trimmed)
         let resolved = !modelOptions.isEmpty
-            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(canonical, in: modelOptions)
+            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(trimmed, in: modelOptions)
             : canonical
         guard modelOptions.isEmpty || resolved != nil else {
             lastError = "Selected Hermes model '\(trimmed)' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
@@ -1325,8 +1326,7 @@ final class HermesService {
             return routeEligibleModelID
         }
         if modelOptions.isEmpty {
-            if selectedConnection.mode == .relayLink,
-               relayConnectionAlreadyAdvertises(modelID: selectedModelID) {
+            if selectedConnection.mode == .relayLink {
                 return canonicalizedSelectedModelID(selectedModelID)
             }
             if selectedModelWasExplicit {
@@ -1681,8 +1681,7 @@ final class HermesService {
 
     private func ensureRelayModelCatalogLoadedBeforeSend() async {
         guard selectedConnection.mode == .relayLink, modelOptions.isEmpty else { return }
-        if let selectedModelID = selectedModelID?.nilIfBlank,
-           relayConnectionAlreadyAdvertises(modelID: selectedModelID) {
+        if selectedModelID?.nilIfBlank != nil {
             return
         }
         await loadModels(generation: runtimeGeneration)
@@ -2237,7 +2236,7 @@ final class HermesService {
            let option = modelOptions.first(where: { $0.modelID == resolved }) {
             return option.displayName.nilIfBlank ?? option.modelID.nilIfBlank
         }
-        return selectedModelID?.nilIfBlank.map(AssistantModelIDCanonicalizer.canonicalized)
+        return selectedModelID?.nilIfBlank.map(AssistantModelIDCanonicalizer.canonicalizedPersistedSelection)
             ?? selectedConnection.advertisedModel?.nilIfBlank
     }
 
@@ -2246,15 +2245,14 @@ final class HermesService {
     /// honest about what we asked for, even if the server reports something
     /// else back.
     private var activeRequestedModelID: String? {
-        selectedModelID?.nilIfBlank
+        selectedModelID?.nilIfBlank.map(canonicalizedSelectedModelID)
             ?? selectedConnection.advertisedModel?.nilIfBlank
     }
 
     private func activeModelIDForRequest() throws -> String {
         if let selectedModelID = selectedModelID?.nilIfBlank {
             if modelOptions.isEmpty {
-                if selectedConnection.mode == .relayLink,
-                   relayConnectionAlreadyAdvertises(modelID: selectedModelID) {
+                if selectedConnection.mode == .relayLink {
                     return canonicalizedSelectedModelID(selectedModelID)
                 }
                 if selectedModelWasExplicit {
@@ -2297,6 +2295,10 @@ final class HermesService {
                     runtimeErrorText = "That Mac relay stopped checking in. Open or restart OpenBurnBar on the Mac, then refresh."
                     return
                 }
+                _ = try await relayTransport.sendUnary(
+                    relayPayload(operation: .models, method: "GET", path: "/v1/models"),
+                    timeout: remoteRelayControlPlaneTimeout
+                )
                 guard generation == nil || generation == runtimeGeneration else { return }
                 isReachable = true
             } else {

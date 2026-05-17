@@ -1053,7 +1053,8 @@ final class HermesRelayHostService {
         }
         let probe = await OpenAICompatibleModelProbe.probeWithModel(
             baseURL: burnBarGatewayBaseURLWithTrailingSlash(),
-            bearerToken: settingsManager.gatewayAuthToken
+            bearerToken: settingsManager.gatewayAuthToken,
+            timeout: 10
         )
         let now = Self.iso8601.string(from: Date())
         let realtimeRegistered: Bool

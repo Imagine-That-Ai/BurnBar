@@ -65,16 +65,10 @@ dependencies {
     // primitive across our minSdk range.
     implementation("com.google.crypto.tink:tink-android:1.15.0")
 
-    // The Rust binary + generated UniFFI bindings. Packed by
-    // scripts/build-iroh-android-aar.sh; we only depend on it if the
-    // file exists, so a fresh checkout still compiles via the loopback
-    // and Firestore fallbacks while CI is producing the AAR.
-    val irohAar = rootProject.layout.projectDirectory.dir("..").asFile.resolve("Vendor/openburnbar-iroh.aar")
-    if (irohAar.exists()) {
-        api(files(irohAar))
-        // jna 5.14 satisfies the UniFFI Kotlin bindings' runtime requirement.
-        api("net.java.dev.jna:jna:5.14.0@aar")
-    }
+    // jna 5.14 satisfies the generated UniFFI Kotlin bindings' runtime
+    // requirement. The native Rust AAR is consumed by :app directly so this
+    // Android library can still build its own AAR under AGP 8.9+.
+    api("net.java.dev.jna:jna:5.14.0@aar")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

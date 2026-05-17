@@ -248,6 +248,7 @@ final class HermesServiceTests: XCTestCase {
     }
 
     func testSuggestedRelayConnectionPicksNewestOnlineEncryptedRelay() {
+        let now = Date()
         let older = HermesConnectionRecord(
             id: "relay-old",
             displayName: "Old Mac Relay",
@@ -257,7 +258,8 @@ final class HermesServiceTests: XCTestCase {
             relayKeyVersion: HermesRelayCrypto.keyVersion,
             relayEncryption: HermesRelayCrypto.algorithm,
             capabilities: ["chat_completions", "remote_relay"],
-            lastSeenAt: Date(timeIntervalSince1970: 100)
+            lastSeenAt: now.addingTimeInterval(-90),
+            updatedAt: now.addingTimeInterval(-90)
         )
         let newer = HermesConnectionRecord(
             id: "relay-new",
@@ -268,7 +270,8 @@ final class HermesServiceTests: XCTestCase {
             relayKeyVersion: HermesRelayCrypto.keyVersion,
             relayEncryption: HermesRelayCrypto.algorithm,
             capabilities: ["chat_completions", "remote_relay"],
-            lastSeenAt: Date(timeIntervalSince1970: 200)
+            lastSeenAt: now.addingTimeInterval(-15),
+            updatedAt: now.addingTimeInterval(-15)
         )
         let legacy = HermesConnectionRecord(
             id: "relay-legacy",
@@ -1364,7 +1367,7 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertTrue(service.messages.last?.isError ?? false)
     }
 
-    func testExplicitSelectedModelUnverifiedCatalogStopsBeforeRelayRequest() async {
+    func testExplicitSelectedModelSendsWithoutRelayCatalogPreflight() async throws {
         let suiteName = "HermesServiceTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -1376,25 +1379,29 @@ final class HermesServiceTests: XCTestCase {
             displayName: "GPT-5.5"
         )
         let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"ok"}}]}"#,
+            "data: [DONE]"
+        ]
         let service = HermesService(relayTransport: relay, defaults: defaults)
         service.modelOptions = [selected]
         service.selectModel(selected)
         XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
         service.modelOptions = []
 
-        service.sendMessage("Do not send until this model is verified")
+        service.sendMessage("Send the selected model directly")
         await waitForStreamToFinish(service)
 
-        XCTAssertEqual(relay.unaryPayloads.map(\.operation), [.models])
-        XCTAssertTrue(relay.streamingPayloads.isEmpty)
-        XCTAssertEqual(
-            service.lastError,
-            "Selected Hermes model 'gpt-5.5' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
-        )
-        XCTAssertTrue(service.messages.last?.isError ?? false)
+        XCTAssertTrue(relay.unaryPayloads.isEmpty)
+        XCTAssertEqual(relay.streamingPayloads.count, 1)
+        let body = try XCTUnwrap(relay.streamingPayloads.first?.body)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["model"] as? String, "gpt-5.5")
+        XCTAssertEqual(service.messages.last?.text, "ok")
+        XCTAssertNil(service.lastError)
     }
 
-    func testExplicitSelectedModelLoadsRelayCatalogBeforeSend() async throws {
+    func testExplicitSelectedModelUsesSelectedIDWhenRelayCatalogIsEmpty() async throws {
         let suiteName = "HermesServiceTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -1406,7 +1413,6 @@ final class HermesServiceTests: XCTestCase {
             displayName: "MiniMax M2.7 Highspeed"
         )
         let relay = FakeHermesRelayTransport()
-        relay.unaryResponses[.models] = Data(#"{"data":[{"id":"minimax-m2.7-highspeed","owned_by":"minimax","provider_id":"minimax","route_eligible":true}]}"#.utf8)
         relay.streamingEvents = [
             #"data: {"choices":[{"delta":{"content":"ok"}}]}"#,
             "data: [DONE]"
@@ -1420,7 +1426,7 @@ final class HermesServiceTests: XCTestCase {
         service.sendMessage("Use the live relay catalog model")
         await waitForStreamToFinish(service)
 
-        XCTAssertEqual(relay.unaryPayloads.map(\.operation), [.models])
+        XCTAssertTrue(relay.unaryPayloads.isEmpty)
         XCTAssertEqual(relay.streamingPayloads.count, 1)
         let body = try XCTUnwrap(relay.streamingPayloads.first?.body)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -1429,14 +1435,13 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertNil(service.lastError)
     }
 
-    func testPersistedCatalogAliasLoadsRelayCatalogAndSendsResolvedModel() async throws {
+    func testPersistedCatalogAliasSendsResolvedModelWithoutRelayCatalogPreflight() async throws {
         let suiteName = "HermesServiceTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.set("minimax-m2-7", forKey: "hermes.selectedModelID")
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let relay = FakeHermesRelayTransport()
-        relay.unaryResponses[.models] = Data(#"{"data":[{"id":"minimax-m2.7-highspeed","owned_by":"minimax","provider_id":"minimax","route_eligible":true}]}"#.utf8)
         relay.streamingEvents = [
             #"data: {"choices":[{"delta":{"content":"ok"}}]}"#,
             "data: [DONE]"
@@ -1449,7 +1454,7 @@ final class HermesServiceTests: XCTestCase {
         service.sendMessage("Use the selected MiniMax route")
         await waitForStreamToFinish(service)
 
-        XCTAssertEqual(relay.unaryPayloads.map(\.operation), [.models])
+        XCTAssertTrue(relay.unaryPayloads.isEmpty)
         XCTAssertEqual(relay.streamingPayloads.count, 1)
         let body = try XCTUnwrap(relay.streamingPayloads.first?.body)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
@@ -1494,7 +1499,7 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertNil(service.lastError)
     }
 
-    func testExplicitSelectedModelUnverifiedCatalogStopsMissionDispatchModel() throws {
+    func testExplicitSelectedRelayModelIsValidForMissionDispatchWithoutCatalogPreflight() throws {
         let suiteName = "HermesServiceTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -1507,14 +1512,10 @@ final class HermesServiceTests: XCTestCase {
         let service = HermesService(relayTransport: FakeHermesRelayTransport(), defaults: defaults)
         service.modelOptions = [selected]
         service.selectModel(selected)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
         service.modelOptions = []
 
-        XCTAssertThrowsError(try service.validatedModelIDForMissionDispatch()) { error in
-            XCTAssertEqual(
-                error.localizedDescription,
-                "Selected Hermes model 'gpt-5.5' has not been verified against this Mac relay's model catalog yet. Refresh the Mac Hermes gateway before sending, so the selected model is not silently rerouted."
-            )
-        }
+        XCTAssertEqual(try service.validatedModelIDForMissionDispatch(), "gpt-5.5")
     }
 
     func testNoRouteEligibleModelStopsMissionDispatchModel() throws {

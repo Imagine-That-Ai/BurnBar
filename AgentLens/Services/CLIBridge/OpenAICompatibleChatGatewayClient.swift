@@ -6,27 +6,41 @@ enum OpenAICompatibleModelProbe {
         URL(string: "v1/models", relativeTo: baseURL)?.absoluteURL
     }
 
-    static func probe(baseURL: URL, bearerToken: String?) async -> Bool {
-        await probeWithModel(baseURL: baseURL, bearerToken: bearerToken).available
+    static func modelsRequest(baseURL: URL, bearerToken: String?, timeout: TimeInterval = 2) -> URLRequest? {
+        guard let url = modelsURL(baseURL: baseURL) else { return nil }
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.httpMethod = "GET"
+        if let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return request
     }
 
-    static func probeWithModel(baseURL: URL, bearerToken: String?) async -> (available: Bool, modelName: String?) {
-        let result = await probeWithModels(baseURL: baseURL, bearerToken: bearerToken)
+    static func probe(baseURL: URL, bearerToken: String?, timeout: TimeInterval = 2, session: URLSession = .shared) async -> Bool {
+        await probeWithModel(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout, session: session).available
+    }
+
+    static func probeWithModel(
+        baseURL: URL,
+        bearerToken: String?,
+        timeout: TimeInterval = 2,
+        session: URLSession = .shared
+    ) async -> (available: Bool, modelName: String?) {
+        let result = await probeWithModels(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout, session: session)
         return (result.available, result.modelName)
     }
 
     static func probeWithModels(
         baseURL: URL,
-        bearerToken: String?
+        bearerToken: String?,
+        timeout: TimeInterval = 2,
+        session: URLSession = .shared
     ) async -> (available: Bool, modelName: String?, hermesModels: [HermesAdvertisedModel], models: [OpenAICompatibleAdvertisedModel]) {
-        guard let url = modelsURL(baseURL: baseURL) else { return (false, nil, [], []) }
-        var request = URLRequest(url: url, timeoutInterval: 2)
-        request.httpMethod = "GET"
-        if let token = bearerToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        guard let request = modelsRequest(baseURL: baseURL, bearerToken: bearerToken, timeout: timeout) else {
+            return (false, nil, [], [])
         }
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse,
                   (200...299).contains(http.statusCode) else { return (false, nil, [], []) }
             return (

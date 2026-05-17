@@ -70,7 +70,7 @@ fun PulseView(
     var timelineScope by remember { mutableStateOf(PulseTimelineScope.DAY) }
     var displayMode by remember { mutableStateOf(UsageDisplayMode.CURRENCY) }
     var liveNowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var liveUsageStartMillis by remember { mutableLongStateOf(startOfLocalPulseDayMillis(liveNowMillis)) }
+    var liveUsageStartMillis by remember { mutableLongStateOf(livePulseUsageQueryStartMillis(liveNowMillis)) }
     val currentUser by userStore.user.collectAsState()
 
     LaunchedEffect(currentUser.isSignedIn) {
@@ -94,9 +94,9 @@ fun PulseView(
             delay(1_000L)
             val now = System.currentTimeMillis()
             liveNowMillis = now
-            val todayStart = startOfLocalPulseDayMillis(now)
-            if (todayStart != liveUsageStartMillis) {
-                liveUsageStartMillis = todayStart
+            val queryStart = livePulseUsageQueryStartMillis(now)
+            if (queryStart != liveUsageStartMillis) {
+                liveUsageStartMillis = queryStart
             }
         }
     }

@@ -113,8 +113,12 @@ const db = {
     };
   },
   async runTransaction(work) {
+    let hasWritten = false;
     const transaction = {
       async get(ref) {
+        if (hasWritten) {
+          throw new Error("test transaction read after write");
+        }
         const data = db.store.get(ref.path);
         return {
           exists: data != null,
@@ -122,6 +126,7 @@ const db = {
         };
       },
       set(ref, data, _options) {
+        hasWritten = true;
         const existing = db.store.get(ref.path) ?? {};
         const next = { ...existing };
         for (const [key, value] of Object.entries(data)) {
@@ -218,8 +223,12 @@ const incrementalDb = {
     throw new Error("incremental test should not use repair batches");
   },
   async runTransaction(work) {
+    let hasWritten = false;
     const transaction = {
       async get(ref) {
+        if (hasWritten) {
+          throw new Error("test transaction read after write");
+        }
         const data = incrementalDb.store.get(ref.path);
         return {
           exists: data != null,
@@ -227,6 +236,7 @@ const incrementalDb = {
         };
       },
       set(ref, data, _options) {
+        hasWritten = true;
         const existing = incrementalDb.store.get(ref.path) ?? {};
         const next = { ...existing };
         for (const [key, value] of Object.entries(data)) {
@@ -297,5 +307,15 @@ await applyUsageCounterDelta(incrementalDb, "test-uid", "codex#good", usageDocs[
 incrementalRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
 assert.equal(incrementalRollups.today.totals.requests, 1);
 assert.equal(incrementalRollups.today.modelSummaries[0]?.model, "unknown");
+
+incrementalDb.store.clear();
+const movedCodex = {
+  ...usageDocs[1],
+  sessionId: "codex-session-moved",
+};
+await applyUsageCounterDelta(incrementalDb, "test-uid", "codex-moved", usageDocs[1], movedCodex);
+incrementalRollups = await computeUserRollupsFromCounters(incrementalDb, "test-uid");
+assert.equal(incrementalRollups.today.totals.requests, 1);
+assert.equal(incrementalRollups.today.modelSummaries[0]?.model, "gpt-5.5");
 
 console.log("rollup normalization regression checks passed");

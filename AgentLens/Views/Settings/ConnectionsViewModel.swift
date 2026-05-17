@@ -122,6 +122,14 @@ final class ConnectionsViewModel {
         }
     }
 
+    /// Read disk truth plus live model-catalog drift. This keeps Droid honest:
+    /// a stale Factory custom-model row is not "synced" just because an older
+    /// OpenBurnBar entry still exists on disk.
+    func refreshWiringState(settings: SettingsManager) async {
+        refreshWiringState()
+        await refreshDroidModelSyncState(settings: settings)
+    }
+
     func state(for target: RoutingClientWiringTarget) -> AppConnectState {
         appStates[target] ?? .unknown
     }
@@ -302,6 +310,33 @@ final class ConnectionsViewModel {
         ensureLocalGateway(settings: settings)
     }
 
+    private func refreshDroidModelSyncState(settings: SettingsManager) async {
+        guard appStates[.droid]?.isBusy != true else { return }
+        let gateway = makeGateway(from: settings)
+        let wiring = wiringFactory()
+        guard wiring.isWired(target: .droid) else { return }
+        let advertisedModels = proxyModels.isEmpty
+            ? await wiring.advertisedModels(gateway: gateway)
+            : proxyModels.map(RoutingClientAdvertisedModel.init(proxyModel:))
+        guard !advertisedModels.isEmpty else { return }
+
+        switch wiring.modelSyncStatus(
+            target: .droid,
+            gateway: gateway,
+            advertisedModels: advertisedModels
+        ) {
+        case .current:
+            if case .degraded(let message) = appStates[.droid],
+               message.contains("Droid's BurnBar model list is stale") {
+                appStates[.droid] = .connected
+            }
+        case .stale:
+            appStates[.droid] = .degraded(message: "Droid's BurnBar model list is stale. Press Sync models to rewrite Droid from BurnBar's live /v1/models catalog.")
+        case .notWired:
+            appStates[.droid] = .notConnected
+        }
+    }
+
     private static func fetchProxyModels(gateway: RoutingClientGateway) async throws -> [ProxyAdvertisedModel] {
         guard let url = URL(string: gateway.baseURL)?.appending(path: "v1/models") else {
             throw ProxyModelCatalogError.invalidGatewayURL
@@ -448,5 +483,17 @@ private extension ProxyAdvertisedModel {
         self.routeEligible = row.routeEligible ?? (row.enabled == true)
         self.capabilities = row.capabilities ?? []
         self.lastError = row.lastError
+    }
+}
+
+private extension RoutingClientAdvertisedModel {
+    init(proxyModel: ProxyAdvertisedModel) {
+        self.init(
+            id: proxyModel.modelID,
+            displayName: proxyModel.displayName,
+            providerID: proxyModel.providerID,
+            providerName: proxyModel.providerName,
+            routeEligible: proxyModel.routeEligible
+        )
     }
 }

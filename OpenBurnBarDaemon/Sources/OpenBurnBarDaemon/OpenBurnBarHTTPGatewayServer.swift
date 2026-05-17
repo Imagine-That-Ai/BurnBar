@@ -326,9 +326,6 @@ public actor BurnBarHTTPGatewayServer {
             ).snapshot()
             var models: [ModelDescriptor] = []
             for model in snapshot.models where model.routeEligible {
-                guard model.capabilities.contains(BurnBarProviderFormatFamily.openaiCompat.rawValue) else {
-                    continue
-                }
                 if await canRouteAdvertisedModel(model, router: router, catalog: catalog) {
                     models.append(ModelDescriptor(model: model))
                 }
@@ -347,9 +344,10 @@ public actor BurnBarHTTPGatewayServer {
     ) async -> Bool {
         do {
             let requiredCapabilityClassID = capabilityClassID(forModelName: model.id, catalog: catalog)
+            let formatFamily = advertisedFormatFamily(for: model, catalog: catalog)
             let routes = try await router.candidateRoutes(
                 modelName: model.id,
-                requestedFormatFamily: .openaiCompat,
+                requestedFormatFamily: formatFamily,
                 requiredCapabilityClassID: requiredCapabilityClassID
             )
             return routes.contains { route in
@@ -370,9 +368,9 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
-    private func openAIAdvertisedRouteKeys(for modelID: String) async throws -> Set<String> {
+    private func advertisedRouteKeysByFamily(for modelID: String) async throws -> [BurnBarProviderFormatFamily: Set<String>] {
         let normalizedModelID = modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard normalizedModelID.isEmpty == false else { return [] }
+        guard normalizedModelID.isEmpty == false else { return [:] }
 
         let catalog = configStore.catalogSupport.catalog
         let router = BurnBarProviderRouter(
@@ -385,18 +383,44 @@ public actor BurnBarHTTPGatewayServer {
             session: modelCatalogSession
         ).snapshot()
 
-        var routeKeys = Set<String>()
+        var routeKeysByFamily: [BurnBarProviderFormatFamily: Set<String>] = [:]
         for model in snapshot.models where model.routeEligible {
-            guard model.capabilities.contains(BurnBarProviderFormatFamily.openaiCompat.rawValue),
-                  advertisedModel(model.id, matchesRequestedModelID: normalizedModelID, providerID: model.providerID, catalog: catalog) else {
+            guard advertisedModel(model.id, matchesRequestedModelID: normalizedModelID, providerID: model.providerID, catalog: catalog) else {
                 continue
             }
             guard await canRouteAdvertisedModel(model, router: router, catalog: catalog) else {
                 continue
             }
-            routeKeys.insert(routeKey(providerID: model.providerID, slotID: model.accountID == "legacy" ? nil : model.accountID))
+            let family = advertisedFormatFamily(for: model, catalog: catalog)
+            routeKeysByFamily[family, default: []].insert(
+                routeKey(providerID: model.providerID, slotID: model.accountID == "legacy" ? nil : model.accountID)
+            )
         }
-        return routeKeys
+        return routeKeysByFamily
+    }
+
+    private func advertisedFormatFamily(
+        for model: BurnBarLiveAdvertisedModel,
+        catalog: BurnBarCatalog
+    ) -> BurnBarProviderFormatFamily {
+        if model.capabilities.contains(BurnBarProviderFormatFamily.anthropic.rawValue) {
+            return .anthropic
+        }
+        if model.capabilities.contains(BurnBarProviderFormatFamily.openaiCompat.rawValue) {
+            return .openaiCompat
+        }
+        return catalog.provider(id: model.providerID)?.formatFamily ?? .openaiCompat
+    }
+
+    private func preferredGatewayFormatFamilies(
+        for modelID: String,
+        advertised: [BurnBarProviderFormatFamily: Set<String>]
+    ) -> [BurnBarProviderFormatFamily] {
+        let normalized = modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let baseOrder: [BurnBarProviderFormatFamily] = normalized.contains("claude") || normalized.contains("anthropic")
+            ? [.anthropic, .openaiCompat]
+            : [.openaiCompat, .anthropic]
+        return baseOrder.filter { advertised[$0]?.isEmpty == false }
     }
 
     private func advertisedModel(
@@ -441,8 +465,8 @@ public actor BurnBarHTTPGatewayServer {
         }
 
         do {
-            let advertisedRouteKeys = try await openAIAdvertisedRouteKeys(for: modelID)
-            guard advertisedRouteKeys.isEmpty == false else {
+            let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: modelID)
+            guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
                 return noEligibleRouteResponse(modelID: modelID)
             }
 
@@ -457,76 +481,95 @@ public actor BurnBarHTTPGatewayServer {
                 forModelName: modelID,
                 catalog: catalog
             )
-            let ranking = try await router.scoreAndRankRoutes(
-                modelName: modelID,
-                requestedFormatFamily: .openaiCompat,
-                requiredCapabilityClassID: resolvedCapabilityClassID
-            )
-            await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
-            let rankedRoutes = ranking.rankedRoutes
-                .map(\.route)
-                .filter { advertisedRouteKeys.contains(routeKey(providerID: $0.providerID, slotID: $0.credentialSlotID)) }
-            guard rankedRoutes.isEmpty == false else {
-                return noEligibleRouteResponse(modelID: modelID)
-            }
-
-            // When the router pre-filtered by capability class, use its reported
-            // blocked routes. Otherwise, discover the class from the top-ranked
-            // route and compute blocked alternatives post-hoc.
-            let selectedCapabilityClassID = resolvedCapabilityClassID ?? rankedRoutes.first?.modelCapabilityClassID
-            let routes: [BurnBarProviderRoute]
-            let blockedCapabilityAlternatives: [BurnBarProviderRoute]
-            if let classID = selectedCapabilityClassID {
-                routes = rankedRoutes.filter { $0.modelCapabilityClassID == classID }
-                if !ranking.blockedCapabilityClassRoutes.isEmpty {
-                    blockedCapabilityAlternatives = ranking.blockedCapabilityClassRoutes
-                } else {
-                    blockedCapabilityAlternatives = rankedRoutes.filter { $0.modelCapabilityClassID != classID }
-                }
-            } else {
-                routes = rankedRoutes
-                blockedCapabilityAlternatives = []
-            }
-
             var lastError: Error?
-            for (index, route) in routes.enumerated() {
-                if let slotID = route.credentialSlotID {
-                    try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
+            for formatFamily in preferredGatewayFormatFamilies(for: modelID, advertised: advertisedRouteKeysByFamily) {
+                guard let advertisedRouteKeys = advertisedRouteKeysByFamily[formatFamily], !advertisedRouteKeys.isEmpty else {
+                    continue
                 }
 
-                do {
-                    let response = try await providerExecutor.proxyChatCompletions(
-                        body: bodyData,
-                        route: route
-                    )
-                    await router.markRouteSuccess(route)
-                    await recordUsageIfAvailable(response.usage, route: route)
-                    return GatewayHTTPResponse(
-                        status: response.statusCode,
-                        headers: ["Content-Type": response.contentType],
-                        body: response.body
-                    )
-                } catch {
-                    lastError = error
-                    await router.markRouteFailure(route, error: error)
-                    let hasMoreCandidates = index < routes.count - 1
-                    if shouldFailOverProviderError(error), hasMoreCandidates {
-                        continue
-                    }
-                    break
-                }
-            }
-
-            if !blockedCapabilityAlternatives.isEmpty,
-               let lastError,
-               shouldFailOverProviderError(lastError) {
-                let classLabel = selectedCapabilityClassID ?? modelID
-                return jsonResponse(
-                    status: 503,
-                    body: errorBody(
-                        "all routed accounts in capability class \(classLabel) failed; no same-tier fallback remained and downgrade is disabled."
-                    )
+                let ranking = try await router.scoreAndRankRoutes(
+                    modelName: modelID,
+                    requestedFormatFamily: formatFamily,
+                    requiredCapabilityClassID: resolvedCapabilityClassID
                 )
+                await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
+                let rankedRoutes = ranking.rankedRoutes
+                    .map(\.route)
+                    .filter { advertisedRouteKeys.contains(routeKey(providerID: $0.providerID, slotID: $0.credentialSlotID)) }
+                guard rankedRoutes.isEmpty == false else {
+                    continue
+                }
+
+                // When the router pre-filtered by capability class, use its reported
+                // blocked routes. Otherwise, discover the class from the top-ranked
+                // route and compute blocked alternatives post-hoc.
+                let selectedCapabilityClassID = resolvedCapabilityClassID ?? rankedRoutes.first?.modelCapabilityClassID
+                let routes: [BurnBarProviderRoute]
+                let blockedCapabilityAlternatives: [BurnBarProviderRoute]
+                if let classID = selectedCapabilityClassID {
+                    routes = rankedRoutes.filter { $0.modelCapabilityClassID == classID }
+                    if !ranking.blockedCapabilityClassRoutes.isEmpty {
+                        blockedCapabilityAlternatives = ranking.blockedCapabilityClassRoutes
+                    } else {
+                        blockedCapabilityAlternatives = rankedRoutes.filter { $0.modelCapabilityClassID != classID }
+                    }
+                } else {
+                    routes = rankedRoutes
+                    blockedCapabilityAlternatives = []
+                }
+
+                for (index, route) in routes.enumerated() {
+                    if let slotID = route.credentialSlotID {
+                        try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
+                    }
+
+                    do {
+                        let response: BurnBarProviderProxyResponse
+                        switch formatFamily {
+                        case .openaiCompat:
+                            response = try await providerExecutor.proxyChatCompletions(
+                                body: bodyData,
+                                route: route
+                            )
+                        case .anthropic:
+                            response = try await anthropicExecutor.proxyChatCompletions(
+                                body: bodyData,
+                                route: route
+                            )
+                        }
+                        await router.markRouteSuccess(route)
+                        await recordUsageIfAvailable(response.usage, route: route)
+                        return GatewayHTTPResponse(
+                            status: response.statusCode,
+                            headers: ["Content-Type": response.contentType],
+                            body: response.body
+                        )
+                    } catch {
+                        lastError = error
+                        await router.markRouteFailure(route, error: error)
+                        let hasMoreCandidates = index < routes.count - 1
+                        if shouldFailOverProviderError(error), hasMoreCandidates {
+                            continue
+                        }
+                        break
+                    }
+                }
+
+                if !blockedCapabilityAlternatives.isEmpty,
+                   let lastError,
+                   shouldFailOverProviderError(lastError) {
+                    let classLabel = selectedCapabilityClassID ?? modelID
+                    return jsonResponse(
+                        status: 503,
+                        body: errorBody(
+                            "all routed accounts in capability class \(classLabel) failed; no same-tier fallback remained and downgrade is disabled."
+                        )
+                    )
+                }
+
+                if let lastError {
+                    return providerFailureResponse(lastError)
+                }
             }
 
             if let lastError {
@@ -566,8 +609,8 @@ public actor BurnBarHTTPGatewayServer {
         }
 
         do {
-            let advertisedRouteKeys = try await openAIAdvertisedRouteKeys(for: modelID)
-            guard advertisedRouteKeys.isEmpty == false else {
+            let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: modelID)
+            guard advertisedRouteKeysByFamily.values.contains(where: { !$0.isEmpty }) else {
                 return noEligibleRouteResponse(modelID: modelID)
             }
 
@@ -582,45 +625,91 @@ public actor BurnBarHTTPGatewayServer {
                 forModelName: modelID,
                 catalog: catalog
             )
-            let ranking = try await router.scoreAndRankRoutes(
-                modelName: modelID,
-                requestedFormatFamily: .openaiCompat,
-                requiredCapabilityClassID: resolvedCapabilityClassID
-            )
-            await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
-            let routes = ranking.rankedRoutes
-                .map(\.route)
-                .filter { advertisedRouteKeys.contains(routeKey(providerID: $0.providerID, slotID: $0.credentialSlotID)) }
-            guard routes.isEmpty == false else {
-                return noEligibleRouteResponse(modelID: modelID)
-            }
-
             var lastError: Error?
-            for (index, route) in routes.enumerated() {
-                if let slotID = route.credentialSlotID {
-                    try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
+            for formatFamily in preferredGatewayFormatFamilies(for: modelID, advertised: advertisedRouteKeysByFamily) {
+                guard let advertisedRouteKeys = advertisedRouteKeysByFamily[formatFamily], !advertisedRouteKeys.isEmpty else {
+                    continue
                 }
 
-                do {
-                    let response = try await providerExecutor.proxyResponses(
-                        body: bodyData,
-                        route: route
-                    )
-                    await router.markRouteSuccess(route)
-                    await recordUsageIfAvailable(response.usage, route: route)
-                    return GatewayHTTPResponse(
-                        status: response.statusCode,
-                        headers: ["Content-Type": response.contentType],
-                        body: response.body
-                    )
-                } catch {
-                    lastError = error
-                    await router.markRouteFailure(route, error: error)
-                    let hasMoreCandidates = index < routes.count - 1
-                    if shouldFailOverProviderError(error), hasMoreCandidates {
-                        continue
+                let ranking = try await router.scoreAndRankRoutes(
+                    modelName: modelID,
+                    requestedFormatFamily: formatFamily,
+                    requiredCapabilityClassID: resolvedCapabilityClassID
+                )
+                await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
+                let rankedRoutes = ranking.rankedRoutes
+                    .map(\.route)
+                    .filter { advertisedRouteKeys.contains(routeKey(providerID: $0.providerID, slotID: $0.credentialSlotID)) }
+                guard rankedRoutes.isEmpty == false else {
+                    continue
+                }
+
+                let selectedCapabilityClassID = resolvedCapabilityClassID ?? rankedRoutes.first?.modelCapabilityClassID
+                let routes: [BurnBarProviderRoute]
+                let blockedCapabilityAlternatives: [BurnBarProviderRoute]
+                if let classID = selectedCapabilityClassID {
+                    routes = rankedRoutes.filter { $0.modelCapabilityClassID == classID }
+                    if !ranking.blockedCapabilityClassRoutes.isEmpty {
+                        blockedCapabilityAlternatives = ranking.blockedCapabilityClassRoutes
+                    } else {
+                        blockedCapabilityAlternatives = rankedRoutes.filter { $0.modelCapabilityClassID != classID }
                     }
-                    break
+                } else {
+                    routes = rankedRoutes
+                    blockedCapabilityAlternatives = []
+                }
+
+                for (index, route) in routes.enumerated() {
+                    if let slotID = route.credentialSlotID {
+                        try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
+                    }
+
+                    do {
+                        let response: BurnBarProviderProxyResponse
+                        switch formatFamily {
+                        case .openaiCompat:
+                            response = try await providerExecutor.proxyResponses(
+                                body: bodyData,
+                                route: route
+                            )
+                        case .anthropic:
+                            response = try await anthropicExecutor.proxyResponses(
+                                body: bodyData,
+                                route: route
+                            )
+                        }
+                        await router.markRouteSuccess(route)
+                        await recordUsageIfAvailable(response.usage, route: route)
+                        return GatewayHTTPResponse(
+                            status: response.statusCode,
+                            headers: ["Content-Type": response.contentType],
+                            body: response.body
+                        )
+                    } catch {
+                        lastError = error
+                        await router.markRouteFailure(route, error: error)
+                        let hasMoreCandidates = index < routes.count - 1
+                        if shouldFailOverProviderError(error), hasMoreCandidates {
+                            continue
+                        }
+                        break
+                    }
+                }
+
+                if !blockedCapabilityAlternatives.isEmpty,
+                   let lastError,
+                   shouldFailOverProviderError(lastError) {
+                    let classLabel = selectedCapabilityClassID ?? modelID
+                    return jsonResponse(
+                        status: 503,
+                        body: errorBody(
+                            "all routed accounts in capability class \(classLabel) failed; no same-tier fallback remained and downgrade is disabled."
+                        )
+                    )
+                }
+
+                if let lastError {
+                    return providerFailureResponse(lastError)
                 }
             }
 
@@ -1072,6 +1161,8 @@ public actor BurnBarHTTPGatewayServer {
         let sourceKind: String
         let displayName: String
         let capabilities: [String]
+        let formatFamily: String
+        let servedEndpoints: [String]
         let quotaState: String
         let enabled: Bool
         let routeEligible: Bool
@@ -1089,11 +1180,29 @@ public actor BurnBarHTTPGatewayServer {
             self.sourceKind = model.sourceKind
             self.displayName = model.displayName
             self.capabilities = model.capabilities
+            self.formatFamily = Self.formatFamily(from: model.capabilities).rawValue
+            self.servedEndpoints = Self.servedEndpoints(for: Self.formatFamily(from: model.capabilities))
             self.quotaState = model.quotaState.rawValue
             self.enabled = model.enabled
             self.routeEligible = model.routeEligible
             self.lastRefreshAt = model.lastRefreshAt
             self.lastError = model.lastError
+        }
+
+        private static func formatFamily(from capabilities: [String]) -> BurnBarProviderFormatFamily {
+            if capabilities.contains(BurnBarProviderFormatFamily.anthropic.rawValue) {
+                return .anthropic
+            }
+            return .openaiCompat
+        }
+
+        private static func servedEndpoints(for formatFamily: BurnBarProviderFormatFamily) -> [String] {
+            switch formatFamily {
+            case .openaiCompat:
+                return ["/v1/models", "/v1/chat/completions", "/v1/responses"]
+            case .anthropic:
+                return ["/v1/models", "/v1/messages", "/v1/chat/completions", "/v1/responses"]
+            }
         }
 
         enum CodingKeys: String, CodingKey {
@@ -1108,6 +1217,8 @@ public actor BurnBarHTTPGatewayServer {
             case sourceKind = "source_kind"
             case displayName = "display_name"
             case capabilities
+            case formatFamily = "format_family"
+            case servedEndpoints = "served_endpoints"
             case quotaState = "quota_state"
             case enabled
             case routeEligible = "route_eligible"
@@ -1174,13 +1285,25 @@ public actor BurnBarHTTPGatewayServer {
             self.truncationPolicy = TruncationPolicy(mode: "tokens", limit: 65_536)
             self.supportsParallelToolCalls = false
             self.supportsImageDetailOriginal = false
-            self.contextWindow = 65_536
-            self.maxContextWindow = nil
+            self.contextWindow = Self.contextWindow(for: model)
+            self.maxContextWindow = Self.contextWindow(for: model)
             self.autoCompactTokenLimit = nil
             self.effectiveContextWindowPercent = 95
             self.experimentalSupportedTools = []
             self.inputModalities = ["text"]
             self.supportsSearchTool = false
+        }
+
+        private static func contextWindow(for model: ModelDescriptor) -> Int {
+            let id = model.id.lowercased()
+            if model.formatFamily == BurnBarProviderFormatFamily.anthropic.rawValue,
+               id.contains("opus") {
+                return 1_000_000
+            }
+            if model.formatFamily == BurnBarProviderFormatFamily.anthropic.rawValue {
+                return 200_000
+            }
+            return 65_536
         }
 
         enum CodingKeys: String, CodingKey {

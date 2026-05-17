@@ -122,6 +122,7 @@ struct ConnectionsSettingsView: View {
             await daemonManager.refreshHealth()
             loadAccountData()
             await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
             await quotaService.refreshIfNeeded(dataStore: dataStore)
         }
     }
@@ -289,13 +290,17 @@ struct ConnectionsSettingsView: View {
                 state: viewModel.proxyModelCatalogState,
                 endpoint: gatewayModelsEndpoint,
                 onRefresh: {
-                    Task { await viewModel.refreshProxyModelCatalog(settings: settingsManager) }
+                    Task {
+                        await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+                        await viewModel.refreshWiringState(settings: settingsManager)
+                    }
                 },
                 onStartGateway: {
                     Task {
                         viewModel.enableLocalGateway(settings: settingsManager)
                         await restartLocalGateway()
                         await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+                        await viewModel.refreshWiringState(settings: settingsManager)
                     }
                 }
             )

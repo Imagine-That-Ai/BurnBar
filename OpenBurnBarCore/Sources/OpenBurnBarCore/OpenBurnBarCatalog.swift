@@ -44,10 +44,11 @@ public enum BurnBarProviderCapability: String, Codable, Hashable, Sendable {
 
 /// Wire-format family a provider speaks at the OpenBurnBar local gateway.
 ///
-/// The router enforces that an incoming request is only served by accounts in
-/// the same format family. OpenAI-compatible (`/v1/chat/completions`) traffic
-/// never crosses into Anthropic-compatible (`/v1/messages`) accounts and
-/// vice-versa. This is "two highways" routing — not cross-format translation.
+/// The router uses this to keep native upstream selection honest. Gateway
+/// endpoints may expose explicit compatibility bridges, such as serving a
+/// Claude model through the local OpenAI-style endpoints, but those bridges
+/// are declared at the HTTP layer and still route to a provider in its native
+/// format family.
 public enum BurnBarProviderFormatFamily: String, Codable, Hashable, Sendable {
     /// OpenAI-shape Chat Completions API. Covers OpenAI, Z.ai, MiniMax, Kimi,
     /// Ollama Cloud, Ollama Local, xAI, DeepSeek, Mistral, Meta, Cohere,

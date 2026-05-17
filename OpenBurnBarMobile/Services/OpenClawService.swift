@@ -100,9 +100,10 @@ final class OpenClawService {
     }
 
     func selectModel(_ option: HermesRuntimeModelOption) {
-        let requested = AssistantModelIDCanonicalizer.canonicalized(option.modelID)
+        let raw = option.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requested = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(raw)
         let resolved = !modelOptions.isEmpty
-            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(requested, in: modelOptions)
+            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(raw, in: modelOptions)
             : requested
         let modelID = resolved ?? requested
         selectedModelID = modelID
@@ -216,7 +217,7 @@ final class OpenClawService {
 
     private static func restoredModelID(_ stored: String?, defaults: UserDefaults, key: String) -> String? {
         guard let stored = stored?.nonEmpty else { return nil }
-        let canonical = AssistantModelIDCanonicalizer.canonicalized(stored)
+        let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(stored)
         if canonical != stored {
             defaults.set(canonical, forKey: key)
         }
@@ -224,7 +225,7 @@ final class OpenClawService {
     }
 
     private func canonicalizedSelectedModelID(_ modelID: String) -> String {
-        let canonical = AssistantModelIDCanonicalizer.canonicalized(modelID)
+        let canonical = AssistantModelIDCanonicalizer.canonicalizedPersistedSelection(modelID)
         persistResolvedSelectedModelID(canonical)
         return canonical
     }

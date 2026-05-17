@@ -91,6 +91,10 @@ dependencies {
     // Local Kotlin library: Android-side iroh transport + pairing
     // verifier. 1:1 mirror of the Swift OpenBurnBarIrohRelay package.
     implementation(project(":openburnbar-iroh-relay"))
+    val irohAar = rootProject.layout.projectDirectory.dir("..").asFile.resolve("Vendor/openburnbar-iroh.aar")
+    if (irohAar.exists()) {
+        implementation(files(irohAar))
+    }
 
     // Compose BOM
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")

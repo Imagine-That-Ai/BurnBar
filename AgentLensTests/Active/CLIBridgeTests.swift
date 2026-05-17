@@ -101,6 +101,18 @@ final class CLIBridgeTests: XCTestCase {
         )
     }
 
+    func test_openAICompatibleModelProbe_modelsRequestCarriesGatewayRelayTimeoutAndBearer() throws {
+        let request = try XCTUnwrap(OpenAICompatibleModelProbe.modelsRequest(
+            baseURL: URL(string: "http://127.0.0.1:8317/")!,
+            bearerToken: " gateway-token ",
+            timeout: 10
+        ))
+
+        XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:8317/v1/models")
+        XCTAssertEqual(request.timeoutInterval, 10)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer gateway-token")
+    }
+
     func test_cliBridge_codexArguments_includesReasoningEffort() {
         let args = CLIBridge.codexArguments(prompt: "test")
         XCTAssertTrue(args.contains(#"model_reasoning_effort="high""#))
