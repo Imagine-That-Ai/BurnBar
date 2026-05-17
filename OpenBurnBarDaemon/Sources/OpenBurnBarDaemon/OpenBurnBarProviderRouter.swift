@@ -857,6 +857,18 @@ public struct BurnBarProviderRouter: Sendable {
         configurations: [BurnBarResolvedProviderConfiguration]
     ) -> String? {
         guard routerMode == .providerFamilyFailover else { return nil }
+        if let catalogProviderID = configStore.catalogSupport.catalog.vendorForModel(named: modelName)?.id {
+            let catalogMatches = configurations.filter { configuration in
+                configuration.provider.id == catalogProviderID
+                    && configuration.settings.isEnabled
+                    && (requestedFormatFamily == nil || configuration.provider.formatFamily == requestedFormatFamily)
+                    && resolveModel(named: modelName, in: configuration) != nil
+            }
+            if catalogMatches.contains(where: { !selectRoutes(for: modelName, configurations: [$0]).isEmpty }) {
+                return catalogProviderID
+            }
+        }
+
         let matchingConfigurations = configurations.filter { configuration in
             configuration.settings.isEnabled
                 && (requestedFormatFamily == nil || configuration.provider.formatFamily == requestedFormatFamily)
@@ -876,11 +888,6 @@ public struct BurnBarProviderRouter: Sendable {
             return matchingConfigurations[0].provider.id
         }
 
-        if let catalogProviderID = configStore.catalogSupport.catalog.vendorForModel(named: modelName)?.id {
-            if matchingConfigurations.isEmpty {
-                return catalogProviderID
-            }
-        }
         return nil
     }
 

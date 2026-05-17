@@ -1,6 +1,25 @@
 # Drive Hermes iroh transport to production
 
-You are taking over the OpenBurnBar Hermes Realtime Relay migration from Cloud Run + WSS to **iroh peer-to-peer QUIC**. The transport foundation, error handling, schema, rules, and tests are already in place on branch `chore/router-brand-coherent-rail`, head commit `072a96070`. Your job is to drive it from "compiles on a Mac and passes unit tests" all the way to "users on TestFlight are routing real Hermes chat completions over iroh, with monitoring and a rollback plan."
+> **Current state (2026-05-17):** this handoff is no longer a fresh Phase A
+> start from commit `072a96070`. Phase A and Phase B are recorded green in
+> [`HERMES_IROH_TRANSPORT.md`](HERMES_IROH_TRANSPORT.md), production Firestore
+> rules and hosted relay Remote Config are live, physical iOS and Android
+> selected-model hosted-relay proofs are green, and the immediate PR-harness
+> blocker on branch `chore/router-brand-coherent-rail` is repaired locally as a
+> provider-router/keychain regression cluster. The latest local repair keeps
+> provider-family mode pinned to the catalog vendor only when that vendor can
+> actually route the requested model, preserves fallback to a credentialed
+> same-family provider, and restores provider keychain overwrite semantics so
+> stale login-keychain metadata is deleted instead of preserved. Local
+> verification: `cd OpenBurnBarDaemon && swift test` passes 261 tests.
+>
+> The rollout is still **not production complete**. The remaining hard gates
+> are the renewed different-network/cellular iPhone Gate C/D sequence, a clean
+> pushed CI run on the repaired branch, Phase E TestFlight/internal soak, and
+> explicit approvals for any production deploy, TestFlight submission, Remote
+> Config percentage increase, hosted-relay spend, or WSS retirement action.
+
+You are taking over the OpenBurnBar Hermes Realtime Relay migration from Cloud Run + WSS to **iroh peer-to-peer QUIC**. The transport foundation, error handling, schema, rules, tests, hosted-relay plumbing, monitoring rollup, and cross-platform smoke paths are already in place on branch `chore/router-brand-coherent-rail`. Your job is to drive it from the current state above all the way to "users on TestFlight are routing real Hermes chat completions over iroh, with monitoring and a rollback plan."
 
 This is a **multi-phase production rollout**. Do not skip phases. Each phase has a hard gate at the bottom — do not advance until it's green. If you get blocked at a gate, surface the blocker to the user with a concrete unblock request rather than working around it.
 
@@ -37,10 +56,23 @@ Files that define the current state (read these before doing anything):
 - `scripts/cutover-n0-hosted-relay.sh` — n0 hosted relay provisioning + Remote Config publish.
 - Commit `072a96070` (most recent) — audit-pass log of every issue and fix.
 
-Verified state at handoff:
+Verified state at original handoff:
 - 34/34 SwiftPM tests green on macOS arm64.
 - `cargo check` clean for the Rust crate on the host.
-- iOS Rust targets, xcframework build, both Xcode app builds, `tsc` on `functions/`, real Mac↔iOS dial, deploys, monitoring — **none of these have run yet**.
+- iOS Rust targets, xcframework build, both Xcode app builds, `tsc` on `functions/`, real Mac↔iOS dial, deploys, monitoring — **none of these had run yet**.
+
+Verified state now:
+- Phase A and Phase B are green in `docs/HERMES_IROH_TRANSPORT.md`.
+- Production Firestore rules, hosted relay URL Remote Config, and daily
+  monitoring rollup are live.
+- Same-LAN physical-iPhone hosted-relay validation has a historical 10-run
+  clean streak, but the later topology preflight proved the phone was still on
+  Wi-Fi. Formal Gate C/D still needs a renewed different-network/cellular run.
+- Physical iOS and Android selected-model hosted-relay smoke tests are green
+  for `minimax-m2.7-highspeed`, with explicit requested-model fidelity and no
+  silent reroute to a default GPT model.
+- Local daemon verification after the provider-router/keychain repair:
+  `cd OpenBurnBarDaemon && swift test` passes 261 tests.
 
 Feature flag (off by default): `SettingsManager.hermesIrohTransportEnabled` on Mac, `UserDefaults` key `hermes_iroh_transport_enabled` on iOS. Until this flag is on, the iroh code paths are dormant.
 

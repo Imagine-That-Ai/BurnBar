@@ -30,28 +30,35 @@ final class BurnBarConfigStoreTests: XCTestCase {
         )
 
         XCTAssertTrue(gateSource.contains("SecKeychainSetUserInteractionAllowed"))
+        func sourceWrapsSecurityCall(_ source: String, call: String) -> Bool {
+            source.range(
+                of: #"withKeychainUserInteractionDisabled\s*\{\s*\#(call)"#,
+                options: .regularExpression
+            ) != nil
+        }
+
         XCTAssertTrue(
-            connectorSource.contains("withKeychainUserInteractionDisabled {\n            SecItemCopyMatching"),
+            sourceWrapsSecurityCall(connectorSource, call: "SecItemCopyMatching"),
             "Connector-plane keychain reads must not be able to show login-keychain prompts."
         )
         XCTAssertTrue(
-            connectorSource.contains("withKeychainUserInteractionDisabled {\n                SecItemUpdate")
-                && connectorSource.contains("withKeychainUserInteractionDisabled {\n                    SecItemAdd")
-                && connectorSource.contains("withKeychainUserInteractionDisabled {\n                SecItemDelete"),
+            sourceWrapsSecurityCall(connectorSource, call: "SecItemUpdate")
+                && sourceWrapsSecurityCall(connectorSource, call: "SecItemAdd")
+                && sourceWrapsSecurityCall(connectorSource, call: "SecItemDelete"),
             "Connector-plane keychain writes must not be able to show login-keychain prompts."
         )
         XCTAssertTrue(
-            providerSource.contains("withKeychainUserInteractionDisabled {\n            SecItemCopyMatching"),
+            sourceWrapsSecurityCall(providerSource, call: "SecItemCopyMatching"),
             "Provider-router keychain reads must not be able to show login-keychain prompts."
         )
         XCTAssertTrue(
-            providerSource.contains("withKeychainUserInteractionDisabled {\n                SecItemUpdate")
-                && providerSource.contains("withKeychainUserInteractionDisabled {\n                    SecItemAdd")
-                && providerSource.contains("withKeychainUserInteractionDisabled {\n                SecItemDelete"),
+            sourceWrapsSecurityCall(providerSource, call: "SecItemUpdate")
+                && sourceWrapsSecurityCall(providerSource, call: "SecItemAdd")
+                && sourceWrapsSecurityCall(providerSource, call: "SecItemDelete"),
             "Provider-router keychain writes must not be able to show login-keychain prompts."
         )
         XCTAssertTrue(
-            switcherSource.contains("withKeychainUserInteractionDisabled {\n            SecItemCopyMatching"),
+            sourceWrapsSecurityCall(switcherSource, call: "SecItemCopyMatching"),
             "Switcher keychain reads must not be able to show login-keychain prompts."
         )
     }

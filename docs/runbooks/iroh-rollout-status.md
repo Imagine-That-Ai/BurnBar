@@ -1,5 +1,49 @@
 # Hermes iroh Rollout Status
 
+## 2026-05-17T06:38Z — PR harness blocker repaired locally, rollout handoff refreshed
+
+**Gate status:** local PR-harness regression cluster repaired; production
+rollout still waits on a clean pushed CI run, renewed cellular/different-network
+iPhone Gate C/D, and Phase E TestFlight soak.
+
+Completed:
+- Reviewed `docs/HERMES_IROH_PRODUCTION_HANDOFF.md` against the current
+  rollout evidence. The handoff's original "start Phase A from `072a96070`"
+  framing is stale; Phase A/B are already recorded green and Phase D hosted
+  relay validation is the active production track.
+- Investigated the latest branch PR-harness failure. The failing CI test was
+  `BurnBarProviderRouterTests.testProviderFamilyModeScopesUnpinnedRoutingToCatalogVendor`.
+- Repaired provider-family routing so an unpinned request follows the catalog
+  owner only when that owner is enabled, format-compatible, resolves the model,
+  and has at least one real selectable route. This keeps same-model
+  provider-family scoping without pinning an uncredentialed broker-family
+  provider.
+- Restored provider keychain overwrite semantics to delete and recreate an
+  existing slot item before writing a new secret, with duplicate-item fallback
+  update still guarded by `withKeychainUserInteractionDisabled`. This removes
+  stale keychain metadata and preserves no-prompt daemon writes.
+- Updated the source-level no-prompt keychain guard test so it verifies Security
+  calls are wrapped by `withKeychainUserInteractionDisabled` without depending
+  on one exact indentation shape.
+- Refreshed `docs/HERMES_IROH_PRODUCTION_HANDOFF.md` so future continuation
+  starts from the current production gates instead of repeating completed
+  Phase A/B work.
+
+Verification:
+- `cd OpenBurnBarDaemon && swift test --filter 'BurnBarConfigStoreTests/testKeychainSecretStoreRecreatesExistingSlotSecretOnOverwrite|BurnBarProviderRouterTests/testProviderFamilyModeScopesUnpinnedRoutingToCatalogVendor|BurnBarProviderRouterTests/testRouterDoesNotPinAdvertisedModelToUncredentialedBrokerFamily'`
+  passed 3 tests.
+- `cd OpenBurnBarDaemon && swift test` passed 261 tests.
+- `./scripts/test-openburnbar-swift.sh` passed locally. The wrapper completed
+  the OpenBurnBarCore suite and the OpenBurnBarDaemon suite; daemon finished
+  with 261 tests and 0 failures.
+
+Next action:
+- Push the repaired branch and wait for `OpenBurnBar PR Harness`,
+  `OpenBurnBarIroh xcframework`, Android AAR, Functional QA, Workflow Lint,
+  and CodeQL on the latest head. After CI is clean, run the renewed
+  physical-iPhone cellular gate:
+  `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 10 --interfaces cellular --wait-for-device-seconds 600 --wait-for-device-interval 5`.
+
 ## 2026-05-17T03:40Z — iOS and Android selected-model iroh proof green
 
 **Gate status:** targeted selected-model blocker closed on physical iPhone and
