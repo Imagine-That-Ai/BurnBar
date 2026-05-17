@@ -1292,6 +1292,7 @@ struct OpenBurnBarApp: App {
     /// Sentry boot) is handled in `init()`. Returning `liveMenuBarScene`
     /// unconditionally keeps `body` as a single concrete `Scene` type, avoiding
     /// SwiftUI's `SceneBuilder` if/else inference quirks.
+    @SceneBuilder
     var body: some Scene {
         liveMenuBarScene
             .commands {
@@ -1314,16 +1315,21 @@ struct OpenBurnBarApp: App {
         // `CallHUD` (while a mirror is active), independent of the
         // menu-bar popover's open state. Auto-shows when the router
         // transitions out of `.idle`/`.cooldown`; auto-hides otherwise.
-        if let context = startupState.runtimeContext,
-           let router = context.mercuryRouter,
-           let peerSource = context.mercuryPeerSource,
-           let hud = context.mercuryCallHUDState {
-            MercuryGlobalChrome(
-                router: router,
-                peerSource: peerSource,
-                hudState: hud
-            )
+        WindowGroup(id: "mercury.chrome") {
+            if let context = startupState.runtimeContext,
+               let router = context.mercuryRouter,
+               let peerSource = context.mercuryPeerSource,
+               let hud = context.mercuryCallHUDState {
+                MercuryChromeRoot(
+                    router: router,
+                    peerSource: peerSource,
+                    hudState: hud
+                )
+            } else {
+                EmptyView()
+            }
         }
+        .windowResizability(.contentSize)
     }
 }
 
