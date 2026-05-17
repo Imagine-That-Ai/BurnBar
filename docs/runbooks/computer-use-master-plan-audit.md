@@ -56,8 +56,12 @@ Commands run from the current checkout, not from the old `build/DerivedData-clau
 | `xcodebuild -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination id=AFB07C15-AD18-5EFA-AD1C-CADB4F286797 -configuration Debug -derivedDataPath /tmp/DerivedData-cu-approval-evidence-ios -allowProvisioningUpdates -quiet build` | exit 0 from current checkout on the plugged-in physical iPhone 17 Pro Max |
 | `xcrun devicectl device install app --device AFB07C15-AD18-5EFA-AD1C-CADB4F286797 /tmp/DerivedData-cu-approval-evidence-ios/Build/Products/Debug-iphoneos/OpenBurnBarMobile.app` | installed current-checkout `com.openburnbar.app` on the physical iPhone |
 | `xcrun devicectl device process launch --device AFB07C15-AD18-5EFA-AD1C-CADB4F286797 com.openburnbar.app` | launched the freshly installed current-checkout app on the physical iPhone |
+| `xcodebuild -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination id=407C0B12-010B-5970-8E85-D0E43DA8F457 -configuration Debug -derivedDataPath /tmp/DerivedData-cu-current-ipad -allowProvisioningUpdates -quiet build` | exit 0 from current checkout on Alberto's physical iPad Air 11-inch (M4) |
+| `xcrun devicectl device install app --device 407C0B12-010B-5970-8E85-D0E43DA8F457 /tmp/DerivedData-cu-current-ipad/Build/Products/Debug-iphoneos/OpenBurnBarMobile.app` | first attempt timed out; retry exited 0 and installed current-checkout `com.openburnbar.app` on the physical iPad |
+| `xcrun devicectl device process launch --device 407C0B12-010B-5970-8E85-D0E43DA8F457 com.openburnbar.app` | blocked by device lock: SpringBoard denied launch because the iPad was not/could not be unlocked |
 
 The current-checkout mobile app was launched on the physical iPhone during the latest verification pass. The old `build/DerivedData-claude-quota-live` app was not launched.
+The current-checkout iPad build and install path also passes, but launch proof is still blocked until the iPad is unlocked.
 
 ## Phase-by-phase status
 
