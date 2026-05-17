@@ -241,7 +241,7 @@ final class OpenBurnBarRuntimeContext {
         }
         hermesRelayHost.start()
         #if canImport(AppKit) && !DISTRIBUTION_MAS
-        startComputerUseServices()
+        startComputerUseServices(relayHostService: hermesRelayHost)
         #endif
 
         startRoutedClientWiringSentry()
@@ -260,7 +260,7 @@ final class OpenBurnBarRuntimeContext {
     }
 
     #if canImport(AppKit) && !DISTRIBUTION_MAS
-    func startComputerUseServices(cloudSyncService explicitCloudSyncService: CloudSyncService? = nil) {
+    func startComputerUseServices(relayHostService explicitRelayHostService: HermesRelayHostService? = nil) {
         let controller: ComputerUseRuntimeController
         if let existing = computerUseRuntimeController {
             controller = existing
@@ -268,13 +268,13 @@ final class OpenBurnBarRuntimeContext {
             controller = ComputerUseRuntimeController(
                 accountManager: accountManager,
                 settingsManager: settingsManager,
-                cloudSyncService: explicitCloudSyncService ?? cloudSyncService
+                relayHostService: explicitRelayHostService ?? hermesRelayHostService
             )
             computerUseRuntimeController = controller
         }
 
-        if let sync = explicitCloudSyncService ?? cloudSyncService {
-            controller.attach(cloudSyncService: sync)
+        if let relayHost = explicitRelayHostService ?? hermesRelayHostService {
+            controller.attach(relayHostService: relayHost)
         }
         controller.startPanicMonitoring()
     }

@@ -22,18 +22,18 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
 
     private let accountManager: AccountManager
     private let settingsManager: SettingsManager
-    private weak var cloudSyncService: CloudSyncService?
+    private weak var relayHostService: HermesRelayHostService?
     private var panicCoordinator: ComputerUsePanicHaltCoordinator?
     private var cancellables: Set<AnyCancellable> = []
 
     init(
         accountManager: AccountManager,
         settingsManager: SettingsManager,
-        cloudSyncService: CloudSyncService? = nil
+        relayHostService: HermesRelayHostService? = nil
     ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
-        self.cloudSyncService = cloudSyncService
+        self.relayHostService = relayHostService
         self.coordinator = Self.makeCoordinator(
             accountManager: accountManager,
             settingsManager: settingsManager
@@ -43,9 +43,9 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
         refreshEntitlement()
     }
 
-    func attach(cloudSyncService: CloudSyncService) {
-        self.cloudSyncService = cloudSyncService
-        cloudSyncService.setComputerUseControlDispatcher(coordinator.controlDispatcher)
+    func attach(relayHostService: HermesRelayHostService) {
+        self.relayHostService = relayHostService
+        relayHostService.setComputerUseControlDispatcher(coordinator.controlDispatcher)
     }
 
     func startPanicMonitoring() {
