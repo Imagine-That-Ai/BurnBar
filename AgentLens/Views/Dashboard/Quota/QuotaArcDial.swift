@@ -57,8 +57,10 @@ struct QuotaArcDial: View {
         ZStack {
             outerTrack
             outerFill
+            outerPaceMarker
             innerTrack
             innerFill
+            innerPaceMarker
             centerLabel
         }
         .frame(width: diameter, height: diameter)
@@ -137,6 +139,37 @@ struct QuotaArcDial: View {
                     style: StrokeStyle(lineWidth: 6, dash: [3, 5])
                 )
                 .padding(20)
+        }
+    }
+
+    // MARK: - Pace markers
+    //
+    // Sit on the centerline of each ring stroke, at the angle marking
+    // where the fill edge SHOULD be by now if usage is to last the full
+    // window. Renders nothing for buckets without a pace signal
+    // (lifetime / custom / missing resetsAt).
+
+    @ViewBuilder
+    private var outerPaceMarker: some View {
+        if let outer, animateProgress {
+            PaceArcMarker(
+                pace: outer.idealPace(),
+                tint: theme.primaryColor,
+                ringInset: 2,
+                lineWidth: 8
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var innerPaceMarker: some View {
+        if let inner, animateProgress {
+            PaceArcMarker(
+                pace: inner.idealPace(),
+                tint: theme.accentColor,
+                ringInset: 20,
+                lineWidth: 6
+            )
         }
     }
 

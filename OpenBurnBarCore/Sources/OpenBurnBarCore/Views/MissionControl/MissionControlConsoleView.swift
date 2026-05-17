@@ -11,6 +11,7 @@ import SwiftUI
 //   • Local view owns the *draft* (title, prompt, kind, runtime, depth, etc.).
 //   • Forecast is recomputed reactively from draft + selected runtime.
 
+@MainActor
 public struct MissionControlConsoleView<Host: MissionConsoleHost>: View {
     @Bindable public var host: Host
     public let onDismiss: (() -> Void)?

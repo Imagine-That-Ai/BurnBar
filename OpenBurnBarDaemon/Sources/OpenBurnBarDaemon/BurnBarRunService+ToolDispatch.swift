@@ -268,7 +268,7 @@ extension BurnBarRunService {
              .browserClick, .browserFill, .browserGoto, .browserKey,
              .browserSelect, .browserScreenshot, .browserExtract,
              .macInputClick, .macInputType, .macInputKey,
-             .macInputShortcut, .macInputDragDrop, .macInspectAccessibility:
+             .macInputShortcut, .macInputDragDrop, .macInputScroll, .macInspectAccessibility:
             break
         }
 

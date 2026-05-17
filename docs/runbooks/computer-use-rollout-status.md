@@ -17,7 +17,7 @@ Phase rollout log. One entry per phase ship — appended-to as flags advance thr
 	  - `OpenBurnBarComputerUseCore` wired into `OpenBurnBar.xcodeproj` for both AgentLens (macOS) + OpenBurnBarMobile (iOS) targets · `xcodebuild build` green
 	  - `IrohRelayRequestHandler` dispatches control frames via `ControlFrameDispatcher`
 - **Implementation status:** Mac now has `AgentWatchHUDSession` + `AgentWatchActionPublisher`; iOS `AgentWatchView` now owns an `AVSampleBufferDisplayLayer` decode path for `MediaFrame` surface frames. Full iroh surface-frame fanout still needs real-device LAN/LTE proof before flag flip.
-- **Test coverage (`swift test --filter OpenBurnBarComputerUseCoreTests`):** 80 tests green covering Phase 8 substrate (5 codec-cursor tests in `MediaPacketCodecTests`)
+- **Test coverage (`swift test --filter OpenBurnBarComputerUseCoreTests`):** 83 tests green covering Phase 8 substrate (5 codec-cursor tests in `MediaPacketCodecTests`)
 - **Acceptance gate remaining:**
 	  - [ ] Mercury Phase 3 ≥ 95% success for the prior 7 days
 	  - [ ] 5 consecutive Mac→iPhone "agent triages 3 emails via Mail" runs across LAN + LTE
@@ -50,7 +50,7 @@ Phase rollout log. One entry per phase ship — appended-to as flags advance thr
   - `ComputerUseAuditChain` + `ComputerUseAuditLogger` + `ComputerUseAuditHasher` (SHA-256, BLAKE3-swappable)
   - `ComputerUseSessionPanel` Mac UI surface
   - `ComputerUseApprovalSheet` step-mode burst approval toggle
-- **Test coverage:** 14 ScopeMatcher tests · 6 AuditChain tests · 14 CapabilityGate tests · 3 AuditExport tests
+- **Test coverage:** 16 ScopeMatcher tests · 6 AuditChain tests · 15 CapabilityGate tests · 6 AuditExport tests
 - **Acceptance gate remaining:**
   - [ ] 7-day internal-user soak with zero unintended Trusted-mode escapes
 
@@ -60,7 +60,7 @@ Phase rollout log. One entry per phase ship — appended-to as flags advance thr
 - **Code landed (2026-05-17):**
   - `MacInputController` (CGEvent wrapper, display-bounds gated, delegates to `MacInputCore`)
   - `MacAccessibilityInspector` (AX role/subrole + deny-region matcher)
-  - `ComputerUsePanicHaltCoordinator` (hotkey + auth-gate + remote-config kill paths)
+  - `ComputerUsePanicHaltCoordinator` (hotkey + auth-gate + remote-config kill paths); daemon-wide panic accepts `sessionId = "*"` and the app startup presenter installs the hotkey coordinator for daemon-owned sessions
   - `ComputerUseSetupWizard` Accessibility-permission flow
   - `#if !DISTRIBUTION_MAS` compile-out applied to MacInputController, MacAccessibilityInspector, ComputerUseSetupWizard, PhoneControlReceiver
 - **Test coverage:** 9 MacInputCore tests (virtual-key map, modifier flags, display-bounds containment)
@@ -73,13 +73,17 @@ Phase rollout log. One entry per phase ship — appended-to as flags advance thr
 - **Flag:** `computer_use_phone_control_enabled` · default off
 - **Code landed (2026-05-17):**
   - `ComputerUsePhoneControlSigner` (Ed25519 + canonical-JSON intent hashing; `control.input` hashes exclude the attached authority envelope)
-  - iOS `PhoneControlAuthorityIssuer` + `PhoneControlSender` (signed envelope → `control.input` frame → iroh write)
+  - iOS `PhoneControlAuthorityIssuer` + `PhoneControlSender` (signed envelope → `control.input` frame → iroh write; long-lived stream now classifies as `control.input`)
+  - iOS `PhoneControlAuthorityPublisher` writes the phone control public key to `iroh_pairing/{connectionId}/controllers/{peerNodeId}` before stream classify; Mac `PhoneControlAuthorityProvider` fetches that key from Firestore instead of trusting in-band key material.
   - Mac `PhoneControlAuthorityValidator` + `PhoneControlReceiver` (decode → validate → translate normalized intent → dispatch via run coordinator; emits `control.denied` on validation failure)
+  - Phone scroll maps to first-class `mac_input_scroll` / `MacInputAction.Kind.scroll` and posts a real CGEvent scroll instead of degrading to click
   - Trust-mode downgrade-from-phone wired through `AgentWatchState.setTrustMode` (Mac coordinator subscribes)
-- **Test coverage:** 15 PhoneControlSigner golden-case tests proving signature, replay, freshness, intent-hash, peer-key, payload-stability, attached-authority, and tamper semantics · 5 MacInputCore normalized-coordinate tests
+- **Test coverage:** 15 PhoneControlSigner golden-case tests proving signature, replay, freshness, intent-hash, peer-key, payload-stability, attached-authority, and tamper semantics · 5 MacInputCore normalized-coordinate tests · Firestore emulator covers trusted-device + active-pairing gating for phone authorities
 - **Acceptance gate remaining:**
-  - [ ] `AgentWatchView` SwiftUI surface · landed
-  - [ ] `PhoneControlOptionSheet` Take-over UI · pending
+  - [x] `AgentWatchView` SwiftUI surface · landed
+  - [x] `PhoneControlOptionSheet` Take-over UI · landed for tap, type, Return, Escape, and Command-L controls
+  - [ ] Drag phone-control gestures · pending
+  - [x] Replace in-band phone-control public-key registration with a key rooted in verified pairing + trusted-device state
   - [ ] 7-day soak
 
 ## Phase 13 — Polish

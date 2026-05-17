@@ -33,14 +33,20 @@ struct ComputerUseSettingsView: View {
         kind: .idle,
         message: "Enter a session id to validate, export, or notarize its local audit chain."
     )
+    private let runtimeController: ComputerUseRuntimeController?
+
+    init(runtimeController: ComputerUseRuntimeController? = nil) {
+        self.runtimeController = runtimeController
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 readiness
+                    .settingsAnchor(SettingsAnchor.computerUseReadiness)
                 actions
-                ComputerUseSessionPanel(model: panelModel)
+                ComputerUseSessionPanel(model: activePanelModel)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 auditOperations
             }
@@ -132,12 +138,24 @@ struct ComputerUseSettingsView: View {
             .buttonStyle(.bordered)
 
             Button {
+                startSystemSession()
+            } label: {
+                Label("Start System Session", systemImage: "play.circle")
+            }
+            .buttonStyle(.bordered)
+            .disabled(runtimeController == nil)
+
+            Button {
                 refreshReadiness()
             } label: {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
             .buttonStyle(.bordered)
         }
+    }
+
+    private var activePanelModel: ComputerUseSessionPanelModel {
+        runtimeController?.panelModel ?? panelModel
     }
 
     private var auditOperations: some View {
@@ -213,6 +231,8 @@ struct ComputerUseSettingsView: View {
 
     private func configureModels() {
         refreshReadiness()
+        runtimeController?.refreshEntitlement()
+        guard runtimeController == nil else { return }
         panelModel.scopeRules = ComputerUseDenyRegistry.builtInRules
         panelModel.setTrustMode = { mode in
             panelModel.liveTrustMode = mode
@@ -300,6 +320,27 @@ struct ComputerUseSettingsView: View {
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = [script]
         try? process.run()
+    }
+
+    private func startSystemSession() {
+        guard let runtimeController else { return }
+        Task { @MainActor in
+            do {
+                let response = try await runtimeController.startSystemSession(
+                    trustMode: activePanelModel.liveTrustMode
+                )
+                auditSessionId = response.sessionId
+                auditStatus = AuditOperationStatus(
+                    kind: .succeeded,
+                    message: "System session started. Audit head \(response.manifestHashHex.prefix(16))."
+                )
+            } catch {
+                auditStatus = AuditOperationStatus(
+                    kind: .failed,
+                    message: "Could not start system session: \(error.localizedDescription)"
+                )
+            }
+        }
     }
 
     private func runSetupSmoke() {

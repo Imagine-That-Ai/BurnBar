@@ -258,4 +258,48 @@ final class ComputerUseScopeMatcherTests: XCTestCase {
         let state = ComputerUseScopeBudgetState(ruleId: rule.id, actionsConsumed: 0)
         XCTAssertTrue(state.isExhausted(by: rule, at: now))
     }
+
+    func testMatcherIgnoresExhaustedAllowRuleBudget() {
+        let rule = ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("budgeted-allow"),
+            effect: .allow,
+            origin: .user,
+            label: "Budgeted GitHub",
+            urlPrefix: "https://github.com/openburnbar",
+            actionBudget: 5
+        )
+        let exhausted = ComputerUseScopeBudgetState(ruleId: rule.id, actionsConsumed: 5)
+
+        XCTAssertEqual(
+            matcher.evaluate(
+                rules: [rule],
+                context: ComputerUseScopeContext(url: "https://github.com/openburnbar/pr/1"),
+                budgetStates: [rule.id: exhausted],
+                at: now
+            ),
+            .notMatched
+        )
+    }
+
+    func testMatcherAllowsBudgetedRuleBeforeBudgetIsExhausted() {
+        let rule = ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("budgeted-allow"),
+            effect: .allow,
+            origin: .user,
+            label: "Budgeted GitHub",
+            urlPrefix: "https://github.com/openburnbar",
+            actionBudget: 5
+        )
+        let remaining = ComputerUseScopeBudgetState(ruleId: rule.id, actionsConsumed: 4)
+
+        XCTAssertEqual(
+            matcher.evaluate(
+                rules: [rule],
+                context: ComputerUseScopeContext(url: "https://github.com/openburnbar/pr/1"),
+                budgetStates: [rule.id: remaining],
+                at: now
+            ),
+            .allowed(rule: rule.id)
+        )
+    }
 }

@@ -87,6 +87,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     private let browserDispatcher: BrowserDispatcher?
     private let displayBoundsProvider: PhoneControlReceiver.DisplayBoundsProvider
     private let screenshotService: MacScreenshotService?
+    private let authorityProvider: PhoneControlAuthorityPublicKeyProviding
 
     private var phoneValidator = PhoneControlAuthorityValidator()
     private var phoneReceiver: PhoneControlReceiver?
@@ -97,7 +98,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
     private var screenshotEvidenceDataByHash: [String: Data] = [:]
     private var latestControlUID: String?
     private var latestControlConnectionID: String?
-    private var remoteConfigObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var remoteConfigObserver: NSObjectProtocol?
 
     public init(
         configuration: Configuration,
@@ -108,6 +109,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         scopeRulesProvider: @escaping @MainActor () -> [ComputerUseScopeRule] = { [] },
         browserDispatcher: BrowserDispatcher? = nil,
         screenshotService: MacScreenshotService? = nil,
+        authorityProvider: PhoneControlAuthorityPublicKeyProviding = FirestorePhoneControlAuthorityProvider.shared,
         displayBoundsProvider: @escaping PhoneControlReceiver.DisplayBoundsProvider = {
             let totalHeight = NSScreen.screens.first?.frame.maxY ?? 0
             return NSScreen.screens.map { screen in
@@ -132,6 +134,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         self.screenshotService = screenshotService ?? MacScreenshotService(
             baseDirectory: configuration.auditBaseDirectory
         )
+        self.authorityProvider = authorityProvider
         self.displayBoundsProvider = displayBoundsProvider
         self.approvalPresenter = approvalPresenter
         self.remoteConfigObserver = NotificationCenter.default.addObserver(
@@ -593,11 +596,23 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
         latestControlConnectionID = frame.connectionId
         switch frame.type {
         case .controlClassify:
-            if let peerNodeId = frame.control?.authorityPeerNodeId,
-               let keyBase64 = frame.control?.authorityPublicKeyBase64,
-               let keyData = Data(base64Encoded: keyBase64),
-               let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: keyData) {
+            guard let peerNodeId = frame.control?.authorityPeerNodeId else { return }
+            do {
+                let publicKey = try await authorityProvider.fetchPublicKey(
+                    uid: frame.uid,
+                    connectionId: frame.connectionId,
+                    peerNodeId: peerNodeId
+                )
                 registerPhonePeer(nodeId: peerNodeId, publicKey: publicKey)
+            } catch {
+                emitControlFrame(
+                    type: .controlDenied,
+                    payload: HermesRealtimeRelayControlPayload(
+                        streamClass: "control.input",
+                        sessionId: activeSessionId?.rawValue,
+                        denied: HermesRealtimeRelayControlDenied(reason: .signatureFailure)
+                    )
+                )
             }
         case .controlInputIntent:
             await phoneReceiver?.ingest(frame)
@@ -645,6 +660,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             case .key: tool = .macInputKey
             case .shortcut: tool = .macInputShortcut
             case .dragDrop: tool = .macInputDragDrop
+            case .scroll: tool = .macInputScroll
             }
             args = macInputArguments(mac)
         default:
@@ -704,6 +720,8 @@ public final class ComputerUseSessionCoordinator: ObservableObject, @unchecked S
             return .macInput(try decodeMacInput(invocation: invocation, kind: .shortcut))
         case .macInputDragDrop:
             return .macInput(try decodeMacInput(invocation: invocation, kind: .dragDrop))
+        case .macInputScroll:
+            return .macInput(try decodeMacInput(invocation: invocation, kind: .scroll))
         case .macInspectAccessibility:
             guard case let .object(arguments) = invocation.arguments else {
                 return .macInspect(MacInspectAction(kind: .accessibility))

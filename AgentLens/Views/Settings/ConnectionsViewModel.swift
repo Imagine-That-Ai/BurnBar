@@ -227,6 +227,7 @@ final class ConnectionsViewModel {
                 gateway: gateway,
                 advertisedModels: advertisedModels
             )
+            settings.routedClientWiring.enroll(targetRawValue: target.rawValue)
         } catch {
             appStates[target] = .error(message: error.localizedDescription)
             return
@@ -286,6 +287,22 @@ final class ConnectionsViewModel {
         }
     }
 
+    /// Disconnect variant that also clears the durability intent. The view
+    /// passes `SettingsManager` so the sentry stops re-applying the env block
+    /// after the user has explicitly disconnected.
+    func disconnect(
+        target: RoutingClientWiringTarget,
+        settings: SettingsManager
+    ) async {
+        do {
+            try wiringFactory().unwire(target: target)
+            appStates[target] = .notConnected
+            settings.routedClientWiring.unenroll(targetRawValue: target.rawValue)
+        } catch {
+            appStates[target] = .error(message: error.localizedDescription)
+        }
+    }
+
     // MARK: - Snippet sheet
 
     func snippet(
@@ -326,7 +343,7 @@ final class ConnectionsViewModel {
         proxyModelCatalogState = .loading
         let gateway = makeGateway(from: settings)
         do {
-            let models = try await proxyCatalogFetcher(gateway)
+            let models = Self.logicalProxyModelCatalog(try await proxyCatalogFetcher(gateway))
             proxyModels = models.sorted {
                 if $0.providerName.localizedCaseInsensitiveCompare($1.providerName) != .orderedSame {
                     return $0.providerName.localizedCaseInsensitiveCompare($1.providerName) == .orderedAscending
@@ -450,6 +467,100 @@ final class ConnectionsViewModel {
         settings.gatewayHost = "127.0.0.1"
         settings.gatewayPort = 8317
         settings.gatewayEnabled = true
+    }
+
+    private static func logicalProxyModelCatalog(_ models: [ProxyAdvertisedModel]) -> [ProxyAdvertisedModel] {
+        let groups = Dictionary(grouping: models) { model in
+            "\(model.providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())|\(model.modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
+        }
+
+        var collapsed: [ProxyAdvertisedModel] = []
+        collapsed.reserveCapacity(groups.count)
+        for (_, rows) in groups {
+            let validRows = rows.filter {
+                !$0.providerID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && !$0.modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            guard !validRows.isEmpty else { continue }
+            collapsed.append(logicalProxyModel(from: validRows))
+        }
+        return collapsed
+    }
+
+    private static func logicalProxyModel(from rows: [ProxyAdvertisedModel]) -> ProxyAdvertisedModel {
+        let representative = rows.first(where: \.advertised)
+            ?? rows.first(where: \.routeEligible)
+            ?? rows[0]
+        let accountLabels = uniqueNonEmpty(rows.map(\.accountLabel))
+        let accountIDs = uniqueNonEmpty(rows.map(\.accountID))
+        let sourceKinds = uniqueNonEmpty(rows.map(\.sourceKind))
+        let capabilities = uniqueNonEmpty(rows.flatMap(\.capabilities))
+        let accountCount = max(1, accountIDs.count)
+        return ProxyAdvertisedModel(
+            modelID: representative.modelID,
+            displayName: displayNameWithoutAccountSuffixes(
+                representative.displayName,
+                fallback: representative.modelID,
+                accountLabels: accountLabels
+            ),
+            providerID: representative.providerID,
+            providerName: representative.providerName,
+            accountID: accountCount > 1 ? "auto" : representative.accountID,
+            accountLabel: accountCount > 1
+                ? "Auto failover (\(accountCount) accounts)"
+                : representative.accountLabel,
+            sourceID: accountCount > 1
+                ? "\(representative.providerID)#auto"
+                : representative.sourceID,
+            sourceKind: sourceKinds.count == 1 ? sourceKinds[0] : "gateway_failover_pool",
+            quotaState: logicalQuotaState(from: rows),
+            advertisementEnabled: rows.contains { $0.advertisementEnabled },
+            advertised: rows.contains { $0.advertised },
+            routeEligible: rows.contains { $0.routeEligible },
+            capabilities: capabilities,
+            lastError: rows.compactMap(\.lastError).first
+        )
+    }
+
+    private static func logicalQuotaState(from rows: [ProxyAdvertisedModel]) -> String {
+        if let advertised = rows.first(where: \.advertised)?.quotaState {
+            return advertised
+        }
+        if let routeEligible = rows.first(where: \.routeEligible)?.quotaState {
+            return routeEligible
+        }
+        return rows.first?.quotaState ?? "unknown"
+    }
+
+    private static func displayNameWithoutAccountSuffixes(
+        _ rawDisplayName: String,
+        fallback: String,
+        accountLabels: [String]
+    ) -> String {
+        var displayName = rawDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if displayName.isEmpty {
+            displayName = fallback
+        }
+        for label in accountLabels where !label.isEmpty {
+            let suffix = " (\(label))"
+            if displayName.hasSuffix(suffix) {
+                displayName.removeLast(suffix.count)
+                displayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return displayName
+    }
+
+    private static func uniqueNonEmpty(_ values: [String]) -> [String] {
+        var seen: Set<String> = []
+        var unique: [String] = []
+        for value in values {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalized = trimmed.lowercased()
+            guard !trimmed.isEmpty, seen.insert(normalized).inserted else { continue }
+            unique.append(trimmed)
+        }
+        return unique
     }
 }
 

@@ -296,12 +296,12 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         {
           "providers" : [
             {
-              "baseURL" : "https://api.deepseek.com/v1",
+              "baseURL" : "https://api.cohere.com/v1",
               "isEnabled" : true,
               "preferredModelIDs" : [
-                "deepseek-chat"
+                "command-a"
               ],
-              "providerID" : "deepseek"
+              "providerID" : "cohere"
             }
           ]
         }
@@ -312,10 +312,10 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         let snapshot = service.refreshState()
         let configuration = try XCTUnwrap(snapshot.providerConfigurations.first)
 
-        XCTAssertEqual(configuration.providerID, "deepseek")
+        XCTAssertEqual(configuration.providerID, "cohere")
         XCTAssertNil(configuration.provider)
-        XCTAssertEqual(configuration.displayName, "DeepSeek")
-        XCTAssertEqual(configuration.brand.bundledLogoCandidates.first, "DeepSeekLogo")
+        XCTAssertEqual(configuration.displayName, "Cohere")
+        XCTAssertEqual(configuration.brand.bundledLogoCandidates.first, "CohereLogo")
     }
 
     func test_providerQuotaRefreshDoesNotMarkDaemonOwnedSlotMissingWhenAppSecretMirrorIsAbsent() throws {

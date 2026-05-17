@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia
@@ -147,6 +148,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
         let uid = "user-agent-watch"
         let connectionID = "relay-connection-1"
         let stream = AgentWatchFakeStream()
+        let authorityPublisher = AgentWatchFakeAuthorityPublisher()
         let coordinator = AgentWatchOverlayCoordinator(
             dialer: { dialedUID, dialedConnectionID, relayPublicKey in
                 XCTAssertEqual(dialedUID, uid)
@@ -154,6 +156,7 @@ final class OpenBurnBarMobileTests: XCTestCase {
                 XCTAssertEqual(relayPublicKey, Data(repeating: 7, count: 32))
                 return stream
             },
+            authorityPublisher: authorityPublisher,
             initialBackoff: 0.01,
             maxBackoff: 0.01
         )
@@ -173,7 +176,14 @@ final class OpenBurnBarMobileTests: XCTestCase {
         )
         XCTAssertEqual(classifyFrame.uid, uid)
         XCTAssertEqual(classifyFrame.connectionId, connectionID)
-        XCTAssertEqual(classifyFrame.control?.streamClass, MediaStreamClass.controlApproval.rawValue)
+        XCTAssertEqual(classifyFrame.control?.streamClass, MediaStreamClass.controlInput.rawValue)
+        XCTAssertNotNil(classifyFrame.control?.authorityPeerNodeId)
+        XCTAssertNil(classifyFrame.control?.authorityPublicKeyBase64)
+        let publishedAuthorities = await authorityPublisher.published()
+        XCTAssertEqual(publishedAuthorities.count, 1)
+        XCTAssertEqual(publishedAuthorities.first?.uid, uid)
+        XCTAssertEqual(publishedAuthorities.first?.connectionId, connectionID)
+        XCTAssertEqual(publishedAuthorities.first?.peerNodeId, classifyFrame.control?.authorityPeerNodeId)
 
         let approval = HermesRealtimeRelayApprovalRequest(
             approvalId: "approval-1",
@@ -388,5 +398,37 @@ private actor AgentWatchFakeStream: IrohRelayStream {
 
     func sentFrames() -> [HermesRealtimeRelayFrame] {
         outboundFrames
+    }
+}
+
+private actor AgentWatchFakeAuthorityPublisher: PhoneControlAuthorityPublishing {
+    struct Published: Equatable {
+        let uid: String
+        let connectionId: String
+        let deviceId: String
+        let peerNodeId: String
+        let publicKeyData: Data
+    }
+
+    private var values: [Published] = []
+
+    func publish(
+        uid: String,
+        connectionId: String,
+        deviceId: String,
+        peerNodeId: String,
+        publicKey: Curve25519.Signing.PublicKey
+    ) async throws {
+        values.append(Published(
+            uid: uid,
+            connectionId: connectionId,
+            deviceId: deviceId,
+            peerNodeId: peerNodeId,
+            publicKeyData: publicKey.rawRepresentation
+        ))
+    }
+
+    func published() -> [Published] {
+        values
     }
 }

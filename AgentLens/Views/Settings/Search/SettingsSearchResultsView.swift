@@ -98,7 +98,8 @@ struct SettingsSearchResultsView: View {
         case .generalRoot, .daemonRoot, .accountRoot, .cloudRoot,
              .connectionsRoot, .providersRoot, .routingPoolsRoot,
              .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,
-             .switcherRoot, .hermesRoot, .agentsRoot, .mediaRoot:
+             .switcherRoot, .hermesRoot, .agentsRoot, .mediaRoot,
+             .computerUseRoot:
             return ""
         case .agentsAccounts: return "Accounts"
         case .agentsCLIs: return "CLIs"

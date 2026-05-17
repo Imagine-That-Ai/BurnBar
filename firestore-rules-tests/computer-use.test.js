@@ -66,6 +66,17 @@ const validActionDoc = {
   recordedAt: Timestamp.fromMillis(Date.now()),
 };
 
+const validPhoneAuthorityDoc = {
+  id: "ios-phone-authority-1",
+  connectionId: "relay-connection-1",
+  peerNodeId: "ios-phone-authority-1",
+  deviceId: "iphone-1",
+  publicKeyBase64: "A".repeat(44),
+  publishedAtMillis: Date.now(),
+  protocolVersion: 1,
+  schemaVersion: 1,
+};
+
 function entitlementGranted(productID = "com.openburnbar.hostedComputerUseSync.monthly") {
   return {
     active: true,
@@ -92,6 +103,38 @@ async function withEntitlement(testEnv, uid, body) {
     );
   });
   return body();
+}
+
+async function seedEscrowDevice(testEnv, uid, deviceId, trustState = "trusted") {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const dbAdmin = ctx.firestore();
+    await setDoc(doc(dbAdmin, `users/${uid}/escrow_devices/${deviceId}`), {
+      deviceId,
+      deviceName: "Test iPhone",
+      platform: "iOS",
+      trustState,
+      createdAt: Timestamp.fromMillis(Date.now()),
+      updatedAt: Timestamp.fromMillis(Date.now()),
+    });
+  });
+}
+
+async function seedIrohPairing(testEnv, uid, connectionId) {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const dbAdmin = ctx.firestore();
+    await setDoc(doc(dbAdmin, `users/${uid}/iroh_pairing/${connectionId}`), {
+      id: connectionId,
+      nodeId: "mac-node-1",
+      relayURL: "https://relay.openburnbar.test",
+      directAddresses: [],
+      publishedAtMillis: Date.now(),
+      protocolVersion: 1,
+      signature: "sig",
+      createdAt: Timestamp.fromMillis(Date.now()),
+      updatedAt: Timestamp.fromMillis(Date.now()),
+      schemaVersion: 1,
+    });
+  });
 }
 
 let testEnv;
@@ -176,6 +219,48 @@ async function main() {
           phoneControlIntentsExecuted: 0,
           phoneControlIntentsRejected: 0,
           visionModelSpendUSD: 0,
+        })
+      );
+    });
+
+    await step("phone-control authority requires a trusted escrow device", async () => {
+      await seedIrohPairing(testEnv, aliceUid, validPhoneAuthorityDoc.connectionId);
+      await assertFails(
+        setDoc(
+          doc(aliceDB, `users/${aliceUid}/iroh_pairing/${validPhoneAuthorityDoc.connectionId}/controllers/${validPhoneAuthorityDoc.peerNodeId}`),
+          validPhoneAuthorityDoc
+        )
+      );
+      await seedEscrowDevice(testEnv, aliceUid, validPhoneAuthorityDoc.deviceId, "trusted");
+      await assertSucceeds(
+        setDoc(
+          doc(aliceDB, `users/${aliceUid}/iroh_pairing/${validPhoneAuthorityDoc.connectionId}/controllers/${validPhoneAuthorityDoc.peerNodeId}`),
+          validPhoneAuthorityDoc
+        )
+      );
+    });
+
+    await step("phone-control authority cannot use a mismatched peer or connection id", async () => {
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${aliceUid}/iroh_pairing/${validPhoneAuthorityDoc.connectionId}/controllers/other-peer`), {
+          ...validPhoneAuthorityDoc,
+          id: "other-peer",
+          peerNodeId: validPhoneAuthorityDoc.peerNodeId,
+        })
+      );
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${aliceUid}/iroh_pairing/${validPhoneAuthorityDoc.connectionId}/controllers/${validPhoneAuthorityDoc.peerNodeId}`), {
+          ...validPhoneAuthorityDoc,
+          connectionId: "different-connection",
+        })
+      );
+    });
+
+    await step("phone-control authority requires an existing iroh pairing record", async () => {
+      await assertFails(
+        setDoc(doc(aliceDB, `users/${aliceUid}/iroh_pairing/missing-connection/controllers/${validPhoneAuthorityDoc.peerNodeId}`), {
+          ...validPhoneAuthorityDoc,
+          connectionId: "missing-connection",
         })
       );
     });

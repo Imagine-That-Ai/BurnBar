@@ -33,6 +33,7 @@ public enum BurnBarToolKind: String, Codable, CaseIterable, Hashable, Sendable {
     case macInputKey = "mac_input_key"
     case macInputShortcut = "mac_input_shortcut"
     case macInputDragDrop = "mac_input_drag_drop"
+    case macInputScroll = "mac_input_scroll"
     case macInspectAccessibility = "mac_inspect_accessibility"
 }
 
@@ -45,7 +46,7 @@ public extension BurnBarToolKind {
         .browserClick, .browserFill, .browserGoto, .browserKey,
         .browserSelect, .browserScreenshot, .browserExtract,
         .macInputClick, .macInputType, .macInputKey,
-        .macInputShortcut, .macInputDragDrop, .macInspectAccessibility
+        .macInputShortcut, .macInputDragDrop, .macInputScroll, .macInspectAccessibility
     ]
 
     /// Whether this kind dispatches through Playwright.
@@ -63,7 +64,7 @@ public extension BurnBarToolKind {
     var isMacComputerUse: Bool {
         switch self {
         case .macInputClick, .macInputType, .macInputKey,
-             .macInputShortcut, .macInputDragDrop, .macInspectAccessibility:
+             .macInputShortcut, .macInputDragDrop, .macInputScroll, .macInspectAccessibility:
             return true
         default:
             return false

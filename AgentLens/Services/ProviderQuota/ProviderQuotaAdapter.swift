@@ -368,7 +368,7 @@ struct DeepSeekQuotaAdapter: ProviderQuotaAdapter {
 struct OpenCodeQuotaAdapter: ProviderQuotaAdapter {
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let authURL = context.homeDirectoryURL.appendingPathComponent(".local/share/opencode/auth.json")
-        guard context.fileManager.fileExists(atPath: authURL.path) else {
+        guard context.fileManager.fileExists(atPath: authURL.path) || Self.resolvedOpenCodeCredential(context) != nil else {
             return unavailableSnapshot(
                 for: .openCode,
                 source: .localCLI,
@@ -403,6 +403,14 @@ struct OpenCodeQuotaAdapter: ProviderQuotaAdapter {
                 : "OpenCode uses exact local SQLite spend for the 5-hour bucket and CLI history for 7-day/monthly plan pressure. OpenCode does not expose hosted account quota refresh yet.",
             buckets: buckets
         )
+    }
+
+    private static func resolvedOpenCodeCredential(_ context: ProviderQuotaAdapterContext) -> String? {
+        quotaNonEmpty(context.resolvedAPIKeys["opencode"] ?? nil)
+            ?? quotaNonEmpty(context.resolvedAPIKeys["open_code"] ?? nil)
+            ?? quotaNonEmpty(context.resolvedAPIKeys["opencode_auth_json"] ?? nil)
+            ?? quotaNonEmpty(context.environment["OPENCODE_API_KEY"])
+            ?? quotaNonEmpty(context.environment["OPENCODE_GO_API_KEY"])
     }
 
     private static func runOpenCodeStats(days: Int, environment: [String: String]) async throws -> String {

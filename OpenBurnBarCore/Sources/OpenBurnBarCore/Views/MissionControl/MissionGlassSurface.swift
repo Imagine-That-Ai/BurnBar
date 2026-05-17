@@ -195,17 +195,15 @@ public struct MissionGlassSurface: ViewModifier {
     }
 }
 
-/// Wraps the OS-26 `.glassEffect` call so the call site stays simple. On older
-/// SDKs / OS versions the modifier becomes a no-op (we keep the manual sheen).
+/// Placeholder for the OS-26 `.glassEffect` enhancement. The manual material,
+/// sheen, and edge layers above remain the cross-SDK implementation; keeping
+/// this modifier as a no-op prevents older CI SDKs from type-checking a symbol
+/// they do not ship yet.
 private struct LiquidGlassEffectIfAvailable: ViewModifier {
     let cornerRadius: CGFloat
 
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        } else {
-            content
-        }
+        content
     }
 }
 

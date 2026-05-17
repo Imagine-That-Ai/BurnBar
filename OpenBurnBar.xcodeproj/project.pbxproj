@@ -82,6 +82,9 @@
 		0DD957126FB6F4CA2D5858E0 /* MicrophoneCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B19A36CC660D0E0A80DDF96 /* MicrophoneCaptureService.swift */; };
 		0DE26600775B6CA96A3B6664 /* LocalMetricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A67224E60A68DDF632014874 /* LocalMetricsView.swift */; };
 		0E4FE311062AE136DC1C8F98 /* ProviderQuotaSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA81DD6D3F03D1A8A7A3B414 /* ProviderQuotaSnapshotStore.swift */; };
+		0A1F1F1F0003000000010001 /* QuotaSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1F1F1F0003000000010002 /* QuotaSettingsTests.swift */; };
+		0A1F1F1F0002000000010001 /* ProviderQuotaPacingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1F1F1F0002000000010002 /* ProviderQuotaPacingViews.swift */; };
+		0A1F1F1F0001000000010001 /* ProviderQuotaPacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1F1F1F0001000000010002 /* ProviderQuotaPacing.swift */; };
 		0E5C0ACC14C06D1F6FC8DEB9 /* InsightsCanvasLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A96A5FBD3FD3C22D415937 /* InsightsCanvasLibraryView.swift */; };
 		0E871E01C5E13D4DDFCE497E /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F620BAA0FABBB67BFD16710 /* SessionDetailView.swift */; };
 		0E99366C5BD2EC60B1C82B95 /* ComposerQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29479E7EB85AC31C9EE20395 /* ComposerQueue.swift */; };
@@ -193,6 +196,7 @@
 		265C23FE6E7326B2479AFCF5 /* ProviderQuotaAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ED0C396BBC637B6A99F5DC7 /* ProviderQuotaAdapter.swift */; };
 		2689234F63248B0B5BD7B8CE /* FirestoreNormalizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 415DB3110F11499B644265C8 /* FirestoreNormalizationTests.swift */; };
 		26F4BD90CF30C5EF97A052A3 /* RoutingClientWiringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9998D34C99150DACAA1CEF3 /* RoutingClientWiringTests.swift */; };
+		0A1B2C3D4E5F6A7B8C9D0E15 /* RoutedClientWiringSentryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1B2C3D4E5F6A7B8C9D0E16 /* RoutedClientWiringSentryTests.swift */; };
 		2732F21AD24F6DCACE38D636 /* HermesIrohRelayHostClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE4B0013DB99895773CE7EEF /* HermesIrohRelayHostClient.swift */; };
 		275467777B856C183577E82E /* UsageAggregatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9E8C5D6C724DD30E6AB3BAB /* UsageAggregatorTests.swift */; };
 		27F87DC4F434ABBE13A0EB53 /* NativeChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BD3A118E790E8967A209C1D /* NativeChartView.swift */; };
@@ -937,6 +941,8 @@
 		C9411089ABC2CE8730D72EC3 /* HermesSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7133EC3372960DFC76839F /* HermesSettingsView.swift */; };
 		C95C116EA1342A7C6A751FB4 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = B6999F5A1B3A8EC91D107F2F /* FirebaseFirestore */; };
 		C9B3D58E39F448C8EF227AFA /* RoutingClientWiring.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0E8B62C98EB96F96B8AB593 /* RoutingClientWiring.swift */; };
+		0A1B2C3D4E5F6A7B8C9D0E11 /* RoutedClientWiringSentry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1B2C3D4E5F6A7B8C9D0E12 /* RoutedClientWiringSentry.swift */; };
+		0A1B2C3D4E5F6A7B8C9D0E13 /* RoutedClientWiringSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1B2C3D4E5F6A7B8C9D0E14 /* RoutedClientWiringSettings.swift */; };
 		CA278FE37EE9D7E0793381AF /* OpenBurnBarCore in Frameworks */ = {isa = PBXBuildFile; productRef = DAB0CEB2329470D35FDBD4DB /* OpenBurnBarCore */; };
 		CA42B607C50575C094A54C90 /* DashboardQuickSwitchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC21D0FB2A8E8A6888FF3F8 /* DashboardQuickSwitchView.swift */; };
 		CA79CE059EBD3077C220FDC5 /* AudioReceivePipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34953F6196B4A4DBF307F1F7 /* AudioReceivePipeline.swift */; };
@@ -1174,6 +1180,7 @@
 		BCDBC4C940216E48A5DB03A0 /* ComputerUsePanicHaltCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CBF6348A916BFB95DFD6A1F /* ComputerUsePanicHaltCoordinator.swift */; };
 		62B7C4F4DB7BF27EDF3E882F /* MacAccessibilityInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0155D3F7EEB0C70CB9DE66B /* MacAccessibilityInspector.swift */; };
 		F100C911E4673AC39D1A3874 /* MacInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D9323F6B311196CFDBDE0C1 /* MacInputController.swift */; };
+		1C3F9965BB6E4E9F9C5564E0 /* PhoneControlAuthorityProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EAE22B8F92640AB9157680A /* PhoneControlAuthorityProvider.swift */; };
 		324A8F246CB3DD209AF9514D /* PhoneControlAuthorityValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1BAF4EB3B85994D9EFD6E79 /* PhoneControlAuthorityValidator.swift */; };
 		335C5850691A1A3BEF6160FF /* PhoneControlReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC65453BF97A0EDC9930906A /* PhoneControlReceiver.swift */; };
 		E2374CB4AA6A998B3A9FE3EB /* ComputerUseApprovalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6CD9F24E5D4AD95B61A3B43 /* ComputerUseApprovalSheet.swift */; };
@@ -1211,6 +1218,8 @@
 				E5B78DB0F58FD66627838F1C /* ComputerUseRemoteConfigNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05F63EB019865F1B601E5B68 /* ComputerUseRemoteConfigNotifications.swift */; };
 			845771CBD3C955A2A45B3966 /* OpenBurnBarDaemonManager+ComputerUse.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4581487A8AB52B5F488DB65 /* OpenBurnBarDaemonManager+ComputerUse.swift */; };
 				739D57940865EC6BBB6A29BB /* ComputerUseDaemonApprovalPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA5E4F59A42FE7446FF0F03 /* ComputerUseDaemonApprovalPresenter.swift */; };
+			38022CDCCBA6C9FDDD8F70C6 /* PhoneControlAuthorityPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6658DCC2654EF59AD45D0018 /* PhoneControlAuthorityPublisher.swift */; };
+				7EDAE88DA784BC4B377AF6B2 /* ComputerUseRuntimeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83D80039ECD4F384242378 /* ComputerUseRuntimeController.swift */; };
 		/* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2039,6 +2048,7 @@
 		A9848EB8A189DD55F67AA267 /* ZAIQuotaAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZAIQuotaAdapter.swift; sourceTree = "<group>"; };
 		A989A9876034E81EEB766AA1 /* IrohBlobKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IrohBlobKeyStore.swift; sourceTree = "<group>"; };
 		A9998D34C99150DACAA1CEF3 /* RoutingClientWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutingClientWiringTests.swift; sourceTree = "<group>"; };
+		0A1B2C3D4E5F6A7B8C9D0E16 /* RoutedClientWiringSentryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutedClientWiringSentryTests.swift; sourceTree = "<group>"; };
 		A9A87A35FBBF9C86AC1F6167 /* CloudModelCodableTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudModelCodableTests.swift; sourceTree = "<group>"; };
 		A9C6C49336D37D8F3AC495A3 /* LocalNotificationBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNotificationBridge.swift; sourceTree = "<group>"; };
 		A9E08BA506575E368CD604DA /* HermesSquareSubscriptionsFolder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesSquareSubscriptionsFolder.swift; sourceTree = "<group>"; };
@@ -2332,6 +2342,9 @@
 		EA4B9C6930C83E8E19B0CBC0 /* ArtifactAuthoringService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactAuthoringService.swift; sourceTree = "<group>"; };
 		EA5A9B6EF026F88B40744569 /* OpenBurnBarProviderCredentialNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarProviderCredentialNormalizer.swift; sourceTree = "<group>"; };
 		EA81DD6D3F03D1A8A7A3B414 /* ProviderQuotaSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaSnapshotStore.swift; sourceTree = "<group>"; };
+		0A1F1F1F0003000000010002 /* QuotaSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSettingsTests.swift; sourceTree = "<group>"; };
+		0A1F1F1F0002000000010002 /* ProviderQuotaPacingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaPacingViews.swift; sourceTree = "<group>"; };
+		0A1F1F1F0001000000010002 /* ProviderQuotaPacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaPacing.swift; sourceTree = "<group>"; };
 		EA83B8C7FBD0AC29562FECB6 /* ProviderAccountChips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccountChips.swift; sourceTree = "<group>"; };
 		EA8FD8A89559DC74FDEF8D42 /* CLIBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIBridgeTests.swift; sourceTree = "<group>"; };
 		EAB4DE2BD453EC710B526E44 /* OpenBurnBarSearchIntegrationHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarSearchIntegrationHarness.swift; sourceTree = "<group>"; };
@@ -2373,6 +2386,8 @@
 		F09954E703F7BCFC475A85E1 /* ConversationIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationIndexer.swift; sourceTree = "<group>"; };
 		F0D93B3B52B08361673CBBFD /* NestHubSettingsCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NestHubSettingsCardTests.swift; sourceTree = "<group>"; };
 		F0E8B62C98EB96F96B8AB593 /* RoutingClientWiring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutingClientWiring.swift; sourceTree = "<group>"; };
+		0A1B2C3D4E5F6A7B8C9D0E12 /* RoutedClientWiringSentry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutedClientWiringSentry.swift; sourceTree = "<group>"; };
+		0A1B2C3D4E5F6A7B8C9D0E14 /* RoutedClientWiringSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutedClientWiringSettings.swift; sourceTree = "<group>"; };
 		F0FD4F859660CDDDB09C7EE4 /* BillingUsageReconciliation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BillingUsageReconciliation.swift; sourceTree = "<group>"; };
 		F1030DC560B5FB6BCCAAC76F /* OpenRouterUsageAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenRouterUsageAPI.swift; sourceTree = "<group>"; };
 		F1075024DBE68364F8C7D2D3 /* ICloudSessionMirrorService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ICloudSessionMirrorService.swift; sourceTree = "<group>"; };
@@ -2437,6 +2452,7 @@
 		2CBF6348A916BFB95DFD6A1F /* ComputerUsePanicHaltCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComputerUsePanicHaltCoordinator.swift; path = AgentLens/Services/ComputerUse/ComputerUsePanicHaltCoordinator.swift; sourceTree = SOURCE_ROOT; };
 		E0155D3F7EEB0C70CB9DE66B /* MacAccessibilityInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MacAccessibilityInspector.swift; path = AgentLens/Services/ComputerUse/Mac/MacAccessibilityInspector.swift; sourceTree = SOURCE_ROOT; };
 		6D9323F6B311196CFDBDE0C1 /* MacInputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MacInputController.swift; path = AgentLens/Services/ComputerUse/Mac/MacInputController.swift; sourceTree = SOURCE_ROOT; };
+		2EAE22B8F92640AB9157680A /* PhoneControlAuthorityProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PhoneControlAuthorityProvider.swift; path = AgentLens/Services/ComputerUse/PhoneControlAuthorityProvider.swift; sourceTree = SOURCE_ROOT; };
 		E1BAF4EB3B85994D9EFD6E79 /* PhoneControlAuthorityValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PhoneControlAuthorityValidator.swift; path = AgentLens/Services/ComputerUse/PhoneControlAuthorityValidator.swift; sourceTree = SOURCE_ROOT; };
 		EC65453BF97A0EDC9930906A /* PhoneControlReceiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PhoneControlReceiver.swift; path = AgentLens/Services/ComputerUse/PhoneControlReceiver.swift; sourceTree = SOURCE_ROOT; };
 		A6CD9F24E5D4AD95B61A3B43 /* ComputerUseApprovalSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComputerUseApprovalSheet.swift; path = AgentLens/Views/ComputerUse/ComputerUseApprovalSheet.swift; sourceTree = SOURCE_ROOT; };
@@ -2474,6 +2490,8 @@
 				05F63EB019865F1B601E5B68 /* ComputerUseRemoteConfigNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComputerUseRemoteConfigNotifications.swift; path = AgentLens/Services/ComputerUse/ComputerUseRemoteConfigNotifications.swift; sourceTree = SOURCE_ROOT; };
 			A4581487A8AB52B5F488DB65 /* OpenBurnBarDaemonManager+ComputerUse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "OpenBurnBarDaemonManager+ComputerUse.swift"; path = "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+ComputerUse.swift"; sourceTree = SOURCE_ROOT; };
 				2EA5E4F59A42FE7446FF0F03 /* ComputerUseDaemonApprovalPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComputerUseDaemonApprovalPresenter.swift; path = AgentLens/Services/ComputerUse/ComputerUseDaemonApprovalPresenter.swift; sourceTree = SOURCE_ROOT; };
+			6658DCC2654EF59AD45D0018 /* PhoneControlAuthorityPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PhoneControlAuthorityPublisher.swift; path = OpenBurnBarMobile/Services/ComputerUse/PhoneControlAuthorityPublisher.swift; sourceTree = SOURCE_ROOT; };
+				DB83D80039ECD4F384242378 /* ComputerUseRuntimeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComputerUseRuntimeController.swift; path = AgentLens/Services/ComputerUse/ComputerUseRuntimeController.swift; sourceTree = SOURCE_ROOT; };
 		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -2710,6 +2728,7 @@
 			children = (
 				49CBE50D36034E1258B452F8 /* ProviderQuotaBucketViews.swift */,
 				C2C1D66822AB81EF096E0328 /* ProviderQuotaCommandCenterViews.swift */,
+				0A1F1F1F0002000000010002 /* ProviderQuotaPacingViews.swift */,
 				54677BA1F2D4CC534216D04B /* ProviderQuotaPopoverViews.swift */,
 				D248A7C95B5C0A9C9D26E29E /* ProviderQuotaStripViews.swift */,
 			);
@@ -2816,6 +2835,7 @@
 				B94B2A2E5E4DA4F8EA66F054 /* IndexSettings.swift */,
 				2ED57642B6C207D9438702DD /* ProviderPathSettings.swift */,
 				9A046E5557CFB124CC483BAE /* QuotaSettings.swift */,
+				0A1B2C3D4E5F6A7B8C9D0E14 /* RoutedClientWiringSettings.swift */,
 				9984046255A1770837833F0C /* SummarySettings.swift */,
 			);
 			path = Stores;
@@ -2956,6 +2976,7 @@
 				6ED0C396BBC637B6A99F5DC7 /* ProviderQuotaAdapter.swift */,
 				F6DE60CC3B1FFE6A6C49F33B /* ProviderQuotaError.swift */,
 				6FD52465BEB1838C0D742DB9 /* ProviderQuotaModels.swift */,
+				0A1F1F1F0001000000010002 /* ProviderQuotaPacing.swift */,
 				440B5DB6483C144E3633C154 /* ProviderQuotaService.swift */,
 				EA81DD6D3F03D1A8A7A3B414 /* ProviderQuotaSnapshotStore.swift */,
 				32450E00EE48DECF70532353 /* ProviderQuotaTypes.swift */,
@@ -3859,8 +3880,10 @@
 				CB87F63A8978E314A9965CDE /* ProviderAccountPersistenceTests.swift */,
 				C55ACE182159D7EE9EC7D61F /* ProviderQuotaServiceTests.swift */,
 				559D8B9003765076A296F962 /* ProxyProviderLogoResolutionTests.swift */,
+				0A1F1F1F0003000000010002 /* QuotaSettingsTests.swift */,
 				7D5EB6563ECDD96574066F1C /* RemoteSyncWatermarkTests.swift */,
 				A9998D34C99150DACAA1CEF3 /* RoutingClientWiringTests.swift */,
+				0A1B2C3D4E5F6A7B8C9D0E16 /* RoutedClientWiringSentryTests.swift */,
 				1A3C94053C932F501397828E /* SearchServiceTests.swift */,
 				E9ED4E7A5FFA6E110C904A7C /* SessionLogSyncRoundTripTests.swift */,
 				000A1148B7E3BFE9A96ADFEB /* SettingsManagerSecretStorageTests.swift */,
@@ -4376,6 +4399,7 @@
 				52377F2276AE25AD761E587B /* CLIProcessStreamRunner.swift */,
 				8F8C0363908CC9B2B080E50E /* CLIStreamParsers.swift */,
 				FE6FFBC700D218430E47C7C2 /* OpenAICompatibleChatGatewayClient.swift */,
+				0A1B2C3D4E5F6A7B8C9D0E12 /* RoutedClientWiringSentry.swift */,
 				F0E8B62C98EB96F96B8AB593 /* RoutingClientWiring.swift */,
 			);
 			path = CLIBridge;
@@ -5670,6 +5694,7 @@
 				A4707D771D94BA67E7926B67 /* ComputerUseDeviceSheet.swift in Sources */,
 				23BCCA8FCBD88645685F0732 /* ComputerUseTrustModeBadge.swift in Sources */,
 				F72A6FAEAFA983D1AA355923 /* PhoneControlOptionSheet.swift in Sources */,
+				38022CDCCBA6C9FDDD8F70C6 /* PhoneControlAuthorityPublisher.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -5818,9 +5843,11 @@
 				C41A37F227EB8334B6A2EEF7 /* ProviderLogoViewTests.swift in Sources */,
 				5B2567F2870DF9EF6F2259BD /* ProviderQuotaServiceTests.swift in Sources */,
 				EAB46A48CE872AEECEE20BE2 /* ProxyProviderLogoResolutionTests.swift in Sources */,
+				0A1F1F1F0003000000010001 /* QuotaSettingsTests.swift in Sources */,
 				4B959AA4D864F8A055A9F438 /* RemoteSyncWatermarkTests.swift in Sources */,
 				C80D3F3E819787CC354CDB3C /* ReplayGoldenSupport.swift in Sources */,
 				26F4BD90CF30C5EF97A052A3 /* RoutingClientWiringTests.swift in Sources */,
+				0A1B2C3D4E5F6A7B8C9D0E15 /* RoutedClientWiringSentryTests.swift in Sources */,
 				EB0F33543FC714C395C08E42 /* SearchServiceTests.swift in Sources */,
 				BD257E0A712079782244D470 /* SessionLedgerSectionTests.swift in Sources */,
 				4CC8E8E5D38980B748484355 /* SessionLogSyncRoundTripTests.swift in Sources */,
@@ -6209,11 +6236,12 @@
 				160216BA5825A96D68F46BAB /* OpenBurnBarOperatingLayer.swift in Sources */,
 				98BE456867C7A784D18311FC /* OpenBurnBarOperatingModels.swift in Sources */,
 				38FFEE934C1204F0B79F30AA /* OpenBurnBarOperatingSharedViews.swift in Sources */,
-				B2B2916D0EE119361B0A19C2 /* OpenBurnBarSearchPerformanceTimer.swift in Sources */,
-				C4DB95E63D250D3CF6240C77 /* OpenBurnBarSetupGuideBuilder.swift in Sources */,
-				C663DB68792D4E66FD1CDE46 /* OpenBurnBarSetupGuideCards.swift in Sources */,
-				3096F147E5E5F4EA147E1357 /* OpenBurnBarStartupRecovery.swift in Sources */,
-				F73536FD01FC134422CA9C3E /* OpenBurnBarTelemetryService.swift in Sources */,
+					B2B2916D0EE119361B0A19C2 /* OpenBurnBarSearchPerformanceTimer.swift in Sources */,
+					C4DB95E63D250D3CF6240C77 /* OpenBurnBarSetupGuideBuilder.swift in Sources */,
+					C663DB68792D4E66FD1CDE46 /* OpenBurnBarSetupGuideCards.swift in Sources */,
+					7EDAE88DA784BC4B377AF6B2 /* ComputerUseRuntimeController.swift in Sources */,
+					3096F147E5E5F4EA147E1357 /* OpenBurnBarStartupRecovery.swift in Sources */,
+					F73536FD01FC134422CA9C3E /* OpenBurnBarTelemetryService.swift in Sources */,
 				DC5B5C19652A676F99176C09 /* OpenRouterUsageAPI.swift in Sources */,
 				73124BFBC65BB74BA20FDCC4 /* PaperclipButton.swift in Sources */,
 				083FBB35AC36B3ED80BCEFBB /* ParserCheckpointStore.swift in Sources */,
@@ -6258,6 +6286,8 @@
 				0A10A0581B2C6845808A8170 /* ProviderQuotaModels.swift in Sources */,
 				57ACF88031F7969607C88B16 /* ProviderQuotaPopoverViews.swift in Sources */,
 				1388112A67967275B802857D /* ProviderQuotaService.swift in Sources */,
+				0A1F1F1F0001000000010001 /* ProviderQuotaPacing.swift in Sources */,
+				0A1F1F1F0002000000010001 /* ProviderQuotaPacingViews.swift in Sources */,
 				0E4FE311062AE136DC1C8F98 /* ProviderQuotaSnapshotStore.swift in Sources */,
 				04B0D88B3A8BBF89C7ED065B /* ProviderQuotaStripViews.swift in Sources */,
 				4C603ED9038E7D95670BBFB4 /* ProviderQuotaTypes.swift in Sources */,
@@ -6277,6 +6307,8 @@
 				F897CC526BD2FB184A5F5BAE /* RetrievalHealthTypes.swift in Sources */,
 				1BF8DFEEEEF59C0EDFC41726 /* RetrievalQueryTypes.swift in Sources */,
 				C9B3D58E39F448C8EF227AFA /* RoutingClientWiring.swift in Sources */,
+				0A1B2C3D4E5F6A7B8C9D0E11 /* RoutedClientWiringSentry.swift in Sources */,
+				0A1B2C3D4E5F6A7B8C9D0E13 /* RoutedClientWiringSettings.swift in Sources */,
 				120DA0456894E7F35AE5AD78 /* ScreenCapturePipeline.swift in Sources */,
 				8882053A0BB0475D416C896D /* ScreenShareViewer.swift in Sources */,
 				58EB44C0AB495E5DB5651749 /* SearchIndexStore.swift in Sources */,
@@ -6351,10 +6383,11 @@
 				CE6D8F8145F3A9A41A9A910C /* WindsurfParser.swift in Sources */,
 				0B33BE9575B9D43F27E23CC1 /* ZAIQuotaAdapter.swift in Sources */,
 				E615B11154069B8CC0274FFB /* ZaiMiniMaxUsageProbe.swift in Sources */,
-				BCDBC4C940216E48A5DB03A0 /* ComputerUsePanicHaltCoordinator.swift in Sources */,
-				62B7C4F4DB7BF27EDF3E882F /* MacAccessibilityInspector.swift in Sources */,
-				F100C911E4673AC39D1A3874 /* MacInputController.swift in Sources */,
-				324A8F246CB3DD209AF9514D /* PhoneControlAuthorityValidator.swift in Sources */,
+					BCDBC4C940216E48A5DB03A0 /* ComputerUsePanicHaltCoordinator.swift in Sources */,
+					62B7C4F4DB7BF27EDF3E882F /* MacAccessibilityInspector.swift in Sources */,
+					F100C911E4673AC39D1A3874 /* MacInputController.swift in Sources */,
+					1C3F9965BB6E4E9F9C5564E0 /* PhoneControlAuthorityProvider.swift in Sources */,
+					324A8F246CB3DD209AF9514D /* PhoneControlAuthorityValidator.swift in Sources */,
 				335C5850691A1A3BEF6160FF /* PhoneControlReceiver.swift in Sources */,
 				E2374CB4AA6A998B3A9FE3EB /* ComputerUseApprovalSheet.swift in Sources */,
 				CDC5B047C9E9FA3CC6167A4F /* ComputerUseSessionPanel.swift in Sources */,
@@ -6374,11 +6407,11 @@
 				80F7A2B094D2FC1316194966 /* MacComputerUseDenyRegions.swift in Sources */,
 				4021909364792DA8315A5415 /* AgentWatchActionPublisher.swift in Sources */,
 				88DC515B9B3471FFAA4FD364 /* AgentWatchHUDSession.swift in Sources */,
-				E3F634094706FB3FF9338D0B /* ComputerUseScopeRuleEditor.swift in Sources */,
-				E5B78DB0F58FD66627838F1C /* ComputerUseRemoteConfigNotifications.swift in Sources */,
-				845771CBD3C955A2A45B3966 /* OpenBurnBarDaemonManager+ComputerUse.swift in Sources */,
-				739D57940865EC6BBB6A29BB /* ComputerUseDaemonApprovalPresenter.swift in Sources */,
-			);
+					E3F634094706FB3FF9338D0B /* ComputerUseScopeRuleEditor.swift in Sources */,
+					E5B78DB0F58FD66627838F1C /* ComputerUseRemoteConfigNotifications.swift in Sources */,
+					845771CBD3C955A2A45B3966 /* OpenBurnBarDaemonManager+ComputerUse.swift in Sources */,
+					739D57940865EC6BBB6A29BB /* ComputerUseDaemonApprovalPresenter.swift in Sources */,
+					);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		FA65B9C027F00A7F659FCDF7 /* Sources */ = {

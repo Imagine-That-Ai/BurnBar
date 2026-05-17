@@ -2114,6 +2114,53 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(upstreamRequests.last?.authorization, "Bearer primary-ollama-key")
     }
 
+    func testGatewayRejectsOllamaCloudLengthResponseWithoutAssistantText() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        enqueueOllamaCloudCatalog(["kimi-k2.6"], times: 1)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "model": "kimi-k2.6",
+              "created_at": "2026-05-17T00:00:00Z",
+              "message": {"role": "assistant", "content": "", "thinking": "reasoning but no final answer"},
+              "done": true,
+              "done_reason": "length",
+              "prompt_eval_count": 24,
+              "eval_count": 8
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureOllamaProviderForGateway()
+        try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"kimi-k2.6:cloud","messages":[{"role":"user","content":"What model are ye?"}],"stream":false,"max_tokens":8}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 502, String(decoding: body, as: UTF8.self))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let error = try XCTUnwrap(object["error"] as? [String: Any])
+        XCTAssertEqual(error["code"] as? String, "empty_assistant_content")
+        XCTAssertTrue((error["message"] as? String ?? "").contains("reasoning-only output"))
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/search", "/api/chat"])
+        let usage = try await harness.usageRecorder.recentUsage(limit: 5)
+        XCTAssertTrue(usage.isEmpty)
+    }
+
     func testGatewayFlattensDroidArrayContentForOllamaCloudChat() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]

@@ -366,6 +366,45 @@ export interface IrohPairingPublicKeyDoc {
 export const IROH_PAIRING_KEY_HOST_ROLE = "host";
 
 /**
+ * Phone-control authority key. Published by iOS/iPadOS before it opens the
+ * Computer Use `control.input` stream; read by the Mac when it receives
+ * `control.classify`.
+ *
+ * Lives at:
+ *   /users/{uid}/iroh_pairing/{connectionId}/controllers/{peerNodeId}
+ *
+ * This keeps the Ed25519 verification root out of the stream it is supposed
+ * to authenticate. Firestore rules require `connectionId` to name the current
+ * pairing record and `deviceId` to refer to a trusted escrow device in the
+ * same user namespace.
+ */
+export interface ComputerUsePhoneAuthorityDoc {
+  /** Document id; equals `peerNodeId`. */
+  id: string;
+
+  /** Active iroh pairing document this controller key is scoped to. */
+  connectionId: string;
+
+  /** Stable phone-control peer id derived from the public key. */
+  peerNodeId: string;
+
+  /** Trusted escrow device publishing the key. */
+  deviceId: string;
+
+  /** Base64 of the 32-byte Ed25519 public key used for phone-control intents. */
+  publicKeyBase64: string;
+
+  /** Milliseconds since epoch when the phone wrote/refreshed the doc. */
+  publishedAtMillis: number;
+
+  /** Frame schema version the key is bound to. Default 1. */
+  protocolVersion: number;
+
+  /** Document schema version for forward compatibility. */
+  schemaVersion: number;
+}
+
+/**
  * Audit event the Mac (or the Cloud Functions hosted runner) writes when an
  * iroh stream is opened, closed, or fails over to the WSS relay. Surfaces
  * transport health to the user's audit log without exposing payload bytes.

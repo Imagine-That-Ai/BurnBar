@@ -125,6 +125,7 @@ public struct MacInputAction: Codable, Hashable, Sendable {
         case key
         case shortcut
         case dragDrop = "drag_drop"
+        case scroll
     }
 
     public let kind: Kind
@@ -178,6 +179,11 @@ public struct MacInputAction: Codable, Hashable, Sendable {
             let from = (displayX.map(String.init) ?? "?") + "," + (displayY.map(String.init) ?? "?")
             let to = (dragEndX.map(String.init) ?? "?") + "," + (dragEndY.map(String.init) ?? "?")
             return "Drag from (\(from)) to (\(to)) in \(app)"
+        case .scroll:
+            if let displayX, let displayY {
+                return "Scroll at (\(displayX), \(displayY)) in \(app)"
+            }
+            return "Scroll in \(app)"
         }
     }
 }

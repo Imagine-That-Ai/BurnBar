@@ -437,6 +437,22 @@ enum SettingsManifest {
             ]
         ),
 
+        // MARK: Computer Use
+
+        SettingsItem(
+            id: "computerUse.readiness",
+            tab: .computerUse,
+            pageRoute: .computerUseRoot,
+            anchorID: SettingsAnchor.computerUseReadiness,
+            title: "Computer Use Readiness",
+            subtitle: "Agent Watch, browser automation, Mac input, approvals, and audit chain",
+            keywords: [
+                "computer use", "agent watch", "browser", "playwright", "mac input",
+                "approval", "panic", "audit", "accessibility"
+            ],
+            helpText: "Shows local permission state and the controls needed to validate Computer Use on this Mac."
+        ),
+
         // MARK: Account Switcher — now lives inside Agents → CLIs / Advanced.
 
         SettingsItem(
@@ -583,6 +599,7 @@ enum SettingsManifest {
         SettingsAnchor.trustedDevices,
         SettingsAnchor.smartDisplays,
         SettingsAnchor.mediaPermissions,
+        SettingsAnchor.computerUseReadiness,
         SettingsAnchor.switcherBrowser,
         SettingsAnchor.switcherCLI,
         SettingsAnchor.hermesConnections,

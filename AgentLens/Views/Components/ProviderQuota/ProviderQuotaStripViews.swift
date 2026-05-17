@@ -124,6 +124,10 @@ struct QuotaDualWindowStrip: View {
                             .frame(width: fillWidth)
                             .shadow(color: fill.opacity(0.3), radius: 4, y: 0)
                     }
+
+                    // Pace tick — where the fill edge SHOULD be if usage
+                    // is to last the full window.
+                    PaceTickOverlay(pace: bucket.idealPace(), tint: theme.primaryColor)
                 }
             }
             .frame(height: 10)

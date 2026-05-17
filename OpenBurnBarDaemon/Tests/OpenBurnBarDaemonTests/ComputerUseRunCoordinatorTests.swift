@@ -314,6 +314,27 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertTrue(remaining.isEmpty)
     }
 
+    func testPanicHaltAllEndsEveryActiveSession() async throws {
+        let coordinator = makeCoordinator()
+        let first = ComputerUseSessionID.newRandom()
+        let second = ComputerUseSessionID.newRandom()
+
+        _ = try await coordinator.startSession(
+            manifest: manifest(sessionId: first, mode: .browser, trustMode: .manual)
+        )
+        _ = try await coordinator.startSession(
+            manifest: manifest(sessionId: second, mode: .browser, trustMode: .manual)
+        )
+
+        let halted = await coordinator.panicHaltAll(source: .hotkey)
+        let firstState = await coordinator.session(first)
+        let secondState = await coordinator.session(second)
+
+        XCTAssertEqual(Set(halted), Set([first, second]))
+        XCTAssertNil(firstState)
+        XCTAssertNil(secondState)
+    }
+
     // MARK: - Helpers
 
     private func waitForCondition(

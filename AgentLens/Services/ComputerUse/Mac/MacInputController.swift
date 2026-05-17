@@ -155,6 +155,30 @@ public final class MacInputController: @unchecked Sendable {
         return Date().timeIntervalSince(started) * 1000.0
     }
 
+    /// Synthesize a pixel-precise scroll event at a connected-display point.
+    /// Positive deltas follow CGEvent's native wheel convention.
+    @discardableResult
+    public func scroll(x: Int, y: Int, deltaX: Int = 0, deltaY: Int) throws -> Double {
+        guard isAccessibilityTrusted() else { throw InputError.accessibilityNotTrusted }
+        guard isPointOnConnectedDisplay(x: x, y: y) else {
+            throw InputError.displayBoundsViolation(x, y)
+        }
+        let started = Date()
+        guard let event = CGEvent(
+            scrollWheelEvent2Source: nil,
+            units: .pixel,
+            wheelCount: 2,
+            wheel1: Int32(deltaY),
+            wheel2: Int32(deltaX),
+            wheel3: 0
+        ) else {
+            throw InputError.eventCreationFailed
+        }
+        event.location = CGPoint(x: CGFloat(x), y: CGFloat(y))
+        event.post(tap: .cghidEventTap)
+        return Date().timeIntervalSince(started) * 1000.0
+    }
+
     /// Whole-shortcut form: send `cmd+c`, `cmd+shift+left`, etc.
     @discardableResult
     public func shortcut(key: String, modifiers: [String]) throws -> Double {

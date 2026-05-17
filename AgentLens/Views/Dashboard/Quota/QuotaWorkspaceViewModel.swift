@@ -114,12 +114,20 @@ final class QuotaWorkspaceViewModel {
     func rebuild(
         quotaService: ProviderQuotaService,
         dataStore: DataStore,
-        providerSpendByID: [ProviderID: Double]
+        providerSpendByID: [ProviderID: Double],
+        cumulativeAcrossAccounts: Bool = false
     ) {
         var byID: [String: SubscriptionEntry] = [:]
 
         for provider in AgentProvider.quotaSignalProviders {
-            let allAccountSnapshots = quotaService.snapshots(for: provider)
+            // When `cumulativeAcrossAccounts` is on and the provider has
+            // more than one account, `displaySnapshots` returns the
+            // synthetic merged snapshot. Otherwise it returns the
+            // per-account list unchanged.
+            let allAccountSnapshots = quotaService.displaySnapshots(
+                for: provider,
+                cumulative: cumulativeAcrossAccounts
+            )
             let candidateSnapshots = allAccountSnapshots
                 .filter { $0.hasDisplayableQuotaSignal }
 

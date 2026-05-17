@@ -58,6 +58,13 @@ public final class MacActionDispatcher: @unchecked Sendable {
                 endX: endX,
                 endY: endY
             )
+        case .scroll:
+            guard let x = action.displayX, let y = action.displayY else {
+                throw DispatchError.missingCoordinates("scroll")
+            }
+            let deltaX = (action.dragEndX ?? x) - x
+            let deltaY = (action.dragEndY ?? (y - 600)) - y
+            elapsedMillis = try inputController.scroll(x: x, y: y, deltaX: deltaX, deltaY: deltaY)
         }
 
         return .object([

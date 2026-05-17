@@ -116,7 +116,8 @@ final class SettingsRouter {
              .alertsRoot,
              .notificationsRoot,
              .devicesAndSyncRoot,
-             .mediaRoot:
+             .mediaRoot,
+             .computerUseRoot:
             return []
 
         // Agents sub-pages: single drill from the agents landing.

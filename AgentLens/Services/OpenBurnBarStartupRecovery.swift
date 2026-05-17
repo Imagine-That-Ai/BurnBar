@@ -191,6 +191,10 @@ final class OpenBurnBarRuntimeContext {
     var castActionsListener: CastActionsListener?
     var cliAgentMissionRequestListener: CLIAgentMissionRequestListener?
     var agentHarnessImportJobListener: AgentHarnessImportJobListener?
+    var routedClientWiringSentry: RoutedClientWiringSentry?
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    var computerUseRuntimeController: ComputerUseRuntimeController?
+    #endif
     let chatController: ChatSessionController
     let operatingLayer: OpenBurnBarOperatingLayer
 
@@ -236,6 +240,11 @@ final class OpenBurnBarRuntimeContext {
             hermesRelayHostService = hermesRelayHost
         }
         hermesRelayHost.start()
+        #if canImport(AppKit) && !DISTRIBUTION_MAS
+        startComputerUseServices()
+        #endif
+
+        startRoutedClientWiringSentry()
 
         let piRelayHost: PiAgentCloudRelayHostService
         if let existingPiRelayHost = piAgentRelayHostService {
@@ -249,6 +258,27 @@ final class OpenBurnBarRuntimeContext {
         }
         piRelayHost.start()
     }
+
+    #if canImport(AppKit) && !DISTRIBUTION_MAS
+    func startComputerUseServices(cloudSyncService explicitCloudSyncService: CloudSyncService? = nil) {
+        let controller: ComputerUseRuntimeController
+        if let existing = computerUseRuntimeController {
+            controller = existing
+        } else {
+            controller = ComputerUseRuntimeController(
+                accountManager: accountManager,
+                settingsManager: settingsManager,
+                cloudSyncService: explicitCloudSyncService ?? cloudSyncService
+            )
+            computerUseRuntimeController = controller
+        }
+
+        if let sync = explicitCloudSyncService ?? cloudSyncService {
+            controller.attach(cloudSyncService: sync)
+        }
+        controller.startPanicMonitoring()
+    }
+    #endif
 
     func startSmartDisplayServices() {
         let smartHubBridge: SmartHubBridgeController
@@ -352,5 +382,21 @@ final class OpenBurnBarRuntimeContext {
             agentHarnessImportJobListener = importListener
         }
         importListener.start()
+    }
+
+    /// Boot the durability sentry that keeps Claude Code / Codex / Forge /
+    /// OpenCode / Droid wired through the local BurnBar gateway after
+    /// external rewrites (Claude Code's atomic settings.json save, plugin
+    /// installs, dotfile syncs). The sentry is a no-op until at least one CLI
+    /// has been Connected; it picks up the persisted intent automatically.
+    func startRoutedClientWiringSentry() {
+        let sentry: RoutedClientWiringSentry
+        if let existing = routedClientWiringSentry {
+            sentry = existing
+        } else {
+            sentry = RoutedClientWiringSentry()
+            routedClientWiringSentry = sentry
+        }
+        sentry.start(settingsManager: settingsManager)
     }
 }

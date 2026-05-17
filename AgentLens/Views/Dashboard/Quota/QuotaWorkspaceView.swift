@@ -153,6 +153,7 @@ struct QuotaWorkspaceView: View {
         .onChange(of: quotaService.lastFetch) { _, _ in rebuild() }
         .onChange(of: quotaService.snapshotsByProvider) { _, _ in rebuild() }
         .onChange(of: quotaService.snapshotsByAccountID) { _, _ in rebuild() }
+        .onChange(of: settingsManager.cumulativeAcrossAccounts) { _, _ in rebuild() }
         .onChange(of: viewModel.entries) { _, newEntries in
             // If the selected provider's snapshots vanish (e.g. service is
             // disconnected), drop the focus so the user isn't stranded on an
@@ -330,7 +331,8 @@ struct QuotaWorkspaceView: View {
         viewModel.rebuild(
             quotaService: quotaService,
             dataStore: dataStore,
-            providerSpendByID: providerSpendByID
+            providerSpendByID: providerSpendByID,
+            cumulativeAcrossAccounts: settingsManager.cumulativeAcrossAccounts
         )
     }
 }

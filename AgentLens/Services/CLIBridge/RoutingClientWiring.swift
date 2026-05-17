@@ -1171,6 +1171,9 @@ struct RoutingClientWiring {
         if shouldReplaceDroidDefaultModel(root["model"] as? String) {
             root["model"] = fallbackModelID
         }
+        if shouldReplaceDroidDefaultModel(root["defaultModel"] as? String) {
+            root["defaultModel"] = fallbackModelID
+        }
         if var sessionDefaultSettings = root["sessionDefaultSettings"] as? [String: Any],
            shouldReplaceDroidDefaultModel(sessionDefaultSettings["model"] as? String) {
             sessionDefaultSettings["model"] = fallbackModelID
@@ -1200,6 +1203,10 @@ struct RoutingClientWiring {
         var removed = false
         if isManagedDroidDefaultModel(root["model"] as? String) {
             root.removeValue(forKey: "model")
+            removed = true
+        }
+        if isManagedDroidDefaultModel(root["defaultModel"] as? String) {
+            root.removeValue(forKey: "defaultModel")
             removed = true
         }
         if var sessionDefaultSettings = root["sessionDefaultSettings"] as? [String: Any],

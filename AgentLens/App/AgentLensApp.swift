@@ -1116,6 +1116,9 @@ struct OpenBurnBarApp: App {
                         context.cloudSyncService = sync
 
                         context.startRelayServices()
+                        #if !DISTRIBUTION_MAS
+                        context.startComputerUseServices(cloudSyncService: sync)
+                        #endif
                         context.startSmartDisplayServices()
 
                         let mirror: ICloudSessionMirrorService

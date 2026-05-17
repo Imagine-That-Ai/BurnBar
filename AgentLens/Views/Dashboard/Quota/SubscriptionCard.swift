@@ -216,6 +216,7 @@ struct SubscriptionCard: View {
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                        PaceBadge(pace: bucket.idealPace(), compact: true)
                     }
                 } else {
                     Text(fallback)

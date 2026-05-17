@@ -557,6 +557,7 @@ final class RoutingClientWiringTests: XCTestCase {
         )
         try Data("""
         {
+          "defaultModel": "custom:OpenBurnBar-MiniMax-M2.5-0",
           "sessionDefaultSettings": {
             "model": "custom:OpenBurnBar-MiniMax-M2.5-0"
           },
@@ -574,6 +575,7 @@ final class RoutingClientWiringTests: XCTestCase {
 
         let root = try loadJSONObject(at: settingsURL)
         let sessionDefaults = try XCTUnwrap(root["sessionDefaultSettings"] as? [String: Any])
+        XCTAssertEqual(root["defaultModel"] as? String, "custom:OpenBurnBar-glm-5-0")
         XCTAssertEqual(sessionDefaults["model"] as? String, "custom:OpenBurnBar-glm-5-0")
     }
 

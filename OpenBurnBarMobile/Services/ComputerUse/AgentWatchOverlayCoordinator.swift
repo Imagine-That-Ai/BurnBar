@@ -35,6 +35,7 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
 
     private let dialer: StreamDialer
     private let signingKeyStore: PhoneControlSigningKeyStore
+    private let authorityPublisher: PhoneControlAuthorityPublishing
     private let initialBackoff: TimeInterval
     private let maxBackoff: TimeInterval
     private var stream: (any IrohRelayStream)?
@@ -53,24 +54,36 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
             )
         },
         signingKeyStore: PhoneControlSigningKeyStore = .shared,
+        authorityPublisher: PhoneControlAuthorityPublishing = PhoneControlAuthorityPublisher.shared,
         initialBackoff: TimeInterval = 1,
         maxBackoff: TimeInterval = 30
     ) {
         self.state = state
         self.dialer = dialer
         self.signingKeyStore = signingKeyStore
+        self.authorityPublisher = authorityPublisher
         self.initialBackoff = initialBackoff
         self.maxBackoff = maxBackoff
     }
 
-    func start(uid: String, connectionID: String, relayPublicKey: Data) {
+    func start(
+        uid: String,
+        connectionID: String,
+        relayPublicKey: Data,
+        deviceId: String = MobileDeviceIdentity.loadOrCreateDeviceId()
+    ) {
         guard supervisorTask == nil else { return }
         activeUID = uid
         activeConnectionID = connectionID
         activeRelayPublicKey = relayPublicKey
         phase = .dialing
         supervisorTask = Task { [weak self] in
-            await self?.run(uid: uid, connectionID: connectionID, relayPublicKey: relayPublicKey)
+            await self?.run(
+                uid: uid,
+                connectionID: connectionID,
+                relayPublicKey: relayPublicKey,
+                deviceId: deviceId
+            )
         }
     }
 
@@ -97,7 +110,12 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
         }
     }
 
-    private func run(uid: String, connectionID: String, relayPublicKey: Data) async {
+    private func run(
+        uid: String,
+        connectionID: String,
+        relayPublicKey: Data,
+        deviceId: String
+    ) async {
         var attempt = 0
         while !Task.isCancelled {
             do {
@@ -114,6 +132,13 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
                     frameSink: makeFrameSink()
                 )
                 self.phoneControlSender = sender
+                try await authorityPublisher.publish(
+                    uid: uid,
+                    connectionId: connectionID,
+                    deviceId: deviceId,
+                    peerNodeId: phonePeerNodeId,
+                    publicKey: signingKey.privateKey.publicKey
+                )
                 let receiver = AgentWatchReceiver(
                     state: state,
                     uid: uid,
@@ -127,9 +152,8 @@ final class AgentWatchOverlayCoordinator: ObservableObject {
                     uid: uid,
                     connectionId: connectionID,
                     control: HermesRealtimeRelayControlPayload(
-                        streamClass: MediaStreamClass.controlApproval.rawValue,
-                        authorityPeerNodeId: phonePeerNodeId,
-                        authorityPublicKeyBase64: signingKey.privateKey.publicKey.rawRepresentation.base64EncodedString()
+                        streamClass: MediaStreamClass.controlInput.rawValue,
+                        authorityPeerNodeId: phonePeerNodeId
                     )
                 ))
                 phase = .live

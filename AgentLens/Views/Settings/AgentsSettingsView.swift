@@ -693,6 +693,35 @@ struct AgentsAdvancedView: View {
 
                 Divider().background(DesignSystem.Colors.border)
 
+                // Quota display preferences.
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    Text("Quota display")
+                        .font(DesignSystem.Typography.headline)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    Text("How OpenBurnBar summarises usage for providers with multiple accounts.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    SettingsToggle(
+                        title: "Cumulative across accounts",
+                        subtitle: "When you have multiple accounts on the same provider, show one combined bar instead of one per account.",
+                        icon: "rectangle.stack",
+                        isOn: $settingsManager.cumulativeAcrossAccounts
+                    )
+                    .padding(DesignSystem.Spacing.md)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                            .fill(DesignSystem.Colors.surfaceElevated.opacity(0.32))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                            .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
+                    )
+                }
+
+                Divider().background(DesignSystem.Colors.border)
+
                 // Browser profiles (Account Switcher embed in browserOnly mode).
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                     Text("Browser profiles")

@@ -20,6 +20,14 @@ final class QuotaSettings {
         didSet { persistence.set(tokenizerAssistedFallbackEnabled, forKey: "tokenizerAssistedFallbackEnabled") }
     }
 
+    /// When true, the dashboard / popover / menu-bar collapse multi-account
+    /// providers into one combined entry summed across accounts. Default
+    /// off — preserves the per-account view for users with only one
+    /// account on each provider.
+    var cumulativeAcrossAccounts: Bool = false {
+        didSet { persistence.set(cumulativeAcrossAccounts, forKey: "cumulativeAcrossAccounts") }
+    }
+
     var smartHubQuotaDisplayEnabled: Bool = false {
         didSet { persistence.set(smartHubQuotaDisplayEnabled, forKey: "smartHubQuotaDisplayEnabled") }
     }
@@ -124,6 +132,11 @@ final class QuotaSettings {
             self.tokenizerAssistedFallbackEnabled = persistence.bool(forKey: "tokenizerAssistedFallbackEnabled")
         } else {
             self.tokenizerAssistedFallbackEnabled = false
+        }
+        if persistence.objectExists(forKey: "cumulativeAcrossAccounts") {
+            self.cumulativeAcrossAccounts = persistence.bool(forKey: "cumulativeAcrossAccounts")
+        } else {
+            self.cumulativeAcrossAccounts = false
         }
         self.smartHubQuotaDisplayEnabled = persistence.bool(forKey: "smartHubQuotaDisplayEnabled")
         self.smartHubQuotaDashboardURL = persistence.string(

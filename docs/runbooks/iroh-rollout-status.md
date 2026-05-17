@@ -1,5 +1,53 @@
 # Hermes iroh Rollout Status
 
+## 2026-05-17T20:03Z — current macOS app relaunched, iPhone selected-model Wi-Fi proof green
+
+**Gate status:** fresh current-app Wi-Fi proof is green for physical iPhone, but
+the production rollout is still not complete. Remaining hard gates are renewed
+10-run different-network/cellular Gate C/D, Phase E TestFlight/internal soak,
+and explicit approvals before any production deploy, Remote Config percentage
+increase, hosted-relay spend, or WSS retirement. Latest branch CI also needs
+attention: `computer-use-loopback-test` and `OpenBurnBar PR Harness` are failing
+on head `af971a4bb`.
+
+Completed:
+- Built the current macOS app from this checkout at
+  `build/DerivedData-mac-current-run/Build/Products/Debug/OpenBurnBar.app`.
+- Stopped the stale `DerivedData-mac-model-fix` app process and stale daemon,
+  then launched the current macOS app. The current app started a fresh
+  `OpenBurnBarDaemon` on `127.0.0.1:8317`.
+- Verified the gateway health endpoint returned OK and `/v1/models` advertised
+  47 route-eligible models including `minimax-m2.7-highspeed`.
+- Rebuilt, installed, and launched the current iOS app on physical iPhone
+  `AFB07C15-AD18-5EFA-AD1C-CADB4F286797`.
+- Ran a physical iPhone Hermes iroh E2E against the current Mac daemon with the
+  exact model assertion set to `minimax-m2.7-highspeed`.
+
+Verification:
+- macOS build:
+  `xcodebuild build -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData-mac-current-run -skipPackagePluginValidation -skipMacroValidation -quiet`
+- macOS gateway:
+  `curl --max-time 12 -fsS http://127.0.0.1:8317/health` returned
+  `{"ok":true,"version":"0.1.3-beta.1"}`.
+- Model catalog:
+  `/v1/models` returned 47 rows and included `minimax-m2.7-highspeed`.
+- iOS physical smoke:
+  `scripts/e2e/ios-iroh-chat.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --device AFB07C15-AD18-5EFA-AD1C-CADB4F286797 --wait-for-device-seconds 60 --wait-for-device-interval 5 --expect-interface wifi --model minimax-m2.7-highspeed --expect-requested-model minimax-m2.7-highspeed --prompt 'Reply exactly: ok-current-ios-minimax-app-running' --poll-seconds 600 --poll-interval 5 --events-output /tmp/openburnbar-ios-current-minimax-app-running-events.json --no-start-host`
+  passed.
+- Request `iroh_41abb1fa-d8b1-45c3-bc97-f19af1e89d5d` shows
+  `iroh_pairing_verified`, `iroh_stream_opened` over `iroh-direct`,
+  `host_forward_chat_start` with
+  `requestedModel=minimax-m2.7-highspeed`, `host_forward_chat_complete`
+  with `done=true`, and `ios_response_complete` on
+  `networkInterfaces=wifi`. The exported event set contains zero
+  `iroh_fallback_to_wss` events.
+
+Next action:
+- Fix or account for the latest pushed CI failures on head `af971a4bb`
+  (`computer-use-loopback-test` and `OpenBurnBar PR Harness`), then run the
+  renewed physical-iPhone different-network/cellular gate:
+  `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 10 --interfaces cellular --wait-for-device-seconds 600 --wait-for-device-interval 5`.
+
 ## 2026-05-17T09:30Z — CodeQL timeout repaired and final fresh CI green
 
 **Gate status:** all automatable branch gates are green on

@@ -58,7 +58,7 @@ public final class PhoneControlReceiver: @unchecked Sendable {
 
         // Validate the authority envelope.
         do {
-            try validator.validate(
+            _ = try validator.validate(
                 envelope: intent.authority,
                 intent: intent,
                 now: Date()
@@ -115,7 +115,7 @@ public final class PhoneControlReceiver: @unchecked Sendable {
         case .dragStart, .dragMove, .dragEnd: return .dragDrop
         case .type: return .type
         case .shortcut: return .shortcut
-        case .scroll: return .click
+        case .scroll: return .scroll
         case .panic: return .click  // unreachable; panic short-circuits above
         }
     }

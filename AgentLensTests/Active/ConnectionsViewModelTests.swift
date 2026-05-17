@@ -201,14 +201,14 @@ final class ConnectionsViewModelTests: XCTestCase {
         }
     }
 
-    func test_refreshProxyModelCatalog_keepsSameModelDistinctBySourceID() async {
+    func test_refreshProxyModelCatalog_collapsesSameProviderModelAcrossAccounts() async {
         viewModel = ConnectionsViewModel(
             wiringFactory: { RoutingClientWiring(home: self.tempHome) },
             proxyCatalogFetcher: { _ in
                 [
                     ProxyAdvertisedModel(
                         modelID: "shared-model",
-                        displayName: "Shared Model",
+                        displayName: "Shared Model (Primary)",
                         providerID: "openai-compatible",
                         providerName: "OpenAI Compatible",
                         accountID: "default",
@@ -222,10 +222,10 @@ final class ConnectionsViewModelTests: XCTestCase {
                     ),
                     ProxyAdvertisedModel(
                         modelID: "shared-model",
-                        displayName: "Shared Model",
+                        displayName: "Shared Model (Reserve)",
                         providerID: "openai-compatible",
                         providerName: "OpenAI Compatible",
-                        accountID: "default",
+                        accountID: "backup",
                         accountLabel: "Reserve",
                         sourceID: "provider-b#default",
                         sourceKind: "upstream_models_endpoint",
@@ -240,8 +240,58 @@ final class ConnectionsViewModelTests: XCTestCase {
 
         await viewModel.refreshProxyModelCatalog(settings: settings)
 
-        XCTAssertEqual(Set(viewModel.proxyModels.map(\.id)).count, 2)
-        XCTAssertEqual(viewModel.proxyModels.map(\.sourceID), ["provider-a#default", "provider-b#default"])
+        XCTAssertEqual(viewModel.proxyModels.count, 1)
+        let model = try! XCTUnwrap(viewModel.proxyModels.first)
+        XCTAssertEqual(model.modelID, "shared-model")
+        XCTAssertEqual(model.displayName, "Shared Model")
+        XCTAssertEqual(model.accountID, "auto")
+        XCTAssertEqual(model.accountLabel, "Auto failover (2 accounts)")
+        XCTAssertEqual(model.sourceID, "openai-compatible#auto")
+        XCTAssertEqual(model.sourceKind, "upstream_models_endpoint")
+        XCTAssertTrue(model.routeEligible)
+    }
+
+    func test_refreshProxyModelCatalog_keepsSameModelDistinctAcrossProviders() async {
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyCatalogFetcher: { _ in
+                [
+                    ProxyAdvertisedModel(
+                        modelID: "shared-model",
+                        displayName: "Shared Model",
+                        providerID: "provider-a",
+                        providerName: "Provider A",
+                        accountID: "default",
+                        accountLabel: "Primary",
+                        sourceID: "provider-a#default",
+                        sourceKind: "upstream_models_endpoint",
+                        quotaState: "healthy",
+                        routeEligible: true,
+                        capabilities: ["openai_compat"],
+                        lastError: nil
+                    ),
+                    ProxyAdvertisedModel(
+                        modelID: "shared-model",
+                        displayName: "Shared Model",
+                        providerID: "provider-b",
+                        providerName: "Provider B",
+                        accountID: "default",
+                        accountLabel: "Primary",
+                        sourceID: "provider-b#default",
+                        sourceKind: "upstream_models_endpoint",
+                        quotaState: "healthy",
+                        routeEligible: true,
+                        capabilities: ["openai_compat"],
+                        lastError: nil
+                    )
+                ]
+            }
+        )
+
+        await viewModel.refreshProxyModelCatalog(settings: settings)
+
+        XCTAssertEqual(viewModel.proxyModels.count, 2)
+        XCTAssertEqual(viewModel.proxyModels.map(\.providerID), ["provider-a", "provider-b"])
     }
 
     func test_disconnect_unwiresButLeavesGatewayEnabled() async {

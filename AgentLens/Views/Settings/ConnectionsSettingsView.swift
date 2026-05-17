@@ -354,7 +354,7 @@ struct ConnectionsSettingsView: View {
                                     )
                                 }
                             },
-                            onDisconnect: { Task { await viewModel.disconnect(target: target) } },
+                            onDisconnect: { Task { await viewModel.disconnect(target: target, settings: settingsManager) } },
                             onShowSnippet: { viewModel.snippetTarget = target },
                             onRevealFile: { viewModel.revealConfigFile(target: target) },
                             configPath: viewModel.configPath(for: target)

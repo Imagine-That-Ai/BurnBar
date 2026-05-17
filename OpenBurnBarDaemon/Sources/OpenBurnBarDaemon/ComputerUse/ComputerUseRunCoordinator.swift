@@ -166,6 +166,15 @@ public actor ComputerUseRunCoordinator {
         await endSession(sessionId: sessionId, reason: endReason)
     }
 
+    @discardableResult
+    public func panicHaltAll(source: ComputerUsePanicSource) async -> [ComputerUseSessionID] {
+        let activeSessionIds = Array(sessions.keys)
+        for sessionId in activeSessionIds {
+            await panicHalt(sessionId: sessionId, source: source)
+        }
+        return activeSessionIds
+    }
+
     public func session(_ id: ComputerUseSessionID) -> ComputerUseSessionState? {
         sessions[id]?.state
     }
@@ -437,6 +446,8 @@ public actor ComputerUseRunCoordinator {
             return .macInput(try decodeMacInput(invocation: invocation, kind: .shortcut))
         case .macInputDragDrop:
             return .macInput(try decodeMacInput(invocation: invocation, kind: .dragDrop))
+        case .macInputScroll:
+            return .macInput(try decodeMacInput(invocation: invocation, kind: .scroll))
         case .macInspectAccessibility:
             return .macInspect(MacInspectAction(
                 kind: .accessibility,

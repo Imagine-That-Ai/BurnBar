@@ -136,6 +136,9 @@ enum SettingsPageRoute: Hashable, Codable {
 
     // Media & Sharing
     case mediaRoot
+
+    // Computer Use
+    case computerUseRoot
 }
 
 // MARK: - Anchor IDs
@@ -228,6 +231,9 @@ enum SettingsAnchor {
 
     // Media & Sharing
     static let mediaPermissions = "media.permissions"
+
+    // Computer Use
+    static let computerUseReadiness = "computerUse.readiness"
 
     // Switcher
     static let switcherBrowser = "switcher.browser"

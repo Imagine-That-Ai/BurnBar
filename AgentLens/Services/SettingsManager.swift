@@ -43,6 +43,7 @@ final class SettingsManager {
     let quotas: QuotaSettings
     let providerPath: ProviderPathSettings
     let artifactDiscovery: ArtifactDiscoverySettings
+    let routedClientWiring: RoutedClientWiringSettings
     private var computerUseRemoteConfigTask: Task<Void, Never>?
 
     // MARK: - Init
@@ -88,6 +89,7 @@ final class SettingsManager {
         self.quotas = QuotaSettings(persistence: coordinator)
         self.providerPath = ProviderPathSettings(persistence: coordinator)
         self.artifactDiscovery = ArtifactDiscoverySettings(persistence: coordinator)
+        self.routedClientWiring = RoutedClientWiringSettings(persistence: coordinator)
 
         // Register periodic flush on app background
         NotificationCenter.default.addObserver(
@@ -762,6 +764,14 @@ final class SettingsManager {
     var tokenizerAssistedFallbackEnabled: Bool {
         get { quotas.tokenizerAssistedFallbackEnabled }
         set { quotas.tokenizerAssistedFallbackEnabled = newValue }
+    }
+
+    /// When true, surfaces that show per-account quota cards collapse
+    /// multi-account providers into one combined card whose buckets are
+    /// summed across accounts (same `(key, windowKind)` grouping).
+    var cumulativeAcrossAccounts: Bool {
+        get { quotas.cumulativeAcrossAccounts }
+        set { quotas.cumulativeAcrossAccounts = newValue }
     }
 
     var smartHubQuotaDisplayEnabled: Bool {

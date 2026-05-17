@@ -248,7 +248,8 @@ struct SettingsView: View {
              .agentsRoot,
              .connectionsRoot, .providersRoot, .routingPoolsRoot,
              .switcherRoot, .hermesRoot,
-             .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .mediaRoot:
+             .alertsRoot, .notificationsRoot, .devicesAndSyncRoot, .mediaRoot,
+             .computerUseRoot:
             // Roots are reachable via the sidebar tab selection — the path
             // stays empty for these. Legacy roots (`connectionsRoot`,
             // `providersRoot`, `routingPoolsRoot`, `switcherRoot`,
@@ -348,7 +349,7 @@ struct SettingsView: View {
             MediaPermissionsView()
                 .navigationTitle("Media & Sharing")
             #else
-            ComputerUseSettingsView()
+            ComputerUseSettingsView(runtimeController: runtimeContext?.computerUseRuntimeController)
                 .navigationTitle("Computer Use")
             #endif
         }

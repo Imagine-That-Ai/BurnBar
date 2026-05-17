@@ -124,11 +124,13 @@ public struct ComputerUseScopeMatcher: Sendable {
     public func evaluate(
         rules: [ComputerUseScopeRule],
         context: ComputerUseScopeContext,
+        budgetStates: [ComputerUseScopeRuleID: ComputerUseScopeBudgetState] = [:],
         at now: Date = Date()
     ) -> ComputerUseScopeOutcome {
         var activeRules: [ComputerUseScopeRule] = []
         for rule in rules {
             if let expiry = rule.expiresAt, expiry <= now { continue }
+            if budgetStates[rule.id]?.isExhausted(by: rule, at: now) == true { continue }
             if matches(rule: rule, context: context) {
                 activeRules.append(rule)
             }

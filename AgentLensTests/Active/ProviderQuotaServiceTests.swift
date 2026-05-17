@@ -20,6 +20,9 @@ final class ProviderQuotaServiceTests: XCTestCase {
     func test_supportedProviders_onlyIncludesRealQuotaSignalProviders() {
         XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.warp))
         XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.ollama))
+        XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.openCode))
+        XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.zai))
+        XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.minimax))
         XCTAssertTrue(ProviderQuotaService.supportedProviders.contains(.deepSeek))
         // OpenAI is exposed as a quota-signal provider so the daemon can
         // persist credential slots and surface them in the routing cockpit
@@ -3189,6 +3192,89 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(persistedAccounts.map(\.id), ["deepseek-work", "deepseek-personal"])
     }
 
+    func test_refreshAll_fetchesOpenCodeDaemonCredentialSlotsAsAccountSnapshots() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let opencodeDBURL = home.appendingPathComponent("opencode-test.db")
+        let opencodeDB = try DatabaseQueue(path: opencodeDBURL.path)
+        try await opencodeDB.write { db in
+            try db.execute(sql: "CREATE TABLE message (data TEXT NOT NULL, time_created INTEGER NOT NULL)")
+            let nowMilliseconds = Int64(Date().timeIntervalSince1970 * 1000)
+            try db.execute(
+                sql: "INSERT INTO message (data, time_created) VALUES (?, ?)",
+                arguments: ["{\"role\":\"assistant\",\"cost\":3.25}", nowMilliseconds]
+            )
+        }
+
+        let runtimeSecrets = KeychainStore(
+            service: "tests.runtime.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: TestKeychainBackend()
+        )
+        try runtimeSecrets.set("opencode-8793-key", for: "provider.opencode.slot.8793.apiKey")
+        try runtimeSecrets.set("opencode-aj-key", for: "provider.opencode.slot.ajnunezg.apiKey")
+
+        OpenBurnBarDaemonManager.shared.providerConfigurations = [
+            OpenBurnBarDaemonProviderConfiguration(
+                providerID: "opencode",
+                provider: .openCode,
+                displayName: "OpenCode",
+                isEnabled: true,
+                baseURL: "https://opencode.ai",
+                preferredModelIDs: [],
+                preferredCredentialSlotID: "8793",
+                credentialSlots: [
+                    OpenBurnBarDaemonProviderConfiguration.CredentialSlot(
+                        slotID: "8793",
+                        label: "8793",
+                        isEnabled: true,
+                        status: .ready,
+                        cooldownUntil: nil,
+                        lastSelectedAt: nil,
+                        lastQuotaRemainingPercent: nil,
+                        lastQuotaResetsAt: nil,
+                        lastStatusMessage: nil
+                    ),
+                    OpenBurnBarDaemonProviderConfiguration.CredentialSlot(
+                        slotID: "ajnunezg",
+                        label: "ajnunezg",
+                        isEnabled: true,
+                        status: .ready,
+                        cooldownUntil: nil,
+                        lastSelectedAt: nil,
+                        lastQuotaRemainingPercent: nil,
+                        lastQuotaResetsAt: nil,
+                        lastStatusMessage: nil
+                    ),
+                ]
+            )
+        ]
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            providerRuntimeKeyStore: runtimeSecrets,
+            environment: [
+                "OPENCODE_DB_PATH": opencodeDBURL.path,
+                "OPENCODE_GO_5H_LIMIT": "10",
+            ],
+            refreshProviders: [.openCode]
+        )
+
+        let dataStore = try makeDataStore()
+        await service.refreshAll(dataStore: dataStore)
+
+        let snapshots = service.snapshots(for: AgentProvider.openCode)
+        let primary = try XCTUnwrap(snapshots.first { $0.accountID == "opencode-8793" })
+        let fallback = try XCTUnwrap(snapshots.first { $0.accountID == "opencode-ajnunezg" })
+        let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: .openCode)
+
+        XCTAssertEqual(primary.primaryDisplayableBucket?.key, "opencode-5h-estimated")
+        XCTAssertEqual(primary.primaryDisplayableBucket?.remainingValue ?? -1, 6.75, accuracy: 0.01)
+        XCTAssertEqual(fallback.primaryDisplayableBucket?.key, "opencode-5h-estimated")
+        XCTAssertEqual(Set(persistedAccounts.map(\.id)), Set(["opencode-8793", "opencode-ajnunezg"]))
+    }
+
     func test_refreshAll_fetchesAnthropicOAuthSlotsAsClaudeAccountQuotaSnapshots() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
@@ -4824,5 +4910,303 @@ extension ProviderQuotaServiceTests {
         XCTAssertEqual(snapshot.confidence, .unavailable)
         XCTAssertTrue(snapshot.buckets.isEmpty)
         XCTAssertFalse(snapshot.hasDisplayableQuotaSignal)
+    }
+
+    // MARK: - Cumulative across accounts
+    //
+    // Pure-logic tests against
+    // `ProviderQuotaService.cumulativeSnapshot(provider:from:now:)`. The
+    // service-level convenience method is a thin wrapper over this and
+    // exercises the same code path.
+
+    func test_cumulativeSnapshot_returnsNilForSingleAccount() {
+        let snapshots = [
+            makeSnapshot(
+                accountID: "a1",
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours, used: 30, limit: 100)]
+            )
+        ]
+        let result = ProviderQuotaService.cumulativeSnapshot(
+            provider: .claudeCode,
+            from: snapshots,
+            now: now
+        )
+        XCTAssertNil(result)
+    }
+
+    func test_cumulativeSnapshot_sumsTwoAccountsByKeyAndWindowKind() throws {
+        let snapshots = [
+            makeSnapshot(
+                accountID: "a1",
+                fetchedAt: now.addingTimeInterval(-60),
+                buckets: [
+                    makeBucket(key: "5h", windowKind: .rollingHours, used: 30, limit: 100,
+                               resetsAt: now.addingTimeInterval(3 * 60 * 60)),
+                    makeBucket(key: "7d", windowKind: .weekly, used: 200, limit: 1000,
+                               resetsAt: now.addingTimeInterval(5 * 24 * 60 * 60))
+                ]
+            ),
+            makeSnapshot(
+                accountID: "a2",
+                fetchedAt: now.addingTimeInterval(-30),
+                buckets: [
+                    makeBucket(key: "5h", windowKind: .rollingHours, used: 70, limit: 100,
+                               resetsAt: now.addingTimeInterval(60 * 60)),
+                    makeBucket(key: "7d", windowKind: .weekly, used: 500, limit: 1000,
+                               resetsAt: now.addingTimeInterval(2 * 24 * 60 * 60))
+                ]
+            )
+        ]
+
+        let result = try XCTUnwrap(
+            ProviderQuotaService.cumulativeSnapshot(
+                provider: .claudeCode,
+                from: snapshots,
+                now: now
+            )
+        )
+
+        XCTAssertEqual(result.accountLabel, "All accounts (2)")
+        XCTAssertNil(result.accountID)
+        XCTAssertEqual(result.buckets.count, 2)
+
+        let hourly = try XCTUnwrap(result.hourlyBucket)
+        XCTAssertEqual(hourly.usedValue, 100)
+        XCTAssertEqual(hourly.limitValue, 200)
+        XCTAssertEqual(hourly.usedPercent, 50, accuracy: 0.001)
+        // Earliest resetsAt wins.
+        XCTAssertEqual(hourly.resetsAt, now.addingTimeInterval(60 * 60))
+
+        let weekly = try XCTUnwrap(result.weeklyBucket)
+        XCTAssertEqual(weekly.usedValue, 700)
+        XCTAssertEqual(weekly.limitValue, 2000)
+        XCTAssertEqual(weekly.usedPercent, 35, accuracy: 0.001)
+    }
+
+    func test_cumulativeSnapshot_recomputesUsedPercentFromSums() throws {
+        // 10% of 1000 + 90% of 100 should NOT average to 50%. The
+        // weighted total is (100 + 90) / (1000 + 100) ≈ 17.27%.
+        let snapshots = [
+            makeSnapshot(
+                accountID: "a1",
+                fetchedAt: now,
+                buckets: [
+                    makeBucket(key: "5h", windowKind: .rollingHours,
+                               used: 100, limit: 1000,
+                               resetsAt: now.addingTimeInterval(60 * 60))
+                ]
+            ),
+            makeSnapshot(
+                accountID: "a2",
+                fetchedAt: now,
+                buckets: [
+                    makeBucket(key: "5h", windowKind: .rollingHours,
+                               used: 90, limit: 100,
+                               resetsAt: now.addingTimeInterval(60 * 60))
+                ]
+            )
+        ]
+        let merged = try XCTUnwrap(
+            ProviderQuotaService.cumulativeSnapshot(
+                provider: .claudeCode,
+                from: snapshots,
+                now: now
+            )
+        )
+        let hourly = try XCTUnwrap(merged.hourlyBucket)
+        XCTAssertEqual(hourly.usedPercent, 190.0 / 1100.0 * 100, accuracy: 0.01)
+        XCTAssertNotEqual(hourly.usedPercent, 50, accuracy: 1)
+    }
+
+    func test_cumulativeSnapshot_marksEstimatedIfAnyInputEstimated() throws {
+        let snapshots = [
+            makeSnapshot(
+                accountID: "a1", fetchedAt: now,
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
+                                      used: 30, limit: 100, isEstimated: false,
+                                      resetsAt: now.addingTimeInterval(3600))]
+            ),
+            makeSnapshot(
+                accountID: "a2", fetchedAt: now,
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
+                                      used: 30, limit: 100, isEstimated: true,
+                                      resetsAt: now.addingTimeInterval(3600))]
+            )
+        ]
+        let merged = try XCTUnwrap(
+            ProviderQuotaService.cumulativeSnapshot(
+                provider: .claudeCode,
+                from: snapshots,
+                now: now
+            )
+        )
+        XCTAssertTrue(try XCTUnwrap(merged.hourlyBucket).isEstimated)
+    }
+
+    func test_cumulativeSnapshot_excludesLocalOnlyScope() {
+        // localOnly snapshots are device-only scrape caches that
+        // shouldn't be aggregated across accounts. With only one non-
+        // localOnly account, the result should be nil (single account).
+        let snapshots = [
+            makeSnapshot(
+                accountID: "a1", fetchedAt: now,
+                scope: .cloudRefreshable,
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
+                                      used: 30, limit: 100,
+                                      resetsAt: now.addingTimeInterval(3600))]
+            ),
+            makeSnapshot(
+                accountID: "a2", fetchedAt: now,
+                scope: .localOnly,
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
+                                      used: 99, limit: 100,
+                                      resetsAt: now.addingTimeInterval(3600))]
+            )
+        ]
+        let merged = ProviderQuotaService.cumulativeSnapshot(
+            provider: .codex,
+            from: snapshots,
+            now: now
+        )
+        XCTAssertNil(merged)
+    }
+
+    func test_cumulativeSnapshot_mixedWindowKinds() throws {
+        // a1 has only 5h, a2 has only 7d. Cumulative emits both buckets,
+        // each summed across its own account (which is just that account).
+        let snapshots = [
+            makeSnapshot(
+                accountID: "a1", fetchedAt: now,
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
+                                      used: 40, limit: 100,
+                                      resetsAt: now.addingTimeInterval(3600))]
+            ),
+            makeSnapshot(
+                accountID: "a2", fetchedAt: now,
+                buckets: [makeBucket(key: "7d", windowKind: .weekly,
+                                      used: 50, limit: 100,
+                                      resetsAt: now.addingTimeInterval(86400))]
+            )
+        ]
+        let merged = try XCTUnwrap(
+            ProviderQuotaService.cumulativeSnapshot(
+                provider: .claudeCode,
+                from: snapshots,
+                now: now
+            )
+        )
+        XCTAssertEqual(merged.buckets.count, 2)
+        XCTAssertNotNil(merged.hourlyBucket)
+        XCTAssertNotNil(merged.weeklyBucket)
+    }
+
+    func test_cumulativeSnapshot_picksEarliestResetsAt() throws {
+        let later = now.addingTimeInterval(4 * 60 * 60)
+        let earlier = now.addingTimeInterval(60 * 60)
+        let snapshots = [
+            makeSnapshot(
+                accountID: "a1", fetchedAt: now,
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
+                                      used: 30, limit: 100, resetsAt: later)]
+            ),
+            makeSnapshot(
+                accountID: "a2", fetchedAt: now,
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
+                                      used: 70, limit: 100, resetsAt: earlier)]
+            )
+        ]
+        let merged = try XCTUnwrap(
+            ProviderQuotaService.cumulativeSnapshot(
+                provider: .claudeCode,
+                from: snapshots,
+                now: now
+            )
+        )
+        XCTAssertEqual(try XCTUnwrap(merged.hourlyBucket).resetsAt, earlier)
+    }
+
+    func test_cumulativeSnapshot_staleFallbackWhenAllAccountsStale() throws {
+        // Both snapshots fetched > 12h ago — `isStale` will return true
+        // for each. The result should be the freshest single snapshot
+        // wrapped with a "Stale data merged" status and unavailable
+        // confidence.
+        let veryOld = now.addingTimeInterval(-13 * 60 * 60)
+        let slightlyLessOld = now.addingTimeInterval(-12 * 60 * 60 - 60)
+        let snapshots = [
+            makeSnapshot(
+                accountID: "a1", fetchedAt: veryOld,
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
+                                      used: 30, limit: 100,
+                                      resetsAt: now.addingTimeInterval(3600))]
+            ),
+            makeSnapshot(
+                accountID: "a2", fetchedAt: slightlyLessOld,
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
+                                      used: 70, limit: 100,
+                                      resetsAt: now.addingTimeInterval(3600))]
+            )
+        ]
+        let merged = try XCTUnwrap(
+            ProviderQuotaService.cumulativeSnapshot(
+                provider: .claudeCode,
+                from: snapshots,
+                now: now
+            )
+        )
+        XCTAssertEqual(merged.confidence, .unavailable)
+        XCTAssertTrue(merged.statusMessage.contains("Stale"))
+    }
+
+    // MARK: Cumulative-test fixtures
+
+    /// Reference clock used by the cumulative tests above. Fixed so
+    /// `isStale` boundaries are deterministic.
+    private var now: Date {
+        Date(timeIntervalSince1970: 1_750_000_000)
+    }
+
+    private func makeBucket(
+        key: String,
+        windowKind: ProviderQuotaWindowKind,
+        used: Double,
+        limit: Double,
+        isEstimated: Bool = false,
+        resetsAt: Date? = nil
+    ) -> ProviderQuotaBucket {
+        ProviderQuotaBucket(
+            key: key,
+            label: key,
+            windowKind: windowKind,
+            usedValue: used,
+            limitValue: limit,
+            remainingValue: max(limit - used, 0),
+            usedPercent: limit > 0 ? min(max(used / limit * 100, 0), 100) : nil,
+            resetsAt: resetsAt,
+            unit: .tokens,
+            isEstimated: isEstimated
+        )
+    }
+
+    private func makeSnapshot(
+        provider: AgentProvider = .claudeCode,
+        accountID: String,
+        fetchedAt: Date? = nil,
+        scope: ProviderAccountStorageScope = .cloudRefreshable,
+        buckets: [ProviderQuotaBucket]
+    ) -> ProviderQuotaSnapshot {
+        ProviderQuotaSnapshot(
+            provider: provider,
+            providerID: provider.providerID,
+            accountID: accountID,
+            accountLabel: "Account \(accountID)",
+            accountStorageScope: scope,
+            fetchedAt: fetchedAt ?? now,
+            source: .officialAPI,
+            sourceId: accountID,
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: buckets
+        )
     }
 }

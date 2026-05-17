@@ -1,0 +1,19 @@
+E2E: iOS Hermes iroh hosted-relay path
+  project=burnbar
+  uid=6YTomKTKdQdpvIJgmz6VTIrrQ4w1
+  device=AFB07C15-AD18-5EFA-AD1C-CADB4F286797
+  model=minimax-m2.7-highspeed
+  expectedRequestedModel=minimax-m2.7-highspeed
+  expectedNetworkInterface=cellular
+  startedAt=2026-05-17T20:24:47Z
+15:24:47  Acquired tunnel connection to device.
+15:24:47  Enabling developer disk image services.
+15:24:48  Acquired usage assertion.
+Launched application with com.openburnbar.app bundle identifier.
+Waiting: interfaceMatches=0 chatStart=0 chatHostComplete=0 chatIosComplete=0
+Waiting: interfaceMatches=0 chatStart=0 chatHostComplete=0 chatIosComplete=0
+Waiting: interfaceMatches=0 chatStart=0 chatHostComplete=0 chatIosComplete=0
+Waiting: interfaceMatches=0 chatStart=0 chatHostComplete=0 chatIosComplete=0
+Waiting: interfaceMatches=0 chatStart=0 chatHostComplete=0 chatIosComplete=0
+Waiting: interfaceMatches=0 chatStart=0 chatHostComplete=0 chatIosComplete=0
+Waiting: interfaceMatches=0 chatStart=0 chatHostComplete=0 chatIosComplete=0

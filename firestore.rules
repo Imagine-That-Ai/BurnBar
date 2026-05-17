@@ -1521,6 +1521,47 @@ service cloud.firestore {
     }
 
     // --- Computer Use (Phase 8-13, master plan 2026-05-16) ---
+    // Phone-control authority keys. The phone publishes its Ed25519 public
+    // key before opening `control.input`; the Mac fetches it from the active
+    // `iroh_pairing/{connectionId}/controllers/{peerNodeId}` doc when it
+    // receives `control.classify`. This keeps the verifier root out of the
+    // stream it authenticates and binds it to the pairing record iOS verified
+    // before dialing.
+    match /users/{userId}/iroh_pairing/{connectionId}/controllers/{peerNodeId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && hasActiveHostedComputerUseEntitlement(userId)
+        && exists(/databases/$(database)/documents/users/$(userId)/iroh_pairing/$(connectionId))
+        && request.resource.data.keys().hasOnly([
+          "id",
+          "connectionId",
+          "peerNodeId",
+          "deviceId",
+          "publicKeyBase64",
+          "publishedAtMillis",
+          "protocolVersion",
+          "schemaVersion"
+        ])
+        && request.resource.data.id == peerNodeId
+        && request.resource.data.connectionId == connectionId
+        && request.resource.data.peerNodeId == peerNodeId
+        && request.resource.data.deviceId is string
+        && request.resource.data.deviceId.size() <= 160
+        && request.resource.data.publicKeyBase64 is string
+        && request.resource.data.publicKeyBase64.size() >= 32
+        && request.resource.data.publicKeyBase64.size() <= 128
+        && request.resource.data.publishedAtMillis is int
+        && request.resource.data.publishedAtMillis > 0
+        && request.resource.data.protocolVersion is int
+        && request.resource.data.protocolVersion >= 1
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId))
+        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId)).data.trustState == "trusted"
+        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.deviceId)).data.platform in ["iOS", "iPadOS", "Android"];
+      allow delete: if ownsUserNamespace(userId);
+    }
+
     // Per-session metadata. The full audit chain lives on the Mac at
     // ~/Library/Application Support/com.openburnbar.AgentLens/computer-use-audit/.
     // Server-side carries only the chain header (manifest hash, head
