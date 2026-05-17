@@ -22,6 +22,14 @@ final class BackfillSchedulerTests: XCTestCase {
         }
     }
 
+    private struct EmptyDeterministicParser: LogParser {
+        let provider: AgentProvider
+
+        func parse() async throws -> ParseResult {
+            ParseResult(usages: [], conversations: [])
+        }
+    }
+
     private func makeInMemoryDataStore() throws -> DataStore {
         let queue = try DatabaseQueue()
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -605,7 +613,13 @@ final class BackfillSchedulerTests: XCTestCase {
         // Create UsageAggregator and call refreshAll()
         // With no log files present, parsers return empty results, insert succeeds with zero rows,
         // and runScheduledBackfillIfNeeded() advances the cursor.
-        let aggregator = UsageAggregator(dataStore: store)
+        let aggregator = UsageAggregator(
+            dataStore: store,
+            quotaService: ProviderQuotaService(refreshProviders: []),
+            parserOverrides: [
+                .claudeCode: EmptyDeterministicParser(provider: .claudeCode),
+            ]
+        )
         await aggregator.refreshAll()
 
         // Verify success-path signals:
@@ -735,6 +749,7 @@ final class BackfillSchedulerTests: XCTestCase {
                 // Use a deterministic parser override so CI/local both attempt at least one write.
                 let aggregator = UsageAggregator(
                     dataStore: readOnlyStore,
+                    quotaService: ProviderQuotaService(refreshProviders: []),
                     parserOverrides: parserOverrides
                 )
                 await aggregator.refreshAll()
