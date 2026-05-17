@@ -25,6 +25,13 @@ public enum HermesRealtimeRelayFrameType: String, Codable, Sendable, Equatable {
     case mediaClassify = "media.classify"
     case mediaBlobAdvertise = "media.blob.advertise"
     case mediaBlobAck = "media.blob.ack"
+    // Mercury Phase 8 — iOS-initiated mirror request / Mac ack / iOS
+    // outbound presence heartbeat. Rides the existing media.control
+    // stream; no new ALPN. Same forward-compat contract as the chat
+    // frame types.
+    case mediaMirrorRequest = "media.mirror.request"
+    case mediaMirrorAck = "media.mirror.ack"
+    case mediaPresenceHeartbeat = "media.presence.heartbeat"
     // Computer Use control plane — see
     // plans/2026-05-16-computer-use-master-plan.md. Same
     // forward-compatibility contract as the media frame types.
@@ -236,6 +243,13 @@ public struct HermesRealtimeRelayApprovalRequest: Codable, Sendable, Equatable {
     public var title: String
     public var message: String
     public var beforeScreenshotBlake3: String?
+    /// Optional PNG evidence captured immediately before the requested
+    /// action. This lets daemon-originated browser approvals render the
+    /// same pre-action thumbnail as app-owned Mac approvals without a
+    /// second file-transfer round trip.
+    public var beforeScreenshotPNGBase64: String?
+    public var beforeScreenshotMimeType: String?
+    public var beforeScreenshotSizeBytes: Int?
     public var actionSummary: String
     public var requestedAt: Date
     /// Optional `ComputerUseTrustMode.rawValue` for approval surfaces
@@ -251,6 +265,9 @@ public struct HermesRealtimeRelayApprovalRequest: Codable, Sendable, Equatable {
         title: String,
         message: String,
         beforeScreenshotBlake3: String? = nil,
+        beforeScreenshotPNGBase64: String? = nil,
+        beforeScreenshotMimeType: String? = nil,
+        beforeScreenshotSizeBytes: Int? = nil,
         actionSummary: String,
         requestedAt: Date,
         trustMode: String? = nil
@@ -262,6 +279,9 @@ public struct HermesRealtimeRelayApprovalRequest: Codable, Sendable, Equatable {
         self.title = title
         self.message = message
         self.beforeScreenshotBlake3 = beforeScreenshotBlake3
+        self.beforeScreenshotPNGBase64 = beforeScreenshotPNGBase64
+        self.beforeScreenshotMimeType = beforeScreenshotMimeType
+        self.beforeScreenshotSizeBytes = beforeScreenshotSizeBytes
         self.actionSummary = actionSummary
         self.requestedAt = requestedAt
         self.trustMode = trustMode
@@ -335,17 +355,32 @@ public struct HermesRealtimeRelayMediaPayload: Codable, Sendable, Equatable {
     public var blobTicket: String?
     /// Acknowledgement carried on `media.blob.ack`.
     public var ack: HermesRealtimeRelayMediaAck?
+    /// Mercury Phase 8 — iOS-initiated mirror request envelope. Set on
+    /// `media.mirror.request` frames; nil elsewhere.
+    public var mirrorRequest: HermesRealtimeRelayMirrorRequest?
+    /// Mac → iOS reply envelope. Set on `media.mirror.ack` frames; nil
+    /// elsewhere.
+    public var mirrorAck: HermesRealtimeRelayMirrorAck?
+    /// iOS → Mac presence beacon. Set on `media.presence.heartbeat`
+    /// frames; nil elsewhere.
+    public var presence: HermesRealtimeRelayPresenceHeartbeat?
 
     public init(
         streamClass: String? = nil,
         attachment: HermesRealtimeRelayAttachmentManifest? = nil,
         blobTicket: String? = nil,
-        ack: HermesRealtimeRelayMediaAck? = nil
+        ack: HermesRealtimeRelayMediaAck? = nil,
+        mirrorRequest: HermesRealtimeRelayMirrorRequest? = nil,
+        mirrorAck: HermesRealtimeRelayMirrorAck? = nil,
+        presence: HermesRealtimeRelayPresenceHeartbeat? = nil
     ) {
         self.streamClass = streamClass
         self.attachment = attachment
         self.blobTicket = blobTicket
         self.ack = ack
+        self.mirrorRequest = mirrorRequest
+        self.mirrorAck = mirrorAck
+        self.presence = presence
     }
 }
 
@@ -391,6 +426,91 @@ public struct HermesRealtimeRelayMediaAck: Codable, Sendable, Equatable {
         self.manifestId = manifestId
         self.status = status
         self.reason = reason
+    }
+}
+
+/// Mercury Phase 8 — iOS-initiated request asking the Mac to start
+/// hosting a screen share (or, in future phases, another mirrorable
+/// stream class). The Mac arbitrates via `MercuryRouter` and replies
+/// with `HermesRealtimeRelayMirrorAck`. Decision 2 in
+/// `project_media_rollout`: the Mac is the only gate. No authority
+/// envelope is required — the iroh pairing already authenticates the
+/// requester.
+public struct HermesRealtimeRelayMirrorRequest: Codable, Sendable, Equatable {
+    /// iOS-generated UUID. Echoed in the ack for correlation.
+    public var requestId: String
+    /// Clock skew is tolerated by the Mac — informational only.
+    public var requestedAt: Date
+    /// Display name shown on the Mac's `IncomingCallSheet` ("Alberto's iPhone").
+    public var requesterDisplayName: String
+    /// Which `MediaStreamClass` the requester wants opened (default
+    /// `media.screen.video`). Carried as a string for forward-compat
+    /// with future mirrorable surfaces.
+    public var streamClass: String
+
+    public init(
+        requestId: String,
+        requestedAt: Date,
+        requesterDisplayName: String,
+        streamClass: String
+    ) {
+        self.requestId = requestId
+        self.requestedAt = requestedAt
+        self.requesterDisplayName = requesterDisplayName
+        self.streamClass = streamClass
+    }
+}
+
+/// Mercury Phase 8 — Mac-side reply to a `HermesRealtimeRelayMirrorRequest`.
+public struct HermesRealtimeRelayMirrorAck: Codable, Sendable, Equatable {
+    public enum Decision: String, Codable, Sendable, Equatable {
+        case accepted
+        case denied
+        case coolingDown = "cooling_down"
+        case unsupported
+        case busy
+    }
+
+    public var requestId: String
+    public var decision: Decision
+    /// Free-text reason surfaced in the iOS Mercury Live sheet banner.
+    public var detail: String?
+    /// Populated only when `decision == .coolingDown`. Omitted from the
+    /// wire form otherwise to preserve byte-identical encoding when the
+    /// field is absent (see `MirrorAckEncodingTests`).
+    public var cooldownSecondsRemaining: Int?
+
+    public init(
+        requestId: String,
+        decision: Decision,
+        detail: String? = nil,
+        cooldownSecondsRemaining: Int? = nil
+    ) {
+        self.requestId = requestId
+        self.decision = decision
+        self.detail = detail
+        self.cooldownSecondsRemaining = cooldownSecondsRemaining
+    }
+}
+
+/// Mercury Phase 8 — periodic iOS → Mac beacon so the Mac knows it has
+/// a live mirrorable client (used for outbound triggers like "Call
+/// iPhone" from the Mac popover). Sent every 60s once the iOS control
+/// stream is `live`. Forward-compatible: unknown capability strings are
+/// dropped silently by `MercuryPeer.Feature` decoding.
+public struct HermesRealtimeRelayPresenceHeartbeat: Codable, Sendable, Equatable {
+    public var sentAt: Date
+    public var deviceDisplayName: String
+    public var capabilities: [String]
+
+    public init(
+        sentAt: Date,
+        deviceDisplayName: String,
+        capabilities: [String]
+    ) {
+        self.sentAt = sentAt
+        self.deviceDisplayName = deviceDisplayName
+        self.capabilities = capabilities
     }
 }
 

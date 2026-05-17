@@ -24,6 +24,8 @@ struct ProxyModelCatalogPanel: View {
     let droidSyncState: AppConnectState?
     let onSyncDroid: (() -> Void)?
     let onToggleModelAdvertisement: ((ProxyAdvertisedModel, Bool) -> Void)?
+    var onUpsertThinkingVariant: ((ProxyAdvertisedModel, BurnBarThinkingLevel) -> Void)? = nil
+    var onRemoveThinkingVariant: ((ProxyAdvertisedModel) -> Void)? = nil
 
     @State private var copiedEndpoint = false
     @State private var expandedProviderIDs: Set<String> = []
@@ -254,7 +256,9 @@ struct ProxyModelCatalogPanel: View {
                         group: group,
                         isExpanded: expandedProviderIDs.contains(group.id),
                         onToggleExpanded: { toggleProvider(group.id) },
-                        onToggleModelAdvertisement: onToggleModelAdvertisement
+                        onToggleModelAdvertisement: onToggleModelAdvertisement,
+                        onUpsertThinkingVariant: onUpsertThinkingVariant,
+                        onRemoveThinkingVariant: onRemoveThinkingVariant
                     )
                     if group.id != groups.last?.id {
                         Divider().background(DesignSystem.Colors.border.opacity(0.45))
@@ -455,6 +459,8 @@ struct ProxyModelProviderSection: View {
     let isExpanded: Bool
     let onToggleExpanded: () -> Void
     let onToggleModelAdvertisement: ((ProxyAdvertisedModel, Bool) -> Void)?
+    var onUpsertThinkingVariant: ((ProxyAdvertisedModel, BurnBarThinkingLevel) -> Void)? = nil
+    var onRemoveThinkingVariant: ((ProxyAdvertisedModel) -> Void)? = nil
 
     private let collapsedLimit = 5
 
@@ -468,6 +474,22 @@ struct ProxyModelProviderSection: View {
 
     private var hiddenCount: Int {
         max(0, group.models.count - visibleModels.count)
+    }
+
+    private func existingVariantLevels(forBaseModelID baseModelID: String, providerID: String) -> Set<BurnBarThinkingLevel> {
+        var levels: Set<BurnBarThinkingLevel> = []
+        let trimmedBase = baseModelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmedProvider = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmedBase.isEmpty, !trimmedProvider.isEmpty else { return levels }
+        for sibling in group.models where sibling.providerID.lowercased() == trimmedProvider {
+            guard sibling.isThinkingLevelVariant,
+                  let siblingBase = sibling.baseModelID?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+                  siblingBase == trimmedBase,
+                  let raw = sibling.thinkingLevel,
+                  let level = BurnBarThinkingLevel(rawValue: raw) else { continue }
+            levels.insert(level)
+        }
+        return levels
     }
 
     var body: some View {
@@ -499,7 +521,10 @@ struct ProxyModelProviderSection: View {
             ForEach(visibleModels) { model in
                 ProxyModelCatalogRow(
                     model: model,
-                    onToggleAdvertisement: onToggleModelAdvertisement
+                    onToggleAdvertisement: onToggleModelAdvertisement,
+                    existingVariantLevels: existingVariantLevels(forBaseModelID: model.modelID, providerID: model.providerID),
+                    onUpsertThinkingVariant: onUpsertThinkingVariant,
+                    onRemoveThinkingVariant: onRemoveThinkingVariant
                 )
             }
 
@@ -525,6 +550,9 @@ struct ProxyModelProviderSection: View {
 struct ProxyModelCatalogRow: View {
     let model: ProxyAdvertisedModel
     let onToggleAdvertisement: ((ProxyAdvertisedModel, Bool) -> Void)?
+    var existingVariantLevels: Set<BurnBarThinkingLevel> = []
+    var onUpsertThinkingVariant: ((ProxyAdvertisedModel, BurnBarThinkingLevel) -> Void)? = nil
+    var onRemoveThinkingVariant: ((ProxyAdvertisedModel) -> Void)? = nil
 
     private var routeTint: Color {
         if model.routeEligible { return DesignSystem.Colors.success }
@@ -542,6 +570,26 @@ struct ProxyModelCatalogRow: View {
         default:
             return DesignSystem.Colors.textSecondary
         }
+    }
+
+    private var resolvedThinkingLevel: BurnBarThinkingLevel? {
+        guard let raw = model.thinkingLevel else { return nil }
+        return BurnBarThinkingLevel(rawValue: raw)
+    }
+
+    private var supportsThinkingVariants: Bool {
+        guard !model.isThinkingLevelVariant else { return false }
+        let id = model.modelID.lowercased()
+        let provider = model.providerID.lowercased()
+        if provider == "anthropic" {
+            let isOpus4Plus = id.contains("opus") && id.contains("-4")
+            let isSonnet4Plus = id.contains("sonnet") && id.contains("-4")
+            return isOpus4Plus || isSonnet4Plus
+        }
+        if provider == "openai" {
+            return id.hasPrefix("gpt-5") || id.contains("codex") || id.hasPrefix("o1") || id.hasPrefix("o3")
+        }
+        return false
     }
 
     var body: some View {
@@ -581,9 +629,40 @@ struct ProxyModelCatalogRow: View {
                 }
             }
             Spacer(minLength: DesignSystem.Spacing.sm)
+            if let level = resolvedThinkingLevel {
+                tag("think · \(level.displayLabel.lowercased())", tint: DesignSystem.Colors.purple)
+            }
             tag(model.quotaState.replacingOccurrences(of: "_", with: " "), tint: quotaTint)
             tag(model.routeEligible ? "route ready" : "blocked", tint: routeTint)
             tag(advertisementLabel, tint: advertisementTint)
+            if model.isThinkingLevelVariant, let onRemoveThinkingVariant {
+                Button {
+                    onRemoveThinkingVariant(model)
+                } label: {
+                    Image(systemName: "minus.circle")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .help("Remove the \(resolvedThinkingLevel?.displayLabel ?? "") thinking variant.")
+            } else if supportsThinkingVariants, let onUpsertThinkingVariant {
+                Menu {
+                    ForEach(BurnBarThinkingLevel.allCases, id: \.self) { level in
+                        Button("Add \(level.displayLabel) variant") {
+                            onUpsertThinkingVariant(model, level)
+                        }
+                        .disabled(existingVariantLevels.contains(level))
+                    }
+                } label: {
+                    Image(systemName: "brain")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .foregroundStyle(DesignSystem.Colors.purple)
+                .help("Add a thinking-level variant for \(model.modelID).")
+            }
             if let onToggleAdvertisement {
                 Toggle(
                     "Advertise \(model.displayName)",

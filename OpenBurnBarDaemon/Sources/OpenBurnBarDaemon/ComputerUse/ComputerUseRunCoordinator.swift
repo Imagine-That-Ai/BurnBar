@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
@@ -271,6 +272,7 @@ public actor ComputerUseRunCoordinator {
                 approvalId = burst.approvalId
             } else {
                 // Raise the approval. Wait for resolution.
+                let evidence = await approvalEvidence(for: action, activeDriver: active.driver)
                 let request = HermesRealtimeRelayApprovalRequest(
                     approvalId: UUID().uuidString,
                     runId: invocation.runID.rawValue,
@@ -278,6 +280,10 @@ public actor ComputerUseRunCoordinator {
                     toolKind: invocation.tool.rawValue,
                     title: action.executableSummary(forApproval: scopeContext),
                     message: action.executableSummary(forApproval: scopeContext),
+                    beforeScreenshotBlake3: evidence?.hashHex,
+                    beforeScreenshotPNGBase64: evidence?.pngBase64,
+                    beforeScreenshotMimeType: evidence?.mimeType,
+                    beforeScreenshotSizeBytes: evidence?.sizeBytes,
                     actionSummary: action.executableSummary(forApproval: scopeContext),
                     requestedAt: Date(),
                     trustMode: active.state.liveTrustMode.rawValue
@@ -646,6 +652,55 @@ public actor ComputerUseRunCoordinator {
             // path. A raw phoneIntent here is a wiring bug.
             throw DispatchError.unsupportedTool("phone_intent_in_run_dispatch")
         }
+    }
+
+    private struct ApprovalEvidence: Sendable, Equatable {
+        var pngBase64: String
+        var mimeType: String
+        var sizeBytes: Int
+        var hashHex: String
+    }
+
+    private func approvalEvidence(
+        for action: ComputerUseAction,
+        activeDriver: OpenBurnBarPlaywrightDriver?
+    ) async -> ApprovalEvidence? {
+        guard case .browser = action,
+              let activeDriver else {
+            return nil
+        }
+
+        do {
+            let response = try await activeDriver.screenshot()
+            guard case .object(let object)? = response.result,
+                  let base64 = object.stringValue(forKey: "base64"),
+                  base64.isEmpty == false else {
+                return nil
+            }
+
+            let decoded = Data(base64Encoded: base64)
+            let sizeBytes = object.intValue(forKey: "sizeBytes") ?? decoded?.count ?? 0
+            let hashHex = decoded.map(Self.sha256Hex(data:)) ?? Self.sha256Hex(string: base64)
+            return ApprovalEvidence(
+                pngBase64: base64,
+                mimeType: "image/png",
+                sizeBytes: sizeBytes,
+                hashHex: hashHex
+            )
+        } catch {
+            logger.warning("approval_screenshot_capture_failed", metadata: [
+                "error": String(describing: error)
+            ])
+            return nil
+        }
+    }
+
+    private static func sha256Hex(data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func sha256Hex(string: String) -> String {
+        sha256Hex(data: Data(string.utf8))
     }
 
     private func dispatch(

@@ -91,6 +91,9 @@ dependencies {
     // Local Kotlin library: Android-side iroh transport + pairing
     // verifier. 1:1 mirror of the Swift OpenBurnBarIrohRelay package.
     implementation(project(":openburnbar-iroh-relay"))
+    // Computer Use phone-control intents are signed on Android with the
+    // same portable Ed25519 primitive used by the relay pairing verifier.
+    implementation("com.google.crypto.tink:tink-android:1.15.0")
     val irohAar = rootProject.layout.projectDirectory.dir("..").asFile.resolve("Vendor/openburnbar-iroh.aar")
     if (irohAar.exists()) {
         implementation(files(irohAar))

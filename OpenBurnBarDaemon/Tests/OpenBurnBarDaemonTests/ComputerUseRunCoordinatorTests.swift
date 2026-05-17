@@ -169,6 +169,247 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertEqual(state.actionsRejected, 1)
     }
 
+    func testBrowserApprovalApproveDispatchesAndAudits() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let auditBaseDirectory = testAuditBaseDirectory()
+        let approvals = ApprovalRecorder(decision: .approve)
+        let coordinator = makeCoordinator(
+            approvalIssuer: { request in
+                try await approvals.issue(request)
+            },
+            auditBaseDirectory: auditBaseDirectory
+        )
+        let manifest = manifest(sessionId: sessionId, mode: .browser, trustMode: .manual)
+        let driver = try await makeEchoDriver(sessionId: sessionId, expectedRequestCount: 2)
+        _ = try await coordinator.startSession(manifest: manifest, playwrightDriver: driver)
+
+        let response = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: invocation(
+                tool: .browserGoto,
+                arguments: .object([
+                    "url": .string("https://example.com/dashboard"),
+                    "timeoutMillis": .number(5_000)
+                ])
+            ),
+            scopeContext: ComputerUseScopeContext(url: "https://example.com/dashboard"),
+            scopeOutcome: .notMatched,
+            accessibilityDeny: nil,
+            capability: capability(for: makeState(sessionId: sessionId, manifest: manifest))
+        )
+
+        XCTAssertEqual(response.status, .executed)
+        XCTAssertNotNil(response.approvalId)
+        XCTAssertEqual(response.auditEntryIndex, 0)
+        XCTAssertNotNil(response.auditHeadHashHex)
+        XCTAssertEqual(approvals.requests.count, 1)
+        XCTAssertEqual(approvals.requests.first?.toolKind, BurnBarToolKind.browserGoto.rawValue)
+        XCTAssertEqual(approvals.requests.first?.trustMode, ComputerUseTrustMode.manual.rawValue)
+        XCTAssertEqual(approvals.requests.first?.beforeScreenshotMimeType, "image/png")
+        XCTAssertNotNil(approvals.requests.first?.beforeScreenshotPNGBase64)
+        XCTAssertGreaterThan(approvals.requests.first?.beforeScreenshotSizeBytes ?? 0, 0)
+        XCTAssertNotNil(approvals.requests.first?.beforeScreenshotBlake3)
+        XCTAssertEqual(response.result?.succeeded, true)
+
+        let entry = try firstAuditEntry(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        XCTAssertEqual(entry.actionKind, "browser.goto")
+        XCTAssertEqual(entry.approvedBy, .mac)
+        XCTAssertEqual(entry.approvalId, response.approvalId)
+        XCTAssertNil(entry.denyReason)
+
+        let maybeState = await coordinator.session(sessionId)
+        let state = try XCTUnwrap(maybeState)
+        XCTAssertEqual(state.actionsExecuted, 1)
+        XCTAssertEqual(state.actionsRejected, 0)
+    }
+
+    func testBrowserApprovalRejectDoesNotDispatchAndAuditsDenial() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let auditBaseDirectory = testAuditBaseDirectory()
+        let approvals = ApprovalRecorder(decision: .reject)
+        let coordinator = makeCoordinator(
+            approvalIssuer: { request in
+                try await approvals.issue(request)
+            },
+            auditBaseDirectory: auditBaseDirectory
+        )
+        let manifest = manifest(sessionId: sessionId, mode: .browser, trustMode: .manual)
+        _ = try await coordinator.startSession(manifest: manifest)
+
+        let response = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: invocation(
+                tool: .browserClick,
+                arguments: .object(["selector": .string("#danger")])
+            ),
+            scopeContext: ComputerUseScopeContext(url: "https://example.com/danger"),
+            scopeOutcome: .notMatched,
+            accessibilityDeny: nil,
+            capability: capability(for: makeState(sessionId: sessionId, manifest: manifest))
+        )
+
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.denyReason, ComputerUseDenyReason.userRejected.rawValue)
+        XCTAssertEqual(approvals.requests.count, 1)
+        XCTAssertEqual(response.auditEntryIndex, 0)
+
+        let entry = try firstAuditEntry(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        XCTAssertEqual(entry.actionKind, "browser.click")
+        XCTAssertEqual(entry.approvedBy, .denied)
+        XCTAssertEqual(entry.denyReason, ComputerUseDenyReason.userRejected.rawValue)
+
+        let maybeState = await coordinator.session(sessionId)
+        let state = try XCTUnwrap(maybeState)
+        XCTAssertEqual(state.actionsExecuted, 0)
+        XCTAssertEqual(state.actionsRejected, 1)
+    }
+
+    func testBrowserScopeViolationAuditsWithoutApprovalOrDispatch() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let auditBaseDirectory = testAuditBaseDirectory()
+        let approvals = ApprovalRecorder(decision: .approve)
+        let coordinator = makeCoordinator(
+            approvalIssuer: { request in
+                try await approvals.issue(request)
+            },
+            auditBaseDirectory: auditBaseDirectory
+        )
+        let manifest = manifest(sessionId: sessionId, mode: .browser, trustMode: .manual)
+        _ = try await coordinator.startSession(manifest: manifest)
+        let denyRule = ComputerUseScopeRuleID(rawValue: "deny-bank")
+
+        let response = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: invocation(
+                tool: .browserGoto,
+                arguments: .object(["url": .string("https://bank.example")])
+            ),
+            scopeContext: ComputerUseScopeContext(url: "https://bank.example"),
+            scopeOutcome: .denied(rule: denyRule),
+            accessibilityDeny: nil,
+            capability: capability(for: makeState(sessionId: sessionId, manifest: manifest))
+        )
+
+        XCTAssertEqual(response.status, .denied)
+        XCTAssertEqual(response.denyReason, ComputerUseDenyReason.scopeDenied.rawValue)
+        XCTAssertTrue(approvals.requests.isEmpty)
+        XCTAssertEqual(response.auditEntryIndex, 0)
+
+        let entry = try firstAuditEntry(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        XCTAssertEqual(entry.actionKind, "browser.goto")
+        XCTAssertEqual(entry.approvedBy, .denied)
+        XCTAssertEqual(entry.scopeRuleId, denyRule.rawValue)
+        XCTAssertEqual(entry.denyReason, ComputerUseDenyReason.scopeDenied.rawValue)
+
+        let maybeState = await coordinator.session(sessionId)
+        let state = try XCTUnwrap(maybeState)
+        XCTAssertEqual(state.actionsExecuted, 0)
+        XCTAssertEqual(state.actionsRejected, 1)
+    }
+
+    func testBrowserTrustedScopeDispatchesWithoutApprovalAndAuditsTrustedScope() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let auditBaseDirectory = testAuditBaseDirectory()
+        let approvals = ApprovalRecorder(decision: .approve)
+        let coordinator = makeCoordinator(
+            approvalIssuer: { request in
+                try await approvals.issue(request)
+            },
+            auditBaseDirectory: auditBaseDirectory
+        )
+        let manifest = manifest(sessionId: sessionId, mode: .browser, trustMode: .trusted)
+        let driver = try await makeEchoDriver(sessionId: sessionId, expectedRequestCount: 1)
+        _ = try await coordinator.startSession(manifest: manifest, playwrightDriver: driver)
+        let allowRule = ComputerUseScopeRuleID(rawValue: "allow-example")
+
+        let response = await coordinator.invoke(
+            sessionId: sessionId,
+            invocation: invocation(
+                tool: .browserClick,
+                arguments: .object(["selector": .string("#safe")])
+            ),
+            scopeContext: ComputerUseScopeContext(url: "https://example.com/app"),
+            scopeOutcome: .allowed(rule: allowRule),
+            accessibilityDeny: nil,
+            capability: capability(for: makeState(sessionId: sessionId, manifest: manifest))
+        )
+
+        XCTAssertEqual(response.status, .executed)
+        XCTAssertNil(response.approvalId)
+        XCTAssertTrue(approvals.requests.isEmpty)
+        XCTAssertEqual(response.auditEntryIndex, 0)
+        XCTAssertNotNil(response.auditHeadHashHex)
+
+        let entry = try firstAuditEntry(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        XCTAssertEqual(entry.actionKind, "browser.click")
+        XCTAssertEqual(entry.approvedBy, .trustedScope)
+        XCTAssertEqual(entry.scopeRuleId, allowRule.rawValue)
+        XCTAssertNil(entry.approvalId)
+        XCTAssertNil(entry.denyReason)
+
+        let maybeState = await coordinator.session(sessionId)
+        let state = try XCTUnwrap(maybeState)
+        XCTAssertEqual(state.actionsExecuted, 1)
+        XCTAssertEqual(state.actionsRejected, 0)
+    }
+
+    func testBrowserStepModeBurstRunsTenActionsWithOneApprovalAndTenAuditEntries() async throws {
+        let sessionId = ComputerUseSessionID.newRandom()
+        let auditBaseDirectory = testAuditBaseDirectory()
+        let approvals = ApprovalRecorder(
+            decision: .approve,
+            note: "Step-mode burst approved from Mac"
+        )
+        let coordinator = makeCoordinator(
+            approvalIssuer: { request in
+                try await approvals.issue(request)
+            },
+            auditBaseDirectory: auditBaseDirectory
+        )
+        let manifest = manifest(sessionId: sessionId, mode: .browser, trustMode: .step)
+        let driver = try await makeEchoDriver(sessionId: sessionId, expectedRequestCount: 11)
+        _ = try await coordinator.startSession(manifest: manifest, playwrightDriver: driver)
+        let capabilityContext = capability(for: makeState(sessionId: sessionId, manifest: manifest))
+        var approvalId: String?
+
+        for _ in 0..<10 {
+            let response = await coordinator.invoke(
+                sessionId: sessionId,
+                invocation: invocation(
+                    tool: .browserClick,
+                    arguments: .object(["selector": .string("#safe")])
+                ),
+                scopeContext: ComputerUseScopeContext(url: "https://example.com/app"),
+                scopeOutcome: .notMatched,
+                accessibilityDeny: nil,
+                capability: capabilityContext
+            )
+
+            XCTAssertEqual(response.status, .executed)
+            let responseApprovalId = try XCTUnwrap(response.approvalId)
+            approvalId = approvalId ?? responseApprovalId
+            XCTAssertEqual(responseApprovalId, approvalId)
+        }
+
+        XCTAssertEqual(approvals.requests.count, 1)
+        XCTAssertEqual(approvals.requests.first?.trustMode, ComputerUseTrustMode.step.rawValue)
+        XCTAssertEqual(approvals.requests.first?.beforeScreenshotMimeType, "image/png")
+        XCTAssertNotNil(approvals.requests.first?.beforeScreenshotPNGBase64)
+
+        let entries = try auditEntries(baseDirectory: auditBaseDirectory, sessionId: sessionId)
+        XCTAssertEqual(entries.count, 10)
+        XCTAssertEqual(entries.map(\.entryIndex), Array(0..<10))
+        XCTAssertTrue(entries.allSatisfy { $0.actionKind == "browser.click" })
+        XCTAssertTrue(entries.allSatisfy { $0.approvedBy == .mac })
+        XCTAssertTrue(entries.allSatisfy { $0.approvalId == approvalId })
+        XCTAssertTrue(entries.allSatisfy { $0.denyReason == nil })
+
+        let maybeState = await coordinator.session(sessionId)
+        let state = try XCTUnwrap(maybeState)
+        XCTAssertEqual(state.actionsExecuted, 10)
+        XCTAssertEqual(state.actionsRejected, 0)
+    }
+
     func testStepModeBurstApprovalCoversNextSimilarActions() async throws {
         let sessionId = ComputerUseSessionID.newRandom()
         let approvals = ApprovalRecorder(
@@ -359,10 +600,10 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
             )
         },
         macInputDispatcher: ComputerUseRunCoordinator.MacInputDispatcher? = nil,
-        macInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher? = nil
+        macInspectDispatcher: ComputerUseRunCoordinator.MacInspectDispatcher? = nil,
+        auditBaseDirectory: URL? = nil
     ) -> ComputerUseRunCoordinator {
-        let auditBaseDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("openburnbar-cu-coordinator-tests-\(UUID().uuidString)", isDirectory: true)
+        let auditBaseDirectory = auditBaseDirectory ?? testAuditBaseDirectory()
         return ComputerUseRunCoordinator(
             approvalIssuer: approvalIssuer,
             macInputDispatcher: macInputDispatcher,
@@ -446,6 +687,125 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
             "displayY": .number(200),
             "mouseButton": .number(0)
         ])
+    }
+
+    private func testAuditBaseDirectory() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-cu-coordinator-tests-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    private func firstAuditEntry(
+        baseDirectory: URL,
+        sessionId: ComputerUseSessionID
+    ) throws -> ComputerUseAuditEntry {
+        let entries = try auditEntries(baseDirectory: baseDirectory, sessionId: sessionId)
+        return try XCTUnwrap(entries.first)
+    }
+
+    private func auditEntries(
+        baseDirectory: URL,
+        sessionId: ComputerUseSessionID
+    ) throws -> [ComputerUseAuditEntry] {
+        let chainURL = baseDirectory
+            .appendingPathComponent(sessionId.rawValue, isDirectory: true)
+            .appendingPathComponent("chain.jsonl")
+        let data = try Data(contentsOf: chainURL)
+        let lines = try XCTUnwrap(String(data: data, encoding: .utf8)?
+            .split(separator: "\n"))
+        return try lines.map { line in
+            try ComputerUseAuditHasher.canonicalJSONDecoder.decode(
+                ComputerUseAuditEntry.self,
+                from: Data(line.utf8)
+            )
+        }
+    }
+
+    private func makeEchoDriver(
+        sessionId: ComputerUseSessionID,
+        expectedRequestCount: Int
+    ) async throws -> OpenBurnBarPlaywrightDriver {
+        let node = try XCTUnwrap(nodeExecutablePath())
+        let bridge = try makeEchoBridge(expectedRequestCount: expectedRequestCount)
+        let driver = OpenBurnBarPlaywrightDriver(
+            configuration: OpenBurnBarPlaywrightDriver.Configuration(
+                nodeExecutablePath: node,
+                bridgeScriptPath: bridge,
+                headless: true,
+                perActionTimeoutMillis: 1_000
+            ),
+            sessionId: sessionId,
+            logger: BurnBarDaemonLogger(category: "cu-coordinator-driver-tests")
+        )
+        try await driver.start()
+        return driver
+    }
+
+    private func makeEchoBridge(expectedRequestCount: Int) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-cu-coordinator-driver-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let bridge = directory.appendingPathComponent("echo-bridge.js")
+        let script = """
+        const readline = require('readline');
+        let requestCount = 0;
+        setTimeout(() => process.exit(0), 5000);
+        const rl = readline.createInterface({ input: process.stdin, terminal: false });
+        rl.on('line', (line) => {
+          requestCount += 1;
+          const req = JSON.parse(line);
+          const result = req.method === 'screenshot'
+            ? {
+                kind: 'screenshot',
+                sizeBytes: 68,
+                base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
+              }
+            : { method: req.method, params: req.params };
+          setTimeout(() => {
+            process.stdout.write(JSON.stringify({
+              id: req.id,
+              ok: true,
+              result,
+              elapsedMillis: 1
+            }) + '\\n', () => {
+              if (requestCount >= \(expectedRequestCount)) process.exit(0);
+            });
+          }, 25);
+        });
+        """
+        try script.write(to: bridge, atomically: true, encoding: .utf8)
+        return bridge
+    }
+
+    private func nodeExecutablePath() -> String? {
+        let candidates = [
+            ProcessInfo.processInfo.environment["NODE_EXECUTABLE"],
+            ProcessInfo.processInfo.environment["NODE_BINARY"],
+            "/Users/albertonunez/.local/bin/node",
+            "/opt/homebrew/bin/node",
+            "/usr/local/bin/node"
+        ].compactMap { $0 }
+
+        if let path = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
+            return path
+        }
+
+        let process = Process()
+        let pipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["which", "node"]
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return nil
+        }
+        guard process.terminationStatus == 0 else { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let path, FileManager.default.isExecutableFile(atPath: path) else { return nil }
+        return path
     }
 }
 

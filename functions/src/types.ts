@@ -405,6 +405,65 @@ export interface ComputerUsePhoneAuthorityDoc {
 }
 
 /**
+ * Public readback record for a Mac trusted-device audit-export signer.
+ *
+ * Lives under the escrow device that owns the local Keychain private key:
+ *   /users/{uid}/escrow_devices/{deviceId}/computer_use_audit_export_signers/{publicKeySHA256Hex}
+ *
+ * The detached `.sig.json` sidecar can prove the archive was signed by a
+ * private key, but this Firestore record proves whether the corresponding
+ * public key was published by a currently trusted macOS escrow device. Device
+ * revocation invalidates every child signer by revoking the parent
+ * `escrow_devices/{deviceId}` document.
+ */
+export interface ComputerUseAuditExportSignerPublicKeyDoc {
+  /** Document id; equals `publicKeySHA256Hex`. */
+  id: string;
+
+  /** Owner namespace; equals the parent user id. */
+  userId: string;
+
+  /** Parent escrow device id. Parent must be trusted macOS. */
+  deviceId: string;
+
+  /** Stable local signer identifier copied into `.sig.json`. */
+  signerIdentifier: string;
+
+  /** OpenBurnBar signer family. */
+  signerKind: "openburnbar_trusted_device";
+
+  /** Trust root implemented by the daemon's Keychain-backed signer provider. */
+  trustRoot: "openburnbar-trusted-device-keychain-v1";
+
+  /** Signature algorithm for the detached archive signature. */
+  algorithm: "ed25519";
+
+  /** Base64 of the 32-byte Ed25519 public key. */
+  publicKeyBase64: string;
+
+  /** SHA-256 hex digest of the raw public key. Equals the document id. */
+  publicKeySHA256Hex: string;
+
+  /** Active until the parent escrow device is revoked or this doc is revoked. */
+  status: "active" | "revoked";
+
+  /** Milliseconds since epoch when the Mac published/refreshed the doc. */
+  publishedAtMillis: number;
+
+  /** Optional last time a verifier confirmed this record during readback. */
+  lastReadbackAtMillis?: number;
+
+  /** Explicit signer-level revocation timestamp, if any. */
+  revokedAt?: import("firebase-admin/firestore").Timestamp;
+
+  /** Device that initiated signer-level revocation, if any. */
+  revokedByDeviceId?: string;
+
+  /** Document schema version for forward compatibility. */
+  schemaVersion: number;
+}
+
+/**
  * Audit event the Mac (or the Cloud Functions hosted runner) writes when an
  * iroh stream is opened, closed, or fails over to the WSS relay. Surfaces
  * transport health to the user's audit log without exposing payload bytes.

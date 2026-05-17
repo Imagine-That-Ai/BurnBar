@@ -29,6 +29,8 @@ struct ComputerUseSettingsView: View {
     @State private var showingSetupWizard = false
     @State private var auditSessionId = ""
     @State private var auditIncludeScreenshots = true
+    @State private var auditAdvancedExpanded = false
+    @State private var auditNotarizationOptIn = false
     @State private var auditStatus = AuditOperationStatus(
         kind: .idle,
         message: "Enter a session id to validate, export, or notarize its local audit chain."
@@ -193,14 +195,32 @@ struct ComputerUseSettingsView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(trimmedAuditSessionId.isEmpty || auditStatus.kind == .running)
+            }
 
-                Button {
-                    notarizeAuditChain()
-                } label: {
-                    Label("Notarize", systemImage: "clock.badge.checkmark")
+            DisclosureGroup(isExpanded: $auditAdvancedExpanded) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("Allow OpenTimestamps notarization for this session", isOn: $auditNotarizationOptIn)
+                        .toggleStyle(.checkbox)
+                        .font(.system(size: 12))
+                    Text("Submits only the audit-chain root hash to OpenTimestamps and stores the returned .ots proof beside the local chain.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Button {
+                        notarizeAuditChain()
+                    } label: {
+                        Label("Notarize", systemImage: "clock.badge.checkmark")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(
+                        trimmedAuditSessionId.isEmpty
+                            || auditStatus.kind == .running
+                            || !auditNotarizationOptIn
+                    )
                 }
-                .buttonStyle(.bordered)
-                .disabled(trimmedAuditSessionId.isEmpty || auditStatus.kind == .running)
+                .padding(.top, 8)
+            } label: {
+                Label("Advanced", systemImage: "wrench.and.screwdriver")
+                    .font(.system(size: 13, weight: .semibold))
             }
 
             statusRow(
@@ -402,9 +422,24 @@ struct ComputerUseSettingsView: View {
                 let signatureSuffix = response.signatureURL == nil
                     ? ""
                     : " Signature sidecar: \(URL(fileURLWithPath: response.signatureURL!).lastPathComponent)."
+                let readbackSuffix: String
+                if response.signatureURL != nil {
+                    if let runtimeController {
+                        do {
+                            try await runtimeController.publishAuditExportSignerReadback(for: response)
+                            readbackSuffix = " Signer key readback published."
+                        } catch {
+                            readbackSuffix = " Signer key readback was not published: \(error.localizedDescription)"
+                        }
+                    } else {
+                        readbackSuffix = " Signer key readback was not published: Computer Use runtime is not attached."
+                    }
+                } else {
+                    readbackSuffix = ""
+                }
                 auditStatus = AuditOperationStatus(
                     kind: .succeeded,
-                    message: "Exported \(response.entryCount) archive entries (\(response.archiveSizeBytes) bytes) to \(archiveURL.lastPathComponent).\(signatureSuffix)"
+                    message: "Exported \(response.entryCount) archive entries (\(response.archiveSizeBytes) bytes) to \(archiveURL.lastPathComponent).\(signatureSuffix)\(readbackSuffix)"
                 )
             } catch {
                 auditStatus = AuditOperationStatus(kind: .failed, message: error.localizedDescription)

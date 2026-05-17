@@ -90,6 +90,32 @@ enum OpenBurnBarDaemonSocketClient {
         )
     }
 
+    static func upsertProviderModelVariant(
+        _ request: BurnBarProviderModelVariantUpsertRequest,
+        at socketURL: URL
+    ) throws -> BurnBarProviderModelVariantMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .providerModelVariantUpsert,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func removeProviderModelVariant(
+        _ request: BurnBarProviderModelVariantRemoveRequest,
+        at socketURL: URL
+    ) throws -> BurnBarProviderModelVariantMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .providerModelVariantRemove,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
     static func recentUsage(
         at socketURL: URL,
         limit: Int = 20

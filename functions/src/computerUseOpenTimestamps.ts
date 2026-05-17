@@ -33,6 +33,29 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_MAX_PROOF_BYTES = 256 * 1024;
 const DEFAULT_MAX_CHAIN_BYTES = 10 * 1024 * 1024;
 
+export type ComputerUseOpenTimestampsVerifier = (
+  proofBytes: Buffer,
+  chainBytes?: Buffer,
+) => Promise<Pick<
+  ComputerUseOpenTimestampsValidationResponse,
+  "status" | "verified" | "otsVerifierOutput"
+>>;
+
+export type ComputerUseOpenTimestampsServerHeadLookup = (
+  uid: string,
+  sessionId: string,
+  claimedHead: string,
+) => Promise<{
+  status: ComputerUseOpenTimestampsValidationStatus | "server_head_matched";
+  serverAuditHeadHashHex?: string;
+}>;
+
+export interface ComputerUseOpenTimestampsValidationDependencies {
+  verifyProof?: ComputerUseOpenTimestampsVerifier;
+  serverHeadStatus?: ComputerUseOpenTimestampsServerHeadLookup;
+  now?: () => Date;
+}
+
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new HttpsError("invalid-argument", `${field} is required.`);
@@ -83,18 +106,85 @@ export function parseComputerUseOpenTimestampsValidationRequest(
 }
 
 function otsBinaryPath(): string | undefined {
-  const configured = process.env.OPENBURNBAR_OTS_VERIFY_BIN?.trim();
+  const cfg =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).functions?.config?.()?.openburnbar || {};
+  const configured = (
+    process.env.OPENBURNBAR_OTS_VERIFY_BIN ??
+    cfg.ots_verify_bin
+  )?.trim();
   if (configured) return configured;
   return "ots";
 }
 
-async function runOtsVerify(
+function otsVerifierServiceURL(): string | undefined {
+  const cfg =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).functions?.config?.()?.openburnbar || {};
+  const configured = (
+    process.env.OPENBURNBAR_OTS_VERIFY_URL ??
+    cfg.ots_verify_url
+  )?.trim();
+  return configured && configured.length > 0 ? configured : undefined;
+}
+
+async function runOtsVerifyViaService(
+  serviceURL: string,
   proofBytes: Buffer,
   chainBytes?: Buffer,
-): Promise<Pick<
-  ComputerUseOpenTimestampsValidationResponse,
-  "status" | "verified" | "otsVerifierOutput"
->> {
+): Promise<Awaited<ReturnType<ComputerUseOpenTimestampsVerifier>>> {
+  let url: URL;
+  try {
+    url = new URL(serviceURL);
+  } catch {
+    return {
+      status: "ots_verifier_unavailable",
+      verified: false,
+      otsVerifierOutput: "OPENBURNBAR_OTS_VERIFY_URL is not a valid URL.",
+    };
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      proofBase64: proofBytes.toString("base64"),
+      chainFileBase64: chainBytes?.toString("base64"),
+    }),
+  });
+  const text = await response.text();
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = text.length > 0 ? JSON.parse(text) as Record<string, unknown> : {};
+  } catch {
+    parsed = { output: text };
+  }
+  if (!response.ok) {
+    return {
+      status: response.status === 503
+        ? "ots_verifier_unavailable"
+        : "ots_verify_failed",
+      verified: false,
+      otsVerifierOutput: String(parsed.output ?? parsed.error ?? text),
+    };
+  }
+  const verified = parsed.verified === true;
+  return {
+    status: verified ? "verified" : "ots_verify_failed",
+    verified,
+    otsVerifierOutput: String(parsed.output ?? ""),
+  };
+}
+
+export async function runOtsVerify(
+  proofBytes: Buffer,
+  chainBytes?: Buffer,
+): Promise<Awaited<ReturnType<ComputerUseOpenTimestampsVerifier>>> {
+  const serviceURL = otsVerifierServiceURL();
+  if (serviceURL) {
+    return runOtsVerifyViaService(serviceURL, proofBytes, chainBytes);
+  }
+
   const binary = otsBinaryPath();
   if (!binary) {
     return { status: "ots_verifier_unavailable", verified: false };
@@ -143,14 +233,11 @@ async function runOtsVerify(
   }
 }
 
-async function serverHeadStatus(
+export async function serverHeadStatus(
   uid: string,
   sessionId: string,
   claimedHead: string,
-): Promise<{
-  status: ComputerUseOpenTimestampsValidationStatus | "server_head_matched";
-  serverAuditHeadHashHex?: string;
-}> {
+): Promise<Awaited<ReturnType<ComputerUseOpenTimestampsServerHeadLookup>>> {
   const doc = await getFirestore()
     .doc(`users/${uid}/computer_use_sessions/${sessionId}`)
     .get();
@@ -176,6 +263,7 @@ async function serverHeadStatus(
 
 export async function validateComputerUseOpenTimestampsProofForRequest(
   request: ComputerUseOpenTimestampsValidationRequest,
+  dependencies: ComputerUseOpenTimestampsValidationDependencies = {},
 ): Promise<ComputerUseOpenTimestampsValidationResponse> {
   const proofBytes = decodeBase64(
     request.proofBase64,
@@ -190,7 +278,11 @@ export async function validateComputerUseOpenTimestampsProofForRequest(
         DEFAULT_MAX_CHAIN_BYTES,
       );
 
-  const head = await serverHeadStatus(
+  const lookupServerHead = dependencies.serverHeadStatus ?? serverHeadStatus;
+  const verifyProof = dependencies.verifyProof ?? runOtsVerify;
+  const checkedAt = (dependencies.now ?? (() => new Date()))().toISOString();
+
+  const head = await lookupServerHead(
     request.uid,
     request.sessionId,
     request.auditHeadHashHex,
@@ -203,18 +295,18 @@ export async function validateComputerUseOpenTimestampsProofForRequest(
       auditHeadHashHex: request.auditHeadHashHex,
       serverAuditHeadHashHex: head.serverAuditHeadHashHex,
       proofSizeBytes: proofBytes.length,
-      checkedAt: new Date().toISOString(),
+      checkedAt,
     };
   }
 
-  const otsResult = await runOtsVerify(proofBytes, chainBytes);
+  const otsResult = await verifyProof(proofBytes, chainBytes);
   return {
     ...otsResult,
     sessionId: request.sessionId,
     auditHeadHashHex: request.auditHeadHashHex,
     serverAuditHeadHashHex: head.serverAuditHeadHashHex,
     proofSizeBytes: proofBytes.length,
-    checkedAt: new Date().toISOString(),
+    checkedAt,
   };
 }
 

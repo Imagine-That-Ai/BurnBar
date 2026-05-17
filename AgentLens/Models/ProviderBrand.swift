@@ -150,6 +150,7 @@ extension ProviderBrand {
         switch id.lowercased() {
         case "anthropic":   return Color(hex: "CC785C")
         case "openai":      return Color(hex: "00A67E")
+        case "factory":     return Color(hex: "F97316")
         case "google":      return Color(hex: "4285F4")
         case "xai":         return Color(hex: "1A1A2E")
         case "deepseek":    return Color(hex: "6366F1")
@@ -172,6 +173,7 @@ extension ProviderBrand {
         switch id.lowercased() {
         case "anthropic":   return "bubble.left.and.bubble.right.fill"
         case "openai":      return "hammer.fill"
+        case "factory":     return "gearshape.2.fill"
         case "google":      return "diamond.fill"
         case "xai":         return "bolt.fill"
         case "deepseek":    return "brain.head.profile"

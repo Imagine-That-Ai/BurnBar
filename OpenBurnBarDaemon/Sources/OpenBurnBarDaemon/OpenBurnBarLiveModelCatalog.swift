@@ -67,6 +67,13 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
     public let routeEligible: Bool
     public let lastRefreshAt: Date?
     public let lastError: String?
+    /// When this row is a thinking-level variant, the base model id the
+    /// gateway should route through. `nil` for non-variant rows.
+    public let baseModelID: String?
+    /// `BurnBarThinkingLevel.rawValue` when this row is a variant. `nil`
+    /// otherwise. Stored as a string so older clients that haven't been
+    /// upgraded ignore the field instead of failing to decode.
+    public let thinkingLevel: String?
 
     public init(
         id: String,
@@ -83,7 +90,9 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
         advertisementEnabled: Bool = true,
         routeEligible: Bool,
         lastRefreshAt: Date? = nil,
-        lastError: String? = nil
+        lastError: String? = nil,
+        baseModelID: String? = nil,
+        thinkingLevel: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -100,6 +109,36 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
         self.routeEligible = routeEligible
         self.lastRefreshAt = lastRefreshAt
         self.lastError = lastError
+        self.baseModelID = baseModelID
+        self.thinkingLevel = thinkingLevel
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, displayName, providerID, providerName, accountID, accountLabel
+        case sourceID, sourceKind, capabilities, quotaState, enabled
+        case advertisementEnabled, routeEligible, lastRefreshAt, lastError
+        case baseModelID, thinkingLevel
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        providerID = try container.decode(String.self, forKey: .providerID)
+        providerName = try container.decode(String.self, forKey: .providerName)
+        accountID = try container.decode(String.self, forKey: .accountID)
+        accountLabel = try container.decode(String.self, forKey: .accountLabel)
+        sourceID = try container.decode(String.self, forKey: .sourceID)
+        sourceKind = try container.decode(String.self, forKey: .sourceKind)
+        capabilities = try container.decode([String].self, forKey: .capabilities)
+        quotaState = try container.decode(BurnBarLiveModelQuotaState.self, forKey: .quotaState)
+        enabled = try container.decode(Bool.self, forKey: .enabled)
+        advertisementEnabled = try container.decodeIfPresent(Bool.self, forKey: .advertisementEnabled) ?? true
+        routeEligible = try container.decode(Bool.self, forKey: .routeEligible)
+        lastRefreshAt = try container.decodeIfPresent(Date.self, forKey: .lastRefreshAt)
+        lastError = try container.decodeIfPresent(String.self, forKey: .lastError)
+        baseModelID = try container.decodeIfPresent(String.self, forKey: .baseModelID)
+        thinkingLevel = try container.decodeIfPresent(String.self, forKey: .thinkingLevel)
     }
 }
 
@@ -251,7 +290,8 @@ public struct BurnBarLiveModelCatalog: Sendable {
             ? Set(liveRefresh?.advertisedModels.map { $0.id.lowercased() } ?? [])
             : nil
 
-        let configuredRows = configuration.preferredModels.map { model in
+        var rows: [BurnBarLiveAdvertisedModel] = []
+        for model in configuration.preferredModels {
             let wireModelID = advertisedModelID(for: model, providerID: configuration.provider.id)
             let liveModel = liveRefresh?.advertisedModels.first { $0.id.caseInsensitiveCompare(wireModelID) == .orderedSame }
             let liveConfirmed = liveIDSet?.contains(wireModelID.lowercased())
@@ -266,7 +306,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 }
                 return account.lastError
             }()
-            return BurnBarLiveAdvertisedModel(
+            let baseRow = BurnBarLiveAdvertisedModel(
                 id: wireModelID,
                 displayName: liveModel?.displayName ?? model.displayName,
                 providerID: configuration.provider.id,
@@ -274,7 +314,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 accountID: account.accountID,
                 accountLabel: account.accountLabel,
                 sourceID: "\(configuration.provider.id)#\(account.accountID)",
-                sourceKind: liveRefresh?.sourceKind ?? "daemon_provider_config",
+                sourceKind: liveRefresh?.sourceKind ?? configuredModelSourceKind(for: configuration.provider.id),
                 capabilities: capabilities,
                 quotaState: account.quotaState,
                 enabled: account.enabled,
@@ -288,17 +328,23 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 lastRefreshAt: liveRefresh?.refreshedAt ?? account.lastRefreshAt,
                 lastError: liveError
             )
+            rows.append(baseRow)
+            rows.append(contentsOf: variantRows(
+                from: baseRow,
+                configuration: configuration,
+                account: account
+            ))
         }
 
         guard liveRefresh?.isAuthoritative == true else {
-            return configuredRows
+            return rows
         }
 
-        var seenIDs = Set(configuredRows.map { $0.id.lowercased() })
-        let liveRows = (liveRefresh?.advertisedModels ?? []).compactMap { liveModel -> BurnBarLiveAdvertisedModel? in
-            guard seenIDs.insert(liveModel.id.lowercased()).inserted else { return nil }
+        var seenIDs = Set(rows.map { $0.id.lowercased() })
+        for liveModel in liveRefresh?.advertisedModels ?? [] {
+            guard seenIDs.insert(liveModel.id.lowercased()).inserted else { continue }
             let advertisementEnabled = configuration.settings.isModelAdvertisementEnabled(liveModel.id)
-            return BurnBarLiveAdvertisedModel(
+            let liveRow = BurnBarLiveAdvertisedModel(
                 id: liveModel.id,
                 displayName: liveModel.displayName,
                 providerID: configuration.provider.id,
@@ -319,9 +365,53 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 lastRefreshAt: liveRefresh?.refreshedAt ?? account.lastRefreshAt,
                 lastError: account.lastError
             )
+            rows.append(liveRow)
+            rows.append(contentsOf: variantRows(
+                from: liveRow,
+                configuration: configuration,
+                account: account
+            ))
+            seenIDs.formUnion(rows.suffix(rows.count - seenIDs.count).map { $0.id.lowercased() })
         }
 
-        return configuredRows + liveRows
+        return rows
+    }
+
+    /// Emit one synthetic advertised row per `BurnBarModelVariant` whose
+    /// `baseModelID` matches the supplied base row. Variants inherit the
+    /// route-eligibility/quota state of the base row but ship distinct wire
+    /// ids so they appear as separate models in `/v1/models` and every
+    /// wired CLI's model picker.
+    private func variantRows(
+        from baseRow: BurnBarLiveAdvertisedModel,
+        configuration: BurnBarResolvedProviderConfiguration,
+        account: BurnBarLiveModelAccountDescriptor
+    ) -> [BurnBarLiveAdvertisedModel] {
+        let variants = configuration.settings.variants(forBaseModelID: baseRow.id)
+        guard !variants.isEmpty else { return [] }
+        return variants.map { variant in
+            let variantID = variant.variantID
+            let advertisementEnabled = configuration.settings.isModelAdvertisementEnabled(variantID)
+            return BurnBarLiveAdvertisedModel(
+                id: variantID,
+                displayName: "\(baseRow.displayName) (\(variant.label))",
+                providerID: baseRow.providerID,
+                providerName: baseRow.providerName,
+                accountID: baseRow.accountID,
+                accountLabel: baseRow.accountLabel,
+                sourceID: "\(baseRow.sourceID)::variant::\(variantID)",
+                sourceKind: "thinking_level_variant",
+                capabilities: baseRow.capabilities,
+                quotaState: baseRow.quotaState,
+                enabled: baseRow.enabled,
+                advertisementEnabled: advertisementEnabled,
+                routeEligible: baseRow.routeEligible,
+                lastRefreshAt: baseRow.lastRefreshAt,
+                lastError: baseRow.lastError,
+                baseModelID: baseRow.id,
+                thinkingLevel: variant.thinkingLevel.rawValue
+            )
+        }
     }
 
     private func advertisedModelID(for model: BurnBarCatalogModel, providerID: String) -> String {
@@ -331,6 +421,12 @@ public struct BurnBarLiveModelCatalog: Sendable {
             return providerID.lowercased() == "ollama" ? Self.ollamaCloudRouteModelID(model.id) : model.id
         }
         return providerID.lowercased() == "ollama" ? Self.ollamaCloudRouteModelID(alias) : alias
+    }
+
+    private func configuredModelSourceKind(for providerID: String) -> String {
+        providerID.caseInsensitiveCompare("factory") == .orderedSame
+            ? "factory_droid_cli"
+            : "daemon_provider_config"
     }
 
     private struct LiveRefreshResult: Sendable {
@@ -393,6 +489,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
               account.hasCredential,
               isEligibleQuotaState(account.quotaState),
               configuration.provider.formatFamily == .openaiCompat,
+              configuration.provider.id.caseInsensitiveCompare("factory") != .orderedSame,
               let key = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines),
               !key.isEmpty,
               let baseURL = URL(string: configuration.settings.baseURL) else {

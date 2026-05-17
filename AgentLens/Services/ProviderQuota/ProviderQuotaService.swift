@@ -109,6 +109,7 @@ final class ProviderQuotaService {
     private var routingEventsDirty = false
     private nonisolated(unsafe) var automaticRefreshTask: Task<Void, Never>?
     private nonisolated(unsafe) var apiKeyChangeObserver: NSObjectProtocol?
+    private var claudeStatuslineWatcher: ClaudeStatuslineWatcher?
 
     init(
         settingsManager: SettingsManager = .shared,
@@ -177,6 +178,8 @@ final class ProviderQuotaService {
         if let apiKeyChangeObserver {
             NotificationCenter.default.removeObserver(apiKeyChangeObserver)
         }
+        // Note: claudeStatuslineWatcher cancels its dispatch source in
+        // its own deinit when the strong reference drops here.
     }
 
     func snapshot(for provider: AgentProvider) -> ProviderQuotaSnapshot? {
@@ -463,6 +466,8 @@ final class ProviderQuotaService {
             }
         }
 
+        startClaudeStatuslineWatcher(dataStore: dataStore)
+
         guard apiKeyChangeObserver == nil else { return }
         apiKeyChangeObserver = NotificationCenter.default.addObserver(
             forName: ProviderAPIKeyStore.didChangeNotification,
@@ -486,10 +491,37 @@ final class ProviderQuotaService {
     func stopAutomaticRefresh() {
         automaticRefreshTask?.cancel()
         automaticRefreshTask = nil
+        stopClaudeStatuslineWatcher()
         if let apiKeyChangeObserver {
             NotificationCenter.default.removeObserver(apiKeyChangeObserver)
             self.apiKeyChangeObserver = nil
         }
+    }
+
+    /// Arms an FS-event watcher on Claude Code's statusline snapshot file.
+    /// When the statusline bridge writes a fresh payload, we re-read the
+    /// Claude snapshot immediately instead of waiting for the next
+    /// auto-refresh tick — which dropped Nest Hub freshness from "up to
+    /// two minutes stale" to "as fast as Claude can write the hook".
+    ///
+    /// Idempotent. Calling twice replaces the existing watcher.
+    func startClaudeStatuslineWatcher(dataStore: DataStore) {
+        claudeStatuslineWatcher?.stop()
+        let url = appPaths.claudeStatuslineSnapshotURL
+        let watcher = ClaudeStatuslineWatcher(url: url) { [weak self, weak dataStore] in
+            guard let self, let dataStore else { return }
+            Task { @MainActor [weak self, weak dataStore] in
+                guard let self, let dataStore else { return }
+                await self.refreshClaudeFromStatuslineHook(dataStore: dataStore)
+            }
+        }
+        watcher.start()
+        claudeStatuslineWatcher = watcher
+    }
+
+    func stopClaudeStatuslineWatcher() {
+        claudeStatuslineWatcher?.stop()
+        claudeStatuslineWatcher = nil
     }
 
     func refreshAll(dataStore: DataStore) async {
@@ -558,6 +590,36 @@ final class ProviderQuotaService {
                     buckets: []
                 ), for: provider)
             }
+        }
+    }
+
+    /// Re-reads only the Claude snapshot in response to a statusline hook
+    /// write. Deliberately does NOT bump `lastFetch`: a Claude-only refresh
+    /// must not gate the next all-provider auto-refresh tick, otherwise a
+    /// chatty Claude session could starve Codex/Cursor/etc. of updates.
+    /// Skipped silently while a full `refreshAll` is already in flight to
+    /// avoid stomping its outputs mid-flight.
+    func refreshClaudeFromStatuslineHook(dataStore: DataStore) async {
+        guard Self.supportedProviders.contains(.claudeCode) else { return }
+        guard !isFetching else { return }
+        activeProviders.insert(.claudeCode)
+        defer { activeProviders.remove(.claudeCode) }
+
+        do {
+            let context = makeContext(dataStore: dataStore)
+            let snapshot = try await quotaRefreshActor.fetchSnapshot(for: .claudeCode, context: context)
+            upsertSnapshot(snapshot, for: .claudeCode)
+            let accountSnapshots = await quotaRefreshActor.fetchAccountSnapshots(for: .claudeCode, dataStoreActor: dataStore.actor)
+            replaceAccountSnapshots(
+                accountSnapshots,
+                pruningManagedAccountSnapshotsFor: [.claudeCode]
+            )
+            errors.removeValue(forKey: .claudeCode)
+            refreshClaudeBridgeStatus()
+            persistSnapshots()
+            OpenBurnBarMetrics.counter(name: "quota_refresh_success", labels: ["provider": "claudeCode-hook"])
+        } catch {
+            OpenBurnBarMetrics.counter(name: "quota_refresh_failure", labels: ["provider": "claudeCode-hook"])
         }
     }
 

@@ -30,6 +30,7 @@ data class HermesRealtimeRelayFrame(
     val runtime: String? = null,
     val payload: HermesRealtimeRelayPayload? = null,
     val media: HermesRealtimeRelayMediaPayload? = null,
+    val control: HermesRealtimeRelayControlPayload? = null,
 )
 
 @Serializable
@@ -49,6 +50,15 @@ enum class HermesRealtimeRelayFrameType {
     @SerialName("media.classify") MEDIA_CLASSIFY,
     @SerialName("media.blob.advertise") MEDIA_BLOB_ADVERTISE,
     @SerialName("media.blob.ack") MEDIA_BLOB_ACK,
+
+    // Computer Use control plane. Mirrors the Swift enum so Android can
+    // receive Agent Watch frames and emit signed phone-control intents.
+    @SerialName("control.classify") CONTROL_CLASSIFY,
+    @SerialName("control.action.log.entry") CONTROL_ACTION_LOG_ENTRY,
+    @SerialName("control.input.intent") CONTROL_INPUT_INTENT,
+    @SerialName("control.approval.request") CONTROL_APPROVAL_REQUEST,
+    @SerialName("control.approval.response") CONTROL_APPROVAL_RESPONSE,
+    @SerialName("control.denied") CONTROL_DENIED,
 }
 
 @Serializable
@@ -118,6 +128,53 @@ data class HermesRealtimeRelayMediaAck(
         @SerialName("rejected") REJECTED,
     }
 }
+
+@Serializable
+data class HermesRealtimeRelayControlPayload(
+    val streamClass: String? = null,
+    val sessionId: String? = null,
+    val inputIntent: HermesRealtimeRelayInputIntent? = null,
+    val authorityPeerNodeId: String? = null,
+    val authorityPublicKeyBase64: String? = null,
+)
+
+@Serializable
+data class HermesRealtimeRelayInputIntent(
+    val kind: HermesRealtimeRelayInputIntentKind,
+    val normalizedX: Double? = null,
+    val normalizedY: Double? = null,
+    val normalizedX2: Double? = null,
+    val normalizedY2: Double? = null,
+    val text: String? = null,
+    val key: String? = null,
+    val modifiers: List<String>? = null,
+    val authority: HermesRealtimeRelayAuthorityEnvelope,
+)
+
+@Serializable
+enum class HermesRealtimeRelayInputIntentKind {
+    @SerialName("tap") TAP,
+    @SerialName("drag_start") DRAG_START,
+    @SerialName("drag_move") DRAG_MOVE,
+    @SerialName("drag_end") DRAG_END,
+    @SerialName("type") TYPE,
+    @SerialName("shortcut") SHORTCUT,
+    @SerialName("scroll") SCROLL,
+    @SerialName("panic") PANIC,
+}
+
+@Serializable
+data class HermesRealtimeRelayAuthorityEnvelope(
+    val peerNodeId: String,
+    val counter: Long,
+    /**
+     * Swift JSONEncoder's default Date encoding: seconds since
+     * 2001-01-01 00:00:00 UTC. Android senders convert from Unix ms.
+     */
+    val timestamp: Double,
+    val intentHashBlake3: String,
+    val signatureEd25519: String,
+)
 
 /**
  * Shared JSON codec for the relay layer. Encodes nulls only when the

@@ -53,6 +53,12 @@ models into the client config automatically:
 - `/v1/chat/completions` and `/v1/responses` stop before contacting an upstream provider when the selected model has no eligible route.
 - `/v1/responses` first uses an upstream Responses endpoint when the provider has one. If an advertised OpenAI-compatible provider only exposes chat completions, BurnBar translates the request through `/v1/chat/completions` and returns a Responses-shaped JSON or SSE stream so Codex-style clients still work.
 - For advertised Anthropic models, `/v1/chat/completions` and `/v1/responses` translate local OpenAI-style requests to Anthropic Messages and translate the response back. Basic function tool requests and Anthropic `tool_use` blocks are bridged to OpenAI-style tool calls.
+- Factory Droid is both a client target and a routed upstream provider. As an
+  upstream, BurnBar runs the official `droid exec` CLI in read-only
+  non-interactive mode and labels rows as Factory-served. Standard Usage
+  exhaustion is a same-model failover event; BurnBar does not accept Factory's
+  native Standard-to-Droid-Core downgrade for requests that asked for a
+  Standard model. See `docs/FACTORY_DROID_ROUTING.md`.
 - Same-provider account failover can happen only through eligible accounts that advertise the requested model.
 - BurnBar does not silently substitute a stale default model.
 - CLI wiring fails before editing a client when BurnBar has no route-eligible advertised models for that client's local gateway endpoint.

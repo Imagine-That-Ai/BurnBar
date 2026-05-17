@@ -106,7 +106,7 @@ public actor BurnBarRunService {
         router: BurnBarProviderRouter,
         usageRecorder: BurnBarUsageRecorder,
         clientRegistry: BurnBarClientRegistry,
-        providerExecutor: any BurnBarProviderExecuting = BurnBarOpenAICompatibleProviderExecutor(),
+        providerExecutor: any BurnBarProviderExecuting = BurnBarCompositeProviderExecutor(),
         workspaceBridgeBroker: BurnBarWorkspaceBridgeBroker = BurnBarWorkspaceBridgeBroker(),
         plannerService: BurnBarPlannerService = BurnBarPlannerService(),
         contextSelector: BurnBarContextSelector = BurnBarContextSelector(),

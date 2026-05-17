@@ -60,6 +60,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (matching `OpenBurnBarPlaywrightLifecycle.pinnedPlaywrightVersion`).
 
 ### Fixed
+- **Nest Hub Claude quota refreshes within a debounce window instead of
+  every 2 minutes.** The Smart Hub bridge was double-gating the auto-refresh
+  loop: an outer 60 s gate in `SmartHubBridgeController` plus the inner 60 s
+  gate in `ProviderQuotaService.refreshIfNeeded`. Tracing the interaction,
+  the second tick always landed inside the inner window and skipped — so
+  the effective cadence was ~120 s, not the advertised 60 s. The same
+  heartbeat also serialized the 5 s pump behind whatever-multi-second
+  `refreshAll` happened to be in flight, which froze the dashboard mid-refresh.
+  Now: the pump runs in its own task (so the Hub stays live during a refresh),
+  the auto-refresh runs in a second task that delegates to
+  `refreshIfNeeded` as the single source of truth for staleness, and a new
+  `ClaudeStatuslineWatcher` FS-event watcher fires
+  `ProviderQuotaService.refreshClaudeFromStatuslineHook` the moment Claude's
+  CLI writes a fresh statusline payload. The hook path deliberately does
+  not bump `lastFetch`, so a chatty Claude session can no longer gate the
+  next all-provider tick and starve Codex/Cursor/etc. Self-heals across
+  Claude's atomic write (`cp tmp → snapshot.json`) by closing the stale FD
+  on rename/delete and re-arming after a 250 ms backoff.
+- **Factory Droid Max can route as a strict same-model failover provider.**
+  Factory is now in the daemon provider catalog with Standard and Droid Core
+  lanes separated. Gateway requests for Factory Standard models run through a
+  supervised read-only `droid exec` executor, reject silent Droid Core fallback,
+  and fail over to another exact same-model route when Standard Usage is
+  exhausted.
 - **OpenCode credential entry accepts real route-key formats.** The Accounts
   wizard no longer treats OpenCode auth JSON as a generic JWT session token;
   it accepts the `opencode-go` object, the full `auth.json`, or the bare route

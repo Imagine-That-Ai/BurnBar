@@ -1,5 +1,6 @@
 import XCTest
 import OpenBurnBarCore
+import OpenBurnBarComputerUseCore
 
 /// Verifies that escrow envelope serialization never contains plaintext secret field names.
 final class FirestorePlaintextProhibitionTests: XCTestCase {
@@ -52,7 +53,16 @@ final class FirestorePlaintextProhibitionTests: XCTestCase {
             EscrowPublicKey(deviceId: "d1", publicKeyData: "base64key"),
             EscrowGrant(sourceDeviceId: "s1", targetDeviceId: "t1", providerId: "p1", credentialKind: .apiKey),
             EscrowSecretMetadata(providerId: "p1", credentialKind: .bearerToken, sourceDeviceId: "s1", destinationDeviceId: "d1"),
-            EscrowAuditEvent(eventType: .envelopeCreated, actorDeviceId: "a1")
+            EscrowAuditEvent(eventType: .envelopeCreated, actorDeviceId: "a1"),
+            ComputerUseAuditExportSignerReadback(
+                id: String(repeating: "a", count: 64),
+                userId: "u1",
+                deviceId: "mac-1",
+                signerIdentifier: "openburnbar-trusted-device-ed25519-keychain-v1:test",
+                publicKeyBase64: String(repeating: "A", count: 44),
+                publicKeySHA256Hex: String(repeating: "a", count: 64),
+                publishedAtMillis: 1_765_000_000_000
+            )
         ]
 
         for model in models {

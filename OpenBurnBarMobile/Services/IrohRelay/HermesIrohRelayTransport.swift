@@ -172,6 +172,22 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         self.mediaControlReceiver = receiver
     }
 
+    /// Mercury Phase 8 — read-only accessor for the active control-stream
+    /// coordinator. Returns `nil` until the lazy boot path in `send(...)`
+    /// has constructed and started one. Used by `MercuryPeerSource` to
+    /// observe the live/idle phase and by `MercuryLiveSheet` to push
+    /// outbound mirror requests onto the same stream.
+    var currentMediaControlCoordinator: MediaControlStreamCoordinator? {
+        mediaControlCoordinator
+    }
+
+    /// Mercury Phase 8 — snapshot of the active control-stream phase, or
+    /// `.idle` when no coordinator has been built yet. Cheap to poll;
+    /// reflects the coordinator's `@Published phase` 1:1.
+    var currentMediaControlPhase: MediaControlStreamCoordinator.Phase {
+        mediaControlCoordinator?.phase ?? .idle
+    }
+
     /// Boot-time entry point used by the coordinator dialer + tests.
     /// Open a fresh bi-stream against the paired Mac, classify it as the
     /// long-lived media control stream, and return the open stream so
@@ -545,7 +561,12 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                  .controlClassify, .controlActionLogEntry, .controlInputIntent,
                  .controlApprovalRequest, .controlApprovalResponse, .controlDenied:
                 continue
-            case .mediaClassify, .mediaBlobAdvertise, .mediaBlobAck:
+            case .mediaClassify,
+                 .mediaBlobAdvertise,
+                 .mediaBlobAck,
+                 .mediaMirrorRequest,
+                 .mediaMirrorAck,
+                 .mediaPresenceHeartbeat:
                 guard let dispatcher = mediaDispatcher else { continue }
                 let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = {
                     [stream] outboundFrame in

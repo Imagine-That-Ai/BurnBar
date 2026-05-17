@@ -526,6 +526,9 @@ public struct BurnBarProviderRouter: Sendable {
         var cooldownUntil: Date?
         if let providerError = error as? BurnBarProviderExecutorError,
            case .upstreamError(let statusCode, let body) = providerError {
+            if FactoryDroidProviderExecutor.isStrictStandardUsageExhaustion(error: error, route: route) {
+                return
+            }
             let lowerBody = body.lowercased()
             if statusCode == 401 || statusCode == 403 {
                 status = .missingSecret
@@ -546,6 +549,9 @@ public struct BurnBarProviderRouter: Sendable {
                 return
             }
         } else {
+            if FactoryDroidProviderExecutor.isStrictStandardUsageExhaustion(error: error, route: route) {
+                return
+            }
             let lowercasedDescription = error.localizedDescription.lowercased()
             if lowercasedDescription.contains("quota")
                 || lowercasedDescription.contains("insufficient")

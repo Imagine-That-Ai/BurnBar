@@ -62,7 +62,7 @@ If you enable crash reporting or diagnostics, anonymized crash reports may be se
 
 ### Optional Computer Use Audit Notarization (opt-in only)
 
-If you choose to notarize a Computer Use audit session, OpenBurnBar submits only the 32-byte SHA-256 digest of your local `chain.jsonl` audit file to an OpenTimestamps calendar service and stores the returned `.ots` proof beside your local audit chain. During a support dispute, you may optionally send the `.ots` proof and chain file to OpenBurnBar so the server-side `validateOpenTimestampsProof` function can cross-check the session head and, when the OpenTimestamps verifier is available, verify the proof. Screenshots and full action descriptors remain local unless you explicitly include them in an audit export.
+If you choose to notarize a Computer Use audit session, OpenBurnBar submits only the 32-byte SHA-256 digest of your local `chain.jsonl` audit file to an OpenTimestamps calendar service and stores the returned `.ots` proof beside your local audit chain. During a support dispute, you may optionally send the `.ots` proof and chain file to OpenBurnBar so the server-side `validateOpenTimestampsProof` function can cross-check the session head and verify the proof through the configured OpenTimestamps verifier service. Screenshots and full action descriptors remain local unless you explicitly include them in an audit export.
 
 ---
 

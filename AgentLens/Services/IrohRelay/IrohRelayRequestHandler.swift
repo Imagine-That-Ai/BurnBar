@@ -166,7 +166,12 @@ final class IrohRelayRequestHandler: Sendable {
                  .responseComplete,
                  .responseError:
                 continue
-            case .mediaClassify, .mediaBlobAdvertise, .mediaBlobAck:
+            case .mediaClassify,
+                 .mediaBlobAdvertise,
+                 .mediaBlobAck,
+                 .mediaMirrorRequest,
+                 .mediaMirrorAck,
+                 .mediaPresenceHeartbeat:
                 guard let mediaDispatcher else { continue }
                 // Wrap the stream send in a Sendable closure so the
                 // dispatcher can ack without holding a reference to the

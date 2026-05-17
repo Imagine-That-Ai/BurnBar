@@ -338,6 +338,62 @@ extension OpenBurnBarDaemonManager {
         }
     }
 
+    func setProviderModelVariant(
+        providerID: String,
+        variant: BurnBarModelVariant
+    ) async {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before model variants can be updated."
+                return
+            }
+        }
+
+        await performBusyWork {
+            let socketURL = paths.socketURL
+            _ = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.upsertProviderModelVariant(
+                    BurnBarProviderModelVariantUpsertRequest(
+                        providerID: providerID,
+                        variant: variant
+                    ),
+                    at: socketURL
+                )
+            }
+        }
+    }
+
+    func removeProviderModelVariant(
+        providerID: String,
+        variantID: String
+    ) async {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before model variants can be updated."
+                return
+            }
+        }
+
+        await performBusyWork {
+            let socketURL = paths.socketURL
+            _ = try await daemonRPC {
+                try OpenBurnBarDaemonSocketClient.removeProviderModelVariant(
+                    BurnBarProviderModelVariantRemoveRequest(
+                        providerID: providerID,
+                        variantID: variantID
+                    ),
+                    at: socketURL
+                )
+            }
+        }
+    }
+
     func setPreferredProviderCredentialSlot(
         providerID: String,
         slotID: String?

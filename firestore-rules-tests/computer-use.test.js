@@ -23,6 +23,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import {
+  deleteDoc,
   doc,
   getDoc,
   setDoc,
@@ -77,6 +78,21 @@ const validPhoneAuthorityDoc = {
   schemaVersion: 1,
 };
 
+const validAuditExportSignerDoc = {
+  id: "a".repeat(64),
+  userId: aliceUid,
+  deviceId: "mac-1",
+  signerIdentifier: "openburnbar-trusted-device-ed25519-keychain-v1:abc123",
+  signerKind: "openburnbar_trusted_device",
+  trustRoot: "openburnbar-trusted-device-keychain-v1",
+  algorithm: "ed25519",
+  publicKeyBase64: "A".repeat(44),
+  publicKeySHA256Hex: "a".repeat(64),
+  status: "active",
+  publishedAtMillis: Date.now(),
+  schemaVersion: 1,
+};
+
 function entitlementGranted(productID = "com.openburnbar.hostedComputerUseSync.monthly") {
   return {
     active: true,
@@ -105,13 +121,13 @@ async function withEntitlement(testEnv, uid, body) {
   return body();
 }
 
-async function seedEscrowDevice(testEnv, uid, deviceId, trustState = "trusted") {
+async function seedEscrowDevice(testEnv, uid, deviceId, trustState = "trusted", platform = "iOS") {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     const dbAdmin = ctx.firestore();
     await setDoc(doc(dbAdmin, `users/${uid}/escrow_devices/${deviceId}`), {
       deviceId,
       deviceName: "Test iPhone",
-      platform: "iOS",
+      platform,
       trustState,
       createdAt: Timestamp.fromMillis(Date.now()),
       updatedAt: Timestamp.fromMillis(Date.now()),
@@ -263,6 +279,67 @@ async function main() {
           connectionId: "missing-connection",
         })
       );
+    });
+
+    await step("audit-export signer requires a trusted macOS escrow device", async () => {
+      const path = `users/${aliceUid}/escrow_devices/${validAuditExportSignerDoc.deviceId}/computer_use_audit_export_signers/${validAuditExportSignerDoc.publicKeySHA256Hex}`;
+      await assertFails(setDoc(doc(aliceDB, path), validAuditExportSignerDoc));
+      await seedEscrowDevice(testEnv, aliceUid, validAuditExportSignerDoc.deviceId, "trusted", "macOS");
+      await assertSucceeds(setDoc(doc(aliceDB, path), validAuditExportSignerDoc));
+      await assertSucceeds(getDoc(doc(aliceDB, path)));
+    });
+
+    await step("audit-export signer rejects non-macOS trusted escrow devices", async () => {
+      const signer = {
+        ...validAuditExportSignerDoc,
+        id: "b".repeat(64),
+        deviceId: "iphone-audit-signer-1",
+        publicKeySHA256Hex: "b".repeat(64),
+      };
+      const path = `users/${aliceUid}/escrow_devices/${signer.deviceId}/computer_use_audit_export_signers/${signer.publicKeySHA256Hex}`;
+      await seedEscrowDevice(testEnv, aliceUid, signer.deviceId, "trusted", "iOS");
+      await assertFails(setDoc(doc(aliceDB, path), signer));
+    });
+
+    await step("audit-export signer rejects malformed hash, id mismatch, and secret fields", async () => {
+      const basePath = `users/${aliceUid}/escrow_devices/${validAuditExportSignerDoc.deviceId}/computer_use_audit_export_signers`;
+      await assertFails(setDoc(doc(aliceDB, `${basePath}/not-a-hash`), {
+        ...validAuditExportSignerDoc,
+        id: "not-a-hash",
+        publicKeySHA256Hex: "not-a-hash",
+      }));
+      await assertFails(setDoc(doc(aliceDB, `${basePath}/${"c".repeat(64)}`), {
+        ...validAuditExportSignerDoc,
+        id: "c".repeat(64),
+        publicKeySHA256Hex: "d".repeat(64),
+      }));
+      await assertFails(setDoc(doc(aliceDB, `${basePath}/${"e".repeat(64)}`), {
+        ...validAuditExportSignerDoc,
+        id: "e".repeat(64),
+        publicKeySHA256Hex: "e".repeat(64),
+        privateKeyBase64: "do-not-store-this",
+      }));
+    });
+
+    await step("audit-export signer allows revocation update but denies key mutation and delete", async () => {
+      const signer = {
+        ...validAuditExportSignerDoc,
+        id: "f".repeat(64),
+        publicKeySHA256Hex: "f".repeat(64),
+      };
+      const path = `users/${aliceUid}/escrow_devices/${signer.deviceId}/computer_use_audit_export_signers/${signer.publicKeySHA256Hex}`;
+      await assertSucceeds(setDoc(doc(aliceDB, path), signer));
+      await assertSucceeds(setDoc(doc(aliceDB, path), {
+        ...signer,
+        status: "revoked",
+        revokedAt: Timestamp.fromMillis(Date.now()),
+        revokedByDeviceId: signer.deviceId,
+      }));
+      await assertFails(setDoc(doc(aliceDB, path), {
+        ...signer,
+        publicKeyBase64: "B".repeat(44),
+      }));
+      await assertFails(deleteDoc(doc(aliceDB, path)));
     });
 
     await step("ops/computer_use_budget_status is read-only for clients", async () => {

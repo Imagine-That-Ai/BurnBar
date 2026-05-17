@@ -84,10 +84,24 @@ public final class PhoneControlReceiver: @unchecked Sendable {
             return
         case .tap, .scroll, .dragStart, .dragMove, .dragEnd:
             guard let (displayX, displayY) = denormalize(intent.normalizedX, intent.normalizedY) else {
-                await emitDeniedFrame(reason: .signatureFailure, uid: frame.uid, connectionId: frame.connectionId)
+                await emitDeniedFrame(
+                    reason: .unknown,
+                    detail: "malformed_coordinates",
+                    uid: frame.uid,
+                    connectionId: frame.connectionId
+                )
                 return
             }
             let endpoint = denormalize(intent.normalizedX2, intent.normalizedY2)
+            if requiresEndpoint(intent.kind), endpoint == nil {
+                await emitDeniedFrame(
+                    reason: .unknown,
+                    detail: "missing_drag_endpoint",
+                    uid: frame.uid,
+                    connectionId: frame.connectionId
+                )
+                return
+            }
             let macAction = MacInputAction(
                 kind: macInputKind(for: intent.kind),
                 displayX: displayX,
@@ -112,11 +126,20 @@ public final class PhoneControlReceiver: @unchecked Sendable {
     private func macInputKind(for kind: HermesRealtimeRelayInputIntent.Kind) -> MacInputAction.Kind {
         switch kind {
         case .tap: return .click
-        case .dragStart, .dragMove, .dragEnd: return .dragDrop
+        case .dragStart, .dragMove, .dragEnd: return .scroll
         case .type: return .type
         case .shortcut: return .shortcut
         case .scroll: return .scroll
         case .panic: return .click  // unreachable; panic short-circuits above
+        }
+    }
+
+    private func requiresEndpoint(_ kind: HermesRealtimeRelayInputIntent.Kind) -> Bool {
+        switch kind {
+        case .scroll, .dragStart, .dragMove, .dragEnd:
+            return true
+        case .tap, .type, .shortcut, .panic:
+            return false
         }
     }
 
@@ -131,12 +154,13 @@ public final class PhoneControlReceiver: @unchecked Sendable {
 
     private func emitDeniedFrame(
         reason: HermesRealtimeRelayControlDenied.Reason,
+        detail: String? = nil,
         uid: String,
         connectionId: String
     ) async {
         let payload = HermesRealtimeRelayControlPayload(
             streamClass: "control.input",
-            denied: HermesRealtimeRelayControlDenied(reason: reason)
+            denied: HermesRealtimeRelayControlDenied(reason: reason, detail: detail)
         )
         let frame = HermesRealtimeRelayFrame(
             type: .controlDenied,

@@ -90,7 +90,7 @@ final class ComputerUseAuditChainTests: XCTestCase {
         XCTAssertEqual(result.headHashHex, logger.headHashHex)
     }
 
-    func testTamperAtAnyEntryIsDetected() throws {
+    func testHundredEntryChainValidates() throws {
         let dir = try tempDir()
         let logger = try ComputerUseAuditLogger(
             sessionId: sessionId,
@@ -99,7 +99,33 @@ final class ComputerUseAuditChainTests: XCTestCase {
         )
         let manifest = makeManifest(sessionId)
         try logger.beginSession(manifest: manifest)
-        for _ in 0..<10 {
+        for _ in 0..<100 {
+            try logger.append(try logger.makeEntry(for: makeAction(), approvedBy: .mac))
+        }
+        let manifestHashHex = try ComputerUseAuditChain().hashSessionManifest(manifest)
+        let chainURL = dir
+            .appendingPathComponent(sessionId.rawValue, isDirectory: true)
+            .appendingPathComponent("chain.jsonl")
+        let result = try ComputerUseAuditChain().validate(
+            at: chainURL,
+            sessionManifestHashHex: manifestHashHex,
+            expectedHeadHashHex: logger.headHashHex
+        )
+        XCTAssertTrue(result.isValid)
+        XCTAssertEqual(result.entryCount, 100)
+        XCTAssertEqual(result.headHashHex, logger.headHashHex)
+    }
+
+    func testTamperAtEveryEntryReportsExpectedIndex() throws {
+        let dir = try tempDir()
+        let logger = try ComputerUseAuditLogger(
+            sessionId: sessionId,
+            baseDirectory: dir,
+            macAppVersion: macAppVersion
+        )
+        let manifest = makeManifest(sessionId)
+        try logger.beginSession(manifest: manifest)
+        for _ in 0..<100 {
             try logger.append(try logger.makeEntry(for: makeAction(), approvedBy: .mac))
         }
         let originalHead = logger.headHashHex
@@ -131,13 +157,49 @@ final class ComputerUseAuditChainTests: XCTestCase {
                 expectedHeadHashHex: originalHead
             )
             XCTAssertFalse(result.isValid, "Tamper at index \(index) should be detected")
-            XCTAssertTrue(
-                result.firstInvalidReason == .parentHashMismatch ||
-                result.firstInvalidReason == .headHashMismatch ||
-                result.firstInvalidReason == .decodeFailure,
-                "Detection should report a chain-integrity reason; got \(String(describing: result.firstInvalidReason))"
-            )
+            if index == lines.count - 1 {
+                XCTAssertEqual(result.firstInvalidEntryIndex, index)
+                XCTAssertEqual(result.firstInvalidReason, .headHashMismatch)
+                XCTAssertEqual(result.entryCount, lines.count)
+            } else {
+                XCTAssertEqual(result.firstInvalidEntryIndex, index + 1)
+                XCTAssertEqual(result.firstInvalidReason, .parentHashMismatch)
+                XCTAssertEqual(result.entryCount, index + 1)
+            }
         }
+    }
+
+    func testEntryIndexGapIsDetected() throws {
+        let dir = try tempDir()
+        let logger = try ComputerUseAuditLogger(
+            sessionId: sessionId,
+            baseDirectory: dir,
+            macAppVersion: macAppVersion
+        )
+        let manifest = makeManifest(sessionId)
+        try logger.beginSession(manifest: manifest)
+        for _ in 0..<5 {
+            try logger.append(try logger.makeEntry(for: makeAction(), approvedBy: .mac))
+        }
+        let chainURL = dir
+            .appendingPathComponent(sessionId.rawValue, isDirectory: true)
+            .appendingPathComponent("chain.jsonl")
+        var lines = try String(contentsOf: chainURL, encoding: .utf8)
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map(String.init)
+        lines.remove(at: 2)
+
+        let manifestHashHex = try ComputerUseAuditChain().hashSessionManifest(manifest)
+        let result = ComputerUseAuditChain().validate(
+            rawJSONLines: Data((lines.joined(separator: "\n") + "\n").utf8),
+            sessionManifestHashHex: manifestHashHex,
+            expectedHeadHashHex: logger.headHashHex
+        )
+
+        XCTAssertFalse(result.isValid)
+        XCTAssertEqual(result.firstInvalidEntryIndex, 3)
+        XCTAssertEqual(result.firstInvalidReason, .unexpectedEntryIndex)
+        XCTAssertEqual(result.entryCount, 2)
     }
 
     func testAppendingWrongParentHashThrows() throws {

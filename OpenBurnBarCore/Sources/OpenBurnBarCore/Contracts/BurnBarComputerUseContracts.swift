@@ -212,6 +212,11 @@ public struct ComputerUseAuditExportResponse: Codable, Hashable, Sendable {
     public let headHashHex: String
     public let archiveSHA256Hex: String?
     public let signatureAlgorithm: String?
+    public let signatureSignerIdentifier: String?
+    public let signatureSignerKind: String?
+    public let signatureTrustRoot: String?
+    public let signaturePublicKeyBase64: String?
+    public let signaturePublicKeySHA256Hex: String?
     public let openTimestampsProofBase64: String?
 
     public init(
@@ -223,6 +228,11 @@ public struct ComputerUseAuditExportResponse: Codable, Hashable, Sendable {
         headHashHex: String,
         archiveSHA256Hex: String? = nil,
         signatureAlgorithm: String? = nil,
+        signatureSignerIdentifier: String? = nil,
+        signatureSignerKind: String? = nil,
+        signatureTrustRoot: String? = nil,
+        signaturePublicKeyBase64: String? = nil,
+        signaturePublicKeySHA256Hex: String? = nil,
         openTimestampsProofBase64: String? = nil
     ) {
         self.sessionId = sessionId
@@ -233,6 +243,11 @@ public struct ComputerUseAuditExportResponse: Codable, Hashable, Sendable {
         self.headHashHex = headHashHex
         self.archiveSHA256Hex = archiveSHA256Hex
         self.signatureAlgorithm = signatureAlgorithm
+        self.signatureSignerIdentifier = signatureSignerIdentifier
+        self.signatureSignerKind = signatureSignerKind
+        self.signatureTrustRoot = signatureTrustRoot
+        self.signaturePublicKeyBase64 = signaturePublicKeyBase64
+        self.signaturePublicKeySHA256Hex = signaturePublicKeySHA256Hex
         self.openTimestampsProofBase64 = openTimestampsProofBase64
     }
 }

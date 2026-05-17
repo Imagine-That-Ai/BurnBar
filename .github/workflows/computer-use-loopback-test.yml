@@ -10,6 +10,7 @@ on:
       - ".github/workflows/computer-use-loopback-test.yml"
       - "scripts/install-playwright.sh"
       - "scripts/test-computer-use-loopback.sh"
+      - "scripts/test-computer-use-browser-scenarios.mjs"
   workflow_dispatch:
 
 jobs:
@@ -41,3 +42,7 @@ jobs:
         env:
           OPENBURNBAR_PLAYWRIGHT_BRIDGE: ${{ github.workspace }}/OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js
         run: bash scripts/test-computer-use-loopback.sh
+      - name: Browser scenarios
+        env:
+          OPENBURNBAR_PLAYWRIGHT_BRIDGE: ${{ github.workspace }}/OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js
+        run: node scripts/test-computer-use-browser-scenarios.mjs --runs 5

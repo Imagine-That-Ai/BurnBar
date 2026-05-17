@@ -170,6 +170,78 @@ final class ComputerUseAuditExportWriterTests: XCTestCase {
         XCTAssertTrue(entries.contains { $0.path == "chain.jsonl" })
     }
 
+    func testTrustedDeviceReadbackIsRequiredWhenRequested() throws {
+        let base = try tempDir()
+        let logger = try ComputerUseAuditLogger(
+            sessionId: ComputerUseSessionID("export-test-session"),
+            baseDirectory: base,
+            macAppVersion: macAppVersion
+        )
+        try logger.beginSession(manifest: makeManifest())
+        try logger.append(try logger.makeEntry(
+            for: .browser(BrowserAction(kind: .click, selector: "button")),
+            approvedBy: .mac
+        ))
+
+        let signer = ComputerUseEd25519AuditExportSigner(
+            privateKey: Curve25519.Signing.PrivateKey(),
+            signerIdentifier: "openburnbar-trusted-device-ed25519-keychain-v1:unit"
+        )
+        let writer = ComputerUseAuditExportWriter()
+        let archive = base.appendingPathComponent("trusted-readback.tar.gz")
+        let result = try writer.export(
+            sessionDirectory: base.appendingPathComponent("export-test-session"),
+            destinationURL: archive,
+            includeScreenshots: false,
+            signer: signer
+        )
+        let signature = try XCTUnwrap(result.signature)
+        let readback = try ComputerUseAuditExportSignerReadback.fromSignature(
+            signature,
+            userId: "user",
+            deviceId: "mac-1",
+            publishedAtMillis: 1_765_000_000_000
+        )
+
+        XCTAssertNoThrow(try writer.verify(
+            archive: archive,
+            signatureURL: result.signatureURL,
+            signatureTrust: .trustedDeviceReadback(readback)
+        ))
+
+        let revoked = ComputerUseAuditExportSignerReadback(
+            id: readback.id,
+            userId: readback.userId,
+            deviceId: readback.deviceId,
+            signerIdentifier: readback.signerIdentifier,
+            publicKeyBase64: readback.publicKeyBase64,
+            publicKeySHA256Hex: readback.publicKeySHA256Hex,
+            status: .revoked,
+            publishedAtMillis: readback.publishedAtMillis,
+            revokedAtMillis: readback.publishedAtMillis + 1
+        )
+        XCTAssertThrowsError(try writer.verify(
+            archive: archive,
+            signatureURL: result.signatureURL,
+            signatureTrust: .trustedDeviceReadback(revoked)
+        ))
+
+        let mismatched = ComputerUseAuditExportSignerReadback(
+            id: readback.id,
+            userId: readback.userId,
+            deviceId: readback.deviceId,
+            signerIdentifier: readback.signerIdentifier,
+            publicKeyBase64: String(repeating: "B", count: 44),
+            publicKeySHA256Hex: readback.publicKeySHA256Hex,
+            publishedAtMillis: readback.publishedAtMillis
+        )
+        XCTAssertThrowsError(try writer.verify(
+            archive: archive,
+            signatureURL: result.signatureURL,
+            signatureTrust: .trustedDeviceReadback(mismatched)
+        ))
+    }
+
     func testExportIsReadableBySystemTar() throws {
         let base = try tempDir()
         let logger = try ComputerUseAuditLogger(

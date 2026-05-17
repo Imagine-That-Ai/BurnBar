@@ -60,11 +60,22 @@ final class MacFileTransferService: ObservableObject {
     /// stays decoupled from the iroh transport object.
     typealias AdvertiseSender = @MainActor (HermesRealtimeRelayFrame) async throws -> Void
 
+    /// Mercury Phase 8 — side-band dispatcher for mirror / presence frames
+    /// that ride the same `media.control` stream as file transfer.
+    /// `MacFileTransferService` owns the read loop; this closure hands
+    /// non-blob frames off to `MercuryRouter` (or any other consumer)
+    /// without coupling the file-transfer service to the router type.
+    typealias MercuryControlFrameDispatcher = @Sendable (
+        _ frame: HermesRealtimeRelayFrame,
+        _ replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
+    ) async -> Void
+
     private let service: MediaFileTransferService
     private let settingsProvider: @MainActor () -> Bool
     private let controlStreamRegistry: MediaControlStreamRegistry?
     private let advertiseTimeout: TimeInterval
     private var advertiseSenderOverride: AdvertiseSender?
+    private var mercuryDispatcher: MercuryControlFrameDispatcher?
 
     @Published private(set) var lastError: Failure?
     @Published private(set) var inFlightCount: Int = 0
@@ -91,6 +102,17 @@ final class MacFileTransferService: ObservableObject {
     /// a real iroh stream.
     func setAdvertiseSender(_ sender: @escaping AdvertiseSender) {
         self.advertiseSenderOverride = sender
+    }
+
+    /// Mercury Phase 8 — attach the side-band dispatcher that routes
+    /// `media.mirror.request`, `media.mirror.ack`, and
+    /// `media.presence.heartbeat` frames to `MercuryRouter`. Called
+    /// once from `CloudSyncService` after `MercuryRouter` exists.
+    /// Subsequent frames seen by the read loop fan out to both the
+    /// blob dispatcher (file traffic) and the Mercury dispatcher
+    /// (mirror/presence traffic) based on `frame.type`.
+    func setMercuryDispatcher(_ dispatcher: @escaping MercuryControlFrameDispatcher) {
+        self.mercuryDispatcher = dispatcher
     }
 
     func bootstrapBlobEndpoint() async throws -> IrohEndpointIdentity {
@@ -216,6 +238,16 @@ final class MacFileTransferService: ObservableObject {
                     // Re-classification mid-stream is a protocol
                     // violation; ignore rather than abort.
                     continue
+                case .mediaMirrorRequest,
+                     .mediaMirrorAck,
+                     .mediaPresenceHeartbeat:
+                    // Mercury Phase 8 — fan out to `MercuryRouter` if
+                    // one is attached. Same ackSender shape so the
+                    // router can write a `media.mirror.ack` back on the
+                    // same stream the request arrived on.
+                    if let mercuryDispatcher {
+                        await mercuryDispatcher(frame, ackSender)
+                    }
                 default:
                     continue
                 }

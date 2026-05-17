@@ -196,6 +196,15 @@ public actor BurnBarDaemonServer {
         try BurnBarUnixDomainSocket.restrictSocketPermissions(at: configuration.socketPath)
         listenerFileDescriptor = fileDescriptor
 
+        do {
+            try await configStore.seedDefaultModelVariantsIfNeeded()
+        } catch {
+            logger.warning(
+                "default_model_variants_seed_failed",
+                metadata: ["error": "\(error)"]
+            )
+        }
+
         acceptLoopTask = Task.detached(priority: .background) { [logger] in
             await Self.runAcceptLoop(
                 server: self,
@@ -434,6 +443,41 @@ public actor BurnBarDaemonServer {
                     id: typedRequest.id,
                     protocolVersion: BurnBarProtocolVersion.current,
                     result: BurnBarProviderCredentialSlotMutationResponse(snapshot: snapshot)
+                )
+                return encode(response)
+            case .providerModelVariantUpsert:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderModelVariantUpsertRequest>.self,
+                    from: requestData
+                )
+                let variant = try await configStore.upsertModelVariant(
+                    providerID: typedRequest.params.providerID,
+                    variant: typedRequest.params.variant
+                )
+                let snapshot = try await configStore.snapshot()
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: BurnBarProviderModelVariantMutationResponse(
+                        snapshot: snapshot,
+                        variant: variant
+                    )
+                )
+                return encode(response)
+            case .providerModelVariantRemove:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderModelVariantRemoveRequest>.self,
+                    from: requestData
+                )
+                try await configStore.removeModelVariant(
+                    providerID: typedRequest.params.providerID,
+                    variantID: typedRequest.params.variantID
+                )
+                let snapshot = try await configStore.snapshot()
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: BurnBarProviderModelVariantMutationResponse(snapshot: snapshot)
                 )
                 return encode(response)
             case .usageRecent:

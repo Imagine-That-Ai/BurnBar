@@ -33,6 +33,7 @@ public struct ProviderID: RawRepresentable, Codable, Hashable, Sendable, Express
     public static let openCode = ProviderID(rawValue: "opencode")
     public static let openAI = ProviderID(rawValue: "openai")
     public static let kimi = ProviderID(rawValue: "kimi")
+    public static let factory = ProviderID(rawValue: "factory")
 }
 
 // MARK: - Provider Account Status

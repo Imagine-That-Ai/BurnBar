@@ -222,7 +222,8 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
 
     public func proxyChatCompletions(
         body: Data,
-        route: BurnBarProviderRoute
+        route: BurnBarProviderRoute,
+        variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
         guard let baseURL = URL(string: route.baseURL) else {
             throw BurnBarProviderExecutorError.invalidBaseURL(route.baseURL)
@@ -232,11 +233,16 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             return try await proxyOllamaNativeChatCompletions(
                 body: body,
                 route: route,
-                baseURL: baseURL
+                baseURL: baseURL,
+                variant: variant
             )
         }
 
-        let outboundBody = try Self.rewritingChatCompletionsBody(in: body, to: route.resolvedModelID)
+        let outboundBody = try Self.rewritingChatCompletionsBody(
+            in: body,
+            to: route.resolvedModelID,
+            variant: variant
+        )
         let endpoint = baseURL.appending(path: "chat/completions")
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -268,17 +274,18 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
 
     public func proxyResponses(
         body: Data,
-        route: BurnBarProviderRoute
+        route: BurnBarProviderRoute,
+        variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
         guard let baseURL = URL(string: route.baseURL) else {
             throw BurnBarProviderExecutorError.invalidBaseURL(route.baseURL)
         }
 
         if Self.shouldUseOllamaNativeAPI(route: route, baseURL: baseURL) {
-            return try await proxyResponsesViaChatCompletions(body: body, route: route)
+            return try await proxyResponsesViaChatCompletions(body: body, route: route, variant: variant)
         }
 
-        let outboundBody = try Self.rewritingModel(in: body, to: route.resolvedModelID)
+        let outboundBody = try Self.rewritingModel(in: body, to: route.resolvedModelID, variant: variant)
         let endpoint = baseURL.appending(path: "responses")
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -294,7 +301,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "application/json"
         guard (200..<300).contains(httpResponse.statusCode) else {
             if httpResponse.statusCode == 404 || httpResponse.statusCode == 405 {
-                return try await proxyResponsesViaChatCompletions(body: body, route: route)
+                return try await proxyResponsesViaChatCompletions(body: body, route: route, variant: variant)
             }
             throw BurnBarProviderExecutorError.upstreamError(
                 httpResponse.statusCode,
@@ -312,13 +319,14 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
 
     private func proxyResponsesViaChatCompletions(
         body: Data,
-        route: BurnBarProviderRoute
+        route: BurnBarProviderRoute,
+        variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
         let (chatBody, streamRequested) = try Self.chatCompletionsBodyFromResponsesRequest(
             body,
             modelID: route.resolvedModelID
         )
-        let chatResponse = try await proxyChatCompletions(body: chatBody, route: route)
+        let chatResponse = try await proxyChatCompletions(body: chatBody, route: route, variant: variant)
 
         if streamRequested || chatResponse.contentType.lowercased().contains("text/event-stream") {
             return try Self.responsesStreamFromChatCompletionStream(
@@ -342,10 +350,21 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
     private func proxyOllamaNativeChatCompletions(
         body: Data,
         route: BurnBarProviderRoute,
-        baseURL: URL
+        baseURL: URL,
+        variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
+        let stagedBody: Data
+        if variant != nil {
+            stagedBody = try Self.rewritingChatCompletionsBody(
+                in: body,
+                to: route.resolvedModelID,
+                variant: variant
+            )
+        } else {
+            stagedBody = body
+        }
         let (outboundBody, streamRequested) = try Self.ollamaNativeRequestBody(
-            from: body,
+            from: stagedBody,
             modelID: route.resolvedModelID
         )
         let endpoint = Self.ollamaNativeChatEndpoint(baseURL: baseURL)
@@ -375,23 +394,70 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         )
     }
 
-    private static func rewritingModel(in body: Data, to modelID: String) throws -> Data {
+    private static func rewritingModel(
+        in body: Data,
+        to modelID: String,
+        variant: BurnBarModelVariant? = nil
+    ) throws -> Data {
         let json = try JSONSerialization.jsonObject(with: body)
         guard var object = json as? [String: Any] else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
         object["model"] = modelID
+        if let variant {
+            applyOpenAIVariant(variant, to: &object, isResponsesShape: true)
+        }
         return try JSONSerialization.data(withJSONObject: object, options: [])
     }
 
-    private static func rewritingChatCompletionsBody(in body: Data, to modelID: String) throws -> Data {
+    private static func rewritingChatCompletionsBody(
+        in body: Data,
+        to modelID: String,
+        variant: BurnBarModelVariant? = nil
+    ) throws -> Data {
         let json = try JSONSerialization.jsonObject(with: body)
         guard var object = json as? [String: Any] else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
         object["model"] = modelID
         normalizeOpenAICompatibleMessages(in: &object)
+        if let variant {
+            applyOpenAIVariant(variant, to: &object, isResponsesShape: false)
+        }
         return try JSONSerialization.data(withJSONObject: object, options: [])
+    }
+
+    /// Variant-always-wins injection of `reasoning_effort` / `reasoning.effort`
+    /// (and `max_output_tokens` / `max_completion_tokens` when the variant
+    /// supplies one) into an OpenAI-shape request body. Caller-supplied values
+    /// for these fields are deliberately overwritten — the whole point of
+    /// picking `gpt-5-3-codex-xhigh` is to lock in xhigh regardless of what
+    /// the CLI default would otherwise send.
+    static func applyOpenAIVariant(
+        _ variant: BurnBarModelVariant,
+        to object: inout [String: Any],
+        isResponsesShape: Bool
+    ) {
+        let effort = variant.thinkingLevel.openAIEffort
+        if isResponsesShape {
+            var reasoning = (object["reasoning"] as? [String: Any]) ?? [:]
+            reasoning["effort"] = effort
+            object["reasoning"] = reasoning
+            if let maxOutputTokens = variant.maxOutputTokens {
+                object["max_output_tokens"] = maxOutputTokens
+                object.removeValue(forKey: "max_completion_tokens")
+                object.removeValue(forKey: "max_tokens")
+            }
+        } else {
+            object["reasoning_effort"] = effort
+            var reasoning = (object["reasoning"] as? [String: Any]) ?? [:]
+            reasoning["effort"] = effort
+            object["reasoning"] = reasoning
+            if let maxOutputTokens = variant.maxOutputTokens {
+                object["max_completion_tokens"] = maxOutputTokens
+                object["max_tokens"] = maxOutputTokens
+            }
+        }
     }
 
     private static func normalizeOpenAICompatibleMessages(in object: inout [String: Any]) {

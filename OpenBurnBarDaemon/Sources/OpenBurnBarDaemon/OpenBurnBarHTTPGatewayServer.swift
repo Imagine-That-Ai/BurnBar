@@ -18,6 +18,7 @@ public actor BurnBarHTTPGatewayServer {
     private let usageRecorder: BurnBarUsageRecorder?
     private let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
     private let anthropicExecutor: BurnBarAnthropicProviderExecutor
+    private let factoryExecutor: FactoryDroidProviderExecutor
     private let modelHealthStore: BurnBarGatewayModelHealthStore
     private let modelCatalogSession: URLSession
     private let logger: BurnBarDaemonLogger
@@ -30,6 +31,7 @@ public actor BurnBarHTTPGatewayServer {
         usageRecorder: BurnBarUsageRecorder? = nil,
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
+        factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
         modelHealthStore: BurnBarGatewayModelHealthStore = BurnBarGatewayModelHealthStore(),
         modelCatalogSession: URLSession = .shared,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "http-gateway"),
@@ -40,6 +42,7 @@ public actor BurnBarHTTPGatewayServer {
         self.usageRecorder = usageRecorder
         self.providerExecutor = providerExecutor
         self.anthropicExecutor = anthropicExecutor
+        self.factoryExecutor = factoryExecutor
         self.modelHealthStore = modelHealthStore
         self.modelCatalogSession = modelCatalogSession
         self.logger = logger
@@ -412,6 +415,42 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
+    /// Detect when the inbound wire id refers to a thinking-level variant
+    /// (e.g. `claude-opus-4-7-xhigh`) and resolve it back to the base model
+    /// the router knows how to score, alongside the variant struct that the
+    /// executors will use to inject thinking/reasoning config.
+    private func resolveVariant(
+        forRequestedModel requestedModel: GatewayRequestedModel
+    ) async -> (GatewayRequestedModel, BurnBarModelVariant)? {
+        guard let snapshot = try? await configStore.snapshot() else { return nil }
+        let requested = requestedModel.modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !requested.isEmpty else { return nil }
+
+        let providersToScan: [BurnBarProviderSettings]
+        if let providerID = requestedModel.providerID {
+            providersToScan = snapshot.providers.filter {
+                $0.providerID.caseInsensitiveCompare(providerID) == .orderedSame
+            }
+        } else {
+            providersToScan = snapshot.providers
+        }
+
+        for provider in providersToScan {
+            if let variant = provider.modelVariants.first(where: {
+                $0.variantID.caseInsensitiveCompare(requested) == .orderedSame
+            }) {
+                let rewritten = GatewayRequestedModel(
+                    originalID: requestedModel.originalID,
+                    modelID: variant.baseModelID,
+                    providerID: requestedModel.providerID ?? provider.providerID,
+                    accountID: requestedModel.accountID
+                )
+                return (rewritten, variant)
+            }
+        }
+        return nil
+    }
+
     private func advertisedRouteKeysByFamily(for requestedModel: GatewayRequestedModel) async throws -> [BurnBarProviderFormatFamily: Set<String>] {
         let normalizedModelID = requestedModel.modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard normalizedModelID.isEmpty == false else { return [:] }
@@ -642,7 +681,12 @@ public actor BurnBarHTTPGatewayServer {
         guard modelID.isEmpty == false else {
             return jsonResponse(status: 400, body: errorBody("model field required"))
         }
-        let requestedModel = gatewayRequestedModel(from: modelID)
+        var requestedModel = gatewayRequestedModel(from: modelID)
+        var resolvedVariant: BurnBarModelVariant?
+        if let (rewritten, variant) = await resolveVariant(forRequestedModel: requestedModel) {
+            requestedModel = rewritten
+            resolvedVariant = variant
+        }
 
         do {
             let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: requestedModel)
@@ -709,19 +753,12 @@ public actor BurnBarHTTPGatewayServer {
                     }
 
                     do {
-                        let response: BurnBarProviderProxyResponse
-                        switch formatFamily {
-                        case .openaiCompat:
-                            response = try await providerExecutor.proxyChatCompletions(
-                                body: bodyData,
-                                route: route
-                            )
-                        case .anthropic:
-                            response = try await anthropicExecutor.proxyChatCompletions(
-                                body: bodyData,
-                                route: route
-                            )
-                        }
+                        let response = try await proxyChatCompletions(
+                            body: bodyData,
+                            route: route,
+                            formatFamily: formatFamily,
+                            variant: resolvedVariant
+                        )
                         await router.markRouteSuccess(route)
                         await modelHealthStore.recordSuccess(
                             modelID: requestedModel.originalID,
@@ -804,7 +841,12 @@ public actor BurnBarHTTPGatewayServer {
         guard modelID.isEmpty == false else {
             return jsonResponse(status: 400, body: errorBody("model field required"))
         }
-        let requestedModel = gatewayRequestedModel(from: modelID)
+        var requestedModel = gatewayRequestedModel(from: modelID)
+        var resolvedVariant: BurnBarModelVariant?
+        if let (rewritten, variant) = await resolveVariant(forRequestedModel: requestedModel) {
+            requestedModel = rewritten
+            resolvedVariant = variant
+        }
 
         do {
             let advertisedRouteKeysByFamily = try await advertisedRouteKeysByFamily(for: requestedModel)
@@ -868,19 +910,12 @@ public actor BurnBarHTTPGatewayServer {
                     }
 
                     do {
-                        let response: BurnBarProviderProxyResponse
-                        switch formatFamily {
-                        case .openaiCompat:
-                            response = try await providerExecutor.proxyResponses(
-                                body: bodyData,
-                                route: route
-                            )
-                        case .anthropic:
-                            response = try await anthropicExecutor.proxyResponses(
-                                body: bodyData,
-                                route: route
-                            )
-                        }
+                        let response = try await proxyResponses(
+                            body: bodyData,
+                            route: route,
+                            formatFamily: formatFamily,
+                            variant: resolvedVariant
+                        )
                         await router.markRouteSuccess(route)
                         await modelHealthStore.recordSuccess(
                             modelID: requestedModel.originalID,
@@ -963,7 +998,12 @@ public actor BurnBarHTTPGatewayServer {
         guard modelID.isEmpty == false else {
             return jsonResponse(status: 400, body: errorBody("model field required"))
         }
-        let requestedModel = gatewayRequestedModel(from: modelID)
+        var requestedModel = gatewayRequestedModel(from: modelID)
+        var resolvedVariant: BurnBarModelVariant?
+        if let (rewritten, variant) = await resolveVariant(forRequestedModel: requestedModel) {
+            requestedModel = rewritten
+            resolvedVariant = variant
+        }
 
         do {
             let router = BurnBarProviderRouter(
@@ -1024,7 +1064,8 @@ public actor BurnBarHTTPGatewayServer {
                 do {
                     let response = try await anthropicExecutor.proxyMessages(
                         body: bodyData,
-                        route: route
+                        route: route,
+                        variant: resolvedVariant
                     )
                     await router.markRouteSuccess(route)
                     await modelHealthStore.recordSuccess(
@@ -1169,6 +1210,40 @@ public actor BurnBarHTTPGatewayServer {
             )
         } catch {
             logger.silentFailure("gateway_usage_record", error: error)
+        }
+    }
+
+    private func proxyChatCompletions(
+        body: Data,
+        route: BurnBarProviderRoute,
+        formatFamily: BurnBarProviderFormatFamily,
+        variant: BurnBarModelVariant?
+    ) async throws -> BurnBarProviderProxyResponse {
+        if route.providerID.caseInsensitiveCompare("factory") == .orderedSame {
+            return try await factoryExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
+        }
+        switch formatFamily {
+        case .openaiCompat:
+            return try await providerExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
+        case .anthropic:
+            return try await anthropicExecutor.proxyChatCompletions(body: body, route: route, variant: variant)
+        }
+    }
+
+    private func proxyResponses(
+        body: Data,
+        route: BurnBarProviderRoute,
+        formatFamily: BurnBarProviderFormatFamily,
+        variant: BurnBarModelVariant?
+    ) async throws -> BurnBarProviderProxyResponse {
+        if route.providerID.caseInsensitiveCompare("factory") == .orderedSame {
+            return try await factoryExecutor.proxyResponses(body: body, route: route, variant: variant)
+        }
+        switch formatFamily {
+        case .openaiCompat:
+            return try await providerExecutor.proxyResponses(body: body, route: route, variant: variant)
+        case .anthropic:
+            return try await anthropicExecutor.proxyResponses(body: body, route: route, variant: variant)
         }
     }
 
@@ -1470,6 +1545,9 @@ public actor BurnBarHTTPGatewayServer {
         let accountLabel: String
         let sourceID: String
         let sourceKind: String
+        let servedBy: String
+        let usageLane: String?
+        let nativeStreaming: Bool
         let displayName: String
         let capabilities: [String]
         let formatFamily: String
@@ -1482,6 +1560,8 @@ public actor BurnBarHTTPGatewayServer {
         let routeEligible: Bool
         let lastRefreshAt: Date?
         let lastError: String?
+        let baseModelID: String?
+        let thinkingLevel: String?
 
         init(group: GatewayModelCatalogGroup, advertisedID: String, advertised: Bool? = nil) {
             let representative = group.representative
@@ -1507,6 +1587,9 @@ public actor BurnBarHTTPGatewayServer {
                 ? "\(representative.providerID)#auto"
                 : representative.sourceID
             self.sourceKind = Self.sourceKind(from: models)
+            self.servedBy = Self.servedBy(from: models)
+            self.usageLane = Self.usageLane(from: models)
+            self.nativeStreaming = !models.allSatisfy { Self.isFactoryModel($0) }
             self.displayName = Self.displayName(
                 representative: representative,
                 accountLabels: accountLabels
@@ -1522,6 +1605,8 @@ public actor BurnBarHTTPGatewayServer {
             self.routeEligible = models.contains { $0.routeEligible }
             self.lastRefreshAt = models.compactMap(\.lastRefreshAt).sorted().last
             self.lastError = models.compactMap(\.lastError).first
+            self.baseModelID = models.compactMap(\.baseModelID).first
+            self.thinkingLevel = models.compactMap(\.thinkingLevel).first
         }
 
         private static func formatFamily(from capabilities: [String]) -> BurnBarProviderFormatFamily {
@@ -1564,6 +1649,28 @@ public actor BurnBarHTTPGatewayServer {
         private static func sourceKind(from models: [BurnBarLiveAdvertisedModel]) -> String {
             let sourceKinds = uniqueNonEmpty(models.map(\.sourceKind))
             return sourceKinds.count == 1 ? sourceKinds[0] : "gateway_failover_pool"
+        }
+
+        private static func servedBy(from models: [BurnBarLiveAdvertisedModel]) -> String {
+            if models.allSatisfy({ isFactoryModel($0) }) {
+                return "Factory Droid CLI"
+            }
+            let providerNames = uniqueNonEmpty(models.map(\.providerName))
+            return providerNames.count == 1 ? providerNames[0] : "OpenBurnBar failover pool"
+        }
+
+        private static func usageLane(from models: [BurnBarLiveAdvertisedModel]) -> String? {
+            guard models.allSatisfy({ isFactoryModel($0) }) else { return nil }
+            let lanes = uniqueNonEmpty(models.map { model in
+                FactoryDroidProviderExecutor.isStandardModel(model.baseModelID ?? model.id)
+                    ? "standard"
+                    : "droid_core"
+            })
+            return lanes.count == 1 ? lanes[0] : "mixed"
+        }
+
+        private static func isFactoryModel(_ model: BurnBarLiveAdvertisedModel) -> Bool {
+            model.providerID.caseInsensitiveCompare("factory") == .orderedSame
         }
 
         private static func accountLabel(
@@ -1617,6 +1724,9 @@ public actor BurnBarHTTPGatewayServer {
             case accountLabel = "account_label"
             case sourceID = "source_id"
             case sourceKind = "source_kind"
+            case servedBy = "served_by"
+            case usageLane = "usage_lane"
+            case nativeStreaming = "native_streaming"
             case displayName = "display_name"
             case capabilities
             case formatFamily = "format_family"
@@ -1629,6 +1739,8 @@ public actor BurnBarHTTPGatewayServer {
             case routeEligible = "route_eligible"
             case lastRefreshAt = "last_refresh_at"
             case lastError = "last_error"
+            case baseModelID = "base_model_id"
+            case thinkingLevel = "thinking_level"
         }
     }
 

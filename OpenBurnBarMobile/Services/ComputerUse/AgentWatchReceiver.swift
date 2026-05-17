@@ -78,7 +78,53 @@ public final class AgentWatchReceiver: ObservableObject {
         state.setTrustMode(mode)
     }
 
+    public func tap(normalizedX: Double, normalizedY: Double) async throws {
+        try await sendInputIntent(
+            kind: .tap,
+            normalizedX: normalizedX,
+            normalizedY: normalizedY
+        )
+    }
+
+    public func scrollDrag(
+        startNormalizedX: Double,
+        startNormalizedY: Double,
+        endNormalizedX: Double,
+        endNormalizedY: Double
+    ) async throws {
+        try await sendInputIntent(
+            kind: .scroll,
+            normalizedX: startNormalizedX,
+            normalizedY: startNormalizedY,
+            normalizedX2: endNormalizedX,
+            normalizedY2: endNormalizedY
+        )
+    }
+
+    public func type(_ text: String) async throws {
+        guard text.isEmpty == false else { return }
+        try await sendInputIntent(kind: .type, text: text)
+    }
+
+    public func shortcut(key: String, modifiers: [String] = []) async throws {
+        try await sendInputIntent(kind: .shortcut, key: key, modifiers: modifiers)
+    }
+
     public func panicHalt() async throws {
+        try await sendInputIntent(kind: .panic)
+        state.clear()
+    }
+
+    private func sendInputIntent(
+        kind: HermesRealtimeRelayInputIntent.Kind,
+        normalizedX: Double? = nil,
+        normalizedY: Double? = nil,
+        normalizedX2: Double? = nil,
+        normalizedY2: Double? = nil,
+        text: String? = nil,
+        key: String? = nil,
+        modifiers: [String]? = nil
+    ) async throws {
         guard let phoneControlSender else { throw PhoneControlSender.SendError.streamClosed }
         let emptyAuthority = HermesRealtimeRelayAuthorityEnvelope(
             peerNodeId: "",
@@ -88,11 +134,17 @@ public final class AgentWatchReceiver: ObservableObject {
             signatureEd25519: ""
         )
         let intent = HermesRealtimeRelayInputIntent(
-            kind: .panic,
+            kind: kind,
+            normalizedX: normalizedX,
+            normalizedY: normalizedY,
+            normalizedX2: normalizedX2,
+            normalizedY2: normalizedY2,
+            text: text,
+            key: key,
+            modifiers: modifiers,
             authority: emptyAuthority
         )
         _ = try await phoneControlSender.send(intent: intent)
-        state.clear()
     }
 
     private func sendApproval(

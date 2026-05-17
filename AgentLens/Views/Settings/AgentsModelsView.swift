@@ -40,6 +40,12 @@ struct AgentsModelsView: View {
                         onSyncDroid: { syncDroidProxyModels() },
                         onToggleModelAdvertisement: { model, isEnabled in
                             setModelAdvertisement(model, isEnabled: isEnabled)
+                        },
+                        onUpsertThinkingVariant: { model, level in
+                            upsertThinkingVariant(model, level: level)
+                        },
+                        onRemoveThinkingVariant: { variantModel in
+                            removeThinkingVariant(variantModel)
                         }
                     )
                     .settingsAnchor(SettingsAnchor.agentsModels)
@@ -185,6 +191,38 @@ struct AgentsModelsView: View {
                 providerID: model.providerID,
                 modelID: model.modelID,
                 isEnabled: isEnabled
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
+    }
+
+    private func upsertThinkingVariant(_ model: ProxyAdvertisedModel, level: BurnBarThinkingLevel) {
+        let now = Date()
+        let variant = BurnBarModelVariant(
+            variantID: BurnBarModelVariant.defaultVariantID(baseModelID: model.modelID, level: level),
+            label: BurnBarModelVariant.defaultLabel(for: level),
+            baseModelID: model.modelID,
+            thinkingLevel: level,
+            maxOutputTokens: nil,
+            createdAt: now,
+            updatedAt: now
+        )
+        Task {
+            await daemonManager.setProviderModelVariant(
+                providerID: model.providerID,
+                variant: variant
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
+    }
+
+    private func removeThinkingVariant(_ variantModel: ProxyAdvertisedModel) {
+        Task {
+            await daemonManager.removeProviderModelVariant(
+                providerID: variantModel.providerID,
+                variantID: variantModel.modelID
             )
             await viewModel.refreshProxyModelCatalog(settings: settingsManager)
             await viewModel.refreshWiringState(settings: settingsManager)

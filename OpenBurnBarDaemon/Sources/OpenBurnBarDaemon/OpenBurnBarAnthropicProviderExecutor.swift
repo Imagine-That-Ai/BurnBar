@@ -95,7 +95,8 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
     /// - Returns: The upstream response, ready to write back to the client.
     public func proxyMessages(
         body: Data,
-        route: BurnBarProviderRoute
+        route: BurnBarProviderRoute,
+        variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
         guard let baseURL = URL(string: route.baseURL) else {
             throw BurnBarProviderExecutorError.invalidBaseURL(route.baseURL)
@@ -105,7 +106,8 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         let outboundBody = try Self.rewritingModel(
             in: body,
             to: route.resolvedModelID,
-            applyClaudeCodeSystemGuard: usesClaudeCode
+            applyClaudeCodeSystemGuard: usesClaudeCode,
+            variant: variant
         )
         let messagesURL = baseURL.appending(path: "messages")
         let endpoint = usesClaudeCode
@@ -169,13 +171,15 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
     /// the provider response back to Chat Completions.
     public func proxyChatCompletions(
         body: Data,
-        route: BurnBarProviderRoute
+        route: BurnBarProviderRoute,
+        variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
         let (messagesBody, streamRequested) = try Self.anthropicMessagesBodyFromChatCompletionsRequest(
             body,
-            modelID: route.resolvedModelID
+            modelID: route.resolvedModelID,
+            variant: variant
         )
-        let response = try await proxyMessages(body: messagesBody, route: route)
+        let response = try await proxyMessages(body: messagesBody, route: route, variant: variant)
 
         if streamRequested || response.contentType.lowercased().contains("text/event-stream") {
             return try Self.chatCompletionsStreamFromAnthropicStream(response, modelID: route.resolvedModelID)
@@ -196,13 +200,15 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
     /// Serve OpenAI Responses clients from an Anthropic-family route.
     public func proxyResponses(
         body: Data,
-        route: BurnBarProviderRoute
+        route: BurnBarProviderRoute,
+        variant: BurnBarModelVariant? = nil
     ) async throws -> BurnBarProviderProxyResponse {
         let (messagesBody, streamRequested) = try Self.anthropicMessagesBodyFromResponsesRequest(
             body,
-            modelID: route.resolvedModelID
+            modelID: route.resolvedModelID,
+            variant: variant
         )
-        let response = try await proxyMessages(body: messagesBody, route: route)
+        let response = try await proxyMessages(body: messagesBody, route: route, variant: variant)
 
         if streamRequested || response.contentType.lowercased().contains("text/event-stream") {
             return try Self.responsesStreamFromAnthropicStream(response, modelID: route.resolvedModelID)
@@ -243,7 +249,8 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
     private static func rewritingModel(
         in body: Data,
         to resolvedModelID: String,
-        applyClaudeCodeSystemGuard: Bool
+        applyClaudeCodeSystemGuard: Bool,
+        variant: BurnBarModelVariant? = nil
     ) throws -> Data {
         guard var json = try JSONSerialization.jsonObject(with: body, options: []) as? [String: Any] else {
             return body
@@ -257,7 +264,39 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         if applyClaudeCodeSystemGuard {
             json["system"] = injectClaudeCodeSystemGuard(into: json["system"])
         }
+        if let variant {
+            applyAnthropicVariant(variant, to: &json)
+        }
         return try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
+    }
+
+    /// Variant-always-wins injection of Anthropic extended-thinking config.
+    /// Sets `thinking = { type: enabled, budget_tokens: ... }` and `effort`
+    /// (gated by the `effort-2025-11-24` beta header BurnBar already sends
+    /// for Claude Code routes). Anthropic rejects `budget_tokens >= max_tokens`,
+    /// so the helper raises the floor of `max_tokens` to
+    /// `budget_tokens + 4096` when the caller's value would conflict.
+    static func applyAnthropicVariant(
+        _ variant: BurnBarModelVariant,
+        to object: inout [String: Any]
+    ) {
+        let budget = variant.thinkingLevel.anthropicBudgetTokens
+        let thinking: [String: Any] = [
+            "type": "enabled",
+            "budget_tokens": budget
+        ]
+        object["thinking"] = thinking
+        object["effort"] = variant.thinkingLevel.anthropicEffort
+
+        let floor = budget + 4096
+        let callerMax = intValue(object["max_tokens"]) ?? 0
+        let chosenMax: Int
+        if let variantMax = variant.maxOutputTokens {
+            chosenMax = max(variantMax, floor)
+        } else {
+            chosenMax = max(callerMax, floor)
+        }
+        object["max_tokens"] = chosenMax
     }
 
     /// Ensure the request body's `system` field starts with the Claude Code
@@ -321,30 +360,41 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
 
     private static func anthropicMessagesBodyFromChatCompletionsRequest(
         _ body: Data,
-        modelID: String
+        modelID: String,
+        variant: BurnBarModelVariant? = nil
     ) throws -> (Data, Bool) {
         guard let object = try JSONSerialization.jsonObject(with: body, options: []) as? [String: Any] else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
-        let (messagesObject, streamRequested) = try anthropicMessagesObjectFromChatObject(object, modelID: modelID)
+        let (messagesObject, streamRequested) = try anthropicMessagesObjectFromChatObject(
+            object,
+            modelID: modelID,
+            variant: variant
+        )
         return (try jsonData(messagesObject), streamRequested)
     }
 
     private static func anthropicMessagesBodyFromResponsesRequest(
         _ body: Data,
-        modelID: String
+        modelID: String,
+        variant: BurnBarModelVariant? = nil
     ) throws -> (Data, Bool) {
         guard let object = try JSONSerialization.jsonObject(with: body, options: []) as? [String: Any] else {
             throw BurnBarProviderExecutorError.invalidResponse
         }
         let chatObject = try chatObjectFromResponsesObject(object, modelID: modelID)
-        let (messagesObject, streamRequested) = try anthropicMessagesObjectFromChatObject(chatObject, modelID: modelID)
+        let (messagesObject, streamRequested) = try anthropicMessagesObjectFromChatObject(
+            chatObject,
+            modelID: modelID,
+            variant: variant
+        )
         return (try jsonData(messagesObject), streamRequested)
     }
 
     private static func anthropicMessagesObjectFromChatObject(
         _ object: [String: Any],
-        modelID: String
+        modelID: String,
+        variant: BurnBarModelVariant? = nil
     ) throws -> ([String: Any], Bool) {
         guard let messages = object["messages"] as? [[String: Any]], !messages.isEmpty else {
             throw BurnBarProviderExecutorError.upstreamError(
@@ -423,6 +473,9 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         let streamRequested = object["stream"] as? Bool ?? false
         if streamRequested {
             bridged["stream"] = true
+        }
+        if let variant {
+            applyAnthropicVariant(variant, to: &bridged)
         }
         return (bridged, streamRequested)
     }

@@ -81,7 +81,10 @@ public struct ComputerUseAuditExportWriter {
                 archiveSHA256Hex: archiveSHA256Hex,
                 algorithm: signer.algorithm,
                 signerIdentifier: signer.signerIdentifier,
+                signerKind: signer.signerKind,
+                trustRoot: signer.trustRoot,
                 publicKeyBase64: signer.publicKeyBase64,
+                publicKeySHA256Hex: signer.publicKeySHA256Hex,
                 signatureBase64: signedBytes.base64EncodedString(),
                 signedAt: Date()
             )
@@ -118,11 +121,17 @@ public struct ComputerUseAuditExportWriter {
     /// Verify the gzip/tar archive and, when provided, its detached signature.
     public func verify(
         archive archiveURL: URL,
-        signatureURL: URL? = nil
+        signatureURL: URL? = nil,
+        signatureTrust: ComputerUseAuditExportSignatureTrust = .sidecarOnly
     ) throws -> [(path: String, sha256: Data, size: Int)] {
         let archive = try Data(contentsOf: archiveURL)
         if let signatureURL {
-            try verifySignature(archive: archive, signatureURL: signatureURL, archiveFilename: archiveURL.lastPathComponent)
+            try verifySignature(
+                archive: archive,
+                signatureURL: signatureURL,
+                archiveFilename: archiveURL.lastPathComponent,
+                signatureTrust: signatureTrust
+            )
         }
         let tar = try gzipDecompress(archive)
         return try parseTar(tar)
@@ -228,7 +237,12 @@ public struct ComputerUseAuditExportWriter {
         return results
     }
 
-    private func verifySignature(archive: Data, signatureURL: URL, archiveFilename: String) throws {
+    private func verifySignature(
+        archive: Data,
+        signatureURL: URL,
+        archiveFilename: String,
+        signatureTrust: ComputerUseAuditExportSignatureTrust
+    ) throws {
         let record = try ComputerUseAuditHasher.canonicalJSONDecoder
             .decode(ComputerUseAuditExportSignature.self, from: Data(contentsOf: signatureURL))
         guard record.archiveFilename == archiveFilename else {
@@ -244,6 +258,34 @@ public struct ComputerUseAuditExportWriter {
               let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: publicKeyData),
               publicKey.isValidSignature(signature, for: archive) else {
             throw WriterError.verificationFailed("signature validation failed")
+        }
+        if let expectedPublicKeyHash = record.publicKeySHA256Hex,
+           hasher.hash(data: publicKeyData) != expectedPublicKeyHash {
+            throw WriterError.verificationFailed("signature public-key hash mismatch")
+        }
+        switch signatureTrust {
+        case .sidecarOnly:
+            break
+        case .trustedDeviceReadback(let readback):
+            try verifyTrustedDeviceReadback(record: record, readback: readback)
+        }
+    }
+
+    private func verifyTrustedDeviceReadback(
+        record: ComputerUseAuditExportSignature,
+        readback: ComputerUseAuditExportSignerReadback
+    ) throws {
+        guard readback.status == .active,
+              readback.revokedAtMillis == nil else {
+            throw WriterError.verificationFailed("signature signer readback is revoked")
+        }
+        guard readback.algorithm == record.algorithm,
+              readback.signerIdentifier == record.signerIdentifier,
+              readback.signerKind == record.signerKind,
+              readback.trustRoot == record.trustRoot,
+              readback.publicKeyBase64 == record.publicKeyBase64,
+              readback.publicKeySHA256Hex == record.publicKeySHA256Hex else {
+            throw WriterError.verificationFailed("signature signer readback mismatch")
         }
     }
 
@@ -360,7 +402,10 @@ public struct ComputerUseAuditExportSignature: Codable, Hashable, Sendable {
     public let archiveSHA256Hex: String
     public let algorithm: String
     public let signerIdentifier: String
+    public let signerKind: String?
+    public let trustRoot: String?
     public let publicKeyBase64: String?
+    public let publicKeySHA256Hex: String?
     public let signatureBase64: String
     public let signedAt: Date
 
@@ -369,7 +414,10 @@ public struct ComputerUseAuditExportSignature: Codable, Hashable, Sendable {
         archiveSHA256Hex: String,
         algorithm: String,
         signerIdentifier: String,
+        signerKind: String? = nil,
+        trustRoot: String? = nil,
         publicKeyBase64: String?,
+        publicKeySHA256Hex: String? = nil,
         signatureBase64: String,
         signedAt: Date
     ) {
@@ -377,7 +425,10 @@ public struct ComputerUseAuditExportSignature: Codable, Hashable, Sendable {
         self.archiveSHA256Hex = archiveSHA256Hex
         self.algorithm = algorithm
         self.signerIdentifier = signerIdentifier
+        self.signerKind = signerKind
+        self.trustRoot = trustRoot
         self.publicKeyBase64 = publicKeyBase64
+        self.publicKeySHA256Hex = publicKeySHA256Hex
         self.signatureBase64 = signatureBase64
         self.signedAt = signedAt
     }
@@ -386,8 +437,111 @@ public struct ComputerUseAuditExportSignature: Codable, Hashable, Sendable {
 public protocol ComputerUseAuditExportSigning: Sendable {
     var algorithm: String { get }
     var signerIdentifier: String { get }
+    var signerKind: String? { get }
+    var trustRoot: String? { get }
     var publicKeyBase64: String? { get }
+    var publicKeySHA256Hex: String? { get }
     func sign(_ data: Data) throws -> Data
+}
+
+public enum ComputerUseAuditExportSignatureTrust: Sendable, Equatable {
+    /// Offline archive verification. Validates archive hash, public-key hash,
+    /// and Ed25519 signature using the public key embedded in `.sig.json`.
+    case sidecarOnly
+
+    /// Online trusted-device verification. In addition to sidecar checks,
+    /// require a server readback record published beneath a trusted macOS
+    /// `escrow_devices/{deviceId}` document.
+    case trustedDeviceReadback(ComputerUseAuditExportSignerReadback)
+}
+
+public struct ComputerUseAuditExportSignerReadback: Codable, Hashable, Sendable {
+    public enum Status: String, Codable, Hashable, Sendable {
+        case active
+        case revoked
+    }
+
+    public static let signerKind = "openburnbar_trusted_device"
+    public static let trustRoot = "openburnbar-trusted-device-keychain-v1"
+    public static let algorithm = "ed25519"
+
+    public let id: String
+    public let userId: String
+    public let deviceId: String
+    public let signerIdentifier: String
+    public let signerKind: String
+    public let trustRoot: String
+    public let algorithm: String
+    public let publicKeyBase64: String
+    public let publicKeySHA256Hex: String
+    public let status: Status
+    public let publishedAtMillis: Int64
+    public let lastReadbackAtMillis: Int64?
+    public let revokedAtMillis: Int64?
+    public let revokedByDeviceId: String?
+    public let schemaVersion: Int
+
+    public init(
+        id: String,
+        userId: String,
+        deviceId: String,
+        signerIdentifier: String,
+        signerKind: String = Self.signerKind,
+        trustRoot: String = Self.trustRoot,
+        algorithm: String = Self.algorithm,
+        publicKeyBase64: String,
+        publicKeySHA256Hex: String,
+        status: Status = .active,
+        publishedAtMillis: Int64,
+        lastReadbackAtMillis: Int64? = nil,
+        revokedAtMillis: Int64? = nil,
+        revokedByDeviceId: String? = nil,
+        schemaVersion: Int = 1
+    ) {
+        self.id = id
+        self.userId = userId
+        self.deviceId = deviceId
+        self.signerIdentifier = signerIdentifier
+        self.signerKind = signerKind
+        self.trustRoot = trustRoot
+        self.algorithm = algorithm
+        self.publicKeyBase64 = publicKeyBase64
+        self.publicKeySHA256Hex = publicKeySHA256Hex
+        self.status = status
+        self.publishedAtMillis = publishedAtMillis
+        self.lastReadbackAtMillis = lastReadbackAtMillis
+        self.revokedAtMillis = revokedAtMillis
+        self.revokedByDeviceId = revokedByDeviceId
+        self.schemaVersion = schemaVersion
+    }
+
+    public static func documentPath(userId: String, deviceId: String, publicKeySHA256Hex: String) -> String {
+        "users/\(userId)/escrow_devices/\(deviceId)/computer_use_audit_export_signers/\(publicKeySHA256Hex)"
+    }
+
+    public static func fromSignature(
+        _ signature: ComputerUseAuditExportSignature,
+        userId: String,
+        deviceId: String,
+        publishedAtMillis: Int64
+    ) throws -> ComputerUseAuditExportSignerReadback {
+        guard let publicKeyBase64 = signature.publicKeyBase64,
+              let publicKeySHA256Hex = signature.publicKeySHA256Hex else {
+            throw ComputerUseAuditExportWriter.WriterError.verificationFailed("signature missing public-key readback metadata")
+        }
+        return ComputerUseAuditExportSignerReadback(
+            id: publicKeySHA256Hex,
+            userId: userId,
+            deviceId: deviceId,
+            signerIdentifier: signature.signerIdentifier,
+            signerKind: signature.signerKind ?? "",
+            trustRoot: signature.trustRoot ?? "",
+            algorithm: signature.algorithm,
+            publicKeyBase64: publicKeyBase64,
+            publicKeySHA256Hex: publicKeySHA256Hex,
+            publishedAtMillis: publishedAtMillis
+        )
+    }
 }
 
 public struct ComputerUseEd25519AuditExportSigner: ComputerUseAuditExportSigning {
@@ -395,18 +549,29 @@ public struct ComputerUseEd25519AuditExportSigner: ComputerUseAuditExportSigning
 
     public let privateKey: Curve25519.Signing.PrivateKey
     public let signerIdentifier: String
+    public let signerKind: String?
+    public let trustRoot: String?
 
     public var algorithm: String { Self.algorithmName }
     public var publicKeyBase64: String? {
         privateKey.publicKey.rawRepresentation.base64EncodedString()
     }
+    public var publicKeySHA256Hex: String? {
+        CryptoKit.SHA256.hash(data: privateKey.publicKey.rawRepresentation)
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
 
     public init(
         privateKey: Curve25519.Signing.PrivateKey,
-        signerIdentifier: String
+        signerIdentifier: String,
+        signerKind: String? = "openburnbar_trusted_device",
+        trustRoot: String? = "openburnbar-device-local-ed25519-v1"
     ) {
         self.privateKey = privateKey
         self.signerIdentifier = signerIdentifier
+        self.signerKind = signerKind
+        self.trustRoot = trustRoot
     }
 
     public func sign(_ data: Data) throws -> Data {

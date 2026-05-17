@@ -38,7 +38,7 @@ public struct ComputerUseApprovalSheet: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            if let png = beforeScreenshotPNG, let image = NSImage(data: png) {
+            if let png = renderedScreenshotPNG, let image = NSImage(data: png) {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
@@ -118,6 +118,17 @@ public struct ComputerUseApprovalSheet: View {
                     endPoint: .bottomTrailing
                 ), lineWidth: 1)
         )
+    }
+
+    private var renderedScreenshotPNG: Data? {
+        if let beforeScreenshotPNG { return beforeScreenshotPNG }
+        guard request.beforeScreenshotMimeType == nil
+                || request.beforeScreenshotMimeType == "image/png",
+              let encoded = request.beforeScreenshotPNGBase64,
+              encoded.isEmpty == false else {
+            return nil
+        }
+        return Data(base64Encoded: encoded)
     }
 }
 #endif

@@ -1929,6 +1929,10 @@ service cloud.firestore {
     // rejection where credentials could otherwise be mis-serialized.
 
     match /users/{userId}/escrow_devices/{deviceId} {
+      function escrowDevicePath(deviceId) {
+        return /databases/$(database)/documents/users/$(userId)/escrow_devices/$(deviceId);
+      }
+
       function validEscrowDeviceDocument(deviceId) {
         return request.resource.data.keys().hasOnly([
           "deviceId",
@@ -1984,6 +1988,97 @@ service cloud.firestore {
         && hasNoPlaintextSecretFields()
         && validEscrowDeviceUpdate(deviceId);
       allow delete: if ownsUserNamespace(userId);
+
+      match /computer_use_audit_export_signers/{signerId} {
+        function parentEscrowDeviceIsTrustedMac() {
+          return exists(escrowDevicePath(deviceId))
+            && get(escrowDevicePath(deviceId)).data.trustState == "trusted"
+            && get(escrowDevicePath(deviceId)).data.platform == "macOS";
+        }
+
+        function validAuditExportSignerDocument() {
+          return request.resource.data.keys().hasOnly([
+            "id",
+            "userId",
+            "deviceId",
+            "signerIdentifier",
+            "signerKind",
+            "trustRoot",
+            "algorithm",
+            "publicKeyBase64",
+            "publicKeySHA256Hex",
+            "status",
+            "publishedAtMillis",
+            "lastReadbackAtMillis",
+            "revokedAt",
+            "revokedByDeviceId",
+            "schemaVersion"
+          ])
+          && request.resource.data.id == signerId
+          && request.resource.data.userId == userId
+          && request.resource.data.deviceId == deviceId
+          && request.resource.data.signerIdentifier is string
+          && request.resource.data.signerIdentifier.size() <= 160
+          && request.resource.data.signerKind == "openburnbar_trusted_device"
+          && request.resource.data.trustRoot == "openburnbar-trusted-device-keychain-v1"
+          && request.resource.data.algorithm == "ed25519"
+          && request.resource.data.publicKeyBase64 is string
+          && request.resource.data.publicKeyBase64.size() >= 32
+          && request.resource.data.publicKeyBase64.size() <= 128
+          && request.resource.data.publicKeySHA256Hex is string
+          && request.resource.data.publicKeySHA256Hex == signerId
+          && request.resource.data.publicKeySHA256Hex.matches("^[0-9a-f]{64}$")
+          && request.resource.data.status in ["active", "revoked"]
+          && request.resource.data.publishedAtMillis is int
+          && request.resource.data.publishedAtMillis > 0
+          && (!("lastReadbackAtMillis" in request.resource.data)
+            || (request.resource.data.lastReadbackAtMillis is int
+              && request.resource.data.lastReadbackAtMillis > 0))
+          && (!("revokedAt" in request.resource.data)
+            || request.resource.data.revokedAt is timestamp)
+          && (!("revokedByDeviceId" in request.resource.data)
+            || (request.resource.data.revokedByDeviceId is string
+              && request.resource.data.revokedByDeviceId.size() <= 160))
+          && request.resource.data.schemaVersion is int
+          && request.resource.data.schemaVersion >= 1;
+        }
+
+        function auditExportSignerImmutableFieldsUnchanged() {
+          return request.resource.data.id == resource.data.id
+            && request.resource.data.userId == resource.data.userId
+            && request.resource.data.deviceId == resource.data.deviceId
+            && request.resource.data.signerIdentifier == resource.data.signerIdentifier
+            && request.resource.data.signerKind == resource.data.signerKind
+            && request.resource.data.trustRoot == resource.data.trustRoot
+            && request.resource.data.algorithm == resource.data.algorithm
+            && request.resource.data.publicKeyBase64 == resource.data.publicKeyBase64
+            && request.resource.data.publicKeySHA256Hex == resource.data.publicKeySHA256Hex
+            && request.resource.data.schemaVersion == resource.data.schemaVersion;
+        }
+
+        allow read: if ownsUserNamespace(userId);
+        allow create: if ownerWritableNonSecret(userId)
+          && hasActiveHostedComputerUseEntitlement(userId)
+          && parentEscrowDeviceIsTrustedMac()
+          && escrowDocumentLimits()
+          && hasNoPlaintextSecretFields()
+          && validAuditExportSignerDocument()
+          && request.resource.data.status == "active"
+          && !("revokedAt" in request.resource.data)
+          && !("revokedByDeviceId" in request.resource.data);
+        allow update: if ownerWritableNonSecret(userId)
+          && hasActiveHostedComputerUseEntitlement(userId)
+          && parentEscrowDeviceIsTrustedMac()
+          && escrowDocumentLimits()
+          && hasNoPlaintextSecretFields()
+          && validAuditExportSignerDocument()
+          && auditExportSignerImmutableFieldsUnchanged()
+          && (
+            request.resource.data.status == resource.data.status
+            || (resource.data.status == "active" && request.resource.data.status == "revoked")
+          );
+        allow delete: if false;
+      }
     }
 
     match /users/{userId}/escrow_public_keys/{keyId} {

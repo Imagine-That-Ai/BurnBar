@@ -254,6 +254,88 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(aliasRoute.resolvedModelID, "claude-opus-4-7")
     }
 
+    func testRouterTreatsFactoryAsRoutableDroidProvider() async throws {
+        let harness = try makeHarness(name: "factory-droid")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "factory",
+                isEnabled: true,
+                baseURL: "factory-droid://local",
+                preferredModelIDs: ["gpt-5.5", "glm-5.1"],
+                preferredCredentialSlotID: "max-a"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "factory",
+            slotID: "max-a",
+            label: "Factory Max A",
+            apiKey: "fk-test-a"
+        )
+
+        let standardRoute = try await harness.router.route(
+            modelName: "gpt-5.5",
+            preferredProviderID: "factory",
+            requestedFormatFamily: .openaiCompat,
+            requiredCapabilityClassID: "openai:gpt-5.5"
+        )
+        XCTAssertEqual(standardRoute.providerID, "factory")
+        XCTAssertEqual(standardRoute.baseURL, "factory-droid://local")
+        XCTAssertEqual(standardRoute.resolvedModelID, "gpt-5.5")
+        XCTAssertEqual(standardRoute.modelCapabilityClassID, "openai:gpt-5.5")
+
+        let coreRoute = try await harness.router.route(
+            modelName: "glm-5.1",
+            preferredProviderID: "factory",
+            requestedFormatFamily: .openaiCompat,
+            requiredCapabilityClassID: "factory-droid-core:glm-5.1"
+        )
+        XCTAssertEqual(coreRoute.resolvedModelID, "glm-5.1")
+        XCTAssertEqual(coreRoute.modelCapabilityClassID, "factory-droid-core:glm-5.1")
+    }
+
+    func testRouterFailsOverAcrossFactoryMaxSlotsWithoutSwitchingToDroidCore() async throws {
+        let harness = try makeHarness(name: "factory-strict-slots")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "factory",
+                isEnabled: true,
+                baseURL: "factory-droid://local",
+                preferredModelIDs: ["gpt-5.5", "glm-5.1"],
+                preferredCredentialSlotID: "max-a"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "factory",
+            slotID: "max-a",
+            label: "Factory Max A",
+            apiKey: "fk-test-a"
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "factory",
+            slotID: "max-b",
+            label: "Factory Max B",
+            apiKey: "fk-test-b"
+        )
+        try await harness.configStore.updateCredentialSlotStatus(
+            providerID: "factory",
+            slotID: "max-a",
+            status: .exhausted,
+            cooldownUntil: nil,
+            message: "Standard Usage exhausted"
+        )
+
+        let routes = try await harness.router.candidateRoutes(
+            modelName: "gpt-5.5",
+            requestedFormatFamily: .openaiCompat,
+            requiredCapabilityClassID: "openai:gpt-5.5",
+            routerMode: .intelligentModelRouter
+        )
+
+        XCTAssertEqual(routes.map(\.credentialSlotID), ["max-b"])
+        XCTAssertTrue(routes.allSatisfy { $0.resolvedModelID == "gpt-5.5" })
+        XCTAssertFalse(routes.contains { $0.resolvedModelID == "glm-5.1" })
+    }
+
     func testRouterRejectsUnsupportedProviderModelsAndMissingCredentials() async throws {
         let harness = try makeHarness(name: "rejections")
         _ = try await harness.configStore.upsertProvider(
@@ -359,6 +441,52 @@ final class BurnBarProviderRouterTests: XCTestCase {
         let snapshot = try await harness.configStore.snapshot()
         let slotStatus = snapshot.providerSettings(id: "zai")?.credentialSlots.first(where: { $0.slotID == "slot-a" })?.status
         XCTAssertEqual(slotStatus, .exhausted)
+    }
+
+    func testRouterDoesNotMarkFactorySlotExhaustedForStrictStandardLaneFailure() async throws {
+        let harness = try makeHarness(name: "factory-standard-lane-status")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "factory",
+                isEnabled: true,
+                baseURL: "factory-droid://local",
+                preferredModelIDs: ["gpt-5.5", "glm-5.1"],
+                preferredCredentialSlotID: "max-a"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "factory",
+            slotID: "max-a",
+            label: "Factory Max A",
+            apiKey: "fk-test-a"
+        )
+
+        let route = try await harness.router.route(
+            modelName: "gpt-5.5",
+            preferredProviderID: "factory",
+            requestedFormatFamily: .openaiCompat,
+            requiredCapabilityClassID: "openai:gpt-5.5"
+        )
+        await harness.router.markRouteFailure(
+            route,
+            error: BurnBarProviderExecutorError.upstreamError(
+                402,
+                "Factory Standard Usage is exhausted; Droid Core fallback is disabled for strict same-model routing."
+            )
+        )
+
+        let snapshot = try await harness.configStore.snapshot()
+        let slot = snapshot.providerSettings(id: "factory")?.credentialSlots.first(where: { $0.slotID == "max-a" })
+        XCTAssertEqual(slot?.status, .ready)
+
+        let coreRoute = try await harness.router.route(
+            modelName: "glm-5.1",
+            preferredProviderID: "factory",
+            requestedFormatFamily: .openaiCompat,
+            requiredCapabilityClassID: "factory-droid-core:glm-5.1"
+        )
+        XCTAssertEqual(coreRoute.credentialSlotID, "max-a")
+        XCTAssertEqual(coreRoute.resolvedModelID, "glm-5.1")
     }
 
     func testRepairedCredentialSlotClearsStaleCooldownAndError() async throws {

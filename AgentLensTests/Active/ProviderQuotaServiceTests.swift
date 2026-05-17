@@ -315,6 +315,113 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(firstFetchedAt, secondFetchedAt)
     }
 
+    /// `refreshClaudeFromStatuslineHook` is the watcher's fast path: it must
+    /// update the Claude snapshot without bumping `lastFetch`, otherwise a
+    /// chatty Claude session would gate the next all-provider auto-refresh
+    /// for 60 s and starve other providers (Codex, Cursor, …) of updates.
+    func test_refreshClaudeFromStatuslineHook_doesNotBumpLastFetch() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        try writeFreshClaudeStatuslineFixture(
+            home: home,
+            appPaths: appPaths,
+            fiveHourUsedPercent: 12
+        )
+
+        let service = makeService(home: home, appSupportRoot: appSupport, refreshProviders: [.claudeCode])
+        XCTAssertNil(service.lastFetch)
+
+        await service.refreshClaudeFromStatuslineHook(dataStore: try makeDataStore())
+
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+        XCTAssertEqual(snapshot.source, .localCLI)
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "5-hour window" && $0.usedPercent == 12 }))
+        XCTAssertNil(service.lastFetch, "Hook-driven refresh must not gate the next all-provider auto-refresh")
+    }
+
+    /// The FS watcher is the difference between "Nest Hub stale for two
+    /// minutes" and "Nest Hub fresh within a debounce window". Write a
+    /// fresh statusline payload, wait for the watcher's debounce, and
+    /// verify the Claude snapshot picks up the new percentage.
+    func test_claudeStatuslineWatcher_refreshesOnFileChange() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let dataStore = try makeDataStore()
+
+        try writeFreshClaudeStatuslineFixture(
+            home: home,
+            appPaths: appPaths,
+            fiveHourUsedPercent: 5
+        )
+
+        let service = makeService(home: home, appSupportRoot: appSupport, refreshProviders: [.claudeCode])
+        await service.refreshClaudeFromStatuslineHook(dataStore: dataStore)
+        XCTAssertEqual(
+            service.snapshot(for: .claudeCode)?.buckets.first(where: { $0.label == "5-hour window" })?.usedPercent,
+            5
+        )
+
+        service.startClaudeStatuslineWatcher(dataStore: dataStore)
+        defer { service.stopClaudeStatuslineWatcher() }
+
+        // Give the watcher a moment to arm before we change the file.
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        try writeFreshClaudeStatuslineFixture(
+            home: home,
+            appPaths: appPaths,
+            fiveHourUsedPercent: 73
+        )
+
+        // Debounce is 250 ms; allow generous slack for the dispatch round-trip
+        // + adapter run + main-actor hop. Three seconds covers slow CI hosts.
+        let deadline = Date().addingTimeInterval(3.0)
+        var observedPercent: Double?
+        while Date() < deadline {
+            observedPercent = service.snapshot(for: .claudeCode)?
+                .buckets.first(where: { $0.label == "5-hour window" })?.usedPercent
+            if observedPercent == 73 { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        XCTAssertEqual(observedPercent, 73, "Watcher should refresh the Claude snapshot after a statusline write")
+    }
+
+    private func writeFreshClaudeStatuslineFixture(
+        home: URL,
+        appPaths: OpenBurnBarAppPaths,
+        fiveHourUsedPercent: Int
+    ) throws {
+        let snapshotURL = appPaths.claudeStatuslineSnapshotURL
+        try FileManager.default.createDirectory(
+            at: snapshotURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let payload = """
+        {
+          "rate_limits": {
+            "five_hour": { "used_percentage": \(fiveHourUsedPercent), "resets_at": "2026-03-24T15:00:00Z" }
+          }
+        }
+        """
+        try Data(payload.utf8).write(to: snapshotURL)
+
+        let claudeDirectory = home.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: claudeDirectory, withIntermediateDirectories: true)
+        let settingsURL = claudeDirectory.appendingPathComponent("settings.json")
+        let settings = """
+        {
+          "statusLine": {
+            "type": "command",
+            "command": "\(appPaths.claudeStatuslineBridgeScriptURL.path)"
+          }
+        }
+        """
+        try Data(settings.utf8).write(to: settingsURL)
+    }
+
     func test_automaticRefreshRunsWhenQuotaKeyChanges() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()

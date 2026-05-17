@@ -27,6 +27,7 @@ public actor ComputerUseService {
     private let locateExecutable: BurnBarExecutableLocator
     private let logger: BurnBarDaemonLogger
     private let bridgeScriptURL: URL
+    private let auditExportSignerProvider: any ComputerUseAuditExportSignerProviding
     private var manifests: [ComputerUseSessionID: ComputerUseSessionManifest] = [:]
 
     public init(
@@ -35,6 +36,7 @@ public actor ComputerUseService {
         macAppVersion: String = BurnBarDaemonVersion.current,
         bridgeScriptURL: URL? = nil,
         locateExecutable: BurnBarExecutableLocator? = nil,
+        auditExportSignerProvider: (any ComputerUseAuditExportSignerProviding)? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "computer-use-service")
     ) {
         let approvalBridge = ComputerUseApprovalBridge()
@@ -44,6 +46,9 @@ public actor ComputerUseService {
         self.locateExecutable = locateExecutable ?? Self.defaultExecutableLocator
         self.logger = logger
         self.bridgeScriptURL = bridgeScriptURL ?? Self.defaultBridgeScriptURL()
+        self.auditExportSignerProvider = auditExportSignerProvider ?? ComputerUseKeychainAuditExportSignerProvider(
+            legacyRawKeyURL: Self.legacyRawAuditExportKeyURL(auditBaseDirectory: auditBaseDirectory)
+        )
         self.coordinator = ComputerUseRunCoordinator(
             approvalIssuer: { request in
                 try await approvalBridge.issue(request)
@@ -175,6 +180,11 @@ public actor ComputerUseService {
             headHashHex: result.headHashHex,
             archiveSHA256Hex: result.archiveSHA256Hex,
             signatureAlgorithm: result.signature?.algorithm,
+            signatureSignerIdentifier: result.signature?.signerIdentifier,
+            signatureSignerKind: result.signature?.signerKind,
+            signatureTrustRoot: result.signature?.trustRoot,
+            signaturePublicKeyBase64: result.signature?.publicKeyBase64,
+            signaturePublicKeySHA256Hex: result.signature?.publicKeySHA256Hex,
             openTimestampsProofBase64: openTimestampsProofBase64(
                 forChainAt: sessionDirectory.appendingPathComponent("chain.jsonl")
             )
@@ -182,29 +192,7 @@ public actor ComputerUseService {
     }
 
     private func deviceAuditExportSigner() throws -> ComputerUseEd25519AuditExportSigner {
-        let keyURL = auditBaseDirectory
-            .appendingPathComponent("keys", isDirectory: true)
-            .appendingPathComponent("audit-export-ed25519.raw", isDirectory: false)
-        try FileManager.default.createDirectory(
-            at: keyURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        let key: Curve25519.Signing.PrivateKey
-        if let data = try? Data(contentsOf: keyURL),
-           let existing = try? Curve25519.Signing.PrivateKey(rawRepresentation: data) {
-            key = existing
-        } else {
-            key = Curve25519.Signing.PrivateKey()
-            try key.rawRepresentation.write(to: keyURL, options: [.atomic])
-            try? FileManager.default.setAttributes(
-                [.posixPermissions: 0o600],
-                ofItemAtPath: keyURL.path
-            )
-        }
-        return ComputerUseEd25519AuditExportSigner(
-            privateKey: key,
-            signerIdentifier: "openburnbar-device-ed25519-v1"
-        )
+        try auditExportSignerProvider.signer()
     }
 
     private func openTimestampsProofBase64(forChainAt chainURL: URL) -> String? {
@@ -280,6 +268,12 @@ public actor ComputerUseService {
                 .appendingPathComponent("Resources/PlaywrightBridge/openburnbar-playwright-bridge.js")
         ].compactMap { $0 }
         return candidates.first(where: { fm.fileExists(atPath: $0.path) }) ?? candidates[0]
+    }
+
+    private static func legacyRawAuditExportKeyURL(auditBaseDirectory: URL) -> URL {
+        auditBaseDirectory
+            .appendingPathComponent("keys", isDirectory: true)
+            .appendingPathComponent("audit-export-ed25519.raw", isDirectory: false)
     }
 
     private static let defaultExecutableLocator: BurnBarExecutableLocator = { name in

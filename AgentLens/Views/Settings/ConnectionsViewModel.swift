@@ -48,6 +48,11 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
     let routeEligible: Bool
     let capabilities: [String]
     let lastError: String?
+    /// When this row is a thinking-level variant, the base model id its
+    /// gateway routing rewrites back to.
+    let baseModelID: String?
+    /// `BurnBarThinkingLevel.rawValue` for variant rows, nil otherwise.
+    let thinkingLevel: String?
 
     init(
         modelID: String,
@@ -63,7 +68,9 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
         advertised: Bool = true,
         routeEligible: Bool,
         capabilities: [String],
-        lastError: String?
+        lastError: String?,
+        baseModelID: String? = nil,
+        thinkingLevel: String? = nil
     ) {
         self.modelID = modelID
         self.displayName = displayName
@@ -79,6 +86,12 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
         self.routeEligible = routeEligible
         self.capabilities = capabilities
         self.lastError = lastError
+        self.baseModelID = baseModelID
+        self.thinkingLevel = thinkingLevel
+    }
+
+    var isThinkingLevelVariant: Bool {
+        baseModelID != nil && thinkingLevel != nil
     }
 }
 
@@ -518,7 +531,9 @@ final class ConnectionsViewModel {
             advertised: rows.contains { $0.advertised },
             routeEligible: rows.contains { $0.routeEligible },
             capabilities: capabilities,
-            lastError: rows.compactMap(\.lastError).first
+            lastError: rows.compactMap(\.lastError).first,
+            baseModelID: rows.compactMap(\.baseModelID).first,
+            thinkingLevel: rows.compactMap(\.thinkingLevel).first
         )
     }
 
@@ -608,6 +623,8 @@ private struct ProxyModelRow: Decodable {
     let advertised: Bool?
     let routeEligible: Bool?
     let lastError: String?
+    let baseModelID: String?
+    let thinkingLevel: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -626,6 +643,8 @@ private struct ProxyModelRow: Decodable {
         case advertised
         case routeEligible = "route_eligible"
         case lastError = "last_error"
+        case baseModelID = "base_model_id"
+        case thinkingLevel = "thinking_level"
     }
 }
 
@@ -649,6 +668,8 @@ private extension ProxyAdvertisedModel {
         self.routeEligible = row.routeEligible ?? (row.enabled == true)
         self.capabilities = row.capabilities ?? []
         self.lastError = row.lastError
+        self.baseModelID = (row.baseModelID?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+        self.thinkingLevel = (row.thinkingLevel?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
     }
 }
 

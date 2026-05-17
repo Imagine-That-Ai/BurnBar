@@ -295,6 +295,128 @@ public actor BurnBarConfigStore {
         try await secretStore.setSecret(nil, for: slotSecretStoreKey(providerID: normalizedProviderID, slotID: slotID))
     }
 
+    @discardableResult
+    public func upsertModelVariant(
+        providerID: String,
+        variant: BurnBarModelVariant
+    ) throws -> BurnBarModelVariant {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedVariant = BurnBarModelVariant(
+            variantID: variant.variantID.trimmingCharacters(in: .whitespacesAndNewlines),
+            label: variant.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? BurnBarModelVariant.defaultLabel(for: variant.thinkingLevel)
+                : variant.label.trimmingCharacters(in: .whitespacesAndNewlines),
+            baseModelID: variant.baseModelID.trimmingCharacters(in: .whitespacesAndNewlines),
+            thinkingLevel: variant.thinkingLevel,
+            maxOutputTokens: variant.maxOutputTokens,
+            createdAt: variant.createdAt,
+            updatedAt: Date()
+        )
+
+        guard !normalizedVariant.variantID.isEmpty else {
+            throw BurnBarConfigStoreError.invalidBaseURL(normalizedProviderID)
+        }
+        guard !normalizedVariant.baseModelID.isEmpty,
+              catalogSupport.supportsModelID(normalizedVariant.baseModelID, providerID: normalizedProviderID) else {
+            throw BurnBarConfigStoreError.unsupportedModel(
+                providerID: normalizedProviderID,
+                modelID: normalizedVariant.baseModelID
+            )
+        }
+
+        let updated = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            mutable.upsertModelVariant(normalizedVariant)
+            return mutable
+        }
+        return updated.modelVariants.first(where: { $0.variantID == normalizedVariant.variantID }) ?? normalizedVariant
+    }
+
+    public func removeModelVariant(
+        providerID: String,
+        variantID: String
+    ) throws {
+        let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+            var mutable = settings
+            _ = mutable.removeModelVariant(variantID: variantID)
+            return mutable
+        }
+    }
+
+    /// Seed default thinking-level variants for known reasoning-capable models
+    /// the first time the daemon boots after this feature ships. Idempotent —
+    /// re-seeding never runs once the marker file exists. The seed only touches
+    /// providers that are already configured; providers added later get their
+    /// defaults the next time the daemon boots after the user enables them.
+    public func seedDefaultModelVariantsIfNeeded(
+        markerURL: URL? = nil,
+        now: Date = Date()
+    ) throws {
+        let resolvedMarkerURL = markerURL ?? fileURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("model-variants-seed.v1")
+        if FileManager.default.fileExists(atPath: resolvedMarkerURL.path) {
+            return
+        }
+
+        let defaults: [(providerID: String, baseModelID: String, levels: [BurnBarThinkingLevel])] = [
+            ("anthropic", "claude-opus-4-7", [.high, .xhigh, .max]),
+            ("openai", "gpt-5.3-codex", [.low, .medium, .high, .xhigh])
+        ]
+
+        var didMutate = false
+        for entry in defaults {
+            guard catalogSupport.isSupported(providerID: entry.providerID),
+                  catalogSupport.supportsModelID(entry.baseModelID, providerID: entry.providerID) else {
+                continue
+            }
+            for level in entry.levels {
+                let variantID = BurnBarModelVariant.defaultVariantID(
+                    baseModelID: entry.baseModelID,
+                    level: level
+                )
+                let variant = BurnBarModelVariant(
+                    variantID: variantID,
+                    label: BurnBarModelVariant.defaultLabel(for: level),
+                    baseModelID: entry.baseModelID,
+                    thinkingLevel: level,
+                    maxOutputTokens: nil,
+                    createdAt: now,
+                    updatedAt: now
+                )
+                _ = try? mutateProviderSettings(providerID: entry.providerID) { settings in
+                    var mutable = settings
+                    guard !mutable.modelVariants.contains(where: { $0.variantID.caseInsensitiveCompare(variantID) == .orderedSame }) else {
+                        return mutable
+                    }
+                    mutable.upsertModelVariant(variant)
+                    didMutate = true
+                    return mutable
+                }
+            }
+        }
+
+        let directoryURL = resolvedMarkerURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try? Data("seeded".utf8).write(to: resolvedMarkerURL, options: .atomic)
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: resolvedMarkerURL.path
+        )
+
+        if didMutate {
+            logger.notice(
+                "default_model_variants_seeded",
+                metadata: ["marker_path": resolvedMarkerURL.path]
+            )
+        }
+    }
+
     public func setPreferredCredentialSlot(
         providerID: String,
         slotID: String?
@@ -598,6 +720,10 @@ public actor BurnBarConfigStore {
             rawBaseURL: settings.baseURL
         )
 
+        let supportedVariants = settings.modelVariants.filter { variant in
+            catalogSupport.supportsModelID(variant.baseModelID, providerID: settings.providerID)
+        }
+
         return BurnBarProviderSettings(
             providerID: settings.providerID,
             isEnabled: settings.isEnabled,
@@ -605,7 +731,8 @@ public actor BurnBarConfigStore {
             preferredModelIDs: preferredModelIDs,
             disabledAdvertisedModelIDs: settings.disabledAdvertisedModelIDs,
             preferredCredentialSlotID: preferredSlotID,
-            credentialSlots: normalizedSlots
+            credentialSlots: normalizedSlots,
+            modelVariants: supportedVariants
         )
     }
 

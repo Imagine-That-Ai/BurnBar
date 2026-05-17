@@ -227,6 +227,57 @@ final class OpenBurnBarMobileTests: XCTestCase {
         XCTAssertNil(coordinator.state.pendingApproval)
     }
 
+    func testAgentWatchReceiverSendsSignedTapAndScrollIntents() async throws {
+        let uid = "user-agent-watch-input"
+        let connectionID = "relay-connection-input"
+        let stream = AgentWatchFakeStream()
+        let coordinator = AgentWatchOverlayCoordinator(
+            dialer: { _, _, _ in stream },
+            authorityPublisher: AgentWatchFakeAuthorityPublisher(),
+            initialBackoff: 0.01,
+            maxBackoff: 0.01
+        )
+        defer {
+            Task { await coordinator.stop() }
+        }
+
+        coordinator.start(
+            uid: uid,
+            connectionID: connectionID,
+            relayPublicKey: Data(repeating: 9, count: 32)
+        )
+        _ = try await waitForFrame(from: stream) { $0.type == .controlClassify }
+
+        try await coordinator.receiver?.tap(normalizedX: 0.25, normalizedY: 0.75)
+        let tapFrame = try await waitForFrame(from: stream) {
+            $0.type == .controlInputIntent &&
+            $0.control?.inputIntent?.kind == .tap
+        }
+        let tapIntent = try XCTUnwrap(tapFrame.control?.inputIntent)
+        XCTAssertEqual(try XCTUnwrap(tapIntent.normalizedX), 0.25, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(tapIntent.normalizedY), 0.75, accuracy: 0.0001)
+        XCTAssertFalse(tapIntent.authority.peerNodeId.isEmpty)
+        XCTAssertFalse(tapIntent.authority.signatureEd25519.isEmpty)
+
+        try await coordinator.receiver?.scrollDrag(
+            startNormalizedX: 0.40,
+            startNormalizedY: 0.45,
+            endNormalizedX: 0.40,
+            endNormalizedY: 0.20
+        )
+        let scrollFrame = try await waitForFrame(from: stream) {
+            $0.type == .controlInputIntent &&
+            $0.control?.inputIntent?.kind == .scroll
+        }
+        let scrollIntent = try XCTUnwrap(scrollFrame.control?.inputIntent)
+        XCTAssertEqual(try XCTUnwrap(scrollIntent.normalizedX), 0.40, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(scrollIntent.normalizedY), 0.45, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(scrollIntent.normalizedX2), 0.40, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(scrollIntent.normalizedY2), 0.20, accuracy: 0.0001)
+        XCTAssertEqual(scrollIntent.authority.counter, tapIntent.authority.counter + 1)
+        XCTAssertFalse(scrollIntent.authority.signatureEd25519.isEmpty)
+    }
+
     // MARK: - Formatting
 
     func testCostFormatting() {

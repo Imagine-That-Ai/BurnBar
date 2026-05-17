@@ -222,6 +222,8 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
             return "OpenAILogo"
         case "opencode", "open-code":
             return "OpenCodeLogo"
+        case "factory", "droid":
+            return "FactoryLogo"
         case "google", "gemini":
             return "GeminiCLILogo"
         case "xai", "grok":

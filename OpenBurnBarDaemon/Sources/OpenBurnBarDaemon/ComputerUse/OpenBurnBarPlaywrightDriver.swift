@@ -87,6 +87,7 @@ public actor OpenBurnBarPlaywrightDriver {
     private var stdoutTask: Task<Void, Never>?
     private var stderrTask: Task<Void, Never>?
     private var stoppedExplicitly: Bool = false
+    private var terminatedStatus: Int32?
 
     public init(
         configuration: Configuration,
@@ -110,6 +111,7 @@ public actor OpenBurnBarPlaywrightDriver {
     public func start() async throws {
         guard process == nil else { return }
         stoppedExplicitly = false
+        terminatedStatus = nil
 
         guard FileManager.default.isExecutableFile(atPath: configuration.nodeExecutablePath) else {
             throw DriverError.binaryNotFound
@@ -135,6 +137,12 @@ public actor OpenBurnBarPlaywrightDriver {
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr
+        process.terminationHandler = { [weak self] terminatedProcess in
+            let status = terminatedProcess.terminationStatus
+            Task { [weak self] in
+                await self?.handleProcessExit(status)
+            }
+        }
 
         do {
             try process.run()
@@ -167,7 +175,7 @@ public actor OpenBurnBarPlaywrightDriver {
         // Read newline-delimited responses from stdout.
         stdoutTask = Task.detached { [weak self] in
             guard let self else { return }
-            await self.runStdoutLoop()
+            await self.runStdoutLoop(handle: stdout.fileHandleForReading)
         }
     }
 
@@ -335,14 +343,22 @@ public actor OpenBurnBarPlaywrightDriver {
         for (_, cont) in pending { cont.resume(throwing: error) }
     }
 
-    private func runStdoutLoop() async {
-        guard let handle = stdoutPipe?.fileHandleForReading else { return }
+    private func handleProcessExit(_ status: Int32) {
+        process = nil
+        stdinPipe = nil
+        stderrPipe = nil
+        stderrTask?.cancel()
+        stderrTask = nil
+        terminatedStatus = status
+    }
+
+    private nonisolated func runStdoutLoop(handle: FileHandle) async {
         let decoder = JSONDecoder()
         var buffer = Data()
         while !Task.isCancelled {
             let chunk = handle.availableData
             if chunk.isEmpty {
-                if stoppedExplicitly { return }
+                if await handleStdoutEOF() { return }
                 await Task.yield()
                 // Brief sleep so a quiet stdout doesn't hot-spin.
                 try? await Task.sleep(nanoseconds: 5_000_000)
@@ -355,7 +371,7 @@ public actor OpenBurnBarPlaywrightDriver {
                 guard !lineData.isEmpty else { continue }
                 do {
                     let response = try decoder.decode(Response.self, from: lineData)
-                    resolve(response)
+                    await resolve(response)
                 } catch {
                     logger.warning("playwright_decode_failure", metadata: [
                         "session": sessionId.rawValue,
@@ -364,5 +380,16 @@ public actor OpenBurnBarPlaywrightDriver {
                 }
             }
         }
+    }
+
+    private func handleStdoutEOF() -> Bool {
+        if stoppedExplicitly { return true }
+        if let status = terminatedStatus {
+            failPending(with: .subprocessExited(status))
+            stdoutPipe = nil
+            stdoutTask = nil
+            return true
+        }
+        return false
     }
 }

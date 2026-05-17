@@ -143,6 +143,7 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
                 case .hostReady, .pong, .hostRegister, .responseChunk, .responseComplete, .responseError:
                     break
                 case .mediaClassify, .mediaBlobAdvertise, .mediaBlobAck,
+                     .mediaMirrorRequest, .mediaMirrorAck, .mediaPresenceHeartbeat,
                      .controlClassify, .controlActionLogEntry, .controlInputIntent,
                      .controlApprovalRequest, .controlApprovalResponse, .controlDenied:
                     // Mercury media and computer-control frames ride the iroh

@@ -17,21 +17,34 @@ public struct AgentWatchView: View {
     private let approveAction: (HermesRealtimeRelayApprovalRequest) -> Void
     private let rejectAction: (HermesRealtimeRelayApprovalRequest, Bool) -> Void
     private let panicHalt: () -> Void
+    private let sendTapIntent: (Double, Double) -> Void
+    private let sendScrollIntent: (Double, Double, Double, Double) -> Void
+    private let sendTextIntent: (String) -> Void
+    private let sendShortcutIntent: (String, [String]) -> Void
     @State private var showingTimeline = false
     @State private var showingOptions = false
+    @State private var dragPreview: (start: CGPoint, end: CGPoint)?
 
     public init(
         state: AgentWatchState,
         downgradeTrustMode: @escaping (ComputerUseTrustMode) -> Void,
         approveAction: @escaping (HermesRealtimeRelayApprovalRequest) -> Void,
         rejectAction: @escaping (HermesRealtimeRelayApprovalRequest, Bool) -> Void,
-        panicHalt: @escaping () -> Void
+        panicHalt: @escaping () -> Void,
+        sendTapIntent: @escaping (Double, Double) -> Void = { _, _ in },
+        sendScrollIntent: @escaping (Double, Double, Double, Double) -> Void = { _, _, _, _ in },
+        sendTextIntent: @escaping (String) -> Void = { _ in },
+        sendShortcutIntent: @escaping (String, [String]) -> Void = { _, _ in }
     ) {
         self._state = ObservedObject(wrappedValue: state)
         self.downgradeTrustMode = downgradeTrustMode
         self.approveAction = approveAction
         self.rejectAction = rejectAction
         self.panicHalt = panicHalt
+        self.sendTapIntent = sendTapIntent
+        self.sendScrollIntent = sendScrollIntent
+        self.sendTextIntent = sendTextIntent
+        self.sendShortcutIntent = sendShortcutIntent
     }
 
     public var body: some View {
@@ -43,7 +56,9 @@ public struct AgentWatchView: View {
             if state.currentFrame == nil {
                 framePlaceholder
             }
+            phoneInputSurface
             cursorOverlay
+            dragPreviewOverlay
             VStack {
                 topHairline
                 Spacer()
@@ -63,6 +78,8 @@ public struct AgentWatchView: View {
             PhoneControlOptionSheet(
                 snapshot: state.snapshot,
                 onTrustMode: downgradeTrustMode,
+                onType: sendTextIntent,
+                onShortcut: sendShortcutIntent,
                 onPanic: panicHalt
             )
         }
@@ -79,6 +96,55 @@ public struct AgentWatchView: View {
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.55))
         }
+    }
+
+    private var phoneInputSurface: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                        .onChanged { value in
+                            let distance = hypot(value.translation.width, value.translation.height)
+                            dragPreview = distance >= 10 ? (value.startLocation, value.location) : nil
+                        }
+                        .onEnded { value in
+                            defer { dragPreview = nil }
+                            let distance = hypot(value.translation.width, value.translation.height)
+                            if distance < 10 {
+                                let point = normalized(value.location, in: proxy.size)
+                                sendTapIntent(point.x, point.y)
+                            } else {
+                                let start = normalized(value.startLocation, in: proxy.size)
+                                let end = normalized(value.location, in: proxy.size)
+                                sendScrollIntent(start.x, start.y, end.x, end.y)
+                            }
+                        }
+                )
+        }
+        .ignoresSafeArea()
+    }
+
+    private var dragPreviewOverlay: some View {
+        GeometryReader { _ in
+            if let dragPreview {
+                Path { path in
+                    path.move(to: dragPreview.start)
+                    path.addLine(to: dragPreview.end)
+                }
+                .stroke(.white.opacity(0.72), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [6, 5]))
+                Circle()
+                    .fill(.white.opacity(0.88))
+                    .frame(width: 8, height: 8)
+                    .position(dragPreview.start)
+                Circle()
+                    .stroke(.white.opacity(0.88), lineWidth: 2)
+                    .frame(width: 14, height: 14)
+                    .position(dragPreview.end)
+            }
+        }
+        .allowsHitTesting(false)
+        .ignoresSafeArea()
     }
 
     private var cursorOverlay: some View {
@@ -196,6 +262,13 @@ public struct AgentWatchView: View {
         let x = min(max(CGFloat(cursor.x) / frameWidth, 0), 1) * size.width
         let y = min(max(CGFloat(cursor.y) / frameHeight, 0), 1) * size.height
         return CGPoint(x: x, y: y)
+    }
+
+    private func normalized(_ point: CGPoint, in size: CGSize) -> (x: Double, y: Double) {
+        guard size.width > 0, size.height > 0 else { return (0, 0) }
+        let x = min(max(point.x / size.width, 0), 1)
+        let y = min(max(point.y / size.height, 0), 1)
+        return (Double(x), Double(y))
     }
 }
 

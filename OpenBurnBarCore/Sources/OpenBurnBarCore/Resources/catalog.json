@@ -780,6 +780,258 @@
       ]
     },
     {
+      "id": "factory",
+      "displayName": "Factory Droid",
+      "baseURL": "factory-droid://local",
+      "visibility": "public",
+      "logoKey": "FactoryLogo",
+      "capabilities": ["routing", "accounting"],
+      "formatFamily": "openai_compat",
+      "models": [
+        {
+          "id": "factory-claude-opus-4-7-family",
+          "displayName": "Claude Opus 4.7 via Factory",
+          "visibility": "public",
+          "aliases": ["claude-opus-4-7"],
+          "matchers": [
+            { "all": ["claude", "opus", "4.7"], "any": [], "none": [] },
+            { "all": ["claude-opus-4-7"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 25,
+            "cacheReadPerMToken": 0.5
+          },
+          "capabilityClassID": "anthropic:opus",
+          "capabilityClassRank": 100
+        },
+        {
+          "id": "factory-claude-opus-4-7-fast-family",
+          "displayName": "Claude Opus 4.7 Fast via Factory",
+          "visibility": "public",
+          "aliases": ["claude-opus-4-7-fast"],
+          "matchers": [
+            { "all": ["claude", "opus", "4.7", "fast"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 5,
+            "outputPerMToken": 25,
+            "cacheReadPerMToken": 0.5
+          },
+          "capabilityClassID": "anthropic:opus",
+          "capabilityClassRank": 100
+        },
+        {
+          "id": "factory-claude-sonnet-4-6-family",
+          "displayName": "Claude Sonnet 4.6 via Factory",
+          "visibility": "public",
+          "aliases": ["claude-sonnet-4-6"],
+          "matchers": [
+            { "all": ["claude", "sonnet", "4.6"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 3,
+            "outputPerMToken": 15,
+            "cacheReadPerMToken": 0.3
+          },
+          "capabilityClassID": "anthropic:sonnet",
+          "capabilityClassRank": 50
+        },
+        {
+          "id": "factory-claude-haiku-4-5-family",
+          "displayName": "Claude Haiku 4.5 via Factory",
+          "visibility": "public",
+          "aliases": ["claude-haiku-4-5"],
+          "matchers": [
+            { "all": ["claude", "haiku", "4.5"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 1,
+            "outputPerMToken": 5,
+            "cacheReadPerMToken": 0.1
+          },
+          "capabilityClassID": "anthropic:haiku",
+          "capabilityClassRank": 10
+        },
+        {
+          "id": "factory-gpt-5.5-family",
+          "displayName": "GPT-5.5 via Factory",
+          "visibility": "public",
+          "aliases": ["gpt-5.5"],
+          "matchers": [
+            { "all": ["gpt", "5.5"], "any": [], "none": ["fast", "pro"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1.25
+          },
+          "capabilityClassID": "openai:gpt-5.5",
+          "capabilityClassRank": 90
+        },
+        {
+          "id": "factory-gpt-5.5-fast-family",
+          "displayName": "GPT-5.5 Fast via Factory",
+          "visibility": "public",
+          "aliases": ["gpt-5.5-fast"],
+          "matchers": [
+            { "all": ["gpt", "5.5", "fast"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1.25
+          },
+          "capabilityClassID": "openai:gpt-5.5-fast",
+          "capabilityClassRank": 90
+        },
+        {
+          "id": "factory-gpt-5.5-pro-family",
+          "displayName": "GPT-5.5 Pro via Factory",
+          "visibility": "public",
+          "aliases": ["gpt-5.5-pro"],
+          "matchers": [
+            { "all": ["gpt", "5.5", "pro"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 15,
+            "outputPerMToken": 60,
+            "cacheReadPerMToken": 7.5
+          },
+          "capabilityClassID": "openai:gpt-5.5-pro",
+          "capabilityClassRank": 100
+        },
+        {
+          "id": "factory-gpt-5.4-family",
+          "displayName": "GPT-5.4 via Factory",
+          "visibility": "public",
+          "aliases": ["gpt-5.4"],
+          "matchers": [
+            { "all": ["gpt", "5.4"], "any": [], "none": ["fast", "mini"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1.25
+          },
+          "capabilityClassID": "openai:gpt-5.4",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "factory-gpt-5.3-codex-family",
+          "displayName": "GPT-5.3 Codex via Factory",
+          "visibility": "public",
+          "aliases": ["gpt-5.3-codex"],
+          "matchers": [
+            { "all": ["gpt", "5.3", "codex"], "any": [], "none": ["fast"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2.5,
+            "outputPerMToken": 10,
+            "cacheReadPerMToken": 1.25
+          },
+          "capabilityClassID": "openai:standard",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "factory-gemini-3.1-pro-preview-family",
+          "displayName": "Gemini 3.1 Pro via Factory",
+          "visibility": "public",
+          "aliases": ["gemini-3.1-pro-preview"],
+          "matchers": [
+            { "all": ["gemini", "3.1", "pro"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 2,
+            "outputPerMToken": 12,
+            "cacheReadPerMToken": 0.2
+          },
+          "capabilityClassID": "google:gemini-3.1-pro",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "factory-gemini-3-flash-preview-family",
+          "displayName": "Gemini 3 Flash via Factory",
+          "visibility": "public",
+          "aliases": ["gemini-3-flash-preview"],
+          "matchers": [
+            { "all": ["gemini", "3", "flash"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.3,
+            "outputPerMToken": 2.5,
+            "cacheReadPerMToken": 0.03
+          },
+          "capabilityClassID": "google:gemini-3-flash",
+          "capabilityClassRank": 30
+        },
+        {
+          "id": "factory-glm-5.1-family",
+          "displayName": "Droid Core GLM-5.1",
+          "visibility": "public",
+          "aliases": ["glm-5.1"],
+          "matchers": [
+            { "all": ["glm", "5.1"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "capabilityClassID": "factory-droid-core:glm-5.1",
+          "capabilityClassRank": 20
+        },
+        {
+          "id": "factory-kimi-k2.6-family",
+          "displayName": "Droid Core Kimi K2.6",
+          "visibility": "public",
+          "aliases": ["kimi-k2.6"],
+          "matchers": [
+            { "all": ["kimi", "k2.6"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "capabilityClassID": "factory-droid-core:kimi-k2.6",
+          "capabilityClassRank": 20
+        },
+        {
+          "id": "factory-deepseek-v4-pro-family",
+          "displayName": "Droid Core DeepSeek V4 Pro",
+          "visibility": "public",
+          "aliases": ["deepseek-v4-pro"],
+          "matchers": [
+            { "all": ["deepseek", "v4", "pro"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "capabilityClassID": "factory-droid-core:deepseek-v4-pro",
+          "capabilityClassRank": 20
+        },
+        {
+          "id": "factory-minimax-m2.7-family",
+          "displayName": "Droid Core MiniMax M2.7",
+          "visibility": "public",
+          "aliases": ["minimax-m2.7"],
+          "matchers": [
+            { "all": ["minimax", "m2.7"], "any": [], "none": [] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "capabilityClassID": "factory-droid-core:minimax-m2.7",
+          "capabilityClassRank": 20
+        }
+      ]
+    },
+    {
       "id": "opencode",
       "displayName": "OpenCode",
       "baseURL": "https://opencode.ai/zen/go/v1",

@@ -103,4 +103,126 @@ final class MediaFrameProtocolTests: XCTestCase {
         XCTAssertEqual(decoded.media?.ack?.status, .received)
         XCTAssertEqual(decoded.media?.ack?.manifestId, "m_xyz")
     }
+
+    // MARK: - Mercury Phase 8 — mirror request / ack / presence
+
+    func testMirrorRequestRoundTripsThroughCodable() throws {
+        let req = HermesRealtimeRelayMirrorRequest(
+            requestId: "req_abc",
+            requestedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            requesterDisplayName: "Alberto's iPhone",
+            streamClass: MediaStreamClass.screenVideo.rawValue
+        )
+        let frame = HermesRealtimeRelayFrame(
+            type: .mediaMirrorRequest,
+            uid: "u1",
+            connectionId: "c1",
+            requestId: req.requestId,
+            media: HermesRealtimeRelayMediaPayload(mirrorRequest: req)
+        )
+
+        let encoded = try JSONEncoder().encode(frame)
+        let decoded = try JSONDecoder().decode(HermesRealtimeRelayFrame.self, from: encoded)
+        XCTAssertEqual(decoded, frame)
+        XCTAssertEqual(decoded.type, .mediaMirrorRequest)
+        XCTAssertEqual(decoded.media?.mirrorRequest?.requesterDisplayName, "Alberto's iPhone")
+        XCTAssertEqual(decoded.media?.mirrorRequest?.streamClass,
+                       MediaStreamClass.screenVideo.rawValue)
+    }
+
+    func testMirrorAckOmitsNilCooldownFromJSON() throws {
+        let acceptedAck = HermesRealtimeRelayMirrorAck(
+            requestId: "req_abc",
+            decision: .accepted
+        )
+        let acceptedFrame = HermesRealtimeRelayFrame(
+            type: .mediaMirrorAck,
+            uid: "u1",
+            connectionId: "c1",
+            requestId: acceptedAck.requestId,
+            media: HermesRealtimeRelayMediaPayload(mirrorAck: acceptedAck)
+        )
+
+        let acceptedJSON = String(
+            data: try JSONEncoder().encode(acceptedFrame),
+            encoding: .utf8
+        ) ?? ""
+        XCTAssertFalse(
+            acceptedJSON.contains("cooldownSecondsRemaining"),
+            "nil cooldown must be omitted from the wire form to keep older decoders byte-identical"
+        )
+        XCTAssertTrue(acceptedJSON.contains("\"decision\":\"accepted\""))
+
+        let coolingAck = HermesRealtimeRelayMirrorAck(
+            requestId: "req_xyz",
+            decision: .coolingDown,
+            detail: "Wait a sec",
+            cooldownSecondsRemaining: 17
+        )
+        let coolingFrame = HermesRealtimeRelayFrame(
+            type: .mediaMirrorAck,
+            uid: "u1",
+            connectionId: "c1",
+            requestId: coolingAck.requestId,
+            media: HermesRealtimeRelayMediaPayload(mirrorAck: coolingAck)
+        )
+        let coolingDecoded = try JSONDecoder().decode(
+            HermesRealtimeRelayFrame.self,
+            from: try JSONEncoder().encode(coolingFrame)
+        )
+        XCTAssertEqual(coolingDecoded.media?.mirrorAck?.decision, .coolingDown)
+        XCTAssertEqual(coolingDecoded.media?.mirrorAck?.cooldownSecondsRemaining, 17)
+        XCTAssertEqual(coolingDecoded.media?.mirrorAck?.detail, "Wait a sec")
+    }
+
+    func testPresenceHeartbeatRoundTrips() throws {
+        let heartbeat = HermesRealtimeRelayPresenceHeartbeat(
+            sentAt: Date(timeIntervalSince1970: 1_700_000_100),
+            deviceDisplayName: "Alberto's iPhone",
+            capabilities: ["mirror.viewer", "file.send", "call.receive"]
+        )
+        let frame = HermesRealtimeRelayFrame(
+            type: .mediaPresenceHeartbeat,
+            uid: "u1",
+            connectionId: "c1",
+            media: HermesRealtimeRelayMediaPayload(presence: heartbeat)
+        )
+
+        let encoded = try JSONEncoder().encode(frame)
+        let decoded = try JSONDecoder().decode(HermesRealtimeRelayFrame.self, from: encoded)
+        XCTAssertEqual(decoded, frame)
+        XCTAssertEqual(decoded.media?.presence?.capabilities,
+                       ["mirror.viewer", "file.send", "call.receive"])
+    }
+
+    func testOlderDecoderIgnoresUnknownMirrorFields() throws {
+        // Forward-compat probe: synthesize a payload with an extra future
+        // field. The current decoder should still pull out the known
+        // mirrorRequest body without throwing.
+        let raw = #"""
+        {
+          "type": "media.mirror.request",
+          "uid": "u1",
+          "connectionId": "c1",
+          "requestId": "req_abc",
+          "protocolVersion": 1,
+          "media": {
+            "streamClass": "media.screen.video",
+            "mirrorRequest": {
+              "requestId": "req_abc",
+              "requestedAt": 1700000000,
+              "requesterDisplayName": "iPhone",
+              "streamClass": "media.screen.video",
+              "futureKnob": "ignore-me"
+            }
+          }
+        }
+        """#
+        let decoded = try JSONDecoder().decode(
+            HermesRealtimeRelayFrame.self,
+            from: Data(raw.utf8)
+        )
+        XCTAssertEqual(decoded.type, .mediaMirrorRequest)
+        XCTAssertEqual(decoded.media?.mirrorRequest?.requestId, "req_abc")
+    }
 }

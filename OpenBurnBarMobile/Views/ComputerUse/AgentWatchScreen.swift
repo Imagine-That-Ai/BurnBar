@@ -40,6 +40,25 @@ struct AgentWatchScreen: View {
                     }
                     await coordinator.stop()
                 }
+            },
+            sendTapIntent: { x, y in
+                Task { try? await coordinator.receiver?.tap(normalizedX: x, normalizedY: y) }
+            },
+            sendScrollIntent: { x1, y1, x2, y2 in
+                Task {
+                    try? await coordinator.receiver?.scrollDrag(
+                        startNormalizedX: x1,
+                        startNormalizedY: y1,
+                        endNormalizedX: x2,
+                        endNormalizedY: y2
+                    )
+                }
+            },
+            sendTextIntent: { text in
+                Task { try? await coordinator.receiver?.type(text) }
+            },
+            sendShortcutIntent: { key, modifiers in
+                Task { try? await coordinator.receiver?.shortcut(key: key, modifiers: modifiers) }
             }
         )
         .overlay(alignment: .top) {

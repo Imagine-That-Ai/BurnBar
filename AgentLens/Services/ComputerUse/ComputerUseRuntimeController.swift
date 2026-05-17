@@ -2,6 +2,7 @@
 import AppKit
 import Combine
 import Foundation
+@preconcurrency import FirebaseFirestore
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 import SwiftUI
@@ -72,6 +73,17 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
             allowsAuditExport: true
         )
         coordinator.updateEntitlement(entitlement)
+    }
+
+    func publishAuditExportSignerReadback(for response: ComputerUseAuditExportResponse) async throws {
+        guard let uid = accountManager.userID, !uid.isEmpty else {
+            throw ComputerUseAuditExportSignerPublisherError.missingUserId
+        }
+        try await ComputerUseAuditExportSignerPublisher.shared.publish(
+            uid: uid,
+            deviceId: accountManager.deviceId,
+            response: response
+        )
     }
 
     @discardableResult
@@ -211,6 +223,66 @@ final class ComputerUseRuntimeController: ObservableObject, @unchecked Sendable 
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: now)
+    }
+}
+
+private enum ComputerUseAuditExportSignerPublisherError: LocalizedError {
+    case missingUserId
+    case unsignedArchive
+
+    var errorDescription: String? {
+        switch self {
+        case .missingUserId:
+            return "Cannot publish audit-export signer readback before the Mac is signed in."
+        case .unsignedArchive:
+            return "Cannot publish audit-export signer readback because the daemon did not return signature public-key metadata."
+        }
+    }
+}
+
+private final class ComputerUseAuditExportSignerPublisher: @unchecked Sendable {
+    static let shared = ComputerUseAuditExportSignerPublisher()
+
+    private let firestoreProvider: @Sendable () -> Firestore
+
+    init(firestoreProvider: @escaping @Sendable () -> Firestore = { Firestore.firestore() }) {
+        self.firestoreProvider = firestoreProvider
+    }
+
+    func publish(
+        uid: String,
+        deviceId: String,
+        response: ComputerUseAuditExportResponse
+    ) async throws {
+        guard let algorithm = response.signatureAlgorithm,
+              let signerIdentifier = response.signatureSignerIdentifier,
+              let signerKind = response.signatureSignerKind,
+              let trustRoot = response.signatureTrustRoot,
+              let publicKeyBase64 = response.signaturePublicKeyBase64,
+              let publicKeySHA256Hex = response.signaturePublicKeySHA256Hex else {
+            throw ComputerUseAuditExportSignerPublisherError.unsignedArchive
+        }
+        let nowMillis = Int64((Date().timeIntervalSince1970 * 1000).rounded())
+        let payload: [String: Any] = [
+            "id": publicKeySHA256Hex,
+            "userId": uid,
+            "deviceId": deviceId,
+            "signerIdentifier": signerIdentifier,
+            "signerKind": signerKind,
+            "trustRoot": trustRoot,
+            "algorithm": algorithm,
+            "publicKeyBase64": publicKeyBase64,
+            "publicKeySHA256Hex": publicKeySHA256Hex,
+            "status": "active",
+            "publishedAtMillis": nowMillis,
+            "lastReadbackAtMillis": nowMillis,
+            "schemaVersion": 1
+        ]
+        try await firestoreProvider()
+            .collection("users").document(uid)
+            .collection("escrow_devices").document(deviceId)
+            .collection("computer_use_audit_export_signers").document(publicKeySHA256Hex)
+            .setData(payload, merge: true)
     }
 }
 #endif

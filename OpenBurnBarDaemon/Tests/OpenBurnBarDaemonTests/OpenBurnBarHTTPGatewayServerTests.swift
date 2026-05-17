@@ -274,6 +274,110 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(codexRow["description"] as? String, "Z.ai via OpenBurnBar auto failover across 2 accounts")
     }
 
+    func testGatewayModelsAdvertisesFactoryDroidHonestly() async throws {
+        let harness = try GatewayHarness()
+        try await harness.configureFactoryProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        let factory = try XCTUnwrap(data.first {
+            ($0["provider_id"] as? String) == "factory" && ($0["id"] as? String) == "gpt-5.5"
+        })
+        XCTAssertEqual(factory["provider_name"] as? String, "Factory Droid")
+        XCTAssertEqual(factory["display_name"] as? String, "GPT-5.5 via Factory")
+        XCTAssertEqual(factory["source_kind"] as? String, "factory_droid_cli")
+        XCTAssertEqual(factory["served_by"] as? String, "Factory Droid CLI")
+        XCTAssertEqual(factory["usage_lane"] as? String, "standard")
+        XCTAssertEqual(factory["native_streaming"] as? Bool, false)
+        XCTAssertEqual(factory["route_eligible"] as? Bool, true)
+        XCTAssertTrue((factory["capabilities"] as? [String] ?? []).contains("openai_compat"))
+
+        let droidCore = try XCTUnwrap(data.first {
+            ($0["provider_id"] as? String) == "factory" && ($0["id"] as? String) == "glm-5.1"
+        })
+        XCTAssertEqual(droidCore["source_kind"] as? String, "factory_droid_cli")
+        XCTAssertEqual(droidCore["usage_lane"] as? String, "droid_core")
+        XCTAssertEqual(droidCore["native_streaming"] as? Bool, false)
+    }
+
+    func testGatewayRoutesFactoryChatThroughDroidExecutor() async throws {
+        let runner = RecordingFactoryDroidRunner(
+            result: FactoryDroidProcessResult(exitCode: 0, stdout: #"{"result":"factory gateway ok"}"#, stderr: "")
+        )
+        let harness = try GatewayHarness(
+            factoryExecutor: FactoryDroidProviderExecutor(runner: runner, timeout: 1)
+        )
+        try await harness.configureFactoryProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"gpt-5.5","messages":[{"role":"user","content":"hello"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("factory gateway ok"))
+        XCTAssertEqual(runner.lastEnvironment?["FACTORY_API_KEY"], "fk-gateway")
+        XCTAssertTrue(runner.lastArguments?.contains("gpt-5.5") == true)
+    }
+
+    func testFactoryStandardExhaustionHidesOnlyStandardModelAndKeepsDroidCoreCustomModels() async throws {
+        let runner = RecordingFactoryDroidRunner(
+            result: FactoryDroidProcessResult(
+                exitCode: 0,
+                stdout: #"{"result":"Using Droid Core after Standard Usage is exhausted"}"#,
+                stderr: ""
+            )
+        )
+        let harness = try GatewayHarness(
+            factoryExecutor: FactoryDroidProviderExecutor(runner: runner, timeout: 1)
+        )
+        try await harness.configureFactoryProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (failedResponse, failedBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"gpt-5.5","messages":[{"role":"user","content":"hello"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(failedResponse.statusCode, 402, String(decoding: failedBody, as: UTF8.self))
+
+        let (modelsResponse, modelsBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+
+        XCTAssertEqual(modelsResponse.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: modelsBody) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        XCTAssertFalse(data.contains {
+            ($0["provider_id"] as? String) == "factory" && ($0["id"] as? String) == "gpt-5.5"
+        })
+        let droidCore = try XCTUnwrap(data.first {
+            ($0["provider_id"] as? String) == "factory" && ($0["id"] as? String) == "glm-5.1"
+        })
+        XCTAssertEqual(droidCore["usage_lane"] as? String, "droid_core")
+        XCTAssertEqual(droidCore["route_eligible"] as? Bool, true)
+    }
+
     func testGatewayRoutesProviderQualifiedAdvertisedModelIDsToExactAccount() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
@@ -3482,6 +3586,7 @@ private final class GatewayHarness {
         catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog,
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
+        factoryExecutor: FactoryDroidProviderExecutor = FactoryDroidProviderExecutor(),
         modelCatalogSession: URLSession = GatewayHarness.makeUpstreamSession()
     ) throws {
         self.port = try Self.reservePort()
@@ -3516,6 +3621,7 @@ private final class GatewayHarness {
             usageRecorder: usageRecorder,
             providerExecutor: providerExecutor,
             anthropicExecutor: anthropicExecutor,
+            factoryExecutor: factoryExecutor,
             modelHealthStore: modelHealthStore,
             modelCatalogSession: modelCatalogSession,
             logger: BurnBarDaemonLogger(category: "gateway-tests")
@@ -3597,6 +3703,24 @@ private final class GatewayHarness {
             slotID: "backup",
             label: "Backup",
             apiKey: "backup-ollama-key"
+        )
+    }
+
+    func configureFactoryProviderForGateway() async throws {
+        _ = try await configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "factory",
+                isEnabled: true,
+                baseURL: "factory-droid://local",
+                preferredModelIDs: ["gpt-5.5", "glm-5.1"],
+                preferredCredentialSlotID: "max"
+            )
+        )
+        _ = try await configStore.upsertCredentialSlot(
+            providerID: "factory",
+            slotID: "max",
+            label: "Factory Max",
+            apiKey: "fk-gateway"
         )
     }
 
