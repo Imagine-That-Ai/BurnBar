@@ -265,7 +265,10 @@ final class OpenBurnBarDaemonManager {
         self.dataStore = dataStore
         OpenBurnBarDaemonLocalNotificationRelay.shared.start()
         exportControllerActivitySnapshot()
-        Task { await refreshRuntimeSnapshot() }
+        Task {
+            await refreshHealth()
+            await repairProviderCredentialSlotSecrets()
+        }
     }
 
     func refreshHealth() async {
@@ -296,6 +299,11 @@ final class OpenBurnBarDaemonManager {
             } else {
                 status = .healthy(snapshot)
                 supervisionState = .healthy
+                if !isBusy, installedDaemonBinaryNeedsRefresh() {
+                    lastError = "Updating the OpenBurnBar daemon to match this app build."
+                    await repair()
+                    return
+                }
             }
             lastError = nil
         } catch {

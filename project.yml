@@ -92,6 +92,8 @@ targets:
         CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
+        INFOPLIST_KEY_NSSupportsAutomaticTermination: NO
+        INFOPLIST_KEY_NSSupportsSuddenTermination: NO
         SWIFT_ENABLE_EXPLICIT_MODULES: NO
     postBuildScripts:
       - name: Configure Firebase Auth Resources

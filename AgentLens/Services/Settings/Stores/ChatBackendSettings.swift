@@ -294,10 +294,7 @@ final class ChatBackendSettings {
         guard let advertised = gatewayAdvertisedModel?.trimmingCharacters(in: .whitespacesAndNewlines), !advertised.isEmpty else {
             return "hermes"
         }
-        if advertised.range(of: "minimax", options: .caseInsensitive) != nil {
-            return CLIBridge.normalizedCodexModel("gpt-5.5")
-        }
-        return "hermes"
+        return advertised
     }
 
     func resolvedHermesChatModel(gatewayAdvertisedModel: String?) -> String {

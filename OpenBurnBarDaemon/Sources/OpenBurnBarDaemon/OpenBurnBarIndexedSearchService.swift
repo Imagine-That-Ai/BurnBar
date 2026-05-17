@@ -66,6 +66,9 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
             )
         }
         self.db = handle
+        // Shared file with the AgentLens app and the daemon's switcher store.
+        // Without a busy timeout, concurrent writers raise SQLITE_BUSY (error 5).
+        sqlite3_busy_timeout(handle, 5000)
         self.logger = logger
         self.semanticConfig = semanticConfig
         self.snapshotBackend = snapshotBackend ?? BurnBarPersistentVectorIndexFactory.hnswBackend(

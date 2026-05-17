@@ -209,14 +209,46 @@ struct SettingsView: View {
             RemoteRelayDetailView(settingsManager: settingsManager)
         case .hermesPiRelay:
             RemoteRelayPiDetailView(settingsManager: settingsManager)
+        case .agentsAccounts:
+            AgentsAccountsView(
+                settingsManager: settingsManager,
+                daemonManager: .shared,
+                dataStore: dataStore,
+                accountManager: accountManager
+            )
+        case .agentsCLIs:
+            AgentsCLIsView(
+                settingsManager: settingsManager,
+                daemonManager: .shared,
+                dataStore: dataStore,
+                accountManager: accountManager
+            )
+        case .agentsRuntimes:
+            AgentsRuntimesView(
+                settingsManager: settingsManager,
+                dataStore: dataStore,
+                cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService
+            )
+        case .agentsAdvanced:
+            AgentsAdvancedView(
+                settingsManager: settingsManager,
+                daemonManager: .shared,
+                dataStore: dataStore,
+                accountManager: accountManager,
+                cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService
+            )
         case .generalRoot, .daemonRoot, .accountRoot, .cloudRoot,
+             .agentsRoot,
              .connectionsRoot, .providersRoot, .routingPoolsRoot,
-             .alertsRoot, .notificationsRoot, .devicesAndSyncRoot,
-             .switcherRoot, .hermesRoot:
+             .switcherRoot, .hermesRoot,
+             .alertsRoot, .notificationsRoot, .devicesAndSyncRoot:
             // Roots are reachable via the sidebar tab selection — the path
-            // stays empty for these. `providersRoot` and `routingPoolsRoot`
-            // are legacy aliases that resolve to the unified Connections
-            // tab.
+            // stays empty for these. Legacy roots (`connectionsRoot`,
+            // `providersRoot`, `routingPoolsRoot`, `switcherRoot`,
+            // `hermesRoot`) forward into the unified Agents tab via the
+            // tab resolver.
             detailContent
         }
     }
@@ -281,14 +313,16 @@ struct SettingsView: View {
         case .cloud:
             CloudStoreSettingsView()
                 .navigationTitle("OpenBurnBar Cloud")
-        case .connections:
-            ConnectionsSettingsView(
+        case .agents:
+            AgentsSettingsView(
                 settingsManager: settingsManager,
                 daemonManager: .shared,
                 dataStore: dataStore,
-                accountManager: accountManager
+                accountManager: accountManager,
+                cloudSyncService: cloudSyncService,
+                iCloudSessionMirrorService: iCloudSessionMirrorService
             )
-                .navigationTitle("Connections")
+                .navigationTitle("Agents")
         case .alerts:
             AlertsSettingsView(settingsManager: settingsManager)
                 .navigationTitle("Alerts")
@@ -301,20 +335,6 @@ struct SettingsView: View {
                 runtimeContext: runtimeContext
             )
                 .navigationTitle(MacCopy.devicesAndSyncTitle)
-        case .switcher:
-            AccountSwitcherSettingsView(
-                dataStore: dataStore,
-                settingsManager: settingsManager
-            )
-                .navigationTitle("Account Switcher")
-        case .hermes:
-            ChatGatewaySettingsView(
-                settingsManager: settingsManager,
-                dataStore: dataStore,
-                cloudSyncService: cloudSyncService,
-                iCloudSessionMirrorService: iCloudSessionMirrorService
-            )
-                .navigationTitle("Hermes")
         case .media:
             MediaPermissionsView()
                 .navigationTitle("Media & Sharing")

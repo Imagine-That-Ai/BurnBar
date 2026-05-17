@@ -15,6 +15,8 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case catalog = "daemon.catalog"
     case configGet = "daemon.config.get"
     case configUpdate = "daemon.config.update"
+    case providerCredentialSlotUpsert = "daemon.provider.credential_slot.upsert"
+    case providerCredentialSlotRemove = "daemon.provider.credential_slot.remove"
     case usageRecord = "daemon.usage.record"
     case usageRecent = "daemon.usage.recent"
     case connectorPlaneGet = "daemon.connector.plane.get"

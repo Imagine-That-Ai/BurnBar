@@ -64,6 +64,32 @@ enum OpenBurnBarDaemonSocketClient {
         return result.snapshot
     }
 
+    static func upsertProviderCredentialSlot(
+        _ request: BurnBarProviderCredentialSlotUpsertRequest,
+        at socketURL: URL
+    ) throws -> BurnBarProviderCredentialSlotMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .providerCredentialSlotUpsert,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
+    static func removeProviderCredentialSlot(
+        _ request: BurnBarProviderCredentialSlotRemoveRequest,
+        at socketURL: URL
+    ) throws -> BurnBarProviderCredentialSlotMutationResponse {
+        try requestResult(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .providerCredentialSlotRemove,
+                params: request
+            ),
+            socketURL: socketURL
+        )
+    }
+
     static func recentUsage(
         at socketURL: URL,
         limit: Int = 20

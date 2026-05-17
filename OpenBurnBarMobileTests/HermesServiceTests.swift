@@ -441,7 +441,7 @@ final class HermesServiceTests: XCTestCase {
         service.sendMessage("Give the selected Mac harness enough time")
         await waitForStreamToFinish(service)
 
-        XCTAssertEqual(try XCTUnwrap(relay.streamingTimeouts.first), 240, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(relay.streamingTimeouts.first), 360, accuracy: 0.001)
     }
 
     func testRelayStreamingAccumulatesToolCallArgumentsAcrossDeltas() async throws {
@@ -540,6 +540,56 @@ final class HermesServiceTests: XCTestCase {
         let body = try XCTUnwrap(relay.streamingPayloads.first?.body)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         XCTAssertEqual(object["model"] as? String, "MiniMax-M2.7")
+    }
+
+    func testSelectModelRejectsCatalogSlugWhenRelayHasLiveModels() {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let service = HermesService(defaults: defaults)
+        service.modelOptions = [
+            HermesRuntimeModelOption(
+                providerID: "minimax",
+                providerName: "MiniMax",
+                modelID: "minimax-m2.7-highspeed",
+                displayName: "MiniMax M2.7 Highspeed",
+                routeEligible: true
+            )
+        ]
+
+        service.selectModel(
+            HermesRuntimeModelOption(
+                providerID: "minimax",
+                providerName: "MiniMax",
+                modelID: "minimax-m2-7",
+                displayName: "MiniMax M2.7"
+            )
+        )
+
+        XCTAssertNil(service.selectedModelID)
+        XCTAssertNil(defaults.string(forKey: "hermes.selectedModelID"))
+        XCTAssertTrue(service.runtimeErrorText?.contains("not advertised") == true)
+    }
+
+    func testSelectModelPersistsExactLiveRelayModelID() {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let service = HermesService(defaults: defaults)
+        let live = HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5.4",
+            displayName: "GPT-5.4",
+            routeEligible: true
+        )
+        service.modelOptions = [live]
+
+        service.selectModel(live)
+
+        XCTAssertEqual(service.selectedModelID, "gpt-5.4")
+        XCTAssertEqual(defaults.string(forKey: "hermes.selectedModelID"), "gpt-5.4")
+        XCTAssertNil(service.runtimeErrorText)
     }
 
     func testRelayStreamingParsesFinalMessageContentParts() async {
@@ -1035,7 +1085,7 @@ final class HermesServiceTests: XCTestCase {
                 return Self.response(
                     status: 200,
                     url: request.url!,
-                    body: #"{"data":[{"id":"hermes-agent","owned_by":"hermes"},{"id":"glm-5","owned_by":"zai","display_name":"GLM-5"},{"id":"MiniMax-M2.7","owned_by":"minimax"},{"id":"kimi-k2.6","owned_by":"moonshot"},{"id":"gemma4:e4b","owned_by":"ollama-local","provider_id":"ollama-local","provider_name":"Ollama Local","display_name":"gemma4:e4b (8.0B Q4_K_M)"},{"id":"local-qwen","owned_by":"lmstudio-local","provider_id":"lmstudio-local","provider_name":"LM Studio Local"}]}"#
+                    body: #"{"data":[{"id":"hermes-agent","owned_by":"hermes"},{"id":"glm-5","owned_by":"zai","display_name":"GLM-5","account_id":"primary","account_label":"Z.AI Pro","source_id":"provider:zai:primary","source_kind":"provider_account","capabilities":["chat"],"quota_state":"healthy","route_eligible":true},{"id":"MiniMax-M2.7","owned_by":"minimax"},{"id":"kimi-k2.6","owned_by":"moonshot"},{"id":"gemma4:e4b","owned_by":"ollama-local","provider_id":"ollama-local","provider_name":"Ollama Local","display_name":"gemma4:e4b (8.0B Q4_K_M)"},{"id":"local-qwen","owned_by":"lmstudio-local","provider_id":"lmstudio-local","provider_name":"LM Studio Local"}]}"#
                 )
             default:
                 return Self.response(status: 200, url: request.url!, body: "{}")
@@ -1049,6 +1099,11 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(service.modelOptions.map(\.modelID), ["hermes-agent", "glm-5", "MiniMax-M2.7", "kimi-k2.6", "gemma4:e4b", "local-qwen"])
         XCTAssertEqual(service.modelOptions.map(\.providerID), ["hermes", "zai", "minimax", "kimi-coding", "ollama-local", "lmstudio-local"])
         XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "glm-5" })?.displayName, "GLM-5")
+        XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "glm-5" })?.accountID, "primary")
+        XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "glm-5" })?.accountLabel, "Z.AI Pro")
+        XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "glm-5" })?.quotaState, "healthy")
+        XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "glm-5" })?.routeEligible, true)
+        XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "glm-5" })?.liveCatalogDetailText, "Z.AI Pro · healthy")
         XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "kimi-k2.6" })?.providerName, "Kimi / Kimi Coding Plan")
         XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "gemma4:e4b" })?.providerName, "Ollama Local")
         XCTAssertEqual(service.modelOptions.first(where: { $0.modelID == "local-qwen" })?.providerName, "LM Studio Local")
@@ -1103,6 +1158,59 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertTrue(service.messages.last?.isError ?? false)
     }
 
+    func testRelayStreamingSurfacesHermesFailedTerminalChunkAsError() async throws {
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"role":"assistant"},"finish_reason":null}]}"#,
+            #"data: {"choices":[{"delta":{},"finish_reason":"error"}],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0},"hermes":{"completed":false,"partial":false,"failed":true,"error":"HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini"}}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("Fail clearly")
+        await waitForStreamToFinish(service)
+
+        let assistant = try XCTUnwrap(service.messages.last)
+        XCTAssertEqual(
+            assistant.text,
+            "Hermes upstream model failed: HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini"
+        )
+        XCTAssertEqual(service.lastError, assistant.text)
+        XCTAssertTrue(assistant.isError)
+        XCTAssertEqual(assistant.outcome, .empty)
+    }
+
+    func testRelayStreamingSurfacesChoiceErrorContentAsError() async throws {
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"API call failed after 3 retries: HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini"},"finish_reason":"error"}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+
+        service.sendMessage("Do not turn provider failure into assistant text")
+        await waitForStreamToFinish(service)
+
+        let assistant = try XCTUnwrap(service.messages.last)
+        XCTAssertEqual(
+            assistant.text,
+            "Hermes upstream model failed: API call failed after 3 retries: HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini"
+        )
+        XCTAssertTrue(assistant.isError)
+        XCTAssertEqual(assistant.outcome, .empty)
+    }
+
+    func testNoEligibleRouteClassifiesAsUpstreamModelError() {
+        XCTAssertEqual(
+            HermesServiceError.upstreamModelErrorMessage(
+                from: "HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini. Add or enable an OpenAI-family account."
+            ),
+            "Hermes upstream model failed: HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini. Add or enable an OpenAI-family account."
+        )
+    }
+
     func testRelayStreamingFailureReplacesBlankAssistantBubble() async {
         let relay = FakeHermesRelayTransport()
         relay.streamingError = HermesServiceError.relayUnavailable("Mac relay stopped.")
@@ -1152,6 +1260,64 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertTrue(service.messages.last?.isError ?? false)
     }
 
+    func testExplicitSelectedModelWithIneligibleLiveRouteStopsBeforeRelayRequest() async {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "zai",
+            providerName: "Z.AI",
+            modelID: "glm-5",
+            displayName: "GLM-5",
+            accountID: "primary",
+            accountLabel: "Z.AI Pro",
+            quotaState: "exhausted",
+            routeEligible: false
+        )
+        let relay = FakeHermesRelayTransport()
+        let service = HermesService(relayTransport: relay, defaults: defaults)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+
+        service.sendMessage("Do not send exhausted route")
+        await waitForStreamToFinish(service)
+
+        XCTAssertTrue(relay.streamingPayloads.isEmpty)
+        XCTAssertEqual(
+            service.lastError,
+            "Selected Hermes model 'glm-5' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
+        )
+        XCTAssertTrue(service.messages.last?.isError ?? false)
+    }
+
+    func testAutomaticSelectionWithNoRouteEligibleModelsStopsBeforeRelayRequest() async {
+        let relay = FakeHermesRelayTransport()
+        let service = HermesService(relayTransport: relay)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.modelOptions = [
+            HermesRuntimeModelOption(
+                providerID: "openai",
+                providerName: "OpenAI",
+                modelID: "gpt-5.4-mini",
+                displayName: "GPT-5.4 Mini",
+                quotaState: "exhausted",
+                routeEligible: false
+            )
+        ]
+
+        service.sendMessage("Do not send exhausted automatic route")
+        await waitForStreamToFinish(service)
+
+        XCTAssertTrue(relay.streamingPayloads.isEmpty)
+        XCTAssertEqual(
+            service.lastError,
+            "No route-eligible Hermes model is currently advertised by this Mac relay. Add or enable a provider account with available quota, then refresh the Mac Hermes gateway."
+        )
+        XCTAssertTrue(service.messages.last?.isError ?? false)
+    }
+
     func testExplicitSelectedModelUnverifiedCatalogStopsBeforeRelayRequest() async {
         let suiteName = "HermesServiceTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -1176,9 +1342,79 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertTrue(relay.streamingPayloads.isEmpty)
         XCTAssertEqual(
             service.lastError,
-            "Selected Hermes model 'gpt-5.5' has not been verified against this Mac relay's model catalog yet. Refresh the Mac Hermes gateway before sending, so the selected model is not silently rerouted."
+            "Selected Hermes model 'gpt-5.5' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
         )
         XCTAssertTrue(service.messages.last?.isError ?? false)
+    }
+
+    func testExplicitSelectedModelLoadsRelayCatalogBeforeSend() async throws {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "minimax",
+            providerName: "MiniMax",
+            modelID: "minimax-m2.7-highspeed",
+            displayName: "MiniMax M2.7 Highspeed"
+        )
+        let relay = FakeHermesRelayTransport()
+        relay.unaryResponses[.models] = Data(#"{"data":[{"id":"minimax-m2.7-highspeed","owned_by":"minimax","provider_id":"minimax","route_eligible":true}]}"#.utf8)
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"ok"}}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay, defaults: defaults)
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        XCTAssertTrue(service.selectConnection(relayConnection(), refresh: false))
+        service.modelOptions = []
+
+        service.sendMessage("Use the live relay catalog model")
+        await waitForStreamToFinish(service)
+
+        XCTAssertEqual(relay.unaryPayloads.map(\.operation), [.models])
+        XCTAssertEqual(relay.streamingPayloads.count, 1)
+        let body = try XCTUnwrap(relay.streamingPayloads.first?.body)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["model"] as? String, "minimax-m2.7-highspeed")
+        XCTAssertEqual(service.messages.last?.text, "ok")
+        XCTAssertNil(service.lastError)
+    }
+
+    func testExplicitSelectedModelMatchingRelayAdvertisedModelSendsBeforeCatalogRefresh() async throws {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "minimax",
+            providerName: "MiniMax",
+            modelID: "minimax-m2.7-highspeed",
+            displayName: "MiniMax M2.7 Highspeed"
+        )
+        let relay = FakeHermesRelayTransport()
+        relay.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"ok"}}]}"#,
+            "data: [DONE]"
+        ]
+        let service = HermesService(relayTransport: relay, defaults: defaults)
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        var connection = relayConnection()
+        connection.advertisedModel = selected.modelID
+        XCTAssertTrue(service.selectConnection(connection, refresh: false))
+        service.modelOptions = []
+
+        service.sendMessage("Use the advertised relay model")
+        await waitForStreamToFinish(service)
+
+        XCTAssertEqual(relay.streamingPayloads.count, 1)
+        let body = try XCTUnwrap(relay.streamingPayloads.first?.body)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["model"] as? String, "minimax-m2.7-highspeed")
+        XCTAssertEqual(service.messages.last?.text, "ok")
+        XCTAssertNil(service.lastError)
     }
 
     func testExplicitSelectedModelUnverifiedCatalogStopsMissionDispatchModel() throws {
@@ -1200,6 +1436,27 @@ final class HermesServiceTests: XCTestCase {
             XCTAssertEqual(
                 error.localizedDescription,
                 "Selected Hermes model 'gpt-5.5' has not been verified against this Mac relay's model catalog yet. Refresh the Mac Hermes gateway before sending, so the selected model is not silently rerouted."
+            )
+        }
+    }
+
+    func testNoRouteEligibleModelStopsMissionDispatchModel() throws {
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.modelOptions = [
+            HermesRuntimeModelOption(
+                providerID: "openai",
+                providerName: "OpenAI",
+                modelID: "gpt-5.4-mini",
+                displayName: "GPT-5.4 Mini",
+                quotaState: "exhausted",
+                routeEligible: false
+            )
+        ]
+
+        XCTAssertThrowsError(try service.validatedModelIDForMissionDispatch()) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                "No route-eligible Hermes model is currently advertised by this Mac relay. Add or enable a provider account with available quota, then refresh the Mac Hermes gateway."
             )
         }
     }

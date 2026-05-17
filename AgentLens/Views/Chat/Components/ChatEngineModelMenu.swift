@@ -2,7 +2,6 @@ import SwiftUI
 
 private enum ChatEngineModelCatalog {
     static let claudeCode: [String] = ["", "claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-opus-4-7", "claude-3-5-sonnet-20241022"]
-    static let openClaw: [String] = ["", "gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"]
 }
 
 struct ChatEngineModelMenu: View {
@@ -11,28 +10,39 @@ struct ChatEngineModelMenu: View {
     private var menuOptions: [(id: String, title: String)] {
         switch controller.chatBackend {
         case .codex:
-            return [("", "Default (gpt-5.5)")] + CLIBridge.codexChatModelIDs.map { ($0, $0) }
+            return [("", "Default (Codex profile)")] + CLIBridge.codexChatModelIDs.map { ($0, $0) }
         case .claude:
             return ChatEngineModelCatalog.claudeCode.map { id in (id, id.isEmpty ? "Default (CLI profile)" : id) }
         case .hermes:
-            var rows: [(String, String)] = [("", "Automatic")]
-            let pinned = ["hermes", "gpt-5.5"]
-            for p in pinned {
-                if !rows.contains(where: { $0.0.caseInsensitiveCompare(p) == .orderedSame }) {
-                    rows.append((p, p))
-                }
-            }
-            if let g = controller.hermesModelName?.trimmingCharacters(in: .whitespacesAndNewlines), !g.isEmpty {
-                if !rows.contains(where: { $0.0.caseInsensitiveCompare(g) == .orderedSame }) {
-                    rows.append((g, "Gateway: \(ChatSessionController.abbreviateChatModelName(g))"))
-                }
-            }
-            return rows
+            return liveGatewayRows(for: .hermes, automaticTitle: "Automatic")
         case .openclaw:
-            return ChatEngineModelCatalog.openClaw.map { id in (id, id.isEmpty ? "Default (gpt-4o-mini)" : id) }
+            return liveGatewayRows(for: .openclaw, automaticTitle: "Automatic")
         case .piAgent:
-            return [("", "Automatic")]
+            return liveGatewayRows(for: .piAgent, automaticTitle: "Automatic")
         }
+    }
+
+    private func liveGatewayRows(
+        for backend: ChatBackendID,
+        automaticTitle: String
+    ) -> [(id: String, title: String)] {
+        let models = controller.liveAdvertisedModels(for: backend)
+        var rows: [(String, String)] = []
+        let defaultModel = models.first { $0.routeEligible }?.id
+        if let defaultModel, !defaultModel.isEmpty {
+            rows.append(("", "\(automaticTitle) (\(ChatSessionController.abbreviateChatModelName(defaultModel)))"))
+        } else {
+            rows.append(("", "Select live model"))
+        }
+        for model in models {
+            let suffix = model.routeEligible ? "" : " (unavailable)"
+            rows.append((model.id, model.menuTitle + suffix))
+        }
+        let selected = controller.chatModelSelection(for: backend).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !selected.isEmpty && !rows.contains(where: { $0.0 == selected }) {
+            rows.append((selected, "\(selected) (not advertised)"))
+        }
+        return rows
     }
 
     var body: some View {

@@ -184,9 +184,49 @@ public struct BurnBarCatalogProvider: Codable, Hashable, Sendable {
     }
 
     /// Asset catalog image name for this provider's bundled logo.
-    /// Falls back to a convention-based name ("{id}Logo") if not explicitly set.
+    /// Falls back to the built-in provider logo registry, then to a convention-
+    /// based name ("{id}Logo") if not explicitly set.
     public var bundledLogoName: String {
-        logoKey ?? "\(id.capitalized)Logo"
+        logoKey ?? Self.bundledLogoName(forProviderID: id) ?? "\(id.capitalized)Logo"
+    }
+
+    public static func bundledLogoName(forProviderID providerID: String) -> String? {
+        switch providerID.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "anthropic", "claude", "claude-code":
+            return "AnthropicLogo"
+        case "openai", "codex":
+            return "OpenAILogo"
+        case "opencode", "open-code":
+            return "OpenCodeLogo"
+        case "google", "gemini":
+            return "GeminiCLILogo"
+        case "xai", "grok":
+            return "GrokLogo"
+        case "deepseek", "deep-seek":
+            return "DeepSeekProviderLogo"
+        case "mistral":
+            return "MistralProviderLogo"
+        case "meta", "llama":
+            return "MetaProviderLogo"
+        case "cohere":
+            return "CohereProviderLogo"
+        case "amazon", "aws", "bedrock":
+            return "AmazonProviderLogo"
+        case "alibaba", "qwen", "dashscope":
+            return "AlibabaProviderLogo"
+        case "zai", "z-ai", "z.ai", "glm":
+            return "ZaiProviderLogo"
+        case "minimax", "mini-max":
+            return "MiniMaxLogo"
+        case "moonshot", "kimi":
+            return "KimiProviderLogo"
+        case "mlx":
+            return "MLXLogo"
+        case "ollama":
+            return "OllamaLogo"
+        default:
+            return nil
+        }
     }
 }
 

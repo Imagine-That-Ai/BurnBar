@@ -44,7 +44,8 @@ struct ProviderBrand: Hashable, Identifiable {
             self.iconName = Self.iconForProviderID(providerID)
         } else {
             self.displayName = providerID.capitalized
-            self.bundledLogoName = "\(providerID.capitalized)Logo"
+            self.bundledLogoName = BurnBarCatalogProvider.bundledLogoName(forProviderID: providerID)
+                ?? "\(providerID.capitalized)Logo"
             self.accentColor = DesignSystem.Colors.textSecondary
             self.iconName = "cube.transparent"
         }

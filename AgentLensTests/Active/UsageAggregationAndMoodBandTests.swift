@@ -380,7 +380,7 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
         )
     }
 
-    func test_cliBridge_codexArguments_defaultModelAndReasoning() {
+    func test_cliBridge_codexArguments_defaultUsesCodexProfileAndReasoning() {
         XCTAssertEqual(
             CLIBridge.codexArguments(prompt: "hello"),
             [
@@ -388,8 +388,6 @@ final class UsageAggregationAndMoodBandTests: XCTestCase {
                 "--json",
                 "--ephemeral",
                 "--skip-git-repo-check",
-                "-m",
-                "gpt-5.5",
                 "-c",
                 #"model_reasoning_effort="high""#,
                 "hello"

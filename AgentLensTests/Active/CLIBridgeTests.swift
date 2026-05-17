@@ -49,12 +49,12 @@ final class CLIBridgeTests: XCTestCase {
 
     // MARK: - Codex Arguments Tests
 
-    func test_cliBridge_codexArguments_defaultModelAndReasoning() {
+    func test_cliBridge_codexArguments_defaultUsesCodexProfileAndReasoning() {
         let args = CLIBridge.codexArguments(prompt: "test")
         XCTAssertTrue(args.contains("exec"))
         XCTAssertTrue(args.contains("--json"))
-        // Default model should be gpt-5.5
-        XCTAssertTrue(args.contains("gpt-5.5"))
+        XCTAssertFalse(args.contains("-m"))
+        XCTAssertFalse(args.contains("gpt-5.5"))
     }
 
     func test_cliBridge_codexArguments_useExplicitModelWhenProvided() {
@@ -73,10 +73,10 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertTrue(args.contains("MiniMax-M2.7-highspeed"))
     }
 
-    func test_settingsManager_resolvedHermesChatModel_minimaxAdvertised_usesCodexCompatibleDefault() {
+    func test_settingsManager_resolvedHermesChatModel_minimaxAdvertised_usesAdvertisedModel() {
         XCTAssertEqual(
             SettingsManager.resolvedHermesChatModel(override: "", gatewayAdvertisedModel: "MiniMax-M2.7-highspeed"),
-            "gpt-5.5"
+            "MiniMax-M2.7-highspeed"
         )
     }
 
@@ -87,10 +87,10 @@ final class CLIBridgeTests: XCTestCase {
         )
     }
 
-    func test_settingsManager_resolvedHermesChatModel_nonMinimax_usesHermes() {
+    func test_settingsManager_resolvedHermesChatModel_nonMinimax_usesAdvertisedModel() {
         XCTAssertEqual(
             SettingsManager.resolvedHermesChatModel(override: "", gatewayAdvertisedModel: "NousResearch/Hermes-3-Llama-3.1-8B"),
-            "hermes"
+            "NousResearch/Hermes-3-Llama-3.1-8B"
         )
     }
 
@@ -320,6 +320,26 @@ final class CLIBridgeTests: XCTestCase {
 
         XCTAssertEqual(models.map(\.id), ["kimi-k2", "glm-4.6", "minimax-m2.7-highspeed"])
         XCTAssertEqual(models.map(\.family), [.kimi, .zai, .minimax])
+    }
+
+    func test_openAICompatibleModelListParser_preservesFullLiveRowsAndRouteEligibility() throws {
+        let data = #"""
+        {
+          "data": [
+            {"id":"glm-5","display_name":"GLM 5","provider_id":"zai","provider_name":"Z.AI","route_eligible":true},
+            {"id":"new-provider-model","display_name":"New Provider Model","provider_id":"new-provider","provider_name":"New Provider"},
+            {"id":"stale-model","display_name":"Stale Model","provider_id":"openai","route_eligible":false}
+          ]
+        }
+        """#.data(using: .utf8)!
+
+        let models = OpenAICompatibleModelListParser.advertisedModels(from: data)
+
+        XCTAssertEqual(models.map(\.id), ["glm-5", "new-provider-model", "stale-model"])
+        XCTAssertEqual(models.first?.displayName, "GLM 5")
+        XCTAssertEqual(models.first?.providerID, "zai")
+        XCTAssertEqual(models.first?.providerName, "Z.AI")
+        XCTAssertEqual(models.map(\.routeEligible), [true, true, false])
     }
 
     func test_streamRuntime_cancelRunningProcess_terminatesMatchingTokenOnly() async throws {

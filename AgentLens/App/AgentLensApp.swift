@@ -20,6 +20,8 @@ import Sentry
 /// scene with `EmptyScene` so the test process becomes a near-empty SwiftUI host whose only
 /// job is loading and executing `OpenBurnBarTests.xctest`.
 enum OpenBurnBarRuntime {
+    @MainActor private static var harnessHostActivity: NSObjectProtocol?
+
     /// True when the current process is an XCTest host. Detected via the well-known
     /// XCTest environment variables that Apple injects into the test runner.
     static var isRunningTests: Bool {
@@ -60,6 +62,37 @@ enum OpenBurnBarRuntime {
     /// `OPENBURNBAR_FORCE_LIVE_SCENE=1`. Default is opt-out (skip the live scene under tests).
     static var forceLiveScene: Bool {
         ProcessInfo.processInfo.environment["OPENBURNBAR_FORCE_LIVE_SCENE"] == "1"
+    }
+
+    /// Harness-launched live-scene processes must remain alive even when AppKit
+    /// sees no active window. The iroh relay smoke starts the menu-bar app from
+    /// a shell, so automatic termination can otherwise kill the host right after
+    /// the first relay publish.
+    static var shouldDisableAutomaticTerminationForHarness: Bool {
+        shouldDisableAutomaticTerminationForHarness(environment: ProcessInfo.processInfo.environment)
+    }
+
+    static func shouldDisableAutomaticTerminationForHarness(environment: [String: String]) -> Bool {
+        environment["OPENBURNBAR_FORCE_LIVE_SCENE"] == "1"
+            || environment["OPENBURNBAR_E2E_HOLD_OPEN"] == "1"
+    }
+
+    @MainActor
+    static func beginHarnessHostActivityIfNeeded() {
+        beginHarnessHostActivityIfNeeded(environment: ProcessInfo.processInfo.environment)
+    }
+
+    @MainActor
+    static func beginHarnessHostActivityIfNeeded(environment: [String: String]) {
+        guard shouldDisableAutomaticTerminationForHarness(environment: environment),
+              harnessHostActivity == nil else { return }
+        let processInfo = ProcessInfo.processInfo
+        processInfo.disableSuddenTermination()
+        processInfo.disableAutomaticTermination("OpenBurnBar E2E relay host is active")
+        harnessHostActivity = processInfo.beginActivity(
+            options: [.automaticTerminationDisabled, .suddenTerminationDisabled],
+            reason: "OpenBurnBar E2E relay host is active"
+        )
     }
 
     /// True when we should bypass the live menu-bar scene and present `EmptyScene()` instead.
@@ -992,6 +1025,7 @@ struct OpenBurnBarApp: App {
     @SceneBuilder
     private var liveMenuBarScene: some Scene {
         let _ = installCommandRouter()
+        let _ = OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
         MenuBarExtra {
             if OpenBurnBarRuntime.shouldUseTestStubScene {
                 EmptyView()

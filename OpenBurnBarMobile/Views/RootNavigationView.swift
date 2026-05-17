@@ -1,5 +1,8 @@
 import SwiftUI
 import OpenBurnBarCore
+#if DEBUG
+import OSLog
+#endif
 
 // MARK: - Root Navigation View (iPad)
 //
@@ -8,6 +11,10 @@ import OpenBurnBarCore
 // block, a permanent sync pill, and an inline Hermes shortcut.
 
 struct RootNavigationView: View {
+    #if DEBUG
+    private static let hermesE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesE2E")
+    #endif
+
     let authStore: AuthStore
     let syncHealthStore: CloudSyncHealthStore
     let providerSummaryStore: ProviderSummaryStore
@@ -16,6 +23,9 @@ struct RootNavigationView: View {
 
     @State private var selection: SidebarDestination = .pulse
     @State private var didApplyScreenshotRoute = false
+    #if DEBUG
+    @State private var didApplyHermesE2EPrompt = false
+    #endif
     @State private var router = PulseRouter()
     @State private var hermesService = HermesService()
     @State private var motionStore = MotionStore()
@@ -90,9 +100,11 @@ struct RootNavigationView: View {
         .environment(\.motionStore, motionStore)
         .environment(\.cloudSubscriptionStore, subscriptionStore)
         .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
+        .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task { missionActivityCenter.start() }
         .onAppear {
             applyScreenshotRouteIfNeeded()
+            applyHermesE2EPromptIfNeeded()
         }
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
@@ -364,6 +376,67 @@ struct RootNavigationView: View {
         case .unknown: return MobileTheme.Colors.textMuted
         }
     }
+
+    private func applyHermesE2EPromptIfNeeded() {
+        #if DEBUG
+        guard !didApplyHermesE2EPrompt else {
+            print("OpenBurnBarMobile Hermes E2E RootNavigation skip alreadyApplied")
+            Self.hermesE2ELogger.debug("Skipping Hermes E2E prompt because it was already applied")
+            return
+        }
+        let prompt = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_HERMES_PROMPT"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let prompt, !prompt.isEmpty else {
+            print("OpenBurnBarMobile Hermes E2E RootNavigation skip emptyPrompt")
+            Self.hermesE2ELogger.debug("Skipping Hermes E2E prompt because OPENBURNBAR_E2E_HERMES_PROMPT is empty")
+            return
+        }
+        guard authStore.currentIdentity?.uid != nil else {
+            print("OpenBurnBarMobile Hermes E2E RootNavigation skip authState=\(authStateLabel(authStore.state))")
+            Self.hermesE2ELogger.info("Skipping Hermes E2E prompt because auth state is \(authStateLabel(authStore.state), privacy: .public)")
+            return
+        }
+        let modelID = ProcessInfo.processInfo.environment["OPENBURNBAR_E2E_HERMES_MODEL"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let selectedModelID = (modelID?.isEmpty == false) ? modelID! : "default"
+        print("OpenBurnBarMobile Hermes E2E RootNavigation apply promptCharacters=\(prompt.count) model=\(selectedModelID)")
+        Self.hermesE2ELogger.info("Applying Hermes E2E prompt promptCharacters=\(prompt.count, privacy: .public) model=\(selectedModelID, privacy: .public)")
+        didApplyHermesE2EPrompt = true
+        selection = .hermes
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            await hermesService.refreshRuntime()
+            hermesService.startNewSession()
+            if let modelID, !modelID.isEmpty {
+                print("OpenBurnBarMobile Hermes E2E RootNavigation selectingModel=\(modelID)")
+                Self.hermesE2ELogger.info("Selecting Hermes E2E model \(modelID, privacy: .public)")
+                hermesService.selectModelIDForAutomation(modelID)
+            }
+            print("OpenBurnBarMobile Hermes E2E RootNavigation send")
+            Self.hermesE2ELogger.info("Sending Hermes E2E prompt through selected mobile harness")
+            hermesService.sendMessage(prompt)
+        }
+        #endif
+    }
+
+    #if DEBUG
+    private func authStateLabel(_ state: AuthState) -> String {
+        switch state {
+        case .signedOut:
+            return "signedOut"
+        case .signingIn:
+            return "signingIn"
+        case .signedIn:
+            return "signedIn"
+        case .deletingAccount:
+            return "deletingAccount"
+        case .firebaseUnavailable:
+            return "firebaseUnavailable"
+        case .firestoreUnavailable:
+            return "firestoreUnavailable"
+        }
+    }
+    #endif
 }
 
 #Preview {

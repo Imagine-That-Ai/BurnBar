@@ -9,12 +9,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case daemon
     case account
     case cloud
-    case connections
+    case agents
     case alerts
     case notifications
     case devicesAndSync
-    case switcher
-    case hermes
     case media
 
     var id: String { rawValue }
@@ -25,12 +23,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .daemon: return "Daemon"
         case .account: return "Account"
         case .cloud: return "Cloud"
-        case .connections: return "Connections"
+        case .agents: return "Agents"
         case .alerts: return "Alerts"
         case .notifications: return "Notifications"
         case .devicesAndSync: return MacCopy.devicesAndSyncTitle
-        case .switcher: return "Account Switcher"
-        case .hermes: return "AI Environments"
         case .media: return "Media & Sharing"
         }
     }
@@ -47,18 +43,14 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "Sign-in, subscription, account actions"
         case .cloud:
             return "OpenBurnBar Cloud — hosted refresh, backup, Hermes anywhere"
-        case .connections:
-            return "Your AI keys and the CLIs that use them"
+        case .agents:
+            return "Cloud keys, local CLIs, and local runtimes"
         case .alerts:
             return "Spend thresholds, daily digest"
         case .notifications:
             return "Local pings, Telegram, calendar"
         case .devicesAndSync:
             return "Cloud sync, trusted devices, smart displays"
-        case .switcher:
-            return "Browser and CLI profile launcher"
-        case .hermes:
-            return "Hermes, Pi, gateways, remote relay"
         case .media:
             return "Mercury file transfer, screen share, calls — permissions and partner preferences"
         }
@@ -70,12 +62,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .daemon: return "cpu.fill"
         case .account: return "person.crop.circle.fill"
         case .cloud: return "sparkles"
-        case .connections: return "link.circle.fill"
+        case .agents: return "cpu.fill"
         case .alerts: return "bell.fill"
         case .notifications: return "bell.badge.fill"
         case .devicesAndSync: return "macbook.and.iphone"
-        case .switcher: return "arrow.triangle.2.circlepath"
-        case .hermes: return "antenna.radiowaves.left.and.right"
         case .media: return "play.rectangle.on.rectangle"
         }
     }
@@ -86,24 +76,18 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .daemon: return DesignSystem.Colors.teal
         case .account: return DesignSystem.Colors.whimsy
         case .cloud: return DesignSystem.Colors.hermesAureate
-        case .connections: return DesignSystem.Colors.ember
+        case .agents: return DesignSystem.Colors.ember
         case .alerts: return DesignSystem.Colors.blaze
         case .notifications: return DesignSystem.Colors.whimsy
         case .devicesAndSync: return DesignSystem.Colors.teal
-        case .switcher: return DesignSystem.Colors.amber
-        case .hermes: return DesignSystem.Colors.hermesAureate
         case .media: return DesignSystem.Colors.hermesMercury
         }
     }
 
     var logoProviders: [AgentProvider] {
         switch self {
-        case .connections:
-            return [.claudeCode, .codex, .openCode, .openAI]
-        case .hermes:
-            return [.hermes, .piAgent, .openClaw]
-        case .switcher:
-            return [.claudeCode, .codex, .openCode, .factory]
+        case .agents:
+            return [.claudeCode, .codex, .openCode, .hermes]
         default:
             return []
         }
@@ -117,8 +101,8 @@ extension SettingsTab {
     static func resolving(legacyRawValue raw: String) -> SettingsTab? {
         if let exact = SettingsTab(rawValue: raw) { return exact }
         switch raw {
-        case "providers", "routingPools":
-            return .connections
+        case "providers", "routingPools", "connections", "switcher", "hermes":
+            return .agents
         default:
             return nil
         }

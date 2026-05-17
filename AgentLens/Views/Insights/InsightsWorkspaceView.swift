@@ -10,6 +10,7 @@ import OpenBurnBarCore
 struct InsightsWorkspaceView: View {
 
     @State private var environment: InsightsMacEnvironment?
+    @State private var verdictModel: InsightsMacVerdictModel?
     @State private var showAuditLog = false
     private let dataStore: DataStore
     private let settingsManager: SettingsManager
@@ -36,6 +37,14 @@ struct InsightsWorkspaceView: View {
             if environment == nil {
                 if let env = try? InsightsMacEnvironment(dataStore: dataStore) {
                     environment = env
+                    let model = InsightsMacVerdictModel(
+                        deviceID: UserDefaults.standard.string(forKey: OpenBurnBarIdentity.deviceIDKey) ?? "device_local",
+                        window: .today,
+                        dataSource: env.dataSource,
+                        digestBuilder: env.digestBuilder
+                    )
+                    verdictModel = model
+                    await model.bootstrap()
                 }
             }
         }
@@ -47,6 +56,11 @@ struct InsightsWorkspaceView: View {
             InsightsCanvasLibraryView(environment: environment)
             Divider().opacity(0.4)
             VStack(spacing: 0) {
+                if let verdictModel, let verdict = verdictModel.verdict {
+                    verdictPane(model: verdictModel, verdict: verdict, environment: environment)
+                        .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+                        .padding(.top, UnifiedDesignSystem.Spacing.md)
+                }
                 if let canvas = environment.currentCanvas {
                     canvasArea(environment: environment, canvas: canvas)
                 } else {
@@ -65,6 +79,39 @@ struct InsightsWorkspaceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(UnifiedDesignSystem.Colors.background)
         .navigationTitle("Insights")
+    }
+
+    @ViewBuilder
+    private func verdictPane(
+        model: InsightsMacVerdictModel,
+        verdict: InsightVerdict,
+        environment: InsightsMacEnvironment
+    ) -> some View {
+        VerdictHeroView(
+            verdict: verdict,
+            isStale: model.isStale,
+            isDemo: model.isDemo,
+            onRefresh: { model.refresh() },
+            onCitationTap: { citation in
+                Task { await environment.compose(
+                    prompt: IntelligenceBriefCitationPrompt.prompt(for: citation)
+                ) }
+            },
+            onAcceptAction: { action in
+                Task { await environment.compose(
+                    prompt: "Run the recommended action: \(action.label) "
+                        + "(intent: \(action.intent.rawValue))."
+                ) }
+            },
+            onTraceTap: { sessionID in
+                Task { await environment.compose(
+                    prompt: "Show me the full trace for session \(sessionID)."
+                ) }
+            },
+            onFollowUpTap: { question in
+                Task { await environment.compose(prompt: question) }
+            }
+        )
     }
 
     @ViewBuilder

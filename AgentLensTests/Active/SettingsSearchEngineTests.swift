@@ -25,7 +25,7 @@ final class SettingsSearchEngineTests: XCTestCase {
         ),
         SettingsItem(
             id: "hermes-token",
-            tab: .hermes,
+            tab: .agents,
             pageRoute: .hermesRoot,
             anchorID: "hermes-token",
             title: "Gateway Auth Token",
@@ -169,10 +169,30 @@ final class SettingsSearchEngineTests: XCTestCase {
         let ids = SettingsSearchEngine.search("opencode", in: SettingsManifest.all).map(\.id)
         XCTAssertEqual(ids.first, "providers.openCode")
         XCTAssertTrue(ids.contains("providers.openCode"))
-        XCTAssertTrue(ids.contains("providers.add"))
-        XCTAssertTrue(ids.contains("providers.cli"))
-        XCTAssertTrue(ids.contains("routingPools.overview"))
-        XCTAssertEqual(SettingsManifest.anchorIndex[SettingsAnchor.providersOpenCode], .providersRoot)
+        // The four Agents entries replace the prior Connections + Switcher +
+        // AI Environments blocks. All legacy keywords ("opencode", "hydrant",
+        // "routing pool", "wire", "failover") still resolve onto these
+        // entries.
+        XCTAssertTrue(ids.contains("agents.accounts"))
+        XCTAssertTrue(ids.contains("agents.clis"))
+    }
+
+    func test_legacyRoutingVocabularyLandsOnAgents() {
+        // Vocabulary the user has typed for years — must still route them to
+        // the Agents page, not return an empty result.
+        for term in [
+            "hydrant", "routing pool", "fire hydrant", "wire", "failover", "gateway",
+            "switcher", "browser profile", "hermes", "pi", "openclaw", "engine", "relay", "inventory"
+        ] {
+            let ids = SettingsSearchEngine.search(term, in: SettingsManifest.all).map(\.id)
+            let isAgentsHit = ids.contains(where: { $0.hasPrefix("agents.") })
+                || ids.contains(where: { $0.hasPrefix("switcher.") })
+                || ids.contains(where: { $0.hasPrefix("hermes.") })
+            XCTAssertTrue(
+                isAgentsHit,
+                "Legacy term '\(term)' should land on the Agents page (got \(ids.prefix(3)))"
+            )
+        }
     }
 
     func test_manifestFindsEveryProviderWithExactProviderAnchor() {
@@ -180,8 +200,8 @@ final class SettingsSearchEngineTests: XCTestCase {
             let expectedID = provider == .openCode ? "providers.openCode" : "providers.\(provider.persistedToken)"
             let item = SettingsManifest.all.first { $0.id == expectedID }
             XCTAssertNotNil(item, "Missing settings search entry for \(provider.displayName)")
-            XCTAssertEqual(item?.pageRoute, .providersRoot)
-            XCTAssertEqual(SettingsManifest.anchorIndex[item?.anchorID ?? ""], .providersRoot)
+            XCTAssertEqual(item?.pageRoute, .agentsAccounts)
+            XCTAssertEqual(SettingsManifest.anchorIndex[item?.anchorID ?? ""], .agentsAccounts)
 
             let result = SettingsSearchEngine.search(provider.displayName, in: SettingsManifest.all).first
             XCTAssertEqual(result?.id, expectedID, "\(provider.displayName) should route to its own provider row")

@@ -121,7 +121,26 @@ final class ProviderQuotaService {
     }
 
     func snapshot(accountID: String) -> ProviderQuotaSnapshot? {
-        snapshotsByAccountID.values.first { $0.accountID == accountID }
+        accountSnapshot(providerID: nil, accountID: accountID)
+    }
+
+    func snapshot(providerID: ProviderID, accountID: String) -> ProviderQuotaSnapshot? {
+        accountSnapshot(providerID: providerID, accountID: accountID)
+    }
+
+    private func accountSnapshot(providerID: ProviderID?, accountID: String) -> ProviderQuotaSnapshot? {
+        guard let normalizedAccountID = Self.normalizedSnapshotIdentifier(accountID) else {
+            return nil
+        }
+        return snapshotsByAccountID.values
+            .filter { snapshot in
+                guard Self.normalizedSnapshotIdentifier(snapshot.accountID) == normalizedAccountID else {
+                    return false
+                }
+                guard let providerID else { return true }
+                return snapshot.providerID == providerID
+            }
+            .max { $0.fetchedAt < $1.fetchedAt }
     }
 
     func snapshots(for provider: AgentProvider) -> [ProviderQuotaSnapshot] {
@@ -136,7 +155,9 @@ final class ProviderQuotaService {
         // panel renders the same account twice with subtly different bucket
         // values. Group by the most-specific identifier we can extract and
         // keep the freshest record per group.
-        let candidates = snapshotsByAccountID.values.filter { $0.providerID == providerID }
+        let candidates = snapshotsByAccountID.values.filter {
+            $0.providerID == providerID && Self.isAccountLevelSnapshot($0)
+        }
 
         func accountKey(_ snap: ProviderQuotaSnapshot) -> String {
             if let id = snap.accountID?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -386,7 +407,10 @@ final class ProviderQuotaService {
         for (provider, snapshot) in batch.providerSnapshots {
             upsertSnapshot(snapshot, for: provider)
         }
-        upsertAccountSnapshots(batch.accountSnapshots)
+        replaceAccountSnapshots(
+            batch.accountSnapshots,
+            pruningManagedAccountSnapshotsFor: Set(refreshProviders)
+        )
         persistDaemonCredentialSlotAccounts(dataStore: dataStore)
         refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
 
@@ -405,7 +429,10 @@ final class ProviderQuotaService {
             let snapshot = try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
             upsertSnapshot(snapshot, for: provider)
             let accountSnapshots = await quotaRefreshActor.fetchAccountSnapshots(for: provider, dataStoreActor: dataStore.actor)
-            upsertAccountSnapshots(accountSnapshots)
+            replaceAccountSnapshots(
+                accountSnapshots,
+                pruningManagedAccountSnapshotsFor: [provider]
+            )
             persistDaemonCredentialSlotAccounts(dataStore: dataStore, providers: [provider])
             refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest(provider: provider))
             errors.removeValue(forKey: provider)
@@ -562,7 +589,7 @@ final class ProviderQuotaService {
 
     private func routingCandidate(for account: ProviderAccountDoc) -> ProviderRoutingCandidate {
         let slot = daemonSlot(forAccount: account)
-        let snapshot = snapshotsByAccountID[account.id]
+        let snapshot = accountSnapshot(providerID: account.providerID, accountID: account.id)
         let quotaState = routingQuotaState(account: account, snapshot: snapshot, slot: slot)
         let cooldownUntil = slot?.cooldownUntil
 
@@ -821,7 +848,9 @@ final class ProviderQuotaService {
     }
 
     private func upsertSnapshot(_ snapshot: ProviderQuotaSnapshot, for provider: AgentProvider? = nil) {
-        snapshotsByProvider[provider ?? snapshot.provider] = snapshot
+        if Self.normalizedSnapshotIdentifier(snapshot.accountID) == nil {
+            snapshotsByProvider[provider ?? snapshot.provider] = snapshot
+        }
         snapshotsByAccountID[ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)] = snapshot
     }
 
@@ -829,6 +858,24 @@ final class ProviderQuotaService {
         for (key, snapshot) in snapshots {
             snapshotsByAccountID[key] = snapshot
         }
+    }
+
+    private func replaceAccountSnapshots(
+        _ snapshots: [String: ProviderQuotaSnapshot],
+        pruningManagedAccountSnapshotsFor providers: Set<AgentProvider>
+    ) {
+        let providerIDs = Set(providers.map(\.providerID))
+        let replacementKeys = Set(snapshots.keys)
+
+        snapshotsByAccountID = snapshotsByAccountID.filter { key, snapshot in
+            guard providerIDs.contains(snapshot.providerID),
+                  Self.isManagedAccountSnapshot(snapshot) else {
+                return true
+            }
+            return replacementKeys.contains(key)
+        }
+
+        upsertAccountSnapshots(snapshots)
     }
 
     private func persistDaemonCredentialSlotAccounts(
@@ -976,6 +1023,34 @@ final class ProviderQuotaService {
         default:
             return nil
         }
+    }
+
+    private static func normalizedSnapshotIdentifier(_ value: String?) -> String? {
+        guard let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !normalized.isEmpty else {
+            return nil
+        }
+        return normalized.lowercased()
+    }
+
+    private static func isAccountLevelSnapshot(_ snapshot: ProviderQuotaSnapshot) -> Bool {
+        if normalizedSnapshotIdentifier(snapshot.accountID) != nil {
+            return true
+        }
+        guard let sourceID = normalizedSnapshotIdentifier(snapshot.sourceId) else {
+            return false
+        }
+        return sourceID != "default"
+    }
+
+    private static func isManagedAccountSnapshot(_ snapshot: ProviderQuotaSnapshot) -> Bool {
+        guard isAccountLevelSnapshot(snapshot),
+              let sourceID = normalizedSnapshotIdentifier(snapshot.sourceId) else {
+            return false
+        }
+        return sourceID.hasPrefix("switcher-cli:")
+            || sourceID.hasPrefix("switcher:")
+            || sourceID.hasPrefix("provider:")
     }
 
     // MARK: - Persistence

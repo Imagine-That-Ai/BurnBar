@@ -120,6 +120,7 @@ struct AuthGateView: View {
     #if DEBUG
     private func logHermesE2EAuthState(_ context: String) {
         guard hasHermesE2EPrompt else { return }
+        print("OpenBurnBarMobile Hermes E2E auth \(context) state=\(authStateLabel(authStore.state)) onboardingComplete=\(hasCompletedOnboarding) horizontalSizeClass=\(horizontalSizeClassLabel)")
         Self.hermesE2ELogger.info("Hermes E2E \(context, privacy: .public) authState=\(authStateLabel(authStore.state), privacy: .public) onboardingComplete=\(hasCompletedOnboarding, privacy: .public) horizontalSizeClass=\(horizontalSizeClassLabel, privacy: .public)")
     }
 

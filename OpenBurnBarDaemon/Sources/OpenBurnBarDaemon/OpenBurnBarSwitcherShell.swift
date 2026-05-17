@@ -203,6 +203,9 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
     private static func databaseConfiguration() -> Configuration {
         var configuration = Configuration()
         configuration.readonly = false
+        // The AgentLens app shares this SQLite file. Without a busy timeout, concurrent
+        // writers immediately raise SQLITE_BUSY (error 5: "database is locked").
+        configuration.busyMode = .timeout(5)
         return configuration
     }
 

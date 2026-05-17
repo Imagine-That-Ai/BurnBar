@@ -13,6 +13,14 @@ import com.openburnbar.data.hermes.relay.HermesRelayCrypto
 import com.openburnbar.data.hermes.relay.HermesRelayException
 import com.openburnbar.data.hermes.relay.HermesRelayKeyStore
 import com.openburnbar.data.hermes.relay.HermesRelayOperationName
+import com.openburnbar.data.hermes.relay.FirestoreIrohPairingDirectory
+import com.openburnbar.data.hermes.relay.FirestoreIrohPairingPublicKeyProvider
+import com.openburnbar.data.hermes.relay.FirestoreRelayShim
+import com.openburnbar.data.hermes.relay.HermesCompositeRelayTransport
+import com.openburnbar.data.hermes.relay.HermesIrohRelayTransport
+import com.openburnbar.data.hermes.relay.HermesRelayPayload
+import com.openburnbar.data.hermes.relay.HermesRelayTransporting
+import com.openburnbar.irohrelay.OpenBurnBarIrohFfiBackend
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -81,7 +89,8 @@ class HermesService(
      * app context.
      */
     private val appContext: Context? = null,
-    relayClient: HermesRelayClient? = null
+    relayClient: HermesRelayClient? = null,
+    relayTransport: HermesRelayTransporting? = null
 ) {
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
     private val client = OkHttpClient.Builder()
@@ -93,6 +102,36 @@ class HermesService(
         ?: appContext?.let { ctx ->
             runCatching { HermesRelayClient(HermesRelayKeyStore(ctx)) }.getOrNull()
         }
+
+    private val relayTransport: HermesRelayTransporting? = relayTransport
+        ?: buildRelayTransport(appContext, this.relayClient)
+
+    private fun buildRelayTransport(
+        context: Context?,
+        client: HermesRelayClient?
+    ): HermesRelayTransporting? {
+        if (context == null || client == null) return null
+        val keyStore = HermesRelayKeyStore(context)
+        val auditLogger = AndroidIrohTransportAuditLogger()
+        val iroh = HermesIrohRelayTransport(
+            context = context,
+            keyStore = keyStore,
+            pairingDirectory = FirestoreIrohPairingDirectory(),
+            pairingPublicKeyProvider = FirestoreIrohPairingPublicKeyProvider(),
+            auditLogger = auditLogger,
+        )
+        val firestore = FirestoreRelayShim(client) { connectionId ->
+            client.listConnections().firstOrNull { it.id == connectionId }
+                ?: throw HermesRelayException("Hermes relay connection $connectionId is no longer available.")
+        }
+        return HermesCompositeRelayTransport(
+            iroh = iroh,
+            firestoreFallback = firestore,
+            // Do not spend 5s on the loopback test transport in real Android builds.
+            featureFlag = { OpenBurnBarIrohFfiBackend.isAvailable() },
+            auditLogger = auditLogger,
+        )
+    }
 
     private val _messages = MutableStateFlow<List<HermesMessage>>(emptyList())
     val messages: StateFlow<List<HermesMessage>> = _messages
@@ -702,11 +741,9 @@ class HermesService(
     }
 
     /**
-     * Stream `/v1/chat/completions` over the encrypted Firestore relay
-     * so remote Mac hosts can answer without ever exposing an HTTP
-     * endpoint. Chunks arrive pre-decrypted from [HermesRelayClient];
-     * we feed each one through the same SSE parser used by the direct
-     * transport.
+     * Stream `/v1/chat/completions` over the encrypted relay transport.
+     * Production Android prefers iroh when the native AAR is available
+     * and falls back to the Firestore relay on transport failures.
      */
     private suspend fun streamChatCompletionViaRelay(
         descriptor: HermesRelayConnectionDescriptor,
@@ -715,7 +752,7 @@ class HermesService(
         attachments: List<HermesAttachment>,
         conversationId: String?
     ) {
-        val relay = relayClient ?: throw HermesRelayException("Relay client unavailable.")
+        val relay = relayTransport ?: throw HermesRelayException("Relay transport unavailable.")
         val assistantID = UUID.randomUUID().toString()
         var accumulated = ""
         var toolUseIterations = 0
@@ -734,13 +771,19 @@ class HermesService(
 
         try {
             relay.sendStreaming(
-                connection = descriptor,
-                operation = HermesRelayOperationName.CHAT_COMPLETIONS,
-                method = "POST",
-                path = "/v1/chat/completions",
-                body = body,
-                sessionId = conversationId
-            ) { _, text ->
+                payload = HermesRelayPayload(
+                    operation = HermesRelayOperationName.CHAT_COMPLETIONS,
+                    method = "POST",
+                    path = "/v1/chat/completions",
+                    body = body,
+                    sessionID = conversationId,
+                    connectionID = descriptor.id,
+                    relayPublicKey = descriptor.relayPublicKey,
+                    relayEncryption = descriptor.relayEncryption,
+                    relayKeyVersion = descriptor.relayKeyVersion,
+                ),
+                timeoutMillis = 30_000L,
+            ) { text ->
                 // The host forwards SSE chunks verbatim; each chunk may
                 // span multiple `data:` lines and the terminating `[DONE]`.
                 text.split('\n').forEach { rawLine ->

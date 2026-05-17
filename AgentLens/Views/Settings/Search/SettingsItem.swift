@@ -103,14 +103,26 @@ enum SettingsPageRoute: Hashable, Codable {
     // Cloud
     case cloudRoot
 
-    // Connections (the unified Providers + Routing Pools page).
-    case connectionsRoot
+    // Agents (the unified Connections + Account Switcher + AI Environments tab).
+    case agentsRoot
+    case agentsAccounts
+    case agentsCLIs
+    case agentsRuntimes
+    case agentsAdvanced
 
     // Legacy aliases kept so existing deep links resolve. The router maps
-    // both of these to `.connectionsRoot` at navigation time — they no
-    // longer have a dedicated UI surface.
+    // each of these onto the appropriate `.agents*` route at navigation
+    // time — they no longer have a dedicated UI surface.
+    case connectionsRoot
     case providersRoot
     case routingPoolsRoot
+    case switcherRoot
+    case hermesRoot
+    case hermesChatEngines
+    case hermesGateway
+    case hermesPiAgent
+    case hermesRelay
+    case hermesPiRelay
 
     // Alerts
     case alertsRoot
@@ -120,17 +132,6 @@ enum SettingsPageRoute: Hashable, Codable {
 
     // Devices & Sync
     case devicesAndSyncRoot
-
-    // Account Switcher
-    case switcherRoot
-
-    // Hermes / AI Environments
-    case hermesRoot
-    case hermesChatEngines
-    case hermesGateway
-    case hermesPiAgent
-    case hermesRelay
-    case hermesPiRelay
 }
 
 // MARK: - Anchor IDs
@@ -181,18 +182,22 @@ enum SettingsAnchor {
     // Cloud
     static let cloudOverview = "cloud.overview"
 
-    // Connections (unified Providers + Routing Pools page)
-    static let connectionsAccounts = "connections.accounts"
-    static let connectionsApps = "connections.apps"
-    static let connectionsAdvanced = "connections.advanced"
+    // Agents (the unified Connections + Account Switcher + AI Environments tab).
+    static let agentsAccounts = "agents.accounts"
+    static let agentsCLIs = "agents.clis"
+    static let agentsRuntimes = "agents.runtimes"
+    static let agentsAdvanced = "agents.advanced"
 
-    // Legacy anchors — kept as aliases for back-compat search and deep links.
-    // Each one resolves to a section inside the new Connections page.
-    static let providersAdd = connectionsAccounts
-    static let providersCLI = connectionsApps
-    static let providersLogSources = connectionsAdvanced
-    static let providersOpenCode = connectionsApps
-    static let routingPoolsOverview = connectionsApps
+    // Legacy anchors — every one aliases to an agents anchor so back-compat
+    // search and deep links keep working.
+    static let connectionsAccounts = agentsAccounts
+    static let connectionsApps = agentsCLIs
+    static let connectionsAdvanced = agentsAdvanced
+    static let providersAdd = agentsAccounts
+    static let providersCLI = agentsCLIs
+    static let providersLogSources = agentsAdvanced
+    static let providersOpenCode = agentsCLIs
+    static let routingPoolsOverview = agentsCLIs
 
     static func providerLogSource(_ persistedToken: String) -> String {
         "providers.logSource.\(persistedToken)"

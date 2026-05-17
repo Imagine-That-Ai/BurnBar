@@ -8,10 +8,10 @@ struct CLIFallbackQuotaStatus: Sendable {
 }
 
 struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
-    let quotaLookup: @Sendable (SwitcherCLIProfileType) async -> CLIFallbackQuotaStatus?
+    let quotaLookup: @Sendable (SwitcherProfileRecord) async -> CLIFallbackQuotaStatus?
 
     init(
-        quotaLookup: @escaping @Sendable (SwitcherCLIProfileType) async -> CLIFallbackQuotaStatus?
+        quotaLookup: @escaping @Sendable (SwitcherProfileRecord) async -> CLIFallbackQuotaStatus?
     ) {
         self.quotaLookup = quotaLookup
     }
@@ -50,8 +50,7 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
             return .quotaExhausted(reason: reason)
         }
 
-        if let cliType = profile.cliType,
-           let quotaStatus = await quotaLookup(cliType),
+        if let quotaStatus = await quotaLookup(profile),
            isDepleted(quotaStatus.fiveHourRemainingPercent) || isDepleted(quotaStatus.weeklyRemainingPercent) {
             let reason = quotaStatus.statusMessage
                 ?? "\(profile.displayName) has no remaining quota in the current provider window."

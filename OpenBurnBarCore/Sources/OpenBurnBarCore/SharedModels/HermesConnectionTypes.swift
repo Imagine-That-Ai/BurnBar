@@ -162,17 +162,76 @@ public struct HermesRuntimeProfile: Codable, Identifiable, Sendable, Equatable {
 }
 
 public struct HermesRuntimeModelOption: Codable, Identifiable, Sendable, Equatable {
-    public var id: String { providerID + ":" + modelID }
+    public var id: String {
+        [providerID, accountID ?? sourceID ?? "default", modelID].joined(separator: ":")
+    }
     public var providerID: String
     public var providerName: String
     public var modelID: String
     public var displayName: String
+    public var accountID: String?
+    public var accountLabel: String?
+    public var sourceID: String?
+    public var sourceKind: String?
+    public var capabilities: [String]
+    public var quotaState: String?
+    public var routeEligible: Bool?
+    public var lastRefreshAt: Date?
+    public var lastError: String?
 
-    public init(providerID: String, providerName: String, modelID: String, displayName: String? = nil) {
+    public init(
+        providerID: String,
+        providerName: String,
+        modelID: String,
+        displayName: String? = nil,
+        accountID: String? = nil,
+        accountLabel: String? = nil,
+        sourceID: String? = nil,
+        sourceKind: String? = nil,
+        capabilities: [String] = [],
+        quotaState: String? = nil,
+        routeEligible: Bool? = nil,
+        lastRefreshAt: Date? = nil,
+        lastError: String? = nil
+    ) {
         self.providerID = providerID
         self.providerName = providerName
         self.modelID = modelID
         self.displayName = displayName ?? modelID
+        self.accountID = accountID
+        self.accountLabel = accountLabel
+        self.sourceID = sourceID
+        self.sourceKind = sourceKind
+        self.capabilities = capabilities
+        self.quotaState = quotaState
+        self.routeEligible = routeEligible
+        self.lastRefreshAt = lastRefreshAt
+        self.lastError = lastError
+    }
+
+    public var isRouteEligible: Bool {
+        routeEligible ?? true
+    }
+
+    public var liveCatalogDetailText: String? {
+        var parts: [String] = []
+        if let accountLabel = accountLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !accountLabel.isEmpty {
+            parts.append(accountLabel)
+        } else if let accountID = accountID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !accountID.isEmpty,
+                  accountID != "default" {
+            parts.append(accountID)
+        }
+        if let quotaState = quotaState?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !quotaState.isEmpty {
+            parts.append(quotaState.replacingOccurrences(of: "_", with: " "))
+        }
+        if let lastError = lastError?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !lastError.isEmpty {
+            parts.append(lastError)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
 

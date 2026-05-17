@@ -52,7 +52,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let oversizedRequest = "POST /v1/chat/completions HTTP/1.1\r\n"
             + "Host: 127.0.0.1\r\n"
             + "Content-Type: application/json\r\n"
-            + "Content-Length: 1048577\r\n"
+            + "Content-Length: 67108865\r\n"
             + "\r\n"
         let (status, _, _) = try sendRawGatewayRequest(
             port: harness.port,
@@ -153,6 +153,280 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(throttledResponse.statusCode, 429)
         XCTAssertTrue(String(decoding: throttledBody, as: UTF8.self).contains("rate limit exceeded"))
         XCTAssertNotNil(throttledResponse.value(forHTTPHeaderField: "Retry-After"))
+    }
+
+    func testGatewayModelsAdvertisesLiveRouteCatalogWithAccountQuotaState() async throws {
+        let harness = try GatewayHarness()
+        try await harness.configureZAIProviderForGateway()
+        try await harness.configStore.updateCredentialSlotQuota(
+            providerID: "zai",
+            slotID: "primary",
+            remainingPercent: 42,
+            resetsAt: Date(timeIntervalSince1970: 1_800_000_000),
+            message: "Primary has quota"
+        )
+        try await harness.configStore.updateCredentialSlotStatus(
+            providerID: "zai",
+            slotID: "backup",
+            status: .exhausted,
+            cooldownUntil: nil,
+            message: "Backup exhausted"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        let primary = try XCTUnwrap(data.first {
+            ($0["account_id"] as? String) == "primary" && ($0["id"] as? String) == "glm-5-turbo"
+        })
+        XCTAssertEqual(primary["id"] as? String, "glm-5-turbo")
+        XCTAssertEqual(primary["owned_by"] as? String, "zai")
+        XCTAssertEqual(primary["provider_id"] as? String, "zai")
+        XCTAssertEqual(primary["account_label"] as? String, "Primary")
+        XCTAssertEqual(primary["quota_state"] as? String, "healthy")
+        XCTAssertEqual(primary["route_eligible"] as? Bool, true)
+        XCTAssertTrue((primary["capabilities"] as? [String] ?? []).contains("openai_compat"))
+
+        let backup = try XCTUnwrap(data.first { ($0["account_id"] as? String) == "backup" })
+        XCTAssertEqual(backup["quota_state"] as? String, "exhausted")
+        XCTAssertEqual(backup["route_eligible"] as? Bool, false)
+        XCTAssertEqual(backup["last_error"] as? String, "Backup exhausted")
+    }
+
+    func testGatewayModelsPrunesRemovedCredentialSlotsFromLiveCatalog() async throws {
+        let harness = try GatewayHarness()
+        try await harness.configureZAIProviderForGateway()
+        try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        XCTAssertTrue(data.contains { ($0["account_id"] as? String) == "primary" })
+        XCTAssertFalse(data.contains { ($0["account_id"] as? String) == "backup" })
+    }
+
+    func testGatewayModelsUsesUpstreamModelsEndpointWhenAvailable() async throws {
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"glm-5-turbo","display_name":"GLM-5 Turbo Live"},{"id":"glm-5-live-new","display_name":"GLM-5 Live New"}]}"#
+        )
+        let harness = try GatewayHarness()
+        try await harness.configureZAIProviderForGateway()
+        try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        let primary = try XCTUnwrap(data.first {
+            ($0["account_id"] as? String) == "primary" && ($0["id"] as? String) == "glm-5-turbo"
+        })
+        XCTAssertEqual(primary["id"] as? String, "glm-5-turbo")
+        XCTAssertEqual(primary["display_name"] as? String, "GLM-5 Turbo Live")
+        XCTAssertEqual(primary["source_kind"] as? String, "upstream_models_endpoint")
+        XCTAssertEqual(primary["route_eligible"] as? Bool, true)
+        XCTAssertNil(primary["last_error"])
+        let discovered = try XCTUnwrap(data.first { ($0["id"] as? String) == "glm-5-live-new" })
+        XCTAssertEqual(discovered["display_name"] as? String, "GLM-5 Live New")
+        XCTAssertEqual(discovered["source_kind"] as? String, "upstream_models_endpoint")
+        XCTAssertEqual(discovered["route_eligible"] as? Bool, true)
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/v1/models"])
+    }
+
+    func testGatewayModelsMarksConfiguredModelIneligibleWhenLiveEndpointOmitsIt() async throws {
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"glm-5-lite"}]}"#
+        )
+        let harness = try GatewayHarness()
+        try await harness.configureZAIProviderForGateway()
+        try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        let primary = try XCTUnwrap(data.first {
+            ($0["account_id"] as? String) == "primary" && ($0["id"] as? String) == "glm-5-turbo"
+        })
+        XCTAssertEqual(primary["id"] as? String, "glm-5-turbo")
+        XCTAssertEqual(primary["route_eligible"] as? Bool, false)
+        XCTAssertTrue(
+            ((primary["last_error"] as? String) ?? "").contains("was not advertised"),
+            "body was: \(String(decoding: body, as: UTF8.self))"
+        )
+        let live = try XCTUnwrap(data.first { ($0["id"] as? String) == "glm-5-lite" })
+        XCTAssertEqual(live["route_eligible"] as? Bool, true)
+        XCTAssertEqual(live["source_kind"] as? String, "upstream_models_endpoint")
+    }
+
+    func testGatewayRoutesModelDiscoveredFromLiveModelsEndpoint() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"glm-5-live-new","display_name":"GLM-5 Live New"}]}"#
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"chatcmpl-live","object":"chat.completion","model":"glm-5-live-new","choices":[{"index":0,"message":{"role":"assistant","content":"live model answered"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}"#
+        )
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (modelsResponse, modelsBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+        XCTAssertEqual(modelsResponse.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: modelsBody) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        XCTAssertTrue(data.contains { ($0["id"] as? String) == "glm-5-live-new" && ($0["route_eligible"] as? Bool) == true })
+
+        let (chatResponse, chatBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"glm-5-live-new","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(chatResponse.statusCode, 200, "body was: \(String(decoding: chatBody, as: UTF8.self))")
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/chat/completions"])
+        XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"glm-5-live-new""#) == true)
+    }
+
+    func testGatewayChatCompletionsStopsBeforeSendingWhenNoEligibleRouteExists() async throws {
+        let harness = try GatewayHarness()
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "zai",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["glm-5-turbo"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "zai",
+            slotID: "primary",
+            label: "Primary",
+            apiKey: "primary-key"
+        )
+        try await harness.configStore.updateCredentialSlotStatus(
+            providerID: "zai",
+            slotID: "primary",
+            status: .exhausted,
+            cooldownUntil: nil,
+            message: "Weekly/Monthly Limit Exhausted"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"glm-5-turbo","messages":[{"role":"user","content":"hello"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 503)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("No eligible route for glm-5-turbo"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("Add or enable an account") && bodyText.contains("provider"), "body was: \(bodyText)")
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().count, 0)
+    }
+
+    func testGatewayResponsesProxiesSelectedModelThroughOpenAICompatibleRoute() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "resp_test",
+              "object": "response",
+              "model": "glm-5-turbo",
+              "output_text": "responses answered",
+              "usage": {
+                "input_tokens": 3,
+                "output_tokens": 4
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/responses",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"glm-5-turbo","input":"hello"}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("responses answered"))
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.count, 1)
+        XCTAssertEqual(upstreamRequests[0].path, "/v1/responses")
+        XCTAssertEqual(upstreamRequests[0].authorization, "Bearer primary-key")
+        XCTAssertTrue(upstreamRequests[0].body.contains(#""model":"glm-5-turbo""#))
+
+        let usage = try await harness.usageRecorder.recentUsage(limit: 5)
+        XCTAssertEqual(usage.count, 1)
+        XCTAssertEqual(usage[0].providerID, "zai")
+        XCTAssertEqual(usage[0].modelID, "glm-5-turbo")
+        XCTAssertEqual(usage[0].inputTokens, 3)
+        XCTAssertEqual(usage[0].outputTokens, 4)
     }
 
     func testGatewayProxiesChatCompletionsAndFailsOverExhaustedPlan() async throws {
@@ -506,7 +780,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertNil(upstreamRequests[0].authorization)
         XCTAssertEqual(upstreamRequests[0].xApiKey, "sk-ant-primary-key")
         XCTAssertEqual(upstreamRequests[0].anthropicVersion, "2023-06-01")
-        XCTAssertTrue(upstreamRequests[0].body.contains(#""model":"claude-sonnet-4-6-family""#))
+        XCTAssertTrue(upstreamRequests[0].body.contains(#""model":"claude-sonnet-4-6""#))
 
         let usage = try await harness.usageRecorder.recentUsage(limit: 5)
         XCTAssertEqual(usage.count, 1)
@@ -628,8 +902,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         XCTAssertEqual(response.statusCode, 503)
         let bodyText = String(decoding: body, as: UTF8.self)
-        XCTAssertTrue(bodyText.contains("OpenAI-compatible"), "body was: \(bodyText)")
-        XCTAssertTrue(bodyText.contains("chat") && bodyText.contains("completions"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("No eligible route for glm-5-turbo"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("Add or enable an account") && bodyText.contains("provider"), "body was: \(bodyText)")
 
         XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().count, 0)
     }
@@ -1146,9 +1420,25 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             request.setValue(value, forHTTPHeaderField: name)
         }
 
-        let (responseData, response) = try await URLSession.shared.data(for: request)
-        let httpResponse = try XCTUnwrap(response as? HTTPURLResponse)
-        return (httpResponse, responseData)
+        var lastError: Error?
+        for attempt in 0..<10 {
+            do {
+                let (responseData, response) = try await URLSession.shared.data(for: request)
+                let httpResponse = try XCTUnwrap(response as? HTTPURLResponse)
+                return (httpResponse, responseData)
+            } catch {
+                lastError = error
+                guard
+                    attempt < 9,
+                    (error as NSError).domain == NSURLErrorDomain,
+                    (error as NSError).code == NSURLErrorCannotConnectToHost
+                else {
+                    throw error
+                }
+                try await Task.sleep(nanoseconds: 20_000_000)
+            }
+        }
+        throw lastError ?? URLError(.cannotConnectToHost)
     }
 
     private func sendRawGatewayRequest(
@@ -1244,7 +1534,8 @@ private final class GatewayHarness {
         rateLimit: BurnBarRateLimitConfiguration? = nil,
         catalog: BurnBarCatalog = BurnBarCatalogLoader.bundledCatalog,
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
-        anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor()
+        anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
+        modelCatalogSession: URLSession = GatewayHarness.makeUpstreamSession()
     ) throws {
         self.port = try Self.reservePort()
 
@@ -1275,8 +1566,15 @@ private final class GatewayHarness {
             usageRecorder: usageRecorder,
             providerExecutor: providerExecutor,
             anthropicExecutor: anthropicExecutor,
+            modelCatalogSession: modelCatalogSession,
             logger: BurnBarDaemonLogger(category: "gateway-tests")
         )
+    }
+
+    static func makeUpstreamSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        return URLSession(configuration: configuration)
     }
 
     func configureZAIProviderForGateway() async throws {

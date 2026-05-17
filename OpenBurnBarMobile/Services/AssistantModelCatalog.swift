@@ -98,13 +98,35 @@ public actor AssistantModelCatalogStore {
     private static func decode(_ data: Data) throws -> [AssistantModelOption] {
         let raw = try JSONDecoder().decode([RawEntry].self, from: data)
         return raw.map { entry in
-            AssistantModelOption(
+            let canonicalModelID = canonicalizedModelID(entry.modelID)
+            return AssistantModelOption(
                 providerID: entry.providerID,
                 providerName: entry.providerDisplay,
-                modelID: entry.modelID,
+                modelID: canonicalModelID,
                 displayName: entry.modelDisplay,
                 tier: entry.tier ?? "mid"
             )
+        }
+    }
+
+    private static func canonicalizedModelID(_ raw: String) -> String {
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "gpt-5-5":
+            return "gpt-5.5"
+        case "gpt-5-4":
+            return "gpt-5.4"
+        case "gpt-5-4-mini":
+            return "gpt-5.4-mini"
+        case "gpt-5-3-codex":
+            return "gpt-5.3-codex"
+        case "minimax-m2-7":
+            return "minimax-m2.7-highspeed"
+        case "kimi-k2-5":
+            return "kimi-k2.5"
+        case "glm-5":
+            return "glm-5-turbo"
+        default:
+            return raw
         }
     }
 

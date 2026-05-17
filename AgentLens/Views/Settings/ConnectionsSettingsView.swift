@@ -15,16 +15,30 @@ import SwiftUI
 /// else (router strategy, gateway controls, log sources, smart-display
 /// signals) tucked into a single Advanced disclosure.
 struct ConnectionsSettingsView: View {
+    /// Which slice of the connections surface this instance should render.
+    /// The Agents tab's hub-and-spoke layout slices the page across three
+    /// drill destinations; `.all` keeps the legacy single-page rendering.
+    enum Section: Hashable {
+        case all
+        case accountsOnly
+        case appsOnly
+        case advancedOnly
+    }
+
     @Bindable var settingsManager: SettingsManager
     @Bindable var daemonManager: OpenBurnBarDaemonManager
     let dataStore: DataStore
     let accountManager: AccountManager
+    let section: Section
 
     @State private var viewModel = ConnectionsViewModel()
     @State private var quotaService = ProviderQuotaService.shared
     @State private var wizardProviderID: ProviderWizardTarget?
     @State private var providerAccounts: [ProviderAccountDoc] = []
     @State private var providerAccountLoadError: String?
+    @State private var switcherProfiles: [SwitcherProfileRecord] = []
+    @State private var switcherProfileLoadError: String?
+    @State private var externalAuthStates: [String: CLIAuthInfo] = [:]
     @State private var isShowingAddPicker = false
     @State private var isAdvancedExpanded = false
 
@@ -32,25 +46,39 @@ struct ConnectionsSettingsView: View {
         settingsManager: SettingsManager,
         daemonManager: OpenBurnBarDaemonManager,
         dataStore: DataStore,
-        accountManager: AccountManager = .shared
+        accountManager: AccountManager = .shared,
+        section: Section = .all
     ) {
         self._settingsManager = Bindable(settingsManager)
         self._daemonManager = Bindable(daemonManager)
         self.dataStore = dataStore
         self.accountManager = accountManager
+        self.section = section
+        // When the Agents tab embeds the advanced slice, it should default
+        // to expanded — the user just drilled in specifically to see those
+        // controls.
+        self._isAdvancedExpanded = State(initialValue: section == .advancedOnly)
     }
 
     var body: some View {
         SettingsDeepLinkScrollContainer(route: .connectionsRoot) { _ in
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                    header
-                    accountsSection
-                        .settingsAnchor(SettingsAnchor.connectionsAccounts)
-                    appsSection
-                        .settingsAnchor(SettingsAnchor.connectionsApps)
-                    advancedDisclosure
-                        .settingsAnchor(SettingsAnchor.connectionsAdvanced)
+                    if section == .all {
+                        header
+                    }
+                    if section == .all || section == .accountsOnly {
+                        accountsSection
+                            .settingsAnchor(SettingsAnchor.connectionsAccounts)
+                    }
+                    if section == .all || section == .appsOnly {
+                        appsSection
+                            .settingsAnchor(SettingsAnchor.connectionsApps)
+                    }
+                    if section == .all || section == .advancedOnly {
+                        advancedDisclosure
+                            .settingsAnchor(SettingsAnchor.connectionsAdvanced)
+                    }
                 }
                 .padding(DesignSystem.Spacing.lg)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -58,7 +86,7 @@ struct ConnectionsSettingsView: View {
         }
         .background(DesignSystem.Colors.background)
         .scrollContentBackground(.hidden)
-        .navigationTitle("Connections")
+        .navigationTitle(navigationTitleForSection)
         .sheet(item: $wizardProviderID) { target in
             ProviderPlanWizardView(
                 daemonManager: daemonManager,
@@ -66,7 +94,8 @@ struct ConnectionsSettingsView: View {
                 initialProviderID: target.providerID
             ) {
                 wizardProviderID = nil
-                loadAccounts()
+                loadAccountData()
+                Task { await quotaService.refreshIfNeeded(dataStore: dataStore, maxAge: 0) }
             }
         }
         .sheet(isPresented: $isShowingAddPicker) {
@@ -91,7 +120,7 @@ struct ConnectionsSettingsView: View {
         .task {
             viewModel.refreshWiringState()
             await daemonManager.refreshHealth()
-            loadAccounts()
+            loadAccountData()
             await quotaService.refreshIfNeeded(dataStore: dataStore)
         }
     }
@@ -107,6 +136,15 @@ struct ConnectionsSettingsView: View {
         }
     }
 
+    private var navigationTitleForSection: String {
+        switch section {
+        case .all: return "Connections"
+        case .accountsOnly: return "Accounts"
+        case .appsOnly: return "CLIs"
+        case .advancedOnly: return "Advanced"
+        }
+    }
+
     // MARK: - Accounts
 
     @ViewBuilder
@@ -114,7 +152,7 @@ struct ConnectionsSettingsView: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             HStack {
                 Text("Accounts")
-                    .font(DesignSystem.Typography.title3)
+                    .font(DesignSystem.Typography.headline)
                     .fontWeight(.semibold)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                 Spacer()
@@ -130,22 +168,34 @@ struct ConnectionsSettingsView: View {
 
             if let providerAccountLoadError {
                 inlineErrorCallout(providerAccountLoadError)
-            } else if activeAccounts.isEmpty {
-                emptyAccountsCard
             } else {
-                VStack(spacing: DesignSystem.Spacing.md) {
-                    ForEach(accountGroups, id: \.providerID) { group in
-                        ProviderAccountGroup(
-                            providerID: group.providerID,
-                            accounts: group.accounts,
-                            routingState: quotaService.routingStatesByProviderID[group.providerID],
-                            onTapAccount: { account in
-                                wizardProviderID = ProviderWizardTarget(providerID: account.providerID.rawValue)
-                            },
-                            onAddAnother: {
-                                wizardProviderID = ProviderWizardTarget(providerID: group.providerID.rawValue)
-                            }
-                        )
+                if let switcherProfileLoadError {
+                    inlineErrorCallout("Could not load local OAuth profiles: \(switcherProfileLoadError)")
+                }
+
+                if !hasAnyAccount {
+                    emptyAccountsCard
+                } else {
+                    VStack(spacing: DesignSystem.Spacing.md) {
+                        ForEach(accountGroups, id: \.providerID) { group in
+                            ProviderAccountGroup(
+                                providerID: group.providerID,
+                                accounts: group.accounts,
+                                externalAccounts: group.externalAccounts,
+                                routingState: quotaService.routingStatesByProviderID[group.providerID],
+                                quotaWindowsForAccount: quotaWindows(for:),
+                                quotaWindowsForExternalAccount: quotaWindows(for:),
+                                onTapAccount: { account in
+                                    wizardProviderID = ProviderWizardTarget(providerID: account.providerID.rawValue)
+                                },
+                                onTapExternalAccount: { account in
+                                    wizardProviderID = ProviderWizardTarget(providerID: account.providerID.rawValue)
+                                },
+                                onAddAnother: {
+                                    wizardProviderID = ProviderWizardTarget(providerID: group.providerID.rawValue)
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -227,13 +277,13 @@ struct ConnectionsSettingsView: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             HStack {
                 Text("Apps")
-                    .font(DesignSystem.Typography.title3)
+                    .font(DesignSystem.Typography.headline)
                     .fontWeight(.semibold)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
                 Spacer()
             }
 
-            if activeAccounts.isEmpty {
+            if !hasAnyAccount {
                 Text("Add an account first, then connect Claude Code, Codex, OpenCode, Forge, or Droid to use it.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -265,16 +315,14 @@ struct ConnectionsSettingsView: View {
         }
     }
 
-    /// True when the user has at least one account for the provider family
-    /// this CLI sends traffic to. We don't gate connecting on this — but we
-    /// surface a softer "Add an account first" state when there's nothing to
-    /// route to.
+    /// True only when the gateway has a route-ready daemon credential for this
+    /// CLI's wire format. Local CLI OAuth sign-ins are shown elsewhere for
+    /// account/quota visibility, but they do not unlock proxy routing.
     private func hasAccountFor(target: RoutingClientWiringTarget) -> Bool {
-        let isAnthropicShape = target == .claudeCode
-        return activeAccounts.contains { account in
-            let pool = poolForProvider(account.providerID)
-            return (pool == .anthropic) == isAnthropicShape || pool == .openaiCompat && !isAnthropicShape
-        }
+        ConnectionsRouteReadiness.hasRouteReadyProvider(
+            for: target,
+            configurations: daemonManager.providerConfigurations
+        )
     }
 
     // MARK: - Advanced
@@ -445,25 +493,82 @@ struct ConnectionsSettingsView: View {
 
     // MARK: - Data assembly
 
+    /// External OAuth-only "accounts" (e.g. `claude` / `codex` CLI logins)
+    /// that surface alongside API-key accounts so the multi-account list
+    /// honours every credential source the daemon can route through. Held in
+    /// its own type so the Accounts list can render API and OAuth rows in one
+    /// flow.
+    struct ExternalOAuthAccount: Identifiable, Hashable {
+        let id: String
+        let providerID: ProviderID
+        let cliType: SwitcherCLIProfileType
+        let label: String
+        let detail: String?
+        let statusText: String
+        let isCurrentLogin: Bool
+        let isDisabled: Bool
+        let profileID: String?
+    }
+
     private struct AccountGroup {
         let providerID: ProviderID
         let accounts: [ProviderAccountDoc]
+        let externalAccounts: [ExternalOAuthAccount]
     }
 
     private var activeAccounts: [ProviderAccountDoc] {
         providerAccounts.filter { $0.status != .deleted }
     }
 
+    /// External OAuth account inventory derived from the daemon's switcher
+    /// profile store and the default local CLI login state.
+    private var activeExternalOAuthAccounts: [ExternalOAuthAccount] {
+        visibleExternalOAuthAccounts()
+    }
+
+    /// True iff the user has at least one account of either kind. Used to
+    /// pick the empty-state path on the Accounts and Apps sections.
+    private var hasAnyAccount: Bool {
+        !activeAccounts.isEmpty
+            || !activeExternalOAuthAccounts.isEmpty
+            || ConnectionsRouteReadiness.hasAnyRouteReadyProvider(
+                configurations: daemonManager.providerConfigurations
+            )
+    }
+
+    /// Bridge for the existing wizard sheet completion handler. Reloads the
+    /// flat account list so the new account appears immediately.
+    private func loadAccountData() {
+        loadAccounts()
+        loadSwitcherProfiles()
+        refreshExternalAuthStates()
+        viewModel.refreshWiringState()
+    }
+
     private var accountGroups: [AccountGroup] {
-        Dictionary(grouping: activeAccounts, by: \.providerID)
-            .map { providerID, accounts in
-                AccountGroup(
-                    providerID: providerID,
-                    accounts: accounts.sorted { lhs, rhs in
-                        if lhs.isDefault != rhs.isDefault { return lhs.isDefault && !rhs.isDefault }
-                        if lhs.sortKey != rhs.sortKey { return lhs.sortKey < rhs.sortKey }
-                        return lhs.label.localizedCaseInsensitiveCompare(rhs.label) == .orderedAscending
+        let groupedAPI = Dictionary(grouping: activeAccounts, by: \.providerID)
+        let groupedOAuth = Dictionary(grouping: activeExternalOAuthAccounts, by: \.providerID)
+        let allProviderIDs = Set(groupedAPI.keys).union(groupedOAuth.keys)
+        return allProviderIDs
+            .map { providerID -> AccountGroup in
+                let sortedAccounts = (groupedAPI[providerID] ?? []).sorted { lhs, rhs in
+                    if lhs.isDefault != rhs.isDefault { return lhs.isDefault && !rhs.isDefault }
+                    if lhs.sortKey != rhs.sortKey { return lhs.sortKey < rhs.sortKey }
+                    return lhs.label.localizedCaseInsensitiveCompare(rhs.label) == .orderedAscending
+                }
+                let externals = (groupedOAuth[providerID] ?? []).sorted { lhs, rhs in
+                    if lhs.isCurrentLogin != rhs.isCurrentLogin {
+                        return lhs.isCurrentLogin && !rhs.isCurrentLogin
                     }
+                    if lhs.isDisabled != rhs.isDisabled {
+                        return !lhs.isDisabled && rhs.isDisabled
+                    }
+                    return lhs.label.localizedCaseInsensitiveCompare(rhs.label) == .orderedAscending
+                }
+                return AccountGroup(
+                    providerID: providerID,
+                    accounts: sortedAccounts,
+                    externalAccounts: externals
                 )
             }
             .sorted { lhs, rhs in
@@ -479,11 +584,188 @@ struct ConnectionsSettingsView: View {
             providerAccounts = []
             providerAccountLoadError = error.localizedDescription
         }
-        viewModel.refreshWiringState()
+    }
+
+    private func loadSwitcherProfiles() {
+        do {
+            switcherProfiles = try dataStore.switcherStore.fetchAllProfiles()
+            switcherProfileLoadError = nil
+        } catch {
+            switcherProfiles = []
+            switcherProfileLoadError = error.localizedDescription
+        }
+    }
+
+    private func refreshExternalAuthStates() {
+        var next: [String: CLIAuthInfo] = [:]
+        for cliType in [SwitcherCLIProfileType.codex, .claude] {
+            next[cliType.rawValue] = CLIAuthDiscovery.discoverAuthState(for: cliType)
+        }
+        externalAuthStates = next
+    }
+
+    private func visibleExternalOAuthAccounts() -> [ExternalOAuthAccount] {
+        let storedAccounts = switcherProfiles.compactMap { profile -> ExternalOAuthAccount? in
+            guard profile.targetKind == .cli,
+                  let cliType = profile.cliType,
+                  cliType == .codex || cliType == .claude else {
+                return nil
+            }
+
+            return ExternalOAuthAccount(
+                id: profile.id,
+                providerID: externalProviderID(for: cliType),
+                cliType: cliType,
+                label: externalAccountLabel(for: profile, cliType: cliType),
+                detail: normalizedString(profile.cliMetadata?.configDirectory),
+                statusText: "Isolated \(cliType.displayName) OAuth profile.",
+                isCurrentLogin: false,
+                isDisabled: profile.isDisabled,
+                profileID: profile.id
+            )
+        }
+
+        let currentAccounts = [SwitcherCLIProfileType.codex, .claude].compactMap { cliType -> ExternalOAuthAccount? in
+            guard let authInfo = externalAuthStates[cliType.rawValue],
+                  isExternalAuthConnected(authInfo),
+                  !storedProfileDuplicatesCurrentAuth(cliType: cliType, authInfo: authInfo) else {
+                return nil
+            }
+
+            let identity = normalizedString(authInfo.accountDescription)
+                ?? normalizedString(authInfo.configDirectory)
+                ?? "default"
+            let statusText = authInfo.authState == .apiKeyPresent
+                ? "Detected from the default local \(cliType.displayName) API-key config."
+                : "Detected from the default local \(cliType.displayName) OAuth sign-in."
+
+            return ExternalOAuthAccount(
+                id: "current-\(cliType.rawValue)-\(identity)",
+                providerID: externalProviderID(for: cliType),
+                cliType: cliType,
+                label: normalizedString(authInfo.accountDescription) ?? "Current \(cliType.displayName) login",
+                detail: normalizedString(authInfo.configDirectory),
+                statusText: statusText,
+                isCurrentLogin: true,
+                isDisabled: false,
+                profileID: nil
+            )
+        }
+
+        return currentAccounts + storedAccounts
+    }
+
+    private func externalProviderID(for cliType: SwitcherCLIProfileType) -> ProviderID {
+        switch cliType {
+        case .codex:
+            return .openAI
+        case .claude:
+            return .anthropic
+        case .opencode:
+            return .openCode
+        }
+    }
+
+    private func storedProfileDuplicatesCurrentAuth(cliType: SwitcherCLIProfileType, authInfo: CLIAuthInfo) -> Bool {
+        let authAccount = normalizedString(authInfo.accountDescription)
+        let authDirectory = normalizedString(authInfo.configDirectory)
+
+        return switcherProfiles.contains { profile in
+            guard profile.targetKind == .cli,
+                  profile.cliType == cliType else {
+                return false
+            }
+
+            if let authAccount,
+               let profileAccount = normalizedString(profile.cliMetadata?.accountDescription),
+               profileAccount.caseInsensitiveCompare(authAccount) == .orderedSame {
+                return true
+            }
+
+            if let authDirectory,
+               let profileDirectory = normalizedString(profile.cliMetadata?.configDirectory),
+               profileDirectory == authDirectory {
+                return true
+            }
+
+            return false
+        }
+    }
+
+    private func externalAccountLabel(for profile: SwitcherProfileRecord, cliType: SwitcherCLIProfileType) -> String {
+        normalizedString(profile.cliMetadata?.accountDescription)
+            ?? normalizedString(profile.cliMetadata?.displayLabel)
+            ?? normalizedString(profile.displayName)
+            ?? "\(cliType.displayName) OAuth profile"
+    }
+
+    private func quotaWindows(for account: ProviderAccountDoc) -> [SwitcherQuotaWindowDisplay] {
+        let accountSnapshot = quotaService.snapshot(providerID: account.providerID, accountID: account.id)
+        return switcherQuotaWindowDisplays(snapshot: accountSnapshot)
+    }
+
+    private func quotaWindows(for account: ExternalOAuthAccount) -> [SwitcherQuotaWindowDisplay] {
+        guard let provider = account.cliType.agentProvider else { return [] }
+
+        if let accountSnapshot = exactExternalQuotaSnapshot(for: account, provider: provider) {
+            let windows = switcherQuotaWindowDisplays(snapshot: accountSnapshot)
+            if !windows.isEmpty { return windows }
+        }
+
+        if account.isCurrentLogin {
+            return switcherQuotaWindowDisplays(snapshot: quotaService.snapshot(for: provider))
+        }
+
+        return []
+    }
+
+    private func exactExternalQuotaSnapshot(
+        for account: ExternalOAuthAccount,
+        provider: AgentProvider
+    ) -> ProviderQuotaSnapshot? {
+        let snapshots = quotaService.snapshots(for: provider.providerID)
+
+        if let profileID = account.profileID {
+            let normalizedProfileID = normalizedQuotaIdentifier(profileID)
+            let normalizedProfileSourceIDs = Set([
+                "switcher-cli:\(account.cliType.rawValue):\(profileID)",
+                "switcher:\(profileID)",
+            ].compactMap(normalizedQuotaIdentifier))
+            return snapshots.first { snapshot in
+                normalizedQuotaIdentifier(snapshot.accountID) == normalizedProfileID
+                    || normalizedQuotaIdentifier(snapshot.sourceId).map { normalizedProfileSourceIDs.contains($0) } == true
+            }
+        }
+
+        return snapshots.first { snapshot in
+            normalizedString(snapshot.accountLabel)?.caseInsensitiveCompare(account.label) == .orderedSame
+        }
+    }
+
+    private func isExternalAuthConnected(_ authInfo: CLIAuthInfo) -> Bool {
+        switch authInfo.authState {
+        case .authenticated, .apiKeyPresent:
+            return true
+        case .notAuthenticated, .notInstalled:
+            return false
+        }
     }
 
     private func providerDisplayName(_ providerID: ProviderID) -> String {
-        AgentProvider.fromProviderID(providerID)?.displayName ?? providerID.rawValue
+        if let catalogProvider = BurnBarCatalogLoader.bundledCatalog.provider(id: providerID.rawValue) {
+            return catalogProvider.displayName
+        }
+        return AgentProvider.fromProviderID(providerID)?.displayName ?? providerID.rawValue
+    }
+
+    private func normalizedString(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func normalizedQuotaIdentifier(_ value: String?) -> String? {
+        normalizedString(value)?.lowercased()
     }
 
     private func resetLocalDefaults() {
@@ -514,21 +796,52 @@ struct ConnectionsSettingsView: View {
         var id: String { target.id }
     }
 
-    // MARK: - Pool inference
+}
 
-    /// Internal-only pool partition. Matches the daemon's `formatFamily` —
-    /// the user never sees this label.
-    private enum InternalPool {
-        case openaiCompat
-        case anthropic
+enum ConnectionsRouteReadiness {
+    static func hasAnyRouteReadyProvider(
+        configurations: [OpenBurnBarDaemonProviderConfiguration]
+    ) -> Bool {
+        configurations.contains { configuration in
+            isRouteReady(configuration)
+        }
     }
 
-    private func poolForProvider(_ providerID: ProviderID) -> InternalPool {
-        if let catalogProvider = BurnBarCatalogLoader.bundledCatalog.provider(id: providerID.rawValue) {
-            switch catalogProvider.formatFamily {
-            case .anthropic: return .anthropic
-            case .openaiCompat: return .openaiCompat
+    static func hasRouteReadyProvider(
+        for target: RoutingClientWiringTarget,
+        configurations: [OpenBurnBarDaemonProviderConfiguration]
+    ) -> Bool {
+        let expectedFormat: BurnBarProviderFormatFamily = target == .claudeCode
+            ? .anthropic
+            : .openaiCompat
+
+        return configurations.contains { configuration in
+            guard isRouteReady(configuration),
+                  formatFamily(forProviderID: configuration.providerID) == expectedFormat else {
+                return false
             }
+            return true
+        }
+    }
+
+    private static func isRouteReady(
+        _ configuration: OpenBurnBarDaemonProviderConfiguration
+    ) -> Bool {
+        configuration.isEnabled
+            && configuration.hasRoutingCapability
+            && configuration.credentialSlots.contains { slot in
+                slot.isEnabled && slot.status == .ready
+            }
+    }
+
+    private static func formatFamily(forProviderID providerID: String) -> BurnBarProviderFormatFamily {
+        if let catalogProvider = BurnBarCatalogLoader.bundledCatalog.provider(id: providerID) {
+            return catalogProvider.formatFamily
+        }
+        if let agentProvider = AgentProvider.fromProviderID(ProviderID(rawValue: providerID))
+            ?? AgentProvider.fromCatalogProviderID(providerID),
+           agentProvider == .claudeCode {
+            return .anthropic
         }
         return .openaiCompat
     }
@@ -538,31 +851,39 @@ struct ConnectionsSettingsView: View {
 
 /// One provider's slice of the Accounts list. Shows the failover chain
 /// (Active now / Next fallback chips), each account with a single status
-/// line, and a "+ Add another <Provider> key" button that anchors the
+/// line, and a "+ Add another <Provider> account" button that anchors the
 /// multi-account-per-provider premise.
 private struct ProviderAccountGroup: View {
     let providerID: ProviderID
     let accounts: [ProviderAccountDoc]
+    var externalAccounts: [ConnectionsSettingsView.ExternalOAuthAccount] = []
     let routingState: ProviderRoutingStateSnapshot?
+    var quotaWindowsForAccount: (ProviderAccountDoc) -> [SwitcherQuotaWindowDisplay] = { _ in [] }
+    var quotaWindowsForExternalAccount: (ConnectionsSettingsView.ExternalOAuthAccount) -> [SwitcherQuotaWindowDisplay] = { _ in [] }
     let onTapAccount: (ProviderAccountDoc) -> Void
+    var onTapExternalAccount: (ConnectionsSettingsView.ExternalOAuthAccount) -> Void = { _ in }
     let onAddAnother: () -> Void
 
     private var provider: AgentProvider? {
-        AgentProvider.fromProviderID(providerID)
+        AgentProvider.fromProviderID(providerID) ?? AgentProvider.fromCatalogProviderID(providerID.rawValue)
     }
 
     private var providerDisplayName: String {
-        provider?.displayName ?? providerID.rawValue
+        if let catalogProvider = BurnBarCatalogLoader.bundledCatalog.provider(id: providerID.rawValue) {
+            return catalogProvider.displayName
+        }
+        return provider?.displayName ?? providerID.rawValue
     }
 
     private var activeAccountID: String? { routingState?.activeAccount?.accountID }
     private var nextFallbackAccountID: String? { routingState?.nextFallback?.accountID }
+    private var totalAccountCount: Int { accounts.count + externalAccounts.count }
 
     /// One-line rotation summary derived from the accounts themselves. The
     /// user never sees the internal `ProviderRouterMode` distinction — they
     /// just see "auto-rotate" / "<account> first" so they know what to expect.
     private var rotationSummary: String {
-        if accounts.count == 1 { return "single account" }
+        if totalAccountCount == 1 { return "single account" }
         if let preferred = accounts.first(where: { $0.isDefault }) {
             return "tries \(preferred.label) first"
         }
@@ -578,14 +899,22 @@ private struct ProviderAccountGroup: View {
                     isActive: account.id == activeAccountID,
                     isNextFallback: account.id == nextFallbackAccountID,
                     cooldownUntil: cooldownUntil(for: account.id),
+                    quotaWindows: quotaWindowsForAccount(account),
                     onTap: { onTapAccount(account) }
                 )
             }
-            if accounts.count == 1 {
+            ForEach(externalAccounts) { account in
+                ExternalOAuthAccountRowView(
+                    account: account,
+                    quotaWindows: quotaWindowsForExternalAccount(account),
+                    onTap: { onTapExternalAccount(account) }
+                )
+            }
+            if totalAccountCount == 1 {
                 singleAccountHint
             }
             Button(action: onAddAnother) {
-                Label("Add another \(providerDisplayName) key", systemImage: "plus")
+                Label("Add another \(providerDisplayName) account", systemImage: "plus")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.ember)
             }
@@ -620,7 +949,7 @@ private struct ProviderAccountGroup: View {
                     .font(DesignSystem.Typography.body)
                     .fontWeight(.semibold)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
-                Text("\(accounts.count) account\(accounts.count == 1 ? "" : "s") · \(rotationSummary)")
+                Text("\(totalAccountCount) account\(totalAccountCount == 1 ? "" : "s") · \(rotationSummary)")
                     .font(DesignSystem.Typography.tiny)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
@@ -633,7 +962,7 @@ private struct ProviderAccountGroup: View {
             Image(systemName: "arrow.triangle.branch")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(DesignSystem.Colors.amber)
-            Text("Add another key to enable automatic failover when this one runs out.")
+            Text("Add another account to enable automatic failover when this one runs out.")
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
             Spacer(minLength: 0)
@@ -657,6 +986,7 @@ private struct AccountRowView: View {
     let isActive: Bool
     let isNextFallback: Bool
     let cooldownUntil: Date?
+    let quotaWindows: [SwitcherQuotaWindowDisplay]
     let onTap: () -> Void
 
     private var statusTint: Color {
@@ -685,6 +1015,9 @@ private struct AccountRowView: View {
                             .foregroundStyle(DesignSystem.Colors.textMuted)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                    }
+                    if !quotaWindows.isEmpty {
+                        ConnectionQuotaWindowPills(windows: quotaWindows)
                     }
                 }
                 Spacer()
@@ -777,6 +1110,137 @@ private struct AccountRowView: View {
     }
 }
 
+// MARK: - External OAuth Row
+
+private struct ExternalOAuthAccountRowView: View {
+    let account: ConnectionsSettingsView.ExternalOAuthAccount
+    let quotaWindows: [SwitcherQuotaWindowDisplay]
+    let onTap: () -> Void
+
+    private var tint: Color {
+        account.isDisabled ? DesignSystem.Colors.textMuted : DesignSystem.Colors.success
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 8, height: 8)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(account.label)
+                            .font(DesignSystem.Typography.caption)
+                            .fontWeight(.medium)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        chip(
+                            label: account.isCurrentLogin ? "Current login" : "OAuth profile",
+                            systemImage: account.isCurrentLogin ? "checkmark.seal.fill" : "person.crop.circle.badge.checkmark",
+                            tint: tint
+                        )
+                        if account.isDisabled {
+                            chip(label: "Disabled", systemImage: "pause.circle.fill", tint: DesignSystem.Colors.textMuted)
+                        }
+                    }
+                    Text(account.statusText)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let detail = account.detail {
+                        Text(detail)
+                            .font(DesignSystem.Typography.monoTiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                    }
+                    if !quotaWindows.isEmpty {
+                        ConnectionQuotaWindowPills(windows: quotaWindows)
+                    }
+                }
+                Spacer()
+                Image(systemName: account.isCurrentLogin ? "terminal.fill" : "person.crop.circle.badge.checkmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .help(account.isCurrentLogin ? "Default local CLI login" : "Isolated OAuth profile")
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .padding(DesignSystem.Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(DesignSystem.Colors.background.opacity(0.45))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .stroke(tint.opacity(account.isDisabled ? 0.18 : 0.34), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .opacity(account.isDisabled ? 0.66 : 1)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private func chip(label: String, systemImage: String, tint: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: systemImage)
+                .font(.system(size: 9, weight: .semibold))
+            Text(label)
+                .font(DesignSystem.Typography.tiny)
+                .fontWeight(.semibold)
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(tint.opacity(0.12))
+        .clipShape(Capsule())
+    }
+
+    private var accessibilityLabel: String {
+        var parts = [account.label, account.isCurrentLogin ? "current login" : "OAuth profile"]
+        if account.isDisabled { parts.append("disabled") }
+        if !quotaWindows.isEmpty {
+            parts.append("quota \(quotaWindows.map(\.inlineText).joined(separator: ", "))")
+        }
+        return parts.joined(separator: ", ")
+    }
+}
+
+private struct ConnectionQuotaWindowPills: View {
+    let windows: [SwitcherQuotaWindowDisplay]
+
+    var body: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            ForEach(windows) { window in
+                HStack(spacing: 4) {
+                    Text(window.label)
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                    Text(window.remaining)
+                        .font(DesignSystem.Typography.monoTiny)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.success)
+                    Text(window.resetText)
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(DesignSystem.Colors.surfaceElevated.opacity(0.72))
+                .clipShape(Capsule())
+                .overlay(Capsule().strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5))
+            }
+        }
+    }
+}
+
 // MARK: - App Connect Row
 
 /// One row per CLI in the Apps section. The button is **smart** — it auto-
@@ -859,10 +1323,14 @@ private struct AppConnectRow: View {
 
     private var isConnected: Bool {
         if case .connected = state { return true }
+        if case .degraded = state { return true }
         return false
     }
 
     private var statusTint: Color {
+        if isDisabled {
+            return DesignSystem.Colors.warning
+        }
         switch state {
         case .connected: return DesignSystem.Colors.success
         case .connecting, .probing: return DesignSystem.Colors.textSecondary
@@ -880,16 +1348,29 @@ private struct AppConnectRow: View {
 
     private var statusText: String? {
         switch state {
-        case .connected: return "Connected via local gateway"
+        case .connected:
+            return isDisabled ? missingRouteText : "Connected via local gateway"
         case .connecting: return "Connecting…"
         case .probing: return "Testing…"
         case .degraded(let message):
-            return "Configured, but the local gateway didn't answer. \(message)"
+            if isDisabled {
+                return "\(missingRouteText) \(message)"
+            }
+            return "Configured via local gateway, but the route test needs attention. \(message)"
         case .error(let message): return message
         case .notConnected: return isDisabled
-            ? "Add an account first, then connect \(target.displayName)."
+            ? missingRouteText
             : nil
         case .unknown: return nil
+        }
+    }
+
+    private var missingRouteText: String {
+        switch target {
+        case .claudeCode:
+            return "No route-ready Anthropic account is enabled. Add an Anthropic Console API key or Claude OAuth credential before using Claude Code."
+        case .codex, .opencode, .forge, .droid:
+            return "No route-ready OpenAI-compatible account is enabled. Add or enable a provider account before using \(target.displayName)."
         }
     }
 

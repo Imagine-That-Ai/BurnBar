@@ -113,7 +113,7 @@ final class OpenClawService {
             guard !modelOptions.isEmpty else {
                 throw OpenClawServiceError.selectedModelCatalogUnavailable(selectedModelID)
             }
-            guard modelOptions.contains(where: { $0.modelID == selectedModelID }) else {
+            guard modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) else {
                 throw OpenClawServiceError.selectedModelUnavailable(selectedModelID)
             }
         }
@@ -176,15 +176,19 @@ final class OpenClawService {
         do {
             let (data, _) = try await urlSession.data(for: request)
             modelOptions = Self.parseModels(data: data)
-            if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID }) {
+            if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
                 if selectedModelWasExplicit {
                     runtimeErrorText = "Selected OpenClaw model '\(selectedModelID)' is not advertised by this Mac OpenClaw harness. Pick a listed model or refresh the Mac provider catalog."
                 } else {
-                    self.selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
+                    self.selectedModelID = favoriteModelOptions.first { $0.isRouteEligible }?.modelID
+                        ?? modelOptions.first { $0.isRouteEligible }?.modelID
+                        ?? modelOptions.first?.modelID
                     selectedModelWasExplicit = false
                 }
             } else if selectedModelID == nil {
-                selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
+                selectedModelID = favoriteModelOptions.first { $0.isRouteEligible }?.modelID
+                    ?? modelOptions.first { $0.isRouteEligible }?.modelID
+                    ?? modelOptions.first?.modelID
                 selectedModelWasExplicit = false
             }
         } catch {
@@ -201,13 +205,25 @@ final class OpenClawService {
         let raw = (object["data"] as? [[String: Any]]) ?? []
         return raw.compactMap { entry in
             guard let id = entry["id"] as? String, !id.isEmpty else { return nil }
-            let provider = (entry["owned_by"] as? String) ?? "openclaw"
+            let provider = (entry["provider_id"] as? String)
+                ?? (entry["owned_by"] as? String)
+                ?? "openclaw"
+            let providerName = (entry["provider_name"] as? String)
+                ?? provider.capitalized
             let displayName = (entry["display_name"] as? String) ?? id
             return HermesRuntimeModelOption(
                 providerID: provider,
-                providerName: provider.capitalized,
+                providerName: providerName,
                 modelID: id,
-                displayName: displayName
+                displayName: displayName,
+                accountID: entry["account_id"] as? String,
+                accountLabel: entry["account_label"] as? String,
+                sourceID: entry["source_id"] as? String,
+                sourceKind: entry["source_kind"] as? String,
+                capabilities: entry["capabilities"] as? [String] ?? [],
+                quotaState: entry["quota_state"] as? String,
+                routeEligible: entry["route_eligible"] as? Bool,
+                lastError: entry["last_error"] as? String
             )
         }
     }

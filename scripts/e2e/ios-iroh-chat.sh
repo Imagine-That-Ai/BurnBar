@@ -18,6 +18,9 @@
 #   scripts/e2e/ios-iroh-chat.sh \
 #     --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 \
 #     --expect-interface cellular
+#
+# By default the script resolves --model auto from the live BurnBar daemon
+# /v1/models catalog and skips local-only runtimes such as Ollama.
 
 set -euo pipefail
 
@@ -30,7 +33,7 @@ DEVICE_WAIT_INTERVAL=5
 BUNDLE_ID="com.openburnbar.app"
 UID_VALUE=""
 EXPECTED_INTERFACE="cellular"
-MODEL="gpt-5.4-mini"
+MODEL="auto"
 PROMPT="Reply exactly: ok"
 RELAY_URL="https://use1-1.relay.alberto8793.burnbar.iroh.link/"
 POLL_SECONDS=420
@@ -54,7 +57,7 @@ Options:
                               Poll interval while waiting for device. Default: 5
   --bundle-id <id>            iOS app bundle id. Default: com.openburnbar.app
   --relay-url <url>           Hosted relay URL.
-  --model <id>                Hermes model for the hidden E2E prompt.
+  --model <id|auto>           Hermes model for the hidden E2E prompt. Default: auto from live /v1/models.
   --prompt <text>             Hidden E2E prompt text.
   --expect-interface <name>   Required iOS networkInterfaces value. Default: cellular
   --poll-seconds <seconds>    Max Firestore polling time. Default: 420
@@ -153,13 +156,71 @@ write_events_if_requested() {
     fi
 }
 
-echo "E2E: iOS Hermes iroh hosted-relay path"
-echo "  project=${PROJECT}"
-echo "  uid=${UID_VALUE}"
-echo "  device=${DEVICE_ID}"
-echo "  model=${MODEL}"
-echo "  expectedNetworkInterface=${EXPECTED_INTERFACE}"
-echo "  startedAt=${STARTED_AT}"
+verify_mac_host_signing() {
+    local app_bundle
+    app_bundle="${MAC_HOST_APP%/Contents/MacOS/OpenBurnBar}"
+    if [[ "${app_bundle}" == "${MAC_HOST_APP}" || ! -d "${app_bundle}" ]]; then
+        echo "Mac host path must point inside an OpenBurnBar.app bundle: ${MAC_HOST_APP}" >&2
+        exit 1
+    fi
+
+    local signature
+    if ! signature="$(codesign -dv --verbose=4 "${app_bundle}" 2>&1)"; then
+        echo "Mac host is not code signed: ${app_bundle}" >&2
+        echo "Build a signed Debug app; Firebase Auth keychain access is required for iroh pairing publication." >&2
+        exit 1
+    fi
+    if grep -q "TeamIdentifier=not set" <<<"${signature}" || ! grep -q "TeamIdentifier=" <<<"${signature}"; then
+        echo "Mac host is unsigned for Firebase/Auth purposes: ${app_bundle}" >&2
+        echo "Build without CODE_SIGNING_ALLOWED=NO and pass the signed app via --mac-host-app." >&2
+        exit 1
+    fi
+
+    local entitlements
+    entitlements="$(codesign -d --entitlements :- "${app_bundle}" 2>/dev/null || true)"
+    if ! grep -q "keychain-access-groups" <<<"${entitlements}"; then
+        echo "Mac host is missing keychain-access-groups entitlement: ${app_bundle}" >&2
+        echo "Firebase Auth cannot read the signed-in user without the app entitlement." >&2
+        exit 1
+    fi
+}
+
+resolve_model_if_needed() {
+    local normalized
+    normalized="$(printf '%s' "${MODEL}" | tr '[:upper:]' '[:lower:]')"
+    if [[ "${normalized}" != "auto" && "${normalized}" != "default" ]]; then
+        return 0
+    fi
+    local models_json
+    if ! models_json="$(curl -fsS --max-time 8 "http://127.0.0.1:8317/v1/models")"; then
+        echo "Could not resolve --model auto from http://127.0.0.1:8317/v1/models." >&2
+        echo "Start the BurnBar daemon gateway or pass --model <advertised-model-id>." >&2
+        exit 1
+    fi
+    MODEL="$(
+        jq -r '
+          [ .data[]?
+            | select((.route_eligible // true) == true)
+            | select(([
+                (.id // ""),
+                (.owned_by // ""),
+                (.provider_id // ""),
+                (.providerID // ""),
+                (.provider_name // ""),
+                (.providerName // ""),
+                (.source_kind // ""),
+                (.capabilities // [] | join(" "))
+              ] | join(" ") | test("ollama|lmstudio|lm studio|local"; "i") | not))
+          ][0].id // empty
+        ' <<<"${models_json}"
+    )"
+    if [[ -z "${MODEL}" ]]; then
+        echo "No non-local route-eligible model is currently advertised by http://127.0.0.1:8317/v1/models." >&2
+        jq -r '.data[]?.id // empty' <<<"${models_json}" >&2
+        exit 1
+    fi
+    echo "Resolved --model auto to live BurnBar model: ${MODEL}"
+}
 
 if [[ "${START_HOST}" -eq 1 ]]; then
     if [[ ! -x "${MAC_HOST_APP}" ]]; then
@@ -167,9 +228,11 @@ if [[ "${START_HOST}" -eq 1 ]]; then
         echo "Build it first with xcodebuild -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData-mac -skipPackagePluginValidation -skipMacroValidation" >&2
         exit 1
     fi
+    verify_mac_host_signing
     echo "Starting Mac host: ${MAC_HOST_APP}"
     env \
         OPENBURNBAR_FORCE_LIVE_SCENE=1 \
+        OPENBURNBAR_E2E_HOLD_OPEN=1 \
         OPENBURNBAR_ENABLE_IROH_TRANSPORT=1 \
         OPENBURNBAR_IROH_HOSTED_RELAY_URL="${RELAY_URL}" \
         "${MAC_HOST_APP}" >"${MAC_HOST_LOG}" 2>&1 &
@@ -183,6 +246,16 @@ if [[ "${START_HOST}" -eq 1 ]]; then
     echo "  macHostLog=${MAC_HOST_LOG}"
 fi
 
+resolve_model_if_needed
+
+echo "E2E: iOS Hermes iroh hosted-relay path"
+echo "  project=${PROJECT}"
+echo "  uid=${UID_VALUE}"
+echo "  device=${DEVICE_ID}"
+echo "  model=${MODEL}"
+echo "  expectedNetworkInterface=${EXPECTED_INTERFACE}"
+echo "  startedAt=${STARTED_AT}"
+
 xcrun devicectl device process launch \
     --device "${DEVICE_ID}" \
     --terminate-existing \
@@ -194,6 +267,8 @@ xcrun devicectl device process launch \
 TOKEN="$(gcloud auth print-access-token)"
 BASE_URL="https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents/users/${UID_VALUE}/iroh_audit_events"
 DEADLINE=$((SECONDS + POLL_SECONDS))
+POLL_FAILURE_COUNT=0
+LAST_POLL_ERROR=""
 
 latest_events() {
     curl -fsS -H "Authorization: Bearer ${TOKEN}" \
@@ -201,8 +276,14 @@ latest_events() {
 }
 
 while [[ "${SECONDS}" -lt "${DEADLINE}" ]]; do
-    EVENTS_JSON="$(latest_events)"
-    POST_LAUNCH_EVENTS="$(
+    if ! EVENTS_JSON="$(latest_events 2>&1)"; then
+        POLL_FAILURE_COUNT=$((POLL_FAILURE_COUNT + 1))
+        LAST_POLL_ERROR="${EVENTS_JSON//$'\n'/ }"
+        echo "Waiting: firestorePollFailed=${POLL_FAILURE_COUNT} error=${LAST_POLL_ERROR}" >&2
+        sleep "${POLL_INTERVAL}"
+        continue
+    fi
+    if ! PARSED_EVENTS="$(
         jq --arg started "${STARTED_AT}" '
           [ .documents[]?
             | {
@@ -218,8 +299,15 @@ while [[ "${SECONDS}" -lt "${DEADLINE}" ]]; do
                 error: (.fields.detail.mapValue.fields.error.stringValue // "")
               }
             | select(.observedAt >= $started)
-          ]' <<<"${EVENTS_JSON}"
-    )"
+          ]' <<<"${EVENTS_JSON}" 2>&1
+    )"; then
+        POLL_FAILURE_COUNT=$((POLL_FAILURE_COUNT + 1))
+        LAST_POLL_ERROR="${PARSED_EVENTS//$'\n'/ }"
+        echo "Waiting: firestorePollParseFailed=${POLL_FAILURE_COUNT} error=${LAST_POLL_ERROR}" >&2
+        sleep "${POLL_INTERVAL}"
+        continue
+    fi
+    POST_LAUNCH_EVENTS="${PARSED_EVENTS}"
 
     FALLBACK_COUNT="$(jq '[.[] | select(.eventType == "iroh_fallback_to_wss")] | length' <<<"${POST_LAUNCH_EVENTS}")"
     FAILURE_COUNT="$(jq '[.[] | select(.eventType == "iroh_stream_failed")] | length' <<<"${POST_LAUNCH_EVENTS}")"
@@ -252,6 +340,9 @@ done
 echo "FAIL: timed out waiting for expected interface and ios_response_complete." >&2
 echo "Launch JSON: ${LAUNCH_JSON}" >&2
 echo "Launch log: ${LAUNCH_LOG}" >&2
+if [[ -n "${LAST_POLL_ERROR}" ]]; then
+    echo "Last Firestore poll error: ${LAST_POLL_ERROR}" >&2
+fi
 jq '.' <<<"${POST_LAUNCH_EVENTS:-[]}" >&2
 write_events_if_requested
 exit 1

@@ -601,6 +601,45 @@ final class SwitcherCLIFallbackPlannerTests: XCTestCase {
         XCTAssertEqual(eligibility, .quotaExhausted(reason: "No quota remaining."))
     }
 
+    func testEligibility_usesCandidateSpecificQuotaLookup() async {
+        let planner = SwitcherCLIFallbackPlanner { profile in
+            if profile.id == "primary-spent" {
+                return CLIFallbackQuotaStatus(
+                    fiveHourRemainingPercent: 0,
+                    weeklyRemainingPercent: 42,
+                    statusMessage: "Primary account spent."
+                )
+            }
+            return CLIFallbackQuotaStatus(
+                fiveHourRemainingPercent: 78,
+                weeklyRemainingPercent: 91,
+                statusMessage: "Reserve account healthy."
+            )
+        }
+        let primary = makeCLIProfile(
+            id: "primary-spent",
+            cliType: .codex,
+            label: "Primary",
+            providerID: .openAI,
+            capabilityClassID: "openai:gpt-pro",
+            subscriptionTierID: "openai-gpt-pro"
+        )
+        let reserve = makeCLIProfile(
+            id: "reserve-healthy",
+            cliType: .codex,
+            label: "Reserve",
+            providerID: .openAI,
+            capabilityClassID: "openai:gpt-pro",
+            subscriptionTierID: "openai-gpt-pro"
+        )
+
+        let primaryEligibility = await planner.eligibility(for: primary)
+        let reserveEligibility = await planner.eligibility(for: reserve)
+
+        XCTAssertEqual(primaryEligibility, .quotaExhausted(reason: "Primary account spent."))
+        XCTAssertEqual(reserveEligibility, .eligible)
+    }
+
     func testOrderedCandidates_returnsOnlySelfWhenNoSameProviderProfilesExist() async {
         let planner = SwitcherCLIFallbackPlanner { _ in nil }
         let requested = makeCLIProfile(
@@ -1086,6 +1125,99 @@ final class SwitcherAuthStoreTests: XCTestCase {
         let store = makeStore()
         // Should not throw
         try store.deleteCredentials(forProfileID: "nonexistent-profile")
+    }
+
+    // MARK: - Claude Code OAuth Import Tests
+
+    func test_claudeCodeOAuthImporter_readsClaudeCodeKeychainPayload() throws {
+        let payload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "claude-access-token",
+            "refreshToken": "claude-refresh-token",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          },
+          "organizationUuid": "org-123"
+        }
+        """
+        try testBackend.set(
+            Data(payload.utf8),
+            service: ClaudeCodeOAuthCredentialImporter.keychainService,
+            account: "test-user"
+        )
+
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: testBackend
+            ),
+            accounts: ["test-user"]
+        )
+
+        let credentials = try importer.load(allowUserInteraction: false)
+        XCTAssertEqual(credentials.accessToken, "claude-access-token")
+        XCTAssertEqual(credentials.refreshToken, "claude-refresh-token")
+        XCTAssertEqual(credentials.organizationUuid, "org-123")
+    }
+
+    func test_claudeCodeOAuthImporter_throwsMissingWhenNoClaudeCredentialExists() {
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: testBackend
+            ),
+            accounts: ["test-user"]
+        )
+
+        XCTAssertThrowsError(try importer.load(allowUserInteraction: false)) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                ClaudeCodeOAuthCredentialImportError.missing.localizedDescription
+            )
+        }
+    }
+
+    func test_claudeCodeOAuthImporter_readsIsolatedConfigCredentialWithoutGlobalFallback() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-claude-isolated-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let payload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "isolated-claude-token",
+            "refreshToken": "isolated-refresh-token",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "pro",
+            "rateLimitTier": "default_claude_pro_5x"
+          }
+        }
+        """
+        try payload.write(
+            to: root.appendingPathComponent(".credentials.json", isDirectory: false),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: testBackend
+            ),
+            accounts: ["test-user"],
+            configDirectory: root.path,
+            allowDefaultKeychainFallback: false
+        )
+
+        let credentials = try importer.load(allowUserInteraction: false)
+        XCTAssertEqual(credentials.accessToken, "isolated-claude-token")
+        XCTAssertEqual(credentials.planDisplayName, "Pro")
     }
 
     // MARK: - Helper

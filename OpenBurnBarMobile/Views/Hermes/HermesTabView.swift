@@ -2576,9 +2576,19 @@ struct HermesModelPickerRow: View {
                             .font(MobileTheme.Typography.tiny)
                             .foregroundStyle(MobileTheme.Colors.textMuted)
                             .lineLimit(1)
+                        if let detail = option.liveCatalogDetailText {
+                            Text(detail)
+                                .font(MobileTheme.Typography.tiny)
+                                .foregroundStyle(option.isRouteEligible ? MobileTheme.Colors.textSecondary : MobileTheme.error)
+                                .lineLimit(1)
+                        }
                     }
                     Spacer()
-                    if isSelected {
+                    if !option.isRouteEligible {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(MobileTheme.error)
+                    } else if isSelected {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 18, weight: .bold))
                             .foregroundStyle(MobileTheme.success)
@@ -2588,6 +2598,8 @@ struct HermesModelPickerRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Use \(option.displayName)")
             .accessibilityValue(isSelected ? "Selected" : option.providerName)
+            .disabled(!option.isRouteEligible)
+            .opacity(option.isRouteEligible ? 1 : 0.62)
 
             Button(action: onToggleFavorite) {
                 Image(systemName: isFavorite ? "star.fill" : "star")

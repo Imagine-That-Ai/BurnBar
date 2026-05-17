@@ -60,6 +60,27 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(dashRoute.resolvedModelID, "some-new-model")
     }
 
+    func testRouterUsesProviderAliasForVirtualFamilyModelIDs() async throws {
+        let harness = try makeHarness(name: "anthropic-family-wire-id")
+        try await harness.configStore.setSecret("sk-ant-test", for: "anthropic")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://api.anthropic.com/v1",
+                preferredModelIDs: ["claude-opus-4-7-family"]
+            )
+        )
+
+        let familyRoute = try await harness.router.route(modelName: "claude-opus-4-7-family")
+        XCTAssertEqual(familyRoute.requestedModel, "claude-opus-4-7-family")
+        XCTAssertEqual(familyRoute.resolvedModelID, "claude-opus-4-7")
+        XCTAssertEqual(familyRoute.modelCapabilityClassID, "anthropic:opus")
+
+        let aliasRoute = try await harness.router.route(modelName: "claude-opus-4-7")
+        XCTAssertEqual(aliasRoute.resolvedModelID, "claude-opus-4-7")
+    }
+
     func testRouterRejectsUnsupportedProviderModelsAndMissingCredentials() async throws {
         let harness = try makeHarness(name: "rejections")
         _ = try await harness.configStore.upsertProvider(

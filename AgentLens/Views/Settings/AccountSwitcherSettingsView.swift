@@ -12,8 +12,19 @@ import OpenBurnBarCore
 /// - Only non-sensitive launch metadata is stored
 /// - OAuth boundary messaging is explicit
 struct AccountSwitcherSettingsView: View {
+    /// Which slice of the switcher this instance should render. Lets the
+    /// merged Agents tab embed the CLI half on the **CLIs** detail page and
+    /// the browser half inside **Advanced** without duplicating the data
+    /// layer. Default `.all` preserves the legacy standalone tab behaviour.
+    enum Mode: Hashable {
+        case all
+        case cliOnly
+        case browserOnly
+    }
+
     let dataStore: DataStore
     let settingsManager: SettingsManager
+    let mode: Mode
 
     @State var profiles: [SwitcherProfileRecord] = []
     @State var activeProfileID: String?
@@ -31,6 +42,7 @@ struct AccountSwitcherSettingsView: View {
     @State var pendingCLIAddRequest: PendingCLIAddRequest?
     @State var cliAddResultMessage: String?
     @State var quotaService = ProviderQuotaService.shared
+    @State var liveCLIAuthStates: [SwitcherCLIProfileType: CLIAuthInfo] = [:]
     @Environment(\.colorScheme) var colorScheme
 
     // Sheet states
@@ -77,8 +89,13 @@ struct AccountSwitcherSettingsView: View {
         }
     }
 
-    init(dataStore: DataStore, settingsManager: SettingsManager = .shared) {
+    init(
+        dataStore: DataStore,
+        settingsManager: SettingsManager = .shared,
+        mode: Mode = .all
+    ) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
+        self.mode = mode
     }
 }

@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import OpenBurnBarCore
 
@@ -46,6 +47,38 @@ extension OpenBurnBarDaemonManager {
             try runLaunchctl(["kickstart", "-k", "\(launchctlDomain)/\(OpenBurnBarDaemonRuntimePaths.launchAgentLabel)"])
             supervisionState = OpenBurnBarDaemonSupervisor.resetAfterRepair()
             try await awaitHealthy()
+        }
+    }
+
+    func installedDaemonBinaryNeedsRefresh() -> Bool {
+        guard let sourceBinaryURL = dependencies.resolveDaemonBinary() else { return false }
+
+        let sourceURL = sourceBinaryURL.standardizedFileURL
+        let installedURL = paths.installedBinaryURL.standardizedFileURL
+        guard sourceURL != installedURL else { return false }
+        guard dependencies.fileManager.isExecutableFile(atPath: sourceURL.path) else { return false }
+        guard dependencies.fileManager.fileExists(atPath: installedURL.path) else { return true }
+
+        let sourceAttributes = try? dependencies.fileManager.attributesOfItem(atPath: sourceURL.path)
+        let installedAttributes = try? dependencies.fileManager.attributesOfItem(atPath: installedURL.path)
+        let sourceSize = (sourceAttributes?[.size] as? NSNumber)?.int64Value
+        let installedSize = (installedAttributes?[.size] as? NSNumber)?.int64Value
+        if sourceSize != installedSize {
+            return true
+        }
+
+        let sourceModifiedAt = sourceAttributes?[.modificationDate] as? Date
+        let installedModifiedAt = installedAttributes?[.modificationDate] as? Date
+        if let sourceModifiedAt,
+           let installedModifiedAt,
+           sourceModifiedAt.timeIntervalSince(installedModifiedAt) > 1 {
+            return true
+        }
+
+        do {
+            return try daemonBinaryDigest(at: sourceURL) != daemonBinaryDigest(at: installedURL)
+        } catch {
+            return true
         }
     }
 
@@ -109,6 +142,11 @@ extension OpenBurnBarDaemonManager {
                 expectedPath: installedBundleURL.path
             )
         }
+    }
+
+    private func daemonBinaryDigest(at url: URL) throws -> Data {
+        let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+        return Data(SHA256.hash(data: data))
     }
 
     func writeLaunchAgentPlist() throws {

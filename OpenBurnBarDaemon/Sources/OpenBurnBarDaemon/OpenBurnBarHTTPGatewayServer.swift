@@ -11,13 +11,14 @@ import Network
 /// TCP handling — no hand-rolled `socket()`/`bind()`/`listen()`/`accept()` calls.
 public actor BurnBarHTTPGatewayServer {
     private static let maxHeaderBytes = 16 * 1024
-    private static let maxBodyBytes = 1 * 1024 * 1024
+    private static let maxBodyBytes = 64 * 1024 * 1024
 
     private let configuration: BurnBarGatewayConfiguration
     private let configStore: BurnBarConfigStore
     private let usageRecorder: BurnBarUsageRecorder?
     private let providerExecutor: BurnBarOpenAICompatibleProviderExecutor
     private let anthropicExecutor: BurnBarAnthropicProviderExecutor
+    private let modelCatalogSession: URLSession
     private let logger: BurnBarDaemonLogger
     private let rateLimiter: BurnBarRateLimiter?
     private var listener: NWListener?
@@ -28,6 +29,7 @@ public actor BurnBarHTTPGatewayServer {
         usageRecorder: BurnBarUsageRecorder? = nil,
         providerExecutor: BurnBarOpenAICompatibleProviderExecutor = BurnBarOpenAICompatibleProviderExecutor(),
         anthropicExecutor: BurnBarAnthropicProviderExecutor = BurnBarAnthropicProviderExecutor(),
+        modelCatalogSession: URLSession = .shared,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "http-gateway"),
         rateLimiter: BurnBarRateLimiter? = nil
     ) {
@@ -36,6 +38,7 @@ public actor BurnBarHTTPGatewayServer {
         self.usageRecorder = usageRecorder
         self.providerExecutor = providerExecutor
         self.anthropicExecutor = anthropicExecutor
+        self.modelCatalogSession = modelCatalogSession
         self.logger = logger
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
             BurnBarRateLimiter(configuration: $0)
@@ -296,6 +299,9 @@ public actor BurnBarHTTPGatewayServer {
         case ("POST", "/v1/chat/completions"):
             return await handleChatCompletions(body: request.body)
 
+        case ("POST", "/v1/responses"):
+            return await handleResponses(body: request.body)
+
         case ("POST", "/v1/messages"):
             return await handleAnthropicMessages(body: request.body)
 
@@ -308,14 +314,11 @@ public actor BurnBarHTTPGatewayServer {
 
     private func handleModels() async -> GatewayHTTPResponse {
         do {
-            let configurations = try await configStore.resolvedConfigurations()
-            let enabledConfigs = configurations.filter { $0.settings.isEnabled && $0.hasCredential }
-            var models: [ModelDescriptor] = []
-            for config in enabledConfigs {
-                for model in config.preferredModels {
-                    models.append(ModelDescriptor(id: model.id, ownedBy: config.provider.id))
-                }
-            }
+            let snapshot = try await BurnBarLiveModelCatalog(
+                configStore: configStore,
+                session: modelCatalogSession
+            ).snapshot()
+            let models = snapshot.models.map(ModelDescriptor.init(model:))
             return jsonResponse(status: 200, body: encodeBody(ModelsResponse(data: models)))
         } catch {
             logger.error("gateway_models_error", metadata: ["error": "\(error)"])
@@ -350,9 +353,10 @@ public actor BurnBarHTTPGatewayServer {
             let router = BurnBarProviderRouter(
                 configStore: configStore,
                 logger: BurnBarDaemonLogger(category: "gateway-router"),
-                routingEventStore: BurnBarProviderRoutingDecisionEventStore()
+                routingEventStore: BurnBarProviderRoutingDecisionEventStore(),
+                allowDynamicOpenAICompatibleModels: true
             )
-            let catalog = await configStore.catalogSupport.catalog
+            let catalog = configStore.catalogSupport.catalog
             let resolvedCapabilityClassID = capabilityClassID(
                 forModelName: modelID,
                 catalog: catalog
@@ -365,12 +369,7 @@ public actor BurnBarHTTPGatewayServer {
             await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
             let rankedRoutes = ranking.rankedRoutes.map(\.route)
             guard rankedRoutes.isEmpty == false else {
-                return jsonResponse(
-                    status: 503,
-                    body: errorBody(
-                        "no eligible OpenAI-compatible route for \(modelID). Add or enable an OpenAI-family account (OpenAI, Z.ai, MiniMax, Kimi, Ollama, …) to serve /v1/chat/completions."
-                    )
-                )
+                return noEligibleRouteResponse(modelID: modelID)
             }
 
             // When the router pre-filtered by capability class, use its reported
@@ -434,8 +433,97 @@ public actor BurnBarHTTPGatewayServer {
 
             let message = lastError?.localizedDescription ?? "no eligible route for \(modelID)"
             return jsonResponse(status: 502, body: errorBody("routing failed: \(message)"))
+        } catch let error as BurnBarProviderRouterError {
+            logger.error("gateway_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            return noEligibleRouteResponse(modelID: modelID)
         } catch {
             logger.error("gateway_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
+        }
+    }
+
+    // MARK: - /v1/responses
+
+    private func handleResponses(body: String?) async -> GatewayHTTPResponse {
+        guard let body, !body.isEmpty else {
+            return jsonResponse(status: 400, body: errorBody("request body required"))
+        }
+
+        guard let bodyData = body.data(using: .utf8) else {
+            return jsonResponse(status: 400, body: errorBody("request body must be valid UTF-8"))
+        }
+
+        let responsesRequest: ResponsesRequest
+        do {
+            responsesRequest = try JSONDecoder().decode(ResponsesRequest.self, from: bodyData)
+        } catch {
+            return jsonResponse(status: 400, body: errorBody("invalid JSON request body"))
+        }
+
+        let modelID = responsesRequest.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard modelID.isEmpty == false else {
+            return jsonResponse(status: 400, body: errorBody("model field required"))
+        }
+
+        do {
+            let router = BurnBarProviderRouter(
+                configStore: configStore,
+                logger: BurnBarDaemonLogger(category: "gateway-router-responses"),
+                routingEventStore: BurnBarProviderRoutingDecisionEventStore(),
+                allowDynamicOpenAICompatibleModels: true
+            )
+            let catalog = configStore.catalogSupport.catalog
+            let resolvedCapabilityClassID = capabilityClassID(
+                forModelName: modelID,
+                catalog: catalog
+            )
+            let ranking = try await router.scoreAndRankRoutes(
+                modelName: modelID,
+                requestedFormatFamily: .openaiCompat,
+                requiredCapabilityClassID: resolvedCapabilityClassID
+            )
+            await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
+            let routes = ranking.rankedRoutes.map(\.route)
+            guard routes.isEmpty == false else {
+                return noEligibleRouteResponse(modelID: modelID)
+            }
+
+            var lastError: Error?
+            for (index, route) in routes.enumerated() {
+                if let slotID = route.credentialSlotID {
+                    try? await configStore.recordCredentialSelection(providerID: route.providerID, slotID: slotID)
+                }
+
+                do {
+                    let response = try await providerExecutor.proxyResponses(
+                        body: bodyData,
+                        route: route
+                    )
+                    await router.markRouteSuccess(route)
+                    await recordUsageIfAvailable(response.usage, route: route)
+                    return GatewayHTTPResponse(
+                        status: response.statusCode,
+                        headers: ["Content-Type": response.contentType],
+                        body: response.body
+                    )
+                } catch {
+                    lastError = error
+                    await router.markRouteFailure(route, error: error)
+                    let hasMoreCandidates = index < routes.count - 1
+                    if shouldFailOverProviderError(error), hasMoreCandidates {
+                        continue
+                    }
+                    break
+                }
+            }
+
+            let message = lastError?.localizedDescription ?? "no eligible route for \(modelID)"
+            return jsonResponse(status: 502, body: errorBody("routing failed: \(message)"))
+        } catch let error as BurnBarProviderRouterError {
+            logger.error("gateway_responses_route_error", metadata: ["model": modelID, "error": "\(error)"])
+            return noEligibleRouteResponse(modelID: modelID)
+        } catch {
+            logger.error("gateway_responses_route_error", metadata: ["model": modelID, "error": "\(error)"])
             return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
         }
     }
@@ -469,7 +557,7 @@ public actor BurnBarHTTPGatewayServer {
                 logger: BurnBarDaemonLogger(category: "gateway-router-anthropic"),
                 routingEventStore: BurnBarProviderRoutingDecisionEventStore()
             )
-            let catalog = await configStore.catalogSupport.catalog
+            let catalog = configStore.catalogSupport.catalog
             let resolvedCapabilityClassID = capabilityClassID(
                 forModelName: modelID,
                 catalog: catalog
@@ -552,6 +640,13 @@ public actor BurnBarHTTPGatewayServer {
             logger.error("gateway_anthropic_route_error", metadata: ["model": modelID, "error": "\(error)"])
             return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
         }
+    }
+
+    private func noEligibleRouteResponse(modelID: String) -> GatewayHTTPResponse {
+        jsonResponse(
+            status: 503,
+            body: errorBody("No eligible route for \(modelID). Add or enable an account/provider that serves this model.")
+        )
     }
 
     private func recordUsageIfAvailable(
@@ -829,15 +924,63 @@ public actor BurnBarHTTPGatewayServer {
         let id: String
         let object = "model"
         let ownedBy: String
+        let providerID: String
+        let providerName: String
+        let accountID: String
+        let accountLabel: String
+        let sourceID: String
+        let sourceKind: String
+        let displayName: String
+        let capabilities: [String]
+        let quotaState: String
+        let enabled: Bool
+        let routeEligible: Bool
+        let lastRefreshAt: Date?
+        let lastError: String?
+
+        init(model: BurnBarLiveAdvertisedModel) {
+            self.id = model.id
+            self.ownedBy = model.providerID
+            self.providerID = model.providerID
+            self.providerName = model.providerName
+            self.accountID = model.accountID
+            self.accountLabel = model.accountLabel
+            self.sourceID = model.sourceID
+            self.sourceKind = model.sourceKind
+            self.displayName = model.displayName
+            self.capabilities = model.capabilities
+            self.quotaState = model.quotaState.rawValue
+            self.enabled = model.enabled
+            self.routeEligible = model.routeEligible
+            self.lastRefreshAt = model.lastRefreshAt
+            self.lastError = model.lastError
+        }
 
         enum CodingKeys: String, CodingKey {
             case id
             case object
             case ownedBy = "owned_by"
+            case providerID = "provider_id"
+            case providerName = "provider_name"
+            case accountID = "account_id"
+            case accountLabel = "account_label"
+            case sourceID = "source_id"
+            case sourceKind = "source_kind"
+            case displayName = "display_name"
+            case capabilities
+            case quotaState = "quota_state"
+            case enabled
+            case routeEligible = "route_eligible"
+            case lastRefreshAt = "last_refresh_at"
+            case lastError = "last_error"
         }
     }
 
     private struct ChatCompletionsRequest: Decodable {
+        let model: String
+    }
+
+    private struct ResponsesRequest: Decodable {
         let model: String
     }
 

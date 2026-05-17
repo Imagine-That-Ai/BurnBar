@@ -151,6 +151,48 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
         )
     }
 
+    func test_upstreamErrorMessage_formatsHermesFailedTerminalChunk() {
+        let message = IrohRelayRequestHandler.upstreamErrorMessage(
+            fromSSEEvent: """
+            data: {"choices":[{"delta":{},"finish_reason":"error"}],"hermes":{"completed":false,"failed":true,"error":"HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini"}}
+            """,
+            requestedModel: "gpt-5.4-mini"
+        )
+
+        XCTAssertEqual(
+            message,
+            "Hermes upstream model 'gpt-5.4-mini' failed: HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini"
+        )
+    }
+
+    func test_upstreamErrorMessage_formatsChoiceErrorContentChunk() {
+        let message = IrohRelayRequestHandler.upstreamErrorMessage(
+            fromSSEEvent: """
+            data: {"choices":[{"delta":{"content":"API call failed after 3 retries: HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini"},"finish_reason":"error"}]}
+            """,
+            requestedModel: "gpt-5.4-mini"
+        )
+
+        XCTAssertEqual(
+            message,
+            "Hermes upstream model 'gpt-5.4-mini' failed: API call failed after 3 retries: HTTP 503: no eligible OpenAI-compatible route for gpt-5.4-mini"
+        )
+    }
+
+    func test_hermesErrorHeader_trimsGatewayHeader() {
+        let response = HTTPURLResponse(
+            url: URL(string: "http://127.0.0.1:8642/v1/chat/completions")!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["X-Hermes-Error": "  HTTP 503: no eligible route  "]
+        )!
+
+        XCTAssertEqual(
+            IrohRelayRequestHandler.hermesErrorHeader(from: response),
+            "HTTP 503: no eligible route"
+        )
+    }
+
     func test_httpStatusErrorMessage_parsesProviderErrorBody() {
         let message = IrohRelayRequestHandler.httpStatusErrorMessage(
             code: 429,

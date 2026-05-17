@@ -786,6 +786,9 @@ final class HermesService {
             }
             guard generation == nil || generation == runtimeGeneration else { return }
             connections = [HermesConnectionRecord.localDefault] + remoteConnections
+            #if DEBUG
+            print("OpenBurnBarMobile Hermes E2E connections loaded total=\(connections.count) relayUsable=\(relayConnections.count) selected=\(selectedConnection.id) selectedMode=\(selectedConnection.mode.rawValue)")
+            #endif
             let persistedID = defaults.string(forKey: selectedConnectionDefaultsKey)
             let targetID = selectedConnection.id == HermesConnectionRecord.localDefault.id ? persistedID : selectedConnection.id
             if let targetID,
@@ -1193,9 +1196,18 @@ final class HermesService {
     }
 
     func selectModel(_ option: HermesRuntimeModelOption) {
+        if !modelOptions.isEmpty,
+           !modelOptions.contains(where: { $0.modelID == option.modelID && $0.isRouteEligible }) {
+            let message = "Selected Hermes model '\(option.modelID)' is not advertised by this Mac relay. Pick a live model from the relay list or refresh/restart the Mac Hermes gateway."
+            lastError = message
+            runtimeErrorText = message
+            return
+        }
         selectedModelID = option.modelID
         selectedModelWasExplicit = true
         defaults.set(option.modelID, forKey: selectedModelDefaultsKey)
+        runtimeErrorText = nil
+        lastError = nil
     }
 
     func clearSelectedModel() {
@@ -1207,6 +1219,23 @@ final class HermesService {
     #if DEBUG
     func selectModelIDForAutomation(_ modelID: String) {
         guard let trimmed = modelID.nilIfBlank else { return }
+        if trimmed.lowercased() == "auto" || trimmed.lowercased() == "default" {
+            selectedModelID = Self.preferredRouteEligibleModelID(
+                in: modelOptions,
+                favorites: favoriteModelOptions
+            )
+            selectedModelWasExplicit = selectedModelID != nil
+            if selectedModelID == nil, !modelOptions.isEmpty {
+                lastError = HermesServiceError.noRouteEligibleModel.localizedDescription
+                runtimeErrorText = lastError
+            }
+            return
+        }
+        guard modelOptions.isEmpty || modelOptions.contains(where: { $0.modelID == trimmed && $0.isRouteEligible }) else {
+            lastError = "Selected Hermes model '\(trimmed)' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
+            runtimeErrorText = lastError
+            return
+        }
         selectedModelID = trimmed
         selectedModelWasExplicit = true
     }
@@ -1233,14 +1262,26 @@ final class HermesService {
     }
 
     func validatedModelIDForMissionDispatch() throws -> String? {
-        guard let selectedModelID = selectedModelID?.nilIfBlank else { return nil }
-        if selectedModelWasExplicit {
-            guard !modelOptions.isEmpty else {
+        guard let selectedModelID = selectedModelID?.nilIfBlank else {
+            guard !modelOptions.isEmpty else { return nil }
+            guard let routeEligibleModelID = Self.preferredRouteEligibleModelID(
+                in: modelOptions,
+                favorites: favoriteModelOptions
+            ) else {
+                throw HermesServiceError.noRouteEligibleModel
+            }
+            return routeEligibleModelID
+        }
+        if modelOptions.isEmpty {
+            if selectedConnection.mode == .relayLink,
+               selectedConnection.advertisedModel?.nilIfBlank == selectedModelID {
+                return selectedModelID
+            }
+            if selectedModelWasExplicit {
                 throw HermesServiceError.selectedModelCatalogUnavailable(selectedModelID)
             }
-            guard modelOptions.contains(where: { $0.modelID == selectedModelID }) else {
-                throw HermesServiceError.selectedModelUnavailable(selectedModelID)
-            }
+        } else if !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
+            throw HermesServiceError.selectedModelUnavailable(selectedModelID)
         }
         return selectedModelID
     }
@@ -1277,7 +1318,13 @@ final class HermesService {
         // and let the model describe / OCR it.
         guard (!trimmed.isEmpty || !attachments.isEmpty), !isStreaming else { return }
 
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E sendMessage beforePrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) suggested=\(suggestedRelayConnection?.id ?? "none") selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)")
+        #endif
         preferSuggestedRelayWhenLocalHostIsOffline()
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E sendMessage afterPrefer selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) reachable=\(isReachable) selectedModel=\(selectedModelID ?? "nil") explicit=\(selectedModelWasExplicit)")
+        #endif
 
         // Mint a local session id for brand-new chats so we can mirror the
         // transcript even when the host or relay never assigns one.
@@ -1311,15 +1358,34 @@ final class HermesService {
     }
 
     private func preferSuggestedRelayWhenLocalHostIsOffline() {
-        guard selectedConnection.id == HermesConnectionRecord.localDefault.id,
-              !isReachable,
-              let relay = suggestedRelayConnection else {
+        guard selectedConnection.id == HermesConnectionRecord.localDefault.id else {
+            #if DEBUG
+            print("OpenBurnBarMobile Hermes E2E relayPrefer skip selectedIsNotLocal selected=\(selectedConnection.id)")
+            #endif
             return
         }
+        guard !isReachable else {
+            #if DEBUG
+            print("OpenBurnBarMobile Hermes E2E relayPrefer skip localMarkedReachable")
+            #endif
+            return
+        }
+        guard let relay = suggestedRelayConnection else {
+            #if DEBUG
+            print("OpenBurnBarMobile Hermes E2E relayPrefer skip noSuggestedRelay connectionCount=\(connections.count)")
+            #endif
+            return
+        }
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E relayPrefer selecting relay=\(relay.id) advertisedModel=\(relay.advertisedModel ?? "nil")")
+        #endif
         _ = selectConnection(relay, refresh: false)
     }
 
     private func streamCompletion(context: String?, iteration: Int = 0) async throws {
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E streamCompletion selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) requestedModel=\(activeRequestedModelID ?? "nil") modelOptions=\(modelOptions.count)")
+        #endif
         if selectedConnection.mode == .relayLink {
             try await streamRelayCompletion(context: context, iteration: iteration)
             return
@@ -1504,7 +1570,11 @@ final class HermesService {
     }
 
     private func streamRelayCompletion(context: String?, iteration: Int = 0) async throws {
+        await ensureRelayModelCatalogLoadedBeforeSend()
         let body = try completionRequestBody(context: context)
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E streamRelayCompletion start connection=\(selectedConnection.id) requestedModel=\(activeRequestedModelID ?? "nil") bodyBytes=\(body.count)")
+        #endif
         isReachable = true
 
         var assistantMessage = HermesChatMessage(
@@ -1523,6 +1593,9 @@ final class HermesService {
         ) { event in
             self.processSSEPayload(event, into: &assistantMessage)
         }
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E streamRelayCompletion finished connection=\(selectedConnection.id)")
+        #endif
 
         assistantMessage.isStreaming = false
         assistantMessage.toolCalls = assistantMessage.toolCalls.map {
@@ -1549,6 +1622,11 @@ final class HermesService {
             messages[index] = assistantMessage
         }
         try await runToolUseIterationIfNeeded(after: assistantMessage, context: context, iteration: iteration)
+    }
+
+    private func ensureRelayModelCatalogLoadedBeforeSend() async {
+        guard selectedConnection.mode == .relayLink, modelOptions.isEmpty else { return }
+        await loadModels(generation: runtimeGeneration)
     }
 
     /// Shared post-stream step: if the assistant turn produced tool
@@ -1730,6 +1808,17 @@ final class HermesService {
             self.lastError = messageText
             message.text = messageText
             message.isError = true
+            message.outcome = .empty
+            if let index = messages.firstIndex(where: { $0.id == message.id }) {
+                messages[index] = message
+            }
+            return
+        }
+        if let upstreamError = streamingUpstreamErrorMessage(from: json) {
+            self.lastError = upstreamError
+            message.text = upstreamError
+            message.isError = true
+            message.outcome = .empty
             if let index = messages.firstIndex(where: { $0.id == message.id }) {
                 messages[index] = message
             }
@@ -1960,6 +2049,35 @@ final class HermesService {
         }
     }
 
+    private func streamingUpstreamErrorMessage(from json: [String: Any]) -> String? {
+        if let hermes = json["hermes"] as? [String: Any],
+           boolValue(hermes["failed"]) == true
+            || boolValue(hermes["completed"]) == false && stringValue(hermes["error"]) != nil {
+            let message = stringValue(hermes["error"])
+                ?? stringValue(hermes["message"])
+                ?? "Hermes reported that the upstream model request failed."
+            return HermesServiceError.upstreamModelErrorMessage(from: message)
+                ?? "Hermes upstream model failed: \(message)"
+        }
+        guard let choices = json["choices"] as? [[String: Any]] else {
+            return nil
+        }
+        for choice in choices {
+            let finishReason = stringValue(choice["finish_reason"])
+                ?? stringValue(choice["finishReason"])
+            guard finishReason?.lowercased() == "error" else { continue }
+            let message = visibleContent(from: choice["delta"] as? [String: Any])
+                ?? visibleContent(from: choice["message"] as? [String: Any])
+                ?? stringValue(choice["text"])
+                ?? stringValue(json["error"])
+                ?? stringValue(json["message"])
+                ?? "Hermes reported that the upstream model request failed."
+            return HermesServiceError.upstreamModelErrorMessage(from: message)
+                ?? "Hermes upstream model failed: \(message)"
+        }
+        return nil
+    }
+
     private func visibleContentValue(_ raw: Any?) -> String? {
         if let value = raw as? String {
             return value.isEmpty ? nil : value
@@ -2037,6 +2155,10 @@ final class HermesService {
             displayText = "Connection error: \(error.localizedDescription)"
         }
 
+        #if DEBUG
+        print("OpenBurnBarMobile Hermes E2E streamError selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) error=\(error.localizedDescription) display=\(displayText)")
+        #endif
+
         let errorMessage = HermesChatMessage(
             role: .assistant,
             text: displayText,
@@ -2069,15 +2191,27 @@ final class HermesService {
 
     private func activeModelIDForRequest() throws -> String {
         if let selectedModelID = selectedModelID?.nilIfBlank {
-            if selectedModelWasExplicit {
-                guard !modelOptions.isEmpty else {
+            if modelOptions.isEmpty {
+                if selectedConnection.mode == .relayLink,
+                   selectedConnection.advertisedModel?.nilIfBlank == selectedModelID {
+                    return selectedModelID
+                }
+                if selectedModelWasExplicit {
                     throw HermesServiceError.selectedModelCatalogUnavailable(selectedModelID)
                 }
-                guard modelOptions.contains(where: { $0.modelID == selectedModelID }) else {
-                    throw HermesServiceError.selectedModelUnavailable(selectedModelID)
-                }
+            } else if !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
+                throw HermesServiceError.selectedModelUnavailable(selectedModelID)
             }
             return selectedModelID
+        }
+        if !modelOptions.isEmpty {
+            guard let routeEligibleModelID = Self.preferredRouteEligibleModelID(
+                in: modelOptions,
+                favorites: favoriteModelOptions
+            ) else {
+                throw HermesServiceError.noRouteEligibleModel
+            }
+            return routeEligibleModelID
         }
         return selectedConnection.advertisedModel?.nilIfBlank ?? "hermes"
     }
@@ -2147,16 +2281,28 @@ final class HermesService {
                 )
             }
             modelOptions = options
-            if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID }) {
+            if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
                 if selectedModelWasExplicit {
                     runtimeErrorText = "Selected Hermes model '\(selectedModelID)' is not advertised by this Mac relay. Pick a listed model or refresh the Mac provider catalog."
                 } else {
-                    self.selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
+                    self.selectedModelID = Self.preferredRouteEligibleModelID(
+                        in: modelOptions,
+                        favorites: favoriteModelOptions
+                    )
                     selectedModelWasExplicit = false
+                    runtimeErrorText = self.selectedModelID == nil && !modelOptions.isEmpty
+                        ? HermesServiceError.noRouteEligibleModel.localizedDescription
+                        : nil
                 }
             } else if selectedModelID == nil {
-                selectedModelID = favoriteModelOptions.first?.modelID ?? modelOptions.first?.modelID
+                selectedModelID = Self.preferredRouteEligibleModelID(
+                    in: modelOptions,
+                    favorites: favoriteModelOptions
+                )
                 selectedModelWasExplicit = false
+                runtimeErrorText = selectedModelID == nil && !modelOptions.isEmpty
+                    ? HermesServiceError.noRouteEligibleModel.localizedDescription
+                    : nil
             }
         } catch {
             guard generation == runtimeGeneration else { return }
@@ -2195,7 +2341,16 @@ final class HermesService {
                 providerID: provider.id,
                 providerName: provider.name,
                 modelID: model.id,
-                displayName: model.displayName ?? model.name ?? providerDisplayName(forModelID: model.id)
+                displayName: model.displayName ?? model.name ?? providerDisplayName(forModelID: model.id),
+                accountID: model.accountID,
+                accountLabel: model.accountLabel,
+                sourceID: model.sourceID,
+                sourceKind: model.sourceKind,
+                capabilities: model.capabilities ?? [],
+                quotaState: model.quotaState,
+                routeEligible: model.routeEligible,
+                lastRefreshAt: model.lastRefreshAt,
+                lastError: model.lastError
             )
         }
     }
@@ -2261,6 +2416,25 @@ final class HermesService {
             merged.append(option)
         }
         return merged
+    }
+
+    private static func isLocalOnlyModelOption(_ option: HermesRuntimeModelOption) -> Bool {
+        let text = "\(option.providerID) \(option.providerName) \(option.modelID) \(option.displayName)"
+            .lowercased()
+        return text.contains("ollama")
+            || text.contains("lmstudio")
+            || text.contains("lm studio")
+            || text.contains("local")
+    }
+
+    private static func preferredRouteEligibleModelID(
+        in options: [HermesRuntimeModelOption],
+        favorites: [HermesRuntimeModelOption]
+    ) -> String? {
+        favorites.first { $0.isRouteEligible && !isLocalOnlyModelOption($0) }?.modelID
+            ?? favorites.first { $0.isRouteEligible }?.modelID
+            ?? options.first { $0.isRouteEligible && !isLocalOnlyModelOption($0) }?.modelID
+            ?? options.first { $0.isRouteEligible }?.modelID
     }
 
     private func loadSessions(generation: Int) async {
@@ -2645,8 +2819,9 @@ final class HermesService {
 
     private func boolValue(_ value: Any?) -> Bool? {
         if let value = value as? Bool { return value }
+        if let value = value as? NSNumber { return value.boolValue }
         if let value = value as? String {
-            switch value.lowercased() {
+            switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
             case "true", "yes", "1": return true
             case "false", "no", "0": return false
             default: return nil
@@ -3424,6 +3599,7 @@ enum HermesServiceError: LocalizedError {
     case keychain(OSStatus)
     case selectedModelUnavailable(String)
     case selectedModelCatalogUnavailable(String)
+    case noRouteEligibleModel
     case upstreamModelError(String)
     case relayUnavailable(String)
     case relayTimeout
@@ -3447,6 +3623,8 @@ enum HermesServiceError: LocalizedError {
             return "Selected Hermes model '\(modelID)' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
         case .selectedModelCatalogUnavailable(let modelID):
             return "Selected Hermes model '\(modelID)' has not been verified against this Mac relay's model catalog yet. Refresh the Mac Hermes gateway before sending, so the selected model is not silently rerouted."
+        case .noRouteEligibleModel:
+            return "No route-eligible Hermes model is currently advertised by this Mac relay. Add or enable a provider account with available quota, then refresh the Mac Hermes gateway."
         case .upstreamModelError(let message):
             return message
         case .relayUnavailable(let message):
@@ -3460,6 +3638,7 @@ enum HermesServiceError: LocalizedError {
         switch self {
         case .selectedModelUnavailable,
              .selectedModelCatalogUnavailable,
+             .noRouteEligibleModel,
              .upstreamModelError,
              .relayTimeout:
             return true
@@ -3495,6 +3674,10 @@ enum HermesServiceError: LocalizedError {
         let modelOrQuotaSignal = lower.contains("model")
             || lower.contains("quota")
             || lower.contains("limit")
+            || lower.contains("route")
+            || lower.contains("account")
+            || lower.contains("provider")
+            || lower.contains("auth")
         guard modelOrQuotaSignal else { return nil }
 
         let upstreamSignals = [
@@ -3506,7 +3689,11 @@ enum HermesServiceError: LocalizedError {
             "model_not_found",
             "model not found",
             "does not exist",
-            "unsupported model"
+            "unsupported model",
+            "no eligible openai-compatible route",
+            "no eligible route",
+            "add or enable an openai-family account",
+            "api call failed after"
         ]
         guard upstreamSignals.contains(where: { lower.contains($0) }) else {
             return nil
@@ -3581,6 +3768,15 @@ private struct OpenAIModel: Decodable {
     var providerName: String?
     var displayName: String?
     var name: String?
+    var accountID: String?
+    var accountLabel: String?
+    var sourceID: String?
+    var sourceKind: String?
+    var capabilities: [String]?
+    var quotaState: String?
+    var routeEligible: Bool?
+    var lastRefreshAt: Date?
+    var lastError: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -3589,6 +3785,15 @@ private struct OpenAIModel: Decodable {
         case providerName = "provider_name"
         case displayName = "display_name"
         case name
+        case accountID = "account_id"
+        case accountLabel = "account_label"
+        case sourceID = "source_id"
+        case sourceKind = "source_kind"
+        case capabilities
+        case quotaState = "quota_state"
+        case routeEligible = "route_eligible"
+        case lastRefreshAt = "last_refresh_at"
+        case lastError = "last_error"
     }
 }
 

@@ -15,6 +15,9 @@
 #
 # That command requires run 1 to audit as wifi and runs 2-10 to audit as
 # cellular. Use a longer explicit plan when switching topologies mid-sequence.
+#
+# By default the gate resolves --model auto from the live BurnBar daemon
+# /v1/models catalog and skips local-only runtimes such as Ollama.
 
 set -euo pipefail
 
@@ -28,7 +31,7 @@ PROJECT="burnbar"
 DEVICE_ID="AFB07C15-AD18-5EFA-AD1C-CADB4F286797"
 DEVICE_WAIT_SECONDS=0
 DEVICE_WAIT_INTERVAL=5
-MODEL="gpt-5.4-mini"
+MODEL="auto"
 PROMPT="Reply exactly: ok"
 RELAY_URL="https://use1-1.relay.alberto8793.burnbar.iroh.link/"
 POLL_SECONDS=420
@@ -53,7 +56,7 @@ Options:
   --wait-for-device-interval <n>
                                Poll interval while waiting for device. Default: 5
   --relay-url <url>            Hosted relay URL.
-  --model <id>                 Hermes model for each run.
+  --model <id|auto>            Hermes model for each run. Default: auto from live /v1/models.
   --prompt <text>              Hidden E2E prompt text for each run.
   --poll-seconds <seconds>     Max Firestore polling time per run. Default: 420
   --poll-interval <seconds>    Poll interval. Default: 10
@@ -136,6 +139,72 @@ wait_for_device_tunnel() {
     return 1
 }
 
+resolve_model_if_needed() {
+    local normalized
+    normalized="$(printf '%s' "${MODEL}" | tr '[:upper:]' '[:lower:]')"
+    if [[ "${normalized}" != "auto" && "${normalized}" != "default" ]]; then
+        return 0
+    fi
+    local models_json
+    if ! models_json="$(curl -fsS --max-time 8 "http://127.0.0.1:8317/v1/models")"; then
+        echo "Could not resolve --model auto from http://127.0.0.1:8317/v1/models." >&2
+        echo "Start the BurnBar daemon gateway or pass --model <advertised-model-id>." >&2
+        exit 1
+    fi
+    MODEL="$(
+        jq -r '
+          [ .data[]?
+            | select((.route_eligible // true) == true)
+            | select(([
+                (.id // ""),
+                (.owned_by // ""),
+                (.provider_id // ""),
+                (.providerID // ""),
+                (.provider_name // ""),
+                (.providerName // ""),
+                (.source_kind // ""),
+                (.capabilities // [] | join(" "))
+              ] | join(" ") | test("ollama|lmstudio|lm studio|local"; "i") | not))
+          ][0].id // empty
+        ' <<<"${models_json}"
+    )"
+    if [[ -z "${MODEL}" ]]; then
+        echo "No non-local route-eligible model is currently advertised by http://127.0.0.1:8317/v1/models." >&2
+        jq -r '.data[]?.id // empty' <<<"${models_json}" >&2
+        exit 1
+    fi
+    echo "Resolved --model auto to live BurnBar model: ${MODEL}"
+}
+
+verify_mac_host_signing() {
+    local app_bundle
+    app_bundle="${MAC_HOST_APP%/Contents/MacOS/OpenBurnBar}"
+    if [[ "${app_bundle}" == "${MAC_HOST_APP}" || ! -d "${app_bundle}" ]]; then
+        echo "Mac host path must point inside an OpenBurnBar.app bundle: ${MAC_HOST_APP}" >&2
+        exit 1
+    fi
+
+    local signature
+    if ! signature="$(codesign -dv --verbose=4 "${app_bundle}" 2>&1)"; then
+        echo "Mac host is not code signed: ${app_bundle}" >&2
+        echo "Build a signed Debug app; Firebase Auth keychain access is required for iroh pairing publication." >&2
+        exit 1
+    fi
+    if grep -q "TeamIdentifier=not set" <<<"${signature}" || ! grep -q "TeamIdentifier=" <<<"${signature}"; then
+        echo "Mac host is unsigned for Firebase/Auth purposes: ${app_bundle}" >&2
+        echo "Build without CODE_SIGNING_ALLOWED=NO and pass the signed app via --mac-host-app." >&2
+        exit 1
+    fi
+
+    local entitlements
+    entitlements="$(codesign -d --entitlements :- "${app_bundle}" 2>/dev/null || true)"
+    if ! grep -q "keychain-access-groups" <<<"${entitlements}"; then
+        echo "Mac host is missing keychain-access-groups entitlement: ${app_bundle}" >&2
+        echo "Firebase Auth cannot read the signed-in user without the app entitlement." >&2
+        exit 1
+    fi
+}
+
 if ! wait_for_device_tunnel; then
     echo "Device is not launchable through CoreDevice: ${DEVICE_ID}" >&2
     echo "For the cellular gate, connect the iPhone to this Mac over USB, unlock it, accept Trust prompts, keep Wi-Fi off, and rerun this command." >&2
@@ -175,9 +244,11 @@ if [[ "${START_HOST}" -eq 1 ]]; then
         echo "Build it first with xcodebuild -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData-mac -skipPackagePluginValidation -skipMacroValidation" >&2
         exit 1
     fi
+    verify_mac_host_signing
     echo "Starting Mac host for gate sequence: ${MAC_HOST_APP}"
     env \
         OPENBURNBAR_FORCE_LIVE_SCENE=1 \
+        OPENBURNBAR_E2E_HOLD_OPEN=1 \
         OPENBURNBAR_ENABLE_IROH_TRANSPORT=1 \
         OPENBURNBAR_IROH_HOSTED_RELAY_URL="${RELAY_URL}" \
         "${MAC_HOST_APP}" >"${MAC_HOST_LOG}" 2>&1 &
@@ -190,6 +261,12 @@ if [[ "${START_HOST}" -eq 1 ]]; then
     echo "  macHostPid=${HOST_PID}"
     echo "  macHostLog=${MAC_HOST_LOG}"
 fi
+
+resolve_model_if_needed
+{
+    echo "- Resolved model: ${MODEL}"
+    echo
+} >>"${SUMMARY_MD}"
 
 for ((run = 1; run <= RUNS; run++)); do
     plan_index=$((run - 1))

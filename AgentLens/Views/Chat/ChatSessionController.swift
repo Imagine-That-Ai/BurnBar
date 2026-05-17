@@ -28,7 +28,8 @@ final class ChatSessionController {
     var streamingTick: Int = 0
     var streamError: String?
     var chatBackend: ChatBackendID = .codex
-    /// Per-backend `model` selection for the active chat. Empty means defaults (Codex: gpt-5.5, Claude: CLI default, Hermes: automatic from gateway/settings, OpenClaw: gpt-4o-mini).
+    /// Per-backend `model` selection for the active chat. Empty means the
+    /// active CLI profile or gateway-advertised default decides.
     var chatModelCodex: String = "" {
         didSet { UserDefaults.standard.set(chatModelCodex, forKey: Self.udChatModelCodex) }
     }
@@ -172,6 +173,9 @@ final class ChatSessionController {
     /// The model currently loaded in Hermes (e.g. "NousResearch/Hermes-3-Llama-3.1-8B").
     var hermesModelName: String? { cliBridge.hermesModelName }
     var hermesAdvertisedModels: [HermesAdvertisedModel] { cliBridge.hermesAdvertisedModels }
+    var hermesGatewayModels: [OpenAICompatibleAdvertisedModel] { cliBridge.hermesGatewayModels }
+    var openClawGatewayModels: [OpenAICompatibleAdvertisedModel] { cliBridge.openClawGatewayModels }
+    var piAgentGatewayModels: [OpenAICompatibleAdvertisedModel] { cliBridge.piAgentGatewayModels }
 
     func chatModelSelection(for backend: ChatBackendID) -> String {
         switch backend {
@@ -198,25 +202,57 @@ final class ChatSessionController {
         switch backend {
         case .codex:
             let s = chatModelCodex.trimmingCharacters(in: .whitespacesAndNewlines)
-            return s.isEmpty ? CLIBridge.normalizedCodexModel("gpt-5.5") : CLIBridge.normalizedCodexModel(s)
+            return CLIBridge.normalizedCodexModel(s)
         case .claude:
             return chatModelClaude.trimmingCharacters(in: .whitespacesAndNewlines)
         case .hermes:
             let s = chatModelHermes.trimmingCharacters(in: .whitespacesAndNewlines)
-            if s.isEmpty {
-                return settingsManager.resolvedHermesChatModel(gatewayAdvertisedModel: cliBridge.hermesModelName)
-            }
+            if s.isEmpty { return liveDefaultModel(for: .hermes) ?? "" }
             return s
         case .openclaw:
             let s = chatModelOpenClaw.trimmingCharacters(in: .whitespacesAndNewlines)
-            return s.isEmpty ? "gpt-4o-mini" : s
+            if s.isEmpty { return liveDefaultModel(for: .openclaw) ?? "" }
+            return s
         case .piAgent:
             let s = chatModelPiAgent.trimmingCharacters(in: .whitespacesAndNewlines)
-            if s.isEmpty {
-                return settingsManager.resolvedPiChatModel(gatewayAdvertisedModel: cliBridge.piAgentModelName)
-            }
+            if s.isEmpty { return liveDefaultModel(for: .piAgent) ?? "" }
             return s
         }
+    }
+
+    func liveAdvertisedModels(for backend: ChatBackendID) -> [OpenAICompatibleAdvertisedModel] {
+        switch backend {
+        case .hermes:
+            return hermesGatewayModels
+        case .openclaw:
+            return openClawGatewayModels
+        case .piAgent:
+            return piAgentGatewayModels
+        case .codex, .claude:
+            return []
+        }
+    }
+
+    private func liveDefaultModel(for backend: ChatBackendID) -> String? {
+        liveAdvertisedModels(for: backend)
+            .first { $0.routeEligible }?
+            .id
+    }
+
+    private func selectedModelRoutingError(for backend: ChatBackendID) -> String? {
+        guard backend == .hermes || backend == .openclaw || backend == .piAgent else { return nil }
+        let selected = effectiveChatModel(for: backend).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !selected.isEmpty else {
+            return "No eligible route for \(backend.displayName). Add or enable an account/provider that serves this model."
+        }
+        let models = liveAdvertisedModels(for: backend)
+        guard !models.isEmpty else {
+            return "Selected \(backend.displayName) model '\(selected)' has not been verified against this gateway's live /v1/models catalog. Refresh the gateway before sending, so the request is not silently rerouted."
+        }
+        guard models.contains(where: { $0.id == selected && $0.routeEligible }) else {
+            return "No eligible route for \(selected). Add or enable an account/provider that serves this model."
+        }
+        return nil
     }
 
     /// Short label for the model picker (reflects `effectiveChatModel` for the current backend).
@@ -828,6 +864,22 @@ final class ChatSessionController {
             }
         }
 
+        if let routingError = selectedModelRoutingError(for: chatBackend) {
+            let err = ChatMessageRecord(
+                role: .assistant,
+                content: routingError,
+                cliUsed: nil
+            )
+            messages.append(err)
+            do {
+                try dataStore.saveChatMessage(err, threadID: activeThreadID)
+            } catch {
+                AppLogger.chat.silentFailure("saveChatMessage (selected model unavailable)", error: error)
+            }
+            refreshHistory()
+            return
+        }
+
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
 
         let retrievalText = Self.retrievalQueryText(for: trimmed, messages: messages)
@@ -1208,7 +1260,7 @@ final class ChatSessionController {
                     ?? "hermes"
                 return (.hermes, "OpenBurnBar Hermes Chat", m)
             case .openclaw:
-                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "gpt-4o-mini"
+                let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "unselected"
                 return (.openClaw, "OpenBurnBar OpenClaw Chat", m)
             case .piAgent:
                 let m = requestModel.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty

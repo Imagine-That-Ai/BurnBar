@@ -12,6 +12,7 @@ import FirebaseFirestore
 struct InsightsRootView: View {
 
     @State private var store: InsightsStore?
+    @State private var verdictModel: InsightsMobileVerdictModel?
     @State private var showCloudStore = false
     let dashboardStore: DashboardStore
     let hermesService: HermesService
@@ -23,7 +24,11 @@ struct InsightsRootView: View {
             if let cloudStore, !cloudStore.isActive {
                 lockedInsightsTeaser
             } else if let store {
-                AdaptiveInsightsLayout(store: store, hermesService: hermesService)
+                AdaptiveInsightsLayout(
+                    store: store,
+                    verdictModel: verdictModel,
+                    hermesService: hermesService
+                )
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -45,9 +50,20 @@ struct InsightsRootView: View {
                     // Hermes (instead of falling to local rules until
                     // the next reachability flip).
                     await s.attachHermesIfReachable(via: hermesService)
+                    // Bootstrap the verdict pipeline alongside the store.
+                    let model = InsightsMobileVerdictModel(
+                        deviceID: UIDevice.current.identifierForVendor?.uuidString
+                            ?? "device_local",
+                        window: .today,
+                        dataSource: dataSource,
+                        digestBuilder: s.digestBuilder
+                    )
+                    verdictModel = model
+                    await model.bootstrap()
                 }
             } else {
                 await store?.refreshSelectedCanvas()
+                verdictModel?.refresh()
             }
         }
         // Keep the Hermes catalog entry in sync with the relay's
@@ -119,6 +135,7 @@ private struct InsightsTeaserBackground: View {
 private struct AdaptiveInsightsLayout: View {
 
     @Bindable var store: InsightsStore
+    var verdictModel: InsightsMobileVerdictModel?
     @Bindable var hermesService: HermesService
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showCanvasList: Bool = false
@@ -224,39 +241,53 @@ private struct AdaptiveInsightsLayout: View {
     private var canvasContent: some View {
         if let analysis = store.currentAnalysis {
             ZStack(alignment: .top) {
-                IntelligenceBriefView(
-                    result: analysis,
-                    onCitationTap: { citation in
-                        // Convert a citation tap into a natural-language
-                        // follow-up prompt — the composer already routes
-                        // those into a new analysis turn with the cited
-                        // entity scoped into the snapshot filter.
-                        Task {
-                            await store.compose(prompt: IntelligenceBriefCitationPrompt.prompt(for: citation))
+                ScrollView {
+                    VStack(spacing: UnifiedDesignSystem.Spacing.md) {
+                        if let verdictModel, let verdict = verdictModel.verdict {
+                            verdictPane(model: verdictModel, verdict: verdict)
+                                .padding(.horizontal, UnifiedDesignSystem.Spacing.md)
+                                .padding(.top, UnifiedDesignSystem.Spacing.md)
                         }
-                    },
-                    onFollowUpTap: { question in
-                        Task { await store.compose(prompt: question.question) }
-                    },
-                    onMissionLaunchTap: { question, missionKind, _, options in
-                        store.dispatchMission(
-                            question,
-                            missionKind: missionKind,
-                            requestedRuntime: options.requestedRuntime,
-                            targetProject: options.targetProject,
-                            depth: options.depth,
-                            approvalMode: options.approvalMode,
-                            commandsAllowed: options.commandsAllowed,
-                            fileEditsAllowed: options.fileEditsAllowed,
-                            via: hermesService
+                        IntelligenceBriefView(
+                            result: analysis,
+                            onCitationTap: { citation in
+                                // Convert a citation tap into a natural-language
+                                // follow-up prompt — the composer already routes
+                                // those into a new analysis turn with the cited
+                                // entity scoped into the snapshot filter.
+                                Task {
+                                    await store.compose(prompt: IntelligenceBriefCitationPrompt.prompt(for: citation))
+                                }
+                            },
+                            onFollowUpTap: { question in
+                                Task { await store.compose(prompt: question.question) }
+                            },
+                            onMissionLaunchTap: { question, missionKind, _, options in
+                                store.dispatchMission(
+                                    question,
+                                    missionKind: missionKind,
+                                    requestedRuntime: options.requestedRuntime,
+                                    targetProject: options.targetProject,
+                                    depth: options.depth,
+                                    approvalMode: options.approvalMode,
+                                    commandsAllowed: options.commandsAllowed,
+                                    fileEditsAllowed: options.fileEditsAllowed,
+                                    via: hermesService
+                                )
+                            },
+                            onPinWidget: { generated in
+                                Task { await store.pinGeneratedWidget(generated) }
+                            },
+                            onConfigureModel: { showInspector = true },
+                            onShowAudit: nil,
+                            snapshotMode: true
                         )
-                    },
-                    onPinWidget: { generated in
-                        Task { await store.pinGeneratedWidget(generated) }
-                    },
-                    onConfigureModel: { showInspector = true },
-                    onShowAudit: nil
-                )
+                    }
+                }
+                .refreshable {
+                    verdictModel?.refresh()
+                    await store.refreshSelectedCanvas(autoSwitchEmptyDefaultCanvas: false)
+                }
                 .scrollDismissesKeyboard(.interactively)
 
                 // Inline status banner — the user always sees the
@@ -282,6 +313,47 @@ private struct AdaptiveInsightsLayout: View {
         InsightsMobileComposerBar(store: store)
             .padding(UnifiedDesignSystem.Spacing.md)
             .background(.thinMaterial)
+    }
+
+    /// Renders the verdict hero pinned above the brief on every layout.
+    /// Wires citation taps + accept actions through `store.compose` so
+    /// the rest of the brief reacts to follow-ups consistently.
+    @ViewBuilder
+    private func verdictPane(
+        model: InsightsMobileVerdictModel,
+        verdict: InsightVerdict
+    ) -> some View {
+        VerdictHeroView(
+            verdict: verdict,
+            isStale: model.isStale,
+            isDemo: model.isDemo,
+            onRefresh: { model.refresh() },
+            onCitationTap: { citation in
+                Task {
+                    await store.compose(
+                        prompt: IntelligenceBriefCitationPrompt.prompt(for: citation)
+                    )
+                }
+            },
+            onAcceptAction: { action in
+                Task {
+                    await store.compose(
+                        prompt: "Run the recommended action: \(action.label) "
+                            + "(intent: \(action.intent.rawValue))."
+                    )
+                }
+            },
+            onTraceTap: { sessionID in
+                Task {
+                    await store.compose(
+                        prompt: "Show me the full trace for session \(sessionID)."
+                    )
+                }
+            },
+            onFollowUpTap: { question in
+                Task { await store.compose(prompt: question) }
+            }
+        )
     }
 
     @ViewBuilder

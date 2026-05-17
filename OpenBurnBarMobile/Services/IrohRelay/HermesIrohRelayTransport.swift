@@ -319,6 +319,7 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 rttMillis: nil,
                 detail: auditDetail(["side": "ios"], networkAuditDetail)
             )
+            stage = "request_stream_opened"
             try await send(
                 payload,
                 uid: uid,
@@ -357,8 +358,36 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         networkAuditDetail: [String: String],
         onChunk: @MainActor (HermesRelayChunkRecord) throws -> Void
     ) async throws {
-        defer { Task { await stream.close() } }
+        do {
+            try await sendOnOpenStream(
+                payload,
+                uid: uid,
+                publicKey: publicKey,
+                relayPublicKey: relayPublicKey,
+                verifiedTarget: verifiedTarget,
+                stream: stream,
+                timeout: timeout,
+                networkAuditDetail: networkAuditDetail,
+                onChunk: onChunk
+            )
+            await stream.close()
+        } catch {
+            await stream.close()
+            throw error
+        }
+    }
 
+    private func sendOnOpenStream(
+        _ payload: HermesRelayPayload,
+        uid: String,
+        publicKey: Data,
+        relayPublicKey: String,
+        verifiedTarget: IrohDialTarget,
+        stream: any IrohRelayStream,
+        timeout: TimeInterval,
+        networkAuditDetail: [String: String],
+        onChunk: @MainActor (HermesRelayChunkRecord) throws -> Void
+    ) async throws {
         // 2a. Mercury Phase 1b — once we know the pairing-public-key
         // triple is good (i.e., the dial above succeeded), kick off
         // the persistent media control stream exactly once. Subsequent

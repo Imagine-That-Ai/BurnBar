@@ -35,7 +35,7 @@ enum CodexModelCatalog {
         "gpt-5-1-codex-max": "gpt-5.1-codex-max"
     ]
 
-    static func normalizedModel(_ model: String, fallback: String = "gpt-5.5") -> String {
+    static func normalizedModel(_ model: String, fallback: String = "") -> String {
         let trimmedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedModel.isEmpty == false else { return fallback }
 
@@ -86,18 +86,21 @@ enum CLIArgumentBuilder {
         return arguments
     }
 
-    static func codexArguments(prompt: String, model: String = "gpt-5.5") -> [String] {
-        [
+    static func codexArguments(prompt: String, model: String = "") -> [String] {
+        var arguments = [
             "exec",
             "--json",
             "--ephemeral",
             "--skip-git-repo-check",
-            "-m",
-            CodexModelCatalog.normalizedModel(model),
             "-c",
             #"model_reasoning_effort="high""#,
             sanitizedPrompt(prompt)
         ]
+        let normalizedModel = CodexModelCatalog.normalizedModel(model)
+        if !normalizedModel.isEmpty {
+            arguments.insert(contentsOf: ["-m", normalizedModel], at: 4)
+        }
+        return arguments
     }
 
     static func combinedPrompt(systemPrompt: String, userMessage: String) -> String {
@@ -123,11 +126,11 @@ extension CLIBridge {
         CodexModelCatalog.chatModelIDs
     }
 
-    nonisolated static func normalizedCodexModel(_ model: String, fallback: String = "gpt-5.5") -> String {
+    nonisolated static func normalizedCodexModel(_ model: String, fallback: String = "") -> String {
         CodexModelCatalog.normalizedModel(model, fallback: fallback)
     }
 
-    nonisolated static func codexArguments(prompt: String, model: String = "gpt-5.5") -> [String] {
+    nonisolated static func codexArguments(prompt: String, model: String = "") -> [String] {
         CLIArgumentBuilder.codexArguments(prompt: prompt, model: model)
     }
 }

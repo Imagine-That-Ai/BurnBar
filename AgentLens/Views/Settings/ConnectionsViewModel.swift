@@ -96,22 +96,32 @@ final class ConnectionsViewModel {
         appStates[target] = .connecting
         ensureLocalGateway(settings: settings)
         let gateway = makeGateway(from: settings)
+        let wiring = wiringFactory()
+        let advertisedModels = await wiring.advertisedModels(gateway: gateway)
 
         do {
-            _ = try wiringFactory().wire(target: target, gateway: gateway)
+            _ = try wiring.wire(
+                target: target,
+                gateway: gateway,
+                advertisedModels: advertisedModels
+            )
         } catch {
             appStates[target] = .error(message: error.localizedDescription)
             return
         }
 
-        let probe = await wiringFactory().probe(target: target, gateway: gateway)
+        let probe = await wiring.probe(
+            target: target,
+            gateway: gateway,
+            advertisedModels: advertisedModels
+        )
         switch probe {
         case .ok, .skipped:
             appStates[target] = .connected
         case .failed(let status, let message):
             let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
             let detail = trimmed.isEmpty
-                ? "Local gateway didn't answer (HTTP \(status))."
+                ? "Local gateway test failed with HTTP \(status)."
                 : "Local gateway returned HTTP \(status). \(trimmed)"
             appStates[target] = .degraded(message: detail)
         }
@@ -124,14 +134,20 @@ final class ConnectionsViewModel {
     ) async {
         appStates[target] = .probing
         let gateway = makeGateway(from: settings)
-        let probe = await wiringFactory().probe(target: target, gateway: gateway)
+        let wiring = wiringFactory()
+        let advertisedModels = await wiring.advertisedModels(gateway: gateway)
+        let probe = await wiring.probe(
+            target: target,
+            gateway: gateway,
+            advertisedModels: advertisedModels
+        )
         switch probe {
         case .ok, .skipped:
             appStates[target] = .connected
         case .failed(let status, let message):
             let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
             let detail = trimmed.isEmpty
-                ? "Local gateway didn't answer (HTTP \(status))."
+                ? "Local gateway test failed with HTTP \(status)."
                 : "Local gateway returned HTTP \(status). \(trimmed)"
             appStates[target] = .degraded(message: detail)
         }

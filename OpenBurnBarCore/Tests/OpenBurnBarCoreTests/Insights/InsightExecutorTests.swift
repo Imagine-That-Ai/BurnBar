@@ -105,6 +105,59 @@ final class InsightExecutorTests: XCTestCase {
         XCTAssertTrue(table.rows.first!.label.lowercased().contains("spike"))
     }
 
+    func testAnomalyTableEmitsSessionCitationsForDrilldown() throws {
+        var injected = snapshot!
+        var spike = try XCTUnwrap(injected.usages.first)
+        spike.startTime = injected.window.start.addingTimeInterval(86_400)
+        spike.endTime = spike.startTime.addingTimeInterval(900)
+        spike.costUSD = 50
+        spike.sessionID = "drilldown-session-1"
+        injected.usages.append(spike)
+        var spike2 = spike
+        spike2.sessionID = "drilldown-session-2"
+        injected.usages.append(spike2)
+
+        let result = executor.evaluate(binding: .anomaly(window: .last90d),
+                                       filter: filter, snapshot: injected)
+        guard case .anomaly(let table) = result else { return XCTFail("expected anomaly") }
+        let row = try XCTUnwrap(table.rows.first)
+        let sessionIDs: [String] = row.citations.compactMap { cite in
+            if case .session(let id, _) = cite.kind { return id }
+            return nil
+        }
+        XCTAssertTrue(sessionIDs.contains("drilldown-session-1"),
+                      "anomaly row should cite the spike session for drilldown")
+    }
+
+    func testAnomalyTableCapsAtTwelveRows() {
+        var injected = snapshot!
+        // Add many high-cost days across 14+ days so >12 anomalies could
+        // theoretically surface; the executor must trim to the cap.
+        let start = injected.window.start
+        for i in 0..<20 {
+            var spike = injected.usages.first!
+            spike.startTime = start.addingTimeInterval(Double(i + 1) * 86_400)
+            spike.endTime = spike.startTime.addingTimeInterval(900)
+            spike.costUSD = 100 + Double(i)
+            spike.sessionID = "synthetic-spike-\(i)"
+            injected.usages.append(spike)
+        }
+        let result = executor.evaluate(binding: .anomaly(window: .last90d),
+                                       filter: filter, snapshot: injected)
+        guard case .anomaly(let table) = result else { return XCTFail("expected anomaly") }
+        XCTAssertLessThanOrEqual(table.rows.count, 12)
+    }
+
+    func testAnomalyTableRespectsZThreshold() {
+        // No spike: baseline noise should not surface anomalies above z=2.
+        let result = executor.evaluate(binding: .anomaly(window: .last90d),
+                                       filter: filter, snapshot: snapshot)
+        guard case .anomaly(let table) = result else { return XCTFail("expected anomaly") }
+        for row in table.rows {
+            XCTAssertGreaterThanOrEqual(row.score, 2.0)
+        }
+    }
+
     func testRadarSeriesValuesNormalized() {
         let result = executor.evaluate(binding: .radar(target: .allAgents, window: .last30d),
                                        filter: filter, snapshot: snapshot)

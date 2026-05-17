@@ -142,6 +142,51 @@ public struct BurnBarConfigResponse: Codable, Hashable, Sendable {
     }
 }
 
+public struct BurnBarProviderCredentialSlotUpsertRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let slotID: String?
+    public let label: String
+    public let apiKey: String
+    public let isEnabled: Bool
+
+    public init(
+        providerID: String,
+        slotID: String? = nil,
+        label: String,
+        apiKey: String,
+        isEnabled: Bool = true
+    ) {
+        self.providerID = providerID
+        self.slotID = slotID
+        self.label = label
+        self.apiKey = apiKey
+        self.isEnabled = isEnabled
+    }
+}
+
+public struct BurnBarProviderCredentialSlotRemoveRequest: Codable, Hashable, Sendable {
+    public let providerID: String
+    public let slotID: String
+
+    public init(providerID: String, slotID: String) {
+        self.providerID = providerID
+        self.slotID = slotID
+    }
+}
+
+public struct BurnBarProviderCredentialSlotMutationResponse: Codable, Hashable, Sendable {
+    public let snapshot: BurnBarProviderConfigurationSnapshot
+    public let slot: BurnBarProviderCredentialSlot?
+
+    public init(
+        snapshot: BurnBarProviderConfigurationSnapshot,
+        slot: BurnBarProviderCredentialSlot? = nil
+    ) {
+        self.snapshot = snapshot
+        self.slot = slot
+    }
+}
+
 public struct BurnBarRecentUsageRequest: Codable, Hashable, Sendable {
     public let limit: Int
 

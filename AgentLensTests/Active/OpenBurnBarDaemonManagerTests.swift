@@ -143,6 +143,38 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func test_installedDaemonBinaryNeedsRefreshDetectsStaleInstalledDaemon() throws {
+        let harness = try makeRuntimePathsHarness(name: "stale-daemon")
+        defer { harness.cleanup() }
+
+        let sourceBinaryURL = harness.rootURL.appendingPathComponent("source-openburnbar-daemon", isDirectory: false)
+        try "#!/bin/sh\nexit 0\necho fresh\n".write(to: sourceBinaryURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sourceBinaryURL.path)
+
+        try "#!/bin/sh\nexit 0\n".write(to: harness.paths.installedBinaryURL, atomically: true, encoding: .utf8)
+
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: daemonDependencies(resolveDaemonBinary: { sourceBinaryURL }),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        )
+
+        XCTAssertTrue(manager.installedDaemonBinaryNeedsRefresh())
+
+        try FileManager.default.removeItem(at: harness.paths.installedBinaryURL)
+        try FileManager.default.copyItem(at: sourceBinaryURL, to: harness.paths.installedBinaryURL)
+        let sourceAttributes = try FileManager.default.attributesOfItem(atPath: sourceBinaryURL.path)
+        if let sourceModifiedAt = sourceAttributes[.modificationDate] as? Date {
+            try FileManager.default.setAttributes(
+                [.modificationDate: sourceModifiedAt],
+                ofItemAtPath: harness.paths.installedBinaryURL.path
+            )
+        }
+
+        XCTAssertFalse(manager.installedDaemonBinaryNeedsRefresh())
+    }
+
     func test_usageSync_readsProviderConfigurationSnapshot() throws {
         let harness = try makeRuntimePathsHarness(name: "provider-config")
         defer { harness.cleanup() }
@@ -480,6 +512,43 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
     private func jsonObject(for event: BurnBarUsageEvent, encoder: JSONEncoder) throws -> Any {
         let data = try encoder.encode(event)
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data))
+    }
+
+    private func daemonDependencies(resolveDaemonBinary: @escaping () -> URL?) -> OpenBurnBarDaemonDependencies {
+        OpenBurnBarDaemonDependencies(
+            fileManager: .default,
+            runProcess: { _, _ in "" },
+            resolveDaemonBinary: resolveDaemonBinary,
+            requestHealth: { _ in
+                BurnBarHealthResponse(
+                    ok: true,
+                    daemonVersion: "test-daemon",
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    socketPath: "/tmp/openburnbar-test.sock"
+                )
+            },
+            requestConfig: { _ in BurnBarProviderConfigurationSnapshot(providers: []) },
+            updateConfig: { _, snapshot in snapshot },
+            requestRecentUsage: { _, _ in [] },
+            requestControllerProjects: { _ in [] },
+            upsertControllerProject: { _, project in project },
+            recordControllerReviewRun: { _, run in
+                BurnBarControllerReviewRunRecordResponse(
+                    run: run,
+                    summary: BurnBarControllerSummary(
+                        updatedAt: Date(),
+                        counts: BurnBarControllerCounts(
+                            projectCount: 0,
+                            pendingQuestionCount: 0,
+                            openFollowupCount: 0,
+                            activeMissionCount: 0,
+                            staleProjectCount: 0
+                        ),
+                        freshness: .missing
+                    )
+                )
+            }
+        )
     }
 
     private func fallbackConfigJSON() -> String {

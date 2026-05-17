@@ -265,6 +265,50 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         )
     }
 
+    public func proxyResponses(
+        body: Data,
+        route: BurnBarProviderRoute
+    ) async throws -> BurnBarProviderProxyResponse {
+        guard let baseURL = URL(string: route.baseURL) else {
+            throw BurnBarProviderExecutorError.invalidBaseURL(route.baseURL)
+        }
+
+        guard !Self.shouldUseOllamaNativeAPI(route: route, baseURL: baseURL) else {
+            throw BurnBarProviderExecutorError.upstreamError(
+                400,
+                "Provider \(route.providerDisplayName) does not expose OpenAI /v1/responses through this configured endpoint."
+            )
+        }
+
+        let outboundBody = try Self.rewritingModel(in: body, to: route.resolvedModelID)
+        let endpoint = baseURL.appending(path: "responses")
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(route.apiKey)", forHTTPHeaderField: "Authorization")
+        request.httpBody = outboundBody
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BurnBarProviderExecutorError.invalidResponse
+        }
+
+        let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "application/json"
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw BurnBarProviderExecutorError.upstreamError(
+                httpResponse.statusCode,
+                String(data: data, encoding: .utf8) ?? ""
+            )
+        }
+
+        return BurnBarProviderProxyResponse(
+            statusCode: httpResponse.statusCode,
+            contentType: contentType,
+            body: data,
+            usage: Self.extractResponsesUsage(responseBody: data)
+        )
+    }
+
     private func proxyOllamaNativeChatCompletions(
         body: Data,
         route: BurnBarProviderRoute,
@@ -602,6 +646,47 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             confidence: .lowConfidenceEstimate
         )
     }
+
+    private static func extractResponsesUsage(responseBody: Data) -> BurnBarProviderProxyUsage? {
+        guard let object = try? JSONSerialization.jsonObject(with: responseBody) as? [String: Any],
+              let usage = object["usage"] as? [String: Any] else {
+            return nil
+        }
+
+        let inputTokens = intValue(usage["input_tokens"])
+            ?? intValue(usage["prompt_tokens"])
+            ?? 0
+        let outputTokens = intValue(usage["output_tokens"])
+            ?? intValue(usage["completion_tokens"])
+            ?? 0
+        let reasoningTokens = intValue(usage["reasoning_tokens"]) ?? 0
+
+        guard inputTokens > 0 || outputTokens > 0 || reasoningTokens > 0 else {
+            return nil
+        }
+
+        return BurnBarProviderProxyUsage(
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            reasoningTokens: reasoningTokens,
+            confidence: .exact
+        )
+    }
+
+    private static func intValue(_ value: Any?) -> Int? {
+        if let int = value as? Int {
+            return int
+        }
+        if let double = value as? Double {
+            return Int(double)
+        }
+        if let string = value as? String {
+            return Int(string)
+        }
+        return nil
+    }
 }
 
 private enum BurnBarFakeProviderExecution {
@@ -652,15 +737,23 @@ private enum BurnBarFakeProviderExecution {
 }
 
 public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
+    public static let defaultService = "com.openburnbar.daemon.provider-secrets"
+    public static let legacyCursorConnectorService = "com.openburnbar.cursor-connector"
+
     private let service: String
+    private let legacyServices: [String]
     private let hermesCredentialPoolURL: URL?
 
     public init(
-        service: String = "com.openburnbar.cursor-connector",
+        service: String = BurnBarKeychainSecretStore.defaultService,
+        legacyServices: [String]? = nil,
         hermesCredentialPoolURL: URL? = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".hermes/auth.json", isDirectory: false)
     ) {
         self.service = service
+        self.legacyServices = legacyServices ?? (
+            service == Self.defaultService ? [Self.legacyCursorConnectorService] : []
+        )
         self.hermesCredentialPoolURL = hermesCredentialPoolURL
     }
 
@@ -671,6 +764,18 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
         }
 
         let account = "provider.\(providerID).apiKey"
+        if let secret = try secret(forService: service, account: account) {
+            return secret
+        }
+        for legacyService in legacyServices where legacyService != service {
+            if let secret = try secret(forService: legacyService, account: account) {
+                return secret
+            }
+        }
+        return hermesCredentialPoolSecret(for: providerID)
+    }
+
+    private func secret(forService service: String, account: String) throws -> String? {
         let context = LAContext()
         context.interactionNotAllowed = true
         var query: [String: Any] = [
@@ -694,17 +799,17 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             || status == errSecInteractionNotAllowed
             || status == errSecUserCanceled
             || status == errSecAuthFailed {
-            return hermesCredentialPoolSecret(for: providerID)
+            return nil
         }
         guard status == errSecSuccess else {
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
         }
         guard let data = item as? Data else {
-            return hermesCredentialPoolSecret(for: providerID)
+            return nil
         }
         let decoded = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return decoded?.isEmpty == false ? decoded : hermesCredentialPoolSecret(for: providerID)
+        return decoded?.isEmpty == false ? decoded : nil
     }
 
     public func setSecret(_ secret: String?, for providerID: String) async throws {

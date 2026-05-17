@@ -1180,18 +1180,18 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(settings.resolvedHermesChatModel(gatewayAdvertisedModel: "   "), "hermes")
     }
 
-    func test_resolvedHermesChatModel_switchesToCodexModelWhenMinimaxAdvertised() {
+    func test_resolvedHermesChatModel_usesAdvertisedModelWhenMinimaxAdvertised() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
 
-        XCTAssertEqual(settings.resolvedHermesChatModel(gatewayAdvertisedModel: "minimax-m2.7-highspeed"), "gpt-5.5")
+        XCTAssertEqual(settings.resolvedHermesChatModel(gatewayAdvertisedModel: "minimax-m2.7-highspeed"), "minimax-m2.7-highspeed")
     }
 
-    func test_resolvedHermesChatModel_usesHermesWhenNoSpecialCase() {
+    func test_resolvedHermesChatModel_usesAdvertisedModelWhenNoSpecialCase() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
 
-        XCTAssertEqual(settings.resolvedHermesChatModel(gatewayAdvertisedModel: "some-other-model"), "hermes")
+        XCTAssertEqual(settings.resolvedHermesChatModel(gatewayAdvertisedModel: "some-other-model"), "some-other-model")
     }
 
     func test_resolvedHermesChatModel_trimsWhitespace() {

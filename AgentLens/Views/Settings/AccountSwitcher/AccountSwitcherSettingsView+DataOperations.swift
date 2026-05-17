@@ -8,6 +8,7 @@ extension AccountSwitcherSettingsView {
     func loadProfiles() {
         isLoading = true
         do {
+            refreshLiveCLIAuthStates()
             let fetchedProfiles = try dataStore.switcherStore.fetchAllProfiles()
             profiles = enrichProfilesForDisplay(fetchedProfiles)
             let state = try dataStore.switcherStore.validateAndRecoverActiveProfile()
@@ -21,6 +22,7 @@ extension AccountSwitcherSettingsView {
 
     func enrichAndReload() {
         do {
+            refreshLiveCLIAuthStates()
             let fetchedProfiles = try dataStore.switcherStore.fetchAllProfiles()
             profiles = enrichProfilesForDisplay(fetchedProfiles)
             let state = try dataStore.switcherStore.validateAndRecoverActiveProfile()
@@ -29,6 +31,14 @@ extension AccountSwitcherSettingsView {
         } catch {
             self.error = "Failed to reload profiles: \(error.localizedDescription)"
         }
+    }
+
+    func refreshLiveCLIAuthStates() {
+        var next: [SwitcherCLIProfileType: CLIAuthInfo] = [:]
+        for cliType in [SwitcherCLIProfileType.claude, .codex, .opencode] {
+            next[cliType] = CLIAuthDiscovery.discoverAuthState(for: cliType)
+        }
+        liveCLIAuthStates = next
     }
 
     func refreshQuotaSnapshotsIfNeeded() {
@@ -900,6 +910,7 @@ extension AccountSwitcherSettingsView {
 
     func deleteProfile(_ profile: SwitcherProfileRecord) {
         do {
+            try SwitcherAuthStore().deleteCredentials(forProfileID: profile.id)
             try dataStore.switcherStore.deleteProfile(id: profile.id)
             profileToDelete = nil
 

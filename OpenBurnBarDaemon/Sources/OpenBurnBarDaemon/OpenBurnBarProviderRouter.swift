@@ -251,15 +251,18 @@ public struct BurnBarProviderRouter: Sendable {
     private let configStore: BurnBarConfigStore
     private let logger: BurnBarDaemonLogger
     private let routingEventStore: BurnBarProviderRoutingDecisionEventStore?
+    private let allowDynamicOpenAICompatibleModels: Bool
 
     public init(
         configStore: BurnBarConfigStore,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "provider-router"),
-        routingEventStore: BurnBarProviderRoutingDecisionEventStore? = nil
+        routingEventStore: BurnBarProviderRoutingDecisionEventStore? = nil,
+        allowDynamicOpenAICompatibleModels: Bool = false
     ) {
         self.configStore = configStore
         self.logger = logger
         self.routingEventStore = routingEventStore
+        self.allowDynamicOpenAICompatibleModels = allowDynamicOpenAICompatibleModels
     }
 
     public func route(
@@ -318,6 +321,7 @@ public struct BurnBarProviderRouter: Sendable {
             ? preferredProviderForProviderFamilyMode(
                 modelName: modelName,
                 routerMode: effectiveRouterMode,
+                requestedFormatFamily: requestedFormatFamily,
                 configurations: configurations
             )
             : nil
@@ -702,11 +706,28 @@ public struct BurnBarProviderRouter: Sendable {
         if let exactMatch = configuration.preferredModels.first(where: {
             $0.id.lowercased() == normalized || $0.aliases.contains(where: { $0.lowercased() == normalized })
         }) {
-            return exactMatch
+            return wireModel(for: exactMatch, requestedModel: modelName)
         }
 
         guard let matchedModel = configuration.preferredModels.first(where: { $0.matches(modelName: normalized) }) else {
-            return nil
+            guard allowDynamicOpenAICompatibleModels,
+                  configuration.provider.formatFamily == .openaiCompat,
+                  configuration.provider.capabilities.contains(.routing),
+                  let template = configuration.preferredModels.first ?? configuration.provider.models.first(where: { $0.visibility == .public }) else {
+                return nil
+            }
+            let capabilityTemplate = configuration.provider.models.first(where: { $0.matches(modelName: normalized) }) ?? template
+            let trimmed = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+            return BurnBarCatalogModel(
+                id: trimmed,
+                displayName: trimmed,
+                visibility: .hidden,
+                aliases: [trimmed],
+                matchers: [],
+                pricing: capabilityTemplate.pricing,
+                capabilityClassID: capabilityTemplate.capabilityClassID ?? capabilityTemplate.id,
+                capabilityClassRank: capabilityTemplate.capabilityClassRank
+            )
         }
 
         if configuration.provider.id.lowercased() == "ollama",
@@ -724,7 +745,40 @@ public struct BurnBarProviderRouter: Sendable {
             )
         }
 
-        return matchedModel
+        return wireModel(for: matchedModel, requestedModel: modelName)
+    }
+
+    private func wireModel(
+        for model: BurnBarCatalogModel,
+        requestedModel: String
+    ) -> BurnBarCatalogModel {
+        guard model.id.lowercased().hasSuffix("-family"),
+              model.aliases.isEmpty == false else {
+            return model
+        }
+
+        let normalizedRequestedModel = requestedModel
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let matchedAlias = model.aliases.first(where: { $0.lowercased() == normalizedRequestedModel })
+        let wireModelID = (matchedAlias ?? model.aliases.first ?? model.id)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard wireModelID.isEmpty == false,
+              wireModelID.lowercased() != model.id.lowercased() else {
+            return model
+        }
+
+        return BurnBarCatalogModel(
+            id: wireModelID,
+            displayName: model.displayName,
+            visibility: model.visibility,
+            aliases: model.aliases,
+            matchers: model.matchers,
+            pricing: model.pricing,
+            capabilityClassID: model.capabilityClassID,
+            capabilityClassRank: model.capabilityClassRank
+        )
     }
 
     private func normalizedOllamaCloudModelID(from modelName: String) -> String? {
@@ -751,11 +805,14 @@ public struct BurnBarProviderRouter: Sendable {
     private func preferredProviderForProviderFamilyMode(
         modelName: String,
         routerMode: ProviderRouterMode,
+        requestedFormatFamily: BurnBarProviderFormatFamily?,
         configurations: [BurnBarResolvedProviderConfiguration]
     ) -> String? {
         guard routerMode == .providerFamilyFailover else { return nil }
         let enabledMatches = configurations.filter { configuration in
-            configuration.settings.isEnabled && resolveModel(named: modelName, in: configuration) != nil
+            configuration.settings.isEnabled
+                && (requestedFormatFamily == nil || configuration.provider.formatFamily == requestedFormatFamily)
+                && resolveModel(named: modelName, in: configuration) != nil
         }
         if enabledMatches.count == 1 {
             return enabledMatches[0].provider.id
@@ -881,6 +938,7 @@ extension BurnBarProviderRouter {
             ? preferredProviderForProviderFamilyMode(
                 modelName: modelName,
                 routerMode: effectiveRouterMode,
+                requestedFormatFamily: requestedFormatFamily,
                 configurations: configurations
             )
             : nil

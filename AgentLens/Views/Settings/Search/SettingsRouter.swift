@@ -109,22 +109,37 @@ final class SettingsRouter {
         case .daemonLifecycle, .httpGateway, .controllerRuntime:
             return [route]
 
-        // Tabs whose root view *is* the destination. `providersRoot` and
-        // `routingPoolsRoot` are legacy aliases — both resolve to the
-        // unified Connections page.
+        // Tabs whose root view *is* the destination.
         case .accountRoot,
              .cloudRoot,
-             .connectionsRoot,
-             .providersRoot,
-             .routingPoolsRoot,
+             .agentsRoot,
              .alertsRoot,
              .notificationsRoot,
-             .devicesAndSyncRoot,
+             .devicesAndSyncRoot:
+            return []
+
+        // Agents sub-pages: single drill from the agents landing.
+        case .agentsAccounts, .agentsCLIs, .agentsRuntimes, .agentsAdvanced:
+            return [route]
+
+        // Legacy roots: forward into the merged Agents tab. Search results
+        // that still reference `.connectionsRoot` / `.switcherRoot` /
+        // `.hermesRoot` and `providersRoot` / `routingPoolsRoot` land on
+        // the Agents landing page rather than 404.
+        case .connectionsRoot,
+             .providersRoot,
+             .routingPoolsRoot,
              .switcherRoot,
              .hermesRoot:
             return []
-        case .hermesChatEngines, .hermesGateway, .hermesPiAgent, .hermesRelay, .hermesPiRelay:
-            return [route]
+
+        // Legacy Hermes detail routes: drill into the Agents → Runtimes
+        // or Agents → Advanced detail screens, where these detail views
+        // now live.
+        case .hermesChatEngines:
+            return [.agentsAdvanced]
+        case .hermesGateway, .hermesPiAgent, .hermesRelay, .hermesPiRelay:
+            return [.agentsRuntimes]
         }
     }
 

@@ -261,6 +261,10 @@ extension DatabaseEncryptionService {
     /// and validate the key character set to prevent injection.
     static func makeConfiguration(encryptionKey: String?) -> Configuration {
         var config = Configuration()
+        // The daemon writes to the same SQLite file (switcher profiles, indexed search).
+        // Without a busy timeout, any cross-process write contention immediately raises
+        // SQLITE_BUSY (error 5: "database is locked"). 5s matches GRDB's recommended default.
+        config.busyMode = .timeout(5)
         guard let key = encryptionKey else { return config }
 
         #if canImport(GRDBCipher)

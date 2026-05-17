@@ -545,9 +545,10 @@ struct DashboardQuickSwitchView: View {
                                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                         }
 
-                        if let quotaStatus = cliQuotaStatusText(for: activeProfile, quotaLookup: { provider in
-                            quotaService.snapshot(for: provider)
-                        }) {
+                        if let quotaStatus = cliQuotaStatusText(
+                            for: activeProfile,
+                            snapshot: quotaService.snapshot(accountID: activeProfile.id)
+                        ) {
                             Text(quotaStatus)
                                 .font(DesignSystem.Typography.tiny)
                                 .foregroundStyle(DesignSystem.Colors.textSecondary)
@@ -915,24 +916,15 @@ struct DashboardQuickSwitchView: View {
 
             // Initialize launch services
             let adapter = DashboardSwitcherProfileAdapter(store: dataStore.switcherStore)
-            let fallbackPlanner = SwitcherCLIFallbackPlanner { cliType in
+            let fallbackPlanner = SwitcherCLIFallbackPlanner { profile in
                 await MainActor.run {
-                    let provider: AgentProvider?
-                    switch cliType {
-                    case .codex:
-                        provider = .codex
-                    case .claude:
-                        provider = .claudeCode
-                    case .opencode:
-                        provider = nil
+                    guard let snapshot = ProviderQuotaService.shared.snapshot(accountID: profile.id) else {
+                        return nil
                     }
-
-                    guard let provider else { return nil }
-                    let snapshot = ProviderQuotaService.shared.snapshot(for: provider)
                     return CLIFallbackQuotaStatus(
-                        fiveHourRemainingPercent: snapshot?.hourlyBucket?.remainingPercent,
-                        weeklyRemainingPercent: snapshot?.weeklyBucket?.remainingPercent,
-                        statusMessage: snapshot?.statusMessage
+                        fiveHourRemainingPercent: snapshot.hourlyBucket?.remainingPercent,
+                        weeklyRemainingPercent: snapshot.weeklyBucket?.remainingPercent,
+                        statusMessage: snapshot.statusMessage
                     )
                 }
             }

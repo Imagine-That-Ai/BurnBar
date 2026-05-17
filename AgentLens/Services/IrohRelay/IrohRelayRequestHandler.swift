@@ -299,15 +299,25 @@ final class IrohRelayRequestHandler: Sendable {
         )
         let startedAt = Date()
         let (bytes, response) = try await urlSession.bytes(for: request)
-        guard let statusCode = (response as? HTTPURLResponse)?.statusCode else {
+        guard let httpResponse = response as? HTTPURLResponse else {
             throw IrohRelayHostError.invalidResponse
         }
+        let statusCode = httpResponse.statusCode
         guard (200..<300).contains(statusCode) else {
             let body = try await Self.readErrorBody(from: bytes)
             throw IrohRelayHostError.httpStatus(
                 code: statusCode,
                 body: body,
                 requestedModel: requestedModel
+            )
+        }
+        if let headerError = Self.hermesErrorHeader(from: httpResponse) {
+            throw IrohRelayHostError.upstreamError(
+                Self.formattedUpstreamError(
+                    message: headerError,
+                    statusCode: nil,
+                    requestedModel: requestedModel
+                )
             )
         }
         await auditStage(
@@ -814,8 +824,20 @@ final class IrohRelayRequestHandler: Sendable {
                     requestedModel: requestedModel
                 )
             }
+            if let message = hermesFailureMessage(fromJSONObject: object)
+                ?? terminalChoiceErrorMessage(fromJSONObject: object) {
+                return formattedUpstreamError(
+                    message: message,
+                    statusCode: nil,
+                    requestedModel: requestedModel
+                )
+            }
         }
         return nil
+    }
+
+    nonisolated static func hermesErrorHeader(from response: HTTPURLResponse) -> String? {
+        stringValue(response.value(forHTTPHeaderField: "X-Hermes-Error"))
     }
 
     nonisolated private static func sseDataPayloads(from event: String) -> [String] {
@@ -841,8 +863,99 @@ final class IrohRelayRequestHandler: Sendable {
             ?? stringValue(object["message"])
     }
 
+    nonisolated private static func hermesFailureMessage(fromJSONObject object: [String: Any]) -> String? {
+        guard let hermes = object["hermes"] as? [String: Any],
+              boolValue(hermes["failed"]) == true
+                || boolValue(hermes["completed"]) == false && stringValue(hermes["error"]) != nil else {
+            return nil
+        }
+        return stringValue(hermes["error"])
+            ?? stringValue(hermes["message"])
+            ?? "Hermes reported that the upstream model request failed."
+    }
+
+    nonisolated private static func terminalChoiceErrorMessage(fromJSONObject object: [String: Any]) -> String? {
+        guard let choices = object["choices"] as? [[String: Any]] else {
+            return nil
+        }
+        for choice in choices {
+            guard stringValue(choice["finish_reason"])?.lowercased() == "error"
+                    || stringValue(choice["finishReason"])?.lowercased() == "error" else {
+                continue
+            }
+            if let message = choiceVisibleContent(choice)
+                ?? stringValue(object["error"])
+                ?? stringValue(object["message"]) {
+                return message
+            }
+            return "Hermes reported that the upstream model request failed."
+        }
+        return nil
+    }
+
+    nonisolated private static func choiceVisibleContent(_ choice: [String: Any]) -> String? {
+        if let message = choice["message"] as? [String: Any],
+           let content = visibleContentValue(message["content"]) {
+            return content
+        }
+        if let delta = choice["delta"] as? [String: Any],
+           let content = visibleContentValue(delta["content"]) {
+            return content
+        }
+        return visibleContentValue(choice["text"])
+    }
+
+    nonisolated private static func visibleContentValue(_ raw: Any?) -> String? {
+        if let value = raw as? String {
+            return stringValue(value)
+        }
+        if let object = raw as? [String: Any] {
+            return visibleContentValue(object["text"])
+                ?? visibleContentValue(object["value"])
+                ?? visibleContentValue(object["content"])
+        }
+        if let array = raw as? [Any] {
+            let joined = array.compactMap { part -> String? in
+                if let text = part as? String { return text }
+                guard let object = part as? [String: Any] else { return nil }
+                return visibleContentValue(object["text"])
+                    ?? visibleContentValue(object["value"])
+                    ?? visibleContentValue(object["content"])
+            }
+            .joined()
+            return stringValue(joined)
+        }
+        return nil
+    }
+
     nonisolated private static func stringValue(_ value: Any?) -> String? {
         guard let value = value as? String else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    nonisolated private static func boolValue(_ value: Any?) -> Bool? {
+        if let value = value as? Bool {
+            return value
+        }
+        if let value = value as? NSNumber {
+            return value.boolValue
+        }
+        if let value = value as? String {
+            switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "true", "1", "yes":
+                return true
+            case "false", "0", "no":
+                return false
+            default:
+                return nil
+            }
+        }
+        return nil
+    }
+
+    nonisolated private static func stringValue(_ value: String?) -> String? {
+        guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }

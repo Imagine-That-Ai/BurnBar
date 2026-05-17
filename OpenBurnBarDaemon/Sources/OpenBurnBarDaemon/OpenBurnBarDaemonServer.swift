@@ -396,6 +396,44 @@ public actor BurnBarDaemonServer {
                     result: BurnBarConfigResponse(snapshot: snapshot)
                 )
                 return encode(response)
+            case .providerCredentialSlotUpsert:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderCredentialSlotUpsertRequest>.self,
+                    from: requestData
+                )
+                let slot = try await configStore.upsertCredentialSlot(
+                    providerID: typedRequest.params.providerID,
+                    slotID: typedRequest.params.slotID,
+                    label: typedRequest.params.label,
+                    apiKey: typedRequest.params.apiKey,
+                    isEnabled: typedRequest.params.isEnabled
+                )
+                let snapshot = try await configStore.snapshot()
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: BurnBarProviderCredentialSlotMutationResponse(
+                        snapshot: snapshot,
+                        slot: slot
+                    )
+                )
+                return encode(response)
+            case .providerCredentialSlotRemove:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<BurnBarProviderCredentialSlotRemoveRequest>.self,
+                    from: requestData
+                )
+                try await configStore.removeCredentialSlot(
+                    providerID: typedRequest.params.providerID,
+                    slotID: typedRequest.params.slotID
+                )
+                let snapshot = try await configStore.snapshot()
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: BurnBarProviderCredentialSlotMutationResponse(snapshot: snapshot)
+                )
+                return encode(response)
             case .usageRecent:
                 let typedRequest = try decoder.decode(
                     BurnBarRPCRequestEnvelopeWithParams<BurnBarRecentUsageRequest>.self,

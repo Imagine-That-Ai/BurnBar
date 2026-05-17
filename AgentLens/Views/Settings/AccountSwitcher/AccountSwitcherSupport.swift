@@ -99,6 +99,18 @@ func browserServiceStatusDisplays(
 
 func cliQuotaStatusText(
     for profile: SwitcherProfileRecord,
+    snapshot: ProviderQuotaSnapshot?
+) -> String? {
+    guard let windows = cliQuotaWindowDisplays(for: profile, snapshot: snapshot),
+          !windows.isEmpty else {
+        return nil
+    }
+
+    return "Quota left · " + windows.map(\.inlineText).joined(separator: " · ")
+}
+
+func cliQuotaStatusText(
+    for profile: SwitcherProfileRecord,
     quotaLookup: (AgentProvider) -> ProviderQuotaSnapshot?
 ) -> String? {
     guard let windows = cliQuotaWindowDisplays(for: profile, quotaLookup: quotaLookup),
@@ -111,17 +123,32 @@ func cliQuotaStatusText(
 
 func cliQuotaWindowDisplays(
     for profile: SwitcherProfileRecord,
+    snapshot: ProviderQuotaSnapshot?
+) -> [SwitcherQuotaWindowDisplay]? {
+    guard isCLIProfileEligibleForQuotaDisplay(profile) else {
+        return nil
+    }
+
+    return switcherQuotaWindowDisplays(snapshot: snapshot)
+}
+
+func cliQuotaWindowDisplays(
+    for profile: SwitcherProfileRecord,
     quotaLookup: (AgentProvider) -> ProviderQuotaSnapshot?
 ) -> [SwitcherQuotaWindowDisplay]? {
-    guard profile.targetKind == .cli,
-          !profile.isDisabled,
-          profile.cliMetadata?.accountDescription?.isEmpty == false,
+    guard isCLIProfileEligibleForQuotaDisplay(profile),
           let cliType = profile.cliType,
           let provider = cliType.agentProvider else {
         return nil
     }
 
     return switcherQuotaWindowDisplays(snapshot: quotaLookup(provider))
+}
+
+private func isCLIProfileEligibleForQuotaDisplay(_ profile: SwitcherProfileRecord) -> Bool {
+    profile.targetKind == .cli
+        && !profile.isDisabled
+        && profile.cliMetadata?.accountDescription?.isEmpty == false
 }
 
 func refreshedBrowserProfileRecord(

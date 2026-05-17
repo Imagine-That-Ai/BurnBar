@@ -315,13 +315,13 @@ struct RoutedClientConfigSyncService {
         customModels.append(contentsOf: models.enumerated().map { offset, model in
             [
                 "model": model,
-                "id": "openburnbar:\(model)",
+                "id": factoryCustomModelID(for: model, index: startIndex + offset),
                 "index": startIndex + offset,
                 "baseUrl": config.baseURL,
                 "apiKey": config.effectiveAPIKey,
                 "displayName": "OpenBurnBar \(model)",
                 "maxOutputTokens": 8192,
-                "provider": "openai"
+                "provider": "generic-chat-completion-api"
             ] as [String: Any]
         })
         root["customModels"] = customModels
@@ -343,7 +343,7 @@ struct RoutedClientConfigSyncService {
                 "base_url": config.baseURL,
                 "api_key": config.effectiveAPIKey,
                 "max_output_tokens": 8192,
-                "provider": "openai"
+                "provider": "generic-chat-completion-api"
             ] as [String: Any]
         })
         root["custom_models"] = customModels
@@ -356,10 +356,41 @@ struct RoutedClientConfigSyncService {
         let displayName = ((entry["displayName"] as? String) ?? (entry["model_display_name"] as? String))?
             .lowercased()
         let model = (entry["model"] as? String)?.lowercased()
+        let baseURL = (entry["baseUrl"] as? String) ?? (entry["base_url"] as? String)
+        let isGatewayEntry = baseURL.map(isLocalGatewayURL) == true
         return provider == "openburnbar"
+            || id?.hasPrefix("custom:openburnbar") == true
             || id?.hasPrefix("openburnbar:") == true
+            || id?.contains("vibeproxy") == true
             || displayName?.hasPrefix("openburnbar ") == true
+            || displayName?.contains("vibeproxy") == true
             || model?.hasPrefix("openburnbar:") == true
+            || ((provider == "openai"
+                 || provider == "anthropic"
+                 || provider == "generic-chat-completion-api")
+                && isGatewayEntry)
+    }
+
+    private func isLocalGatewayURL(_ rawValue: String) -> Bool {
+        guard let components = URLComponents(string: rawValue.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let host = components.host?.lowercased(),
+              host == "127.0.0.1" || host == "localhost",
+              components.port == 8317 else {
+            return false
+        }
+        return true
+    }
+
+    private func factoryCustomModelID(for model: String, index: Int) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-_"))
+        let sanitized = model
+            .unicodeScalars
+            .map { allowed.contains($0) ? String($0) : "-" }
+            .joined()
+        let slug = sanitized
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".-_"))
+            .isEmpty ? "model" : sanitized
+        return "custom:OpenBurnBar-\(slug)-\(index)"
     }
 
     private func openCodeProviderObject(

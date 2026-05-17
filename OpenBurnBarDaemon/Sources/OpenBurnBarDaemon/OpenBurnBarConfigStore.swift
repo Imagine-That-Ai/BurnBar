@@ -204,6 +204,7 @@ public actor BurnBarConfigStore {
         var updatedSlot = BurnBarProviderCredentialSlot(slotID: resolvedSlotID, label: resolvedLabel, isEnabled: isEnabled, status: isEnabled ? .ready : .disabled)
         let updatedSettings = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
             var mutable = settings
+            mutable.isEnabled = true
             if let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == resolvedSlotID }) {
                 var existing = mutable.credentialSlots[index]
                 existing.label = resolvedLabel
@@ -215,7 +216,7 @@ public actor BurnBarConfigStore {
             } else {
                 mutable.credentialSlots.append(updatedSlot)
             }
-            if mutable.preferredCredentialSlotID == nil {
+            if mutable.preferredCredentialSlotID == nil, isEnabled {
                 mutable.preferredCredentialSlotID = resolvedSlotID
             }
             return mutable

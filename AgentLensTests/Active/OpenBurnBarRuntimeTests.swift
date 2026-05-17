@@ -49,4 +49,14 @@ final class OpenBurnBarRuntimeTests: XCTestCase {
             forceLiveScene: true
         ))
     }
+
+    func test_shouldDisableAutomaticTerminationForHarness_honorsE2EEnvironment() {
+        XCTAssertTrue(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForHarness(
+            environment: ["OPENBURNBAR_FORCE_LIVE_SCENE": "1"]
+        ))
+        XCTAssertTrue(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForHarness(
+            environment: ["OPENBURNBAR_E2E_HOLD_OPEN": "1"]
+        ))
+        XCTAssertFalse(OpenBurnBarRuntime.shouldDisableAutomaticTerminationForHarness(environment: [:]))
+    }
 }

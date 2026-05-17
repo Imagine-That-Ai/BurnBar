@@ -429,7 +429,7 @@ struct HermesGatewayDetailView: View {
 
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                         fieldLabel("Model Override")
-                        TextField("Leave empty for auto (e.g. gpt-5.5)",
+                        TextField("Leave empty for selected gateway/default model",
                                   text: $settingsManager.hermesChatModelOverride)
                             .textFieldStyle(.roundedBorder)
                     }

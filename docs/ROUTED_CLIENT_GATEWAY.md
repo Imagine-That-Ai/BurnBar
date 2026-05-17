@@ -130,8 +130,8 @@ lives in `OpenBurnBarHTTPGatewayServerTests.swift`:
    account or key in that pool if you want failover to have somewhere to go.
 4. In Settings -> Routing pools -> Client apps:
    - wire Codex CLI through `~/.codex/config.toml`;
-   - sync Droid/Factory through `~/.factory/settings.json` and
-     `~/.factory/config.json`;
+   - sync Droid/Factory through `~/.factory/settings.local.json`,
+     `~/.factory/settings.json`, and `~/.factory/config.json`;
    - wire Forge through `~/forge/.forge.toml`;
    - wire Claude Code through `~/.claude/settings.json`.
 5. Use **Probe** / **Probe pool** to send a one-token request through the
@@ -148,11 +148,12 @@ before replacing prior OpenBurnBar entries.
 
 | Client | File | OpenBurnBar-owned keys |
 |---|---|---|
-| Droid/Factory | `~/.factory/settings.json` | `customModels` entries with provider `openai`, `id = openburnbar:<model>`, and display names prefixed `OpenBurnBar` |
-| Droid/Factory | `~/.factory/config.json` | `custom_models` entries with provider `openai` and display names prefixed `OpenBurnBar` |
+| Droid/Factory | `~/.factory/settings.local.json` | `customModels` entries with provider `generic-chat-completion-api`, `id = custom:OpenBurnBar-<model>-<index>`, and display names prefixed `OpenBurnBar` |
+| Droid/Factory | `~/.factory/settings.json` | `customModels` entries with provider `generic-chat-completion-api`, `id = custom:OpenBurnBar-<model>-<index>`, and display names prefixed `OpenBurnBar` |
+| Droid/Factory | `~/.factory/config.json` | `custom_models` entries with provider `generic-chat-completion-api` and display names prefixed `OpenBurnBar` |
 | OpenCode | `~/.config/opencode/opencode.json` | `provider.openburnbar`; default `model` only when no model is set |
 | Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_AUTH_TOKEN`, plus a marker key `env.OPENBURNBAR_WIRED` so the helper can detect its own previous wiring |
-| Codex CLI | `~/.codex/config.toml` | Sentinel-fenced `[model_providers.openburnbar]` block bounded by `# openburnbar:routing — start` / `# openburnbar:routing — end`. Activate by setting `model_provider = "openburnbar"` in the Codex profile you want routed. |
+| Codex CLI | `~/.codex/config.toml` | Sentinel-fenced `[model_providers.openburnbar]` block bounded by `# openburnbar:routing — start` / `# openburnbar:routing — end`, with `wire_api = "responses"`. Activate by setting `model_provider = "openburnbar"` in the Codex profile you want routed. |
 | Forge CLI | `~/forge/.forge.toml` | Sentinel-fenced OpenBurnBar-owned `[[providers]]` block named `openburnbar` with `url = http://127.0.0.1:8317/v1/chat/completions`, `models = http://127.0.0.1:8317/v1/models`, `api_key_var = OPENBURNBAR_GATEWAY_TOKEN`, and `response_type = OpenAI` |
 
 The client config receives the local gateway URL and either the gateway auth
@@ -170,7 +171,7 @@ rows for each pool. Two modes:
 
 1. **Config-file mode (toggle)** — writes the env / TOML block listed above,
    then runs a 1-token probe (`POST /v1/messages` for Claude Code, `POST
-   /v1/chat/completions` for Codex and Forge) to confirm the gateway actually
+   /v1/responses` for Codex, and `POST /v1/chat/completions` for Forge) to confirm the gateway actually
    serves the wired client before reporting success. Toggle off to remove the
    OpenBurnBar block.
 2. **Shell-snippet mode (button)** — opens a copy/pasteable
@@ -179,8 +180,9 @@ rows for each pool. Two modes:
 
 Droid/Factory uses a sync button instead of a toggle because Factory consumes
 custom model arrays, not a sentinel block. OpenBurnBar writes `provider:
-"openai"` custom models pointed at the local Hydrant gateway, then uses the
-shared OpenAI-family probe to prove the pool responds.
+`generic-chat-completion-api` custom models pointed at the local Hydrant
+gateway, removes stale local VibeProxy entries on that gateway port, and then
+uses the shared OpenAI-family probe to prove the pool responds.
 
 Codex's ChatGPT-auth mode (browser session cookies) cannot be routed through
 a generic proxy; only the API-key path participates in the OpenAI-family pool

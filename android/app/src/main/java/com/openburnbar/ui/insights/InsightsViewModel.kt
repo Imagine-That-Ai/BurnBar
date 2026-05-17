@@ -22,6 +22,9 @@ import com.openburnbar.data.insights.services.InsightDataSource
 import com.openburnbar.data.insights.services.RuleBasedInsightAnalysisEngine
 import com.openburnbar.data.assistants.CLIAgentMissionDispatcher
 import com.openburnbar.data.assistants.CLIAgentMissionSnapshot
+import com.openburnbar.data.insights.verdict.InsightVerdict
+import com.openburnbar.data.insights.verdict.RuleBasedVerdictEngine
+import com.openburnbar.data.insights.verdict.VerdictWindow
 import com.openburnbar.data.repos.InsightAnalysisAuditLogRepository
 import com.openburnbar.data.repos.InsightAnalysisCacheRepository
 import kotlinx.coroutines.Job
@@ -69,6 +72,19 @@ class InsightsViewModel(
 
     private val _analysis = MutableStateFlow<InsightAnalysisResult?>(null)
     val analysis = _analysis.asStateFlow()
+
+    /**
+     * The current rule-based verdict that pins above the brief.
+     * Plan §4.2 / Phase A.10–13: always present, instant on the first
+     * digest, demo-seeded on first run. The Android shell sources its
+     * digest through the same FirestoreInsightDataSource the brief uses
+     * so verdict + brief always stay in sync.
+     */
+    private val verdictEngine = RuleBasedVerdictEngine()
+    private val _verdict = MutableStateFlow<InsightVerdict?>(null)
+    val verdict = _verdict.asStateFlow()
+    private val _verdictIsDemo = MutableStateFlow(false)
+    val verdictIsDemo = _verdictIsDemo.asStateFlow()
 
     sealed interface MissionStatus {
         data object Idle : MissionStatus
@@ -266,6 +282,12 @@ class InsightsViewModel(
     ) {
         val filter = _canvas.value?.filter ?: InsightFilter()
         val digest = dataSource.buildDigest(filter)
+        // Produce the rule-based verdict alongside the brief; the verdict
+        // surface paints from this state and never blanks even when the
+        // analysis call fails downstream.
+        val producedVerdict = verdictEngine.produce(digest = digest, window = VerdictWindow.today)
+        _verdict.value = producedVerdict
+        _verdictIsDemo.value = false
         val context = InsightAggregator.buildContext(
             digest = digest,
             includedDataSources = listOf(

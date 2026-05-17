@@ -368,7 +368,7 @@ final class PiService {
             guard !modelOptions.isEmpty else {
                 throw PiServiceError.selectedModelCatalogUnavailable(selectedModelID)
             }
-            guard modelOptions.contains(where: { $0.modelID == selectedModelID }) else {
+            guard modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) else {
                 throw PiServiceError.selectedModelUnavailable(selectedModelID)
             }
         }
@@ -778,15 +778,19 @@ final class PiService {
             let (data, _) = try await urlSession.data(for: request)
             let decoded = Self.parseModels(data: data)
             modelOptions = decoded
-            if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID }) {
+            if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
                 if selectedModelWasExplicit {
                     runtimeErrorText = "Selected Pi model '\(selectedModelID)' is not advertised by this Mac Pi harness. Pick a listed model or refresh the Mac provider catalog."
                 } else {
-                    self.selectedModelID = favoriteModelOptions.first?.modelID ?? decoded.first?.modelID
+                    self.selectedModelID = favoriteModelOptions.first { $0.isRouteEligible }?.modelID
+                        ?? decoded.first { $0.isRouteEligible }?.modelID
+                        ?? decoded.first?.modelID
                     selectedModelWasExplicit = false
                 }
             } else if selectedModelID == nil {
-                selectedModelID = favoriteModelOptions.first?.modelID ?? decoded.first?.modelID
+                selectedModelID = favoriteModelOptions.first { $0.isRouteEligible }?.modelID
+                    ?? decoded.first { $0.isRouteEligible }?.modelID
+                    ?? decoded.first?.modelID
                 selectedModelWasExplicit = false
             }
         } catch {
@@ -800,7 +804,7 @@ final class PiService {
                 guard !modelOptions.isEmpty else {
                     throw PiServiceError.selectedModelCatalogUnavailable(selectedModelID)
                 }
-                guard modelOptions.contains(where: { $0.modelID == selectedModelID }) else {
+                guard modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) else {
                     throw PiServiceError.selectedModelUnavailable(selectedModelID)
                 }
             }
@@ -1075,12 +1079,24 @@ final class PiService {
         let raw = (object["data"] as? [[String: Any]]) ?? []
         return raw.compactMap { entry in
             guard let id = entry["id"] as? String, !id.isEmpty else { return nil }
-            let provider = (entry["owned_by"] as? String) ?? "pi"
+            let provider = (entry["provider_id"] as? String)
+                ?? (entry["owned_by"] as? String)
+                ?? "pi"
+            let providerName = (entry["provider_name"] as? String)
+                ?? provider.capitalized
             return HermesRuntimeModelOption(
                 providerID: provider,
-                providerName: provider.capitalized,
+                providerName: providerName,
                 modelID: id,
-                displayName: id
+                displayName: (entry["display_name"] as? String) ?? id,
+                accountID: entry["account_id"] as? String,
+                accountLabel: entry["account_label"] as? String,
+                sourceID: entry["source_id"] as? String,
+                sourceKind: entry["source_kind"] as? String,
+                capabilities: entry["capabilities"] as? [String] ?? [],
+                quotaState: entry["quota_state"] as? String,
+                routeEligible: entry["route_eligible"] as? Bool,
+                lastError: entry["last_error"] as? String
             )
         }
     }

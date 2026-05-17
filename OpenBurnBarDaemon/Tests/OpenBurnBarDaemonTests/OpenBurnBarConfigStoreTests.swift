@@ -238,6 +238,36 @@ final class BurnBarConfigStoreTests: XCTestCase {
         let secret = try await store.secret(for: providerSlotKey)
         XCTAssertEqual(secret, "zai-keychain-secret")
     }
+
+    func testKeychainSecretStorePrefersDaemonServiceAndCanReadLegacyService() async throws {
+        let primaryService = "com.openburnbar.tests.keychain.primary.\(UUID().uuidString)"
+        let legacyService = "com.openburnbar.tests.keychain.legacy.\(UUID().uuidString)"
+        let providerSlotKey = "anthropic.slot.default"
+        let account = "provider.\(providerSlotKey).apiKey"
+        defer {
+            for service in [primaryService, legacyService] {
+                let query: [String: Any] = [
+                    kSecClass as String: kSecClassGenericPassword,
+                    kSecAttrService as String: service,
+                    kSecAttrAccount as String: account
+                ]
+                SecItemDelete(query as CFDictionary)
+            }
+        }
+
+        try addKeychainSecret("legacy-secret", service: legacyService, account: account)
+        let legacyOnlyStore = BurnBarKeychainSecretStore(
+            service: primaryService,
+            legacyServices: [legacyService],
+            hermesCredentialPoolURL: nil
+        )
+        let legacySecret = try await legacyOnlyStore.secret(for: providerSlotKey)
+        XCTAssertEqual(legacySecret, "legacy-secret")
+
+        try await legacyOnlyStore.setSecret("daemon-secret", for: providerSlotKey)
+        let daemonSecret = try await legacyOnlyStore.secret(for: providerSlotKey)
+        XCTAssertEqual(daemonSecret, "daemon-secret")
+    }
     #endif
 
     func testRouterModePersistsAndLegacySnapshotsDefaultSafely() async throws {
@@ -271,6 +301,22 @@ final class BurnBarConfigStoreTests: XCTestCase {
         return BurnBarConfigStoreHarness(rootURL: rootURL, configStore: configStore)
     }
 }
+
+#if os(macOS)
+private func addKeychainSecret(_ secret: String, service: String, account: String) throws {
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: service,
+        kSecAttrAccount as String: account,
+        kSecValueData as String: Data(secret.utf8),
+        kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+    ]
+    let status = SecItemAdd(query as CFDictionary, nil)
+    guard status == errSecSuccess else {
+        throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+    }
+}
+#endif
 
 private struct BurnBarConfigStoreHarness {
     let rootURL: URL
