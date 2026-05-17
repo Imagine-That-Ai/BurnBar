@@ -291,7 +291,8 @@ struct RootNavigationView: View {
         if selection == .hermes {
             HermesSquareSplitLayout(
                 hermesService: hermesService,
-                missionHost: missionConsoleHost
+                missionHost: missionConsoleHost,
+                presentationMode: .embeddedInSidebarDetail
             )
         } else {
             NavigationStack {

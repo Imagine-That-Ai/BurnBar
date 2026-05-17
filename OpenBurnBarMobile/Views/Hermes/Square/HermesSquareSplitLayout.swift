@@ -14,15 +14,36 @@ import OpenBurnBarCore
 // command, discover drawer, subscriptions folder — all wired.
 
 struct HermesSquareSplitLayout: View {
+    enum PresentationMode {
+        case standalone
+        case embeddedInSidebarDetail
+    }
+
     let hermesService: HermesService
     let missionHost: MobileMissionConsoleHost
+    let presentationMode: PresentationMode
 
     @State private var selectedDetail: DetailRoute? = nil
+
+    init(
+        hermesService: HermesService,
+        missionHost: MobileMissionConsoleHost,
+        presentationMode: PresentationMode = .standalone
+    ) {
+        self.hermesService = hermesService
+        self.missionHost = missionHost
+        self.presentationMode = presentationMode
+    }
 
     var body: some View {
         GeometryReader { geometry in
             if geometry.size.width >= 720 {
-                twoColumnLayout
+                switch presentationMode {
+                case .standalone:
+                    standaloneTwoColumnLayout
+                case .embeddedInSidebarDetail:
+                    embeddedTwoColumnLayout(width: geometry.size.width)
+                }
             } else {
                 HermesSquareRoot(
                     hermesService: hermesService,
@@ -32,7 +53,7 @@ struct HermesSquareSplitLayout: View {
         }
     }
 
-    private var twoColumnLayout: some View {
+    private var standaloneTwoColumnLayout: some View {
         NavigationSplitView {
             HermesSquareLeftColumn(
                 hermesService: hermesService,
@@ -48,6 +69,38 @@ struct HermesSquareSplitLayout: View {
             )
         }
         .navigationSplitViewStyle(.balanced)
+    }
+
+    private func embeddedTwoColumnLayout(width: CGFloat) -> some View {
+        let leftWidth = min(max(width * 0.34, 320), 420)
+
+        return HStack(spacing: 0) {
+            NavigationStack {
+                HermesSquareLeftColumn(
+                    hermesService: hermesService,
+                    missionHost: missionHost,
+                    onSelect: { route in selectedDetail = route }
+                )
+            }
+            .frame(width: leftWidth)
+            .frame(maxHeight: .infinity)
+            .clipShape(Rectangle())
+
+            Rectangle()
+                .fill(MobileTheme.Colors.borderSubtle.opacity(0.7))
+                .frame(width: 1)
+
+            HermesSquareDetailColumn(
+                hermesService: hermesService,
+                missionHost: missionHost,
+                detail: selectedDetail
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(Rectangle())
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(EmberSurfaceBackground().ignoresSafeArea())
+        .clipShape(Rectangle())
     }
 
     // MARK: Detail routes — mirrors HermesSquareRoot.NavTarget

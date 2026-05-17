@@ -114,7 +114,9 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertTrue(method?.unlocksQuotaRefresh ?? false)
         XCTAssertTrue(descriptor?.proxyHint?.localizedCaseInsensitiveContains("API key") ?? false)
         XCTAssertTrue(method?.validate("gmail").isWarning ?? false)
+        XCTAssertTrue(method?.validate("ollama-realistic-api-key-123456").isOK ?? false)
         XCTAssertTrue(method?.validate("sk-ollama-test-key-123456").isOK ?? false)
+        XCTAssertNil(method?.prefixHint)
     }
 
     func test_apiKeyValidation_warnsOnMissingPrefix() {
