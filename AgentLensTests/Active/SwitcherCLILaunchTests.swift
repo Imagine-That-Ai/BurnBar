@@ -28,6 +28,26 @@ private final class MutableBox<Value>: Sendable {
     }
 }
 
+private actor AsyncSignal {
+    private var isSignaled = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func signal() {
+        guard !isSignaled else { return }
+        isSignaled = true
+        let pending = waiters
+        waiters.removeAll()
+        pending.forEach { $0.resume() }
+    }
+
+    func wait() async {
+        if isSignaled { return }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+}
+
 private struct TestCLIFallbackPlanner: CLIFallbackPlanning {
     let exhaustedProfileIDs: Set<String>
 
@@ -1777,8 +1797,9 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
             cliType == .claude ? claudeURL : nil
         }
         // Simulate a launch that never completes (stays in-progress)
+        let firstLaunchStarted = AsyncSignal()
         CLILaunchInvoker.launchHandler = { _, _, _, _, _, _ in
-            // Never return — simulates an in-progress launch
+            await firstLaunchStarted.signal()
             try? await Task.sleep(nanoseconds: 10_000_000_000)
             return .success(())
         }
@@ -1795,8 +1816,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
         let launchService = MutableBox(service!)
         // Launch once — this will block in the handler
         let launchTask = Task { await launchService.value.launchCLI(for: "test-profile") }
-        // Give the first launch time to start
-        try? await Task.sleep(nanoseconds: 50_000)
+        await firstLaunchStarted.wait()
 
         // Second launch should be rejected (already in progress)
         let outcome2 = await service.launchCLI(for: "test-profile")
@@ -1804,6 +1824,7 @@ final class SwitcherCLILAunchServiceTests: XCTestCase {
 
         // Cancel the blocked first launch and clean up
         launchTask.cancel()
+        _ = await launchTask.value
         CLILaunchInvoker.launchHandler = nil
     }
 
