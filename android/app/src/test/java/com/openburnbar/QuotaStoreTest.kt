@@ -1,5 +1,6 @@
 package com.openburnbar
 
+import android.app.Application
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.stores.QuotaStore
@@ -13,6 +14,13 @@ import org.junit.Test
 class QuotaStoreTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
+
+    @Test
+    fun `default AndroidViewModel factory can construct quota store`() {
+        val constructor = QuotaStore::class.java.getConstructor(Application::class.java)
+
+        assertNotNull(constructor)
+    }
 
     @Test
     fun `load fetches snapshots and accounts`() = runTest {

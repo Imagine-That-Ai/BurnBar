@@ -24,9 +24,17 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.time.Instant
 
 class QuotaStore(
+    application: Application,
     private val repo: FirestoreRepository = FirestoreRepository(),
     functions: FunctionsRepository? = null
-) : AndroidViewModel(Application()) {
+) : AndroidViewModel(application) {
+    constructor(application: Application) : this(application, FirestoreRepository(), null)
+
+    constructor(
+        repo: FirestoreRepository = FirestoreRepository(),
+        functions: FunctionsRepository? = null
+    ) : this(Application(), repo, functions)
+
     private val functions: FunctionsRepository by lazy { functions ?: FunctionsRepository() }
 
     private val _snapshots = MutableStateFlow<List<ProviderQuotaSnapshot>>(emptyList())
