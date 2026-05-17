@@ -52,11 +52,9 @@ final class MediaDispatchIntegrationTests: XCTestCase {
 
         // Run the same code path the Mac + iOS dispatchers use: fetch
         // the blob, then emit the ack the caller wires in.
-        var emittedAcks: [HermesRealtimeRelayFrame] = []
+        let ackRecorder = AckRecorder()
         let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = { frame in
-            await MainActor.run {
-                emittedAcks.append(frame)
-            }
+            await ackRecorder.append(frame)
         }
 
         let result = try await service.fetch(ticketText: "blob1xyzfake", manifest: manifest)
@@ -79,6 +77,7 @@ final class MediaDispatchIntegrationTests: XCTestCase {
 
         XCTAssertEqual(backend.fetchedTickets, ["blob1xyzfake"])
         XCTAssertTrue(FileManager.default.fileExists(atPath: result.destinationURL.path))
+        let emittedAcks = await ackRecorder.frames
         XCTAssertEqual(emittedAcks.count, 1)
         let posted = emittedAcks[0]
         XCTAssertEqual(posted.type, .mediaBlobAck)
@@ -128,6 +127,18 @@ final class MediaDispatchIntegrationTests: XCTestCase {
             )
             XCTAssertEqual(ack.status, .rejected)
         }
+    }
+}
+
+private actor AckRecorder {
+    private var storedFrames: [HermesRealtimeRelayFrame] = []
+
+    var frames: [HermesRealtimeRelayFrame] {
+        storedFrames
+    }
+
+    func append(_ frame: HermesRealtimeRelayFrame) {
+        storedFrames.append(frame)
     }
 }
 

@@ -1,5 +1,25 @@
 # Hermes iroh Rollout Status
 
+## 2026-05-17T20:53Z — CI-only computer-use test compile failure repaired locally
+
+**Gate status:** the first fresh pushed run still failed
+`computer-use-loopback-test`, but the new failure was a CI-toolchain compile
+issue outside the computer-use test target itself. The local reproduction now
+passes after the follow-up repair.
+
+Completed:
+- Converted `CloudVaultCryptoTests` from Swift Testing to XCTest so GitHub's
+  computer-use SwiftPM job no longer fails with `no such module 'Testing'`.
+- Reworked `MediaDispatchIntegrationTests` ack capture to use an actor instead
+  of mutating captured array state inside a `@Sendable` closure.
+
+Verification:
+- `cd OpenBurnBarCore && swift test --filter "OpenBurnBarComputerUseCoreTests"`
+  passed 84 tests with 0 failures.
+
+Next action:
+- Push this follow-up repair and confirm the fresh GitHub computer-use job.
+
 ## 2026-05-17T20:46Z — local PR Swift and computer-use CI blockers repaired
 
 **Gate status:** the latest pushed branch still has failing GitHub checks until

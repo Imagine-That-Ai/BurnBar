@@ -1,31 +1,24 @@
 import CryptoKit
 import Foundation
-import Testing
+import XCTest
 @testable import OpenBurnBarCore
 
-@Suite("Cloud vault crypto")
-struct CloudVaultCryptoTests {
-    @Test("AES-GCM text and blob envelopes decrypt only with the vault key")
-    func textAndBlobRoundTrip() throws {
+final class CloudVaultCryptoTests: XCTestCase {
+    func test_textAndBlobRoundTrip_decryptsOnlyWithVaultKey() throws {
         let key = Data(repeating: 0x42, count: 32)
         let otherKey = Data(repeating: 0x24, count: 32)
 
         let sealedText = try CloudVaultCrypto.sealText("private launch plan", keyData: key)
-        #expect(try CloudVaultCrypto.openText(sealedText, keyData: key) == "private launch plan")
-        #expect(throws: Error.self) {
-            _ = try CloudVaultCrypto.openText(sealedText, keyData: otherKey)
-        }
+        XCTAssertEqual(try CloudVaultCrypto.openText(sealedText, keyData: key), "private launch plan")
+        XCTAssertThrowsError(try CloudVaultCrypto.openText(sealedText, keyData: otherKey))
 
         let body = Data("full encrypted session markdown".utf8)
         let sealedBlob = try CloudVaultCrypto.sealBlob(body, keyData: key)
-        #expect(try CloudVaultCrypto.openBlob(sealedBlob, keyData: key) == body)
-        #expect(throws: Error.self) {
-            _ = try CloudVaultCrypto.openBlob(sealedBlob, keyData: otherKey)
-        }
+        XCTAssertEqual(try CloudVaultCrypto.openBlob(sealedBlob, keyData: key), body)
+        XCTAssertThrowsError(try CloudVaultCrypto.openBlob(sealedBlob, keyData: otherKey))
     }
 
-    @Test("Cloud search token hashes are deterministic, keyed, deduplicated, and not plaintext")
-    func tokenHashesAreKeyedAndStable() throws {
+    func test_tokenHashes_areKeyedStableDeduplicatedAndNotPlaintext() throws {
         let key = Data(repeating: 0x11, count: 32)
         let otherKey = Data(repeating: 0x22, count: 32)
         let text = "BurnBar BurnBar hosted MiniMax encrypted session search"
@@ -34,16 +27,15 @@ struct CloudVaultCryptoTests {
         let second = try CloudVaultCrypto.tokenHashes(for: text, keyData: key)
         let other = try CloudVaultCrypto.tokenHashes(for: text, keyData: otherKey)
 
-        #expect(first == second)
-        #expect(first != other)
-        #expect(first.count == Set(first).count)
-        #expect(first.allSatisfy { $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil })
-        #expect(!first.contains("burnbar"))
-        #expect(try CloudVaultCrypto.tokenHashes(for: "the and for", keyData: key).isEmpty)
+        XCTAssertEqual(first, second)
+        XCTAssertNotEqual(first, other)
+        XCTAssertEqual(first.count, Set(first).count)
+        XCTAssertTrue(first.allSatisfy { $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil })
+        XCTAssertFalse(first.contains("burnbar"))
+        XCTAssertTrue(try CloudVaultCrypto.tokenHashes(for: "the and for", keyData: key).isEmpty)
     }
 
-    @Test("Cloud semantic hashes are deterministic, keyed, bounded, and preserve encrypted recall")
-    func semanticHashesAreKeyedAndStable() throws {
+    func test_semanticHashes_areKeyedStableBoundedAndPreserveEncryptedRecall() throws {
         let key = Data(repeating: 0x33, count: 32)
         let otherKey = Data(repeating: 0x44, count: 32)
         let indexed = "Hosted encrypted session logs with semantic search and cloud vault sync"
@@ -56,18 +48,20 @@ struct CloudVaultCryptoTests {
         let relatedHashes = try CloudVaultCrypto.semanticHashes(for: related, keyData: key)
         let unrelatedHashes = try CloudVaultCrypto.semanticHashes(for: unrelated, keyData: key)
 
-        #expect(first == second)
-        #expect(first != other)
-        #expect(first.count <= 24)
-        #expect(first.count == Set(first).count)
-        #expect(first.allSatisfy { $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil })
-        #expect(!first.contains("encrypted"))
-        #expect(Set(first).intersection(relatedHashes).isEmpty == false)
-        #expect(Set(first).intersection(relatedHashes).count >= Set(first).intersection(unrelatedHashes).count)
+        XCTAssertEqual(first, second)
+        XCTAssertNotEqual(first, other)
+        XCTAssertLessThanOrEqual(first.count, 24)
+        XCTAssertEqual(first.count, Set(first).count)
+        XCTAssertTrue(first.allSatisfy { $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil })
+        XCTAssertFalse(first.contains("encrypted"))
+        XCTAssertFalse(Set(first).intersection(relatedHashes).isEmpty)
+        XCTAssertGreaterThanOrEqual(
+            Set(first).intersection(relatedHashes).count,
+            Set(first).intersection(unrelatedHashes).count
+        )
     }
 
-    @Test("P-256 wrapped vault keys unwrap across generated device keys")
-    func wrappedVaultKeyRoundTrip() throws {
+    func test_wrappedVaultKeyRoundTrip_unwrapsAcrossGeneratedDeviceKeys() throws {
         let recipient = P256.KeyAgreement.PrivateKey()
         let vaultKey = Data((0..<32).map(UInt8.init))
 
@@ -77,6 +71,6 @@ struct CloudVaultCryptoTests {
         )
         let unwrapped = try CloudVaultCrypto.unwrapVaultKey(wrapped, privateKey: recipient)
 
-        #expect(unwrapped == vaultKey)
+        XCTAssertEqual(unwrapped, vaultKey)
     }
 }
