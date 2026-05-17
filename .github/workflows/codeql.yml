@@ -39,7 +39,9 @@ jobs:
     # macOS, but the matrix-level runner is set per-job to keep the matrix
     # simple. Per-language overrides handled below via `runs-on: ${{ matrix.runner }}`.
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    # Swift CodeQL can spend nearly the full previous 60-minute cap importing
+    # TRAP files after a successful traced build on hosted macOS runners.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -65,7 +67,7 @@ jobs:
       # observes the compiler invocations. Without this, the database
       # finalizer reports "no source seen" and fails with exit 32.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -121,6 +123,6 @@ jobs:
             build
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
