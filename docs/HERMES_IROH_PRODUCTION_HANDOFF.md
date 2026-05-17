@@ -5,19 +5,25 @@
 > [`HERMES_IROH_TRANSPORT.md`](HERMES_IROH_TRANSPORT.md), production Firestore
 > rules and hosted relay Remote Config are live, physical iOS and Android
 > selected-model hosted-relay proofs are green, and the immediate PR-harness
-> blocker on branch `chore/router-brand-coherent-rail` is repaired locally as a
-> provider-router/keychain regression cluster. The latest local repair keeps
-> provider-family mode pinned to the catalog vendor only when that vendor can
-> actually route the requested model, preserves fallback to a credentialed
-> same-family provider, and restores provider keychain overwrite semantics so
-> stale login-keychain metadata is deleted instead of preserved. Local
-> verification: `cd OpenBurnBarDaemon && swift test` passes 261 tests.
+> blockers on branch `chore/router-brand-coherent-rail` are repaired, pushed,
+> and green in CI. The pushed repairs keep provider-family mode pinned to the
+> catalog vendor only when that vendor can actually route the requested model,
+> preserve fallback to a credentialed same-family provider, restore provider
+> keychain overwrite semantics, defer Hermes local-oracle answers ahead of live
+> model-routing failures, preserve exact catalog model matching, keep Kimi /
+> Moonshot quota snapshots visible, isolate Claude OAuth importing from quota
+> credential readers, and restore the app harness manifest/control-frame
+> contracts. Local verification: `OpenBurnBarDaemon` passes 264 SwiftPM tests,
+> `OpenBurnBarCore` passes 768 SwiftPM tests with 2 skips, and the targeted
+> app/Xcode regression suites pass. Fresh GitHub CI on the pushed head is green:
+> Workflow Lint, OpenBurnBar Functional QA, OpenBurnBarIroh xcframework,
+> openburnbar-iroh AAR (Android), OpenBurnBar PR Harness, and CodeQL.
 >
 > The rollout is still **not production complete**. The remaining hard gates
-> are the renewed different-network/cellular iPhone Gate C/D sequence, a clean
-> pushed CI run on the repaired branch, Phase E TestFlight/internal soak, and
-> explicit approvals for any production deploy, TestFlight submission, Remote
-> Config percentage increase, hosted-relay spend, or WSS retirement action.
+> are the renewed different-network/cellular iPhone Gate C/D sequence, Phase E
+> TestFlight/internal soak, and explicit approvals for any production deploy,
+> TestFlight submission, Remote Config percentage increase, hosted-relay spend,
+> or WSS retirement action.
 
 You are taking over the OpenBurnBar Hermes Realtime Relay migration from Cloud Run + WSS to **iroh peer-to-peer QUIC**. The transport foundation, error handling, schema, rules, tests, hosted-relay plumbing, monitoring rollup, and cross-platform smoke paths are already in place on branch `chore/router-brand-coherent-rail`. Your job is to drive it from the current state above all the way to "users on TestFlight are routing real Hermes chat completions over iroh, with monitoring and a rollback plan."
 
@@ -71,8 +77,11 @@ Verified state now:
 - Physical iOS and Android selected-model hosted-relay smoke tests are green
   for `minimax-m2.7-highspeed`, with explicit requested-model fidelity and no
   silent reroute to a default GPT model.
-- Local daemon verification after the provider-router/keychain repair:
-  `cd OpenBurnBarDaemon && swift test` passes 261 tests.
+- Latest pushed branch verification after the PR-harness repair:
+  `OpenBurnBarDaemon` passes 264 SwiftPM tests, `OpenBurnBarCore` passes 768
+  SwiftPM tests with 2 skips, targeted app/Xcode regression suites pass, and
+  fresh GitHub CI is green across Workflow Lint, Functional QA, Iroh
+  xcframework, Android AAR, PR Harness, and CodeQL.
 
 Feature flag (off by default): `SettingsManager.hermesIrohTransportEnabled` on Mac, `UserDefaults` key `hermes_iroh_transport_enabled` on iOS. Until this flag is on, the iroh code paths are dormant.
 

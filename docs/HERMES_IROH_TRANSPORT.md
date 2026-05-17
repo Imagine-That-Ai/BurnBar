@@ -6,8 +6,9 @@
 > cross-compile, the xcframework recipe produces local artifacts,
 > `OpenBurnBarCore` builds/tests with and without the local binary artifact,
 > macOS + iOS device + iOS Simulator app builds pass, Functions type-checks,
-> and the GitHub `OpenBurnBarIroh xcframework` plus PR harness checks are
-> green on the latest pushed iroh commit.
+> and fresh GitHub checks are green on the repaired pushed branch head:
+> Workflow Lint, OpenBurnBar Functional QA, OpenBurnBarIroh xcframework,
+> openburnbar-iroh AAR (Android), OpenBurnBar PR Harness, and CodeQL.
 >
 > Phase B has a production monitoring path in source:
 > `rollupIrohTransportDaily` aggregates raw Firestore `iroh_audit_events`

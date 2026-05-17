@@ -1,5 +1,47 @@
 # Hermes iroh Rollout Status
 
+## 2026-05-17T08:26Z — repaired branch pushed and full CI green
+
+**Gate status:** the repaired `chore/router-brand-coherent-rail` branch is
+pushed and green across the full fresh CI set. Production rollout still waits
+on renewed cellular/different-network iPhone Gate C/D, Phase E TestFlight soak,
+and explicit approvals for deploy, Remote Config rollout, hosted relay spend,
+or WSS retirement.
+
+Completed:
+- Pushed the provider-family/keychain repair in
+  `9304dac10 fix(hermes-iroh): repair provider-family rollout gate`.
+- Pushed the app-harness repair in
+  `eccc8a334 fix(hermes-iroh): clear app harness rollout gates`.
+- Repaired the Hermes local-oracle routing gate, exact catalog model matching,
+  Kimi / Moonshot quota snapshot lookup, Claude OAuth importer isolation,
+  media settings manifest coverage, Hermes relay control-frame contract, and
+  the app harness build/test blockers exposed by the previous failed PR
+  Harness run.
+- Confirmed the fresh pushed CI run is green:
+  - Workflow Lint `25984608820`
+  - OpenBurnBar Functional QA `25984608827`
+  - OpenBurnBarIroh xcframework `25984608828`
+  - openburnbar-iroh AAR (Android) `25984608832`
+  - OpenBurnBar PR Harness `25984608830`
+  - CodeQL `25984608831`
+
+Verification:
+- `cd OpenBurnBarDaemon && swift test` passed 264 tests.
+- `cd OpenBurnBarCore && swift test` passed 768 tests with 2 skips.
+- Targeted app/Xcode regression suites for the prior PR Harness failures
+  passed with a fresh temporary SwiftPM cache.
+- PR Harness passed the full app, Functions, replay, extension-host, Firestore
+  rules, lockfile, and Android APK sequence in CI.
+
+Next action:
+- Do not repeat Phase A/B or the PR-harness repair. Start from the renewed
+  physical-iPhone cellular gate:
+  `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 10 --interfaces cellular --wait-for-device-seconds 600 --wait-for-device-interval 5`.
+  The iPhone must be connected to this Mac over USB, unlocked, trusted, and on
+  cellular/different-network topology. If that gate passes, proceed to Phase E
+  only with explicit user approval for TestFlight/internal soak.
+
 ## 2026-05-17T06:38Z — PR harness blocker repaired locally, rollout handoff refreshed
 
 **Gate status:** local PR-harness regression cluster repaired; production
