@@ -398,9 +398,19 @@ public struct BurnBarLiveModelCatalog: Sendable {
 
     private func liveModelEndpoint(for provider: BurnBarCatalogProvider, baseURL: URL) -> URL {
         if provider.id.lowercased() == "ollama" {
-            return baseURL.appending(path: "tags")
+            return ollamaNativeEndpoint(baseURL: baseURL, leafPath: "tags")
         }
         return baseURL.appending(path: "models")
+    }
+
+    private func ollamaNativeEndpoint(baseURL: URL, leafPath: String) -> URL {
+        let normalizedPath = baseURL.path
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            .lowercased()
+        if normalizedPath == "api" || normalizedPath.hasSuffix("/api") {
+            return baseURL.appending(path: leafPath)
+        }
+        return baseURL.appending(path: "api").appending(path: leafPath)
     }
 
     private func liveModelEndpointLabel(for provider: BurnBarCatalogProvider) -> String {

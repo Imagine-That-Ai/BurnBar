@@ -267,12 +267,7 @@ actor QuotaRefreshActor {
             for _ in 0..<min(Self.maxConcurrentQuotaFetches, credentials.count) {
                 guard let credential = iterator.next() else { break }
                 group.addTask {
-                    var resolvedKeys = context.resolvedAPIKeys
-                    for identifier in quotaKeyIdentifiers(for: credential.provider) {
-                        resolvedKeys[identifier] = credential.apiKey
-                    }
-
-                    let accountContext = context.withResolvedAPIKeys(resolvedKeys)
+                    let accountContext = self.accountContext(for: credential, base: context)
                     let snapshot: ProviderQuotaSnapshot
                     do {
                         snapshot = try await self.fetchSnapshot(for: credential.provider, context: accountContext)
@@ -307,12 +302,7 @@ actor QuotaRefreshActor {
                 snapshots[key] = snapshot
                 if let credential = iterator.next() {
                     group.addTask {
-                        var resolvedKeys = context.resolvedAPIKeys
-                        for identifier in quotaKeyIdentifiers(for: credential.provider) {
-                            resolvedKeys[identifier] = credential.apiKey
-                        }
-
-                        let accountContext = context.withResolvedAPIKeys(resolvedKeys)
+                        let accountContext = self.accountContext(for: credential, base: context)
                         let snapshot: ProviderQuotaSnapshot
                         do {
                             snapshot = try await self.fetchSnapshot(for: credential.provider, context: accountContext)
@@ -346,6 +336,25 @@ actor QuotaRefreshActor {
         }
 
         return snapshots
+    }
+
+    private nonisolated func accountContext(
+        for credential: ProviderQuotaAccountCredential,
+        base context: ProviderQuotaAdapterContext
+    ) -> ProviderQuotaAdapterContext {
+        var resolvedKeys = context.resolvedAPIKeys
+        for identifier in quotaKeyIdentifiers(for: credential.provider) {
+            resolvedKeys[identifier] = credential.apiKey
+        }
+
+        var accountContext = context.withResolvedAPIKeys(resolvedKeys)
+        if credential.provider == .claudeCode,
+           let credentials = claudeOAuthCredentials(fromStoredRouteCredential: credential.apiKey) {
+            accountContext = accountContext.withClaudeCredentialsReader(
+                StaticClaudeCredentialsReader(credentials: credentials)
+            )
+        }
+        return accountContext
     }
 
     private func fetchSwitcherProfileSnapshots(
@@ -607,6 +616,8 @@ private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
         return .ollama
     case "openai":
         return .openAI
+    case "anthropic", "claude", "claude-code":
+        return .claudeCode
     case "opencode", "open-code":
         return .openCode
     case "moonshot", "kimi":
@@ -633,6 +644,8 @@ private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {
         identifiers.append("kimi_auth_token")
     case .openAI:
         identifiers.append(contentsOf: ["openai", "open_ai"])
+    case .claudeCode:
+        identifiers.append(contentsOf: ["anthropic", "claude", "claude_code", "claude_oauth_bearer"])
     case .openCode:
         identifiers.append(contentsOf: ["opencode", "open_code", "opencode_auth_json"])
     default:
@@ -641,4 +654,35 @@ private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {
 
     var seen = Set<String>()
     return identifiers.filter { seen.insert($0).inserted }
+}
+
+private func claudeOAuthCredentials(fromStoredRouteCredential rawValue: String) -> ClaudeOAuthCredentials? {
+    let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    if let data = trimmed.data(using: .utf8),
+       let credentials = ClaudeCredentialsReader.decode(data) {
+        return credentials
+    }
+
+    let bearerPrefix = "Bearer "
+    let token = trimmed.regionMatchesPrefix(bearerPrefix)
+        ? String(trimmed.dropFirst(bearerPrefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        : trimmed
+    guard !token.isEmpty else { return nil }
+
+    return ClaudeOAuthCredentials(
+        accessToken: token,
+        refreshToken: nil,
+        expiresAt: nil,
+        subscriptionType: "",
+        rateLimitTier: "",
+        organizationUuid: nil
+    )
+}
+
+private extension String {
+    func regionMatchesPrefix(_ prefix: String) -> Bool {
+        range(of: prefix, options: [.anchored, .caseInsensitive]) != nil
+    }
 }

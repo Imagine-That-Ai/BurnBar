@@ -225,9 +225,13 @@ final class OpenBurnBarRuntimeContext {
         if let existingRelayHost = hermesRelayHostService {
             hermesRelayHost = existingRelayHost
         } else {
+            let cliRelayExecutor = ChatSessionControllerCLIAgentRelayChatExecutor(chatController: chatController)
             hermesRelayHost = HermesRelayHostService(
                 accountManager: accountManager,
-                settingsManager: settingsManager
+                settingsManager: settingsManager,
+                cliChatDispatcher: { request, eventSender in
+                    try await cliRelayExecutor.streamChat(request: request, onEvent: eventSender)
+                }
             )
             hermesRelayHostService = hermesRelayHost
         }

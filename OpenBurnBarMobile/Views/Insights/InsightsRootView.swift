@@ -106,7 +106,7 @@ struct InsightsRootView: View {
 // Static glassy panes that suggest the Insights canvas without driving any
 // data — the veil blurs them, so all the user sees is shape and color.
 
-private struct InsightsTeaserBackground: View {
+struct InsightsTeaserBackground: View {
     var body: some View {
         VStack(spacing: MobileTheme.Spacing.md) {
             ForEach(0..<6, id: \.self) { idx in

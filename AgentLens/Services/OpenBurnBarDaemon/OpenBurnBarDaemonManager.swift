@@ -290,6 +290,14 @@ final class OpenBurnBarDaemonManager {
         return true
     }
 
+    /// Force a health re-probe even if the supervisor is in crash-loop backoff.
+    /// Used before daemon operations so a stale crash-loop state doesn't block
+    /// the user from adding provider plans when the daemon is actually healthy.
+    func forceRefreshHealth() async {
+        supervisionState = .idle
+        await refreshHealth()
+    }
+
     func refreshHealth() async {
         // Crash-loop backoff: skip health probe if supervisor says not yet.
         if !OpenBurnBarDaemonSupervisor.shouldProbeNow(

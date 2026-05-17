@@ -55,6 +55,27 @@ extension ProviderQuotaAdapterContext {
         )
     }
 
+    func withClaudeCredentialsReader(_ reader: any ClaudeCredentialsReading) -> ProviderQuotaAdapterContext {
+        ProviderQuotaAdapterContext(
+            appPaths: appPaths,
+            fileManager: fileManager,
+            session: session,
+            environment: environment,
+            homeDirectoryURL: homeDirectoryURL,
+            dataStoreActor: dataStoreActor,
+            snapshotStore: snapshotStore,
+            bridgeManager: bridgeManager,
+            miniMaxModeProvider: miniMaxModeProvider,
+            factoryPlanProvider: factoryPlanProvider,
+            claudeBridgeStatus: claudeBridgeStatus,
+            codexRolloutScanCache: codexRolloutScanCache,
+            updateCodexRolloutScanCache: updateCodexRolloutScanCache,
+            refreshClaudeBridgeStatus: refreshClaudeBridgeStatus,
+            claudeCredentialsReader: reader,
+            resolvedAPIKeys: resolvedAPIKeys
+        )
+    }
+
     func withEnvironment(_ environment: [String: String]) -> ProviderQuotaAdapterContext {
         ProviderQuotaAdapterContext(
             appPaths: appPaths,

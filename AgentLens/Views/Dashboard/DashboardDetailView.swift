@@ -109,6 +109,14 @@ struct DashboardDetailView: View {
                         }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .quota:
+                    QuotaWorkspaceView(
+                        dataStore: dataStore,
+                        quotaService: ProviderQuotaService.shared,
+                        settingsManager: settingsManager,
+                        onOpenConnections: onOpenSettings
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .provider(let provider):
                     ProviderDashboardView(
                         provider: provider,

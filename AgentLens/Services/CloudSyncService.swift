@@ -853,6 +853,7 @@ final class HermesRelayHostService {
     private let urlSession: URLSession
     private let relayKeyStore: HermesRelayKeyStore
     private let realtimeRelayClient: HermesRealtimeRelayHosting
+    private let cliChatDispatcher: CLIAgentRelayChatDispatcher?
     private var heartbeatTask: Task<Void, Never>?
     private var listener: ListenerRegistration?
     private var listenerUID: String?
@@ -871,13 +872,15 @@ final class HermesRelayHostService {
         settingsManager: SettingsManager = .shared,
         urlSession: URLSession = .shared,
         relayKeyStore: HermesRelayKeyStore = HermesRelayKeyStore(),
-        realtimeRelayClient: HermesRealtimeRelayHosting? = nil
+        realtimeRelayClient: HermesRealtimeRelayHosting? = nil,
+        cliChatDispatcher: CLIAgentRelayChatDispatcher? = nil
     ) {
         self.db = db
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.urlSession = urlSession
         self.relayKeyStore = relayKeyStore
+        self.cliChatDispatcher = cliChatDispatcher
         if let realtimeRelayClient {
             self.realtimeRelayClient = realtimeRelayClient
         } else {
@@ -887,6 +890,7 @@ final class HermesRelayHostService {
                 relayKeyStore: relayKeyStore,
                 urlSession: urlSession
             )
+            wssClient.cliChatDispatcher = cliChatDispatcher
             let forceIrohTransport: Bool = {
                 #if DEBUG
                 ProcessInfo.processInfo.environment["OPENBURNBAR_ENABLE_IROH_TRANSPORT"] == "1"
@@ -935,6 +939,7 @@ final class HermesRelayHostService {
                     }
                     self.mercuryFileTransfer = macFileTransfer
                 }
+                irohClient.cliChatDispatcher = cliChatDispatcher
                 self.realtimeRelayClient = HermesRelayHostFanout(
                     primary: irohClient,
                     fallback: wssClient
@@ -1016,7 +1021,7 @@ final class HermesRelayHostService {
                 "displayName": Host.current().localizedName.map { "\($0) Hermes Relay" } ?? "Mac Hermes Relay",
                 "mode": HermesConnectionMode.relayLink.rawValue,
                 "status": HermesConnectionStatus.offline.rawValue,
-                "capabilities": ["chat_completions", "remote_relay"],
+                "capabilities": ["remote_relay"],
                 "advertisedModel": FieldValue.delete(),
                 "realtimeRelayURL": FieldValue.delete(),
                 "realtimeRelayStatus": "offline",
@@ -1057,8 +1062,10 @@ final class HermesRelayHostService {
             timeout: 10
         )
         let now = Self.iso8601.string(from: Date())
+        let cliAgentChatAvailable = cliChatDispatcher != nil
+        let relayAvailable = probe.available || cliAgentChatAvailable
         let realtimeRegistered: Bool
-        if probe.available {
+        if relayAvailable {
             realtimeRegistered = await realtimeRelayClient.start(uid: uid, connectionID: connectionID)
         } else {
             realtimeRelayClient.stop()
@@ -1069,7 +1076,13 @@ final class HermesRelayHostService {
             realtimeRelayClient.stop()
         }
         let realtimeRelayURL = realtimeReady ? realtimeRelayClient.publishableRelayURLString : nil
-        var capabilities = ["chat_completions", "remote_relay"]
+        var capabilities = ["remote_relay"]
+        if probe.available {
+            capabilities.append("chat_completions")
+        }
+        if cliAgentChatAvailable {
+            capabilities.append("cli_agent_chat")
+        }
         if realtimeReady {
             capabilities.append(HermesRealtimeRelayProtocol.capability)
         }
@@ -1077,7 +1090,7 @@ final class HermesRelayHostService {
             "id": connectionID,
             "displayName": Host.current().localizedName.map { "\($0) Hermes Relay" } ?? "Mac Hermes Relay",
             "mode": HermesConnectionMode.relayLink.rawValue,
-            "status": probe.available ? HermesConnectionStatus.online.rawValue : HermesConnectionStatus.offline.rawValue,
+            "status": relayAvailable ? HermesConnectionStatus.online.rawValue : HermesConnectionStatus.offline.rawValue,
             "capabilities": capabilities,
             "relayPublicKey": relayPrivateKey.publicKeyBase64,
             "relayKeyVersion": HermesRelayCrypto.keyVersion,
@@ -1103,6 +1116,9 @@ final class HermesRelayHostService {
             data["lastSeenAt"] = now
         } else {
             data["advertisedModel"] = FieldValue.delete()
+            if relayAvailable {
+                data["lastSeenAt"] = now
+            }
         }
         let ref = db.collection("users").document(uid).collection("hermes_connections").document(connectionID)
         do {
@@ -1189,6 +1205,12 @@ final class HermesRelayHostService {
                     context: prepared.context,
                     data: prepared.data
                 )
+            case .cliAgentChat:
+                try await forwardCLIAgentChatRequest(
+                    reference: reference,
+                    context: prepared.context,
+                    data: prepared.data
+                )
             case .models, .sessions, .sessionDetail, .profiles, .jobs:
                 try await forwardUnaryRequest(
                     reference: reference,
@@ -1205,6 +1227,43 @@ final class HermesRelayHostService {
                 context: context
             )
         }
+    }
+
+    private func forwardCLIAgentChatRequest(
+        reference: DocumentReference,
+        context: HermesRelayRequestContext,
+        data: [String: Any]
+    ) async throws {
+        guard let cliChatDispatcher else {
+            throw HermesRelayHostError.cliAgentChatUnavailable
+        }
+        guard let body = data["body"] as? String,
+              let bodyData = body.data(using: .utf8) else {
+            throw HermesRelayHostError.missingBody
+        }
+        let request = try JSONDecoder().decode(CLIAgentRelayChatRequest.self, from: bodyData)
+        guard try await relayRequestCanReceiveOutput(reference: reference) else {
+            throw HermesRelayHostError.requestNoLongerActive
+        }
+        let now = Self.iso8601.string(from: Date())
+        try await reference.setData([
+            "status": HermesRelayRequestStatus.streaming.rawValue,
+            "updatedAt": now
+        ], merge: true)
+
+        let sequencer = CLIAgentRelayChunkSequencer()
+        try await cliChatDispatcher(request) { event in
+            let payload = try JSONEncoder().encode(event)
+            let sequence = await sequencer.next()
+            _ = try await self.writeRelayChunk(
+                reference: reference,
+                context: context,
+                sequence: sequence,
+                kind: .sse,
+                data: String(data: payload, encoding: .utf8) ?? "{}"
+            )
+        }
+        try await completeRelayRequest(reference: reference, chunkCount: await sequencer.count())
     }
 
     private func decryptRelayRequest(
@@ -1399,7 +1458,7 @@ final class HermesRelayHostService {
         switch operation {
         case .chatCompletions, .models:
             return true
-        case .sessions, .profiles, .jobs, .sessionDetail:
+        case .cliAgentChat, .sessions, .profiles, .jobs, .sessionDetail:
             return false
         }
     }
@@ -1456,6 +1515,8 @@ final class HermesRelayHostService {
         switch operation {
         case .chatCompletions:
             return "v1/chat/completions"
+        case .cliAgentChat:
+            throw HermesRelayHostError.invalidPath
         case .models:
             return "v1/models"
         case .sessions:
@@ -1725,6 +1786,7 @@ private enum HermesRelayHostError: LocalizedError {
     case requestNoLongerActive
     case payloadTooLarge
     case encryptionRequired
+    case cliAgentChatUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -1742,6 +1804,8 @@ private enum HermesRelayHostError: LocalizedError {
             return "Hermes relay response chunk is too large to relay safely."
         case .encryptionRequired:
             return "Hermes relay requests must be encrypted."
+        case .cliAgentChatUnavailable:
+            return "Codex and Claude chat relay is not available on this Mac yet."
         }
     }
 }

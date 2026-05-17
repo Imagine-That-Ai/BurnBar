@@ -52,8 +52,8 @@ public enum AssistantRuntimeID: String, Codable, CaseIterable, Hashable, Sendabl
     }
 
     /// Runtimes that today have a first-class mobile surface. Hermes and Pi
-    /// can start native mobile threads; Codex, Claude Code, and OpenClaw open
-    /// their Mac-backed mirrored session lists.
+    /// run through the mobile relay; Codex, Claude Code, and OpenClaw use the
+    /// same native thread model while execution stays on the trusted Mac.
     public var hasMobileChatSurface: Bool {
         switch self {
         case .hermes, .pi, .codex, .claude, .openClaw: return true

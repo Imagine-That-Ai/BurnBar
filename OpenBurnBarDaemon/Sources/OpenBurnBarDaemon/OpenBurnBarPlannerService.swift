@@ -184,7 +184,11 @@ public struct BurnBarPlannerService {
                 requestedTools: [.searchWorkspace],
                 toolArguments: toolArguments
             )
-        case .readFile, .applyPatch:
+        case .readFile, .applyPatch,
+             .browserClick, .browserFill, .browserGoto, .browserKey,
+             .browserSelect, .browserScreenshot, .browserExtract,
+             .macInputClick, .macInputType, .macInputKey,
+             .macInputShortcut, .macInputDragDrop, .macInspectAccessibility:
             return BurnBarAgentIntent(
                 kind: .generic,
                 objective: request.prompt,
@@ -446,4 +450,3 @@ private func parentDirectory(of path: String) -> String? {
     let parent = nsPath.deletingLastPathComponent
     return parent.isEmpty ? nil : parent
 }
-

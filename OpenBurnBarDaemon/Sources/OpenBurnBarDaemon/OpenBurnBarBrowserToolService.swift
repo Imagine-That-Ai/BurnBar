@@ -220,9 +220,19 @@ public actor BurnBarBrowserToolService {
                     links: links,
                     recordedAt: Date()
                 )
-            case .openExternal:
+            case .openExternal,
+                 .click, .fill, .goto, .key, .select, .screenshot, .extract:
                 fatalError("Handled above.")
             }
+        case .click, .fill, .goto, .key, .select, .screenshot, .extract:
+            return BurnBarBrowserActionResponse(
+                action: request.action,
+                engine: engine,
+                ok: false,
+                summary: "Interactive browser actions are not available through this daemon browser service.",
+                detail: "Use the Computer Use browser dispatcher for \(request.action.rawValue).",
+                recordedAt: Date()
+            )
         }
     }
 

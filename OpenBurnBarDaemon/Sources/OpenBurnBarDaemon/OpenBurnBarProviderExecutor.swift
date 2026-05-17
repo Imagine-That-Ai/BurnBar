@@ -256,6 +256,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
                 String(data: data, encoding: .utf8) ?? ""
             )
         }
+        try Self.validateOpenAICompatibleChatResponse(data, modelID: route.resolvedModelID)
 
         return BurnBarProviderProxyResponse(
             statusCode: httpResponse.statusCode,
@@ -1208,6 +1209,55 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         )
     }
 
+    private static func validateOpenAICompatibleChatResponse(
+        _ data: Data,
+        modelID: String
+    ) throws {
+        guard let response = try? JSONDecoder().decode(ProviderCompletionResponse.self, from: data),
+              let firstChoice = response.choices.first else {
+            return
+        }
+
+        let content = firstChoice.message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard content.isEmpty else { return }
+
+        let finishReason = firstChoice.finishReason?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard finishReason == "length" || finishReason == "max_tokens" else {
+            return
+        }
+
+        let reasoningContent = firstChoice.message.reasoningContent
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let detail: String
+        if reasoningContent.isEmpty {
+            detail = "Upstream returned no assistant text for \(modelID) because it hit the output token limit before producing final content. Increase max_tokens/max_output_tokens or choose a non-reasoning model."
+        } else {
+            detail = "Upstream returned reasoning-only output for \(modelID) and hit the output token limit before final assistant text. Increase max_tokens/max_output_tokens or choose a non-reasoning model."
+        }
+
+        throw BurnBarProviderExecutorError.upstreamError(
+            502,
+            Self.openAICompatibleErrorBody(message: detail, code: "empty_assistant_content")
+        )
+    }
+
+    private static func openAICompatibleErrorBody(message: String, code: String) -> String {
+        let body: [String: Any] = [
+            "error": [
+                "message": message,
+                "type": "upstream_invalid_response",
+                "code": code
+            ]
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]),
+              let string = String(data: data, encoding: .utf8) else {
+            return #"{"error":{"message":"Upstream returned an invalid response.","type":"upstream_invalid_response","code":"invalid_upstream_response"}}"#
+        }
+        return string
+    }
+
     private static func extractResponsesUsage(responseBody: Data) -> BurnBarProviderProxyUsage? {
         guard let object = try? JSONSerialization.jsonObject(with: responseBody) as? [String: Any],
               let usage = object["usage"] as? [String: Any] else {
@@ -1703,6 +1753,7 @@ private struct ProviderCompletionResponse: Decodable {
     struct Choice: Decodable {
         struct Message: Decodable {
             let content: String
+            let reasoningContent: String
 
             private struct ContentPart: Decodable {
                 let text: String?
@@ -1711,10 +1762,15 @@ private struct ProviderCompletionResponse: Decodable {
 
             private enum CodingKeys: String, CodingKey {
                 case content
+                case reasoning_content
+                case reasoningContent
             }
 
             init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
+                reasoningContent = (try? container.decode(String.self, forKey: .reasoning_content))
+                    ?? (try? container.decode(String.self, forKey: .reasoningContent))
+                    ?? ""
                 if let stringContent = try? container.decode(String.self, forKey: .content) {
                     content = stringContent
                     return
@@ -1733,6 +1789,20 @@ private struct ProviderCompletionResponse: Decodable {
         }
 
         let message: Message
+        let finishReason: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case message
+            case finish_reason
+            case finishReason
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            message = try container.decode(Message.self, forKey: .message)
+            finishReason = (try? container.decode(String.self, forKey: .finish_reason))
+                ?? (try? container.decode(String.self, forKey: .finishReason))
+        }
     }
 
     struct UsageDetails: Decodable {

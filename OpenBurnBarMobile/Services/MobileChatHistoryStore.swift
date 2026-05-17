@@ -9,8 +9,8 @@ import OSLog
 
 /// Lightweight, runtime-agnostic representation of an assistant chat thread
 /// persisted by the mobile app. Used as the single source of truth for the
-/// "chat history" list both `PiConversationListView` and the on-device section
-/// of `HermesConversationListView` read from.
+/// "chat history" list that native mobile assistants read from: Hermes, Pi,
+/// and Mac-backed CLI chats such as Codex, Claude Code, and OpenClaw.
 struct MobileChatThread: Identifiable, Codable, Equatable {
     let id: String
     let runtime: String
@@ -600,8 +600,8 @@ final class MobileChatFirestoreStore: MobileChatCloudMirroring {
 // MARK: - Store
 
 /// Observable singleton owning the on-device assistant chat history. Source of
-/// truth for the conversation lists in `PiConversationListView` and the
-/// "On this device" section of `HermesConversationListView`.
+/// truth for the conversation lists in `PiConversationListView`,
+/// `HermesConversationListView`, and the native mobile CLI chat surface.
 ///
 /// Per-user partitioning: the local file is namespaced by Firebase uid (or
 /// `"local"` when signed out) so two accounts on the same device never see

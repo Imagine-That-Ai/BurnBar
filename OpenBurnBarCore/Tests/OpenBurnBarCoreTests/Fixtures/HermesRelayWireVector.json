@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "yUczfgTnaqyzH15Rd7ZzJ0ISDiGP9YSxDtoENSgDqlGRlNZ4roZgiNHkg71FAlQ=",
+  "chunkCiphertext" : "RqFXE\/TduYXsvZirLltRRrxZUoEnqTR+YA5iHwIEX79a2zSnorXLHb2FRH0oHn0=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
+  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "qZmaMyE2Q7lO8Sbjd5xIpitHqyIsZEgfzSqjUWz+AirEIIFE92ECVMLzbDVBPPHx9RjSGj+m25NGFGxaBGHkxRG8txsoOAu50QIAxZfeOYqTcGogZpWG5mUHOMj1ikfLwGcBKDnibTv1Ko6Lf4Blt8TXFTDRzQTTwd73zsalqok2sWCIZtVL22WnMlxyj2Hbdca+tEeD",
+  "payloadCiphertext" : "edUIDOuttbk1ATerUxVueQ0cGK+XPALIIeTIeqmkdNd96SX2CiPlp11Hbn2CnigTa8uAv1\/usa48iTWuqbERnoHLIECmFOZVr4R9t3M7f9yBxCCWMVl7B7rSyMnvuvmkXtTUwjSpVjc0M5kyycgy3HWwg\/INAlsic93FbzQ4c9oeDL4umXbmCb0mlQlNVzW0w8H+MvXp",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BBCvsKTSa41FlGUQ7sYQgQfh4PBjA\/6zbZPpBsj4rqTXZB\/7CFyIxyptvludTBmk1U69Kjgp4rKG+LnxiQdQMDZUc9HI\/EOqGzoXM4GWukc5rIwtJOfoT1TpUG7dIKOVq9oWpg1FDvTDCXjTaCmjhWXhJ3CMdr2SlCirps4="
+  "wrappedKey" : "BODLEULYzwUxRVShA46xBwx8mgt32fQ4DbCzBgNEx6CXLzmiypO+D1h9053TEm7rr0vMBF7a\/zPvRhtr9XTQebrrDtVKedny98OnOGLzApehwGdxXlD\/O8dFriIgyawKxusbYQYcZbu5qWM6LEJbozhdXK8q5JiW4JlgxNU="
 }

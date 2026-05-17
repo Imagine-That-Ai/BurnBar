@@ -1,6 +1,7 @@
 package com.openburnbar.data.stores
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.firebase.FirestoreRepository
@@ -9,18 +10,23 @@ import com.openburnbar.data.models.ProviderAccount
 import com.openburnbar.data.models.ProviderQuotaSnapshot
 import com.openburnbar.data.models.isExplicitlyStale
 import com.openburnbar.data.models.isStale
+import com.openburnbar.data.stores.SelfHostedQuotaRunnerStore
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.time.Instant
 
 class QuotaStore(
     private val repo: FirestoreRepository = FirestoreRepository(),
     functions: FunctionsRepository? = null
-) : ViewModel() {
+) : AndroidViewModel(Application()) {
     private val functions: FunctionsRepository by lazy { functions ?: FunctionsRepository() }
 
     private val _snapshots = MutableStateFlow<List<ProviderQuotaSnapshot>>(emptyList())
@@ -109,7 +115,11 @@ class QuotaStore(
             .groupBy { it.accountId.orEmpty() }
         val accountsToRefresh = _accounts.value
             .filter { it.status in setOf("connected", "stale", "error") }
-            .filter { it.storageScope in setOf("cloud_refreshable", "server_private") }
+            .filter { account ->
+                account.storageScope in setOf("cloud_refreshable", "server_private")
+                    || (account.storageScope == "local_only"
+                        && account.providerId in setOf("claude-code", "codex"))
+            }
             .filter { account ->
                 val accountSnapshots = snapshotByAccount[account.id].orEmpty()
                 accountSnapshots.isEmpty() || accountSnapshots.any { it.isStale() }
@@ -121,7 +131,13 @@ class QuotaStore(
         viewModelScope.launch {
             for (account in accountsToRefresh) {
                 try {
-                    functions.refreshProviderAccountQuota(account.id)
+                    if (account.storageScope == "local_only"
+                        && account.providerId in setOf("claude-code", "codex")
+                    ) {
+                        refreshSelfHostedRunner(account)
+                    } else {
+                        functions.refreshProviderAccountQuota(account.id)
+                    }
                 } catch (_: Exception) {
                     // Firestore remains the source of truth; refresh failures
                     // are reflected by provider account and snapshot docs.
@@ -133,6 +149,35 @@ class QuotaStore(
                 _snapshots.value = repo.fetchQuotaSnapshots().dedupeFresh()
                 _accounts.value = repo.fetchProviderAccounts()
             }
+        }
+    }
+
+    private suspend fun refreshSelfHostedRunner(account: ProviderAccount) {
+        val runnerStore = SelfHostedQuotaRunnerStore(getApplication())
+        val config = runnerStore.config.value
+        if (!config.isEnabled || config.endpointUrl.isBlank()) return
+        val baseUrl = config.endpointUrl.trim().trimEnd('/')
+        val url = "$baseUrl/v1/quota/refresh"
+        val jsonBody = """{"provider":"${account.providerId}","accountID":"${account.id}"}"""
+        val requestBody = jsonBody.toByteArray()
+            .toRequestBody("application/json".toMediaType())
+        val requestBuilder = Request.Builder()
+            .url(url)
+            .post(requestBody)
+        if (config.apiKey.isNotBlank()) {
+            requestBuilder.addHeader("Authorization", "Bearer ${config.apiKey}")
+        }
+        val request = requestBuilder.build()
+        try {
+            val response = OkHttpClient().newCall(request).execute()
+            if (response.isSuccessful) {
+                // Re-fetch from Firestore after the runner uploads its snapshot.
+                _snapshots.value = repo.fetchQuotaSnapshots().dedupeFresh()
+                _accounts.value = repo.fetchProviderAccounts()
+            }
+        } catch (_: Exception) {
+            // Self-hosted runner unavailable; Firestore snapshot remains
+            // the source of truth and will be refreshed on the next cycle.
         }
     }
 }

@@ -430,6 +430,7 @@ export interface IrohTransportDailyRollupDoc {
 
 export type HermesRelayOperation =
   | "chatCompletions"
+  | "cliAgentChat"
   | "models"
   | "sessions"
   | "sessionDetail"
@@ -2437,4 +2438,166 @@ export interface MediaBudgetStatusDoc {
     fileTransferDailyGBOut: number;
   };
   schemaVersion: number;
+}
+
+// MARK: - Computer Use (master plan 2026-05-16)
+
+export type ComputerUseMode = "agent_watch" | "browser" | "system";
+export type ComputerUseTrustMode = "manual" | "step" | "trusted";
+export type ComputerUseBudgetLevel = "normal" | "soft_cap" | "hard_cap";
+export type ComputerUseEndReason =
+  | "completed"
+  | "user_halt"
+  | "panic_hotkey"
+  | "panic_phone_gesture"
+  | "panic_mac_lock"
+  | "panic_remote_config"
+  | "panic_accessibility_revoked"
+  | "timeout"
+  | "entitlement_lost"
+  | "budget_soft_cap"
+  | "budget_hard_cap"
+  | "error";
+export type ComputerUseActionStatus =
+  | "executed"
+  | "denied"
+  | "rejected"
+  | "awaiting_approval"
+  | "error";
+export type ComputerUseApprovedBy =
+  | "mac"
+  | "phone"
+  | "trusted_scope"
+  | "step"
+  | "denied"
+  | "panic";
+
+/**
+ * Session record. Persisted server-side at session end with metadata
+ * only — never carries the action descriptors, screenshots, or scope
+ * rule contents. The full chain lives on the user's Mac under
+ * `~/Library/Application Support/...`.
+ *
+ * Path: `users/{uid}/computer_use_sessions/{sessionId}`
+ */
+export interface ComputerUseSessionDoc {
+  id: string;
+  sessionId: string;
+  userId: string;
+  mode: ComputerUseMode;
+  trustMode: ComputerUseTrustMode;
+  startedAt: import("firebase-admin/firestore").Timestamp;
+  endedAt?: import("firebase-admin/firestore").Timestamp;
+  endReason?: ComputerUseEndReason;
+  actionCount: number;
+  approvalCount: number;
+  rejectionCount: number;
+  panicHaltCount: number;
+  visionSpendUSD: number;
+  manifestHashHex: string;
+  auditHeadHashHex?: string;
+  macAppVersion: string;
+  schemaVersion: number;
+}
+
+/**
+ * Per-action audit *header* mirrored from the Mac's on-disk JSONL
+ * chain. The on-disk chain carries the full descriptor + screenshot
+ * hashes; this server doc holds only the chain links + status so the
+ * phone can render the live timeline without reading the local
+ * filesystem.
+ *
+ * Path: `users/{uid}/computer_use_actions/{actionId}`
+ */
+export interface ComputerUseActionDoc {
+  id: string;
+  sessionId: string;
+  entryIndex: number;
+  toolKind: string;
+  actionKind: string;
+  status: ComputerUseActionStatus;
+  approvedBy: ComputerUseApprovedBy;
+  scopeRuleId?: string;
+  denyReason?: string;
+  parentEntryHashHex: string;
+  approvalLatencyMillis?: number;
+  visionTokensCostUSD?: number;
+  recordedAt: import("firebase-admin/firestore").Timestamp;
+  schemaVersion: number;
+}
+
+/**
+ * Daily counters mirrored from the Mac. Source-of-truth correction
+ * runs hourly via `recomputeComputerUseQuotaUsage`.
+ *
+ * Path: `users/{uid}/computer_use_quota_usage/{YYYY-MM-DD}`
+ */
+export interface ComputerUseQuotaUsageDoc {
+  dayKey: string;
+  browserActionsExecuted: number;
+  browserActionsRejected: number;
+  systemActionsExecuted: number;
+  systemActionsRejected: number;
+  phoneControlIntentsExecuted: number;
+  phoneControlIntentsRejected: number;
+  sessionsStarted: number;
+  sessionsCompleted: number;
+  totalSessionSeconds: number;
+  visionModelSpendUSD: number;
+  updatedAt: import("firebase-admin/firestore").Timestamp;
+}
+
+/**
+ * Operator-side daily rollup. One per UTC day.
+ *
+ * Path: `ops/computer_use_session_daily_rollups/days/{YYYY-MM-DD}`
+ */
+export interface ComputerUseSessionDailyRollupDoc {
+  dayKey: string;
+  sessionsStarted: number;
+  sessionsCompleted: number;
+  browserActionsExecuted: number;
+  browserActionsRejected: number;
+  systemActionsExecuted: number;
+  systemActionsRejected: number;
+  phoneControlIntents: number;
+  scopeViolations: number;
+  panicHaltCount: number;
+  approvalLatencyP50Millis: number;
+  approvalLatencyP95Millis: number;
+  approvalLatencyP99Millis: number;
+  visionModelSpendUSD: number;
+  updatedAt: import("firebase-admin/firestore").Timestamp;
+}
+
+/**
+ * Current envelope. Single doc at `ops/computer_use_budget_status/state/current`.
+ */
+export interface ComputerUseBudgetStatusDoc {
+  level: ComputerUseBudgetLevel;
+  projectedMonthEndUSD: number;
+  monthToDateUSD: number;
+  activeActionsPerRun: number;
+  activeActionsPerDay: number;
+  activeSessionsPerDay: number;
+  perUserDailySpendCeilingUSD: number;
+  updatedAt: import("firebase-admin/firestore").Timestamp;
+}
+
+/**
+ * Entitlement claim. Mirror of the StoreKit entitlement.
+ *
+ * Path: `users/{uid}/entitlements/hosted_computer_use_sync`
+ */
+export interface ComputerUseEntitlementDoc {
+  active: boolean;
+  productID: string;
+  expireAt?: import("firebase-admin/firestore").Timestamp;
+  features: {
+    browserComputerUse: boolean;
+    systemComputerUse: boolean;
+    phoneControl: boolean;
+    auditExport: boolean;
+    trustedScopes: boolean;
+  };
 }

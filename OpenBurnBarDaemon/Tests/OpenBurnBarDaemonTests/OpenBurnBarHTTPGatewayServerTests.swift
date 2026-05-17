@@ -385,6 +385,44 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/api/tags"])
     }
 
+    func testGatewayModelsUsesOllamaTagsEndpointWhenBaseURLOmitsAPIPath() async throws {
+        enqueueOllamaTagsCatalog(["gpt-oss:120b"])
+        let harness = try GatewayHarness()
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test",
+                preferredModelIDs: ["gpt-oss:120b"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "ollama",
+            slotID: "primary",
+            label: "Primary",
+            apiKey: "primary-ollama-key"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        XCTAssertTrue(data.contains {
+            ($0["id"] as? String) == "gpt-oss:120b"
+                && ($0["provider_id"] as? String) == "ollama"
+                && ($0["route_eligible"] as? Bool) == true
+        })
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/api/tags"])
+    }
+
     func testGatewayModelsDoesNotAdvertiseOllamaCloudWithoutRoutingCredential() async throws {
         let harness = try GatewayHarness()
         _ = try await harness.configStore.upsertProvider(
@@ -830,6 +868,59 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/models", "/v1/chat/completions"])
         XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"MiniMax-M2.7""#) == true)
+    }
+
+    func testGatewayRejectsReasoningOnlyLengthResponsesInsteadOfReturningEmptyAssistantText() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"deepseek-v4-flash","display_name":"DeepSeek V4 Flash"}]}"#
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"chatcmpl-empty-reasoning","object":"chat.completion","model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"","reasoning_content":"thinking but no final answer yet"},"finish_reason":"length"}],"usage":{"prompt_tokens":3,"completion_tokens":8,"total_tokens":11}}"#
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "deepseek",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["deepseek-v4-flash"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "deepseek",
+            slotID: "primary",
+            label: "DeepSeek API",
+            apiKey: "deepseek-route-key"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"deepseek-v4-flash","messages":[{"role":"user","content":"hi"}],"max_tokens":8}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 502, String(decoding: body, as: UTF8.self))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let error = try XCTUnwrap(object["error"] as? [String: Any])
+        XCTAssertEqual(error["code"] as? String, "empty_assistant_content")
+        XCTAssertTrue((error["message"] as? String ?? "").contains("reasoning-only output"))
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/v1/models", "/v1/chat/completions"])
+        let usage = try await harness.usageRecorder.recentUsage(limit: 5)
+        XCTAssertTrue(usage.isEmpty)
     }
 
     func testGatewayRoutesOpenCodeAuthJSONThroughOpenAICompatibleGateway() async throws {

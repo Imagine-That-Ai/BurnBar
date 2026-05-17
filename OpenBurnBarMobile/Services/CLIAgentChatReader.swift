@@ -39,9 +39,14 @@ final class CLIAgentChatReader {
     private var authListenerHandle: AuthStateDidChangeListenerHandle?
     private var sessionsListener: ListenerRegistration?
 
-    init(remote: CLIAgentChatRemoteSource = CLIAgentChatFirestoreSource()) {
+    init(
+        remote: CLIAgentChatRemoteSource = CLIAgentChatFirestoreSource(),
+        observeAuthChanges: Bool? = nil
+    ) {
         self.remote = remote
-        attachAuthListener()
+        if observeAuthChanges ?? (remote is CLIAgentChatFirestoreSource) {
+            attachAuthListener()
+        }
     }
 
     deinit {

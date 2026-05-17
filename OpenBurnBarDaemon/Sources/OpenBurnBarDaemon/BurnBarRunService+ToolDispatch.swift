@@ -137,7 +137,11 @@ extension BurnBarRunService {
                     match.objectValue()?["path"]?.stringValue()
                 }
             }
-        case .applyPatch, .runTerminal:
+        case .applyPatch, .runTerminal,
+             .browserClick, .browserFill, .browserGoto, .browserKey,
+             .browserSelect, .browserScreenshot, .browserExtract,
+             .macInputClick, .macInputType, .macInputKey,
+             .macInputShortcut, .macInputDragDrop, .macInspectAccessibility:
             break
         }
 

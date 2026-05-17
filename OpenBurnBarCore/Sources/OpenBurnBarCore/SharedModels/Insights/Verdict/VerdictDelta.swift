@@ -62,3 +62,21 @@ public struct VerdictDelta: Codable, Hashable, Sendable {
         }
     }
 }
+
+// MARK: - Formatting helpers
+
+extension VerdictDelta.Unit {
+    /// Human-readable symbol for this unit.
+    public var symbol: String {
+        switch self {
+        case .usd: return "$"
+        case .tokens: return " tokens"
+        case .sessions: return " sessions"
+        case .percent: return "%"
+        case .days: return "d"
+        case .milliseconds: return "ms"
+        case .ratio: return "x"
+        case .count: return ""
+        }
+    }
+}

@@ -79,4 +79,50 @@ account/model route and temporarily remove that model row from `/v1/models`.
 Use another advertised Claude model, add an Anthropic Console API key, or retry
 after the health block expires.
 
+## Claude Max subscription (Opus + Sonnet + Haiku via OAuth)
+
+Anthropic's public `/v1/messages` API treats Console API keys
+(`sk-ant-api…`) and Claude Code OAuth tokens (`sk-ant-oat…`) as two
+distinct routes. The behavior matters because **Opus is gated on the
+OAuth route behind a Claude Code identity check**:
+
+| Model | Console API key (`sk-ant-api*`) | Claude Code OAuth bearer (`sk-ant-oat*`) |
+|---|---|---|
+| Haiku (4.5) | works | works |
+| Sonnet (4.6) | works | works |
+| Opus (4.7) | works **if** your Console org is entitled to Opus | works **only** when the caller presents the Claude Code identity (BurnBar handles this automatically) |
+
+BurnBar detects the credential prefix per route and:
+
+- On `sk-ant-oat*` (Claude Max subscription): forwards to
+  `https://api.anthropic.com/v1/messages?beta=true` with
+  `anthropic-beta: claude-code-20250219,oauth-2025-04-20,…`, the standard
+  Claude Code CLI identity headers, and a `system` field that starts with
+  the canonical Claude Code guard string. Caller-supplied `system` text is
+  preserved — the guard is prepended, not substituted. This is the same
+  identity the Claude Code CLI itself presents on the same machine.
+- On `sk-ant-api*` (Console key): forwards to `https://api.anthropic.com/v1/messages`
+  with `x-api-key` and **without** the Claude Code identity. We never lie
+  about the request's origin — Console traffic stays Console traffic.
+
+If you have both kinds of credentials configured, BurnBar advertises Opus
+through both routes in `/v1/models`. The router picks the highest-scoring
+healthy slot per request; failover stays inside the requested capability
+class (no silent downgrade to Sonnet or Haiku when Opus was selected).
+
+If the **only** Anthropic credential is a Console API key without Opus
+entitlement, a request for `claude-opus-4-7` will surface the Anthropic
+upstream error directly and remove Opus from `/v1/models` for the cooldown
+window. Add a Claude Max subscription (`claude auth login --claudeai` and
+let BurnBar discover the `sk-ant-oat…` token via the Anthropic
+credential probe) to actually serve Opus locally.
+
+The Claude Code identity is applied per request inside the executor and is
+covered by:
+
+- `testGatewayPresentsClaudeCodeIdentityOnOAuthOpusRoute`
+- `testGatewayDoesNotPresentClaudeCodeIdentityOnConsoleAPIKeyRoute`
+- `testGatewayPreservesCallerSystemPromptWhenInjectingClaudeCodeGuard`
+- `testGatewayDoesNotDowngradeOpusToHaikuOnOAuthFailure`
+
 For iroh/Hermes E2E scripts, `--model auto` reads `http://127.0.0.1:8317/v1/models` and skips local-only Ollama/LM Studio runtimes by default. Route-ready Ollama Cloud rows are allowed because they run through the cloud gateway, not local RAM. Use `--model <id>` to force a specific advertised model.

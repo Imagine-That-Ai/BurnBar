@@ -522,7 +522,9 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 return
             case .responseError:
                 throw HermesServiceError.relayFailure(frame.payload?.error, fallback: "Hermes iroh relay failed.")
-            case .ping, .pong, .requestCancel, .requestStart, .hostReady, .hostRegister:
+            case .ping, .pong, .requestCancel, .requestStart, .hostReady, .hostRegister,
+                 .controlClassify, .controlActionLogEntry, .controlInputIntent,
+                 .controlApprovalRequest, .controlApprovalResponse, .controlDenied:
                 continue
             case .mediaClassify, .mediaBlobAdvertise, .mediaBlobAck:
                 guard let dispatcher = mediaDispatcher else { continue }
@@ -577,6 +579,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     ) -> TimeInterval {
         switch operation {
         case .chatCompletions:
+            return requestedTimeout
+        case .cliAgentChat:
             return requestedTimeout
         case .models, .sessions, .sessionDetail, .profiles, .jobs:
             return max(requestedTimeout, minimumControlPlaneRequestTimeout)

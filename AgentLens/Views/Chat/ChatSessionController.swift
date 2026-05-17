@@ -595,6 +595,40 @@ final class ChatSessionController {
         refreshHistory()
     }
 
+    func openOrCreateChatThread(id rawThreadID: String) {
+        let threadID = rawThreadID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !threadID.isEmpty else {
+            startNewChatThread()
+            return
+        }
+
+        streamTask?.cancel()
+        cliBridge.cancel()
+        streamTask = nil
+        isStreaming = false
+        activeStreamMessageId = nil
+        streamError = nil
+        selectedContext = nil
+        conversationJumpTargets = []
+
+        do {
+            if try !dataStore.chatThreadExists(id: threadID) {
+                _ = try dataStore.createChatThread(id: threadID)
+            }
+            activeThreadID = threadID
+            persistActiveThreadSlot()
+            messages = try dataStore.fetchChatMessages(threadID: threadID)
+        } catch {
+            AppLogger.chat.silentFailure("openOrCreateChatThread", error: error)
+            startNewChatThread()
+            return
+        }
+
+        firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
+        ensureChatWorkspaceDirectoryExists()
+        refreshHistory()
+    }
+
     func refreshHistory() {
         do {
             historyThreads = try dataStore.fetchChatThreadSummaries(searchQuery: historyQuery)

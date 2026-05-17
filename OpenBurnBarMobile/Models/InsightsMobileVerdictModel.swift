@@ -103,26 +103,56 @@ final class InsightsMobileVerdictModel {
                 self.isStale = stale
                 self.isDemo = v.provenance.providerKey == "burnbar-demo"
                 self.lastEvent = "cached (stale=\(stale))"
+                writeWidgetSnapshot(v, isStale: stale)
             case .demo(let v):
                 self.verdict = v
                 self.isDemo = true
                 self.lastEvent = "demo"
+                writeWidgetSnapshot(v, isStale: false)
             case .ruleBasedUpgrade(let v):
                 self.verdict = v
                 self.isDemo = false
                 self.isStale = false
                 self.lastEvent = "rule-based"
+                writeWidgetSnapshot(v, isStale: false)
+                buildTraceFor(verdict: v)
             case .llmUpgrade(let v, let report):
                 self.verdict = v
                 self.isDemo = false
                 self.isStale = false
                 self.lastEvent = "llm-upgrade dropped=\(report.bulletsDropped)"
+                writeWidgetSnapshot(v, isStale: false)
+                buildTraceFor(verdict: v)
             case .llmRejected(let reason):
                 self.lastEvent = "llm-rejected \(reason.rawValue)"
             case .failed(let error):
                 self.lastEvent = "failed: \(error)"
             }
         }
+    }
+
+    private func buildTraceFor(verdict: InsightVerdict) {
+        // Mobile trace building requires access to the data source;
+        // implement when the mobile data source exposes snapshots.
+    }
+
+    private func writeWidgetSnapshot(_ verdict: InsightVerdict, isStale: Bool) {
+        let spend = verdict.rings.first { $0.identity == .spend }
+        let cache = verdict.rings.first { $0.identity == .cache }
+        let sessions = verdict.rings.first { $0.identity == .sessions }
+        let snapshot = InsightVerdictWidgetSnapshot(
+            headline: verdict.headline,
+            spendCurrent: spend?.current ?? 0,
+            spendTarget: spend?.target ?? 1,
+            cacheCurrent: cache?.current ?? 0,
+            cacheTarget: cache?.target ?? 1,
+            sessionsCurrent: Int(sessions?.current ?? 0),
+            sessionsTarget: Int(sessions?.target ?? 1),
+            windowLabel: verdict.window.displayLabel,
+            isStale: isStale,
+            lastSync: Date()
+        )
+        try? InsightWidgetShared.writeVerdictSnapshot(snapshot)
     }
 
     nonisolated private static func dateInterval(for window: VerdictWindow) -> DateInterval {

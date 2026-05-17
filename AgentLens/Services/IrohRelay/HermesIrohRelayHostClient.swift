@@ -49,6 +49,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     /// Mac can push `media.blob.advertise` frames at any time without
     /// waiting for an active iOS-initiated chat request.
     var mediaControlRegistrar: MediaControlStreamRegistrar?
+    var cliChatDispatcher: CLIAgentRelayChatDispatcher?
     /// Per-stream serve tasks spawned by `acceptLoop`. Tracked so `stop()`
     /// can cancel them deterministically instead of letting them outlive the
     /// host.
@@ -223,6 +224,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     settingsManager: settingsManager,
                     mediaDispatcher: mediaDispatcher,
                     mediaControlRegistrar: mediaControlRegistrar,
+                    cliChatDispatcher: cliChatDispatcher,
                     auditLogger: auditLogger
                 )
                 let serveID = UUID()

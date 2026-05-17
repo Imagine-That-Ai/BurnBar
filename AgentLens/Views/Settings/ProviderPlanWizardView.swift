@@ -2823,7 +2823,11 @@ struct ProviderPlanWizardView: View {
                     credentialStorageOverride = credentials.routeCredentialStoragePayload()
                     credentialStorageOverrideVisibleToken = credentials.accessToken
                     if let accountLabel, !accountLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        credentialImportMessage = "Imported \(accountLabel)'s Claude OAuth token. The token is hidden below; continue and Save & Connect so Claude is advertised as route-ready."
+                        let message = configDirectory == nil
+                            ? "Imported \(accountLabel)'s Claude OAuth token. The token is hidden below; continue and Save & Connect so Claude is advertised as route-ready."
+                            : "Imported \(accountLabel)'s Claude OAuth token from Claude Code's macOS keychain. The token is hidden below; continue and Save & Connect so Claude is advertised as route-ready."
+                        credentialImportMessage = message
+                        externalAccountActionMessage = message
                     } else {
                         credentialImportMessage = "Imported the signed-in Claude Code OAuth token. The token is hidden below; continue and Save & Connect so Claude is advertised as route-ready."
                     }
@@ -2834,7 +2838,9 @@ struct ProviderPlanWizardView: View {
                 await MainActor.run {
                     isImportingCredential = false
                     if configDirectory != nil {
-                        credentialImportMessage = "\(error.localizedDescription) The separate Claude login was added for account switching, but Claude did not expose a route token in that profile. Use current Claude login or paste a bearer token to route through BurnBar."
+                        let message = "\(error.localizedDescription) The separate Claude login was added for account switching, but Claude did not expose a route token BurnBar could import. Use current Claude login, sign in again, or paste a bearer token to route through BurnBar."
+                        credentialImportMessage = message
+                        externalAccountActionMessage = message
                     } else if let method = selectedAuthMethod {
                         credentialImportMessage = "\(error.localizedDescription) Opening Claude Code login; finish sign-in, then press Use current Claude login again."
                         openExternalLogin(for: method)
@@ -3027,9 +3033,9 @@ struct ProviderPlanWizardView: View {
                     importClaudeCodeOAuthBearer(
                         configDirectory: configDirectory,
                         accountLabel: label,
-                        allowDefaultKeychainFallback: false
+                        allowDefaultKeychainFallback: true
                     )
-                    externalAccountActionMessage = "Added \(label). If Claude saved a route token for this isolated login, BurnBar is importing it now."
+                    externalAccountActionMessage = "Added \(label). Claude Code stores route tokens in macOS Keychain, so BurnBar is importing that freshly signed-in token now."
                     return
                 }
                 activeProviderID = providerID

@@ -127,6 +127,7 @@ struct DashboardView: View {
         case .missions: return "Missions"
         case .sessionLogs: return "Session Logs"
         case .chat: return "Chat"
+        case .quota: return "Quota"
         case .provider(let provider): return provider.displayName
         case .model(let modelName): return modelName
         }
@@ -398,6 +399,17 @@ struct DashboardView: View {
                                 goBack()
                                 chatPanelOpen = true
                             }
+                        }
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .quota:
+                    QuotaWorkspaceView(
+                        dataStore: dataStore,
+                        quotaService: quotaService,
+                        settingsManager: settingsManager,
+                        onOpenConnections: {
+                            UserDefaults.standard.set(SettingsTab.agents.rawValue, forKey: "settings.pendingTab")
+                            showingSettings = true
                         }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -384,6 +384,21 @@ final class RoutingClientWiringTests: XCTestCase {
         XCTAssertEqual(factoryConfigModels.first?["base_url"] as? String, "http://127.0.0.1:8317/v1")
         XCTAssertEqual(factoryConfigModels.first?["api_key"] as? String, "droid-token")
         XCTAssertEqual(factoryConfigModels.first?["provider"] as? String, "generic-chat-completion-api")
+        for path in [
+            ".factory/settings.local.json",
+            ".factory/settings.json",
+            ".factory/config.json"
+        ] {
+            let text = try String(
+                contentsOf: tempHome.appendingPathComponent(path),
+                encoding: .utf8
+            )
+            XCTAssertFalse(text.contains("8333"), path)
+            XCTAssertFalse(text.contains("codex_factory_bridge"), path)
+            XCTAssertFalse(text.contains("find-generic-password"), path)
+            XCTAssertFalse(text.contains("com.openburnbar.controller-runtime"), path)
+            XCTAssertFalse(text.contains("secret_broker"), path)
+        }
         XCTAssertTrue(wiring.isWired(target: .droid))
     }
 

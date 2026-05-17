@@ -115,15 +115,38 @@ final class InsightsMacVerdictModel {
                 self.isDemo = false
                 self.isStale = false
                 self.lastEvent = "rule-based"
+                buildTraceFor(verdict: v)
             case .llmUpgrade(let v, let report):
                 self.verdict = v
                 self.isDemo = false
                 self.isStale = false
                 self.lastEvent = "llm-upgrade dropped=\(report.bulletsDropped)"
+                buildTraceFor(verdict: v)
             case .llmRejected(let reason):
                 self.lastEvent = "llm-rejected \(reason.rawValue)"
             case .failed(let error):
                 self.lastEvent = "failed: \(error)"
+            }
+        }
+    }
+
+    private func buildTraceFor(verdict: InsightVerdict) {
+        Task {
+            do {
+                let interval = Self.dateInterval(for: verdict.window)
+                let snapshot = try await dataSource.snapshot(window: interval)
+                let builder = InsightSessionTraceBuilder()
+                if let trace = builder.build(from: snapshot) {
+                    var updated = verdict
+                    updated.sessionTrace = trace
+                    await MainActor.run {
+                        if self.verdict?.id == verdict.id {
+                            self.verdict = updated
+                        }
+                    }
+                }
+            } catch {
+                // Trace is optional — swallow errors.
             }
         }
     }

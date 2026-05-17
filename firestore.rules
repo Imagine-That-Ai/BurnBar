@@ -226,6 +226,39 @@ service cloud.firestore {
         );
     }
 
+    // Computer Use entitlement helpers. Phase 9 ships
+    // `hosted_computer_use_sync` as a separate SKU; the `pro_max`
+    // umbrella bundles it. See
+    // `plans/2026-05-16-computer-use-master-plan.md` § E.1.
+    function hostedComputerUseEntitlementPath(userId) {
+      return /databases/$(database)/documents/users/$(userId)/entitlements/hosted_computer_use_sync;
+    }
+
+    function burnBarProMaxEntitlementPath(userId) {
+      return /databases/$(database)/documents/users/$(userId)/entitlements/burnbar_pro_max;
+    }
+
+    function activeComputerUseEntitlementData(entitlement) {
+      return entitlement.active == true
+        && entitlement.productID in [
+          "com.openburnbar.hostedComputerUseSync.monthly",
+          "com.openburnbar.proMax.monthly"
+        ]
+        && entitlement.expireAt is timestamp
+        && entitlement.expireAt > request.time;
+    }
+
+    function hasActiveHostedComputerUseEntitlement(userId) {
+      return (
+          exists(hostedComputerUseEntitlementPath(userId))
+          && activeComputerUseEntitlementData(get(hostedComputerUseEntitlementPath(userId)).data)
+        )
+        || (
+          exists(burnBarProMaxEntitlementPath(userId))
+          && activeComputerUseEntitlementData(get(burnBarProMaxEntitlementPath(userId)).data)
+        );
+    }
+
     function ownerWritableHostedCloudBackup(userId) {
       return ownerWritableNonSecret(userId)
         && hasActiveHostedQuotaEntitlement(userId);
@@ -378,7 +411,7 @@ service cloud.firestore {
         && request.resource.data.id is string
         && request.resource.data.id == requestId
         && request.resource.data.connectionId is string
-        && request.resource.data.operation in ["chatCompletions", "models", "sessions", "sessionDetail", "profiles", "jobs"]
+        && request.resource.data.operation in ["chatCompletions", "cliAgentChat", "models", "sessions", "sessionDetail", "profiles", "jobs"]
         && request.resource.data.status in ["pending", "claimed", "streaming", "completed", "failed", "cancelled", "expired"]
         && request.resource.data.method in ["GET", "POST"]
         && request.resource.data.chunkCount is int
@@ -1485,6 +1518,91 @@ service cloud.firestore {
         && !("filename" in request.resource.data);
       allow update: if false;
       allow delete: if false;
+    }
+
+    // --- Computer Use (Phase 8-13, master plan 2026-05-16) ---
+    // Per-session metadata. The full audit chain lives on the Mac at
+    // ~/Library/Application Support/com.openburnbar.AgentLens/computer-use-audit/.
+    // Server-side carries only the chain header (manifest hash, head
+    // hash, end reason). Never carries action descriptors, screenshots,
+    // or scope rule contents.
+    match /users/{userId}/computer_use_sessions/{sessionId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && hasActiveHostedComputerUseEntitlement(userId)
+        && request.resource.data.sessionId == sessionId
+        && request.resource.data.userId == userId
+        && request.resource.data.mode in ["agent_watch", "browser", "system"]
+        && request.resource.data.trustMode in ["manual", "step", "trusted"]
+        && request.resource.data.manifestHashHex is string
+        && request.resource.data.macAppVersion is string
+        && request.resource.data.schemaVersion is int
+        && request.resource.data.schemaVersion >= 1
+        && !("body" in request.resource.data)
+        && !("payloadCiphertext" in request.resource.data)
+        && !("ciphertext" in request.resource.data)
+        && !("screenshots" in request.resource.data)
+        && !("actionDescriptors" in request.resource.data);
+      // End-of-session updates may set endReason/endedAt/auditHeadHashHex.
+      allow update: if ownsUserNamespace(userId)
+        && hasActiveHostedComputerUseEntitlement(userId)
+        && request.resource.data.sessionId == resource.data.sessionId
+        && request.resource.data.manifestHashHex == resource.data.manifestHashHex;
+      allow delete: if false;
+    }
+
+    // Per-action audit *header*. Carries only the chain link, status,
+    // and cost — never the full descriptor or selectors / URLs / coords.
+    match /users/{userId}/computer_use_actions/{actionId} {
+      allow read: if ownsUserNamespace(userId);
+      allow create: if ownerWritableNonSecret(userId)
+        && hasActiveHostedComputerUseEntitlement(userId)
+        && request.resource.data.id == actionId
+        && request.resource.data.sessionId is string
+        && request.resource.data.entryIndex is int
+        && request.resource.data.toolKind is string
+        && request.resource.data.status in [
+          "executed", "denied", "rejected", "awaiting_approval", "error"
+        ]
+        && request.resource.data.approvedBy in [
+          "mac", "phone", "trusted_scope", "step", "denied", "panic"
+        ]
+        && request.resource.data.parentEntryHashHex is string
+        && request.resource.data.schemaVersion is int
+        && !("body" in request.resource.data)
+        && !("selector" in request.resource.data)
+        && !("text" in request.resource.data)
+        && !("url" in request.resource.data)
+        && !("screenshot" in request.resource.data)
+        && !("ciphertext" in request.resource.data);
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Daily counters mirrored from the Mac. Owner-writable; cloud
+    // function `recomputeComputerUseQuotaUsage` reconciles drift.
+    match /users/{userId}/computer_use_quota_usage/{day} {
+      allow read: if ownsUserNamespace(userId);
+      allow create, update: if ownerWritableNonSecret(userId)
+        && request.resource.data.dayKey == day
+        && request.resource.data.browserActionsExecuted is number
+        && request.resource.data.browserActionsRejected is number
+        && request.resource.data.systemActionsExecuted is number
+        && request.resource.data.systemActionsRejected is number
+        && request.resource.data.phoneControlIntentsExecuted is number
+        && request.resource.data.phoneControlIntentsRejected is number
+        && request.resource.data.visionModelSpendUSD is number;
+      allow delete: if false;
+    }
+
+    // Operator-side documents. Server-only writes.
+    match /ops/computer_use_budget_status/state/current {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+    match /ops/computer_use_session_daily_rollups/days/{day} {
+      allow read: if request.auth != null;
+      allow write: if false;
     }
 
     // Owner-writable daily quota counter. The Mac batches updates every

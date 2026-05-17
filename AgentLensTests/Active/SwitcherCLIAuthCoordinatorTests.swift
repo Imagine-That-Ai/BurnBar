@@ -1221,6 +1221,59 @@ final class SwitcherAuthStoreTests: XCTestCase {
         XCTAssertEqual(credentials.planDisplayName, "Pro")
     }
 
+    func test_claudeCodeOAuthImporter_readsSharedKeychainAfterIsolatedLogin() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-claude-shared-keychain-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let profileState = """
+        {
+          "oauthAccount": {
+            "emailAddress": "second@example.com",
+            "billingType": "stripe_subscription"
+          }
+        }
+        """
+        try profileState.write(
+            to: root.appendingPathComponent(".claude.json", isDirectory: false),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let keychainPayload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "shared-keychain-token",
+            "refreshToken": "shared-keychain-refresh",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          }
+        }
+        """
+        try testBackend.set(
+            Data(keychainPayload.utf8),
+            service: ClaudeCodeOAuthCredentialImporter.keychainService,
+            account: "test-user"
+        )
+
+        let importer = ClaudeCodeOAuthCredentialImporter(
+            keychain: KeychainStore(
+                service: ClaudeCodeOAuthCredentialImporter.keychainService,
+                legacyServices: [],
+                backend: testBackend
+            ),
+            accounts: ["test-user"],
+            configDirectory: root.path,
+            allowDefaultKeychainFallback: true
+        )
+
+        let credentials = try importer.load(allowUserInteraction: false)
+        XCTAssertEqual(credentials.accessToken, "shared-keychain-token")
+        XCTAssertEqual(credentials.planDisplayName, "Max")
+    }
+
     // MARK: - Helper
 
     private func makeStore() -> SwitcherAuthStore {

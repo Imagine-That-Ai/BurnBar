@@ -118,6 +118,9 @@ export { rollupMediaSessionDaily } from "./mediaMonitoring.js";
 export { grantMediaGrandfather, validateMediaPurchase } from "./mediaSku.js";
 export { triggerVoIPCall } from "./voipPush.js";
 export { evaluateMediaBudget } from "./mediaBudget.js";
+export { evaluateComputerUseBudget } from "./computerUseBudget.js";
+export { recomputeComputerUseQuotaUsage } from "./computerUseQuota.js";
+export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
 export { sendVoIPOutbound } from "./apnsSender.js";
 export { sendFcmOutbound } from "./fcmAndroidSender.js";
 

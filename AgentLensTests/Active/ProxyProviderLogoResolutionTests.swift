@@ -11,15 +11,15 @@ final class ProxyProviderLogoResolutionTests: XCTestCase {
 
     // MARK: - DeepSeek
 
-    func test_assetCandidates_deepSeekIncludesProviderLogo() {
+    func test_assetCandidates_deepSeekPrefersRealWhaleLogo() {
         let names = ProxyProviderLogoView.assetCandidates(for: "deepseek")
+        XCTAssertEqual(names.first, "DeepSeekLogo")
         XCTAssertTrue(names.contains("DeepSeekProviderLogo"))
-        XCTAssertTrue(names.contains("DeepSeekLogo"))
     }
 
     func test_assetCandidates_deepSeekAliasMaps() {
         let names = ProxyProviderLogoView.assetCandidates(for: "deep-seek")
-        XCTAssertTrue(names.contains("DeepSeekProviderLogo"))
+        XCTAssertEqual(names.first, "DeepSeekLogo")
     }
 
     // MARK: - xAI / Grok
@@ -36,49 +36,50 @@ final class ProxyProviderLogoResolutionTests: XCTestCase {
 
     // MARK: - Mistral, Meta, Cohere, Amazon, Alibaba, MLX
 
-    func test_assetCandidates_mistralIncludesProviderLogo() {
+    func test_assetCandidates_mistralPrefersRealLogo() {
         let names = ProxyProviderLogoView.assetCandidates(for: "mistral")
+        XCTAssertEqual(names.first, "MistralLogo")
         XCTAssertTrue(names.contains("MistralProviderLogo"))
-        XCTAssertTrue(names.contains("MistralLogo"))
     }
 
-    func test_assetCandidates_metaIncludesProviderLogo() {
+    func test_assetCandidates_metaPrefersRealLogo() {
         let names = ProxyProviderLogoView.assetCandidates(for: "meta")
+        XCTAssertEqual(names.first, "MetaLogo")
         XCTAssertTrue(names.contains("MetaProviderLogo"))
-        XCTAssertTrue(names.contains("MetaLogo"))
     }
 
     func test_assetCandidates_llamaResolvesToMeta() {
         let names = ProxyProviderLogoView.assetCandidates(for: "llama")
-        XCTAssertTrue(names.contains("MetaProviderLogo"))
+        XCTAssertEqual(names.first, "MetaLogo")
     }
 
-    func test_assetCandidates_cohereIncludesProviderLogo() {
+    func test_assetCandidates_coherePrefersRealLogo() {
         let names = ProxyProviderLogoView.assetCandidates(for: "cohere")
+        XCTAssertEqual(names.first, "CohereLogo")
         XCTAssertTrue(names.contains("CohereProviderLogo"))
-        XCTAssertTrue(names.contains("CohereLogo"))
     }
 
-    func test_assetCandidates_amazonIncludesProviderLogo() {
+    func test_assetCandidates_amazonPrefersRealLogo() {
         let names = ProxyProviderLogoView.assetCandidates(for: "amazon")
+        XCTAssertEqual(names.first, "AmazonLogo")
         XCTAssertTrue(names.contains("AmazonProviderLogo"))
     }
 
     func test_assetCandidates_bedrockAliasMaps() {
         let names = ProxyProviderLogoView.assetCandidates(for: "bedrock")
-        XCTAssertTrue(names.contains("AmazonProviderLogo"))
+        XCTAssertEqual(names.first, "AmazonLogo")
     }
 
-    func test_assetCandidates_alibabaIncludesProviderLogo() {
+    func test_assetCandidates_alibabaPrefersRealLogo() {
         let names = ProxyProviderLogoView.assetCandidates(for: "alibaba")
+        XCTAssertEqual(names.first, "QwenLogo")
+        XCTAssertTrue(names.contains("AlibabaLogo"))
         XCTAssertTrue(names.contains("AlibabaProviderLogo"))
-        XCTAssertTrue(names.contains("QwenLogo"))
     }
 
     func test_assetCandidates_qwenAliasMaps() {
         let names = ProxyProviderLogoView.assetCandidates(for: "qwen")
-        XCTAssertTrue(names.contains("AlibabaProviderLogo"))
-        XCTAssertTrue(names.contains("QwenLogo"))
+        XCTAssertEqual(names.first, "QwenLogo")
     }
 
     func test_assetCandidates_mlxIncludesMLXLogo() {
@@ -106,8 +107,8 @@ final class ProxyProviderLogoResolutionTests: XCTestCase {
 
     func test_assetCandidates_moonshotResolvesKimi() {
         let names = ProxyProviderLogoView.assetCandidates(for: "moonshot")
+        XCTAssertEqual(names.first, "KimiLogo")
         XCTAssertTrue(names.contains("KimiProviderLogo"))
-        XCTAssertTrue(names.contains("KimiLogo"))
     }
 
     // MARK: - Unknown provider falls back to convention

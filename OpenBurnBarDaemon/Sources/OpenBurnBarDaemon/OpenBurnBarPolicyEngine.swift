@@ -24,7 +24,11 @@ public struct BurnBarPolicyEngine {
             return .low
         case .applyPatch:
             return .medium
-        case .runTerminal:
+        case .runTerminal,
+             .browserClick, .browserFill, .browserGoto, .browserKey,
+             .browserSelect, .browserScreenshot, .browserExtract,
+             .macInputClick, .macInputType, .macInputKey,
+             .macInputShortcut, .macInputDragDrop, .macInspectAccessibility:
             return .high
         }
     }
@@ -66,7 +70,11 @@ public struct BurnBarPolicyEngine {
         switch toolCall.tool {
         case .readFile, .searchWorkspace:
             return toolCall.output != nil
-        case .applyPatch, .runTerminal:
+        case .applyPatch, .runTerminal,
+             .browserClick, .browserFill, .browserGoto, .browserKey,
+             .browserSelect, .browserScreenshot, .browserExtract,
+             .macInputClick, .macInputType, .macInputKey,
+             .macInputShortcut, .macInputDragDrop, .macInspectAccessibility:
             return true
         }
     }
@@ -85,6 +93,12 @@ public struct BurnBarPolicyEngine {
             return "OpenBurnBar needs approval before applying workspace edits."
         case .runTerminal:
             return "OpenBurnBar needs approval before running terminal commands in this workspace."
+        case .browserClick, .browserFill, .browserGoto, .browserKey,
+             .browserSelect, .browserScreenshot, .browserExtract:
+            return "OpenBurnBar needs approval before controlling a browser for \(intent.summary.lowercased())."
+        case .macInputClick, .macInputType, .macInputKey,
+             .macInputShortcut, .macInputDragDrop, .macInspectAccessibility:
+            return "OpenBurnBar needs approval before controlling this Mac for \(intent.summary.lowercased())."
         }
     }
 }

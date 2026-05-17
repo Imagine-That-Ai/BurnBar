@@ -56,6 +56,7 @@ struct HermesSquareRoot: View {
     @State private var rollbackService = RollbackService.shared
     @State private var voiceIntentBanner: VoiceIntent?
     @State private var subscriptionTopicStore = AgentSubscriptionTopicStore.shared
+    @State private var selectedRuntime: AssistantRuntimeID = .hermes
 
     private var pinnedGrid: PinnedAgentGridConfig {
         PinnedAgentGridConfig.from(jsonString: pinnedJSON)
@@ -92,6 +93,10 @@ struct HermesSquareRoot: View {
                         searchResults
                             .padding(.horizontal, 16)
                     } else {
+                        // Runtime rail — one-tap access to each agent
+                        runtimeRail
+                            .padding(.horizontal, 16)
+
                         // Approval inbox — always visible. Pending
                         // approvals stick at the top until handled.
                         if !missionHost.snapshot.approvalAsks.isEmpty {
@@ -305,6 +310,50 @@ struct HermesSquareRoot: View {
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // MARK: - Runtime Rail
+
+    private var runtimeRail: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(visibleTiles, id: \.rawValue) { runtime in
+                    Button {
+                        selectedRuntime = runtime
+                        navTarget = .runtimeNative(runtime)
+                        HapticBus.tabChange()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(runtime.glyph)
+                                .font(.system(size: 16, weight: .bold, design: .rounded))
+                            Text(runtime.displayName)
+                                .font(.caption.bold())
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .fill(selectedRuntime == runtime
+                                      ? DesignSystemColors.ember.opacity(0.22)
+                                      : DesignSystemColors.surface.opacity(0.65))
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(selectedRuntime == runtime
+                                        ? DesignSystemColors.ember.opacity(0.6)
+                                        : DesignSystemColors.borderSubtle,
+                                        lineWidth: 0.5)
+                        )
+                        .foregroundStyle(selectedRuntime == runtime
+                                         ? DesignSystemColors.ember
+                                         : DesignSystemColors.textPrimary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(runtime.displayName) agent")
+                    .accessibilityAddTraits(selectedRuntime == runtime ? .isSelected : [])
                 }
             }
         }

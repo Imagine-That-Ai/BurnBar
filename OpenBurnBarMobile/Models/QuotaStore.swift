@@ -79,15 +79,20 @@ final class QuotaStore {
 
     /// On-demand refresh for all accounts of a given provider. Pro users
     /// can trigger this at any time to get fresh quota numbers.
+    /// Cloud-refreshable and server-private accounts use the cloud function;
+    /// self-hosted local-only accounts (Claude Code, Codex) use the runner.
     func refreshAllAccounts(for providerID: ProviderID) async {
-        let providerAccounts = accounts.filter {
-            $0.providerID == providerID
-            && $0.status != .deleted
-            && ($0.storageScope == .cloudRefreshable || $0.storageScope == .serverPrivate)
+        let eligibleAccounts = accounts.filter {
+            $0.providerID == providerID && $0.status != .deleted
         }
-        for account in providerAccounts {
+        for account in eligibleAccounts {
             do {
-                _ = try await refreshAccountQuota(accountID: account.id)
+                if account.storageScope == .localOnly,
+                   account.providerID == .claudeCode || account.providerID == .codex {
+                    _ = try await SelfHostedQuotaRunnerStore.shared.refresh(account: account)
+                } else if account.storageScope == .cloudRefreshable || account.storageScope == .serverPrivate {
+                    _ = try await refreshAccountQuota(accountID: account.id)
+                }
             } catch {
                 quotaStoreLogger.warning("On-demand refresh failed for \(account.providerID.rawValue, privacy: .public)/\(account.id, privacy: .private): \(error.localizedDescription)")
             }
@@ -217,7 +222,10 @@ final class QuotaStore {
                 account.status == .connected || account.status == .stale || account.status == .error
             }
             .filter { account in
-                account.storageScope == .cloudRefreshable || account.storageScope == .serverPrivate
+                account.storageScope == .cloudRefreshable
+                    || account.storageScope == .serverPrivate
+                    || (account.storageScope == .localOnly
+                        && (account.providerID == .claudeCode || account.providerID == .codex))
             }
             .filter { account in
                 guard !staleRefreshInFlight.contains(account.id) else { return false }
@@ -232,11 +240,20 @@ final class QuotaStore {
             staleRefreshInFlight.insert(account.id)
             defer { staleRefreshInFlight.remove(account.id) }
             do {
-                let refreshed = try await functions.refreshProviderAccountQuota(accountID: account.id)
-                let merged = snapshots
-                    .filter { $0.accountID != refreshed.accountID || $0.sourceID != refreshed.sourceID }
-                    + [refreshed]
-                applySnapshots(merged)
+                if account.storageScope == .localOnly,
+                   account.providerID == .claudeCode || account.providerID == .codex {
+                    let refreshed = try await SelfHostedQuotaRunnerStore.shared.refresh(account: account)
+                    let merged = snapshots
+                        .filter { $0.accountID != refreshed.accountID || $0.sourceID != refreshed.sourceID }
+                        + [refreshed]
+                    applySnapshots(merged)
+                } else {
+                    let refreshed = try await functions.refreshProviderAccountQuota(accountID: account.id)
+                    let merged = snapshots
+                        .filter { $0.accountID != refreshed.accountID || $0.sourceID != refreshed.sourceID }
+                        + [refreshed]
+                    applySnapshots(merged)
+                }
             } catch {
                 quotaStoreLogger.warning("Failed to refresh stale quota for \(account.providerID.rawValue, privacy: .public)/\(account.id, privacy: .private): \(error.localizedDescription)")
             }

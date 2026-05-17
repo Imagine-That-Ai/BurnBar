@@ -698,11 +698,11 @@ struct CLIAgentMissionSnapshot: Equatable, Sendable, Identifiable {
     }
 
     var isTerminal: Bool {
-        ["completed", "failed", "canceled", "cancelled", "unauthorized", "agent_launch_failed"].contains(status)
+        ["completed", "failed", "canceled", "cancelled", "unauthorized", "agent_launch_failed"].contains(status.lowercased())
     }
 
     var isWaitingForApproval: Bool {
-        status == "waiting_for_approval" && (approvalStatus ?? "pending") == "pending"
+        status.lowercased() == "waiting_for_approval" && (approvalStatus ?? "pending").lowercased() == "pending"
     }
 
     var displayStatus: String {

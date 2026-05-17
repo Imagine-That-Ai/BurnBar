@@ -51,6 +51,7 @@ final class IrohRelayRequestHandler: Sendable {
     private let mediaDispatcher: MediaFrameDispatcher?
     private let mediaControlRegistrar: MediaControlStreamRegistrar?
     private let controlDispatcher: ControlFrameDispatcher?
+    private let cliChatDispatcher: CLIAgentRelayChatDispatcher?
     private let auditLogger: (any IrohTransportAuditLogging)?
 
     @MainActor
@@ -61,6 +62,7 @@ final class IrohRelayRequestHandler: Sendable {
         mediaDispatcher: MediaFrameDispatcher? = nil,
         mediaControlRegistrar: MediaControlStreamRegistrar? = nil,
         controlDispatcher: ControlFrameDispatcher? = nil,
+        cliChatDispatcher: CLIAgentRelayChatDispatcher? = nil,
         auditLogger: (any IrohTransportAuditLogging)? = nil
     ) {
         self.relayKeyStore = relayKeyStore
@@ -69,6 +71,7 @@ final class IrohRelayRequestHandler: Sendable {
         self.mediaDispatcher = mediaDispatcher
         self.mediaControlRegistrar = mediaControlRegistrar
         self.controlDispatcher = controlDispatcher
+        self.cliChatDispatcher = cliChatDispatcher
         self.auditLogger = auditLogger
     }
 
@@ -263,6 +266,17 @@ final class IrohRelayRequestHandler: Sendable {
             )
             return
         }
+        if operation == .cliAgentChat {
+            try await forwardCLIAgentChat(
+                payload: encryptedPayload,
+                uid: uid,
+                connectionID: connectionID,
+                requestID: requestID,
+                keyData: keyData,
+                stream: stream
+            )
+            return
+        }
 
         let body = try await forwardUnary(operation: operation, payload: encryptedPayload)
         var sequence = 0
@@ -296,6 +310,64 @@ final class IrohRelayRequestHandler: Sendable {
                 "operation": operation.rawValue,
                 "chunks": String(sequence)
             ]
+        )
+    }
+
+    private func forwardCLIAgentChat(
+        payload: HermesRelayEncryptedRequestPayload,
+        uid: String,
+        connectionID: String,
+        requestID: String,
+        keyData: Data,
+        stream: any IrohRelayStream
+    ) async throws {
+        guard let cliChatDispatcher else {
+            throw IrohRelayHostError.cliAgentChatUnavailable
+        }
+        guard let body = payload.body?.data(using: .utf8) else {
+            throw IrohRelayHostError.invalidPath
+        }
+        let request = try JSONDecoder().decode(CLIAgentRelayChatRequest.self, from: body)
+        await auditStage(
+            "host_forward_cli_agent_chat_start",
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            extra: [
+                "runtime": request.runtime,
+                "threadID": request.clientThreadID,
+                "modelID": request.modelID ?? ""
+            ]
+        )
+        let sequencer = CLIAgentRelayChunkSequencer()
+        try await cliChatDispatcher(request) { event in
+            let data = try JSONEncoder().encode(event)
+            let sequence = await sequencer.next()
+            try await self.sendChunk(
+                data: String(data: data, encoding: .utf8) ?? "{}",
+                sequence: sequence,
+                kind: .sse,
+                uid: uid,
+                connectionID: connectionID,
+                requestID: requestID,
+                keyData: keyData,
+                stream: stream
+            )
+        }
+        let chunkCount = await sequencer.count()
+        try await sendComplete(
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            chunkCount: chunkCount,
+            stream: stream
+        )
+        await auditStage(
+            "host_forward_cli_agent_chat_complete",
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            extra: ["chunks": String(chunkCount)]
         )
     }
 
@@ -577,6 +649,8 @@ final class IrohRelayRequestHandler: Sendable {
         switch operation {
         case .chatCompletions:
             path = "v1/chat/completions"
+        case .cliAgentChat:
+            throw IrohRelayHostError.invalidPath
         case .models:
             path = "v1/models"
         case .sessions:
@@ -625,7 +699,7 @@ final class IrohRelayRequestHandler: Sendable {
         switch operation {
         case .chatCompletions, .models:
             return true
-        case .sessions, .profiles, .jobs, .sessionDetail:
+        case .cliAgentChat, .sessions, .profiles, .jobs, .sessionDetail:
             return false
         }
     }
@@ -1151,6 +1225,7 @@ enum IrohRelayHostError: LocalizedError {
     case httpStatus(code: Int, body: String?, requestedModel: String?)
     case upstreamError(String)
     case streamSendTimeout(stage: String)
+    case cliAgentChatUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -1168,6 +1243,8 @@ enum IrohRelayHostError: LocalizedError {
             return message
         case .streamSendTimeout(let stage):
             return "Iroh relay stalled while sending \(stage) to the mobile client."
+        case .cliAgentChatUnavailable:
+            return "Codex and Claude chat relay is not available on this Mac yet."
         }
     }
 }

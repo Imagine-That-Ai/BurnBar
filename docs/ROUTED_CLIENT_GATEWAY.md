@@ -233,6 +233,62 @@ OAuth bearers) is sent as `Authorization: Bearer …`. The probe issues a
 real `max_tokens: 1` request against `/v1/messages` so the credential is
 charged at most one output token for the verification.
 
+## Claude Max subscription identity (Opus on OAuth)
+
+Anthropic's public Messages API treats Claude Code OAuth bearer tokens
+(`sk-ant-oat…`) and Console API keys (`sk-ant-api…`) differently. With a
+bare bearer token, Sonnet and Haiku work; **Opus is gated behind a Claude
+Code identity check** and a request that does not present that identity
+gets an opaque `HTTP 429 rate_limit_error`, even when the account holds a
+Max subscription that includes Opus.
+
+`BurnBarAnthropicProviderExecutor` detects the credential shape (`sk-ant-oat`
+prefix on the Anthropic provider) and applies the Claude Code identity only
+on those routes:
+
+- URL: `POST /v1/messages?beta=true`.
+- Header `anthropic-beta: claude-code-20250219,oauth-2025-04-20,…` — the
+  `claude-code-20250219` + `oauth-2025-04-20` tokens are the minimum that
+  unlock Opus on the OAuth route. BurnBar intentionally **does not**
+  advertise `context-management-2025-06-27` because it strips the
+  `context_management` field before forwarding.
+- Header `User-Agent: claude-cli/2.1.143 (external, sdk-cli)`.
+- Header `x-app: cli`.
+- Header `anthropic-dangerous-direct-browser-access: true`.
+- Body `system` prefix: BurnBar prepends the canonical Claude Code system
+  guard (`You are Claude Code, Anthropic's official CLI for Claude.`) to
+  whatever `system` text the caller already supplied. If the caller's
+  system is a content-block array, the guard becomes the first block.
+
+Console API key routes (`sk-ant-api*`) never receive the Claude Code
+identity dress-up; those credentials bill differently and Anthropic treats
+the beta+guard pair as the "request came from the Claude Code CLI"
+signal. BurnBar only forwards that signal when the underlying credential
+is actually a Claude Code/Claude.ai session token issued through the OAuth
+flow.
+
+Once the identity is in place, a 429 on Opus over an OAuth route is a real
+usage signal (Claude Max quota window), not a routing problem. BurnBar's
+gateway-model-health store reflects that in the error message it surfaces
+to clients, and hides the model/account row from `/v1/models` until the
+cooldown expires.
+
+Coverage lives in `OpenBurnBarHTTPGatewayServerTests.swift`:
+
+- `testGatewayPresentsClaudeCodeIdentityOnOAuthOpusRoute` — asserts the
+  `?beta=true` query, the beta header (including the required tokens, but
+  **not** `context-management`), the CLI identity headers, and the
+  injected system guard.
+- `testGatewayDoesNotPresentClaudeCodeIdentityOnConsoleAPIKeyRoute` — the
+  same gateway with a Console API key sends none of those headers and
+  leaves the caller's `system` text untouched.
+- `testGatewayPreservesCallerSystemPromptWhenInjectingClaudeCodeGuard` —
+  the guard is prepended; caller-provided system text is preserved.
+- `testGatewayDoesNotDowngradeOpusToHaikuOnOAuthFailure` — when the only
+  configured Opus route returns 429 and a Haiku route also exists in the
+  same Anthropic pool, BurnBar surfaces the precise Opus error instead of
+  silently retrying as Haiku.
+
 ## Ollama Cloud Routing
 
 Ollama Cloud is an upstream routed provider. OpenBurnBar stores the Ollama API

@@ -288,6 +288,13 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertTrue(ollama.usesDirectCLI)
     }
 
+    func test_cliAgentRelayExecutor_classifiesCodexAndClaudeOnly() {
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "codex"), .codex)
+        XCTAssertEqual(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "claude-code"), .claude)
+        XCTAssertNil(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "hermes"))
+        XCTAssertNil(ChatSessionControllerCLIAgentRelayChatExecutor.backend(for: "openclaw"))
+    }
+
     func test_missionRuntimePlanner_selectsMissionKindFallbacksFromEnabledBackends() {
         XCTAssertEqual(
             CLIAgentMissionRuntimePlanner.resolve(
@@ -365,6 +372,68 @@ final class CLIAgentSessionMirrorTests: XCTestCase {
         XCTAssertTrue(prompt.contains("File edits allowed: no"))
         XCTAssertTrue(prompt.contains("If file edits are not allowed, do not modify files"))
         XCTAssertTrue(prompt.contains("Find the blocking issue."))
+    }
+
+    func test_missionRuntimePlanner_buildsPlainPromptForMobileChat() {
+        let backend = CLIAgentMissionBackend(chatBackend: .claude)
+        let prompt = CLIAgentMissionRuntimePlanner.prompt(
+            title: "New Claude Chat",
+            prompt: "Hi how are you",
+            backend: backend,
+            data: [
+                "source": "ios-chat",
+                "missionKind": "chat",
+                "commandsAllowed": false,
+                "fileEditsAllowed": false
+            ]
+        )
+
+        XCTAssertTrue(prompt.contains("continuing a normal chat"))
+        XCTAssertTrue(prompt.contains("Source: ios-chat"))
+        XCTAssertTrue(prompt.contains("Reply directly to the user's message"))
+        XCTAssertTrue(prompt.contains("Hi how are you"))
+        XCTAssertFalse(prompt.contains("Mission:"))
+        XCTAssertFalse(prompt.contains("Produce actionable findings"))
+    }
+
+    func test_missionRuntimePlanner_acceptsSafeMobileClientThreadIDForChatContinuity() {
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: [
+                "source": "ios-chat",
+                "clientThreadID": "mobile-codex-ABC_123"
+            ]),
+            "mobile-codex-ABC_123"
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: [
+                "source": "android-chat",
+                "clientThreadID": "mobile-claude-xyz"
+            ]),
+            "mobile-claude-xyz"
+        )
+        XCTAssertEqual(
+            CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: [
+                "missionKind": "chat",
+                "clientThreadID": "mobile-openclaw-1"
+            ]),
+            "mobile-openclaw-1"
+        )
+    }
+
+    func test_missionRuntimePlanner_rejectsUnsafeOrNonChatClientThreadID() {
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: [
+            "source": "ios",
+            "missionKind": "debt",
+            "clientThreadID": "mobile-codex-ABC_123"
+        ]))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: [
+            "source": "ios-chat",
+            "clientThreadID": "../escape"
+        ]))
+        XCTAssertNil(CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: [
+            "source": "ios-chat",
+            "clientThreadID": String(repeating: "a", count: 513)
+        ]))
     }
 
     func test_missionRuntimePlanner_keepsShellBackedPromptsOutOfCommandStrings() throws {

@@ -2725,6 +2725,107 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(persistedAccounts.first?.isDefault, true)
     }
 
+    func test_refreshAll_fetchesAnthropicOAuthSlotsAsClaudeAccountQuotaSnapshots() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let runtimeSecrets = KeychainStore(
+            service: "tests.runtime.\(UUID().uuidString)",
+            legacyServices: [],
+            backend: TestKeychainBackend()
+        )
+        let routePayload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "sk-ant-oat-gmail",
+            "refreshToken": "sk-ant-ort-gmail",
+            "expiresAt": 4102444800000,
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          }
+        }
+        """
+        try runtimeSecrets.set(routePayload, for: "provider.anthropic.slot.gmail.apiKey")
+
+        OpenBurnBarDaemonManager.shared.providerConfigurations = [
+            OpenBurnBarDaemonProviderConfiguration(
+                providerID: "anthropic",
+                provider: AgentProvider.claudeCode,
+                displayName: "Anthropic",
+                isEnabled: true,
+                baseURL: "https://api.anthropic.com/v1",
+                preferredModelIDs: [],
+                preferredCredentialSlotID: "gmail",
+                credentialSlots: [
+                    OpenBurnBarDaemonProviderConfiguration.CredentialSlot(
+                        slotID: "gmail",
+                        label: "gmail",
+                        isEnabled: true,
+                        status: .ready,
+                        cooldownUntil: nil,
+                        lastSelectedAt: nil,
+                        lastQuotaRemainingPercent: nil,
+                        lastQuotaResetsAt: nil,
+                        lastStatusMessage: nil
+                    ),
+                ]
+            )
+        ]
+
+        let formatter = ISO8601DateFormatter()
+        let reset = formatter.string(from: Date().addingTimeInterval(2 * 60 * 60))
+        let observedAuthorizations = Locked<[String]>([])
+        let session = makeStubSession { request in
+            let url = try XCTUnwrap(request.url)
+            if url.absoluteString == "https://api.anthropic.com/api/oauth/usage" {
+                observedAuthorizations.withLock {
+                    $0.append(request.value(forHTTPHeaderField: "Authorization") ?? "")
+                }
+                return try self.httpResponse(
+                    url: url,
+                    statusCode: 200,
+                    body: """
+                    {
+                      "rate_limits": {
+                        "five_hour": { "used_percentage": 8, "resets_at": "\(reset)" },
+                        "seven_day": { "used_percentage": 21, "resets_at": "\(reset)" }
+                      }
+                    }
+                    """
+                )
+            }
+            XCTFail("Unexpected URL: \(url.absoluteString)")
+            throw URLError(.cannotConnectToHost)
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            providerRuntimeKeyStore: runtimeSecrets,
+            session: session,
+            refreshProviders: [AgentProvider.claudeCode]
+        )
+        let dataStore = try makeDataStore()
+
+        await service.refreshAll(dataStore: dataStore)
+
+        let snapshots = service.snapshots(for: AgentProvider.claudeCode)
+        let gmail = try XCTUnwrap(snapshots.first { $0.accountLabel == "gmail" })
+        let persistedAccounts = try dataStore.providerAccountStore.fetchAll(providerID: ProviderID(rawValue: "anthropic"))
+
+        XCTAssertEqual(gmail.accountID, "anthropic-gmail")
+        XCTAssertEqual(gmail.sourceId, "daemon-slot:anthropic:gmail")
+        XCTAssertEqual(gmail.buckets.map { $0.key }.sorted(), ["claude-five_hour", "claude-seven_day"])
+        let fiveHour = try XCTUnwrap(gmail.buckets.first { $0.key == "claude-five_hour" })
+        let sevenDay = try XCTUnwrap(gmail.buckets.first { $0.key == "claude-seven_day" })
+        XCTAssertEqual(fiveHour.label, "5-hour window")
+        XCTAssertEqual(sevenDay.label, "7-day window")
+        XCTAssertEqual(try XCTUnwrap(fiveHour.remainingPercent).rounded(), 92)
+        XCTAssertEqual(try XCTUnwrap(sevenDay.remainingPercent).rounded(), 79)
+        XCTAssertEqual(observedAuthorizations.read(), ["Bearer sk-ant-oat-gmail"])
+        XCTAssertEqual(persistedAccounts.map { $0.id }, ["anthropic-gmail"])
+        XCTAssertEqual(persistedAccounts.first?.label, "gmail")
+    }
+
     func test_refreshAll_persistsOpenAIDaemonCredentialSlotsWithoutQuotaSnapshots() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()

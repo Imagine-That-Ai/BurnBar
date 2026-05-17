@@ -41,11 +41,5 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>OpenBurnBar uses the local network to accept encrypted Hermes relay connections from your trusted phones, tablets, and nearby devices.</string>
-	<key>NSSupportsAutomaticTermination</key>
-	<false/>
-	<key>NSSupportsSuddenTermination</key>
-	<false/>
 </dict>
 </plist>

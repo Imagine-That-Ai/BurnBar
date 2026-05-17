@@ -3,9 +3,9 @@ import Foundation
 // MARK: - Thread Inbox Item (Hermes Square §6.2)
 //
 // Unified view-model for an entry in the Living Inbox. The
-// `ThreadInboxStore` aggregates from Hermes (mobile chat history), Pi
-// (mobile chat history), and CLI-mirror Firestore sessions into a single
-// list of these items.
+// `ThreadInboxStore` aggregates native mobile chat history, Mac-mirrored CLI
+// Firestore sessions, missions, and subscription posts into a single list of
+// these items.
 //
 // Plain value type — no protocol identity, no Firebase, no service refs.
 // The store builds these as projections of the per-runtime authoritative

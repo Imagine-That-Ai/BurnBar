@@ -381,19 +381,18 @@ struct ProxyProviderLogoView: View {
         .frame(width: size, height: size)
     }
 
-    /// Asset names worth probing for a given catalog provider ID. We prefer
-    /// the "Provider" suffix variant (purpose-built mark) before the generic
-    /// brand mark, and fall back to a capitalized `{ID}Logo` convention so
-    /// new providers added to the catalog light up automatically.
+    /// Asset names worth probing for a given catalog provider ID. The real
+    /// brand-mark PNGs that ship with the repo (`DeepSeekLogo`, `MistralLogo`,
+    /// `MetaLogo`, `GrokLogo`, etc.) are preferred over the synthetic
+    /// `*ProviderLogo` SVG placeholders that older builds used. The catalog's
+    /// own registry is consulted as a tertiary fallback, and a conventional
+    /// `{ID}Logo` lookup catches any future provider that ships an asset by
+    /// name without needing a code change here.
     static func assetCandidates(for catalogProviderID: String) -> [String] {
         let normalized = catalogProviderID
             .lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
         var candidates: [String] = []
-
-        if let registered = BurnBarCatalogProvider.bundledLogoName(forProviderID: normalized) {
-            candidates.append(registered)
-        }
 
         switch normalized {
         case "anthropic", "claude", "claude-code":
@@ -407,23 +406,23 @@ struct ProxyProviderLogoView: View {
         case "xai", "grok", "x-ai":
             candidates.append("GrokLogo")
         case "deepseek", "deep-seek":
-            candidates.append(contentsOf: ["DeepSeekProviderLogo", "DeepSeekLogo"])
+            candidates.append(contentsOf: ["DeepSeekLogo", "DeepSeekProviderLogo"])
         case "mistral":
-            candidates.append(contentsOf: ["MistralProviderLogo", "MistralLogo"])
+            candidates.append(contentsOf: ["MistralLogo", "MistralProviderLogo"])
         case "meta", "llama":
-            candidates.append(contentsOf: ["MetaProviderLogo", "MetaLogo"])
+            candidates.append(contentsOf: ["MetaLogo", "MetaProviderLogo"])
         case "cohere":
-            candidates.append(contentsOf: ["CohereProviderLogo", "CohereLogo"])
+            candidates.append(contentsOf: ["CohereLogo", "CohereProviderLogo"])
         case "amazon", "aws", "bedrock":
-            candidates.append(contentsOf: ["AmazonProviderLogo", "AmazonLogo"])
+            candidates.append(contentsOf: ["AmazonLogo", "AmazonProviderLogo"])
         case "alibaba", "qwen", "dashscope":
-            candidates.append(contentsOf: ["AlibabaProviderLogo", "AlibabaLogo", "QwenLogo"])
+            candidates.append(contentsOf: ["QwenLogo", "AlibabaLogo", "AlibabaProviderLogo"])
         case "zai", "z-ai", "z.ai", "glm":
-            candidates.append(contentsOf: ["ZaiProviderLogo", "ZaiLogo"])
+            candidates.append(contentsOf: ["ZaiLogo", "ZaiProviderLogo"])
         case "minimax", "mini-max":
             candidates.append("MiniMaxLogo")
         case "moonshot", "kimi":
-            candidates.append(contentsOf: ["KimiProviderLogo", "KimiLogo", "MoonshotLogo"])
+            candidates.append(contentsOf: ["KimiLogo", "MoonshotLogo", "KimiProviderLogo"])
         case "mlx":
             candidates.append("MLXLogo")
         case "ollama":
@@ -434,6 +433,10 @@ struct ProxyProviderLogoView: View {
             candidates.append("AppleLogo")
         default:
             break
+        }
+
+        if let registered = BurnBarCatalogProvider.bundledLogoName(forProviderID: normalized) {
+            candidates.append(registered)
         }
 
         candidates.append("\(normalized.capitalized)Logo")

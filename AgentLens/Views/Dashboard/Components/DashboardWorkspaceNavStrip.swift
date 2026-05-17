@@ -41,6 +41,15 @@ struct DashboardWorkspaceNavStrip: View {
                 action: { onNavigate(.chat) }
             )
             DashboardWorkspaceNavButton(
+                title: "Quota",
+                subtitle: "Subscriptions & limits",
+                systemImage: "gauge.with.dots.needle.67percent",
+                accent: DesignSystem.Colors.amber,
+                isSelected: currentRoute == .quota,
+                isCompact: isCompact,
+                action: { onNavigate(.quota) }
+            )
+            DashboardWorkspaceNavButton(
                 title: "Database",
                 subtitle: "Browse tracked sessions",
                 systemImage: "archivebox",

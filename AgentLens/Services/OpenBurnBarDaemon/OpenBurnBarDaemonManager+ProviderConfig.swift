@@ -4,9 +4,14 @@ import OpenBurnBarCore
 extension OpenBurnBarDaemonManager {
 
     func setRouterMode(_ mode: ProviderRouterMode) async {
-        guard case .healthy = status else {
-            lastError = "OpenBurnBar daemon must be healthy before router mode can be updated."
-            return
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before router mode can be updated."
+                return
+            }
         }
 
         await performBusyWork {
@@ -29,9 +34,14 @@ extension OpenBurnBarDaemonManager {
         baseURL: String? = nil,
         preferredModelIDs: [String]? = nil
     ) async {
-        guard case .healthy = status else {
-            lastError = "OpenBurnBar daemon must be healthy before provider settings can be updated."
-            return
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before provider settings can be updated."
+                return
+            }
         }
 
         await performBusyWork {
@@ -87,10 +97,17 @@ extension OpenBurnBarDaemonManager {
         apiKey: String,
         isEnabled: Bool = true
     ) async throws -> String {
-        guard case .healthy = status else {
-            throw OpenBurnBarDaemonManagerError.rpcError(
-                "OpenBurnBar daemon must be healthy before provider plans can be updated."
-            )
+        if case .healthy = status {
+            // already healthy
+        } else {
+            // The supervisor may be in crash-loop backoff while the daemon is
+            // actually healthy. Force a re-probe before refusing the operation.
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                throw OpenBurnBarDaemonManagerError.rpcError(
+                    "OpenBurnBar daemon must be healthy before provider plans can be updated."
+                )
+            }
         }
 
         let normalizedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -146,10 +163,15 @@ extension OpenBurnBarDaemonManager {
         isEnabled: Bool? = nil,
         apiKey: String? = nil
     ) async throws {
-        guard case .healthy = status else {
-            throw OpenBurnBarDaemonManagerError.rpcError(
-                "OpenBurnBar daemon must be healthy before provider plans can be updated."
-            )
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                throw OpenBurnBarDaemonManagerError.rpcError(
+                    "OpenBurnBar daemon must be healthy before provider plans can be updated."
+                )
+            }
         }
 
         try await performRequiredBusyWork {
@@ -267,9 +289,14 @@ extension OpenBurnBarDaemonManager {
         providerID: String,
         slotID: String
     ) async {
-        guard case .healthy = status else {
-            lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
-            return
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before provider plans can be updated."
+                return
+            }
         }
 
         await performBusyWork {
@@ -302,10 +329,15 @@ extension OpenBurnBarDaemonManager {
         providerID: String,
         slotID: String?
     ) async throws {
-        guard case .healthy = status else {
-            throw OpenBurnBarDaemonManagerError.rpcError(
-                "OpenBurnBar daemon must be healthy before provider plans can be updated."
-            )
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                throw OpenBurnBarDaemonManagerError.rpcError(
+                    "OpenBurnBar daemon must be healthy before provider plans can be updated."
+                )
+            }
         }
 
         try await performRequiredBusyWork {

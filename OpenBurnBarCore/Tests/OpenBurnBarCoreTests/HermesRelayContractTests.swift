@@ -44,6 +44,39 @@ final class HermesRelayContractTests: XCTestCase {
         XCTAssertEqual(decoded.kind.rawValue, "sse")
     }
 
+    func testCLIAgentChatRelayRequestAndEventRoundTrip() throws {
+        let request = CLIAgentRelayChatRequest(
+            runtime: "codex",
+            prompt: "Hello from iPhone",
+            clientThreadID: "mobile-codex-123",
+            modelID: "gpt-test",
+            title: "Hello",
+            parentSessionID: nil,
+            resumeAction: "continue"
+        )
+        let requestData = try JSONEncoder().encode(request)
+        let decodedRequest = try JSONDecoder().decode(CLIAgentRelayChatRequest.self, from: requestData)
+
+        XCTAssertEqual(decodedRequest, request)
+        XCTAssertEqual(HermesRelayOperation(rawValue: "cliAgentChat"), .cliAgentChat)
+
+        let event = CLIAgentRelayChatEvent(
+            kind: .completed,
+            text: "Mac Codex answered.",
+            modelID: "gpt-test",
+            transcriptPieces: [
+                CLIAgentRelayTranscriptPiece(id: "p1", kind: .text, value: "Mac Codex answered."),
+                CLIAgentRelayTranscriptPiece(id: "p2", kind: .toolUse, value: "Read", detail: "File.swift")
+            ]
+        )
+        let eventData = try JSONEncoder().encode(event)
+        let decodedEvent = try JSONDecoder().decode(CLIAgentRelayChatEvent.self, from: eventData)
+
+        XCTAssertEqual(decodedEvent, event)
+        XCTAssertTrue(decodedEvent.isTerminal)
+        XCTAssertFalse(decodedEvent.isError)
+    }
+
     func testRelayCryptoRoundTripsRequestAndChunkPayloads() throws {
         let privateKey = HermesRelayCrypto.generatePrivateKey()
         let keyData = try HermesRelayCrypto.generateSymmetricKeyData()

@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Computer Use (Phases 8–13, flagged off)
+- **Phase 8 substrate.** `MediaStreamClass` gains `control.surface.frame`,
+  `control.action.log`, `control.input`, `control.approval`; the four route
+  to the new `MediaStreamClass.Feature.computerUse` quota bucket.
+- **Cursor extension to `MediaPacketCodec`.** `MediaFrame.Flags.hasCursorMetadata`
+  (bit `0x08` — `0x04` was already taken by `.muted`) prefixes 4 trailing
+  bytes (`i16 cursorX`, `i16 cursorY`, big-endian) after the existing
+  18-byte header. Decoder ignores the bytes when the flag is absent so
+  the codec stays byte-identical for pre-Computer-Use senders.
+- **Wire frames.** Six new `HermesRealtimeRelayFrameType` cases
+  (`control.classify`, `control.action.log.entry`, `control.input.intent`,
+  `control.approval.{request,response}`, `control.denied`) carried by a
+  new `HermesRealtimeRelayControlPayload` sibling-of-`media` payload.
+- **OpenBurnBarComputerUseCore.** New cross-platform SwiftPM target with
+  session metadata, scope rules + matcher, built-in deny registry, audit
+  chain + logger + hasher (SHA-256, BLAKE3-swappable), action descriptors,
+  capability gate + budget envelope, and the pure Ed25519 signer/verifier
+  used by the Mac validator and iOS issuer. 50-test suite green.
+- **BurnBarToolKind extensions.** 13 new tool kinds (7 browser + 5 mac
+  input + 1 mac inspect) plus `BurnBarBrowserActionArguments`. Available
+  via `BurnBarToolKind.computerUseToolKinds` for daemon dispatch routing.
+- **Daemon.** `OpenBurnBarPlaywrightDriver` (long-lived Node subprocess
+  speaking newline-delimited JSON-RPC), `OpenBurnBarPlaywrightLifecycle`
+  (auto-install pinned at `playwright@1.49.1`), `ComputerUseRunCoordinator`
+  (capability gate + scope + approval flow + per-action audit append).
+  Node.js bridge script lives at
+  `OpenBurnBarDaemon/Resources/PlaywrightBridge/openburnbar-playwright-bridge.js`.
+- **Mac.** `MacInputController` (CGEvent + display-bounds gating),
+  `MacAccessibilityInspector` (AX role probe + deny-region matcher),
+  `ComputerUsePanicHaltCoordinator` (global hotkey `⌃⌥⌘.`, NSWorkspace
+  auth-gate listeners, Remote Config kill-switch, Accessibility
+  revocation), `PhoneControlAuthorityValidator`.
+- **iOS.** `AgentWatchState` observable model, `PhoneControlAuthorityIssuer`
+  Ed25519 envelope builder.
+- **Cloud Functions.** `evaluateComputerUseBudget` (hourly), `recomputeComputerUseQuotaUsage`
+  (hourly), `rollupComputerUseDaily`. New types `ComputerUseSessionDoc`,
+  `ComputerUseActionDoc`, `ComputerUseQuotaUsageDoc`,
+  `ComputerUseSessionDailyRollupDoc`, `ComputerUseBudgetStatusDoc`,
+  `ComputerUseEntitlementDoc`.
+- **Firestore rules.** New `hasActiveHostedComputerUseEntitlement(userId)`
+  helper and gated rule blocks for `computer_use_sessions`,
+  `computer_use_actions`, `computer_use_quota_usage`. Operator-side
+  `ops/computer_use_budget_status` + `ops/computer_use_session_daily_rollups`
+  are read-only for authenticated users; server-only writes.
+- **Docs.** `docs/HERMES_COMPUTER_USE.md` (engineer/operator reference),
+  `docs/runbooks/computer-use-rollout-status.md` (phase ship log),
+  `docs/runbooks/computer-use-budget.md`, `docs/runbooks/computer-use-quota.md`,
+  `docs/runbooks/computer-use-app-store.md`,
+  `docs/runbooks/computer-use-audit-disputes.md`.
+- **Scripts.** `scripts/install-playwright.sh` reproducible recipe
+  (matching `OpenBurnBarPlaywrightLifecycle.pinnedPlaywrightVersion`).
+
 ### Fixed
 - **macOS Google SSO keychain recovery.** Firebase Auth access-group binding
   now retries after clearing stale default Firebase Auth keychain rows, including

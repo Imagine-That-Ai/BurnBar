@@ -670,6 +670,9 @@ final class HermesService {
     private var selectedModelWasExplicit = false
     private let remoteRelayChatCompletionTimeout: TimeInterval = 360
     private let remoteRelayControlPlaneTimeout: TimeInterval = 90
+    private static let localHermesSelectedMessage =
+        "This iPhone/iPad is still using Local Hermes, so localhost points at this device, not your Mac. " +
+        "Select the Mac Remote Relay or add a reachable LAN/VPN Hermes URL, then refresh."
     /// Catalog of `MobileTool` implementations the chat surface advertises to
     /// the upstream LLM. Defaults to the canonical production set; tests
     /// inject custom catalogs (empty for "no tools" runs, fakes for
@@ -783,7 +786,7 @@ final class HermesService {
         _ = await (connectionRefresh, reachabilityRefresh, modelRefresh, sessionRefresh, profileRefresh, jobRefresh)
     }
 
-    func refreshConnections(generation: Int? = nil) async {
+    func refreshConnections(generation: Int? = nil, refreshSelectedConnection: Bool = true) async {
         do {
             var remoteConnections = try await connectionRepository.listHermesConnections()
             if remoteConnections.isEmpty {
@@ -802,7 +805,7 @@ final class HermesService {
                 if Self.hasUsableRelayConnection(current), current.id == selectedConnection.id {
                     selectedConnection = current
                 } else if Self.hasUsableRelayConnection(current) {
-                    _ = selectConnection(current)
+                    _ = selectConnection(current, refresh: refreshSelectedConnection)
                 } else if Self.hasUsableRelayEncryption(current) {
                     selectedConnection = .localDefault
                     defaults.removeObject(forKey: selectedConnectionDefaultsKey)
@@ -819,7 +822,7 @@ final class HermesService {
                     selectedConnection = current
                     baseURL = endpoint
                 } else {
-                    _ = selectConnection(current)
+                    _ = selectConnection(current, refresh: refreshSelectedConnection)
                 }
             } else if let current = connections.first(where: { $0.id == selectedConnection.id }) {
                 selectedConnection = current
@@ -1330,6 +1333,9 @@ final class HermesService {
                 return canonicalizedSelectedModelID(selectedModelID)
             }
             if selectedModelWasExplicit {
+                if selectedConnection.id == HermesConnectionRecord.localDefault.id {
+                    throw HermesServiceError.relayUnavailable(Self.localHermesSelectedMessage)
+                }
                 throw HermesServiceError.selectedModelCatalogUnavailable(selectedModelID)
             }
         } else if let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
@@ -1437,7 +1443,21 @@ final class HermesService {
         _ = selectConnection(relay, refresh: false)
     }
 
+    private func refreshRelayDiscoveryBeforeLocalSendIfNeeded() async {
+        guard selectedConnection.id == HermesConnectionRecord.localDefault.id else { return }
+        guard !isReachable else { return }
+
+        if suggestedRelayConnection == nil {
+            await refreshConnections(refreshSelectedConnection: false)
+        }
+
+        preferSuggestedRelayWhenLocalHostIsOffline()
+    }
+
     private func streamCompletion(context: String?, iteration: Int = 0) async throws {
+        if iteration == 0 {
+            await refreshRelayDiscoveryBeforeLocalSendIfNeeded()
+        }
         #if DEBUG
         print("OpenBurnBarMobile Hermes E2E streamCompletion selected=\(selectedConnection.id) mode=\(selectedConnection.mode.rawValue) requestedModel=\(activeRequestedModelID ?? "nil") modelOptions=\(modelOptions.count)")
         #endif
@@ -2256,6 +2276,9 @@ final class HermesService {
                     return canonicalizedSelectedModelID(selectedModelID)
                 }
                 if selectedModelWasExplicit {
+                    if selectedConnection.id == HermesConnectionRecord.localDefault.id {
+                        throw HermesServiceError.relayUnavailable(Self.localHermesSelectedMessage)
+                    }
                     throw HermesServiceError.selectedModelCatalogUnavailable(selectedModelID)
                 }
             } else if let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
@@ -2607,6 +2630,35 @@ final class HermesService {
             operation: operation,
             method: method,
             path: path,
+            sessionID: sessionID,
+            body: body
+        )
+    }
+
+    func macRelayPayloadForCLIAgentChat(
+        body: Data,
+        sessionID: String
+    ) async throws -> HermesRelayPayload {
+        if selectedConnection.mode != .relayLink || suggestedRelayConnection == nil {
+            await refreshConnections(refreshSelectedConnection: false)
+        }
+        if selectedConnection.mode != .relayLink {
+            _ = connectToSuggestedRelay(refresh: false)
+        }
+        guard selectedConnection.mode == .relayLink else {
+            throw HermesServiceError.relayUnavailable(
+                "No paired Mac relay is available for Codex or Claude chat. Keep OpenBurnBar open on your Mac, sign in, and enable Hermes Remote Relay."
+            )
+        }
+        guard selectedConnection.capabilities.contains("cli_agent_chat") else {
+            throw HermesServiceError.relayUnavailable(
+                "Your Mac relay is online but does not advertise Codex/Claude chat yet. Update or restart OpenBurnBar on the Mac."
+            )
+        }
+        return relayPayload(
+            operation: .cliAgentChat,
+            method: "POST",
+            path: "/v1/cli-agent/chat",
             sessionID: sessionID,
             body: body
         )
@@ -3249,6 +3301,11 @@ final class HermesRealtimeRelayTransport: HermesRelayTransporting {
             case .mediaClassify, .mediaBlobAdvertise, .mediaBlobAck:
                 // Mercury media frames are iroh-transport-only and never
                 // appear on the WSS dialer's chat response stream.
+                break
+            case .controlClassify, .controlActionLogEntry, .controlInputIntent,
+                 .controlApprovalRequest, .controlApprovalResponse, .controlDenied:
+                // Computer Use control frames are handled by the control
+                // plane; chat relay responses ignore them.
                 break
             }
         }

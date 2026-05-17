@@ -243,6 +243,8 @@ final class ProviderQuotaService {
         switch provider {
         case .kimi:
             return [provider.providerID, ProviderID(rawValue: "moonshot")]
+        case .claudeCode:
+            return [provider.providerID, ProviderID(rawValue: "anthropic")]
         default:
             return [provider.providerID]
         }
@@ -825,6 +827,8 @@ final class ProviderQuotaService {
             return "opencode"
         case .kimi:
             return "moonshot"
+        case .claudeCode:
+            return "anthropic"
         default:
             return nil
         }
@@ -1051,6 +1055,8 @@ final class ProviderQuotaService {
             return .ollama
         case "openai":
             return .openAI
+        case "anthropic", "claude", "claude-code":
+            return .claudeCode
         case "opencode", "open-code":
             return .openCode
         case "moonshot", "kimi":

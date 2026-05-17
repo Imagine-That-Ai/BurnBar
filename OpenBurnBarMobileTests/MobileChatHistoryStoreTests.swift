@@ -24,9 +24,13 @@ final class MobileChatHistoryStoreTests: XCTestCase {
 
         store.upsert(Self.makeThread(id: "pi-1", runtime: .pi, title: "Pi chat"))
         store.upsert(Self.makeThread(id: "h-1", runtime: .hermes, title: "Hermes chat"))
+        store.upsert(Self.makeThread(id: "codex-1", runtime: .codex, title: "Codex chat"))
+        store.upsert(Self.makeThread(id: "claude-1", runtime: .claude, title: "Claude chat"))
 
         XCTAssertEqual(store.threads(for: .pi).map(\.id), ["pi-1"])
         XCTAssertEqual(store.threads(for: .hermes).map(\.id), ["h-1"])
+        XCTAssertEqual(store.threads(for: .codex).map(\.id), ["codex-1"])
+        XCTAssertEqual(store.threads(for: .claude).map(\.id), ["claude-1"])
     }
 
     func testLoadFromDiskRestoresThreads() throws {

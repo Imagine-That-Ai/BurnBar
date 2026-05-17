@@ -31,6 +31,18 @@ let packageProducts: [Product] = [
     .library(
         name: "OpenBurnBarMedia",
         targets: ["OpenBurnBarMedia"]
+    ),
+    // Computer Use substrate (Agent Watch, Browser CU, Mac CU,
+    // Phone-as-controller). See
+    // `plans/2026-05-16-computer-use-master-plan.md`. Pure-Swift
+    // cross-platform shared types — session metadata, scope rules,
+    // deny registry, audit chain, action descriptors, capability gate,
+    // budget envelope. No AppKit. No AVFoundation. Mac runtime + iOS
+    // runtime types live in `AgentLens/Services/ComputerUse/` and
+    // `OpenBurnBarMobile/Services/ComputerUse/`.
+    .library(
+        name: "OpenBurnBarComputerUseCore",
+        targets: ["OpenBurnBarComputerUseCore"]
     )
 ] + (hasIrohXCFramework ? [
     .library(
@@ -92,6 +104,10 @@ let package = Package(
             name: "OpenBurnBarMedia",
             dependencies: ["OpenBurnBarCore", "OpenBurnBarIrohRelay"]
         ),
+        .target(
+            name: "OpenBurnBarComputerUseCore",
+            dependencies: ["OpenBurnBarCore", "OpenBurnBarMedia"]
+        ),
         .testTarget(
             name: "OpenBurnBarCoreTests",
             dependencies: ["OpenBurnBarCore"]
@@ -103,6 +119,14 @@ let package = Package(
         .testTarget(
             name: "OpenBurnBarMediaTests",
             dependencies: ["OpenBurnBarMedia", "OpenBurnBarCore", "OpenBurnBarIrohRelay"]
+        ),
+        .testTarget(
+            name: "OpenBurnBarComputerUseCoreTests",
+            dependencies: [
+                "OpenBurnBarComputerUseCore",
+                "OpenBurnBarCore",
+                "OpenBurnBarMedia"
+            ]
         )
     ]
 )

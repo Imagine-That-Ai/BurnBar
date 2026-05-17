@@ -348,6 +348,84 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertFalse(service.hasPendingRelaySuggestion)
     }
 
+    func testSendRefreshesRelayDiscoveryBeforeUsingOfflineLocalHost() async throws {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "minimax",
+            providerName: "MiniMax",
+            modelID: "minimax-m2.7-highspeed",
+            displayName: "MiniMax M2.7 Highspeed"
+        )
+        let relayTransport = FakeHermesRelayTransport()
+        relayTransport.streamingEvents = [
+            #"data: {"choices":[{"delta":{"content":"relay ok"}}]}"#,
+            "data: [DONE]"
+        ]
+        let relay = relayConnection()
+        let repository = FakeHermesConnectionRepository(connections: [relay])
+        let service = HermesService(
+            connectionRepository: repository,
+            relayTransport: relayTransport,
+            defaults: defaults
+        )
+        service.connections = [.localDefault]
+        service.selectedConnection = .localDefault
+        service.isReachable = false
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        service.modelOptions = []
+
+        service.sendMessage("Use the Mac relay")
+        await waitForStreamToFinish(service)
+
+        XCTAssertEqual(repository.listCallCount, 1)
+        XCTAssertEqual(service.selectedConnection.id, relay.id)
+        XCTAssertEqual(relayTransport.streamingPayloads.count, 1)
+        let body = try XCTUnwrap(relayTransport.streamingPayloads.first?.body)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["model"] as? String, "minimax-m2.7-highspeed")
+        XCTAssertEqual(service.messages.last?.text, "relay ok")
+        XCTAssertNil(service.lastError)
+    }
+
+    func testOfflineLocalSelectedModelExplainsLocalhostInsteadOfMacCatalog() async {
+        let suiteName = "HermesServiceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let selected = HermesRuntimeModelOption(
+            providerID: "minimax",
+            providerName: "MiniMax",
+            modelID: "minimax-m2.7-highspeed",
+            displayName: "MiniMax M2.7 Highspeed"
+        )
+        let relayTransport = FakeHermesRelayTransport()
+        let repository = FakeHermesConnectionRepository()
+        let service = HermesService(
+            connectionRepository: repository,
+            relayTransport: relayTransport,
+            defaults: defaults
+        )
+        service.connections = [.localDefault]
+        service.selectedConnection = .localDefault
+        service.isReachable = false
+        service.modelOptions = [selected]
+        service.selectModel(selected)
+        service.modelOptions = []
+
+        service.sendMessage("Use the selected model")
+        await waitForStreamToFinish(service)
+
+        XCTAssertEqual(repository.listCallCount, 1)
+        XCTAssertTrue(relayTransport.streamingPayloads.isEmpty)
+        XCTAssertTrue(service.lastError?.contains("localhost points at this device") ?? false)
+        XCTAssertFalse(service.lastError?.contains("model catalog") ?? true)
+        XCTAssertTrue(service.messages.last?.isError ?? false)
+    }
+
     func testRefreshConnectionsReadsFirestoreBackedRelayRepository() async {
         let relay = relayConnection()
         let repository = FakeHermesConnectionRepository(connections: [relay])

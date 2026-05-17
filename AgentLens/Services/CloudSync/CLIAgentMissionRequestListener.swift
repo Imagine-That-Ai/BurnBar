@@ -139,6 +139,29 @@ enum CLIAgentMissionRuntimePlanner {
         """
     }
 
+    static func mobileChatClientThreadID(from data: [String: Any]) -> String? {
+        let source = ((data["source"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let missionKind = ((data["missionKind"] as? String) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard source == "ios-chat" || source == "android-chat" || missionKind == "chat" else {
+            return nil
+        }
+        guard let raw = (data["clientThreadID"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty,
+            raw.count <= 512
+        else { return nil }
+
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        guard raw.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+            return nil
+        }
+        return raw
+    }
+
     static func directLaunchPlan(
         title: String,
         prompt: String,
@@ -596,7 +619,11 @@ final class CLIAgentMissionRequestListener {
         if let requestedModelID {
             chatController.setChatModelSelection(requestedModelID, for: chatBackend)
         }
-        chatController.startNewChatThread()
+        if let clientThreadID = CLIAgentMissionRuntimePlanner.mobileChatClientThreadID(from: data) {
+            chatController.openOrCreateChatThread(id: clientThreadID)
+        } else {
+            chatController.startNewChatThread()
+        }
         let threadID = chatController.activeThreadID
         chatController.inputText = missionPrompt(title: title, prompt: prompt, backend: backend, data: data)
         await chatController.send()
