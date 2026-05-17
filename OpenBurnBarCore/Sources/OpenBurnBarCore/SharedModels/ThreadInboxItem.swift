@@ -50,6 +50,10 @@ public struct ThreadInboxItem: Sendable, Hashable, Identifiable {
     /// row show a mission tile inline.
     public let liveMissionID: String?
 
+    /// Compact previews for recent user attachments in this thread. These
+    /// stay metadata-only; file bytes remain in the per-thread workspace.
+    public let attachments: [HermesAttachment]
+
     public enum Source: String, Codable, Sendable, Hashable {
         case hermes
         case pi
@@ -68,7 +72,8 @@ public struct ThreadInboxItem: Sendable, Hashable, Identifiable {
         needsAttention: Bool = false,
         source: Source,
         liveMissionID: String? = nil,
-        searchText: String? = nil
+        searchText: String? = nil,
+        attachments: [HermesAttachment] = []
     ) {
         self.id = id
         self.agentURI = agentURI
@@ -80,6 +85,7 @@ public struct ThreadInboxItem: Sendable, Hashable, Identifiable {
         self.needsAttention = needsAttention
         self.source = source
         self.liveMissionID = liveMissionID
+        self.attachments = attachments
     }
 }
 

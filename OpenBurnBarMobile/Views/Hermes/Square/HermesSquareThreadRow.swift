@@ -36,6 +36,8 @@ struct HermesSquareThreadRow: View {
                     .font(.caption)
                     .foregroundStyle(DesignSystemColors.textMuted)
                     .lineLimit(2)
+                MobileAttachmentSummaryStrip(attachments: item.attachments)
+                    .padding(.top, item.attachments.isEmpty ? 0 : 3)
                 if item.needsAttention {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.circle.fill")
@@ -84,6 +86,87 @@ struct HermesSquareThreadRow: View {
                         .foregroundStyle(DesignSystemColors.textMuted)
                 }
             }
+        }
+    }
+}
+
+struct MobileAttachmentSummaryStrip: View {
+    let attachments: [HermesAttachment]
+
+    var body: some View {
+        if !attachments.isEmpty {
+            HStack(spacing: 6) {
+                ForEach(attachments.prefix(3)) { attachment in
+                    MobileAttachmentSummaryChip(attachment: attachment)
+                }
+                if attachments.count > 3 {
+                    Text("+\(attachments.count - 3)")
+                        .font(MobileTheme.Typography.tiny.weight(.semibold))
+                        .foregroundStyle(MobileTheme.Colors.textMuted)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Attachments: \(attachments.map(\.displayName).joined(separator: ", "))")
+        }
+    }
+}
+
+private struct MobileAttachmentSummaryChip: View {
+    let attachment: HermesAttachment
+
+    var body: some View {
+        HStack(spacing: 5) {
+            thumbnail
+            Text(label)
+                .font(MobileTheme.Typography.tiny.weight(.medium))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(MobileTheme.Colors.textSecondary)
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 7)
+        .padding(.vertical, 4)
+        .background(
+            Capsule(style: .continuous)
+                .fill(MobileTheme.Colors.surface.opacity(0.72))
+                .overlay(Capsule(style: .continuous).stroke(MobileTheme.Colors.border.opacity(0.45), lineWidth: 0.5))
+        )
+        .frame(maxWidth: 126)
+    }
+
+    private var label: String {
+        if let text = attachment.extractedTextPreview?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !text.isEmpty {
+            return text
+        }
+        return attachment.displayName
+    }
+
+    @ViewBuilder
+    private var thumbnail: some View {
+        if let data = attachment.thumbnailPNG, let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 22, height: 22)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        } else {
+            Image(systemName: iconName)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(MobileTheme.hermesAureate)
+                .frame(width: 22, height: 22)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(MobileTheme.Colors.surfaceElevated))
+        }
+    }
+
+    private var iconName: String {
+        switch attachment.kind {
+        case .image: return "photo"
+        case .pdf: return "doc.richtext"
+        case .audio: return "waveform"
+        case .video: return "play.rectangle"
+        case .textDocument: return "doc.text"
+        case .generic: return "doc"
         }
     }
 }

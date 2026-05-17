@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "dcC8gGJXQ+BEIDJqf7oGPkf5UEmBoJkKdMgfOldeT1Dv2D+XrnxAJ\/7swTOYXQw=",
+  "chunkCiphertext" : "XLbD4pk4pjVemtv+9JqJWalw8ARUkhO34s\/Fw6s3PnS9DLdKTOJkDnywV\/s3kzA=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJwYXRoIjoiXC92MVwvY2hhdFwvY29tcGxldGlvbnMiLCJzZXNzaW9uSWQiOiJzLXZlY3RvciIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
+  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "p1OC9eFfYnL1pg\/DrnSt\/kOA5ulXwla9wBnhvOd6yLthf94Tf3NGcVtmcEDx5s+AuY0XDbra\/NaG6B+fToraSEueYrNTba\/xB3xY2RuvLv61B2xOGuQpNM5NQxlA63XDm\/MfbLuU0ALCKjvGqM7sj3Ig+34WV02p+\/lW8UXBHgyB82KuGHJ4TfoL806rD8Mk7pAzPJdH",
+  "payloadCiphertext" : "qCt+5LK9U6KaKKh4VvqZd6+fSKcwbsel1pGIrP3YM4wFxNlVs3QLsTAGFwLlisQANVy8XeUZw1YQR+y+FzXKJZa5\/KgWLDuiV0Y8ks1fFWpY90hZe6LzswHxeXGdz9Tk4SjbJ\/CL2N3CTCc0aFYwfyU1Ik1vdnpJTdD\/3u28f3PyIySkSe\/AeMHHCtHo\/2wj2TLJCLX7",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BF0Z9C9dzhZY0d0VGR5N0Abeoz+HJGS0l4jLmbr9eBnWXMd1dRhG\/UWAZqtCKWVvRlRk86NlhRwyYPjqJJWEH2Bs+ppugLNsLh9\/52TTMHfC0nQiuHsHgNMlMXGUoaQjJF0arME93u639Ikp9MRWDhlRzt2bH7hKG3slk8g="
+  "wrappedKey" : "BIKyMXgrPoDRk\/YuMjtT1DhCXP15ENBQfzxamWqrn0sxMyw4ACDTIdd2m5agmpcE+ecCnsxX7h7K3p+tiq7P4fOQD2gJBOH\/ePq5wrTV8qF3UmdeyPCcg18VkTwmS0qgrFDDv2B8cUXh5ArC1tcC8bRRp2IEBzeNbQpLZjE="
 }

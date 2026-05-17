@@ -728,6 +728,15 @@ public struct BurnBarProviderRouter: Sendable {
             let cloudFamily = configuration.provider.models.first(where: { $0.id == "ollama-cloud-family" })
             let modelTemplate = exactCloudModel ?? cloudFamily
             guard let modelTemplate else { return nil }
+            let capabilityClassID: String? = {
+                if let exactCloudModel {
+                    return exactCloudModel.capabilityClassID ?? exactCloudModel.id
+                }
+                if let cloudFamily {
+                    return cloudFamily.capabilityClassID ?? cloudFamily.id
+                }
+                return modelTemplate.capabilityClassID ?? directCloudModelID
+            }()
             return BurnBarCatalogModel(
                 id: directCloudModelID,
                 displayName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -735,7 +744,7 @@ public struct BurnBarProviderRouter: Sendable {
                 aliases: [modelName],
                 matchers: [],
                 pricing: modelTemplate.pricing,
-                capabilityClassID: cloudFamily?.capabilityClassID ?? modelTemplate.capabilityClassID ?? directCloudModelID,
+                capabilityClassID: capabilityClassID,
                 capabilityClassRank: cloudFamily?.capabilityClassRank ?? modelTemplate.capabilityClassRank
             )
         }
@@ -777,7 +786,7 @@ public struct BurnBarProviderRouter: Sendable {
                 aliases: [modelName],
                 matchers: [],
                 pricing: matchedModel.pricing,
-                capabilityClassID: matchedModel.capabilityClassID,
+                capabilityClassID: matchedModel.capabilityClassID ?? matchedModel.id,
                 capabilityClassRank: matchedModel.capabilityClassRank
             )
         }
@@ -857,6 +866,20 @@ public struct BurnBarProviderRouter: Sendable {
         configurations: [BurnBarResolvedProviderConfiguration]
     ) -> String? {
         guard routerMode == .providerFamilyFailover else { return nil }
+        if normalizedOllamaCloudModelID(from: modelName) != nil {
+            let ollamaMatches = configurations.filter { configuration in
+                configuration.provider.id.lowercased() == "ollama"
+                    && configuration.settings.isEnabled
+                    && (requestedFormatFamily == nil || configuration.provider.formatFamily == requestedFormatFamily)
+                    && resolveModel(named: modelName, in: configuration) != nil
+            }
+            if ollamaMatches.contains(where: { !selectRoutes(for: modelName, configurations: [$0]).isEmpty }) {
+                return "ollama"
+            }
+            if ollamaMatches.count == 1 {
+                return "ollama"
+            }
+        }
         if let catalogProviderID = configStore.catalogSupport.catalog.vendorForModel(named: modelName)?.id {
             let catalogMatches = configurations.filter { configuration in
                 configuration.provider.id == catalogProviderID

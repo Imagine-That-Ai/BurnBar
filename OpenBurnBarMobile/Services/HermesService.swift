@@ -699,12 +699,17 @@ final class HermesService {
         connections.filter { connection in
             connection.mode == .relayLink
                 && connection.status == .online
-                && Self.hasUsableRelayConnection(connection)
+                && Self.canAttemptRelayConnection(connection)
         }
     }
 
     var suggestedRelayConnection: HermesConnectionRecord? {
         relayConnections.sorted { lhs, rhs in
+            let lhsFresh = Self.isRelayConnectionFresh(lhs)
+            let rhsFresh = Self.isRelayConnectionFresh(rhs)
+            if lhsFresh != rhsFresh {
+                return lhsFresh
+            }
             let lhsLastSeen = lhs.lastSeenAt ?? lhs.updatedAt
             let rhsLastSeen = rhs.lastSeenAt ?? rhs.updatedAt
             return lhsLastSeen > rhsLastSeen
@@ -802,9 +807,9 @@ final class HermesService {
             if let targetID,
                let current = connections.first(where: { $0.id == targetID }),
                current.mode == .relayLink {
-                if Self.hasUsableRelayConnection(current), current.id == selectedConnection.id {
+                if Self.canAttemptRelayConnection(current), current.id == selectedConnection.id {
                     selectedConnection = current
-                } else if Self.hasUsableRelayConnection(current) {
+                } else if Self.canAttemptRelayConnection(current) {
                     _ = selectConnection(current, refresh: refreshSelectedConnection)
                 } else if Self.hasUsableRelayEncryption(current) {
                     selectedConnection = .localDefault
@@ -845,7 +850,7 @@ final class HermesService {
                 runtimeErrorText = lastError
                 return false
             }
-            guard Self.isRelayConnectionFresh(connection) else {
+            guard connection.status == .online else {
                 lastError = "That Mac relay stopped checking in. Open or restart OpenBurnBar on the Mac, then refresh."
                 runtimeErrorText = lastError
                 return false
@@ -875,6 +880,8 @@ final class HermesService {
         if let endpoint {
             baseURL = endpoint
         }
+        runtimeErrorText = nil
+        lastError = nil
         defaults.set(connection.id, forKey: selectedConnectionDefaultsKey)
         if refresh {
             Task { @MainActor in
@@ -2313,7 +2320,7 @@ final class HermesService {
         do {
             guard generation == nil || generation == runtimeGeneration else { return }
             if selectedConnection.mode == .relayLink {
-                guard Self.hasUsableRelayConnection(selectedConnection) else {
+                guard Self.canAttemptRelayConnection(selectedConnection) else {
                     isReachable = false
                     runtimeErrorText = "That Mac relay stopped checking in. Open or restart OpenBurnBar on the Mac, then refresh."
                     return
@@ -3010,8 +3017,10 @@ final class HermesService {
 
     private nonisolated static let relayFreshnessWindow: TimeInterval = 3 * 60
 
-    private static func hasUsableRelayConnection(_ connection: HermesConnectionRecord) -> Bool {
-        hasUsableRelayEncryption(connection) && isRelayConnectionFresh(connection)
+    private static func canAttemptRelayConnection(_ connection: HermesConnectionRecord) -> Bool {
+        connection.mode == .relayLink
+            && connection.status == .online
+            && hasUsableRelayEncryption(connection)
     }
 
     static func isRelayConnectionFresh(_ connection: HermesConnectionRecord, now: Date = Date()) -> Bool {

@@ -117,6 +117,8 @@ public struct BurnBarLiveModelCatalogSnapshot: Codable, Hashable, Sendable {
 }
 
 public struct BurnBarLiveModelCatalog: Sendable {
+    private static let ollamaCloudCatalogURL = URL(string: "https://ollama.com/search?c=cloud")!
+
     private let configStore: BurnBarConfigStore
     private let session: URLSession
     private let refreshTimeoutSeconds: TimeInterval
@@ -247,7 +249,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
             : nil
 
         let configuredRows = configuration.preferredModels.map { model in
-            let wireModelID = advertisedModelID(for: model)
+            let wireModelID = advertisedModelID(for: model, providerID: configuration.provider.id)
             let liveModel = liveRefresh?.advertisedModels.first { $0.id.caseInsensitiveCompare(wireModelID) == .orderedSame }
             let liveConfirmed = liveIDSet?.contains(wireModelID.lowercased())
             let liveError: String? = {
@@ -312,13 +314,13 @@ public struct BurnBarLiveModelCatalog: Sendable {
         return configuredRows + liveRows
     }
 
-    private func advertisedModelID(for model: BurnBarCatalogModel) -> String {
+    private func advertisedModelID(for model: BurnBarCatalogModel, providerID: String) -> String {
         guard model.id.lowercased().hasSuffix("-family"),
               let alias = model.aliases.first?.trimmingCharacters(in: .whitespacesAndNewlines),
               !alias.isEmpty else {
-            return model.id
+            return providerID.lowercased() == "ollama" ? Self.ollamaCloudRouteModelID(model.id) : model.id
         }
-        return alias
+        return providerID.lowercased() == "ollama" ? Self.ollamaCloudRouteModelID(alias) : alias
     }
 
     private struct LiveRefreshResult: Sendable {
@@ -390,7 +392,9 @@ public struct BurnBarLiveModelCatalog: Sendable {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
         request.timeoutInterval = refreshTimeoutSeconds
-        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        if configuration.provider.id.lowercased() != "ollama" {
+            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        }
         let endpointLabel = liveModelEndpointLabel(for: configuration.provider)
         let sourceKind = liveModelSourceKind(for: configuration.provider)
 
@@ -435,32 +439,22 @@ public struct BurnBarLiveModelCatalog: Sendable {
 
     private func liveModelEndpoint(for provider: BurnBarCatalogProvider, baseURL: URL) -> URL {
         if provider.id.lowercased() == "ollama" {
-            return ollamaNativeEndpoint(baseURL: baseURL, leafPath: "tags")
+            return Self.ollamaCloudCatalogURL
         }
         return baseURL.appending(path: "models")
     }
 
-    private func ollamaNativeEndpoint(baseURL: URL, leafPath: String) -> URL {
-        let normalizedPath = baseURL.path
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            .lowercased()
-        if normalizedPath == "api" || normalizedPath.hasSuffix("/api") {
-            return baseURL.appending(path: leafPath)
-        }
-        return baseURL.appending(path: "api").appending(path: leafPath)
-    }
-
     private func liveModelEndpointLabel(for provider: BurnBarCatalogProvider) -> String {
-        provider.id.lowercased() == "ollama" ? "/api/tags" : "/models"
+        provider.id.lowercased() == "ollama" ? "/search?c=cloud" : "/models"
     }
 
     private func liveModelSourceKind(for provider: BurnBarCatalogProvider) -> String {
-        provider.id.lowercased() == "ollama" ? "ollama_cloud_tags_endpoint" : "upstream_models_endpoint"
+        provider.id.lowercased() == "ollama" ? "ollama_cloud_catalog_page" : "upstream_models_endpoint"
     }
 
     private static func parseModelsResponse(_ data: Data, providerID: String) throws -> [DiscoveredModel] {
         if providerID.lowercased() == "ollama" {
-            return try parseOllamaTagsResponse(data)
+            return try parseOllamaCloudCatalogHTML(data)
         }
         return try parseOpenAIModelsResponse(data)
     }
@@ -487,44 +481,44 @@ public struct BurnBarLiveModelCatalog: Sendable {
         return models
     }
 
-    private static func parseOllamaTagsResponse(_ data: Data) throws -> [DiscoveredModel] {
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let rows = object["models"] as? [[String: Any]] else {
+    private static func parseOllamaCloudCatalogHTML(_ data: Data) throws -> [DiscoveredModel] {
+        guard let html = String(data: data, encoding: .utf8) else {
             return []
         }
+        let regex = try NSRegularExpression(
+            pattern: #"href\s*=\s*["']/library/([A-Za-z0-9][A-Za-z0-9._:-]*)["']"#,
+            options: [.caseInsensitive]
+        )
+        let fullRange = NSRange(html.startIndex..<html.endIndex, in: html)
         var seen = Set<String>()
         var models: [DiscoveredModel] = []
-        for row in rows {
-            let rawID = ((row["name"] as? String)
-                ?? (row["model"] as? String)
-                ?? (row["id"] as? String)
-                ?? "")
+        for match in regex.matches(in: html, range: fullRange) {
+            guard match.numberOfRanges > 1,
+                  let slugRange = Range(match.range(at: 1), in: html) else {
+                continue
+            }
+            let slug = String(html[slugRange])
+                .removingPercentEncoding?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !rawID.isEmpty else { continue }
-            let id = normalizedOllamaCloudModelID(rawID)
+                ?? ""
+            guard !slug.isEmpty else { continue }
+            let id = ollamaCloudRouteModelID(slug)
             let normalized = id.lowercased()
             guard seen.insert(normalized).inserted else { continue }
-            let displayName = ((row["display_name"] as? String)
-                ?? (row["name"] as? String)
-                ?? id)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            models.append(DiscoveredModel(id: id, displayName: displayName.isEmpty ? id : displayName))
+            models.append(DiscoveredModel(id: id, displayName: slug))
         }
         return models
     }
 
-    private static func normalizedOllamaCloudModelID(_ rawID: String) -> String {
+    private static func ollamaCloudRouteModelID(_ rawID: String) -> String {
         let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowercased = trimmed.lowercased()
-        if lowercased.hasSuffix(":cloud") {
-            let direct = String(trimmed.dropLast(":cloud".count)).trimmingCharacters(in: .whitespacesAndNewlines)
-            return direct.isEmpty ? trimmed : direct
+        guard !trimmed.isEmpty,
+              !lowercased.hasSuffix(":cloud"),
+              !lowercased.hasSuffix("-cloud") else {
+            return trimmed
         }
-        if lowercased.hasSuffix("-cloud") {
-            let direct = String(trimmed.dropLast("-cloud".count)).trimmingCharacters(in: .whitespacesAndNewlines)
-            return direct.isEmpty ? trimmed : direct
-        }
-        return trimmed
+        return "\(trimmed):cloud"
     }
 
     private func quotaState(

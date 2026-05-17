@@ -22,14 +22,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         }
     }
 
-    private func enqueueOllamaTagsCatalog(_ modelIDs: [String], times: Int = 1) {
+    private func enqueueOllamaCloudCatalog(_ modelIDs: [String], times: Int = 1) {
         let rows = modelIDs.map { id in
-            #"{"name":"\#(id)","model":"\#(id)"}"#
-        }.joined(separator: ",")
+            #"<li x-test-model><a href="/library/\#(id)" class="group w-full"><span>\#(id)</span><span>cloud</span></a></li>"#
+        }.joined(separator: "\n")
         for _ in 0..<times {
             GatewayUpstreamURLProtocol.enqueue(
                 status: 200,
-                body: #"{"models":[\#(rows)]}"#
+                body: #"<html><body><ol>\#(rows)</ol></body></html>"#
             )
         }
     }
@@ -349,14 +349,33 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
     }
 
-    func testGatewayModelsUsesOllamaCloudTagsEndpointWhenAvailable() async throws {
-        enqueueOllamaTagsCatalog([
-            "deepseek-v4-flash",
-            "gpt-oss:120b",
-            "new-frontier-model:cloud"
+    func testGatewayModelsUsesOllamaCloudCatalogPageWhenAvailable() async throws {
+        enqueueOllamaCloudCatalog([
+            "kimi-k2.6",
+            "glm-5.1",
+            "deepseek-v4-pro",
+            "minimax-m2.7",
+            "deepseek-v3.2",
+            "minimax-m2.1"
         ])
         let harness = try GatewayHarness()
         try await harness.configureOllamaProviderForGateway()
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "deepseek",
+                isEnabled: true,
+                baseURL: "https://deepseek-upstream.test/v1",
+                preferredModelIDs: ["deepseek-chat"]
+            )
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "minimax",
+                isEnabled: true,
+                baseURL: "https://minimax-upstream.test/v1",
+                preferredModelIDs: ["minimax-m2.7-highspeed"]
+            )
+        )
         try await harness.configStore.removeCredentialSlot(providerID: "ollama", slotID: "backup")
         try await harness.start()
         defer { Task { await harness.stop() } }
@@ -371,29 +390,36 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let data = try XCTUnwrap(object["data"] as? [[String: Any]])
         let advertisedIDs = Set(data.compactMap { $0["id"] as? String })
-        XCTAssertTrue(advertisedIDs.contains("deepseek-v4-flash"))
-        XCTAssertTrue(advertisedIDs.contains("gpt-oss:120b"))
-        XCTAssertTrue(advertisedIDs.contains("new-frontier-model"))
+        XCTAssertTrue(advertisedIDs.contains("kimi-k2.6:cloud"))
+        XCTAssertTrue(advertisedIDs.contains("glm-5.1:cloud"))
+        XCTAssertTrue(advertisedIDs.contains("deepseek-v4-pro:cloud"))
+        XCTAssertTrue(advertisedIDs.contains("minimax-m2.7:cloud"))
+        XCTAssertTrue(advertisedIDs.contains("deepseek-v3.2:cloud"))
+        XCTAssertTrue(advertisedIDs.contains("minimax-m2.1:cloud"))
+        XCTAssertFalse(advertisedIDs.contains("kimi-k2.6"))
+        XCTAssertFalse(advertisedIDs.contains("glm-5.1"))
 
-        let discovered = try XCTUnwrap(data.first { ($0["id"] as? String) == "gpt-oss:120b" })
+        let discovered = try XCTUnwrap(data.first { ($0["id"] as? String) == "kimi-k2.6:cloud" })
         XCTAssertEqual(discovered["provider_id"] as? String, "ollama")
         XCTAssertEqual(discovered["provider_name"] as? String, "Ollama Cloud")
-        XCTAssertEqual(discovered["source_kind"] as? String, "ollama_cloud_tags_endpoint")
+        XCTAssertEqual(discovered["source_kind"] as? String, "ollama_cloud_catalog_page")
         XCTAssertEqual(discovered["route_eligible"] as? Bool, true)
         XCTAssertEqual(discovered["format_family"] as? String, "openai_compat")
         XCTAssertTrue((discovered["served_endpoints"] as? [String] ?? []).contains("/v1/chat/completions"))
-        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/api/tags"])
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/search"])
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.query), ["c=cloud"])
+        XCTAssertNil(GatewayUpstreamURLProtocol.recordedRequests().first?.authorization)
     }
 
-    func testGatewayModelsUsesOllamaTagsEndpointWhenBaseURLOmitsAPIPath() async throws {
-        enqueueOllamaTagsCatalog(["gpt-oss:120b"])
+    func testGatewayModelsUsesOllamaCloudCatalogPageWhenBaseURLOmitsAPIPath() async throws {
+        enqueueOllamaCloudCatalog(["kimi-k2.6"])
         let harness = try GatewayHarness()
         _ = try await harness.configStore.upsertProvider(
             BurnBarProviderSettings(
                 providerID: "ollama",
                 isEnabled: true,
                 baseURL: "https://gateway-upstream.test",
-                preferredModelIDs: ["gpt-oss:120b"],
+                preferredModelIDs: ["deepseek-v4-flash"],
                 preferredCredentialSlotID: "primary"
             )
         )
@@ -416,11 +442,12 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let data = try XCTUnwrap(object["data"] as? [[String: Any]])
         XCTAssertTrue(data.contains {
-            ($0["id"] as? String) == "gpt-oss:120b"
+            ($0["id"] as? String) == "kimi-k2.6:cloud"
                 && ($0["provider_id"] as? String) == "ollama"
                 && ($0["route_eligible"] as? Bool) == true
         })
-        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/api/tags"])
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/search"])
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.query), ["c=cloud"])
     }
 
     func testGatewayModelsDoesNotAdvertiseOllamaCloudWithoutRoutingCredential() async throws {
@@ -1659,7 +1686,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
-        enqueueOllamaTagsCatalog(["deepseek-v4-flash"], times: 2)
+        enqueueOllamaCloudCatalog(["deepseek-v4-flash"], times: 2)
         GatewayUpstreamURLProtocol.enqueue(
             status: 429,
             body: #"{"error":"quota exhausted"}"#
@@ -1730,16 +1757,16 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(usage[0].outputTokens, 5)
     }
 
-    func testGatewayRoutesOllamaCloudModelDiscoveredFromTagsEndpoint() async throws {
+    func testGatewayRoutesOllamaCloudModelDiscoveredFromCatalogPage() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
-        enqueueOllamaTagsCatalog(["gpt-oss:120b"], times: 2)
+        enqueueOllamaCloudCatalog(["kimi-k2.6"], times: 2)
         GatewayUpstreamURLProtocol.enqueue(
             status: 200,
             body: """
             {
-              "model": "gpt-oss:120b",
+              "model": "kimi-k2.6",
               "created_at": "2026-05-17T00:00:00Z",
               "message": {"role": "assistant", "content": "ollama cloud live answered"},
               "done": true,
@@ -1768,7 +1795,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: modelsBody) as? [String: Any])
         let data = try XCTUnwrap(object["data"] as? [[String: Any]])
         XCTAssertTrue(data.contains {
-            ($0["id"] as? String) == "gpt-oss:120b"
+            ($0["id"] as? String) == "kimi-k2.6:cloud"
                 && ($0["provider_id"] as? String) == "ollama"
                 && ($0["route_eligible"] as? Bool) == true
         })
@@ -1778,14 +1805,16 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             method: "POST",
             path: "/v1/chat/completions",
             headers: ["Content-Type": "application/json"],
-            body: Data(#"{"model":"gpt-oss:120b","messages":[{"role":"user","content":"hello"}],"stream":false}"#.utf8)
+            body: Data(#"{"model":"kimi-k2.6:cloud","messages":[{"role":"user","content":"hello"}],"stream":false}"#.utf8)
         )
 
         XCTAssertEqual(chatResponse.statusCode, 200, String(decoding: chatBody, as: UTF8.self))
         XCTAssertTrue(String(decoding: chatBody, as: UTF8.self).contains("ollama cloud live answered"))
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
-        XCTAssertEqual(upstreamRequests.map(\.path), ["/api/tags", "/api/tags", "/api/chat"])
-        XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"gpt-oss:120b""#) == true)
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/search", "/search", "/api/chat"])
+        XCTAssertEqual(upstreamRequests.prefix(2).map(\.query), ["c=cloud", "c=cloud"])
+        XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"kimi-k2.6""#) == true)
+        XCTAssertFalse(upstreamRequests.last?.body.contains(#""kimi-k2.6:cloud""#) == true)
         XCTAssertEqual(upstreamRequests.last?.authorization, "Bearer primary-ollama-key")
     }
 
@@ -3185,7 +3214,8 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
     }
 
     override class func canInit(with request: URLRequest) -> Bool {
-        request.url?.host == "gateway-upstream.test"
+        guard let host = request.url?.host else { return false }
+        return host == "gateway-upstream.test" || host == "ollama.com"
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest {

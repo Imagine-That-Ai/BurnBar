@@ -277,6 +277,16 @@ struct MenuBarPopoverView: View {
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
                 .popoverTooltip("Import new and updated sessions from your agent log folders.")
+
+                GlassIconButton(action: {
+                    dismiss()
+                    onOpenSettings()
+                }) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+                .popoverTooltip("Open settings")
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
             .padding(.vertical, DesignSystem.Spacing.md)

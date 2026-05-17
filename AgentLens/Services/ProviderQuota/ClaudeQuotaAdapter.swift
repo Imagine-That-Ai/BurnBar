@@ -23,6 +23,14 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         static let maxLineBytes = 2 * 1024 * 1024
     }
 
+    private enum StatuslinePolicy {
+        /// Claude's status line payload is a live hook emission, not an
+        /// authoritative long-lived cache. The 5h window moves even when
+        /// OpenBurnBar is the only thing refreshing, so old hook output must
+        /// not pin quota UI to stale percentages.
+        static let maxSnapshotAge: TimeInterval = 15 * 60
+    }
+
     /// Anthropic's published 5-hour / 7-day token allowances per plan
     /// tier as of May 2026 (post claude-code-warp doubling). Used to
     /// turn raw JSONL token counts into `usedPercent` values when the
@@ -48,6 +56,8 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
 
     func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
         let usesScopedConfig = Self.hasScopedClaudeConfig(environment: context.environment)
+        let accountCredentialScope = Self.hasRouteCredentialScope(environment: context.environment)
+        let workingCredentials = context.claudeCredentialsReader.load()
         let bridgeStatus = context.refreshClaudeBridgeStatus()
 
         // Auto-install the statusline bridge on the first refresh that
@@ -69,11 +79,47 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             ? context.refreshClaudeBridgeStatus()
             : bridgeStatus
 
+        // Explicit Claude credentials belong to a specific configured
+        // account. They must be queried before the global local statusline
+        // bridge, otherwise one shared Claude hook payload can overwrite every
+        // account card with the same stale percentage.
+        if let credentials = workingCredentials, credentials.canCallUsageEndpoint(now: Date()) {
+            let fetcher = ClaudeOAuthUsageFetcher(
+                session: context.session,
+                cacheURL: ClaudeOAuthUsageFetcher.scopedCacheURL(
+                    baseURL: context.appPaths.claudeOAuthUsageCacheURL,
+                    credentials: credentials
+                ),
+                fileManager: context.fileManager
+            )
+            let result = await fetcher.fetchRateLimits(
+                credentials: credentials
+            )
+            if let rateLimits = result.rateLimits, !rateLimits.isEmpty {
+                let buckets = claudeQuotaBuckets(from: rateLimits)
+                if !buckets.isEmpty {
+                    let freshness = result.sourceWasCache ? " (cached)" : ""
+                    let plan = result.refreshedCredentials?.planDisplayName ?? credentials.planDisplayName
+                    return ProviderQuotaSnapshot(
+                        provider: .claudeCode,
+                        fetchedAt: result.fetchedAt ?? Date(),
+                        source: .officialAPI,
+                        confidence: .exact,
+                        managementURL: "https://claude.ai/settings/usage",
+                        statusMessage: "Claude \(plan) quota from Anthropic OAuth usage endpoint\(freshness).",
+                        buckets: buckets
+                    )
+                }
+            }
+        }
+
         // 1. Statusline bridge — most current when the CLI has fired
         //    at least once. Returns immediately if a fresh payload is
         //    available.
-        if !usesScopedConfig,
+        if workingCredentials == nil,
+           !usesScopedConfig,
            postInstallStatus.state == .ready,
+           Self.isFreshStatuslineSnapshot(postInstallStatus.lastPayloadAt),
            let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL),
            let rateLimitsDict = payload["rate_limits"] as? [String: Any] {
             let rateLimits = ClaudeRateLimits(from: rateLimitsDict)
@@ -100,10 +146,18 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         }
 
         if claudeAPIBillingOverrideDetected(environment: context.environment) {
+            if let staleSnapshot = staleStatuslineSnapshotIfAvailable(
+                status: postInstallStatus,
+                context: context,
+                messagePrefix: "Stale last known Claude Code quota from the local status line JSON bridge. ANTHROPIC_API_KEY is set for this app process, so API billing may be active and OpenBurnBar cannot refresh Claude plan quota until Claude Code emits a fresh status line payload."
+            ) {
+                return staleSnapshot
+            }
+
             return unavailableSnapshot(
                 for: .claudeCode,
                 source: .unavailable,
-                message: "ANTHROPIC_API_KEY is set for this app process. Claude Code may be using API billing instead of a Claude plan, so OpenBurnBar will only report exact local CLI quota snapshots."
+                message: "ANTHROPIC_API_KEY is set for this app process. Claude Code may be using API billing instead of a Claude plan, so OpenBurnBar will only report exact local CLI quota snapshots. Run a Claude Code CLI prompt to emit a fresh status line quota payload."
             )
         }
 
@@ -112,36 +166,8 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         //    Code's third-party Keychain item or credentials file. That
         //    keeps refresh prompt-free and avoids surprise credential
         //    access.
-        let workingCredentials = context.claudeCredentialsReader.load()
-        if let credentials = workingCredentials, credentials.canCallUsageEndpoint(now: Date()) {
-            let fetcher = ClaudeOAuthUsageFetcher(
-                session: context.session,
-                cacheURL: context.appPaths.claudeOAuthUsageCacheURL,
-                fileManager: context.fileManager
-            )
-            let result = await fetcher.fetchRateLimits(
-                credentials: credentials
-            )
-            if let rateLimits = result.rateLimits, !rateLimits.isEmpty {
-                let buckets = claudeQuotaBuckets(from: rateLimits)
-                if !buckets.isEmpty {
-                    let freshness = result.sourceWasCache ? " (cached)" : ""
-                    // Reflect refreshed plan info when the token was
-                    // refreshed mid-call (rare, but the new pair may
-                    // ship updated subscriptionType claims).
-                    let plan = result.refreshedCredentials?.planDisplayName ?? credentials.planDisplayName
-                    return ProviderQuotaSnapshot(
-                        provider: .claudeCode,
-                        fetchedAt: result.fetchedAt ?? Date(),
-                        source: .officialAPI,
-                        confidence: .exact,
-                        managementURL: "https://claude.ai/settings/usage",
-                        statusMessage: "Claude \(plan) quota from Anthropic OAuth usage endpoint\(freshness).",
-                        buckets: buckets
-                    )
-                }
-            }
-        }
+        // This path is handled before the statusline bridge so explicit
+        // account snapshots cannot inherit another account's local hook data.
 
         // 3. JSONL-based token counting from local Claude project
         //    files. Real per-message tokens from
@@ -162,10 +188,26 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             )
         }
 
+        if workingCredentials == nil,
+           let staleSnapshot = staleStatuslineSnapshotIfAvailable(
+            status: postInstallStatus,
+            context: context,
+            messagePrefix: "Stale last known Claude Code quota from the local status line JSON bridge. Refresh did not find a newer OAuth or local-session quota signal."
+        ) {
+            return staleSnapshot
+        }
+
         // 4. Plan-only snapshot for explicit credentials. This is not
         //    reached in production default mode because OpenBurnBar no
         //    longer discovers Claude credentials on its own.
         if let credentials = workingCredentials {
+            if accountCredentialScope {
+                return unavailableSnapshot(
+                    for: .claudeCode,
+                    source: .officialAPI,
+                    message: "No current Claude quota returned for this account's stored credential. OpenBurnBar will not reuse another Claude account's statusline or cache data."
+                )
+            }
             let badgeBucket = ProviderQuotaBucket(
                 key: "claude-plan-badge",
                 label: "Plan: \(credentials.planDisplayName)",
@@ -262,6 +304,57 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         context.appPaths.claudeStatuslineSnapshotURL
             .deletingLastPathComponent()
             .appendingPathComponent("claude-bridge-auto-install-attempted.json")
+    }
+
+    private static func isFreshStatuslineSnapshot(
+        _ lastPayloadAt: Date?,
+        now: Date = Date()
+    ) -> Bool {
+        guard let lastPayloadAt else { return false }
+        return now.timeIntervalSince(lastPayloadAt) <= StatuslinePolicy.maxSnapshotAge
+    }
+
+    private func staleStatuslineSnapshotIfAvailable(
+        status: ClaudeQuotaBridgeStatus,
+        context: ProviderQuotaAdapterContext,
+        messagePrefix: String
+    ) -> ProviderQuotaSnapshot? {
+        guard status.state == .ready,
+              let lastPayloadAt = status.lastPayloadAt,
+              !Self.isFreshStatuslineSnapshot(lastPayloadAt),
+              let payload = try? context.snapshotStore.readJSONObject(from: context.appPaths.claudeStatuslineSnapshotURL),
+              let rateLimitsDict = payload["rate_limits"] as? [String: Any] else {
+            return nil
+        }
+
+        let buckets = claudeQuotaBuckets(from: ClaudeRateLimits(from: rateLimitsDict))
+        guard !buckets.isEmpty else { return nil }
+
+        let formatted = lastPayloadAt.formatted(date: .abbreviated, time: .shortened)
+        return ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            fetchedAt: lastPayloadAt,
+            source: .localCLI,
+            confidence: .estimated,
+            managementURL: "https://code.claude.com/docs/en/statusline",
+            statusMessage: "\(messagePrefix) Last payload: \(formatted).",
+            buckets: buckets.map(Self.markBucketEstimated)
+        )
+    }
+
+    private static func markBucketEstimated(_ bucket: ProviderQuotaBucket) -> ProviderQuotaBucket {
+        ProviderQuotaBucket(
+            key: bucket.key,
+            label: bucket.label,
+            windowKind: bucket.windowKind,
+            usedValue: bucket.usedValue,
+            limitValue: bucket.limitValue,
+            remainingValue: bucket.remainingValue,
+            usedPercent: bucket.usedPercent,
+            resetsAt: bucket.resetsAt,
+            unit: bucket.unit,
+            isEstimated: true
+        )
     }
 
     // MARK: - JSONL → Plan-Capped Snapshot
@@ -427,6 +520,10 @@ struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
 
     private static func hasScopedClaudeConfig(environment: [String: String]) -> Bool {
         !scopedClaudeProjectDirectories(environment: environment).isEmpty
+    }
+
+    private static func hasRouteCredentialScope(environment: [String: String]) -> Bool {
+        quotaNonEmpty(environment["OPENBURNBAR_QUOTA_ACCOUNT_ID"]) != nil
     }
 
     private static func scopedClaudeProjectDirectories(environment: [String: String]) -> [URL] {

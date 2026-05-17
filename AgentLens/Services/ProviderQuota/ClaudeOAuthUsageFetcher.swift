@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 // MARK: - Claude OAuth Usage Fetcher
@@ -70,6 +71,26 @@ struct ClaudeOAuthUsageFetcher {
         self.cacheURL = cacheURL
         self.fileManager = FileManagerSendableBox(fileManager)
         self.minimumLivePollInterval = minimumLivePollInterval
+    }
+
+    static func scopedCacheURL(
+        baseURL: URL,
+        credentials: ClaudeOAuthCredentials
+    ) -> URL {
+        let stableSecret = credentials.refreshToken ?? credentials.accessToken
+        let identity = [
+            credentials.organizationUuid ?? "",
+            credentials.subscriptionType,
+            credentials.rateLimitTier,
+            stableSecret,
+        ].joined(separator: "|")
+        let digest = SHA256.hash(data: Data(identity.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return baseURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("ClaudeOAuthUsage", isDirectory: true)
+            .appendingPathComponent("usage-\(digest.prefix(24)).json", isDirectory: false)
     }
 
     // MARK: - Public API

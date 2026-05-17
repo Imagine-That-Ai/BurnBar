@@ -45,6 +45,24 @@ final class ConnectionsViewModelTests: XCTestCase {
         try super.tearDownWithError()
     }
 
+    // MARK: - Account wizard launch targets
+
+    func test_addAccountLaunchTargetStartsOnProviderSelection() {
+        let target = ProviderWizardTarget.addAccount
+
+        XCTAssertNil(target.providerID)
+        XCTAssertTrue(target.startsAtProviderSelection)
+        XCTAssertEqual(target.id, "add-account")
+    }
+
+    func test_existingProviderLaunchTargetKeepsProviderDashboard() {
+        let target = ProviderWizardTarget(providerID: "anthropic")
+
+        XCTAssertEqual(target.providerID, "anthropic")
+        XCTAssertFalse(target.startsAtProviderSelection)
+        XCTAssertEqual(target.id, "anthropic")
+    }
+
     // MARK: - Auto-enable gateway on first Connect
 
     func test_connect_flipsGatewayOnAndUsesLoopbackDefaults() async {

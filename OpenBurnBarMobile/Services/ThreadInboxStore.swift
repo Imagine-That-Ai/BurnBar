@@ -108,7 +108,8 @@ final class ThreadInboxStore {
                 unreadCount: 0,
                 needsAttention: false,
                 source: source,
-                liveMissionID: nil
+                liveMissionID: nil,
+                attachments: thread.recentAttachmentPreviews
             )
         }
     }

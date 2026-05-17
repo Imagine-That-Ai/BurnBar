@@ -16,6 +16,8 @@ import OpenBurnBarCore
 
 struct CLIAgentConversationListView: View {
     let runtime: CLIAgentRuntime
+    let onSelectExistingThreadInSplit: ((String) -> Void)?
+
     @State private var reader: CLIAgentChatReader = .shared
     @State private var historyStore: MobileChatHistoryStore = .shared
     @State private var selectedRoute: CLIAgentChatRoute?
@@ -25,6 +27,14 @@ struct CLIAgentConversationListView: View {
     @State private var importSnapshot: AgentHarnessImportJobSnapshot?
     @State private var importObservation: CLIAgentMissionObservation?
     @State private var missionHost = MobileMissionConsoleHost()
+
+    init(
+        runtime: CLIAgentRuntime,
+        onSelectExistingThreadInSplit: ((String) -> Void)? = nil
+    ) {
+        self.runtime = runtime
+        self.onSelectExistingThreadInSplit = onSelectExistingThreadInSplit
+    }
 
     var body: some View {
         ZStack {
@@ -172,6 +182,10 @@ struct CLIAgentConversationListView: View {
                 }
                 ForEach(mobileThreads) { thread in
                     Button {
+                        if let onSelectExistingThreadInSplit {
+                            onSelectExistingThreadInSplit("cli_mirror:\(thread.id)")
+                            return
+                        }
                         selectedRoute = .mobile(thread)
                     } label: {
                         mobileThreadRow(thread)
@@ -180,6 +194,10 @@ struct CLIAgentConversationListView: View {
                 }
                 ForEach(visibleMirroredSessions) { session in
                     Button {
+                        if let onSelectExistingThreadInSplit {
+                            onSelectExistingThreadInSplit("cli:\(session.id)")
+                            return
+                        }
                         selectedRoute = session.sourceKind == .archivedLog ? .archived(session) : .existing(session)
                     } label: {
                         sessionRow(session)
@@ -215,6 +233,7 @@ struct CLIAgentConversationListView: View {
                     .foregroundStyle(MobileTheme.Colors.textSecondary)
                     .lineLimit(2)
             }
+            MobileAttachmentSummaryStrip(attachments: thread.recentAttachmentPreviews)
             HStack(spacing: 8) {
                 if let model = thread.modelName, !model.isEmpty {
                     Label(model, systemImage: "cpu")
@@ -977,7 +996,7 @@ enum CLIAgentMobileChatSnapshotReducer {
     }
 }
 
-private struct CLIAgentChatThreadView: View {
+struct CLIAgentChatThreadView: View {
     let runtime: CLIAgentRuntime
     let route: CLIAgentChatRoute
 

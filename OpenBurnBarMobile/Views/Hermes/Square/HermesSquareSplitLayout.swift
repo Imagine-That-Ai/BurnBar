@@ -14,36 +14,18 @@ import OpenBurnBarCore
 // command, discover drawer, subscriptions folder — all wired.
 
 struct HermesSquareSplitLayout: View {
-    enum PresentationMode {
-        case standalone
-        case embeddedInSidebarDetail
-    }
-
     let hermesService: HermesService
     let missionHost: MobileMissionConsoleHost
-    let presentationMode: PresentationMode
 
-    @State private var selectedDetail: DetailRoute? = nil
-
-    init(
-        hermesService: HermesService,
-        missionHost: MobileMissionConsoleHost,
-        presentationMode: PresentationMode = .standalone
-    ) {
-        self.hermesService = hermesService
-        self.missionHost = missionHost
-        self.presentationMode = presentationMode
-    }
+    @State private var selectedDetail: DetailRoute? = .runtimeNative(.codex)
+    @State private var sidebarMode: SidebarMode = .square
+    @State private var resizeStartWidth: CGFloat?
+    @AppStorage("hermes_square_ipad_left_column_width") private var storedLeftColumnWidth: Double = 0
 
     var body: some View {
         GeometryReader { geometry in
             if geometry.size.width >= 720 {
-                switch presentationMode {
-                case .standalone:
-                    standaloneTwoColumnLayout
-                case .embeddedInSidebarDetail:
-                    embeddedTwoColumnLayout(width: geometry.size.width)
-                }
+                twoColumnLayout(width: geometry.size.width)
             } else {
                 HermesSquareRoot(
                     hermesService: hermesService,
@@ -53,54 +35,91 @@ struct HermesSquareSplitLayout: View {
         }
     }
 
-    private var standaloneTwoColumnLayout: some View {
-        NavigationSplitView {
-            HermesSquareLeftColumn(
-                hermesService: hermesService,
-                missionHost: missionHost,
-                onSelect: { route in selectedDetail = route }
-            )
-            .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 380)
-        } detail: {
-            HermesSquareDetailColumn(
-                hermesService: hermesService,
-                missionHost: missionHost,
-                detail: selectedDetail
-            )
-        }
-        .navigationSplitViewStyle(.balanced)
-    }
-
-    private func embeddedTwoColumnLayout(width: CGFloat) -> some View {
-        let leftWidth = min(max(width * 0.34, 320), 420)
+    private func twoColumnLayout(width: CGFloat) -> some View {
+        let limits = leftColumnWidthLimits(for: width)
+        let defaultWidth = min(max(width * 0.46, limits.min), limits.max)
+        let leftWidth = storedLeftColumnWidth > 0
+            ? min(max(CGFloat(storedLeftColumnWidth), limits.min), limits.max)
+            : defaultWidth
 
         return HStack(spacing: 0) {
             NavigationStack {
-                HermesSquareLeftColumn(
-                    hermesService: hermesService,
-                    missionHost: missionHost,
-                    onSelect: { route in selectedDetail = route }
-                )
+                switch sidebarMode {
+                case .square:
+                    HermesSquareLeftColumn(
+                        hermesService: hermesService,
+                        missionHost: missionHost,
+                        onSelect: { route in selectedDetail = route },
+                        onOpenThread: openThreadFromSidebar
+                    )
+                case .history(let runtime):
+                    HermesSquareRuntimeHistorySidebar(
+                        runtime: runtime,
+                        missionHost: missionHost,
+                        onBack: {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                                sidebarMode = .square
+                            }
+                        },
+                        onOpenThread: openThreadFromSidebar
+                    )
+                }
             }
             .frame(width: leftWidth)
             .frame(maxHeight: .infinity)
-            .clipShape(Rectangle())
+            .clipped()
 
-            Rectangle()
-                .fill(MobileTheme.Colors.borderSubtle.opacity(0.7))
-                .frame(width: 1)
+            HermesSquareResizeHandle()
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            let startWidth = resizeStartWidth ?? leftWidth
+                            resizeStartWidth = startWidth
+                            let resizedWidth = startWidth + value.translation.width
+                            storedLeftColumnWidth = Double(min(max(resizedWidth, limits.min), limits.max))
+                        }
+                        .onEnded { _ in
+                            resizeStartWidth = nil
+                        }
+                )
+                .accessibilityLabel("Resize Hermes Square sidebar")
+                .accessibilityHint("Drag left or right to resize the Hermes Square sidebar.")
 
             HermesSquareDetailColumn(
                 hermesService: hermesService,
                 missionHost: missionHost,
-                detail: selectedDetail
+                detail: selectedDetail,
+                onOpenRuntimeThread: openRuntimeThreadFromDetail
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipShape(Rectangle())
+            .clipped()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(EmberSurfaceBackground().ignoresSafeArea())
-        .clipShape(Rectangle())
+    }
+
+    private func openThreadFromSidebar(_ item: ThreadInboxItem) {
+        selectedDetail = .thread(item.id)
+        if let runtime = HermesSquareThreadRouting.runtime(for: item) {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                sidebarMode = .history(runtime)
+            }
+        }
+        HapticBus.tabChange()
+    }
+
+    private func openRuntimeThreadFromDetail(runtime: AssistantRuntimeID, inboxID: String) {
+        selectedDetail = .thread(inboxID)
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+            sidebarMode = .history(runtime)
+        }
+        HapticBus.tabChange()
+    }
+
+    private func leftColumnWidthLimits(for width: CGFloat) -> (min: CGFloat, max: CGFloat) {
+        let minWidth = min(max(width * 0.34, 390), 460)
+        let maxWidth = min(max(width * 0.58, 560), width - 520)
+        return (minWidth, max(minWidth, maxWidth))
     }
 
     // MARK: Detail routes — mirrors HermesSquareRoot.NavTarget
@@ -114,6 +133,158 @@ struct HermesSquareSplitLayout: View {
         case cloudSession(String)     // cloud conversation search row id
         case projectMemory(String)    // project id
     }
+
+    private enum SidebarMode: Hashable {
+        case square
+        case history(AssistantRuntimeID)
+    }
+}
+
+private struct HermesSquareResizeHandle: View {
+    @State private var isHovering = false
+
+    var body: some View {
+        Rectangle()
+            .fill(DesignSystemColors.borderSubtle.opacity(isHovering ? 0.95 : 0.7))
+            .frame(width: 10)
+            .overlay {
+                Capsule()
+                    .fill(DesignSystemColors.textMuted.opacity(isHovering ? 0.55 : 0.28))
+                    .frame(width: 3, height: 44)
+            }
+            .contentShape(Rectangle())
+            .onHover { isHovering = $0 }
+    }
+}
+
+private enum HermesSquareThreadRouting {
+    static func runtime(for item: ThreadInboxItem) -> AssistantRuntimeID? {
+        AgentIdentity.builtInRuntime(from: item.agentURI)
+    }
+
+    static func rawThreadID(from inboxID: String) -> String {
+        inboxID.split(separator: ":", maxSplits: 1).last.map(String.init) ?? inboxID
+    }
+}
+
+private struct HermesSquareRuntimeHistorySidebar: View {
+    let runtime: AssistantRuntimeID
+    let missionHost: MobileMissionConsoleHost
+    let onBack: () -> Void
+    let onOpenThread: (ThreadInboxItem) -> Void
+
+    @State private var inbox: ThreadInboxStore
+    @State private var historyStore = MobileChatHistoryStore.shared
+    @State private var registry = AgentIdentityRegistry.shared
+
+    init(
+        runtime: AssistantRuntimeID,
+        missionHost: MobileMissionConsoleHost,
+        onBack: @escaping () -> Void,
+        onOpenThread: @escaping (ThreadInboxItem) -> Void
+    ) {
+        self.runtime = runtime
+        self.missionHost = missionHost
+        self.onBack = onBack
+        self.onOpenThread = onOpenThread
+        _inbox = State(initialValue: ThreadInboxStore(
+            historyStore: MobileChatHistoryStore.shared,
+            cliReader: .shared,
+            missionHost: missionHost
+        ))
+    }
+
+    var body: some View {
+        ZStack {
+            EmberSurfaceBackground().ignoresSafeArea()
+            VStack(spacing: 0) {
+                header
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        if rows.isEmpty {
+                            emptyState
+                        } else {
+                            ForEach(rows) { item in
+                                Button {
+                                    onOpenThread(item)
+                                } label: {
+                                    HermesSquareThreadRow(item: item, registry: registry)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                }
+                .refreshable {
+                    await inbox.refresh()
+                }
+            }
+        }
+        .task {
+            inbox.bind(historyStore: historyStore, missionHost: missionHost)
+            await registry.refresh(hermesService: HermesService.shared, piService: PiService.shared, missionHost: missionHost)
+            await inbox.refresh()
+        }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Button {
+                onBack()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(DesignSystemColors.textPrimary)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(DesignSystemColors.surface.opacity(0.85)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back to Hermes Square")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(runtime.displayName) History")
+                    .font(.headline.bold())
+                    .foregroundStyle(DesignSystemColors.textPrimary)
+                Text("\(rows.count) conversations")
+                    .font(.caption)
+                    .foregroundStyle(DesignSystemColors.textMuted)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(DesignSystemColors.surface.opacity(0.55))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(DesignSystemColors.borderSubtle.opacity(0.7))
+                .frame(height: 0.5)
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(DesignSystemColors.textMuted)
+            Text("No \(runtime.displayName) conversations yet.")
+                .font(.caption)
+                .foregroundStyle(DesignSystemColors.textMuted)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 48)
+    }
+
+    private var rows: [ThreadInboxItem] {
+        let (service, _) = inbox.items.splitForInbox()
+        return service.filter { item in
+            HermesSquareThreadRouting.runtime(for: item) == runtime
+        }
+    }
 }
 
 // MARK: - Left column
@@ -126,6 +297,7 @@ private struct HermesSquareLeftColumn: View {
     let hermesService: HermesService
     let missionHost: MobileMissionConsoleHost
     let onSelect: (HermesSquareSplitLayout.DetailRoute) -> Void
+    let onOpenThread: (ThreadInboxItem) -> Void
 
     @State private var piService = PiService()
     @State private var registry = AgentIdentityRegistry.shared
@@ -152,7 +324,6 @@ private struct HermesSquareLeftColumn: View {
     @State private var rollbackService = RollbackService.shared
     @State private var voiceIntentBanner: VoiceIntent?
     @State private var subscriptionTopicStore = AgentSubscriptionTopicStore.shared
-    @State private var selectedRuntime: AssistantRuntimeID = .hermes
 
     private var pinnedGrid: PinnedAgentGridConfig {
         PinnedAgentGridConfig.from(jsonString: pinnedJSON)
@@ -164,10 +335,16 @@ private struct HermesSquareLeftColumn: View {
         return ordered.isEmpty ? [.hermes] : ordered
     }
 
-    init(hermesService: HermesService, missionHost: MobileMissionConsoleHost, onSelect: @escaping (HermesSquareSplitLayout.DetailRoute) -> Void) {
+    init(
+        hermesService: HermesService,
+        missionHost: MobileMissionConsoleHost,
+        onSelect: @escaping (HermesSquareSplitLayout.DetailRoute) -> Void,
+        onOpenThread: @escaping (ThreadInboxItem) -> Void
+    ) {
         self.hermesService = hermesService
         self.missionHost = missionHost
         self.onSelect = onSelect
+        self.onOpenThread = onOpenThread
         _inbox = State(initialValue: ThreadInboxStore(
             historyStore: MobileChatHistoryStore.shared,
             cliReader: .shared,
@@ -188,10 +365,6 @@ private struct HermesSquareLeftColumn: View {
                         searchResults
                             .padding(.horizontal, 12)
                     } else {
-                        // Runtime rail — one-tap access to each agent
-                        runtimeRail
-                            .padding(.horizontal, 12)
-
                         // Approval inbox — sticky at top when pending
                         if !missionHost.snapshot.approvalAsks.isEmpty {
                             ApprovalInboxStrip(
@@ -332,48 +505,6 @@ private struct HermesSquareLeftColumn: View {
     }
 
     // MARK: - Subviews
-
-    private var runtimeRail: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(visibleTiles, id: \.rawValue) { runtime in
-                    Button {
-                        selectedRuntime = runtime
-                        onSelect(.runtimeNative(runtime))
-                        HapticBus.tabChange()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(runtime.glyph)
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                            Text(runtime.displayName)
-                                .font(.caption.bold())
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule()
-                                .fill(selectedRuntime == runtime
-                                      ? DesignSystemColors.ember.opacity(0.22)
-                                      : DesignSystemColors.surface.opacity(0.65))
-                        )
-                        .overlay(
-                            Capsule()
-                                .stroke(selectedRuntime == runtime
-                                        ? DesignSystemColors.ember.opacity(0.6)
-                                        : DesignSystemColors.borderSubtle,
-                                        lineWidth: 0.5)
-                        )
-                        .foregroundStyle(selectedRuntime == runtime
-                                         ? DesignSystemColors.ember
-                                         : DesignSystemColors.textPrimary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(runtime.displayName) agent")
-                    .accessibilityAddTraits(selectedRuntime == runtime ? .isSelected : [])
-                }
-            }
-        }
-    }
 
     private var federatedSearchBar: some View {
         HStack(spacing: 8) {
@@ -741,13 +872,7 @@ private struct HermesSquareLeftColumn: View {
     }
 
     private func handleThreadTap(_ item: ThreadInboxItem) {
-        if let runtime = AgentIdentity.builtInRuntime(from: item.agentURI),
-           visibleTiles.contains(runtime) {
-            onSelect(.runtimeNative(runtime))
-        } else {
-            onSelect(.brandZone(item.agentURI))
-        }
-        HapticBus.tabChange()
+        onOpenThread(item)
     }
 
     private func handleSearchHit(_ hit: UnifiedSearchIndex.Hit) {
@@ -964,12 +1089,15 @@ private struct HermesSquareDetailColumn: View {
     let hermesService: HermesService
     let missionHost: MobileMissionConsoleHost
     let detail: HermesSquareSplitLayout.DetailRoute?
+    let onOpenRuntimeThread: (AssistantRuntimeID, String) -> Void
 
     @State private var registry = AgentIdentityRegistry.shared
     @State private var projectsStore = ProjectsStore()
     @State private var cloudSearchStore = ActivityStore()
     @State private var cloudSearchRowsByID: [String: CloudConversationSearchRow] = [:]
     @State private var piService = PiService()
+    @State private var historyStore = MobileChatHistoryStore.shared
+    @State private var cliReader = CLIAgentChatReader.shared
 
     var body: some View {
         Group {
@@ -993,6 +1121,8 @@ private struct HermesSquareDetailColumn: View {
             }
         }
         .task {
+            historyStore.bootstrap()
+            await cliReader.refresh()
             await projectsStore.load()
         }
     }
@@ -1006,23 +1136,23 @@ private struct HermesSquareDetailColumn: View {
 
     @ViewBuilder
     private func threadDetailView(id: String) -> some View {
-        // Parse the source prefix from the inbox item id
-        let runtime: AssistantRuntimeID? = {
-            if id.hasPrefix("hermes:") { return .hermes }
-            if id.hasPrefix("pi:") { return .pi }
-            if id.hasPrefix("cli:") {
-                // cli items carry the agent in the AgentIdentity; fall
-                // back to the agentURI from the inbox store.
-                return nil
-            }
-            if id.hasPrefix("mission:") { return nil }
-            return nil
-        }()
-
-        if let runtime {
-            runtimeNativeView(for: runtime)
+        let rawID = HermesSquareThreadRouting.rawThreadID(from: id)
+        if id.hasPrefix("hermes:") {
+            HermesChatView(service: hermesService, dashboardSnapshot: nil, route: .existing(sessionID: rawID))
+        } else if id.hasPrefix("pi:") {
+            PiChatThreadView(service: piService, route: .existing(threadID: rawID))
+        } else if id.hasPrefix("cli_mirror:"),
+                  let thread = historyStore.thread(id: rawID),
+                  let runtime = AssistantRuntimeID(rawValue: thread.runtime),
+                  let cliRuntime = CLIAgentRuntime(assistant: runtime) {
+            CLIAgentChatThreadView(runtime: cliRuntime, route: .mobile(thread))
+        } else if id.hasPrefix("cli:"),
+                  let session = cliReader.session(id: rawID) {
+            CLIAgentChatThreadView(
+                runtime: session.agent,
+                route: session.sourceKind == .archivedLog ? .archived(session) : .existing(session)
+            )
         } else {
-            // Fallback: show a generic thread summary
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Thread")
@@ -1030,7 +1160,7 @@ private struct HermesSquareDetailColumn: View {
                     Text(id)
                         .font(.caption.monospaced())
                         .foregroundStyle(DesignSystemColors.textMuted)
-                    Text("Tap the thread on the left to open the runtime conversation view.")
+                    Text("This conversation is no longer available in local history.")
                         .font(.body)
                         .foregroundStyle(DesignSystemColors.textSecondary)
                 }
@@ -1108,7 +1238,7 @@ private struct HermesSquareDetailColumn: View {
                     }
 
                     if let runtimeID = tile.runtimeID,
-                       let runtime = AssistantRuntimeID(rawValue: runtimeID) {
+                       AssistantRuntimeID(rawValue: runtimeID) != nil {
                         Button {
                             // Navigate to the runtime conversation for this mission
                         } label: {
@@ -1164,12 +1294,28 @@ private struct HermesSquareDetailColumn: View {
     private func runtimeNativeView(for runtime: AssistantRuntimeID) -> some View {
         switch runtime {
         case .hermes:
-            HermesConversationListView(service: hermesService, dashboardSnapshot: nil)
+            HermesConversationListView(
+                service: hermesService,
+                dashboardSnapshot: nil,
+                onSelectExistingThreadInSplit: { threadID in
+                    onOpenRuntimeThread(.hermes, "hermes:\(threadID)")
+                }
+            )
         case .pi:
-            PiConversationListView(service: piService)
+            PiConversationListView(
+                service: piService,
+                onSelectExistingThreadInSplit: { threadID in
+                    onOpenRuntimeThread(.pi, "pi:\(threadID)")
+                }
+            )
         case .codex, .claude, .openClaw:
             if let cliRuntime = CLIAgentRuntime(assistant: runtime) {
-                CLIAgentConversationListView(runtime: cliRuntime)
+                CLIAgentConversationListView(
+                    runtime: cliRuntime,
+                    onSelectExistingThreadInSplit: { inboxID in
+                        onOpenRuntimeThread(runtime, inboxID)
+                    }
+                )
             } else {
                 AssistantTileBridgeView(runtime: runtime) { }
             }

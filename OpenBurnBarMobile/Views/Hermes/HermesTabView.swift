@@ -269,6 +269,7 @@ private struct HermesMobileSetupWizardView: View {
 struct HermesConversationListView: View {
     @Bindable var service: HermesService
     let dashboardSnapshot: DashboardStore?
+    let onSelectExistingThreadInSplit: ((String) -> Void)?
 
     @State private var showConnectionSheet = false
     @State private var showRuntimeSheet = false
@@ -281,9 +282,14 @@ struct HermesConversationListView: View {
     @State private var presentedChatRoute: PresentedHermesChatRoute?
     @AppStorage(HermesMobileSetupWizardState.completionKey) private var hasCompletedHermesSetupWizard = false
 
-    init(service: HermesService, dashboardSnapshot: DashboardStore? = nil) {
+    init(
+        service: HermesService,
+        dashboardSnapshot: DashboardStore? = nil,
+        onSelectExistingThreadInSplit: ((String) -> Void)? = nil
+    ) {
         self.service = service
         self.dashboardSnapshot = dashboardSnapshot
+        self.onSelectExistingThreadInSplit = onSelectExistingThreadInSplit
     }
 
     var body: some View {
@@ -774,6 +780,11 @@ struct HermesConversationListView: View {
 
     private func openChat(_ route: HermesChatRoute) {
         HapticBus.sheetOpen()
+        if case .existing(let sessionID) = route,
+           let onSelectExistingThreadInSplit {
+            onSelectExistingThreadInSplit(sessionID)
+            return
+        }
         presentedChatRoute = PresentedHermesChatRoute(route: route)
     }
 }
@@ -811,6 +822,8 @@ private struct OnDeviceHermesRow: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
             }
+
+            MobileAttachmentSummaryStrip(attachments: thread.recentAttachmentPreviews)
 
             Text("\(thread.messageCount) messages")
                 .font(MobileTheme.Typography.tiny)

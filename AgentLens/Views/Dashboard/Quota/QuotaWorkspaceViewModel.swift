@@ -112,7 +112,8 @@ final class QuotaWorkspaceViewModel {
         var byID: [String: SubscriptionEntry] = [:]
 
         for provider in AgentProvider.quotaSignalProviders {
-            let candidateSnapshots = quotaService.snapshots(for: provider)
+            let allAccountSnapshots = quotaService.snapshots(for: provider)
+            let candidateSnapshots = allAccountSnapshots
                 .filter { $0.hasDisplayableQuotaSignal }
 
             if !candidateSnapshots.isEmpty {
@@ -127,8 +128,36 @@ final class QuotaWorkspaceViewModel {
                 continue
             }
 
+            let isConnected = quotaService.hasConnectedQuotaAccount(for: provider, dataStore: dataStore)
             if let rollup = quotaService.snapshot(for: provider),
                rollup.hasDisplayableQuotaSignal {
+                let entry = Self.makeEntry(
+                    provider: provider,
+                    snapshot: rollup,
+                    isRefreshing: quotaService.isRefreshing(provider)
+                )
+                byID[entry.id] = entry
+                continue
+            }
+
+            let fallbackAccountSnapshots = allAccountSnapshots.filter { snapshot in
+                guard !snapshot.hasDisplayableQuotaSignal else { return false }
+                return isConnected || snapshot.accountID != nil || snapshot.source != .unavailable
+            }
+            if !fallbackAccountSnapshots.isEmpty {
+                for snapshot in fallbackAccountSnapshots {
+                    let entry = Self.makeEntry(
+                        provider: provider,
+                        snapshot: snapshot,
+                        isRefreshing: quotaService.isRefreshing(provider)
+                    )
+                    byID[entry.id] = entry
+                }
+                continue
+            }
+
+            if let rollup = quotaService.snapshot(for: provider),
+               rollup.hasDisplayableQuotaSignal || isConnected || rollup.source != .unavailable {
                 let entry = Self.makeEntry(
                     provider: provider,
                     snapshot: rollup,

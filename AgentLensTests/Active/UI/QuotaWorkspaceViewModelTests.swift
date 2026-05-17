@@ -1,4 +1,5 @@
 import XCTest
+import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
@@ -86,6 +87,95 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
 
         XCTAssertEqual(entry.pressure, 0.8, accuracy: 0.01)
         XCTAssertEqual(entry.remainingPercentRounded, 20)
+    }
+
+    func test_makeEntry_keepsProviderVisibleWithoutDisplayableBuckets() {
+        let snapshot = ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            accountID: "claude-work",
+            accountLabel: "Claude Work",
+            fetchedAt: Date(),
+            source: .unavailable,
+            confidence: .unavailable,
+            managementURL: nil,
+            statusMessage: "Bridge installed but no rate-limit payload captured yet.",
+            buckets: []
+        )
+
+        let entry = QuotaWorkspaceViewModel.makeEntry(
+            provider: .claudeCode,
+            snapshot: snapshot,
+            isRefreshing: false
+        )
+
+        XCTAssertEqual(entry.accountLabel, "Claude Work")
+        XCTAssertTrue(entry.allDisplayableBuckets.isEmpty)
+        XCTAssertEqual(entry.primaryBucket.label, "Bridge installed but no rate-limit payload captured yet.")
+    }
+
+    func test_rebuild_prefersProviderRollupBucketsOverEmptyAccountPlaceholders() throws {
+        let appSupportRoot = try makeTemporaryDirectory()
+        let home = try makeTemporaryDirectory()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
+        let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: .default)
+        let staleRollup = ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 100),
+            source: .localCLI,
+            confidence: .estimated,
+            managementURL: nil,
+            statusMessage: "Stale last known Claude Code quota from the local status line JSON bridge.",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "claude-five_hour",
+                    label: "5-hour window",
+                    windowKind: .rollingHours,
+                    usedValue: 8,
+                    limitValue: 100,
+                    remainingValue: 92,
+                    usedPercent: 8,
+                    resetsAt: nil,
+                    unit: .percent,
+                    isEstimated: true
+                )
+            ]
+        )
+        let emptyAccount = ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            accountID: "claude-work",
+            accountLabel: "Claude Work",
+            fetchedAt: Date(timeIntervalSinceReferenceDate: 200),
+            source: .unavailable,
+            confidence: .unavailable,
+            managementURL: nil,
+            statusMessage: "Bridge installed but no rate-limit payload captured yet.",
+            buckets: []
+        )
+        store.persistSnapshots(
+            [.claudeCode: staleRollup],
+            accountSnapshots: [ProviderQuotaSnapshotStore.accountSnapshotKey(emptyAccount): emptyAccount]
+        )
+
+        let service = ProviderQuotaService(
+            keyStore: makeKeyStore(),
+            providerRuntimeKeyStore: makeRuntimeKeyStore(),
+            appPaths: appPaths,
+            environment: [:],
+            homeDirectoryURL: home,
+            refreshProviders: [.claudeCode]
+        )
+        let viewModel = QuotaWorkspaceViewModel()
+
+        viewModel.rebuild(
+            quotaService: service,
+            dataStore: try makeDataStore(),
+            providerSpendByID: [:]
+        )
+
+        XCTAssertEqual(viewModel.entries.count, 1)
+        XCTAssertNil(viewModel.entries.first?.snapshot.accountID)
+        XCTAssertEqual(viewModel.entries.first?.hourlyBucket?.remainingPercent, 92)
+        XCTAssertEqual(viewModel.entries.first?.allDisplayableBuckets.count, 1)
     }
 
     // MARK: sort
@@ -191,5 +281,43 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
             snapshot: snap,
             isRefreshing: false
         )
+    }
+
+    private func makeTemporaryDirectory() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("QuotaWorkspaceViewModelTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    private func makeDataStore() throws -> DataStore {
+        let queue = try DatabaseQueue()
+        return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+    }
+
+    private func makeKeyStore() -> ProviderAPIKeyStore {
+        ProviderAPIKeyStore(
+            keychain: KeychainStore(service: "quota-workspace-tests.\(UUID().uuidString)", legacyServices: [], backend: TestKeychainBackend())
+        )
+    }
+
+    private func makeRuntimeKeyStore() -> KeychainStore {
+        KeychainStore(service: "quota-workspace-runtime-tests.\(UUID().uuidString)", legacyServices: [], backend: TestKeychainBackend())
+    }
+}
+
+private final class TestKeychainBackend: KeychainStoreBackend {
+    private var storage: [String: [String: Data]] = [:]
+
+    func set(_ value: Data, service: String, account: String) throws {
+        storage[service, default: [:]][account] = value
+    }
+
+    func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
+        storage[service]?[account]
+    }
+
+    func delete(service: String, account: String) throws {
+        storage[service]?[account] = nil
     }
 }

@@ -22,6 +22,7 @@ struct RootNavigationView: View {
     let transferStore: CredentialTransferStore
 
     @State private var selection: SidebarDestination = .pulse
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var didApplyScreenshotRoute = false
     #if DEBUG
     @State private var didApplyHermesE2EPrompt = false
@@ -90,7 +91,7 @@ struct RootNavigationView: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
                 sidebar
                     .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
             } detail: {
@@ -107,6 +108,10 @@ struct RootNavigationView: View {
         .onAppear {
             applyScreenshotRouteIfNeeded()
             applyHermesE2EPromptIfNeeded()
+            updateColumnVisibility(for: selection, animated: false)
+        }
+        .onChange(of: selection) { _, destination in
+            updateColumnVisibility(for: destination)
         }
         .onChange(of: router.pendingDestination) { _, destination in
             handleRouter(destination)
@@ -291,8 +296,7 @@ struct RootNavigationView: View {
         if selection == .hermes {
             HermesSquareSplitLayout(
                 hermesService: hermesService,
-                missionHost: missionConsoleHost,
-                presentationMode: .embeddedInSidebarDetail
+                missionHost: missionConsoleHost
             )
         } else {
             NavigationStack {
@@ -337,6 +341,18 @@ struct RootNavigationView: View {
         case .provider: selection = .burn
         }
         router.clear()
+    }
+
+    private func updateColumnVisibility(for destination: SidebarDestination, animated: Bool = true) {
+        let nextVisibility: NavigationSplitViewVisibility = destination == .hermes ? .detailOnly : .automatic
+        guard columnVisibility != nextVisibility else { return }
+        if animated {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                columnVisibility = nextVisibility
+            }
+        } else {
+            columnVisibility = nextVisibility
+        }
     }
 
     private func applyScreenshotRouteIfNeeded() {

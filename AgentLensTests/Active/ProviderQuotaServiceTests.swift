@@ -633,6 +633,137 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "7-day Opus window" && $0.remainingPercent?.rounded() == 60 }))
     }
 
+    func test_claudeRefresh_keepsStaleBridgeSnapshotVisibleWhenAPIBillingOverrideDetected() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let snapshotURL = appPaths.claudeStatuslineSnapshotURL
+        try FileManager.default.createDirectory(
+            at: snapshotURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let payload = """
+        {
+          "rate_limits": {
+            "five_hour": { "used_percentage": 10, "resets_at": "2026-03-24T15:00:00Z" },
+            "seven_day": { "used_percentage": 40, "resets_at": "2026-03-31T15:00:00Z" }
+          }
+        }
+        """
+        try Data(payload.utf8).write(to: snapshotURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-60 * 60)],
+            ofItemAtPath: snapshotURL.path
+        )
+
+        let claudeDirectory = home.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: claudeDirectory, withIntermediateDirectories: true)
+        let settingsURL = claudeDirectory.appendingPathComponent("settings.json")
+        let settings = """
+        {
+          "statusLine": {
+            "type": "command",
+            "command": "\(appPaths.claudeStatuslineBridgeScriptURL.path)"
+          }
+        }
+        """
+        try Data(settings.utf8).write(to: settingsURL)
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            environment: ["ANTHROPIC_API_KEY": "sk-ant-test"]
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.source, .localCLI)
+        XCTAssertEqual(snapshot.confidence, .estimated)
+        XCTAssertTrue(snapshot.statusMessage.contains("API billing"))
+        XCTAssertTrue(snapshot.statusMessage.contains("Stale last known Claude Code quota"))
+        XCTAssertTrue(snapshot.isStale())
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "5-hour window" && $0.remainingPercent?.rounded() == 90 && $0.isEstimated }))
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label == "7-day window" && $0.remainingPercent?.rounded() == 60 && $0.isEstimated }))
+    }
+
+    func test_claudeRefresh_staleBridgeSnapshotFallsThroughToOAuthUsage() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupport)
+        let snapshotURL = appPaths.claudeStatuslineSnapshotURL
+        try FileManager.default.createDirectory(
+            at: snapshotURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let stalePayload = """
+        {
+          "rate_limits": {
+            "five_hour": { "used_percentage": 10, "resets_at": "2026-03-24T15:00:00Z" },
+            "seven_day": { "used_percentage": 40, "resets_at": "2026-03-31T15:00:00Z" }
+          }
+        }
+        """
+        try Data(stalePayload.utf8).write(to: snapshotURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-60 * 60)],
+            ofItemAtPath: snapshotURL.path
+        )
+
+        let claudeDirectory = home.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: claudeDirectory, withIntermediateDirectories: true)
+        let settingsURL = claudeDirectory.appendingPathComponent("settings.json")
+        let settings = """
+        {
+          "statusLine": {
+            "type": "command",
+            "command": "\(appPaths.claudeStatuslineBridgeScriptURL.path)"
+          }
+        }
+        """
+        try Data(settings.utf8).write(to: settingsURL)
+
+        let reset = ISO8601DateFormatter().string(from: Date().addingTimeInterval(3 * 60 * 60))
+        let session = makeStubSession { request in
+            let url = try XCTUnwrap(request.url)
+            XCTAssertEqual(url.absoluteString, "https://api.anthropic.com/api/oauth/usage")
+            return try self.httpResponse(
+                url: url,
+                statusCode: 200,
+                body: """
+                {
+                  "rate_limits": {
+                    "five_hour": { "used_percentage": 80, "resets_at": "\(reset)" },
+                    "seven_day": { "used_percentage": 30, "resets_at": "\(reset)" }
+                  }
+                }
+                """
+            )
+        }
+
+        let service = makeService(
+            home: home,
+            appSupportRoot: appSupport,
+            session: session,
+            claudeCredentialsReader: StaticClaudeCredentialsReader(credentials: ClaudeOAuthCredentials(
+                accessToken: "sk-ant-oat-live",
+                refreshToken: nil,
+                expiresAt: nil,
+                subscriptionType: "pro",
+                rateLimitTier: "",
+                organizationUuid: nil
+            ))
+        )
+
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
+        let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
+
+        XCTAssertEqual(snapshot.source, .officialAPI)
+        XCTAssertEqual(snapshot.confidence, .exact)
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label.contains("5-hour") && $0.remainingPercent?.rounded() == 20 }))
+        XCTAssertTrue(snapshot.buckets.contains(where: { $0.label.contains("7-day") && $0.remainingPercent?.rounded() == 70 }))
+    }
+
     func test_claudeRefresh_oauthCacheHit_usesPersistedRateLimitsWithoutNetwork() async throws {
         // OAuth credentials present (env override) AND a fresh cache file
         // exists with reset windows in the future. Adapter must read the

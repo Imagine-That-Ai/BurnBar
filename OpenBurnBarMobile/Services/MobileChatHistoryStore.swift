@@ -22,6 +22,17 @@ struct MobileChatThread: Identifiable, Codable, Equatable {
     var messages: [MobileChatMessage]
 
     var messageCount: Int { messages.count }
+
+    var recentAttachmentPreviews: [HermesAttachment] {
+        var previews: [HermesAttachment] = []
+        for message in messages.reversed() where !message.attachments.isEmpty {
+            for attachment in message.attachments {
+                previews.append(attachment.asHermesAttachment)
+                if previews.count == 3 { return previews }
+            }
+        }
+        return previews
+    }
 }
 
 struct MobileChatMessage: Identifiable, Codable, Equatable {
@@ -96,6 +107,21 @@ struct MobileChatMessage: Identifiable, Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case id, role, text, timestamp, modelName, isError, attachments, toolCalls, hermes
+    }
+}
+
+extension MobileChatAttachment {
+    var asHermesAttachment: HermesAttachment {
+        HermesAttachment(
+            id: id,
+            kind: HermesAttachmentKind(rawValue: kind) ?? .generic,
+            displayName: displayName,
+            mimeType: mimeType,
+            byteSize: byteSize,
+            workspaceRelativePath: workspaceRelativePath,
+            thumbnailPNG: thumbnailPNG,
+            extractedTextPreview: extractedTextPreview
+        )
     }
 }
 

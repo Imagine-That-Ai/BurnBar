@@ -285,7 +285,7 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(service.suggestedRelayConnection?.id, "relay-new")
     }
 
-    func testSuggestedRelayConnectionRejectsStaleOnlineRelay() {
+    func testSuggestedRelayConnectionStillAttemptsStaleOnlineRelay() {
         let stale = HermesConnectionRecord(
             id: "relay-stale",
             displayName: "Stale Mac Relay",
@@ -301,8 +301,29 @@ final class HermesServiceTests: XCTestCase {
         let service = HermesService(relayTransport: FakeHermesRelayTransport())
         service.connections = [.localDefault, stale]
 
+        XCTAssertEqual(service.suggestedRelayConnection?.id, stale.id)
+        XCTAssertTrue(service.selectConnection(stale, refresh: false))
+        XCTAssertEqual(service.selectedConnection.id, stale.id)
+    }
+
+    func testSuggestedRelayConnectionRejectsOfflineRelay() {
+        let offline = HermesConnectionRecord(
+            id: "relay-offline",
+            displayName: "Offline Mac Relay",
+            mode: .relayLink,
+            status: .offline,
+            relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
+            relayEncryption: HermesRelayCrypto.algorithm,
+            realtimeRelayLastSeenAt: Date().addingTimeInterval(-10 * 60),
+            capabilities: ["chat_completions", "remote_relay"],
+            lastSeenAt: Date().addingTimeInterval(-10 * 60),
+            updatedAt: Date().addingTimeInterval(-10 * 60)
+        )
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.connections = [.localDefault, offline]
+
         XCTAssertNil(service.suggestedRelayConnection)
-        XCTAssertFalse(service.selectConnection(stale, refresh: false))
+        XCTAssertFalse(service.selectConnection(offline, refresh: false))
         XCTAssertEqual(service.selectedConnection.id, HermesConnectionRecord.localDefault.id)
         XCTAssertTrue(service.lastError?.contains("stopped checking in") ?? false)
     }

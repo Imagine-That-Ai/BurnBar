@@ -168,6 +168,14 @@ struct SubscriptionCard: View {
                 if entry.isStale {
                     QuotaMicroBadge(text: "Stale signal", tint: DesignSystem.Colors.warning)
                 }
+
+                if entry.allDisplayableBuckets.isEmpty {
+                    Text(entry.snapshot.statusMessage)
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -230,12 +238,14 @@ struct SubscriptionCard: View {
                 HStack(spacing: 4) {
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 9, weight: .bold))
-                    Text(expanded ? "Hide buckets" : "Show all buckets (\(entry.allDisplayableBuckets.count))")
+                    Text(bucketToggleLabel)
                         .font(DesignSystem.Typography.caption)
                 }
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
             .buttonStyle(.plain)
+            .disabled(entry.allDisplayableBuckets.isEmpty)
+            .opacity(entry.allDisplayableBuckets.isEmpty ? 0.55 : 1)
 
             Spacer()
 
@@ -294,6 +304,11 @@ struct SubscriptionCard: View {
                 .help("Open official quota dashboard")
             }
         }
+    }
+
+    private var bucketToggleLabel: String {
+        if entry.allDisplayableBuckets.isEmpty { return "No live buckets" }
+        return expanded ? "Hide buckets" : "Show all buckets (\(entry.allDisplayableBuckets.count))"
     }
 
     // MARK: Chrome

@@ -153,8 +153,7 @@ struct ConnectionsSettingsView: View {
                 } label: {
                     Label("Add account", systemImage: "plus")
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
+                .buttonStyle(ConnectionsAddAccountButtonStyle(size: .compact))
                 .accessibilityLabel("Add account")
             }
 
@@ -224,8 +223,7 @@ struct ConnectionsSettingsView: View {
                 } label: {
                     Label("Add your first account", systemImage: "plus.circle.fill")
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
+                .buttonStyle(ConnectionsAddAccountButtonStyle(size: .regular))
                 Spacer()
             }
             .padding(.top, DesignSystem.Spacing.xs)
@@ -1485,6 +1483,70 @@ private struct AppConnectRow: View {
     }
 }
 
+private struct ConnectionsAddAccountButtonStyle: ButtonStyle {
+    enum Size {
+        case compact
+        case regular
+
+        var height: CGFloat {
+            switch self {
+            case .compact: return 30
+            case .regular: return 36
+            }
+        }
+
+        var horizontalPadding: CGFloat {
+            switch self {
+            case .compact: return 12
+            case .regular: return 14
+            }
+        }
+
+        var font: Font {
+            switch self {
+            case .compact: return DesignSystem.Typography.caption
+            case .regular: return DesignSystem.Typography.body
+            }
+        }
+    }
+
+    let size: Size
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(size.font)
+            .fontWeight(.semibold)
+            .foregroundStyle(.white)
+            .labelStyle(.titleAndIcon)
+            .padding(.horizontal, size.horizontalPadding)
+            .frame(height: size.height)
+            .background(
+                LinearGradient(
+                    colors: [
+                        DesignSystem.Colors.blaze,
+                        DesignSystem.Colors.amber
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .clipShape(Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(.white.opacity(configuration.isPressed ? 0.16 : 0.28), lineWidth: 0.6)
+            )
+            .shadow(
+                color: DesignSystem.Colors.blaze.opacity(configuration.isPressed ? 0.12 : 0.22),
+                radius: configuration.isPressed ? 3 : 7,
+                x: 0,
+                y: configuration.isPressed ? 1 : 3
+            )
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .contentShape(Capsule(style: .continuous))
+            .animation(.spring(response: 0.22, dampingFraction: 0.82), value: configuration.isPressed)
+    }
+}
+
 // MARK: - Snippet Sheet
 
 private struct SnippetSheet: View {
@@ -1539,7 +1601,7 @@ private struct SnippetSheet: View {
 
 /// Identifiable wrapper so the wizard sheet can present-by-item without
 /// dropping the provider ID across navigation churn.
-private struct ProviderWizardTarget: Identifiable {
+struct ProviderWizardTarget: Equatable, Identifiable {
     let providerID: String?
     let startsAtProviderSelection: Bool
 

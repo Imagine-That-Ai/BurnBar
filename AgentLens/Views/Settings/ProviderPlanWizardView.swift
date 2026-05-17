@@ -406,7 +406,7 @@ struct ProviderPlanWizardView: View {
         }
 
         var request = URLRequest(url: url)
-        request.timeoutInterval = 2
+        request.timeoutInterval = 10
         let token = daemonManager.settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
         if !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -870,7 +870,7 @@ struct ProviderPlanWizardView: View {
             errorCallout("\(provider.displayName) is not routable. \(issue)")
         } else if !provider.routeReadyCredentialSlots.isEmpty,
                   let gatewayAdvertisementError {
-            errorCallout("BurnBar has a route credential saved for \(provider.displayName), but could not verify /v1/models. \(gatewayAdvertisementError)")
+            errorCallout("BurnBar has a route credential saved for \(provider.displayName), but the local gateway catalog check did not finish. \(gatewayAdvertisementError)")
         }
     }
 
