@@ -19,6 +19,13 @@ fi
 
 # Verify node + playwright are reachable.
 command -v node >/dev/null 2>&1 || { echo "node missing" >&2; exit 2; }
+GLOBAL_NODE_PATH="$(npm root -g 2>/dev/null || true)"
+if [[ -n "$GLOBAL_NODE_PATH" ]]; then
+  # Prefer the pinned global Playwright from scripts/install-playwright.sh.
+  # A pre-existing NODE_PATH may point at a different Playwright version whose
+  # browser binary cache is not installed, causing false-negative smoke tests.
+  export NODE_PATH="$GLOBAL_NODE_PATH${NODE_PATH:+:$NODE_PATH}"
+fi
 node -e 'require("playwright")' || { echo "playwright module missing" >&2; exit 2; }
 
 INPUT_FIFO=$(mktemp -u)

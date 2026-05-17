@@ -26,6 +26,35 @@ class MediaPacketCodecTest {
     }
 
     @Test
+    fun round_trip_preserves_computer_use_cursor_metadata() {
+        val codec = MediaPacketCodec()
+        val frame = MediaFrame(
+            kind = MediaFrame.Kind.VIDEO_NAL,
+            flags = MediaFrame.Flags.KEYFRAME.or(MediaFrame.Flags.HAS_CURSOR_METADATA),
+            gopID = 9u,
+            frameIndex = 2u,
+            presentationTimestampMillis = 55uL,
+            cursor = MediaFrame.CursorMetadata(x = 320, y = 180),
+            payload = byteArrayOf(0x01, 0x02),
+        )
+
+        val decoded = codec.decode(codec.encode(frame)).frame
+
+        assertEquals(frame, decoded)
+        assertEquals(MediaFrame.CursorMetadata(320, 180), decoded.cursor)
+    }
+
+    @Test
+    fun computer_use_stream_classes_are_phase_eight_feature_bucket() {
+        assertEquals(MediaStreamClass.Feature.COMPUTER_USE, MediaStreamClass.CONTROL_SURFACE_FRAME.feature)
+        assertEquals(MediaStreamClass.Feature.COMPUTER_USE, MediaStreamClass.CONTROL_ACTION_LOG.feature)
+        assertEquals(MediaStreamClass.Feature.COMPUTER_USE, MediaStreamClass.CONTROL_INPUT.feature)
+        assertEquals(MediaStreamClass.Feature.COMPUTER_USE, MediaStreamClass.CONTROL_APPROVAL.feature)
+        assertEquals(false, MediaStreamClass.CONTROL_INPUT.isAvailable(asOfPhase = 7))
+        assertEquals(true, MediaStreamClass.CONTROL_INPUT.isAvailable(asOfPhase = 8))
+    }
+
+    @Test
     fun encode_rejects_payload_exceeding_max() {
         val codec = MediaPacketCodec(maxPayloadBytes = MediaFrame.HEADER_BYTE_COUNT + 8)
         val frame = MediaFrame(

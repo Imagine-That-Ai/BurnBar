@@ -131,6 +131,7 @@ public actor OpenBurnBarPlaywrightDriver {
         args += ["--session-id", sessionId.rawValue]
         args += ["--per-action-timeout-ms", "\(configuration.perActionTimeoutMillis)"]
         process.arguments = args
+        process.environment = environmentWithNodePath()
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr
@@ -168,6 +169,27 @@ public actor OpenBurnBarPlaywrightDriver {
             guard let self else { return }
             await self.runStdoutLoop()
         }
+    }
+
+    private func environmentWithNodePath() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        if let nodePath = environment["NODE_PATH"], !nodePath.isEmpty {
+            return environment
+        }
+
+        let resolvedNode = URL(fileURLWithPath: configuration.nodeExecutablePath)
+            .resolvingSymlinksInPath()
+        let nodePrefix = resolvedNode
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let globalModules = nodePrefix
+            .appendingPathComponent("lib", isDirectory: true)
+            .appendingPathComponent("node_modules", isDirectory: true)
+            .path
+        if FileManager.default.fileExists(atPath: globalModules) {
+            environment["NODE_PATH"] = globalModules
+        }
+        return environment
     }
 
     public func stop() async {

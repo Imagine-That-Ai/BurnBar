@@ -206,9 +206,13 @@ final class ChatSessionController {
         case .claude:
             return chatModelClaude.trimmingCharacters(in: .whitespacesAndNewlines)
         case .hermes:
-            let s = chatModelHermes.trimmingCharacters(in: .whitespacesAndNewlines)
-            if s.isEmpty { return liveDefaultModel(for: .hermes) ?? "" }
-            return s
+            return Self.resolvedHermesModelSelection(
+                panelSelection: chatModelHermes,
+                settingsOverride: settingsManager.hermesChatModelOverride,
+                selectedFamily: settingsManager.selectedHermesModel,
+                advertisedModels: hermesAdvertisedModels,
+                gatewayDefault: liveDefaultModel(for: .hermes)
+            )
         case .openclaw:
             let s = chatModelOpenClaw.trimmingCharacters(in: .whitespacesAndNewlines)
             if s.isEmpty { return liveDefaultModel(for: .openclaw) ?? "" }
@@ -237,6 +241,70 @@ final class ChatSessionController {
         liveAdvertisedModels(for: backend)
             .first { $0.routeEligible }?
             .id
+    }
+
+    static func resolvedHermesModelSelection(
+        panelSelection: String,
+        settingsOverride: String,
+        selectedFamily: HermesModelID?,
+        advertisedModels: [HermesAdvertisedModel],
+        gatewayDefault: String?
+    ) -> String {
+        let panel = panelSelection.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !panel.isEmpty {
+            if advertisedModels.contains(where: { $0.id == panel }) {
+                return panel
+            }
+            if let family = hermesFamilyHint(for: panel),
+               let advertised = advertisedModels.first(where: { $0.family == family }) {
+                return advertised.id
+            }
+            if advertisedModels.isEmpty {
+                return panel
+            }
+        }
+
+        let override = settingsOverride.trimmingCharacters(in: .whitespacesAndNewlines)
+        if advertisedModels.contains(where: { $0.id == override }) {
+            return override
+        }
+        if let family = hermesFamilyHint(for: override) {
+            if let advertised = advertisedModels.first(where: { $0.family == family }) {
+                return advertised.id
+            }
+        } else if !override.isEmpty, advertisedModels.isEmpty {
+            return override
+        }
+
+        if let selectedFamily,
+           let advertised = advertisedModels.first(where: { $0.family == selectedFamily }) {
+            return advertised.id
+        }
+
+        return gatewayDefault?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private static func hermesFamilyHint(for model: String) -> HermesModelID? {
+        let normalized = model
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "")
+        guard !normalized.isEmpty else { return nil }
+        if let family = HermesModelID(rawValue: normalized) { return family }
+        if normalized.contains("claude") || normalized.contains("anthropic") { return .claude }
+        if normalized.contains("codex") || normalized.contains("openai") || normalized.hasPrefix("gpt-") { return .codex }
+        if normalized.contains("zai") || normalized.contains("z.ai") || normalized.contains("glm") { return .zai }
+        if normalized.contains("kimi") || normalized.contains("moonshot") { return .kimi }
+        if normalized.contains("minimax") { return .minimax }
+        if normalized.contains("ollama")
+            || normalized.contains("llama")
+            || normalized.contains("mistral")
+            || normalized.contains("qwen")
+            || normalized.contains("deepseek")
+            || normalized.contains("gemma") {
+            return .ollama
+        }
+        return nil
     }
 
     private func selectedModelRoutingError(for backend: ChatBackendID) -> String? {
@@ -800,7 +868,7 @@ final class ChatSessionController {
             if !hermesAvailable {
                 let err = ChatMessageRecord(
                     role: .assistant,
-                    content: "Hermes isn’t running. Add API_SERVER_ENABLED=true to ~/.hermes/.env, then in Terminal run: hermes gateway run. You don’t need to enter anything in OpenBurnBar unless you set API_SERVER_KEY in that file — then paste the same value in Settings → Chat under Hermes.",
+                    content: await hermesUnavailableMessage(),
                     cliUsed: nil
                 )
                 messages.append(err)
@@ -1271,6 +1339,37 @@ final class ChatSessionController {
                     }
                 }.value
             }
+        }
+    }
+
+    private func hermesUnavailableMessage() async -> String {
+        if await hermesHealthReachable() {
+            let model = effectiveChatModel(for: .hermes).trimmingCharacters(in: .whitespacesAndNewlines)
+            let modelLine = model.isEmpty ? "" : " Current requested model: \(model)."
+            return "Hermes gateway is running, but OpenBurnBar could not read its live model catalog. Wait a few seconds and retry, or choose a live Hermes model from Settings → Chat.\(modelLine)"
+        }
+        return "Hermes isn’t running. Add API_SERVER_ENABLED=true to ~/.hermes/.env, then in Terminal run: hermes gateway run. You don’t need to enter anything in OpenBurnBar unless you set API_SERVER_KEY in that file — then paste the same value in Settings → Chat under Hermes."
+    }
+
+    private func hermesHealthReachable() async -> Bool {
+        guard var components = URLComponents(url: hermesGatewayBaseURL, resolvingAgainstBaseURL: false) else {
+            return false
+        }
+        components.path = "/health"
+        components.query = nil
+        guard let url = components.url else { return false }
+
+        var request = URLRequest(url: url, timeoutInterval: 2)
+        request.httpMethod = "GET"
+        if let token = hermesBearerToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return false }
+            return (200...299).contains(http.statusCode)
+        } catch {
+            return false
         }
     }
 

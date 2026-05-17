@@ -148,7 +148,10 @@ rl.on('line', async (line) => {
       elapsedMillis: Date.now() - started
     };
   }
-  process.stdout.write(JSON.stringify(response) + '\n');
+  const shouldExit = req.method === 'shutdown' && response.ok;
+  process.stdout.write(JSON.stringify(response) + '\n', () => {
+    if (shouldExit) process.exit(0);
+  });
 });
 
 process.on('SIGTERM', () => process.exit(0));

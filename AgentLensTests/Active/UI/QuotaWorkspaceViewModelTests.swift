@@ -111,9 +111,11 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(entry.accountLabel, "Claude Work")
         XCTAssertTrue(entry.allDisplayableBuckets.isEmpty)
         XCTAssertEqual(entry.primaryBucket.label, "Bridge installed but no rate-limit payload captured yet.")
+        XCTAssertNil(entry.primaryDisplayableBucket)
+        XCTAssertEqual(entry.remainingPercentText, "—")
     }
 
-    func test_rebuild_prefersProviderRollupBucketsOverEmptyAccountPlaceholders() throws {
+    func test_rebuild_prefersAccountSnapshotOverProviderRollupWhenAccountHasNoSignal() throws {
         let appSupportRoot = try makeTemporaryDirectory()
         let home = try makeTemporaryDirectory()
         let appPaths = OpenBurnBarAppPaths(applicationSupportRoot: appSupportRoot)
@@ -173,9 +175,10 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         )
 
         XCTAssertEqual(viewModel.entries.count, 1)
-        XCTAssertNil(viewModel.entries.first?.snapshot.accountID)
-        XCTAssertEqual(viewModel.entries.first?.hourlyBucket?.remainingPercent, 92)
-        XCTAssertEqual(viewModel.entries.first?.allDisplayableBuckets.count, 1)
+        XCTAssertEqual(viewModel.entries.first?.snapshot.accountID, "claude-work")
+        XCTAssertNil(viewModel.entries.first?.hourlyBucket)
+        XCTAssertEqual(viewModel.entries.first?.allDisplayableBuckets.count, 0)
+        XCTAssertEqual(viewModel.entries.first?.remainingPercentText, "—")
     }
 
     // MARK: sort

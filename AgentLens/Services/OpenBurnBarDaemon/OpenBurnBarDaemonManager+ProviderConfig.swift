@@ -72,6 +72,30 @@ extension OpenBurnBarDaemonManager {
         }
     }
 
+    func setProviderModelAdvertisement(
+        providerID: String,
+        modelID: String,
+        isEnabled: Bool
+    ) async {
+        if case .healthy = status {
+            // already healthy
+        } else {
+            await forceRefreshHealth()
+            guard case .healthy = status else {
+                lastError = "OpenBurnBar daemon must be healthy before model advertising can be updated."
+                return
+            }
+        }
+
+        await performBusyWork {
+            try await mutateProviderSettingsSnapshot(providerID: providerID) { settings in
+                var mutable = settings
+                mutable.setModelAdvertisement(modelID: modelID, isEnabled: isEnabled)
+                return mutable
+            }
+        }
+    }
+
     func addProviderCredentialSlot(
         providerID: String,
         label: String,

@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import AppKit
 import Combine
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
@@ -31,6 +32,8 @@ final class MediaSessionCoordinator: ObservableObject {
     private var bitrateController: BitrateController
     private var streamSink: MediaStreamSink?
     private var sessionMetadata: MediaSessionMetadata?
+    private var activeStreamClass: MediaStreamClass = .screenVideo
+    private var cursorProvider: (@MainActor @Sendable () -> MediaFrame.CursorMetadata?)?
 
     init(
         capabilityGate: any MediaCapabilityGate,
@@ -42,7 +45,9 @@ final class MediaSessionCoordinator: ObservableObject {
 
     func startScreenShare(
         peerDeviceID: String,
-        sink: MediaStreamSink
+        sink: MediaStreamSink,
+        streamClassOverride: MediaStreamClass? = nil,
+        cursorProvider: (@MainActor @Sendable () -> MediaFrame.CursorMetadata?)? = nil
     ) async throws {
         guard phase == .idle || phase == .ended(reason: .completedSuccess) else {
             return
@@ -61,10 +66,13 @@ final class MediaSessionCoordinator: ObservableObject {
         }
 
         phase = .starting(feature: .screenShare)
+        let streamClass = streamClassOverride ?? .screenVideo
+        activeStreamClass = streamClass
+        self.cursorProvider = cursorProvider
         sessionMetadata = MediaSessionMetadata(
             sessionID: UUID().uuidString,
             feature: .screenShare,
-            streamClass: .screenVideo,
+            streamClass: streamClass,
             peerDeviceID: peerDeviceID
         )
         self.streamSink = sink
@@ -113,6 +121,8 @@ final class MediaSessionCoordinator: ObservableObject {
         }
         videoEncoder?.stop()
         await streamSink?.close()
+        cursorProvider = nil
+        activeStreamClass = .screenVideo
 
         var metadata = sessionMetadata
         metadata?.endedAt = Date()
@@ -123,8 +133,20 @@ final class MediaSessionCoordinator: ObservableObject {
     }
 
     private func handleEncodedFrame(_ frame: MediaFrame) async {
-        await streamSink?.write(frame: frame)
-        sessionMetadata?.byteCountOutbound += Int64(frame.payload.count)
+        var outbound = frame
+        if activeStreamClass == .controlSurfaceFrame {
+            outbound.flags.insert(.hasCursorMetadata)
+            outbound.cursor = cursorProvider?() ?? Self.currentCursorMetadata()
+        }
+        await streamSink?.write(frame: outbound)
+        sessionMetadata?.byteCountOutbound += Int64(outbound.payload.count)
+    }
+
+    private static func currentCursorMetadata() -> MediaFrame.CursorMetadata? {
+        let location = NSEvent.mouseLocation
+        let x = max(Int(Int16.min), min(Int(Int16.max), Int(location.x.rounded())))
+        let y = max(Int(Int16.min), min(Int(Int16.max), Int(location.y.rounded())))
+        return MediaFrame.CursorMetadata(x: Int16(x), y: Int16(y))
     }
 }
 

@@ -123,10 +123,10 @@ public final class PhoneControlReceiver: @unchecked Sendable {
     private func denormalize(_ nx: Double?, _ ny: Double?) -> (Int, Int)? {
         guard let nx, let ny else { return nil }
         let displays = displayBoundsProvider()
-        guard let primary = displays.first else { return nil }
-        let displayX = primary.originX + Int(Double(primary.width) * nx)
-        let displayY = primary.originY + Int(Double(primary.height) * ny)
-        return (displayX, displayY)
+        guard let point = MacInputCore.denormalize(normalizedX: nx, normalizedY: ny, in: displays.first) else {
+            return nil
+        }
+        return (point.x, point.y)
     }
 
     private func emitDeniedFrame(

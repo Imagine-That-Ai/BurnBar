@@ -108,6 +108,7 @@ class MediaAnalyticsLogger(
         MediaStreamClass.Feature.FILE_TRANSFER -> "fileTransfer"
         MediaStreamClass.Feature.SCREEN_SHARE -> "screenShare"
         MediaStreamClass.Feature.VIDEO_CALL -> "videoCall"
+        MediaStreamClass.Feature.COMPUTER_USE -> "computerUse"
     }
 
     companion object Buckets {

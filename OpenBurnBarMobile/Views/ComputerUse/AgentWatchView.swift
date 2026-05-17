@@ -1,23 +1,24 @@
 #if canImport(SwiftUI) && canImport(UIKit)
+import AVKit
 import SwiftUI
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
+import OpenBurnBarMedia
 
 /// Full-bleed iOS view that displays the Mac's mirrored surface and
 /// overlays the planned-action chip, the pending-approval row, and the
 /// trust-mode badge. Phase 8 ships the view; Phase 12 makes the
 /// approval-row buttons functional via `PhoneControlSender`.
 ///
-/// The frame layer in this stub is rendered by a child
-/// `AgentWatchFrameView` (UIViewRepresentable wrapping
-/// `AVSampleBufferDisplayLayer`); the implementation is sketched but
-/// the full pipeline lives in the Mercury substrate already.
 public struct AgentWatchView: View {
     @ObservedObject private var state: AgentWatchState
+    @StateObject private var video = AgentWatchVideoCoordinator()
     private let downgradeTrustMode: (ComputerUseTrustMode) -> Void
     private let approveAction: (HermesRealtimeRelayApprovalRequest) -> Void
     private let rejectAction: (HermesRealtimeRelayApprovalRequest, Bool) -> Void
     private let panicHalt: () -> Void
+    @State private var showingTimeline = false
+    @State private var showingOptions = false
 
     public init(
         state: AgentWatchState,
@@ -36,35 +37,66 @@ public struct AgentWatchView: View {
     public var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            framePlaceholder
+            AgentWatchSurfaceView(coordinator: video)
+                .ignoresSafeArea()
+                .opacity(state.currentFrame == nil ? 0 : 1)
+            if state.currentFrame == nil {
+                framePlaceholder
+            }
+            cursorOverlay
             VStack {
                 topHairline
                 Spacer()
                 bottomStrip
             }
+            ThreeFingerLongPressCapture(onRecognized: panicHalt)
+                .ignoresSafeArea()
         }
-        .gesture(threeFingerPanicGesture)
+        .onChange(of: state.currentFrame) { _, frame in
+            guard let frame else { return }
+            Task { await video.ingest(frame: frame) }
+        }
+        .sheet(isPresented: $showingTimeline) {
+            AgentActionTimelineSheet(entries: state.actionTimeline)
+        }
+        .sheet(isPresented: $showingOptions) {
+            PhoneControlOptionSheet(
+                snapshot: state.snapshot,
+                onTrustMode: downgradeTrustMode,
+                onPanic: panicHalt
+            )
+        }
     }
 
     private var framePlaceholder: some View {
         VStack {
-            if state.currentCursor != nil {
-                Image(systemName: "cursorarrow")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 28, height: 28)
-                    .foregroundStyle(.white.opacity(0.85))
-            } else {
-                Image(systemName: "rectangle.dashed")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 96, height: 96)
-                    .foregroundStyle(.white.opacity(0.2))
-            }
-            Text("Awaiting Mac frame…")
+            Image(systemName: "rectangle.dashed")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 96, height: 96)
+                .foregroundStyle(.white.opacity(0.2))
+            Text(state.sessionId == nil ? "Waiting for Mac session" : "Live control stream ready")
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.55))
         }
+    }
+
+    private var cursorOverlay: some View {
+        GeometryReader { proxy in
+            if let cursor = state.currentCursor {
+                Image(systemName: "cursorarrow")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 26, height: 26)
+                    .foregroundStyle(.white.opacity(0.9))
+                    .shadow(color: .black.opacity(0.55), radius: 3, x: 0, y: 1)
+                    .position(
+                        x: cursorPosition(cursor, in: proxy.size).x,
+                        y: cursorPosition(cursor, in: proxy.size).y
+                    )
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     private var topHairline: some View {
@@ -73,21 +105,12 @@ public struct AgentWatchView: View {
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.7))
             Spacer()
-            Menu {
-                Button("Step (Mac-side approval per action)") {
-                    downgradeTrustMode(.step)
-                }
-                Button("Manual (approve on phone)") {
-                    downgradeTrustMode(.manual)
-                }
+            Button {
+                showingOptions = true
             } label: {
-                Text(state.liveTrustMode.rawValue.capitalized + " ▼")
-                    .font(.system(size: 12, weight: .semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .foregroundStyle(.white)
+                ComputerUseTrustModeBadge(mode: state.liveTrustMode)
             }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
@@ -109,13 +132,21 @@ public struct AgentWatchView: View {
                 Spacer()
             }
             if let next = state.actionTimeline.last {
-                HStack {
+                Button {
+                    showingTimeline = true
+                } label: {
+                    HStack {
                     Image(systemName: "wand.and.rays")
                     Text("Next: \(next.summary)")
                         .lineLimit(2)
+                    Spacer()
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 11, weight: .bold))
+                    }
                 }
                 .font(.system(size: 13))
                 .foregroundStyle(.white)
+                .buttonStyle(.plain)
             }
             if let pending = state.pendingApproval {
                 HStack(spacing: 12) {
@@ -147,17 +178,125 @@ public struct AgentWatchView: View {
         .padding(.bottom, 18)
     }
 
-    private var threeFingerPanicGesture: some Gesture {
-        LongPressGesture(minimumDuration: 0.8)
-            .onEnded { _ in panicHalt() }
-    }
-
     private var timeAgo: String {
         guard let started = state.sessionStartedAt else { return "—:—:—" }
         let elapsed = Int(Date().timeIntervalSince(started))
         let m = elapsed / 60
         let s = elapsed % 60
         return String(format: "%02d:%02d", m, s)
+    }
+
+    private func cursorPosition(_ cursor: MediaFrame.CursorMetadata, in size: CGSize) -> CGPoint {
+        // `MediaFrame` intentionally carries only codec payload + cursor
+        // metadata. Until the stream publishes source dimensions, normalize
+        // against the common Mercury screen-share canvas so the cursor remains
+        // visible and directionally correct instead of clipping off-screen.
+        let frameWidth: CGFloat = 1920
+        let frameHeight: CGFloat = 1080
+        let x = min(max(CGFloat(cursor.x) / frameWidth, 0), 1) * size.width
+        let y = min(max(CGFloat(cursor.y) / frameHeight, 0), 1) * size.height
+        return CGPoint(x: x, y: y)
+    }
+}
+
+private struct ThreeFingerLongPressCapture: UIViewRepresentable {
+    let onRecognized: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onRecognized: onRecognized)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = true
+        let recognizer = UILongPressGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handle(_:))
+        )
+        recognizer.minimumPressDuration = 0.8
+        recognizer.numberOfTouchesRequired = 3
+        recognizer.cancelsTouchesInView = false
+        view.addGestureRecognizer(recognizer)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.onRecognized = onRecognized
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var onRecognized: () -> Void
+
+        init(onRecognized: @escaping () -> Void) {
+            self.onRecognized = onRecognized
+        }
+
+        @objc func handle(_ recognizer: UILongPressGestureRecognizer) {
+            guard recognizer.state == .began else { return }
+            onRecognized()
+        }
+    }
+}
+
+@MainActor
+private final class AgentWatchVideoCoordinator: ObservableObject {
+    let displayLayer: AVSampleBufferDisplayLayer
+    private var pipeline: VideoReceivePipeline?
+
+    init() {
+        let layer = AVSampleBufferDisplayLayer()
+        layer.videoGravity = .resizeAspect
+        self.displayLayer = layer
+        self.pipeline = VideoReceivePipeline { [weak self] sampleBuffer in
+            await MainActor.run {
+                self?.enqueue(sampleBuffer: sampleBuffer)
+            }
+        }
+    }
+
+    func ingest(frame: MediaFrame) async {
+        do {
+            try await pipeline?.ingest(frame: frame)
+        } catch {
+            displayLayer.flush()
+        }
+    }
+
+    private func enqueue(sampleBuffer: CMSampleBuffer) {
+        if displayLayer.isReadyForMoreMediaData {
+            displayLayer.enqueue(sampleBuffer)
+        }
+    }
+}
+
+private struct AgentWatchSurfaceView: UIViewRepresentable {
+    @ObservedObject var coordinator: AgentWatchVideoCoordinator
+
+    func makeUIView(context: Context) -> AgentWatchDisplayLayerView {
+        let view = AgentWatchDisplayLayerView()
+        view.attach(layer: coordinator.displayLayer)
+        return view
+    }
+
+    func updateUIView(_ uiView: AgentWatchDisplayLayerView, context: Context) {}
+}
+
+private final class AgentWatchDisplayLayerView: UIView {
+    private weak var hostedLayer: AVSampleBufferDisplayLayer?
+
+    func attach(layer: AVSampleBufferDisplayLayer) {
+        hostedLayer?.removeFromSuperlayer()
+        layer.frame = bounds
+        layer.videoGravity = .resizeAspect
+        self.layer.addSublayer(layer)
+        hostedLayer = layer
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        hostedLayer?.frame = bounds
     }
 }
 #endif

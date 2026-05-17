@@ -180,14 +180,23 @@ extension ProviderQuotaBucket {
         case .sessions, .lines, .files:
             return false
         case .count:
-            guard marker.contains("credit") || marker.contains("budget"),
-                  let limitValue, limitValue > 0 else {
+            guard marker.contains("credit") || marker.contains("budget") || marker.contains("balance") else {
                 return false
             }
+            if limitValue == nil || limitValue == 0 {
+                return remainingValue != nil || usedValue != nil || usedPercent != nil
+            }
+            guard let limitValue, limitValue > 0 else { return false }
             return usedValue != nil || remainingValue != nil || usedPercent != nil
         case .percent:
             return usedPercent != nil || remainingValue != nil || (limitValue ?? 0) > 0
-        case .requests, .tokens, .currency:
+        case .requests, .tokens:
+            guard let limitValue, limitValue > 0 else { return false }
+            return usedValue != nil || remainingValue != nil || usedPercent != nil
+        case .currency:
+            if marker.contains("credit") || marker.contains("budget") || marker.contains("balance") {
+                return remainingValue != nil || usedValue != nil || usedPercent != nil
+            }
             guard let limitValue, limitValue > 0 else { return false }
             return usedValue != nil || remainingValue != nil || usedPercent != nil
         }

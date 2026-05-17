@@ -38,6 +38,7 @@ import com.openburnbar.data.square.HermesSquareFeatureFlags
 import com.openburnbar.data.missions.MobileMissionConsoleHost
 import com.openburnbar.ui.hermes.AssistantsScreen
 import com.openburnbar.ui.hermes.HermesView
+import com.openburnbar.ui.computeruse.ComputerUseAgentWatchScreen
 import com.openburnbar.ui.square.AgentBrandZoneScreen
 import com.openburnbar.ui.square.HermesSquareScreen
 import com.openburnbar.ui.square.HermesSquareSplitLayout
@@ -436,6 +437,12 @@ private fun BurnBarContent(
             com.openburnbar.ui.store.CloudStoreView(
                 onClose = { navController.popBackStack() }
             )
+        }
+        composable(
+            "computer_use",
+            deepLinks = listOf(navDeepLink { uriPattern = "burnbar://computer-use" })
+        ) {
+            ComputerUseAgentWatchScreen(modifier = Modifier.fillMaxSize())
         }
         // Open Dashboard deep link → land on Pulse (closest analog to iOS dashboard).
         composable(

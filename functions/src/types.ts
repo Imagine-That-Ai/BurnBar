@@ -2601,3 +2601,34 @@ export interface ComputerUseEntitlementDoc {
     trustedScopes: boolean;
   };
 }
+
+export interface ComputerUseOpenTimestampsValidationRequest {
+  uid: string;
+  sessionId: string;
+  auditHeadHashHex: string;
+  proofBase64: string;
+  /**
+   * Optional original chain file bytes. The official `ots verify` CLI can use
+   * the file beside `chain.jsonl.ots` for detached timestamp validation.
+   */
+  chainFileBase64?: string;
+}
+
+export type ComputerUseOpenTimestampsValidationStatus =
+  | "verified"
+  | "ots_verifier_unavailable"
+  | "ots_verify_failed"
+  | "session_not_found"
+  | "server_head_missing"
+  | "head_mismatch";
+
+export interface ComputerUseOpenTimestampsValidationResponse {
+  status: ComputerUseOpenTimestampsValidationStatus;
+  verified: boolean;
+  sessionId: string;
+  auditHeadHashHex: string;
+  serverAuditHeadHashHex?: string;
+  proofSizeBytes: number;
+  checkedAt: string;
+  otsVerifierOutput?: string;
+}

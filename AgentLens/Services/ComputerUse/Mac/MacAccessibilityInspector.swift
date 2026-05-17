@@ -37,7 +37,11 @@ public final class MacAccessibilityInspector: @unchecked Sendable {
         }
     }
 
-    public init() {}
+    private let denyRegions: MacComputerUseDenyRegions
+
+    public init(denyRegions: MacComputerUseDenyRegions = MacComputerUseDenyRegions()) {
+        self.denyRegions = denyRegions
+    }
 
     /// Read the role + subrole of the AX element under the given
     /// display point. Returns `nil` if Accessibility is denied or the
@@ -74,21 +78,16 @@ public final class MacAccessibilityInspector: @unchecked Sendable {
 
     /// Map an AX snapshot to a deny reason, if any.
     public func denyReason(for snapshot: Snapshot?) -> ComputerUseAccessibilityDenyReason? {
-        guard let snapshot else { return nil }
-        if snapshot.role == kAXTextFieldRole as String,
-           snapshot.subrole == kAXSecureTextFieldSubrole as String {
-            return .secureTextField
-        }
-        if snapshot.role == kAXSheetRole as String,
-           let description = snapshot.roleDescription?.lowercased(),
-           description.contains("password") || description.contains("authenticate") {
-            return .systemAuthSheet
-        }
-        if let bundle = snapshot.bundleId,
-           bundle == "com.apple.keychainaccess" || bundle == "com.apple.SecurityAgent" {
-            return .keychainPrompt
-        }
-        return nil
+        denyRegions.denyReason(for: snapshot.map {
+            MacComputerUseDenyRegions.Element(
+                role: $0.role,
+                subrole: $0.subrole,
+                roleDescription: $0.roleDescription,
+                label: $0.label,
+                title: $0.title,
+                bundleId: $0.bundleId
+            )
+        })
     }
 
     /// Live frontmost application context. Feeds the scope matcher's

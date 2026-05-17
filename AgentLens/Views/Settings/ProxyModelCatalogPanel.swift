@@ -8,11 +8,12 @@ import SwiftUI
 // the user can sanity-check what Droid/Codex/Claude Code will actually
 // receive) and Settings → Agents → Models (the dedicated full-page catalog).
 //
-// Renders the exact `/v1/models` envelope the local OpenBurnBar gateway
-// advertises right now, grouped by provider, with route-readiness, quota
-// state, and per-account attribution. The view is purely presentational —
-// the fetch + state machine live on `ConnectionsViewModel` so both call
-// sites stay in sync.
+// Renders the internal proxy model catalog for the local OpenBurnBar gateway,
+// grouped by provider, with route-readiness, quota state, advertisement state,
+// and failover-pool attribution. The public `/v1/models` endpoint only receives
+// one row per provider/model whose advertisement toggle is enabled and whose
+// route is live. The view is purely presentational — the fetch + state machine live on
+// `ConnectionsViewModel` so both call sites stay in sync.
 
 struct ProxyModelCatalogPanel: View {
     let models: [ProxyAdvertisedModel]
@@ -20,6 +21,9 @@ struct ProxyModelCatalogPanel: View {
     let endpoint: String
     let onRefresh: () -> Void
     let onStartGateway: () -> Void
+    let droidSyncState: AppConnectState?
+    let onSyncDroid: (() -> Void)?
+    let onToggleModelAdvertisement: ((ProxyAdvertisedModel, Bool) -> Void)?
 
     @State private var copiedEndpoint = false
     @State private var expandedProviderIDs: Set<String> = []
@@ -45,6 +49,28 @@ struct ProxyModelCatalogPanel: View {
         models.filter(\.routeEligible).count
     }
 
+    private var advertisedCount: Int {
+        models.filter(\.advertised).count
+    }
+
+    private var hiddenCount: Int {
+        models.filter { !$0.advertisementEnabled }.count
+    }
+
+    private var isDroidSyncing: Bool {
+        droidSyncState?.isBusy == true
+    }
+
+    private var canSyncDroid: Bool {
+        onSyncDroid != nil
+            && !state.isLoading
+            && !isDroidSyncing
+    }
+
+    private var droidSyncButtonTitle: String {
+        isDroidSyncing ? "Syncing" : "Sync to Droid"
+    }
+
     private var status: (label: String, systemImage: String, tint: Color) {
         switch state {
         case .idle:
@@ -55,13 +81,13 @@ struct ProxyModelCatalogPanel: View {
             if models.isEmpty {
                 return ("No routes", "exclamationmark.circle.fill", DesignSystem.Colors.warning)
             }
-            if routeReadyCount == 0 {
-                return ("0 ready", "exclamationmark.circle.fill", DesignSystem.Colors.warning)
+            if advertisedCount == 0 {
+                return ("0 advertised", "exclamationmark.circle.fill", DesignSystem.Colors.warning)
             }
-            if routeReadyCount == models.count {
-                return ("\(models.count) ready", "checkmark.seal.fill", DesignSystem.Colors.success)
+            if advertisedCount == models.count {
+                return ("\(models.count) advertised", "checkmark.seal.fill", DesignSystem.Colors.success)
             }
-            return ("\(routeReadyCount)/\(models.count) ready", "exclamationmark.triangle.fill", DesignSystem.Colors.warning)
+            return ("\(advertisedCount)/\(models.count) advertised", "exclamationmark.triangle.fill", DesignSystem.Colors.warning)
         case .error:
             return ("Gateway offline", "bolt.slash.fill", DesignSystem.Colors.error)
         }
@@ -131,6 +157,17 @@ struct ProxyModelCatalogPanel: View {
             Spacer(minLength: DesignSystem.Spacing.md)
 
             HStack(spacing: DesignSystem.Spacing.xs) {
+                if let onSyncDroid {
+                    Button(action: onSyncDroid) {
+                        Label(droidSyncButtonTitle, systemImage: "arrow.down.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!canSyncDroid)
+                    .help("Writes every advertised route-ready BurnBar proxy model into Droid's Factory config files.")
+                    .accessibilityHint("Writes advertised route-ready BurnBar proxy models into Droid.")
+                }
+
                 Button(action: copyEndpoint) {
                     Label(copiedEndpoint ? "Copied" : "Copy URL", systemImage: copiedEndpoint ? "checkmark" : "doc.on.doc")
                 }
@@ -176,7 +213,7 @@ struct ProxyModelCatalogPanel: View {
         case .idle:
             catalogMessage(
                 title: "Check the live proxy catalog",
-                message: "Refresh to read the exact models BurnBar is advertising through the local OpenAI-compatible gateway.",
+                message: "Refresh to read the exact models BurnBar can advertise through the local OpenAI-compatible gateway.",
                 systemImage: "point.3.connected.trianglepath.dotted",
                 tint: DesignSystem.Colors.textSecondary,
                 actionTitle: "Refresh",
@@ -185,7 +222,7 @@ struct ProxyModelCatalogPanel: View {
         case .loading where models.isEmpty:
             catalogMessage(
                 title: "Reading live catalog",
-                message: "Checking the local gateway for advertised models.",
+                message: "Checking the local gateway for proxy models.",
                 systemImage: "waveform.path.ecg",
                 tint: DesignSystem.Colors.textSecondary,
                 actionTitle: nil,
@@ -216,7 +253,8 @@ struct ProxyModelCatalogPanel: View {
                     ProxyModelProviderSection(
                         group: group,
                         isExpanded: expandedProviderIDs.contains(group.id),
-                        onToggleExpanded: { toggleProvider(group.id) }
+                        onToggleExpanded: { toggleProvider(group.id) },
+                        onToggleModelAdvertisement: onToggleModelAdvertisement
                     )
                     if group.id != groups.last?.id {
                         Divider().background(DesignSystem.Colors.border.opacity(0.45))
@@ -237,9 +275,12 @@ struct ProxyModelCatalogPanel: View {
     private var catalogStats: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
             metricPill("\(models.count)", "models", tint: DesignSystem.Colors.success)
+            metricPill("\(advertisedCount)", "advertised", tint: advertisedCount == models.count ? DesignSystem.Colors.success : DesignSystem.Colors.warning)
             metricPill("\(routeReadyCount)", "ready", tint: routeReadyCount == models.count ? DesignSystem.Colors.success : DesignSystem.Colors.warning)
+            if hiddenCount > 0 {
+                metricPill("\(hiddenCount)", "hidden", tint: DesignSystem.Colors.warning)
+            }
             metricPill("\(groups.count)", "providers", tint: DesignSystem.Colors.ember)
-            metricPill("\(Set(models.map(\.accountID)).count)", "accounts", tint: DesignSystem.Colors.textSecondary)
             Spacer()
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
@@ -389,60 +430,7 @@ struct ProxyProviderLogoView: View {
     /// `{ID}Logo` lookup catches any future provider that ships an asset by
     /// name without needing a code change here.
     static func assetCandidates(for catalogProviderID: String) -> [String] {
-        let normalized = catalogProviderID
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        var candidates: [String] = []
-
-        switch normalized {
-        case "anthropic", "claude", "claude-code":
-            candidates.append(contentsOf: ["AnthropicLogo", "ClaudeCodeLogo"])
-        case "openai", "open-ai", "codex":
-            candidates.append(contentsOf: ["OpenAILogo", "CodexLogo"])
-        case "opencode", "open-code":
-            candidates.append("OpenCodeLogo")
-        case "google", "gemini", "gemini-cli":
-            candidates.append(contentsOf: ["GoogleLogo", "GeminiCLILogo"])
-        case "xai", "grok", "x-ai":
-            candidates.append("GrokLogo")
-        case "deepseek", "deep-seek":
-            candidates.append(contentsOf: ["DeepSeekLogo", "DeepSeekProviderLogo"])
-        case "mistral":
-            candidates.append(contentsOf: ["MistralLogo", "MistralProviderLogo"])
-        case "meta", "llama":
-            candidates.append(contentsOf: ["MetaLogo", "MetaProviderLogo"])
-        case "cohere":
-            candidates.append(contentsOf: ["CohereLogo", "CohereProviderLogo"])
-        case "amazon", "aws", "bedrock":
-            candidates.append(contentsOf: ["AmazonLogo", "AmazonProviderLogo"])
-        case "alibaba", "qwen", "dashscope":
-            candidates.append(contentsOf: ["QwenLogo", "AlibabaLogo", "AlibabaProviderLogo"])
-        case "zai", "z-ai", "z.ai", "glm":
-            candidates.append(contentsOf: ["ZaiLogo", "ZaiProviderLogo"])
-        case "minimax", "mini-max":
-            candidates.append("MiniMaxLogo")
-        case "moonshot", "kimi":
-            candidates.append(contentsOf: ["KimiLogo", "MoonshotLogo", "KimiProviderLogo"])
-        case "mlx":
-            candidates.append("MLXLogo")
-        case "ollama":
-            candidates.append("OllamaLogo")
-        case "perplexity":
-            candidates.append("PerplexityLogo")
-        case "apple":
-            candidates.append("AppleLogo")
-        default:
-            break
-        }
-
-        if let registered = BurnBarCatalogProvider.bundledLogoName(forProviderID: normalized) {
-            candidates.append(registered)
-        }
-
-        candidates.append("\(normalized.capitalized)Logo")
-
-        var seen = Set<String>()
-        return candidates.filter { seen.insert($0).inserted }
+        ProviderBrand.logoAssetCandidates(for: catalogProviderID)
     }
 
     static func monogramText(for providerName: String, fallbackID: String) -> String {
@@ -466,6 +454,7 @@ struct ProxyModelProviderSection: View {
     let group: ProxyModelProviderGroup
     let isExpanded: Bool
     let onToggleExpanded: () -> Void
+    let onToggleModelAdvertisement: ((ProxyAdvertisedModel, Bool) -> Void)?
 
     private let collapsedLimit = 5
 
@@ -508,7 +497,10 @@ struct ProxyModelProviderSection: View {
             .padding(.bottom, DesignSystem.Spacing.xs)
 
             ForEach(visibleModels) { model in
-                ProxyModelCatalogRow(model: model)
+                ProxyModelCatalogRow(
+                    model: model,
+                    onToggleAdvertisement: onToggleModelAdvertisement
+                )
             }
 
             if hiddenCount > 0 || isExpanded {
@@ -532,6 +524,7 @@ struct ProxyModelProviderSection: View {
 
 struct ProxyModelCatalogRow: View {
     let model: ProxyAdvertisedModel
+    let onToggleAdvertisement: ((ProxyAdvertisedModel, Bool) -> Void)?
 
     private var routeTint: Color {
         if model.routeEligible { return DesignSystem.Colors.success }
@@ -590,6 +583,21 @@ struct ProxyModelCatalogRow: View {
             Spacer(minLength: DesignSystem.Spacing.sm)
             tag(model.quotaState.replacingOccurrences(of: "_", with: " "), tint: quotaTint)
             tag(model.routeEligible ? "route ready" : "blocked", tint: routeTint)
+            tag(advertisementLabel, tint: advertisementTint)
+            if let onToggleAdvertisement {
+                Toggle(
+                    "Advertise \(model.displayName)",
+                    isOn: Binding(
+                        get: { model.advertisementEnabled },
+                        set: { onToggleAdvertisement(model, $0) }
+                    )
+                )
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .help(advertisementHelp)
+                .accessibilityHint(advertisementHelp)
+            }
         }
         .padding(.horizontal, DesignSystem.Spacing.md)
         .padding(.vertical, 7)
@@ -611,9 +619,28 @@ struct ProxyModelCatalogRow: View {
             .clipShape(Capsule())
     }
 
+    private var advertisementLabel: String {
+        if model.advertised { return "advertised" }
+        if model.advertisementEnabled { return "not live" }
+        return "hidden"
+    }
+
+    private var advertisementTint: Color {
+        if model.advertised { return DesignSystem.Colors.success }
+        if model.advertisementEnabled { return DesignSystem.Colors.warning }
+        return DesignSystem.Colors.textMuted
+    }
+
+    private var advertisementHelp: String {
+        if model.advertisementEnabled {
+            return "Hide \(model.modelID) from /v1/models and future Droid syncs for this provider."
+        }
+        return "Advertise \(model.modelID) through /v1/models and future Droid syncs for this provider."
+    }
+
     private var accessibilitySummary: String {
         let route = model.routeEligible ? "route ready" : "blocked"
         let quota = model.quotaState.replacingOccurrences(of: "_", with: " ")
-        return "\(model.displayName), \(model.providerName), \(model.accountLabel), \(quota), \(route)"
+        return "\(model.displayName), \(model.providerName), \(model.accountLabel), \(quota), \(route), \(advertisementLabel)"
     }
 }

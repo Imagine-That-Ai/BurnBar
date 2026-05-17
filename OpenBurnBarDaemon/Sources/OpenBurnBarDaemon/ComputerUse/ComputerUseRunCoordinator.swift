@@ -51,6 +51,19 @@ public actor ComputerUseRunCoordinator {
         var state: ComputerUseSessionState
         var logger: ComputerUseAuditLogger
         var driver: OpenBurnBarPlaywrightDriver?
+        var stepBurstApproval: StepBurstApproval?
+    }
+
+    private struct StepBurstApproval {
+        var actionSignature: String
+        var approvedBy: ComputerUseAuditEntry.ApprovedBy
+        var approvalId: String
+        var remainingActions: Int
+        var expiresAt: Date
+
+        func covers(signature: String, now: Date) -> Bool {
+            actionSignature == signature && remainingActions > 0 && now <= expiresAt
+        }
     }
 
     private let gate: ComputerUseCapabilityGate
@@ -239,6 +252,14 @@ public actor ComputerUseRunCoordinator {
                 approvedBy = .trustedScope
             } else if isReadOnlyInspect(action: action) {
                 approvedBy = .mac
+            } else if let burst = consumeStepBurstApproval(
+                for: action,
+                scopeContext: scopeContext,
+                active: &active,
+                now: Date()
+            ) {
+                approvedBy = burst.approvedBy
+                approvalId = burst.approvalId
             } else {
                 // Raise the approval. Wait for resolution.
                 let request = HermesRealtimeRelayApprovalRequest(
@@ -249,7 +270,8 @@ public actor ComputerUseRunCoordinator {
                     title: action.executableSummary(forApproval: scopeContext),
                     message: action.executableSummary(forApproval: scopeContext),
                     actionSummary: action.executableSummary(forApproval: scopeContext),
-                    requestedAt: Date()
+                    requestedAt: Date(),
+                    trustMode: active.state.liveTrustMode.rawValue
                 )
                 do {
                     let response = try await approvalIssuer(request)
@@ -257,6 +279,15 @@ public actor ComputerUseRunCoordinator {
                     case .approve:
                         approvedBy = response.respondedBy == "phone" ? .phone : .mac
                         approvalId = response.approvalId
+                        if shouldOpenStepBurst(from: response, active: active) {
+                            active.stepBurstApproval = StepBurstApproval(
+                                actionSignature: stepBurstSignature(for: action, scopeContext: scopeContext),
+                                approvedBy: approvedBy,
+                                approvalId: response.approvalId,
+                                remainingActions: 9,
+                                expiresAt: Date().addingTimeInterval(30)
+                            )
+                        }
                     case .reject, .rejectAndHalt:
                         let entry = try? active.logger.makeEntry(
                             for: action,
@@ -470,6 +501,92 @@ public actor ComputerUseRunCoordinator {
     private func isReadOnlyInspect(action: ComputerUseAction) -> Bool {
         if case .macInspect = action { return true }
         return false
+    }
+
+    private func consumeStepBurstApproval(
+        for action: ComputerUseAction,
+        scopeContext: ComputerUseScopeContext,
+        active: inout ActiveSession,
+        now: Date
+    ) -> (approvedBy: ComputerUseAuditEntry.ApprovedBy, approvalId: String?)? {
+        guard active.state.liveTrustMode == .step,
+              var burst = active.stepBurstApproval else { return nil }
+
+        let signature = stepBurstSignature(for: action, scopeContext: scopeContext)
+        guard burst.covers(signature: signature, now: now) else {
+            active.stepBurstApproval = nil
+            return nil
+        }
+
+        burst.remainingActions -= 1
+        active.stepBurstApproval = burst.remainingActions > 0 ? burst : nil
+        return (burst.approvedBy, burst.approvalId)
+    }
+
+    private func shouldOpenStepBurst(
+        from response: HermesRealtimeRelayApprovalResponse,
+        active: ActiveSession
+    ) -> Bool {
+        guard active.state.liveTrustMode == .step,
+              response.decision == .approve,
+              let note = response.note?.lowercased() else { return false }
+        return note.contains("step-mode burst approved")
+    }
+
+    private func stepBurstSignature(
+        for action: ComputerUseAction,
+        scopeContext: ComputerUseScopeContext
+    ) -> String {
+        switch action {
+        case .browser(let action):
+            return [
+                "browser",
+                action.kind.rawValue,
+                scopeContext.url.flatMap(browserHost) ?? "",
+                action.selector ?? "",
+                action.url.flatMap(browserHost) ?? action.url ?? "",
+                action.key?.lowercased() ?? "",
+                action.value ?? "",
+                coordinateSignature(x: action.positionX, y: action.positionY)
+            ].joined(separator: "|")
+        case .macInput(let action):
+            return [
+                "mac.input",
+                action.kind.rawValue,
+                scopeContext.bundleId ?? "",
+                String(action.mouseButton),
+                action.key?.lowercased() ?? "",
+                (action.modifiers ?? []).map { $0.lowercased() }.sorted().joined(separator: "+"),
+                action.text ?? "",
+                coordinateSignature(x: action.displayX, y: action.displayY),
+                coordinateSignature(x: action.dragEndX, y: action.dragEndY)
+            ].joined(separator: "|")
+        case .macInspect(let action):
+            return [
+                "mac.inspect",
+                action.kind.rawValue,
+                scopeContext.bundleId ?? "",
+                coordinateSignature(x: action.displayX, y: action.displayY)
+            ].joined(separator: "|")
+        case .phoneIntent(let intent):
+            return [
+                "phone",
+                intent.kind.rawValue,
+                scopeContext.bundleId ?? "",
+                intent.key?.lowercased() ?? "",
+                (intent.modifiers ?? []).map { $0.lowercased() }.sorted().joined(separator: "+"),
+                intent.text ?? ""
+            ].joined(separator: "|")
+        }
+    }
+
+    private func browserHost(from url: String) -> String? {
+        URL(string: url)?.host?.lowercased()
+    }
+
+    private func coordinateSignature(x: Int?, y: Int?) -> String {
+        guard let x, let y else { return "" }
+        return "\(x),\(y)"
     }
 
     // MARK: Concrete dispatch

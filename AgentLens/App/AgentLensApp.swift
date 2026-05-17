@@ -1142,6 +1142,9 @@ struct OpenBurnBarApp: App {
                         context.operatingLayer.aggregator = aggregator
                         context.operatingLayer.chatController = context.chatController
                         context.daemonManager.attach(dataStore: context.dataStore, cloudSyncService: sync)
+                        #if !DISTRIBUTION_MAS
+                        ComputerUseDaemonApprovalPresenter.shared.start(daemonManager: context.daemonManager)
+                        #endif
                         context.cursorConnectorManager.attach(dataStore: context.dataStore)
                         context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
                         if !hasShownInitialDashboard {

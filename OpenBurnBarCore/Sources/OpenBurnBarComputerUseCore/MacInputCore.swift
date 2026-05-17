@@ -130,4 +130,34 @@ public enum MacInputCore {
         }
         return false
     }
+
+    /// Convert a phone-side normalized point (`0.0...1.0`) into a
+    /// display coordinate. The current Phase 12 wire format does not
+    /// carry a display identifier, so the caller supplies the selected
+    /// display bounds, usually the primary capture/display surface.
+    ///
+    /// Right and bottom edges are clamped to the last valid pixel so a
+    /// normalized coordinate of exactly `1.0` remains on-screen.
+    public static func denormalize(
+        normalizedX: Double?,
+        normalizedY: Double?,
+        in display: DisplayBounds?
+    ) -> (x: Int, y: Int)? {
+        guard let normalizedX,
+              let normalizedY,
+              let display,
+              display.width > 0,
+              display.height > 0,
+              normalizedX >= 0,
+              normalizedX <= 1,
+              normalizedY >= 0,
+              normalizedY <= 1 else {
+            return nil
+        }
+        let maxX = display.originX + display.width - 1
+        let maxY = display.originY + display.height - 1
+        let x = display.originX + Int((Double(display.width) * normalizedX).rounded(.down))
+        let y = display.originY + Int((Double(display.height) * normalizedY).rounded(.down))
+        return (min(maxX, x), min(maxY, y))
+    }
 }

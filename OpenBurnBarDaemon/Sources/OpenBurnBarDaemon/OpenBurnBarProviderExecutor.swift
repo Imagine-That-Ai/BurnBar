@@ -236,7 +236,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             )
         }
 
-        let outboundBody = try Self.rewritingModel(in: body, to: route.resolvedModelID)
+        let outboundBody = try Self.rewritingChatCompletionsBody(in: body, to: route.resolvedModelID)
         let endpoint = baseURL.appending(path: "chat/completions")
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -382,6 +382,30 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         }
         object["model"] = modelID
         return try JSONSerialization.data(withJSONObject: object, options: [])
+    }
+
+    private static func rewritingChatCompletionsBody(in body: Data, to modelID: String) throws -> Data {
+        let json = try JSONSerialization.jsonObject(with: body)
+        guard var object = json as? [String: Any] else {
+            throw BurnBarProviderExecutorError.invalidResponse
+        }
+        object["model"] = modelID
+        normalizeOpenAICompatibleMessages(in: &object)
+        return try JSONSerialization.data(withJSONObject: object, options: [])
+    }
+
+    private static func normalizeOpenAICompatibleMessages(in object: inout [String: Any]) {
+        guard let messages = object["messages"] as? [[String: Any]] else { return }
+        object["messages"] = messages.map { message in
+            var normalized = message
+            if normalized["content"] is NSNull {
+                normalized["content"] = ""
+            } else if let content = normalized["content"],
+                      !(content is String) {
+                normalized["content"] = responsesContentText(content)
+            }
+            return normalized
+        }
     }
 
     private static func chatCompletionsBodyFromResponsesRequest(
@@ -972,7 +996,50 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             object.removeValue(forKey: unsupportedKey)
         }
 
+        normalizeOllamaNativeMessages(in: &object)
+
         return (try JSONSerialization.data(withJSONObject: object, options: []), streamRequested)
+    }
+
+    private static func normalizeOllamaNativeMessages(in object: inout [String: Any]) {
+        guard let messages = object["messages"] as? [[String: Any]] else { return }
+        object["messages"] = messages.map { message in
+            var normalized = message
+            normalizeOllamaNativeToolCalls(at: "tool_calls", in: &normalized)
+            normalizeOllamaNativeToolCalls(at: "toolCalls", in: &normalized)
+            if normalized["content"] is NSNull {
+                normalized["content"] = ""
+            } else if let content = normalized["content"],
+                      !(content is String) {
+                normalized["content"] = responsesContentText(content)
+            }
+            return normalized
+        }
+    }
+
+    private static func normalizeOllamaNativeToolCalls(at key: String, in message: inout [String: Any]) {
+        guard let calls = message[key] as? [[String: Any]] else { return }
+        message[key] = calls.map { call in
+            var normalizedCall = call
+            guard var function = normalizedCall["function"] as? [String: Any] else {
+                return normalizedCall
+            }
+            if let arguments = function["arguments"] as? String {
+                function["arguments"] = ollamaNativeArgumentsObject(from: arguments)
+                normalizedCall["function"] = function
+            }
+            return normalizedCall
+        }
+    }
+
+    private static func ollamaNativeArgumentsObject(from string: String) -> Any {
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let data = trimmed.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) else {
+            return [:] as [String: Any]
+        }
+        return object
     }
 
     private static func moveOpenAIOption(
@@ -1029,6 +1096,7 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         let created = Int(Date().timeIntervalSince1970)
         var sse = Data()
         var finalResponse: OllamaNativeChatResponse?
+        var streamedToolCalls = false
 
         let lines = String(decoding: responseBody, as: UTF8.self)
             .split(whereSeparator: \.isNewline)
@@ -1045,6 +1113,23 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
                         created: created,
                         modelID: modelID,
                         content: content,
+                        toolCalls: nil,
+                        finishReason: nil
+                    ),
+                    to: &sse
+                )
+            }
+
+            let toolCalls = openAIToolCalls(from: decoded, includeIndex: true)
+            if let toolCalls, !toolCalls.isEmpty {
+                streamedToolCalls = true
+                try appendServerSentEvent(
+                    chunk: openAIStreamChunk(
+                        id: responseID,
+                        created: created,
+                        modelID: modelID,
+                        content: nil,
+                        toolCalls: toolCalls,
                         finishReason: nil
                     ),
                     to: &sse
@@ -1058,7 +1143,11 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
                         created: created,
                         modelID: modelID,
                         content: nil,
-                        finishReason: finishReason(from: decoded.doneReason)
+                        toolCalls: nil,
+                        finishReason: finishReason(
+                            from: decoded.doneReason,
+                            hasToolCalls: streamedToolCalls
+                        )
                     ),
                     to: &sse
                 )
@@ -1080,21 +1169,28 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         modelID: String
     ) throws -> Data {
         let content = response.message?.content ?? ""
+        var message: [String: Any] = [
+            "role": response.message?.role ?? "assistant",
+            "content": content
+        ]
+        let toolCalls = openAIToolCalls(from: response, includeIndex: false)
+        if let toolCalls, !toolCalls.isEmpty {
+            message["tool_calls"] = toolCalls
+        }
+        let choice: [String: Any] = [
+            "index": 0,
+            "message": message,
+            "finish_reason": finishReason(
+                from: response.doneReason,
+                hasToolCalls: toolCalls?.isEmpty == false
+            )
+        ]
         let body: [String: Any] = [
             "id": "chatcmpl-\(UUID().uuidString)",
             "object": "chat.completion",
             "created": Int(Date().timeIntervalSince1970),
             "model": response.model ?? modelID,
-            "choices": [
-                [
-                    "index": 0,
-                    "message": [
-                        "role": response.message?.role ?? "assistant",
-                        "content": content
-                    ],
-                    "finish_reason": finishReason(from: response.doneReason)
-                ]
-            ],
+            "choices": [choice],
             "usage": openAIUsageFromOllama(response)
         ]
         return try JSONSerialization.data(withJSONObject: body, options: [])
@@ -1115,11 +1211,15 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         created: Int,
         modelID: String,
         content: String?,
+        toolCalls: [[String: Any]]?,
         finishReason: String?
     ) -> [String: Any] {
         var delta: [String: Any] = [:]
         if let content {
             delta["content"] = content
+        }
+        if let toolCalls, !toolCalls.isEmpty {
+            delta["tool_calls"] = toolCalls
         }
         if finishReason == nil {
             delta["role"] = "assistant"
@@ -1146,7 +1246,63 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         data.append(Data("\n\n".utf8))
     }
 
-    private static func finishReason(from doneReason: String?) -> String {
+    private static func openAIToolCalls(
+        from response: OllamaNativeChatResponse,
+        includeIndex: Bool
+    ) -> [[String: Any]]? {
+        guard let calls = response.message?.toolCalls, !calls.isEmpty else {
+            return nil
+        }
+        let mapped = calls.enumerated().compactMap { index, call in
+            openAIToolCall(from: call, index: index, includeIndex: includeIndex)
+        }
+        return mapped.isEmpty ? nil : mapped
+    }
+
+    private static func openAIToolCall(
+        from call: OllamaNativeToolCall,
+        index: Int,
+        includeIndex: Bool
+    ) -> [String: Any]? {
+        guard let function = call.function,
+              let name = function.name?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty else {
+            return nil
+        }
+        let id = call.id?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let type = call.type?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var mapped: [String: Any] = [
+            "id": id?.isEmpty == false ? id! : "call_ollama_\(index)",
+            "type": type?.isEmpty == false ? type! : "function",
+            "function": [
+                "name": name,
+                "arguments": openAIToolArguments(function.arguments)
+            ]
+        ]
+        if includeIndex {
+            mapped["index"] = index
+        }
+        return mapped
+    }
+
+    private static func openAIToolArguments(_ arguments: BurnBarJSONValue?) -> String {
+        guard let arguments else { return "{}" }
+        if case .string(let string) = arguments {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "{}" : string
+        }
+        guard let data = try? JSONEncoder().encode(arguments),
+              let string = String(data: data, encoding: .utf8),
+              !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "{}"
+        }
+        return string
+    }
+
+    private static func finishReason(from doneReason: String?, hasToolCalls: Bool = false) -> String {
+        if hasToolCalls {
+            return "tool_calls"
+        }
         switch doneReason?.lowercased() {
         case "length":
             return "length"
@@ -1969,6 +2125,24 @@ private struct OllamaNativeChatResponse: Decodable {
         let role: String?
         let content: String?
         let thinking: String?
+        let toolCalls: [OllamaNativeToolCall]?
+
+        private enum CodingKeys: String, CodingKey {
+            case role
+            case content
+            case thinking
+            case tool_calls
+            case toolCalls
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            role = try container.decodeIfPresent(String.self, forKey: .role)
+            content = try container.decodeIfPresent(String.self, forKey: .content)
+            thinking = try container.decodeIfPresent(String.self, forKey: .thinking)
+            toolCalls = try container.decodeIfPresent([OllamaNativeToolCall].self, forKey: .tool_calls)
+                ?? container.decodeIfPresent([OllamaNativeToolCall].self, forKey: .toolCalls)
+        }
     }
 
     let model: String?
@@ -1988,4 +2162,15 @@ private struct OllamaNativeChatResponse: Decodable {
         case promptEvalCount = "prompt_eval_count"
         case evalCount = "eval_count"
     }
+}
+
+private struct OllamaNativeToolCall: Decodable {
+    struct Function: Decodable {
+        let name: String?
+        let arguments: BurnBarJSONValue?
+    }
+
+    let id: String?
+    let type: String?
+    let function: Function?
 }

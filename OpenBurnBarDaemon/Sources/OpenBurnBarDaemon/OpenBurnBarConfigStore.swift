@@ -593,14 +593,40 @@ public actor BurnBarConfigStore {
             return preferred
         }()
 
+        let normalizedBaseURL = normalizedBaseURL(
+            providerID: settings.providerID,
+            rawBaseURL: settings.baseURL
+        )
+
         return BurnBarProviderSettings(
             providerID: settings.providerID,
             isEnabled: settings.isEnabled,
-            baseURL: settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+            baseURL: normalizedBaseURL,
             preferredModelIDs: preferredModelIDs,
+            disabledAdvertisedModelIDs: settings.disabledAdvertisedModelIDs,
             preferredCredentialSlotID: preferredSlotID,
             credentialSlots: normalizedSlots
         )
+    }
+
+    private func normalizedBaseURL(providerID: String, rawBaseURL: String) -> String {
+        let trimmed = rawBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard providerID.caseInsensitiveCompare("opencode") == .orderedSame,
+              var components = URLComponents(string: trimmed),
+              let host = components.host?.lowercased(),
+              host == "opencode.ai" || host.hasSuffix(".opencode.ai") else {
+            return trimmed
+        }
+
+        let path = components.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if path.isEmpty {
+            return catalogSupport.provider(id: "opencode")?.baseURL ?? trimmed
+        }
+        if path.caseInsensitiveCompare("zen/go") == .orderedSame {
+            components.percentEncodedPath = "/zen/go/v1"
+            return components.string ?? trimmed
+        }
+        return trimmed
     }
 
     private func makeDefaultSnapshot() throws -> BurnBarProviderConfigurationSnapshot {

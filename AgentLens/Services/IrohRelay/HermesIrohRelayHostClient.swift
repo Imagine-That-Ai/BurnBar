@@ -99,6 +99,10 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     /// discovers the iroh NodeId through the Firestore pairing record.
     var publishableRelayURLString: String? { nil }
 
+    func setControlDispatcher(_ dispatcher: ControlFrameDispatcher?) {
+        controlDispatcher = dispatcher
+    }
+
     @discardableResult
     func start(uid: String, connectionID: String) async -> Bool {
         if transport != nil, readyUID == uid, readyConnectionID == connectionID {

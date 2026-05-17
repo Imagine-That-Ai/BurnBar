@@ -60,6 +60,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (matching `OpenBurnBarPlaywrightLifecycle.pinnedPlaywrightVersion`).
 
 ### Fixed
+- **OpenCode credential entry accepts real route-key formats.** The Accounts
+  wizard no longer treats OpenCode auth JSON as a generic JWT session token;
+  it accepts the `opencode-go` object, the full `auth.json`, or the bare route
+  key, and the live quota hint now points users to local CLI stats instead of
+  the hosted per-plan quota path.
+- **Catalog provider accounts use their real logos and account rows.** DeepSeek,
+  Alibaba/Qwen, Meta, Mistral, xAI/Grok, and Cohere no longer borrow unrelated
+  agent logos, and daemon keychain slots now appear immediately in the Accounts
+  list even before a cloud `provider_accounts` row exists.
+- **Droid model sync is now a first-class proxy-catalog action.** The
+  Settings → Agents → CLIs and Models proxy catalog panels expose **Sync to
+  Droid**, which rewrites Factory/Droid custom models from the live
+  route-ready `/v1/models` list and preserves cloud-suffixed model IDs such as
+  `kimi-k2.6:cloud`.
+- **Proxy model advertising can be controlled per model.** The Settings →
+  Agents → Models and CLIs catalog rows now expose a per-model advertise
+  toggle; disabled models stay visible in Settings but disappear from the
+  public `/v1/models` route list and from Droid sync until re-enabled.
 - **Hermes Square now opens from the iPad sidebar.** The iPad Hermes
   destination uses the shared `HermesSquareSplitLayout` with the live mobile
   mission host instead of falling back to the legacy conversation list, so

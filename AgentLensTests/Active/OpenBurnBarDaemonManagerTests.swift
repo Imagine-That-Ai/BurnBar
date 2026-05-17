@@ -288,6 +288,36 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(snapshot.providerConfigurations.last?.baseURL, "https://api.minimax.io/v1")
     }
 
+    func test_usageSync_keepsCatalogOnlyProviderIdentityUnmappedForBranding() throws {
+        let harness = try makeRuntimePathsHarness(name: "catalog-provider-branding")
+        defer { harness.cleanup() }
+
+        let configJSON = """
+        {
+          "providers" : [
+            {
+              "baseURL" : "https://api.deepseek.com/v1",
+              "isEnabled" : true,
+              "preferredModelIDs" : [
+                "deepseek-chat"
+              ],
+              "providerID" : "deepseek"
+            }
+          ]
+        }
+        """
+        try configJSON.write(to: harness.paths.providerConfigURL, atomically: true, encoding: .utf8)
+
+        let service = OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default)
+        let snapshot = service.refreshState()
+        let configuration = try XCTUnwrap(snapshot.providerConfigurations.first)
+
+        XCTAssertEqual(configuration.providerID, "deepseek")
+        XCTAssertNil(configuration.provider)
+        XCTAssertEqual(configuration.displayName, "DeepSeek")
+        XCTAssertEqual(configuration.brand.bundledLogoCandidates.first, "DeepSeekLogo")
+    }
+
     func test_providerQuotaRefreshDoesNotMarkDaemonOwnedSlotMissingWhenAppSecretMirrorIsAbsent() throws {
         let projectRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

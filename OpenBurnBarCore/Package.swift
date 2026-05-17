@@ -57,12 +57,12 @@ let irohRelayDependencies: [Target.Dependency] = hasIrohXCFramework
 
 let irohBinaryTargets: [Target] = hasIrohXCFramework ? [
     .binaryTarget(
-        name: "openburnbar_irohFFI",
+        name: "OpenBurnBarIroh",
         path: "../Vendor/OpenBurnBarIroh.xcframework"
     ),
     .target(
         name: "OpenBurnBarIrohFFI",
-        dependencies: ["openburnbar_irohFFI"],
+        dependencies: ["OpenBurnBarIroh"],
         path: "Sources/OpenBurnBarIroh/Generated",
         exclude: [
             "openburnbar_iroh.modulemap",

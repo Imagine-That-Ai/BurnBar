@@ -15,6 +15,8 @@ import OpenBurnBarComputerUseCore
 /// functional in Phase 12 via `PhoneControlSender`).
 @MainActor
 public final class AgentWatchState: ObservableObject {
+    @Published public private(set) var currentFrame: MediaFrame?
+    @Published public private(set) var lastFrameReceivedAt: Date?
     @Published public private(set) var currentCursor: MediaFrame.CursorMetadata?
     @Published public private(set) var actionTimeline: [HermesRealtimeRelayActionLogEntry] = []
     @Published public private(set) var pendingApproval: HermesRealtimeRelayApprovalRequest?
@@ -32,6 +34,12 @@ public final class AgentWatchState: ObservableObject {
 
     public func updateCursor(_ cursor: MediaFrame.CursorMetadata?) {
         currentCursor = cursor
+    }
+
+    public func ingestSurfaceFrame(_ frame: MediaFrame, receivedAt: Date = Date()) {
+        currentFrame = frame
+        lastFrameReceivedAt = receivedAt
+        currentCursor = frame.cursor
     }
 
     public func ingestActionLog(_ entry: HermesRealtimeRelayActionLogEntry) {
@@ -53,6 +61,10 @@ public final class AgentWatchState: ObservableObject {
         pendingApproval = request
     }
 
+    public func setDeniedReason(_ reason: ComputerUseDenyReason?) {
+        lastDeniedReason = reason
+    }
+
     public func setSession(id: ComputerUseSessionID, startedAt: Date) {
         sessionId = id
         sessionStartedAt = startedAt
@@ -68,6 +80,8 @@ public final class AgentWatchState: ObservableObject {
 
     public func clear() {
         currentCursor = nil
+        currentFrame = nil
+        lastFrameReceivedAt = nil
         actionTimeline.removeAll()
         pendingApproval = nil
         sessionId = nil

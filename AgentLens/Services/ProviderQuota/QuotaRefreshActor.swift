@@ -77,6 +77,7 @@ actor QuotaRefreshActor {
         self.adapters = [
             .codex: CodexQuotaAdapter(),
             .openCode: OpenCodeQuotaAdapter(),
+            .deepSeek: DeepSeekQuotaAdapter(),
             .claudeCode: ClaudeQuotaAdapter(),
             .copilot: CopilotQuotaAdapter(),
             .minimax: MiniMaxQuotaAdapter(),
@@ -348,6 +349,9 @@ actor QuotaRefreshActor {
         }
 
         var accountContext = context.withResolvedAPIKeys(resolvedKeys)
+        var environment = accountContext.environment
+        environment["OPENBURNBAR_QUOTA_ACCOUNT_ID"] = credential.accountID
+        accountContext = accountContext.withEnvironment(environment)
         if credential.provider == .claudeCode,
            let credentials = claudeOAuthCredentials(fromStoredRouteCredential: credential.apiKey) {
             accountContext = accountContext.withClaudeCredentialsReader(
@@ -400,11 +404,18 @@ actor QuotaRefreshActor {
         case .claudeCode:
             environment["CLAUDE_CONFIG_PATH"] = profile.configDirectory
             environment["CLAUDE_CONFIG_DIR"] = profile.configDirectory
+            environment["OPENBURNBAR_QUOTA_SWITCHER_PROFILE_ID"] = profile.accountID
         default:
             break
         }
 
-        let profileContext = context.withEnvironment(environment)
+        var profileContext = context.withEnvironment(environment)
+        if profile.provider == .claudeCode,
+           let credentials = claudeOAuthCredentials(fromSwitcherProfileConfigDirectory: profile.configDirectory) {
+            profileContext = profileContext.withClaudeCredentialsReader(
+                StaticClaudeCredentialsReader(credentials: credentials)
+            )
+        }
         let snapshot: ProviderQuotaSnapshot
         do {
             snapshot = try await fetchSnapshot(for: profile.provider, context: profileContext)
@@ -523,6 +534,8 @@ private func daemonProviderID(for provider: AgentProvider) -> String? {
         return "openai"
     case .openCode:
         return "opencode"
+    case .deepSeek:
+        return "deepseek"
     case .kimi:
         return "moonshot"
     default:
@@ -620,6 +633,8 @@ private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
         return .claudeCode
     case "opencode", "open-code":
         return .openCode
+    case "deepseek", "deep-seek":
+        return .deepSeek
     case "moonshot", "kimi":
         return .kimi
     default:
@@ -648,6 +663,8 @@ private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {
         identifiers.append(contentsOf: ["anthropic", "claude", "claude_code", "claude_oauth_bearer"])
     case .openCode:
         identifiers.append(contentsOf: ["opencode", "open_code", "opencode_auth_json"])
+    case .deepSeek:
+        identifiers.append(contentsOf: ["deepseek", "deep_seek"])
     default:
         break
     }
@@ -679,6 +696,13 @@ private func claudeOAuthCredentials(fromStoredRouteCredential rawValue: String) 
         rateLimitTier: "",
         organizationUuid: nil
     )
+}
+
+private func claudeOAuthCredentials(fromSwitcherProfileConfigDirectory configDirectory: String) -> ClaudeOAuthCredentials? {
+    try? ClaudeCodeOAuthCredentialImporter(
+        configDirectory: configDirectory,
+        allowDefaultKeychainFallback: false
+    ).load(allowUserInteraction: false)
 }
 
 private extension String {

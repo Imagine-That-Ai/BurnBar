@@ -119,6 +119,22 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertNil(method?.prefixHint)
     }
 
+    func test_openCodeAuthJSONAcceptsJSONEntryFullJSONAndBareRouteKey() {
+        let descriptor = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "opencode")
+        let method = descriptor?.method(id: "opencode-auth-json")
+
+        XCTAssertEqual(method?.kind, .apiKey)
+        XCTAssertTrue(method?.unlocksProxyRouting ?? false)
+        XCTAssertTrue(method?.unlocksQuotaRefresh ?? false)
+        XCTAssertTrue(method?.validate(#"{"type":"api","key":"opencode-route-key-123456"}"#).isOK ?? false)
+        XCTAssertTrue(method?.validate(#"{"opencode-go":{"type":"api","key":"opencode-route-key-123456"}}"#).isOK ?? false)
+        XCTAssertTrue(method?.validate(#"[{"opencode-go":{"type":"api","key":"opencode-route-key-123456"}}]"#).isOK ?? false)
+        XCTAssertTrue(method?.validate("opencode-route-key-123456").isOK ?? false)
+        XCTAssertTrue(method?.validate("short").isWarning ?? false)
+        XCTAssertTrue(method?.validate(#"{"some-other-provider":{"type":"api","key":"do-not-use"}}"#).isWarning ?? false)
+        XCTAssertTrue(method?.validate(#"{"opencode-go":{"type":"api"}}"#).isWarning ?? false)
+    }
+
     func test_apiKeyValidation_warnsOnMissingPrefix() {
         let method = BurnBarProviderAuthMethod(
             id: "test",

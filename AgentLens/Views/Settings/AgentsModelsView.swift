@@ -4,11 +4,12 @@ import SwiftUI
 
 // MARK: - Settings → Agents → Models
 //
-// Top-level browse surface for every model the local OpenBurnBar gateway is
-// advertising right now. Renders `/v1/models` grouped by provider, with
-// route-readiness, quota state, account label, and source kind. Keeps the
-// fetch + state machine on `ConnectionsViewModel` so the same data backs
-// the embedded CLIs catalog and this dedicated page.
+// Top-level browse surface for every model the local OpenBurnBar gateway can
+// advertise or keep hidden. Renders the internal proxy catalog grouped by
+// provider, with route-readiness, quota state, account label, source kind, and
+// the per-model public `/v1/models` advertisement toggle. Keeps the fetch +
+// state machine on `ConnectionsViewModel` so the same data backs the embedded
+// CLIs catalog and this dedicated page.
 
 struct AgentsModelsView: View {
     @Bindable var settingsManager: SettingsManager
@@ -34,7 +35,12 @@ struct AgentsModelsView: View {
                         state: viewModel.proxyModelCatalogState,
                         endpoint: gatewayModelsEndpoint,
                         onRefresh: { refresh() },
-                        onStartGateway: { startGateway() }
+                        onStartGateway: { startGateway() },
+                        droidSyncState: viewModel.state(for: .droid),
+                        onSyncDroid: { syncDroidProxyModels() },
+                        onToggleModelAdvertisement: { model, isEnabled in
+                            setModelAdvertisement(model, isEnabled: isEnabled)
+                        }
                     )
                     .settingsAnchor(SettingsAnchor.agentsModels)
                     legend
@@ -54,11 +60,11 @@ struct AgentsModelsView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-            Text("Every model BurnBar is currently advertising through the local OpenAI-compatible gateway. Each row maps to one provider account; \"route ready\" rows are the ones any wired CLI can call right now.")
+            Text("Every model BurnBar can advertise through the local OpenAI-compatible gateway. Each row maps to one provider account; advertised route-ready rows are the ones any wired CLI can call right now.")
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("This page reads the live catalog from \(gatewayModelsEndpoint). If a model isn't here, it isn't routable yet — add or enable the relevant account under Agents → Accounts.")
+            Text("This page reads the live Settings catalog and controls what appears at \(gatewayModelsEndpoint). Hidden rows stay here so they can be re-enabled without re-adding the account.")
                 .font(DesignSystem.Typography.tiny)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -81,6 +87,16 @@ struct AgentsModelsView: View {
                 title: "blocked",
                 tint: DesignSystem.Colors.warning,
                 detail: "Listed but not routable. Hover the row to see the exact reason (quota exhausted, cooling down, missing credential, auth failed, or disabled)."
+            )
+            legendRow(
+                title: "advertised",
+                tint: DesignSystem.Colors.success,
+                detail: "Visible in the public /v1/models list and eligible for Droid sync when route ready."
+            )
+            legendRow(
+                title: "hidden",
+                tint: DesignSystem.Colors.textSecondary,
+                detail: "Kept in Settings but removed from the public /v1/models list, direct routing, and Droid sync."
             )
             legendRow(
                 title: "source kind",
@@ -133,6 +149,7 @@ struct AgentsModelsView: View {
     private func initialLoad() async {
         await daemonManager.refreshHealth()
         await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+        await viewModel.refreshWiringState(settings: settingsManager)
     }
 
     private func refresh() {
@@ -144,9 +161,38 @@ struct AgentsModelsView: View {
     private func startGateway() {
         Task {
             viewModel.enableLocalGateway(settings: settingsManager)
-            await daemonManager.installAndStart()
-            await daemonManager.refreshHealth()
+            await restartLocalGateway()
             await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
         }
+    }
+
+    private func syncDroidProxyModels() {
+        Task {
+            await viewModel.syncModels(
+                target: .droid,
+                settings: settingsManager,
+                restartGateway: restartLocalGateway
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
+    }
+
+    private func setModelAdvertisement(_ model: ProxyAdvertisedModel, isEnabled: Bool) {
+        Task {
+            await daemonManager.setProviderModelAdvertisement(
+                providerID: model.providerID,
+                modelID: model.modelID,
+                isEnabled: isEnabled
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
+    }
+
+    private func restartLocalGateway() async {
+        await daemonManager.installAndStart()
+        await daemonManager.refreshHealth()
     }
 }

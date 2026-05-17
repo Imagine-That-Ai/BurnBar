@@ -24,22 +24,39 @@ MAC_SOURCES_PHASE = "EF7D3D6CF9326CBCD20C7DF5"
 IOS_SOURCES_PHASE = "989FB439884BAD69F857287F"
 
 MAC_FILES = [
-    "AgentLens/Services/CLIAgentRelayChatExecutor.swift",
+    "AgentLens/Services/ComputerUse/AgentWatchActionPublisher.swift",
+    "AgentLens/Services/ComputerUse/AgentWatchHUDSession.swift",
+    "AgentLens/Services/ComputerUse/ComputerUseDaemonApprovalPresenter.swift",
+    "AgentLens/Services/ComputerUse/ComputerUseRemoteConfigNotifications.swift",
+    "AgentLens/Services/ComputerUse/ComputerUseSessionCoordinator.swift",
     "AgentLens/Services/ComputerUse/ComputerUsePanicHaltCoordinator.swift",
+    "AgentLens/Services/ComputerUse/MacActionDispatcher.swift",
     "AgentLens/Services/ComputerUse/Mac/MacAccessibilityInspector.swift",
+    "AgentLens/Services/ComputerUse/Mac/MacComputerUseDenyRegions.swift",
     "AgentLens/Services/ComputerUse/Mac/MacInputController.swift",
+    "AgentLens/Services/ComputerUse/Mac/MacScreenshotService.swift",
     "AgentLens/Services/ComputerUse/PhoneControlAuthorityValidator.swift",
     "AgentLens/Services/ComputerUse/PhoneControlReceiver.swift",
+    "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+ComputerUse.swift",
     "AgentLens/Views/ComputerUse/ComputerUseApprovalSheet.swift",
+    "AgentLens/Views/ComputerUse/ComputerUseSettingsView.swift",
     "AgentLens/Views/ComputerUse/ComputerUseSessionPanel.swift",
+    "AgentLens/Views/ComputerUse/ComputerUseScopeRuleEditor.swift",
     "AgentLens/Views/ComputerUse/ComputerUseSetupWizard.swift",
 ]
 IOS_FILES = [
-    "OpenBurnBarMobile/Services/CLIAgentRelayChatTransport.swift",
+    "OpenBurnBarMobile/Services/ComputerUse/AgentWatchOverlayCoordinator.swift",
+    "OpenBurnBarMobile/Services/ComputerUse/AgentWatchReceiver.swift",
     "OpenBurnBarMobile/Services/ComputerUse/AgentWatchState.swift",
+    "OpenBurnBarMobile/Services/ComputerUse/ComputerUseSessionState.swift",
     "OpenBurnBarMobile/Services/ComputerUse/PhoneControlAuthorityIssuer.swift",
     "OpenBurnBarMobile/Services/ComputerUse/PhoneControlSender.swift",
+    "OpenBurnBarMobile/Views/ComputerUse/AgentActionTimelineSheet.swift",
+    "OpenBurnBarMobile/Views/ComputerUse/AgentWatchScreen.swift",
     "OpenBurnBarMobile/Views/ComputerUse/AgentWatchView.swift",
+    "OpenBurnBarMobile/Views/ComputerUse/ComputerUseDeviceSheet.swift",
+    "OpenBurnBarMobile/Views/ComputerUse/ComputerUseTrustModeBadge.swift",
+    "OpenBurnBarMobile/Views/ComputerUse/PhoneControlOptionSheet.swift",
 ]
 
 
@@ -48,6 +65,15 @@ def stable_id(path: str, salt: str) -> str:
     produce the same IDs."""
     h = hashlib.sha256(f"openburnbar-cu:{salt}:{path}".encode()).hexdigest().upper()
     return h[:24]
+
+
+def pbx_quote(value: str) -> str:
+    """Quote PBX scalar strings when the path contains characters that
+    old-style pbxproj syntax does not accept bare, such as `+`."""
+    if re.match(r"^[A-Za-z0-9_./-]+$", value):
+        return value
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
 
 
 def main() -> int:
@@ -64,20 +90,21 @@ def main() -> int:
     def register(path: str, phase: str):
         nonlocal contents
         file_name = Path(path).name
+        quoted_path = pbx_quote(path)
         # Skip if already registered (search for fileRef path).
-        if f"path = {path};" in contents:
+        if f"path = {path};" in contents or f"path = {quoted_path};" in contents:
             print(f"already registered: {path}")
             return
         if f" /* {file_name} */ = {{isa = PBXFileReference" in contents and \
-           f"path = {path};" in contents:
+           (f"path = {path};" in contents or f"path = {quoted_path};" in contents):
             print(f"already registered (name match): {path}")
             return
         file_ref_id = stable_id(path, "fileref")
         build_file_id = stable_id(path, "buildfile")
         file_ref_lines.append(
             f"\t\t{file_ref_id} /* {file_name} */ = {{isa = PBXFileReference; "
-            f"lastKnownFileType = sourcecode.swift; name = {file_name}; "
-            f"path = {path}; sourceTree = SOURCE_ROOT; }};"
+            f"lastKnownFileType = sourcecode.swift; name = {pbx_quote(file_name)}; "
+            f"path = {pbx_quote(path)}; sourceTree = SOURCE_ROOT; }};"
         )
         build_file_lines.append(
             f"\t\t{build_file_id} /* {file_name} in Sources */ = "

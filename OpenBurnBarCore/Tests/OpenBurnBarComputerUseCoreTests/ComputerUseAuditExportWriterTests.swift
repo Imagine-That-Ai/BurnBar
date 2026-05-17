@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 @testable import OpenBurnBarComputerUseCore
 
 final class ComputerUseAuditExportWriterTests: XCTestCase {
@@ -39,7 +40,7 @@ final class ComputerUseAuditExportWriterTests: XCTestCase {
             ))
         }
         let sessionDir = base.appendingPathComponent("export-test-session")
-        let archiveURL = base.appendingPathComponent("export.cua")
+        let archiveURL = base.appendingPathComponent("export.tar.gz")
         let writer = ComputerUseAuditExportWriter()
         let result = try writer.export(
             sessionDirectory: sessionDir,
@@ -49,6 +50,39 @@ final class ComputerUseAuditExportWriterTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: archiveURL.path))
         XCTAssertGreaterThan(result.archiveSizeBytes, 0)
         XCTAssertGreaterThanOrEqual(result.entryCount, 3)
+    }
+
+    func testExportCanIncludeScreenshotArtifacts() throws {
+        let base = try tempDir()
+        let logger = try ComputerUseAuditLogger(
+            sessionId: ComputerUseSessionID("export-test-session"),
+            baseDirectory: base,
+            macAppVersion: macAppVersion
+        )
+        try logger.beginSession(manifest: makeManifest())
+
+        let sessionDir = base.appendingPathComponent("export-test-session", isDirectory: true)
+        let screenshotsDir = sessionDir.appendingPathComponent("screenshots", isDirectory: true)
+        try FileManager.default.createDirectory(at: screenshotsDir, withIntermediateDirectories: true)
+        let screenshotBytes = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A])
+        try screenshotBytes.write(to: screenshotsDir.appendingPathComponent("000001-before.png"))
+
+        try logger.append(try logger.makeEntry(
+            for: .browser(BrowserAction(kind: .click, selector: "button")),
+            approvedBy: .mac,
+            beforeScreenshotHashHex: "screenshot-before"
+        ))
+
+        let writer = ComputerUseAuditExportWriter()
+        let archive = base.appendingPathComponent("with-screenshots.tar.gz")
+        try writer.export(
+            sessionDirectory: sessionDir,
+            destinationURL: archive,
+            includeScreenshots: true
+        )
+
+        let entries = try writer.verify(archive: archive)
+        XCTAssertTrue(entries.contains { $0.path == "screenshots/000001-before.png" })
     }
 
     func testVerifyAcceptsUnmodifiedArchive() throws {
@@ -64,7 +98,7 @@ final class ComputerUseAuditExportWriterTests: XCTestCase {
             approvedBy: .mac
         ))
         let writer = ComputerUseAuditExportWriter()
-        let archive = base.appendingPathComponent("ok.cua")
+        let archive = base.appendingPathComponent("ok.tar.gz")
         try writer.export(
             sessionDirectory: base.appendingPathComponent("export-test-session"),
             destinationURL: archive,
@@ -89,7 +123,7 @@ final class ComputerUseAuditExportWriterTests: XCTestCase {
             approvedBy: .mac
         ))
         let writer = ComputerUseAuditExportWriter()
-        let archive = base.appendingPathComponent("tampered.cua")
+        let archive = base.appendingPathComponent("tampered.tar.gz")
         try writer.export(
             sessionDirectory: base.appendingPathComponent("export-test-session"),
             destinationURL: archive,
@@ -101,6 +135,74 @@ final class ComputerUseAuditExportWriterTests: XCTestCase {
         data[target] = data[target] ^ 0xFF
         try data.write(to: archive)
         XCTAssertThrowsError(try writer.verify(archive: archive))
+    }
+
+    func testExportWritesAndVerifiesDetachedSignature() throws {
+        let base = try tempDir()
+        let logger = try ComputerUseAuditLogger(
+            sessionId: ComputerUseSessionID("export-test-session"),
+            baseDirectory: base,
+            macAppVersion: macAppVersion
+        )
+        try logger.beginSession(manifest: makeManifest())
+        try logger.append(try logger.makeEntry(
+            for: .browser(BrowserAction(kind: .click, selector: "button")),
+            approvedBy: .mac
+        ))
+
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let signer = ComputerUseEd25519AuditExportSigner(
+            privateKey: privateKey,
+            signerIdentifier: "unit-test-device"
+        )
+        let writer = ComputerUseAuditExportWriter()
+        let archive = base.appendingPathComponent("signed.tar.gz")
+        let result = try writer.export(
+            sessionDirectory: base.appendingPathComponent("export-test-session"),
+            destinationURL: archive,
+            includeScreenshots: false,
+            signer: signer
+        )
+
+        XCTAssertNotNil(result.signatureURL)
+        XCTAssertEqual(result.signature?.algorithm, "ed25519")
+        let entries = try writer.verify(archive: archive, signatureURL: result.signatureURL)
+        XCTAssertTrue(entries.contains { $0.path == "chain.jsonl" })
+    }
+
+    func testExportIsReadableBySystemTar() throws {
+        let base = try tempDir()
+        let logger = try ComputerUseAuditLogger(
+            sessionId: ComputerUseSessionID("export-test-session"),
+            baseDirectory: base,
+            macAppVersion: macAppVersion
+        )
+        try logger.beginSession(manifest: makeManifest())
+        try logger.append(try logger.makeEntry(
+            for: .browser(BrowserAction(kind: .click, selector: "button")),
+            approvedBy: .mac
+        ))
+
+        let archive = base.appendingPathComponent("system-readable.tar.gz")
+        try ComputerUseAuditExportWriter().export(
+            sessionDirectory: base.appendingPathComponent("export-test-session"),
+            destinationURL: archive,
+            includeScreenshots: false
+        )
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        process.arguments = ["-tzf", archive.path]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        try process.run()
+        process.waitUntilExit()
+
+        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        XCTAssertEqual(process.terminationStatus, 0, output)
+        XCTAssertTrue(output.contains("manifest.json"), output)
+        XCTAssertTrue(output.contains("chain.jsonl"), output)
     }
 }
 

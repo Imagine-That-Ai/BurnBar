@@ -42,7 +42,7 @@ struct SettingsView: View {
                     .padding(.top, DesignSystem.Spacing.sm)
                     .padding(.bottom, DesignSystem.Spacing.xs)
 
-                List(SettingsTab.allCases, selection: $router.selectedTab) { tab in
+                List(SettingsTab.visibleTabs, selection: $router.selectedTab) { tab in
                     NavigationLink(value: tab) {
                         sidebarRow(for: tab)
                     }
@@ -343,6 +343,14 @@ struct SettingsView: View {
         case .media:
             MediaPermissionsView()
                 .navigationTitle("Media & Sharing")
+        case .computerUse:
+            #if DISTRIBUTION_MAS
+            MediaPermissionsView()
+                .navigationTitle("Media & Sharing")
+            #else
+            ComputerUseSettingsView()
+                .navigationTitle("Computer Use")
+            #endif
         }
     }
 

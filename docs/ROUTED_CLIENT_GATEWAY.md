@@ -63,9 +63,11 @@ The gateway still keeps native upstream routing by provider format family.
 OpenAI-compatible upstream accounts speak OpenAI-shaped APIs, and Anthropic
 accounts speak Anthropic Messages upstream. `/v1/models` is the contract that
 tells clients which local endpoints BurnBar can serve for each advertised
-model. A Claude model can appear in `/v1/models` for `/v1/chat/completions` or
-`/v1/responses` only because BurnBar has an explicit Anthropic bridge for
-those local endpoints.
+provider/model pair. Multiple credential slots for the same provider/model are
+collapsed into one advertised row; the router keeps the slot list internally
+and fails over automatically. A Claude model can appear in `/v1/models` for
+`/v1/chat/completions` or `/v1/responses` only because BurnBar has an explicit
+Anthropic bridge for those local endpoints.
 
 | Pool | Endpoint | Format | Upstream providers that participate |
 |---|---|---|---|
@@ -78,9 +80,11 @@ with `No eligible route for <model>. Add or enable an account/provider that
 serves this model.` Within a compatible pool, the existing in-flight failover
 loop applies. When a real upstream route proves that a provider/account/model
 pair cannot serve the selected model, BurnBar records that model-level gateway
-health result and stops advertising that exact row from `/v1/models` until the
-block expires. Other models on the same account remain visible if their own
-route is still healthy.
+health result and removes that slot from the advertised provider/model pool
+until the block expires. If another healthy slot can serve the same
+provider/model, the public row stays visible and failover remains automatic.
+Other models on the same account remain visible if their own route is still
+healthy.
 
 ## What routes today
 
@@ -180,7 +184,7 @@ before replacing prior OpenBurnBar entries.
 
 | Client | File | OpenBurnBar-owned keys |
 |---|---|---|
-| Droid/Factory | `~/.factory/settings.local.json` | `customModels` entries with `provider = openai` for models served by OpenAI-owned upstream accounts and `generic-chat-completion-api` for other gateway-served chat models, including bridged Claude models; `id = custom:OpenBurnBar-<model>-<index>`; display names prefixed `OpenBurnBar` |
+| Droid/Factory | `~/.factory/settings.local.json` | Deduped `customModels` entries with `provider = openai` for models served by OpenAI-owned upstream accounts and `generic-chat-completion-api` for other gateway-served chat models, including bridged Claude models; one entry per provider/model, `id = custom:OpenBurnBar-<model>-<index>`; display names prefixed `OpenBurnBar` |
 | Droid/Factory | `~/.factory/settings.json` | Same `customModels` entries as `settings.local.json`, kept in sync because Factory/Droid has used both files across versions |
 | Droid/Factory | `~/.factory/config.json` | `custom_models` entries with the same provider adapter choice and display names prefixed `OpenBurnBar` |
 | OpenCode | `~/.config/opencode/opencode.json` | `provider.openburnbar`; default `model` only when no model is set |
@@ -218,9 +222,11 @@ Droid/Factory consumes custom model arrays, not a sentinel block. Pressing
 filters to route-eligible models served by `/v1/chat/completions` or
 `/v1/responses`, and rewrites OpenBurnBar's entries in
 `~/.factory/settings.local.json`, `~/.factory/settings.json`, and
-`~/.factory/config.json`. Stale OpenBurnBar or local VibeProxy entries on the
-gateway port are removed during each sync, so Droid only sees the current
-BurnBar catalog. The shared OpenAI-style probe runs after the write.
+`~/.factory/config.json`. The sync writes one custom model per provider/model,
+not one per account; account-level failover remains behind the gateway. Stale
+OpenBurnBar or local VibeProxy entries on the gateway port are removed during
+each sync, so Droid only sees the current BurnBar catalog. The shared
+OpenAI-style probe runs after the write.
 
 Codex's ChatGPT-auth mode (browser session cookies) cannot be routed through
 a generic proxy; only the API-key path participates in the OpenAI-family pool
@@ -270,7 +276,7 @@ flow.
 Once the identity is in place, a 429 on Opus over an OAuth route is a real
 usage signal (Claude Max quota window), not a routing problem. BurnBar's
 gateway-model-health store reflects that in the error message it surfaces
-to clients, and hides the model/account row from `/v1/models` until the
+to clients, and removes that account from the advertised model pool until the
 cooldown expires.
 
 Coverage lives in `OpenBurnBarHTTPGatewayServerTests.swift`:

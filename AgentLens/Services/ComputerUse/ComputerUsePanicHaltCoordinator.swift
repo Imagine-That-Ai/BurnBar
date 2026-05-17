@@ -1,4 +1,4 @@
-#if canImport(AppKit)
+#if canImport(AppKit) && !DISTRIBUTION_MAS
 import Foundation
 import AppKit
 import OpenBurnBarComputerUseCore

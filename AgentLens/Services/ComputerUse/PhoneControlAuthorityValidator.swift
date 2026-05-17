@@ -78,12 +78,11 @@ public final class PhoneControlAuthorityValidator: @unchecked Sendable {
             throw ValidationError.counterReplay(lastSeen: lastSeen, attempted: envelope.counter)
         }
 
-        // 3. Re-hash intent.
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        let canonical = try encoder.encode(intent)
-        let observedHash = SHA256.hash(data: canonical)
-        let observedHex = observedHash.map { String(format: "%02x", $0) }.joined()
+        // 3. Re-hash intent. Exclude the authority envelope because it
+        // carries the signature and is attached after the phone signs
+        // the action intent.
+        let observedHex = try ComputerUsePhoneControlSigner()
+            .canonicalInputIntentHashHex(intent: intent)
         guard observedHex == envelope.intentHashBlake3 else {
             throw ValidationError.intentHashMismatch(expected: envelope.intentHashBlake3, observed: observedHex)
         }

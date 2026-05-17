@@ -940,6 +940,7 @@ final class SmartHubBridgeController {
         case .aider:      return "FF6B35"
         case .cursor:     return "AC8C57"
         case .openAI:     return "00A67E"
+        case .deepSeek:   return "6366F1"
         case .codex:      return "00A67E"
         case .openCode:   return "00A67E"
         case .zai:        return "8B5CF6"

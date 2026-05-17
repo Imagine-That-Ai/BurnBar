@@ -21,7 +21,7 @@ typealias MediaFrameDispatcher = @Sendable (
 /// to a phone overlay, or hand the request to `BurnBarApprovalRequest`.
 typealias ControlFrameDispatcher = @Sendable (
     _ frame: HermesRealtimeRelayFrame,
-    _ replySender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void
+    _ replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
 ) async -> Void
 
 /// Closure type the host client injects when iOS opens a stream and

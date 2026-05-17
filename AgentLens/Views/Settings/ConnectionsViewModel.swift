@@ -43,9 +43,43 @@ struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
     let sourceID: String
     let sourceKind: String
     let quotaState: String
+    let advertisementEnabled: Bool
+    let advertised: Bool
     let routeEligible: Bool
     let capabilities: [String]
     let lastError: String?
+
+    init(
+        modelID: String,
+        displayName: String,
+        providerID: String,
+        providerName: String,
+        accountID: String,
+        accountLabel: String,
+        sourceID: String,
+        sourceKind: String,
+        quotaState: String,
+        advertisementEnabled: Bool = true,
+        advertised: Bool = true,
+        routeEligible: Bool,
+        capabilities: [String],
+        lastError: String?
+    ) {
+        self.modelID = modelID
+        self.displayName = displayName
+        self.providerID = providerID
+        self.providerName = providerName
+        self.accountID = accountID
+        self.accountLabel = accountLabel
+        self.sourceID = sourceID
+        self.sourceKind = sourceKind
+        self.quotaState = quotaState
+        self.advertisementEnabled = advertisementEnabled
+        self.advertised = advertised
+        self.routeEligible = routeEligible
+        self.capabilities = capabilities
+        self.lastError = lastError
+    }
 }
 
 enum ProxyModelCatalogState: Equatable {
@@ -317,7 +351,9 @@ final class ConnectionsViewModel {
         guard wiring.isWired(target: .droid) else { return }
         let advertisedModels = proxyModels.isEmpty
             ? await wiring.advertisedModels(gateway: gateway)
-            : proxyModels.map(RoutingClientAdvertisedModel.init(proxyModel:))
+            : proxyModels
+                .filter { $0.advertised && $0.routeEligible }
+                .map(RoutingClientAdvertisedModel.init(proxyModel:))
         guard !advertisedModels.isEmpty else { return }
 
         switch wiring.modelSyncStatus(
@@ -338,9 +374,22 @@ final class ConnectionsViewModel {
     }
 
     private static func fetchProxyModels(gateway: RoutingClientGateway) async throws -> [ProxyAdvertisedModel] {
-        guard let url = URL(string: gateway.baseURL)?.appending(path: "v1/models") else {
+        guard let catalogURL = URL(string: gateway.baseURL)?.appending(path: "v1/models/catalog"),
+              let publicURL = URL(string: gateway.baseURL)?.appending(path: "v1/models") else {
             throw ProxyModelCatalogError.invalidGatewayURL
         }
+
+        do {
+            return try await fetchProxyModels(url: catalogURL, gateway: gateway)
+        } catch ProxyModelCatalogError.http(let status, _) where status == 404 {
+            return try await fetchProxyModels(url: publicURL, gateway: gateway)
+        }
+    }
+
+    private static func fetchProxyModels(
+        url: URL,
+        gateway: RoutingClientGateway
+    ) async throws -> [ProxyAdvertisedModel] {
         var request = URLRequest(url: url)
         request.timeoutInterval = 8
         if !gateway.authToken.isEmpty {
@@ -444,6 +493,8 @@ private struct ProxyModelRow: Decodable {
     let capabilities: [String]?
     let quotaState: String?
     let enabled: Bool?
+    let advertisementEnabled: Bool?
+    let advertised: Bool?
     let routeEligible: Bool?
     let lastError: String?
 
@@ -460,6 +511,8 @@ private struct ProxyModelRow: Decodable {
         case capabilities
         case quotaState = "quota_state"
         case enabled
+        case advertisementEnabled = "advertisement_enabled"
+        case advertised
         case routeEligible = "route_eligible"
         case lastError = "last_error"
     }
@@ -480,6 +533,8 @@ private extension ProxyAdvertisedModel {
         self.sourceID = (row.sourceID?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "\(self.providerID)#\(self.accountID)"
         self.sourceKind = (row.sourceKind?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "gateway"
         self.quotaState = (row.quotaState?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "unknown"
+        self.advertisementEnabled = row.advertisementEnabled ?? true
+        self.advertised = row.advertised ?? (self.advertisementEnabled && (row.routeEligible ?? (row.enabled == true)))
         self.routeEligible = row.routeEligible ?? (row.enabled == true)
         self.capabilities = row.capabilities ?? []
         self.lastError = row.lastError

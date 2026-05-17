@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import OpenBurnBarCore
 
 /// Pure Ed25519 signer / verifier for `PhoneControlAuthority`
 /// envelopes. Phase 12. Lives in `OpenBurnBarComputerUseCore` so iOS
@@ -51,6 +52,35 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             .joined()
     }
 
+    /// Canonical hash for the Phase 12 wire intent. The authority
+    /// envelope is intentionally excluded because it is the signature
+    /// carrier and is mutated after signing. Including it would make
+    /// a valid sender sign placeholder bytes and make the Mac receiver
+    /// hash final bytes, causing every real `control.input` intent to
+    /// fail `intentHashMismatch`.
+    public func canonicalInputIntentHashHex(intent: HermesRealtimeRelayInputIntent) throws -> String {
+        struct SignableInputIntent: Encodable {
+            let kind: HermesRealtimeRelayInputIntent.Kind
+            let normalizedX: Double?
+            let normalizedY: Double?
+            let normalizedX2: Double?
+            let normalizedY2: Double?
+            let text: String?
+            let key: String?
+            let modifiers: [String]?
+        }
+        return try canonicalIntentHashHex(intent: SignableInputIntent(
+            kind: intent.kind,
+            normalizedX: intent.normalizedX,
+            normalizedY: intent.normalizedY,
+            normalizedX2: intent.normalizedX2,
+            normalizedY2: intent.normalizedY2,
+            text: intent.text,
+            key: intent.key,
+            modifiers: intent.modifiers
+        ))
+    }
+
     public func sign<Intent: Encodable>(
         intent: Intent,
         peerNodeId: String,
@@ -59,6 +89,25 @@ public struct ComputerUsePhoneControlSigner: Sendable {
         privateKey: Curve25519.Signing.PrivateKey
     ) throws -> SignedAuthority {
         let intentHashHex = try canonicalIntentHashHex(intent: intent)
+        let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
+        let signature = try privateKey.signature(for: payload)
+        return SignedAuthority(
+            peerNodeId: peerNodeId,
+            counter: counter,
+            timestamp: timestamp,
+            intentHashHex: intentHashHex,
+            signatureBase64: signature.base64EncodedString()
+        )
+    }
+
+    public func sign(
+        intent: HermesRealtimeRelayInputIntent,
+        peerNodeId: String,
+        counter: UInt64,
+        timestamp: Date,
+        privateKey: Curve25519.Signing.PrivateKey
+    ) throws -> SignedAuthority {
+        let intentHashHex = try canonicalInputIntentHashHex(intent: intent)
         let payload = signablePayload(intentHashHex: intentHashHex, counter: counter, timestamp: timestamp)
         let signature = try privateKey.signature(for: payload)
         return SignedAuthority(
@@ -105,6 +154,38 @@ public struct ComputerUsePhoneControlSigner: Sendable {
             throw VerifyError.counterReplay(lastSeen: lastSeenCounter, attempted: authority.counter)
         }
         let observedHex = try canonicalIntentHashHex(intent: intent)
+        guard observedHex == authority.intentHashHex else {
+            throw VerifyError.intentHashMismatch
+        }
+        guard let signatureData = Data(base64Encoded: authority.signatureBase64) else {
+            throw VerifyError.invalidBase64Signature
+        }
+        let payload = signablePayload(
+            intentHashHex: authority.intentHashHex,
+            counter: authority.counter,
+            timestamp: authority.timestamp
+        )
+        guard peerPublicKey.isValidSignature(signatureData, for: payload) else {
+            throw VerifyError.signatureFailed
+        }
+    }
+
+    public func verify(
+        intent: HermesRealtimeRelayInputIntent,
+        authority: SignedAuthority,
+        peerPublicKey: Curve25519.Signing.PublicKey,
+        lastSeenCounter: UInt64,
+        now: Date,
+        freshnessSeconds: TimeInterval = 5.0
+    ) throws {
+        let skew = abs(now.timeIntervalSince(authority.timestamp))
+        guard skew <= freshnessSeconds else {
+            throw VerifyError.staleTimestamp(skewSeconds: skew)
+        }
+        guard authority.counter > lastSeenCounter else {
+            throw VerifyError.counterReplay(lastSeen: lastSeenCounter, attempted: authority.counter)
+        }
+        let observedHex = try canonicalInputIntentHashHex(intent: intent)
         guard observedHex == authority.intentHashHex else {
             throw VerifyError.intentHashMismatch
         }

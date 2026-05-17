@@ -1,14 +1,14 @@
 {
   "algorithm" : "p256-hkdf-sha256-aesgcm",
   "chunkAAD" : "OpenBurnBar-HermesRelay-v1|chunk|u-vector|c-vector|r-vector|0|sse",
-  "chunkCiphertext" : "XLbD4pk4pjVemtv+9JqJWalw8ARUkhO34s\/Fw6s3PnS9DLdKTOJkDnywV\/s3kzA=",
+  "chunkCiphertext" : "XvCnt8rts9mbTz5vSdIDKNBGQp9A7MEIQBWDT\/IKG7hmSJRLfvGWU7Q3Kg9HGM4=",
   "chunkKind" : "sse",
   "chunkPlaintext" : "data: hello mercury",
   "chunkSequence" : 0,
   "connectionId" : "c-vector",
-  "encodedPlaintext" : "eyJzZXNzaW9uSWQiOiJzLXZlY3RvciIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsImJvZHkiOiJ7XCJtZXNzYWdlc1wiOlt7XCJyb2xlXCI6XCJ1c2VyXCIsXCJjb250ZW50XCI6XCJoaVwifV19In0=",
+  "encodedPlaintext" : "eyJib2R5Ijoie1wibWVzc2FnZXNcIjpbe1wicm9sZVwiOlwidXNlclwiLFwiY29udGVudFwiOlwiaGlcIn1dfSIsInBhdGgiOiJcL3YxXC9jaGF0XC9jb21wbGV0aW9ucyIsInNlc3Npb25JZCI6InMtdmVjdG9yIn0=",
   "keyAAD" : "OpenBurnBar-HermesRelay-v1|key|u-vector|c-vector|r-vector",
-  "payloadCiphertext" : "qCt+5LK9U6KaKKh4VvqZd6+fSKcwbsel1pGIrP3YM4wFxNlVs3QLsTAGFwLlisQANVy8XeUZw1YQR+y+FzXKJZa5\/KgWLDuiV0Y8ks1fFWpY90hZe6LzswHxeXGdz9Tk4SjbJ\/CL2N3CTCc0aFYwfyU1Ik1vdnpJTdD\/3u28f3PyIySkSe\/AeMHHCtHo\/2wj2TLJCLX7",
+  "payloadCiphertext" : "shsN4d5QqHyYzQyU3\/\/KJo+SWOdGD9F2YgjLVsxZoXlqgopDvNahJNWeCtJJ2AXtiNUF\/ajLRGxyq4eNxt7Fz\/EjUE\/gV+RSLtSgNjGs9DXmtcUxwAldvIfCSzjwwGyneiWz+yjWEvQcKwia12jnUKBTJBkGSdzIReWYV1pm28s6ZlylvU7Qa28v51oVIQv+RP593+ed",
   "plaintextBody" : "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
   "plaintextPath" : "\/v1\/chat\/completions",
   "plaintextSessionId" : "s-vector",
@@ -19,5 +19,5 @@
   "revision" : "v1",
   "symmetricKey" : "AAcOFRwjKjE4P0ZNVFtiaXB3foWMk5qhqK+2vcTL0tk=",
   "uid" : "u-vector",
-  "wrappedKey" : "BIKyMXgrPoDRk\/YuMjtT1DhCXP15ENBQfzxamWqrn0sxMyw4ACDTIdd2m5agmpcE+ecCnsxX7h7K3p+tiq7P4fOQD2gJBOH\/ePq5wrTV8qF3UmdeyPCcg18VkTwmS0qgrFDDv2B8cUXh5ArC1tcC8bRRp2IEBzeNbQpLZjE="
+  "wrappedKey" : "BCUUoW2MHi\/73XF+YTntsMuZ\/vUz2JqL4bRbwXYWYgV5AGU4zDIq7pONcXqNnRavhwkXXV1wHbAFgo6XAbBKWnp2et6\/I00mOgAzfm4nBAPX873AlvC9AWg4aSVcE23zWa5WRTmckqjfhqkLAvt5Tbd7IFSny4gqgn\/UyO4="
 }

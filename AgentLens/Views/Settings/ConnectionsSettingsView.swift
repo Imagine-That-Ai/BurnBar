@@ -39,6 +39,8 @@ struct ConnectionsSettingsView: View {
     @State private var switcherProfiles: [SwitcherProfileRecord] = []
     @State private var switcherProfileLoadError: String?
     @State private var externalAuthStates: [String: CLIAuthInfo] = [:]
+    @State private var refreshingExternalCredentialIDs: Set<String> = []
+    @State private var externalCredentialMessages: [String: String] = [:]
     @State private var isAdvancedExpanded = false
 
     init(
@@ -176,12 +178,16 @@ struct ConnectionsSettingsView: View {
                                 routingState: quotaService.routingStatesByProviderID[group.providerID],
                                 quotaWindowsForAccount: quotaWindows(for:),
                                 quotaWindowsForExternalAccount: quotaWindows(for:),
+                                credentialNoticeForExternalAccount: credentialNotice(for:),
+                                credentialMessageForExternalAccount: { externalCredentialMessages[$0.id] },
+                                isRefreshingExternalCredential: { refreshingExternalCredentialIDs.contains($0.id) },
                                 onTapAccount: { account in
                                     wizardProviderID = ProviderWizardTarget(providerID: account.providerID.rawValue)
                                 },
                                 onTapExternalAccount: { account in
                                     wizardProviderID = ProviderWizardTarget(providerID: account.providerID.rawValue)
                                 },
+                                onRefreshExternalCredential: refreshExternalCredential,
                                 onAddAnother: {
                                     wizardProviderID = ProviderWizardTarget(providerID: group.providerID.rawValue)
                                 }
@@ -290,6 +296,11 @@ struct ConnectionsSettingsView: View {
                         await viewModel.refreshProxyModelCatalog(settings: settingsManager)
                         await viewModel.refreshWiringState(settings: settingsManager)
                     }
+                },
+                droidSyncState: viewModel.state(for: .droid),
+                onSyncDroid: { syncDroidProxyModels() },
+                onToggleModelAdvertisement: { model, isEnabled in
+                    setModelAdvertisement(model, isEnabled: isEnabled)
                 }
             )
 
@@ -322,12 +333,16 @@ struct ConnectionsSettingsView: View {
                             },
                             onTest: { Task { await viewModel.test(target: target, settings: settingsManager) } },
                             onSyncModels: {
-                                Task {
-                                    await viewModel.syncModels(
-                                        target: target,
-                                        settings: settingsManager,
-                                        restartGateway: restartLocalGateway
-                                    )
+                                if target == .droid {
+                                    syncDroidProxyModels()
+                                } else {
+                                    Task {
+                                        await viewModel.syncModels(
+                                            target: target,
+                                            settings: settingsManager,
+                                            restartGateway: restartLocalGateway
+                                        )
+                                    }
                                 }
                             },
                             onRepair: {
@@ -553,6 +568,47 @@ struct ConnectionsSettingsView: View {
         let profileID: String?
     }
 
+    struct ExternalOAuthCredentialNotice: Hashable {
+        enum Kind: Hashable {
+            case credentialMissing
+            case quotaUnavailable
+        }
+
+        let kind: Kind
+        let title: String
+        let message: String
+
+        static func credentialMissing(cliType: SwitcherCLIProfileType, message: String? = nil) -> Self {
+            Self(
+                kind: .credentialMissing,
+                title: "Credential not found",
+                message: message ?? "No \(cliType.displayName) OAuth credential was found for this profile. Refresh the credential to capture current quota."
+            )
+        }
+
+        static func quotaUnavailable(message: String) -> Self {
+            Self(kind: .quotaUnavailable, title: "Quota unavailable", message: message)
+        }
+
+        var systemImage: String {
+            switch kind {
+            case .credentialMissing:
+                return "exclamationmark.triangle.fill"
+            case .quotaUnavailable:
+                return "clock.badge.exclamationmark"
+            }
+        }
+
+        var tint: Color {
+            switch kind {
+            case .credentialMissing:
+                return DesignSystem.Colors.error
+            case .quotaUnavailable:
+                return DesignSystem.Colors.warning
+            }
+        }
+    }
+
     private struct AccountGroup {
         let providerID: ProviderID
         let accounts: [ProviderAccountDoc]
@@ -560,7 +616,15 @@ struct ConnectionsSettingsView: View {
     }
 
     private var activeAccounts: [ProviderAccountDoc] {
-        providerAccounts.filter { $0.status != .deleted }
+        let storedAccounts = providerAccounts.filter { $0.status != .deleted }
+        let storedAccountIDs = Set(storedAccounts.map(\.id))
+        let projectedDaemonAccounts = DaemonCredentialSlotAccountProjection
+            .accounts(from: daemonManager.providerConfigurations)
+            .filter { account in
+                account.status != .deleted && !storedAccountIDs.contains(account.id)
+            }
+
+        return storedAccounts + projectedDaemonAccounts
     }
 
     /// External OAuth account inventory derived from the daemon's switcher
@@ -591,6 +655,30 @@ struct ConnectionsSettingsView: View {
     private func restartLocalGateway() async {
         await daemonManager.installAndStart()
         await daemonManager.refreshHealth()
+    }
+
+    private func syncDroidProxyModels() {
+        Task {
+            await viewModel.syncModels(
+                target: .droid,
+                settings: settingsManager,
+                restartGateway: restartLocalGateway
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
+    }
+
+    private func setModelAdvertisement(_ model: ProxyAdvertisedModel, isEnabled: Bool) {
+        Task {
+            await daemonManager.setProviderModelAdvertisement(
+                providerID: model.providerID,
+                modelID: model.modelID,
+                isEnabled: isEnabled
+            )
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+            await viewModel.refreshWiringState(settings: settingsManager)
+        }
     }
 
     private var accountGroups: [AccountGroup] {
@@ -648,6 +736,18 @@ struct ConnectionsSettingsView: View {
         var next: [String: CLIAuthInfo] = [:]
         for cliType in [SwitcherCLIProfileType.codex, .claude] {
             next[cliType.rawValue] = CLIAuthDiscovery.discoverAuthState(for: cliType)
+        }
+        for profile in switcherProfiles {
+            guard profile.targetKind == .cli,
+                  let cliType = profile.cliType,
+                  cliType == .codex || cliType == .claude,
+                  let configDirectory = normalizedString(profile.cliMetadata?.configDirectory) else {
+                continue
+            }
+            next[profile.id] = CLIAuthDiscovery.discoverAuthState(
+                for: cliType,
+                configDirectoryOverride: configDirectory
+            )
         }
         externalAuthStates = next
     }
@@ -749,7 +849,15 @@ struct ConnectionsSettingsView: View {
 
     private func quotaWindows(for account: ProviderAccountDoc) -> [SwitcherQuotaWindowDisplay] {
         let accountSnapshot = quotaService.snapshot(providerID: account.providerID, accountID: account.id)
-        return switcherQuotaWindowDisplays(snapshot: accountSnapshot)
+        let accountWindows = switcherQuotaWindowDisplays(snapshot: accountSnapshot)
+        if !accountWindows.isEmpty {
+            return accountWindows
+        }
+
+        guard let provider = AgentProvider.fromProviderID(account.providerID) else {
+            return []
+        }
+        return switcherQuotaWindowDisplays(snapshot: quotaService.snapshot(for: provider))
     }
 
     private func quotaWindows(for account: ExternalOAuthAccount) -> [SwitcherQuotaWindowDisplay] {
@@ -766,6 +874,84 @@ struct ConnectionsSettingsView: View {
 
         return []
     }
+
+    private func credentialNotice(for account: ExternalOAuthAccount) -> ExternalOAuthCredentialNotice? {
+        guard !account.isDisabled,
+              let provider = account.cliType.agentProvider,
+              quotaWindows(for: account).isEmpty else {
+            return nil
+        }
+
+        if let authInfo = externalAuthInfo(for: account),
+           !isExternalAuthConnected(authInfo) {
+            return .credentialMissing(
+                cliType: account.cliType,
+                message: credentialMissingMessage(for: account, authInfo: authInfo)
+            )
+        }
+
+        if let snapshot = exactExternalQuotaSnapshot(for: account, provider: provider) {
+            let statusMessage = normalizedString(snapshot.statusMessage)
+            if snapshot.confidence == .unavailable || snapshot.source == .unavailable {
+                return .credentialMissing(
+                    cliType: account.cliType,
+                    message: credentialMissingMessage(
+                        for: account,
+                        snapshotMessage: statusMessage
+                    )
+                )
+            }
+
+            if let statusMessage {
+                return .quotaUnavailable(message: statusMessage)
+            }
+        }
+
+        if let authInfo = externalAuthInfo(for: account),
+           isExternalAuthConnected(authInfo),
+           !account.isCurrentLogin {
+            return .quotaUnavailable(
+                message: "\(account.cliType.displayName) credential is present, but no quota snapshot has been captured for this profile yet. Refresh to capture current quota."
+            )
+        }
+
+        guard !account.isCurrentLogin else { return nil }
+        return .credentialMissing(cliType: account.cliType)
+    }
+
+    private func externalAuthInfo(for account: ExternalOAuthAccount) -> CLIAuthInfo? {
+        if let profileID = account.profileID {
+            return externalAuthStates[profileID]
+        }
+        return externalAuthStates[account.cliType.rawValue]
+    }
+
+    private func credentialMissingMessage(
+        for account: ExternalOAuthAccount,
+        snapshotMessage: String?
+    ) -> String {
+        if let snapshotMessage,
+           !snapshotMessage.localizedCaseInsensitiveContains("stale") {
+            return snapshotMessage
+        }
+
+        return "No \(account.cliType.displayName) OAuth credential was found for this profile. Refresh the credential to capture current quota."
+    }
+
+    private func credentialMissingMessage(
+        for account: ExternalOAuthAccount,
+        authInfo: CLIAuthInfo
+    ) -> String {
+        switch authInfo.authState {
+        case .notInstalled:
+            return "\(account.cliType.displayName) is not installed or not reachable from BurnBar, so this profile's credential cannot be verified."
+        case .notAuthenticated:
+            return "No \(account.cliType.displayName) OAuth credential was found in this saved profile. Refresh the credential to sign in again and capture current quota."
+        case .authenticated, .apiKeyPresent:
+            return "No \(account.cliType.displayName) OAuth credential was found for this profile. Refresh the credential to capture current quota."
+        }
+    }
+
 
     private func exactExternalQuotaSnapshot(
         for account: ExternalOAuthAccount,
@@ -787,6 +973,125 @@ struct ConnectionsSettingsView: View {
 
         return snapshots.first { snapshot in
             normalizedString(snapshot.accountLabel)?.caseInsensitiveCompare(account.label) == .orderedSame
+        }
+    }
+
+    private func refreshExternalCredential(for account: ExternalOAuthAccount) {
+        Task { @MainActor in
+            await refreshExternalCredentialNow(for: account)
+        }
+    }
+
+    @MainActor
+    private func refreshExternalCredentialNow(for account: ExternalOAuthAccount) async {
+        refreshingExternalCredentialIDs.insert(account.id)
+        externalCredentialMessages[account.id] = account.isCurrentLogin
+            ? "Refreshing \(account.cliType.displayName) status..."
+            : "Opening \(account.cliType.displayName) login for \(account.label)..."
+        defer {
+            refreshingExternalCredentialIDs.remove(account.id)
+        }
+
+        if account.isCurrentLogin {
+            refreshExternalAuthStates()
+            if let provider = account.cliType.agentProvider {
+                await quotaService.refresh(provider: provider, dataStore: dataStore)
+            }
+            externalCredentialMessages[account.id] = "Refreshed \(account.cliType.displayName) status."
+            return
+        }
+
+        guard let profileID = account.profileID,
+              let profile = switcherProfiles.first(where: { $0.id == profileID }) else {
+            externalCredentialMessages[account.id] = "Could not find the saved \(account.cliType.displayName) profile. Reload Accounts and try again."
+            loadSwitcherProfiles()
+            return
+        }
+
+        let coordinator = SwitcherCLIAuthCoordinator()
+        let result = await coordinator.reconnect(
+            profile: profile,
+            context: SwitcherCLIAuthCoordinator.ReconnectContext(
+                providerSlotLabel: account.label,
+                existingAccountLabels: switcherProfiles
+                    .filter { $0.id != profile.id && $0.targetKind == .cli && $0.cliType == account.cliType }
+                    .map { externalAccountLabel(for: $0, cliType: account.cliType) }
+            )
+        )
+
+        switch result {
+        case .readyToPersist(let updatedProfile), .requiresConfirmation(let updatedProfile, _, _):
+            do {
+                let refreshed = normalizedExternalOAuthProfile(
+                    updatedProfile,
+                    providerID: account.providerID.rawValue,
+                    cliType: account.cliType
+                )
+                _ = try dataStore.switcherStore.update(refreshed)
+                loadSwitcherProfiles()
+                refreshExternalAuthStates()
+                externalCredentialMessages[account.id] = "Credential refreshed. Updating quota..."
+                if let provider = account.cliType.agentProvider {
+                    await quotaService.refresh(provider: provider, dataStore: dataStore)
+                }
+                externalCredentialMessages[account.id] = "Credential refreshed. Quota will update from this profile only."
+            } catch {
+                externalCredentialMessages[account.id] = "Failed to save refreshed credential: \(error.localizedDescription)"
+            }
+        case .cancelled:
+            externalCredentialMessages[account.id] = "\(account.cliType.displayName) credential refresh was cancelled."
+        case .failed(let message):
+            externalCredentialMessages[account.id] = message
+        }
+    }
+
+    private func normalizedExternalOAuthProfile(
+        _ profile: SwitcherProfileRecord,
+        providerID: String,
+        cliType: SwitcherCLIProfileType
+    ) -> SwitcherProfileRecord {
+        let metadata = profile.cliMetadata ?? SwitcherCLIProfileMetadata()
+        let accountDescription = normalizedString(metadata.accountDescription)
+        let displayLabel = accountDescription
+            ?? normalizedString(metadata.displayLabel)
+            ?? externalAccountLabel(for: profile, cliType: cliType)
+
+        return SwitcherProfileRecord(
+            id: profile.id,
+            targetKind: .cli,
+            cliType: cliType,
+            cliMetadata: SwitcherCLIProfileMetadata(
+                workingDirectory: metadata.workingDirectory,
+                additionalArgs: metadata.additionalArgs,
+                envKeysToPass: metadata.envKeysToPass,
+                displayLabel: displayLabel,
+                configDirectory: metadata.configDirectory,
+                accountDescription: metadata.accountDescription,
+                providerID: canonicalOAuthProviderID(for: providerID, cliType: cliType),
+                runtimeAccountID: metadata.runtimeAccountID,
+                subscriptionTierID: metadata.subscriptionTierID,
+                modelCapabilityClassID: metadata.modelCapabilityClassID,
+                linkedHarnessIDs: metadata.linkedHarnessIDs.isEmpty ? [cliType.rawValue] : metadata.linkedHarnessIDs,
+                neverAutoSwitch: metadata.neverAutoSwitch,
+                lastQuotaExhaustedAt: metadata.lastQuotaExhaustedAt,
+                exhaustedUntil: metadata.exhaustedUntil,
+                lastQuotaExhaustionDetail: metadata.lastQuotaExhaustionDetail,
+                isDisabled: metadata.isDisabled
+            ),
+            sortKey: profile.sortKey,
+            createdAt: profile.createdAt,
+            updatedAt: Date()
+        )
+    }
+
+    private func canonicalOAuthProviderID(for providerID: String, cliType: SwitcherCLIProfileType) -> ProviderID {
+        switch cliType {
+        case .codex:
+            return .openAI
+        case .claude:
+            return .anthropic
+        case .opencode:
+            return .openCode
         }
     }
 
@@ -908,8 +1213,12 @@ private struct ProviderAccountGroup: View {
     let routingState: ProviderRoutingStateSnapshot?
     var quotaWindowsForAccount: (ProviderAccountDoc) -> [SwitcherQuotaWindowDisplay] = { _ in [] }
     var quotaWindowsForExternalAccount: (ConnectionsSettingsView.ExternalOAuthAccount) -> [SwitcherQuotaWindowDisplay] = { _ in [] }
+    var credentialNoticeForExternalAccount: (ConnectionsSettingsView.ExternalOAuthAccount) -> ConnectionsSettingsView.ExternalOAuthCredentialNotice? = { _ in nil }
+    var credentialMessageForExternalAccount: (ConnectionsSettingsView.ExternalOAuthAccount) -> String? = { _ in nil }
+    var isRefreshingExternalCredential: (ConnectionsSettingsView.ExternalOAuthAccount) -> Bool = { _ in false }
     let onTapAccount: (ProviderAccountDoc) -> Void
     var onTapExternalAccount: (ConnectionsSettingsView.ExternalOAuthAccount) -> Void = { _ in }
+    var onRefreshExternalCredential: (ConnectionsSettingsView.ExternalOAuthAccount) -> Void = { _ in }
     let onAddAnother: () -> Void
 
     private var provider: AgentProvider? {
@@ -921,6 +1230,10 @@ private struct ProviderAccountGroup: View {
             return catalogProvider.displayName
         }
         return provider?.displayName ?? providerID.rawValue
+    }
+
+    private var providerBrand: ProviderBrand {
+        ProviderBrand(providerID: providerID.rawValue)
     }
 
     private var activeAccountID: String? { routingState?.activeAccount?.accountID }
@@ -955,7 +1268,11 @@ private struct ProviderAccountGroup: View {
                 ExternalOAuthAccountRowView(
                     account: account,
                     quotaWindows: quotaWindowsForExternalAccount(account),
-                    onTap: { onTapExternalAccount(account) }
+                    credentialNotice: credentialNoticeForExternalAccount(account),
+                    actionMessage: credentialMessageForExternalAccount(account),
+                    isRefreshingCredential: isRefreshingExternalCredential(account),
+                    onTap: { onTapExternalAccount(account) },
+                    onRefreshCredential: { onRefreshExternalCredential(account) }
                 )
             }
             if totalAccountCount == 1 {
@@ -984,13 +1301,11 @@ private struct ProviderAccountGroup: View {
 
     private var header: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
-            if let provider {
-                ZStack {
-                    Circle()
-                        .fill(DesignSystem.Colors.primary(for: provider).opacity(0.12))
-                        .frame(width: 28, height: 28)
-                    ProviderLogoView(provider: provider, size: 18, useFallbackColor: false)
-                }
+            ZStack {
+                Circle()
+                    .fill(providerBrand.accentColor.opacity(0.12))
+                    .frame(width: 28, height: 28)
+                CatalogProviderLogoView(brand: providerBrand, size: 18)
             }
             VStack(alignment: .leading, spacing: 1) {
                 Text(providerDisplayName)
@@ -1163,75 +1478,138 @@ private struct AccountRowView: View {
 private struct ExternalOAuthAccountRowView: View {
     let account: ConnectionsSettingsView.ExternalOAuthAccount
     let quotaWindows: [SwitcherQuotaWindowDisplay]
+    let credentialNotice: ConnectionsSettingsView.ExternalOAuthCredentialNotice?
+    let actionMessage: String?
+    let isRefreshingCredential: Bool
     let onTap: () -> Void
+    let onRefreshCredential: () -> Void
 
     private var tint: Color {
-        account.isDisabled ? DesignSystem.Colors.textMuted : DesignSystem.Colors.success
+        if account.isDisabled { return DesignSystem.Colors.textMuted }
+        return credentialNotice?.tint ?? DesignSystem.Colors.success
     }
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                Circle()
-                    .fill(tint)
-                    .frame(width: 8, height: 8)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(account.label)
-                            .font(DesignSystem.Typography.caption)
-                            .fontWeight(.medium)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        chip(
-                            label: account.isCurrentLogin ? "Current login" : "OAuth profile",
-                            systemImage: account.isCurrentLogin ? "checkmark.seal.fill" : "person.crop.circle.badge.checkmark",
-                            tint: tint
-                        )
-                        if account.isDisabled {
-                            chip(label: "Disabled", systemImage: "pause.circle.fill", tint: DesignSystem.Colors.textMuted)
-                        }
-                    }
-                    Text(account.statusText)
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let detail = account.detail {
-                        Text(detail)
-                            .font(DesignSystem.Typography.monoTiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .textSelection(.enabled)
-                    }
-                    if !quotaWindows.isEmpty {
-                        ConnectionQuotaWindowPills(windows: quotaWindows)
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            Button(action: onTap) {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Circle()
+                        .fill(tint)
+                        .frame(width: 8, height: 8)
+                    rowText
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            trailingControls
+        }
+        .padding(DesignSystem.Spacing.sm)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .fill(DesignSystem.Colors.background.opacity(0.45))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                .stroke(tint.opacity(account.isDisabled ? 0.18 : 0.36), lineWidth: 0.5)
+        )
+        .opacity(account.isDisabled ? 0.66 : 1)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var rowText: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Text(account.label)
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                chip(
+                    label: account.isCurrentLogin ? "Current login" : "OAuth profile",
+                    systemImage: account.isCurrentLogin ? "checkmark.seal.fill" : "person.crop.circle.badge.checkmark",
+                    tint: account.isDisabled ? DesignSystem.Colors.textMuted : DesignSystem.Colors.success
+                )
+                if let credentialNotice {
+                    chip(
+                        label: credentialNotice.title,
+                        systemImage: credentialNotice.systemImage,
+                        tint: credentialNotice.tint
+                    )
+                }
+                if account.isDisabled {
+                    chip(label: "Disabled", systemImage: "pause.circle.fill", tint: DesignSystem.Colors.textMuted)
+                }
+            }
+            Text(account.statusText)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            if let credentialNotice {
+                Text(credentialNotice.message)
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.medium)
+                    .foregroundStyle(credentialNotice.tint)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let actionMessage {
+                Text(actionMessage)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let detail = account.detail {
+                Text(detail)
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+            if !quotaWindows.isEmpty {
+                ConnectionQuotaWindowPills(windows: quotaWindows)
+            }
+        }
+    }
+
+    private var trailingControls: some View {
+        HStack(spacing: 6) {
+            if shouldShowRefreshCredential {
+                Button(action: onRefreshCredential) {
+                    if isRefreshingCredential {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 18, height: 18)
+                    } else {
+                        Label("Refresh credential", systemImage: "arrow.clockwise")
+                            .labelStyle(.titleAndIcon)
                     }
                 }
-                Spacer()
-                Image(systemName: account.isCurrentLogin ? "terminal.fill" : "person.crop.circle.badge.checkmark")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(tint)
-                    .help(account.isCurrentLogin ? "Default local CLI login" : "Isolated OAuth profile")
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(credentialNotice?.tint ?? DesignSystem.Colors.ember)
+                .disabled(account.isDisabled || isRefreshingCredential)
+                .help("Refresh this \(account.cliType.displayName) OAuth credential")
             }
-            .padding(DesignSystem.Spacing.sm)
-            .background(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .fill(DesignSystem.Colors.background.opacity(0.45))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
-                    .stroke(tint.opacity(account.isDisabled ? 0.18 : 0.34), lineWidth: 0.5)
-            )
+
+            Image(systemName: account.isCurrentLogin ? "terminal.fill" : "person.crop.circle.badge.checkmark")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(tint)
+                .help(account.isCurrentLogin ? "Default local CLI login" : "Isolated OAuth profile")
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textMuted)
         }
-        .buttonStyle(.plain)
-        .opacity(account.isDisabled ? 0.66 : 1)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var shouldShowRefreshCredential: Bool {
+        credentialNotice != nil || account.isCurrentLogin
     }
 
     private func chip(label: String, systemImage: String, tint: Color) -> some View {
@@ -1252,6 +1630,9 @@ private struct ExternalOAuthAccountRowView: View {
     private var accessibilityLabel: String {
         var parts = [account.label, account.isCurrentLogin ? "current login" : "OAuth profile"]
         if account.isDisabled { parts.append("disabled") }
+        if let credentialNotice {
+            parts.append(credentialNotice.title)
+        }
         if !quotaWindows.isEmpty {
             parts.append("quota \(quotaWindows.map(\.inlineText).joined(separator: ", "))")
         }

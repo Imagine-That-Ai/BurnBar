@@ -148,10 +148,27 @@ struct RoutingClientAdvertisedModel: Sendable, Equatable {
     /// legitimately serve models with `gpt` in the name.
     var droidProviderType: String {
         let providerText = "\(providerID) \(providerName)".lowercased()
+        let modelText = id.lowercased()
+        if formatFamily.lowercased() == "anthropic"
+            || capabilities.map({ $0.lowercased() }).contains("anthropic")
+            || servedEndpoints.contains("/v1/messages")
+            || providerText.contains("anthropic")
+            || providerText.contains("claude")
+            || modelText.contains("claude")
+            || modelText.contains("anthropic") {
+            return "anthropic"
+        }
         if providerText.contains("openai") || providerText.contains("azure openai") {
             return "openai"
         }
         return "generic-chat-completion-api"
+    }
+
+    /// Factory Droid's BYOK adapters expect different base URL shapes:
+    /// Anthropic points at the host root and appends `/v1/messages`, while
+    /// OpenAI and generic chat-completions adapters point at `/v1`.
+    func droidBaseURL(gateway: RoutingClientGateway) -> String {
+        droidProviderType == "anthropic" ? gateway.baseURL : "\(gateway.baseURL)/v1"
     }
 }
 
@@ -499,7 +516,7 @@ struct RoutingClientWiring {
                   let rows = object["data"] as? [[String: Any]] else {
                 return []
             }
-            return rows.compactMap { row in
+            let models: [RoutingClientAdvertisedModel] = rows.compactMap { row -> RoutingClientAdvertisedModel? in
                 guard let id = (row["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                       !id.isEmpty else {
                     return nil
@@ -520,9 +537,77 @@ struct RoutingClientWiring {
                     routeEligible: (row["route_eligible"] as? Bool) ?? true
                 )
             }
+            return Self.logicalProviderModelCatalog(models)
         } catch {
             return []
         }
+    }
+
+    private static func logicalProviderModelCatalog(
+        _ models: [RoutingClientAdvertisedModel]
+    ) -> [RoutingClientAdvertisedModel] {
+        let normalizedRows = models.map { model in
+            normalizedLegacyAccountScopedModel(model)
+        }
+        let duplicateRawIDs = Set(
+            Dictionary(grouping: normalizedRows) {
+                $0.id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            }
+            .compactMap { entry -> String? in
+                let id = entry.key
+                let providerIDs = Set(entry.value.map { $0.providerID.lowercased() })
+                return id.isEmpty || providerIDs.count < 2 ? nil : id
+            }
+        )
+
+        var seen: Set<String> = []
+        var logicalRows: [RoutingClientAdvertisedModel] = []
+        for row in normalizedRows {
+            let rawID = row.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawID.isEmpty else { continue }
+            let routedID = duplicateRawIDs.contains(rawID.lowercased())
+                ? "\(row.providerID)/\(rawID)"
+                : rawID
+            let key = "\(row.providerID.lowercased())|\(routedID.lowercased())"
+            guard seen.insert(key).inserted else { continue }
+            logicalRows.append(
+                RoutingClientAdvertisedModel(
+                    id: routedID,
+                    displayName: row.displayName,
+                    providerID: row.providerID,
+                    providerName: row.providerName,
+                    formatFamily: row.formatFamily,
+                    servedEndpoints: row.servedEndpoints,
+                    capabilities: row.capabilities,
+                    routeEligible: row.routeEligible
+                )
+            )
+        }
+        return logicalRows
+    }
+
+    private static func normalizedLegacyAccountScopedModel(
+        _ model: RoutingClientAdvertisedModel
+    ) -> RoutingClientAdvertisedModel {
+        let parts = model.id.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count >= 3,
+              parts[0].caseInsensitiveCompare(model.providerID) == .orderedSame else {
+            return model
+        }
+        let rawModelID = parts.dropFirst(2).joined(separator: "/")
+        guard !rawModelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return model
+        }
+        return RoutingClientAdvertisedModel(
+            id: rawModelID,
+            displayName: model.displayName,
+            providerID: model.providerID,
+            providerName: model.providerName,
+            formatFamily: model.formatFamily,
+            servedEndpoints: model.servedEndpoints,
+            capabilities: model.capabilities,
+            routeEligible: model.routeEligible
+        )
     }
 
     /// POSIX-safe single-quoted shell argument. Embedded single quotes are
@@ -962,7 +1047,7 @@ struct RoutingClientWiring {
         root["customModels"] = customModels
         updateDroidDefaultModelIfManaged(
             root: &root,
-            fallbackModelID: openBurnBarModels.first?["id"] as? String
+            fallbackModelID: preferredDroidDefaultModelID(from: openBurnBarModels)
         )
         try writeJSONObject(root, to: url)
         return backupURL
@@ -980,7 +1065,7 @@ struct RoutingClientWiring {
             [
                 "model_display_name": "OpenBurnBar \(model.displayName.isEmpty ? model.id : model.displayName)",
                 "model": model.id,
-                "base_url": "\(gateway.baseURL)/v1",
+                "base_url": model.droidBaseURL(gateway: gateway),
                 "api_key": gateway.effectiveClientToken,
                 "max_output_tokens": 8192,
                 "provider": model.droidProviderType,
@@ -999,7 +1084,7 @@ struct RoutingClientWiring {
             "model": model.id,
             "id": droidCustomModelID(for: model, index: index),
             "index": index,
-            "baseUrl": "\(gateway.baseURL)/v1",
+            "baseUrl": model.droidBaseURL(gateway: gateway),
             "apiKey": gateway.effectiveClientToken,
             "displayName": "OpenBurnBar \(model.displayName.isEmpty ? model.id : model.displayName)",
             "maxOutputTokens": 8192,
@@ -1020,6 +1105,13 @@ struct RoutingClientWiring {
             .trimmingCharacters(in: CharacterSet(charactersIn: ".-_"))
             .isEmpty ? "model" : sanitized
         return "custom:OpenBurnBar-\(slug)-\(index)"
+    }
+
+    private func preferredDroidDefaultModelID(from models: [[String: Any]]) -> String? {
+        let nonAnthropic = models.first {
+            (($0["provider"] as? String)?.lowercased() ?? "") != "anthropic"
+        }
+        return (nonAnthropic ?? models.first)?["id"] as? String
     }
 
     private func removeOpenBurnBarDroidModels(
@@ -1155,7 +1247,8 @@ struct RoutingClientWiring {
     private func gatewayServedModelsOrThrow(
         _ advertisedModels: [RoutingClientAdvertisedModel]
     ) throws -> [RoutingClientAdvertisedModel] {
-        let models = advertisedModels.filter(\.isGatewayServedModelCandidate)
+        let models = Self.logicalProviderModelCatalog(advertisedModels)
+            .filter(\.isGatewayServedModelCandidate)
         guard !models.isEmpty else {
             throw RoutingClientWiringError.gatewayMisconfigured(
                 detail: "No route-eligible gateway models are advertised by /v1/models. Add or enable an account/provider before wiring this CLI."
@@ -1167,7 +1260,7 @@ struct RoutingClientWiring {
     private func gatewayServedModelIDs(
         _ advertisedModels: [RoutingClientAdvertisedModel]
     ) -> [String] {
-        advertisedModels
+        Self.logicalProviderModelCatalog(advertisedModels)
             .filter(\.isGatewayServedModelCandidate)
             .map(\.id)
             .uniquedPreservingOrder()

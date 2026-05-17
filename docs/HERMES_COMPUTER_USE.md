@@ -1,6 +1,6 @@
 # OpenBurnBar Computer Use — operator & engineer reference
 
-**Status:** Phase 8 substrate landed · Phase 9–13 source-complete behind flags
+**Status:** Phase 8 substrate landed · Phase 9–13 source mostly landed behind flags · launch gates still open
 **Master plan:** [`plans/2026-05-16-computer-use-master-plan.md`](../plans/2026-05-16-computer-use-master-plan.md)
 **Substrate:** Layers on Mercury Media — see [`HERMES_MEDIA_TRANSPORT.md`](HERMES_MEDIA_TRANSPORT.md).
 
@@ -114,6 +114,30 @@ The walker `ComputerUseAuditChain.validate(at:sessionManifestHashHex:expectedHea
 
 Always pass `expectedHeadHashHex` from `head.json` when invoking the validator — otherwise a tampered last entry passes the parent-chain walk.
 
+### 5.2 Export format
+
+`ComputerUseAuditExportWriter` exports Phase 13 audit bundles as a real `.tar.gz`:
+
+- POSIX ustar entries for `manifest.json`, `chain.jsonl`, optional `head.json`, and optional `screenshots/*.png`.
+- Gzip compression via zlib.
+- Detached JSON signature sidecar at `{archive}.sig.json`.
+- Signature algorithm today: `ed25519`, signed by an OpenBurnBar device-local export key.
+
+The master plan asks for an Apple/iCloud device-certificate signing identity. That identity is not present in the current codebase; until one is wired in, the archive format is plan-aligned but the signer identity remains a rollout blocker.
+
+### 5.3 OpenTimestamps validation
+
+`validateOpenTimestampsProof` is the server-side Phase 13 cross-check:
+
+- Callable Cloud Function exported from `functions/src/computerUseOpenTimestamps.ts`.
+- Requires Firebase Auth + App Check and enforces `request.auth.uid == uid`.
+- Checks `users/{uid}/computer_use_sessions/{sessionId}.auditHeadHashHex` against the submitted head hash before attempting proof validation.
+- Accepts the `.ots` proof bytes as base64 and optional `chain.jsonl` bytes as base64.
+- Runs `ots verify chain.jsonl.ots` when `OPENBURNBAR_OTS_VERIFY_BIN` or `ots` is available in the runtime.
+- Returns `ots_verifier_unavailable` instead of marking a proof verified when the official verifier is not installed.
+
+This means server-side validation is wired, but production Bitcoin-header proof requires packaging the OpenTimestamps verifier into the Cloud Functions runtime or running the validation job in an environment that has it.
+
 ---
 
 ## 6. Phone-control authority envelope
@@ -128,7 +152,7 @@ intentHashBlake3 (hex SHA-256 of canonical-JSON intent)
 signatureEd25519 (base64 Ed25519 over UTF8(intentHash) ‖ u64BE(counter) ‖ i64BE(timestampMs))
 ```
 
-The pure signer/verifier lives in `OpenBurnBarComputerUseCore.ComputerUsePhoneControlSigner` so both platforms (iOS issuer, Mac validator) share canonical signing semantics and the test target can prove sig + counter + freshness + intent-hash semantics from a single fixture.
+For `HermesRealtimeRelayInputIntent`, the signed `intentHashBlake3` covers the action fields and excludes the `authority` envelope. The phone signs before attaching the final envelope; the Mac verifier recomputes the same authority-free hash before checking the Ed25519 signature. The pure signer/verifier lives in `OpenBurnBarComputerUseCore.ComputerUsePhoneControlSigner` so both platforms (iOS issuer, Mac validator) share canonical signing semantics and the test target can prove sig + counter + freshness + intent-hash semantics from a single fixture.
 
 ### 6.1 Replay rejection contract
 

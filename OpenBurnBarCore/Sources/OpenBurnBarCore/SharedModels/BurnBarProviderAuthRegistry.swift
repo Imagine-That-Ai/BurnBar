@@ -117,6 +117,10 @@ public struct BurnBarProviderAuthMethod: Codable, Hashable, Sendable, Identifiab
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return .empty }
 
+        if id == "opencode-auth-json" {
+            return Self.validateOpenCodeRouteCredential(trimmed)
+        }
+
         if let prefix = prefixHint,
            !trimmed.lowercased().hasPrefix(prefix.lowercased()) {
             return .warning("Expected this credential to start with \(prefix).")
@@ -136,6 +140,66 @@ public struct BurnBarProviderAuthMethod: Codable, Hashable, Sendable, Identifiab
         }
 
         return .ok
+    }
+
+    private static func validateOpenCodeRouteCredential(_ trimmed: String) -> BurnBarProviderAuthValidation {
+        if trimmed.first == "{" || trimmed.first == "[" {
+            guard let data = trimmed.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) else {
+                return .warning("Paste valid OpenCode auth.json JSON or the opencode-go key value.")
+            }
+
+            guard let key = findOpenCodeRouteKey(in: json),
+                  key.count >= 12 else {
+                return .warning("OpenCode auth.json must include an opencode-go key.")
+            }
+
+            return .ok
+        }
+
+        if trimmed.count < 12 {
+            return .warning("OpenCode route keys are usually longer than 12 characters.")
+        }
+
+        return .ok
+    }
+
+    private static func findOpenCodeRouteKey(in value: Any) -> String? {
+        if let dictionary = value as? [String: Any] {
+            if let openCodeGo = dictionary["opencode-go"],
+               let key = findOpenCodeRouteKey(in: openCodeGo) {
+                return key
+            }
+
+            if let key = dictionary["key"] as? String {
+                let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+        }
+
+        if let array = value as? [Any] {
+            for item in array {
+                guard let dictionary = item as? [String: Any],
+                      let openCodeGo = dictionary["opencode-go"],
+                      let key = findOpenCodeRouteKey(in: openCodeGo) else {
+                    continue
+                }
+                return key
+            }
+        }
+
+        if let dictionary = value as? [String: Any] {
+            for keyName in ["opencodeGo", "opencode_go", "opencode"] {
+                if let candidate = dictionary[keyName],
+                   let key = findOpenCodeRouteKey(in: candidate) {
+                    return key
+                }
+            }
+        }
+
+        return nil
     }
 }
 
@@ -545,10 +609,10 @@ public enum BurnBarProviderAuthRegistry {
         methods: [
             BurnBarProviderAuthMethod(
                 id: "opencode-auth-json",
-                kind: .sessionToken,
+                kind: .apiKey,
                 displayName: "OpenCode auth.json",
-                summary: "Routes OpenCode Go models and tracks local/self-hosted quota stats.",
-                helperText: "Paste the opencode-go entry from ~/.local/share/opencode/auth.json, or the full auth.json. OpenBurnBar extracts the route key and sends requests to OpenCode Go's OpenAI-compatible gateway.",
+                summary: "Routes OpenCode Go models; local quota comes from CLI stats.",
+                helperText: "Paste the opencode-go entry from ~/.local/share/opencode/auth.json, the full auth.json, or just its key value. OpenBurnBar extracts the route key and sends requests to OpenCode Go's OpenAI-compatible gateway.",
                 placeholder: "{\"opencode-go\":{\"type\":\"...\",\"key\":\"...\"}}",
                 dashboardURL: "https://opencode.ai/docs/go/",
                 dashboardLabel: "OpenCode Go docs",

@@ -2,6 +2,69 @@ import Foundation
 import GRDB
 import OpenBurnBarCore
 
+struct DaemonCredentialSlotAccountProjection {
+    static func accounts(
+        from configurations: [OpenBurnBarDaemonProviderConfiguration],
+        now: Date = Date()
+    ) -> [ProviderAccountDoc] {
+        configurations.flatMap { configuration -> [ProviderAccountDoc] in
+            let providerID = ProviderID(rawValue: configuration.providerID)
+            let defaultSlotID = configuration.preferredCredentialSlotID
+                ?? configuration.credentialSlots.first(where: \.isEnabled)?.slotID
+
+            return configuration.credentialSlots.enumerated().map { index, slot in
+                let isEnabled = configuration.isEnabled && slot.isEnabled
+                let status = accountStatus(for: slot.status, isEnabled: isEnabled)
+                let hasRefreshState = slot.lastQuotaRemainingPercent != nil
+                    || slot.lastQuotaResetsAt != nil
+                    || slot.lastStatusMessage != nil
+                    || slot.lastSelectedAt != nil
+                let updatedAt = slot.updatedAt
+
+                return ProviderAccountDoc(
+                    id: accountID(providerID: providerID, slotID: slot.slotID),
+                    providerID: providerID,
+                    label: slot.label,
+                    identityHint: "Daemon credential slot",
+                    status: status,
+                    credentialKind: .bearer,
+                    storageScope: .deviceKeychain,
+                    redactedLabel: "Stored in Mac Keychain",
+                    isDefault: slot.slotID == defaultSlotID,
+                    sortKey: slot.slotID == defaultSlotID ? 0 : Double(index + 1),
+                    lastValidatedAt: slot.status == .ready ? updatedAt : nil,
+                    lastRefreshAt: hasRefreshState ? updatedAt : nil,
+                    lastErrorCode: status == .connected ? nil : slot.status.rawValue,
+                    schemaVersion: 1,
+                    createdAt: updatedAt,
+                    updatedAt: now
+                )
+            }
+        }
+    }
+
+    static func accountID(providerID: ProviderID, slotID: String) -> String {
+        "\(providerID.rawValue)-\(ProviderID.normalize(slotID))"
+    }
+
+    private static func accountStatus(
+        for slotStatus: BurnBarProviderCredentialSlotStatus,
+        isEnabled: Bool
+    ) -> ProviderAccountStatus {
+        guard isEnabled else { return .disabled }
+        switch slotStatus {
+        case .ready:
+            return .connected
+        case .coolingDown, .exhausted:
+            return .stale
+        case .disabled:
+            return .disabled
+        case .missingSecret:
+            return .error
+        }
+    }
+}
+
 // MARK: - Quota Service
 
 @Observable
@@ -521,7 +584,7 @@ final class ProviderQuotaService {
         apiKeyOverride: String
     ) async throws -> ProviderQuotaSnapshot {
         switch provider {
-        case .minimax, .zai, .copilot, .ollama, .kimi:
+        case .minimax, .zai, .deepSeek, .copilot, .ollama, .kimi:
             let scratchDataStore = try makeScratchDataStore()
             let context = makeContext(dataStore: scratchDataStore, apiKeyOverrides: [provider: apiKeyOverride])
             return try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
@@ -532,7 +595,7 @@ final class ProviderQuotaService {
                 source: .unavailable,
                 confidence: .unavailable,
                 managementURL: nil,
-                statusMessage: "Per-plan quota refresh is available for MiniMax, Z.ai, Kimi, Copilot, and Ollama Cloud.",
+                statusMessage: "Per-plan quota refresh is available for MiniMax, Z.ai, DeepSeek, Kimi, Copilot, and Ollama Cloud.",
                 buckets: []
             )
         }
@@ -825,6 +888,8 @@ final class ProviderQuotaService {
             return "ollama"
         case .openCode:
             return "opencode"
+        case .deepSeek:
+            return "deepseek"
         case .kimi:
             return "moonshot"
         case .claudeCode:
@@ -851,6 +916,8 @@ final class ProviderQuotaService {
             identifiers.append("kimi_auth_token")
         case .openCode:
             identifiers.append(contentsOf: ["opencode", "open_code", "opencode_auth_json"])
+        case .deepSeek:
+            identifiers.append(contentsOf: ["deepseek", "deep_seek"])
         default:
             break
         }
@@ -988,61 +1055,20 @@ final class ProviderQuotaService {
     }
 
     private func daemonCredentialSlotAccounts(providers: Set<AgentProvider>? = nil) -> [ProviderAccountDoc] {
-        let now = Date()
-        return OpenBurnBarDaemonManager.shared.providerConfigurations.flatMap { configuration -> [ProviderAccountDoc] in
-            guard let provider = Self.quotaCapableProvider(forProviderID: configuration.providerID),
-                  providers?.contains(provider) ?? true else {
-                return []
+        let allowedProviderIDs = Set(
+            OpenBurnBarDaemonManager.shared.providerConfigurations.compactMap { configuration -> ProviderID? in
+                guard let provider = Self.quotaCapableProvider(forProviderID: configuration.providerID),
+                      providers?.contains(provider) ?? true else {
+                    return nil
+                }
+                return ProviderID(rawValue: configuration.providerID)
             }
+        )
+        guard !allowedProviderIDs.isEmpty else { return [] }
 
-            let providerID = ProviderID(rawValue: configuration.providerID)
-            let defaultSlotID = configuration.preferredCredentialSlotID
-                ?? configuration.credentialSlots.first(where: \.isEnabled)?.slotID
-
-            return configuration.credentialSlots.enumerated().map { index, slot in
-                let accountID = "\(providerID.rawValue)-\(ProviderID.normalize(slot.slotID))"
-                let isEnabled = configuration.isEnabled && slot.isEnabled
-                let status = Self.accountStatus(for: slot.status, isEnabled: isEnabled)
-                let hasQuotaState = slot.lastQuotaRemainingPercent != nil
-                    || slot.lastQuotaResetsAt != nil
-                    || slot.lastStatusMessage != nil
-                let updatedAt = slot.updatedAt
-
-                return ProviderAccountDoc(
-                    id: accountID,
-                    providerID: providerID,
-                    label: slot.label,
-                    status: status,
-                    credentialKind: .bearer,
-                    storageScope: .deviceKeychain,
-                    redactedLabel: "Stored in Mac Keychain",
-                    isDefault: slot.slotID == defaultSlotID,
-                    sortKey: slot.slotID == defaultSlotID ? 0 : Double(index + 1),
-                    lastRefreshAt: hasQuotaState ? updatedAt : nil,
-                    lastErrorCode: status == .connected ? nil : slot.status.rawValue,
-                    schemaVersion: 1,
-                    createdAt: updatedAt,
-                    updatedAt: now
-                )
-            }
-        }
-    }
-
-    private static func accountStatus(
-        for slotStatus: BurnBarProviderCredentialSlotStatus,
-        isEnabled: Bool
-    ) -> ProviderAccountStatus {
-        guard isEnabled else { return .disabled }
-        switch slotStatus {
-        case .ready:
-            return .connected
-        case .coolingDown, .exhausted:
-            return .stale
-        case .disabled:
-            return .disabled
-        case .missingSecret:
-            return .error
-        }
+        return DaemonCredentialSlotAccountProjection
+            .accounts(from: OpenBurnBarDaemonManager.shared.providerConfigurations)
+            .filter { allowedProviderIDs.contains($0.providerID) }
     }
 
     private static func quotaCapableProvider(forProviderID providerID: String) -> AgentProvider? {
@@ -1059,6 +1085,8 @@ final class ProviderQuotaService {
             return .claudeCode
         case "opencode", "open-code":
             return .openCode
+        case "deepseek", "deep-seek":
+            return .deepSeek
         case "moonshot", "kimi":
             return .kimi
         default:

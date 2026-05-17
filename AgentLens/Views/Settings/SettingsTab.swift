@@ -14,6 +14,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case notifications
     case devicesAndSync
     case media
+    case computerUse
 
     var id: String { rawValue }
 
@@ -28,6 +29,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .notifications: return "Notifications"
         case .devicesAndSync: return MacCopy.devicesAndSyncTitle
         case .media: return "Media & Sharing"
+        case .computerUse: return "Computer Use"
         }
     }
 
@@ -53,6 +55,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "Cloud sync, trusted devices, smart displays"
         case .media:
             return "Mercury file transfer, screen share, calls — permissions and partner preferences"
+        case .computerUse:
+            return "Agent Watch, browser driving, Mac input, approvals, and audit chain"
         }
     }
 
@@ -67,6 +71,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .notifications: return "bell.badge.fill"
         case .devicesAndSync: return "macbook.and.iphone"
         case .media: return "play.rectangle.on.rectangle"
+        case .computerUse: return "cursorarrow.click.2"
         }
     }
 
@@ -81,6 +86,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .notifications: return DesignSystem.Colors.whimsy
         case .devicesAndSync: return DesignSystem.Colors.teal
         case .media: return DesignSystem.Colors.hermesMercury
+        case .computerUse: return DesignSystem.Colors.blaze
         }
     }
 
@@ -91,6 +97,16 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         default:
             return []
         }
+    }
+}
+
+extension SettingsTab {
+    static var visibleTabs: [SettingsTab] {
+        #if DISTRIBUTION_MAS
+        return allCases.filter { $0 != .computerUse }
+        #else
+        return allCases
+        #endif
     }
 }
 

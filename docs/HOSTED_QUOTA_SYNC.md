@@ -190,7 +190,9 @@ OpenBurnBar-hosted OpenCode quota refresh is not supported until OpenCode
 exposes a stable public account quota API. Do not ask users to paste
 `~/.local/share/opencode/auth.json` into the hosted service. Local BurnBar may
 store an OpenCode Go route credential in the user's own macOS Keychain so the
-local gateway can proxy OpenCode Go models.
+local gateway can proxy OpenCode Go models. That local route credential can be
+the full `auth.json`, the `opencode-go` object from it, or the bare `key`
+value.
 
 Self-hosted options:
 

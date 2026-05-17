@@ -207,6 +207,10 @@ struct RootTabView: View {
                 case .settings: SettingsHubView(authStore: authStore)
                 case .devices:  iPadDevicesSettingsView(hermesService: hermesService)
                 case .providers: ProviderConnectionsView(showsDoneButton: false)
+                case .computerUse: AgentWatchScreen(
+                    authUID: authStore.currentIdentity?.uid,
+                    hermesService: hermesService
+                )
                 }
             }
         }

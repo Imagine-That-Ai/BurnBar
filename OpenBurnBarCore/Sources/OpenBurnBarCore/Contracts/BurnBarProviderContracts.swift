@@ -52,6 +52,7 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
     public var isEnabled: Bool
     public var baseURL: String
     public var preferredModelIDs: [String]
+    public var disabledAdvertisedModelIDs: [String]
     public var preferredCredentialSlotID: String?
     public var credentialSlots: [BurnBarProviderCredentialSlot]
 
@@ -62,6 +63,7 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         isEnabled: Bool = false,
         baseURL: String,
         preferredModelIDs: [String],
+        disabledAdvertisedModelIDs: [String] = [],
         preferredCredentialSlotID: String? = nil,
         credentialSlots: [BurnBarProviderCredentialSlot] = []
     ) {
@@ -69,8 +71,27 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         self.isEnabled = isEnabled
         self.baseURL = baseURL
         self.preferredModelIDs = preferredModelIDs
+        self.disabledAdvertisedModelIDs = Self.normalizedDisabledAdvertisedModelIDs(disabledAdvertisedModelIDs)
         self.preferredCredentialSlotID = preferredCredentialSlotID
         self.credentialSlots = credentialSlots
+    }
+
+    public func isModelAdvertisementEnabled(_ modelID: String) -> Bool {
+        let normalized = Self.normalizedAdvertisedModelID(modelID)
+        guard !normalized.isEmpty else { return true }
+        return !Set(disabledAdvertisedModelIDs.map(Self.normalizedAdvertisedModelID)).contains(normalized)
+    }
+
+    public mutating func setModelAdvertisement(modelID: String, isEnabled: Bool) {
+        let normalized = Self.normalizedAdvertisedModelID(modelID)
+        guard !normalized.isEmpty else { return }
+        var disabled = Set(disabledAdvertisedModelIDs.map(Self.normalizedAdvertisedModelID))
+        if isEnabled {
+            disabled.remove(normalized)
+        } else {
+            disabled.insert(normalized)
+        }
+        disabledAdvertisedModelIDs = disabled.sorted()
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -78,6 +99,7 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         case isEnabled
         case baseURL
         case preferredModelIDs
+        case disabledAdvertisedModelIDs
         case preferredCredentialSlotID
         case credentialSlots
     }
@@ -88,8 +110,24 @@ public struct BurnBarProviderSettings: Codable, Hashable, Identifiable, Sendable
         isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
         baseURL = try container.decode(String.self, forKey: .baseURL)
         preferredModelIDs = try container.decode([String].self, forKey: .preferredModelIDs)
+        disabledAdvertisedModelIDs = Self.normalizedDisabledAdvertisedModelIDs(
+            try container.decodeIfPresent([String].self, forKey: .disabledAdvertisedModelIDs) ?? []
+        )
         preferredCredentialSlotID = try container.decodeIfPresent(String.self, forKey: .preferredCredentialSlotID)
         credentialSlots = try container.decodeIfPresent([BurnBarProviderCredentialSlot].self, forKey: .credentialSlots) ?? []
+    }
+
+    private static func normalizedDisabledAdvertisedModelIDs(_ modelIDs: [String]) -> [String] {
+        var seen = Set<String>()
+        return modelIDs.compactMap { raw in
+            let normalized = normalizedAdvertisedModelID(raw)
+            guard !normalized.isEmpty, seen.insert(normalized).inserted else { return nil }
+            return normalized
+        }
+    }
+
+    private static func normalizedAdvertisedModelID(_ modelID: String) -> String {
+        modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }
 

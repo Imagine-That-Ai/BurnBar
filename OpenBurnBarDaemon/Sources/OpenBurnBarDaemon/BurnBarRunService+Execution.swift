@@ -206,7 +206,9 @@ extension BurnBarRunService {
             )
 
             switch decision.action {
-            case .searchWorkspace, .readFile, .applyPatch, .runTerminal:
+            case .searchWorkspace, .readFile, .applyPatch, .runTerminal,
+                 .browserClick, .browserFill, .browserGoto, .browserKey,
+                 .browserSelect, .browserScreenshot, .browserExtract:
                 guard let tool = decision.requestedTool ?? BurnBarToolKind(rawValue: decision.action.rawValue),
                       let arguments = decision.arguments else {
                     throw BurnBarAgentLoopServiceError.invalidDecision("Tool action '\(decision.action.rawValue)' is missing tool arguments.")
@@ -218,11 +220,19 @@ extension BurnBarRunService {
                     lastExecutedTool: tool,
                     terminalPending: tool == .runTerminal
                 )
-                try await dispatchCompanionToolCall(
-                    for: &run,
-                    toolKind: tool,
-                    arguments: arguments
-                )
+                if tool.isBrowserComputerUse {
+                    try await dispatchBrowserToolCall(
+                        for: &run,
+                        toolKind: tool,
+                        arguments: arguments
+                    )
+                } else {
+                    try await dispatchCompanionToolCall(
+                        for: &run,
+                        toolKind: tool,
+                        arguments: arguments
+                    )
+                }
             case .requestApproval:
                 guard policyEngine.shouldHonorModelRequestedApproval(for: decision.requestedTool),
                       let requestedTool = decision.requestedTool else {

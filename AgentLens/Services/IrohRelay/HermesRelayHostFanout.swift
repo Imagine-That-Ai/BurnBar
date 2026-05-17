@@ -36,6 +36,12 @@ final class HermesRelayHostFanout: HermesRealtimeRelayHosting {
         fallback.publishableRelayURLString
     }
 
+    func setControlDispatcher(_ dispatcher: ControlFrameDispatcher?) {
+        if let iroh = primary as? HermesIrohRelayHostClient {
+            iroh.setControlDispatcher(dispatcher)
+        }
+    }
+
     @discardableResult
     func start(uid: String, connectionID: String) async -> Bool {
         // Boot the iroh host best-effort. A failure here (e.g., missing

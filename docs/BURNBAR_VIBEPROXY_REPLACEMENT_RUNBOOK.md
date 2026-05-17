@@ -37,9 +37,10 @@ models into the client config automatically:
   `custom_models` entries for the live advertised catalog in
   `~/.factory/settings.local.json`, `~/.factory/settings.json`, and
   `~/.factory/config.json`, using Factory's `openai` custom model provider
-  for models served by OpenAI-owned upstream accounts and
-  `generic-chat-completion-api` for other gateway-served chat models, including
-  Claude models bridged through BurnBar.
+  for models served by OpenAI-owned upstream accounts, `anthropic` for
+  Claude/Anthropic-family models bridged through BurnBar, and
+  `generic-chat-completion-api` for the rest of the gateway-served chat
+  catalog.
 
 ## Behavior
 

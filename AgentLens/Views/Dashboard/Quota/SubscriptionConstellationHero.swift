@@ -218,9 +218,13 @@ private struct SubscriptionOrb: View {
 
     private var theme: ProviderTheme { ProviderTheme.theme(for: entry.provider) }
     private var remainingFraction: Double {
-        max(0, min(1, 1 - entry.pressure))
+        guard entry.primaryDisplayableBucket != nil else { return 0 }
+        return max(0, min(1, 1 - entry.pressure))
     }
     private var ringColor: Color {
+        guard entry.primaryDisplayableBucket != nil else {
+            return DesignSystem.Colors.textMuted
+        }
         switch remainingFraction {
         case 0.75...: return theme.primaryColor
         case 0.50..<0.75: return theme.primaryColor.opacity(0.78)
@@ -270,7 +274,7 @@ private struct SubscriptionOrb: View {
                         )
                         .lineLimit(1)
                         .frame(maxWidth: 80)
-                    Text("\(entry.remainingPercentRounded)%")
+                    Text(entry.remainingPercentText)
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .monospacedDigit()
                         .foregroundStyle(ringColor)
@@ -293,15 +297,21 @@ private struct SubscriptionOrb: View {
         .animation(DesignSystem.Animation.gentle, value: isDimmed)
         .help(tooltipText)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(entry.provider.displayName), \(entry.remainingPercentRounded)% remaining")
+        .accessibilityLabel(
+            entry.primaryDisplayableBucket == nil
+                ? "\(entry.provider.displayName), quota signal unavailable"
+                : "\(entry.provider.displayName), \(entry.remainingPercentText) remaining"
+        )
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint(isSelected ? "Tap to clear focus" : "Tap to focus on this provider")
     }
 
     private var tooltipText: String {
         var lines: [String] = ["\(entry.provider.displayName) — \(entry.accountLabel)"]
-        if let bucket = entry.weeklyOrMonthlyBucket ?? entry.primaryBucket as ProviderQuotaBucket? {
+        if let bucket = entry.weeklyOrMonthlyBucket ?? entry.primaryDisplayableBucket {
             lines.append("\(bucket.label): \(bucket.remainingText) left")
+        } else {
+            lines.append(entry.snapshot.statusMessage)
         }
         if let reset = entry.nextResetDate {
             lines.append("Resets \(reset.formatted(.relative(presentation: .numeric)))")

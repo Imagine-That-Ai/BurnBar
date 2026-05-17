@@ -121,6 +121,7 @@ export { evaluateMediaBudget } from "./mediaBudget.js";
 export { evaluateComputerUseBudget } from "./computerUseBudget.js";
 export { recomputeComputerUseQuotaUsage } from "./computerUseQuota.js";
 export { rollupComputerUseDaily } from "./computerUseMonitoring.js";
+export { validateOpenTimestampsProof } from "./computerUseOpenTimestamps.js";
 export { sendVoIPOutbound } from "./apnsSender.js";
 export { sendFcmOutbound } from "./fcmAndroidSender.js";
 

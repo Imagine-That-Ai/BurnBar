@@ -2827,6 +2827,11 @@ struct ProviderPlanWizardView: View {
             return
         }
 
+        if quotaProvider == .openCode {
+            quotaProbeResult = "Format accepted - local quota refresh runs from OpenCode CLI stats after save."
+            return
+        }
+
         quotaProbeTask = Task {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             guard !Task.isCancelled else { return }

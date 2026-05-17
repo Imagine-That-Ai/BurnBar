@@ -854,6 +854,7 @@ final class HermesRelayHostService {
     private let relayKeyStore: HermesRelayKeyStore
     private let realtimeRelayClient: HermesRealtimeRelayHosting
     private let cliChatDispatcher: CLIAgentRelayChatDispatcher?
+    private var computerUseControlDispatcher: ControlFrameDispatcher?
     private var heartbeatTask: Task<Void, Never>?
     private var listener: ListenerRegistration?
     private var listenerUID: String?
@@ -940,6 +941,7 @@ final class HermesRelayHostService {
                     self.mercuryFileTransfer = macFileTransfer
                 }
                 irohClient.cliChatDispatcher = cliChatDispatcher
+                irohClient.setControlDispatcher(computerUseControlDispatcher)
                 self.realtimeRelayClient = HermesRelayHostFanout(
                     primary: irohClient,
                     fallback: wssClient
@@ -947,6 +949,15 @@ final class HermesRelayHostService {
             } else {
                 self.realtimeRelayClient = wssClient
             }
+        }
+    }
+
+    func setComputerUseControlDispatcher(_ dispatcher: ControlFrameDispatcher?) {
+        computerUseControlDispatcher = dispatcher
+        if let irohClient = realtimeRelayClient as? HermesIrohRelayHostClient {
+            irohClient.setControlDispatcher(dispatcher)
+        } else if let fanout = realtimeRelayClient as? HermesRelayHostFanout {
+            fanout.setControlDispatcher(dispatcher)
         }
     }
 

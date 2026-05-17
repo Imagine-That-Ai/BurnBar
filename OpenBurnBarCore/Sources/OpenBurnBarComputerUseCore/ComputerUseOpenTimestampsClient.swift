@@ -6,10 +6,10 @@ import CryptoKit
 /// The OpenTimestamps protocol bundles a target digest with a chain of
 /// operations (concatenations, hash invocations) that fold the digest
 /// into a Bitcoin block-header Merkle root. For our use case we
-/// submit `digest = SHA-256(auditChainHeadHashHex utf8)` to a public
-/// calendar server, persist the returned `.ots` blob alongside the
-/// chain, and later verify by replaying the operations and confirming
-/// the Bitcoin attestation.
+/// submit `digest = SHA-256(chain.jsonl bytes)` to a public calendar
+/// server, persist the returned `.ots` blob alongside the chain, and
+/// later verify by replaying the operations and confirming the Bitcoin
+/// attestation.
 ///
 /// The full OTS binary format is substantial (calendar URLs +
 /// operations + pending-attestation markers). Rather than reimplement
@@ -54,9 +54,22 @@ public final class ComputerUseOpenTimestampsClient: Sendable {
         self.urlSession = urlSession
     }
 
-    /// Hash + submit the chain-head hash to the calendar server. Returns
-    /// the raw OTS proof bytes. Caller persists them next to the
-    /// chain as `chain.jsonl.ots`.
+    /// Hash + submit the audit chain file to the calendar server. Returns
+    /// the raw OTS proof bytes. Caller persists them next to the chain as
+    /// `chain.jsonl.ots`; the official `ots verify chain.jsonl.ots`
+    /// command expects the adjacent `chain.jsonl` file to hash to the
+    /// digest stamped here.
+    public func notarize(chainFileAt chainURL: URL) async throws -> Data {
+        let chainBytes = try Data(contentsOf: chainURL)
+        let digest = SHA256.hash(data: chainBytes)
+        return try await notarize(digest: Data(digest))
+    }
+
+    /// Hash + submit the chain-head hash to the calendar server.
+    ///
+    /// Prefer `notarize(chainFileAt:)` for `.ots` sidecars named after
+    /// `chain.jsonl`. This remains available for callers that explicitly
+    /// persist and verify a head-hash payload instead of the chain file.
     public func notarize(auditChainHeadHashHex: String) async throws -> Data {
         let digest = SHA256.hash(data: Data(auditChainHeadHashHex.utf8))
         return try await notarize(digest: Data(digest))

@@ -70,4 +70,49 @@ final class MacInputCoreTests: XCTestCase {
         XCTAssertFalse(MacInputCore.contains(point: (100, 100), displays: []),
             "An empty display list means no displays are connected; no point is valid.")
     }
+
+    // MARK: normalized phone coordinates
+
+    func testDenormalizeMapsCenterOfPrimaryDisplay() {
+        let display = MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 1920, height: 1080)
+        let point = MacInputCore.denormalize(normalizedX: 0.5, normalizedY: 0.5, in: display)
+        XCTAssertEqual(point?.x, 960)
+        XCTAssertEqual(point?.y, 540)
+    }
+
+    func testDenormalizePreservesDisplayOrigin() {
+        let display = MacInputCore.DisplayBounds(originX: 1920, originY: 200, width: 1280, height: 800)
+        let point = MacInputCore.denormalize(normalizedX: 0.25, normalizedY: 0.75, in: display)
+        XCTAssertEqual(point?.x, 2240)
+        XCTAssertEqual(point?.y, 800)
+    }
+
+    func testDenormalizeClampsRightAndBottomEdgesOnScreen() {
+        let display = MacInputCore.DisplayBounds(originX: 10, originY: 20, width: 100, height: 50)
+        let point = MacInputCore.denormalize(normalizedX: 1.0, normalizedY: 1.0, in: display)
+        XCTAssertEqual(point?.x, 109)
+        XCTAssertEqual(point?.y, 69)
+    }
+
+    func testDenormalizeRejectsOutOfRangeCoordinates() {
+        let display = MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 100, height: 100)
+        XCTAssertNil(MacInputCore.denormalize(normalizedX: -0.01, normalizedY: 0.5, in: display))
+        XCTAssertNil(MacInputCore.denormalize(normalizedX: 0.5, normalizedY: 1.01, in: display))
+        XCTAssertNil(MacInputCore.denormalize(normalizedX: nil, normalizedY: 0.5, in: display))
+        XCTAssertNil(MacInputCore.denormalize(normalizedX: 0.5, normalizedY: nil, in: display))
+    }
+
+    func testDenormalizeRejectsMissingOrInvalidDisplay() {
+        XCTAssertNil(MacInputCore.denormalize(normalizedX: 0.5, normalizedY: 0.5, in: nil))
+        XCTAssertNil(MacInputCore.denormalize(
+            normalizedX: 0.5,
+            normalizedY: 0.5,
+            in: MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 0, height: 100)
+        ))
+        XCTAssertNil(MacInputCore.denormalize(
+            normalizedX: 0.5,
+            normalizedY: 0.5,
+            in: MacInputCore.DisplayBounds(originX: 0, originY: 0, width: 100, height: 0)
+        ))
+    }
 }

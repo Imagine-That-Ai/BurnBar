@@ -171,6 +171,26 @@ extension ProviderSetupGuide {
                 supportsSelfHosted: false
             )
 
+        case .deepSeek:
+            return ProviderSetupGuide(
+                provider: provider,
+                kinds: [.token, .bearer],
+                defaultKind: .bearer,
+                labelSuggestion: "DeepSeek",
+                dashboardURL: URL(string: "https://platform.deepseek.com/api_keys"),
+                dashboardCTA: "Open DeepSeek keys",
+                oneLineHint: "API key from DeepSeek Platform.",
+                instructions: [
+                    GuideStep(1, "Open DeepSeek Platform", detail: "Sign in to platform.deepseek.com."),
+                    GuideStep(2, "Create an API key", detail: "API Keys -> Create API Key."),
+                    GuideStep(3, "Paste it below", detail: "OpenBurnBar validates the key and reads provider availability.")
+                ],
+                credentialPlaceholder: "sk-...",
+                credentialFooterMarkdown: "DeepSeek keys are encrypted at rest and refreshed only when you request quota/provider status.",
+                supportsHosted: false,
+                supportsSelfHosted: false
+            )
+
         case .codex:
             return ProviderSetupGuide(
                 provider: provider,

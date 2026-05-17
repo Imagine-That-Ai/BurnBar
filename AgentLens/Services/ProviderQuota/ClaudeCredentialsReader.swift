@@ -3,17 +3,18 @@ import Foundation
 // MARK: - Claude OAuth Credential Shapes
 
 /// Claude OAuth credential payload used by explicit test/self-hosted
-/// integrations. Production OpenBurnBar deliberately does not discover
-/// these credentials from Claude Code's Keychain item or from
-/// `~/.claude/.credentials.json`.
+/// integrations. Provider-level production refresh deliberately does not
+/// discover these credentials from Claude Code's global Keychain item. Explicit
+/// account/profile refresh paths may inject credentials that the user already
+/// configured inside OpenBurnBar or an OpenBurnBar-managed CLI profile.
 ///
 /// ## Security boundary
 ///
-/// OpenBurnBar must not trigger macOS authorization prompts for
-/// third-party Claude credentials. The default reader is
-/// `NoClaudeCredentialsReader`, so Claude quota refresh relies on the
-/// statusline bridge and local JSONL session logs unless a caller
-/// injects credentials intentionally.
+/// OpenBurnBar must not trigger macOS authorization prompts for third-party
+/// Claude credentials. The default reader is `NoClaudeCredentialsReader`, so
+/// provider-level Claude quota refresh relies on the statusline bridge and
+/// local JSONL session logs unless an account-scoped caller injects credentials
+/// intentionally.
 ///
 /// ## Payload shape (as observed 2026-05)
 ///

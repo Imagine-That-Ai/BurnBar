@@ -69,6 +69,10 @@ class AndroidMediaCapabilityGate(
                 return Check.Denied(DenialReason.ENTITLEMENT_MISSING)
             MediaStreamClass.Feature.VIDEO_CALL -> if (!entitlement.videoCall)
                 return Check.Denied(DenialReason.ENTITLEMENT_MISSING)
+            // Android is the informational viewer/controller for Computer
+            // Use; the Mac host enforces the paid host entitlement and
+            // dispatch policy. Android only mirrors the Mac's gate result.
+            MediaStreamClass.Feature.COMPUTER_USE -> Unit
         }
         val budget = budgetProvider()
         when (budget.level) {

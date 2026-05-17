@@ -121,6 +121,48 @@ public struct ComputerUseInvokeResponse: Codable, Hashable, Sendable {
     }
 }
 
+/// Poll the daemon for Computer Use approval requests that are waiting
+/// on a real Mac/phone presenter. The daemon does not make the decision;
+/// it only queues the request while the original invoke waits.
+public struct ComputerUseApprovalPendingRequest: Codable, Hashable, Sendable {
+    public let sessionId: String?
+
+    public init(sessionId: String? = nil) {
+        self.sessionId = sessionId
+    }
+}
+
+public struct ComputerUseApprovalPendingResponse: Codable, Equatable, Sendable {
+    public let requests: [HermesRealtimeRelayApprovalRequest]
+
+    public init(requests: [HermesRealtimeRelayApprovalRequest]) {
+        self.requests = requests
+    }
+}
+
+/// Resolve a queued daemon Computer Use approval. This is the bridge
+/// between the Mac approval presenter and the daemon's run coordinator.
+public struct ComputerUseApprovalRespondRequest: Codable, Equatable, Sendable {
+    public let sessionId: String?
+    public let response: HermesRealtimeRelayApprovalResponse
+
+    public init(
+        sessionId: String? = nil,
+        response: HermesRealtimeRelayApprovalResponse
+    ) {
+        self.sessionId = sessionId
+        self.response = response
+    }
+}
+
+public struct ComputerUseApprovalRespondResponse: Codable, Hashable, Sendable {
+    public let accepted: Bool
+
+    public init(accepted: Bool) {
+        self.accepted = accepted
+    }
+}
+
 /// Halt a running session. Source distinguishes the three independent
 /// panic-kill paths (Decision 7).
 public struct ComputerUsePanicHaltRequest: Codable, Hashable, Sendable {
@@ -164,24 +206,33 @@ public struct ComputerUseAuditExportRequest: Codable, Hashable, Sendable {
 public struct ComputerUseAuditExportResponse: Codable, Hashable, Sendable {
     public let sessionId: String
     public let archiveURL: String
+    public let signatureURL: String?
     public let archiveSizeBytes: Int64
     public let entryCount: Int
     public let headHashHex: String
+    public let archiveSHA256Hex: String?
+    public let signatureAlgorithm: String?
     public let openTimestampsProofBase64: String?
 
     public init(
         sessionId: String,
         archiveURL: String,
+        signatureURL: String? = nil,
         archiveSizeBytes: Int64,
         entryCount: Int,
         headHashHex: String,
+        archiveSHA256Hex: String? = nil,
+        signatureAlgorithm: String? = nil,
         openTimestampsProofBase64: String? = nil
     ) {
         self.sessionId = sessionId
         self.archiveURL = archiveURL
+        self.signatureURL = signatureURL
         self.archiveSizeBytes = archiveSizeBytes
         self.entryCount = entryCount
         self.headHashHex = headHashHex
+        self.archiveSHA256Hex = archiveSHA256Hex
+        self.signatureAlgorithm = signatureAlgorithm
         self.openTimestampsProofBase64 = openTimestampsProofBase64
     }
 }

@@ -91,6 +91,8 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
     public var approvalRequest: HermesRealtimeRelayApprovalRequest?
     public var approvalResponse: HermesRealtimeRelayApprovalResponse?
     public var denied: HermesRealtimeRelayControlDenied?
+    public var authorityPeerNodeId: String?
+    public var authorityPublicKeyBase64: String?
 
     public init(
         streamClass: String? = nil,
@@ -99,7 +101,9 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
         inputIntent: HermesRealtimeRelayInputIntent? = nil,
         approvalRequest: HermesRealtimeRelayApprovalRequest? = nil,
         approvalResponse: HermesRealtimeRelayApprovalResponse? = nil,
-        denied: HermesRealtimeRelayControlDenied? = nil
+        denied: HermesRealtimeRelayControlDenied? = nil,
+        authorityPeerNodeId: String? = nil,
+        authorityPublicKeyBase64: String? = nil
     ) {
         self.streamClass = streamClass
         self.sessionId = sessionId
@@ -108,6 +112,8 @@ public struct HermesRealtimeRelayControlPayload: Codable, Sendable, Equatable {
         self.approvalRequest = approvalRequest
         self.approvalResponse = approvalResponse
         self.denied = denied
+        self.authorityPeerNodeId = authorityPeerNodeId
+        self.authorityPublicKeyBase64 = authorityPublicKeyBase64
     }
 }
 
@@ -232,6 +238,10 @@ public struct HermesRealtimeRelayApprovalRequest: Codable, Sendable, Equatable {
     public var beforeScreenshotBlake3: String?
     public var actionSummary: String
     public var requestedAt: Date
+    /// Optional `ComputerUseTrustMode.rawValue` for approval surfaces
+    /// that need to reveal Step-only affordances such as burst approval.
+    /// Older clients can omit this field and render Manual behavior.
+    public var trustMode: String?
 
     public init(
         approvalId: String,
@@ -242,7 +252,8 @@ public struct HermesRealtimeRelayApprovalRequest: Codable, Sendable, Equatable {
         message: String,
         beforeScreenshotBlake3: String? = nil,
         actionSummary: String,
-        requestedAt: Date
+        requestedAt: Date,
+        trustMode: String? = nil
     ) {
         self.approvalId = approvalId
         self.runId = runId
@@ -253,6 +264,7 @@ public struct HermesRealtimeRelayApprovalRequest: Codable, Sendable, Equatable {
         self.beforeScreenshotBlake3 = beforeScreenshotBlake3
         self.actionSummary = actionSummary
         self.requestedAt = requestedAt
+        self.trustMode = trustMode
     }
 }
 

@@ -11,6 +11,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case aider = "Aider"
     case cursor = "Cursor"
     case openAI = "OpenAI"
+    case deepSeek = "DeepSeek"
     case codex = "Codex"
     case openCode = "OpenCode"
     case zai = "Zai"
@@ -40,6 +41,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .openCode,
         .claudeCode,
         .openAI,
+        .deepSeek,
         .copilot,
         .minimax,
         .zai,
@@ -82,6 +84,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         switch self {
         case .openAI:
             return .openAI
+        case .deepSeek:
+            return ProviderID(rawValue: "deepseek")
         case .claudeCode:
             return .claudeCode
         case .codex:
@@ -109,6 +113,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         switch providerID.rawValue {
         case "openai":
             return .openAI
+        case "deepseek":
+            return .deepSeek
         case "claude-code":
             return .claudeCode
         case "codex":
@@ -139,6 +145,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .claudeCode
         case "openai", "open-ai":
             return .openAI
+        case "deepseek", "deep-seek":
+            return .deepSeek
         case "codex":
             return .codex
         case "opencode", "open-code", "open code", "opencode-go", "open-code-go", "open code go":
@@ -200,6 +208,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .aider:      return "AiderLogo"
         case .cursor:     return "CursorLogo"
         case .openAI:     return "OpenAILogo"
+        case .deepSeek:   return "DeepSeekLogo"
         case .codex:      return "CodexLogo"
         case .zai:        return "ZaiLogo"
         case .minimax:    return "MiniMaxLogo"
@@ -230,6 +239,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .aider: return "terminal.fill"
         case .cursor: return "cursor.rays"
         case .openAI: return "sparkles"
+        case .deepSeek: return "brain.head.profile"
         case .codex: return "hammer.fill"
         case .zai: return "bolt.fill"
         case .minimax: return "star.fill"

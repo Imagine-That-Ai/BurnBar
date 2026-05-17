@@ -66,6 +66,13 @@ extension BurnBarJSONValue {
         }
         return value
     }
+
+    func intValue() -> Int? {
+        guard case .number(let value) = self else {
+            return nil
+        }
+        return Int(value)
+    }
 }
 
 // MARK: - BurnBarRunService actor (public API facade)
@@ -449,7 +456,11 @@ public actor BurnBarRunService {
             )
             if let pendingInvocation {
                 try transition(&run, to: .planning, activeApprovalID: nil)
-                try await enqueueCompanionToolCall(pendingInvocation, for: &run)
+                if pendingInvocation.tool.isBrowserComputerUse {
+                    try await executeBrowserToolInvocation(pendingInvocation, for: &run)
+                } else {
+                    try await enqueueCompanionToolCall(pendingInvocation, for: &run)
+                }
             } else {
                 try transition(&run, to: .planning, activeApprovalID: nil)
                 try await continueExecution(for: &run)

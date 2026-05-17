@@ -721,6 +721,12 @@ public struct BurnBarProviderRouter: Sendable {
         let normalized = modelName.lowercased()
 
         if configuration.provider.id.lowercased() == "ollama",
+           isOllamaCloudBaseURL(configuration.settings.baseURL),
+           normalizedOllamaCloudModelID(from: modelName) == nil {
+            return nil
+        }
+
+        if configuration.provider.id.lowercased() == "ollama",
            let directCloudModelID = normalizedOllamaCloudModelID(from: modelName) {
             let exactCloudModel = configuration.preferredModels.first(where: {
                 $0.id.lowercased() == normalized || $0.aliases.contains(where: { $0.lowercased() == normalized })
@@ -732,10 +738,7 @@ public struct BurnBarProviderRouter: Sendable {
                 if let exactCloudModel {
                     return exactCloudModel.capabilityClassID ?? exactCloudModel.id
                 }
-                if let cloudFamily {
-                    return cloudFamily.capabilityClassID ?? cloudFamily.id
-                }
-                return modelTemplate.capabilityClassID ?? directCloudModelID
+                return directCloudModelID
             }()
             return BurnBarCatalogModel(
                 id: directCloudModelID,
@@ -755,25 +758,15 @@ public struct BurnBarProviderRouter: Sendable {
             return wireModel(for: exactMatch, requestedModel: modelName)
         }
 
+        if let dynamicModel = dynamicOpenAICompatibleModel(
+            named: modelName,
+            in: configuration
+        ) {
+            return dynamicModel
+        }
+
         guard let matchedModel = configuration.preferredModels.first(where: { $0.matches(modelName: normalized) }) else {
-            guard allowDynamicOpenAICompatibleModels,
-                  configuration.provider.formatFamily == .openaiCompat,
-                  configuration.provider.capabilities.contains(.routing),
-                  let template = configuration.preferredModels.first ?? configuration.provider.models.first(where: { $0.visibility == .public }) else {
-                return nil
-            }
-            let capabilityTemplate = configuration.provider.models.first(where: { $0.matches(modelName: normalized) }) ?? template
-            let trimmed = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
-            return BurnBarCatalogModel(
-                id: trimmed,
-                displayName: trimmed,
-                visibility: .hidden,
-                aliases: [trimmed],
-                matchers: [],
-                pricing: capabilityTemplate.pricing,
-                capabilityClassID: capabilityTemplate.capabilityClassID ?? capabilityTemplate.id,
-                capabilityClassRank: capabilityTemplate.capabilityClassRank
-            )
+            return nil
         }
 
         if configuration.provider.id.lowercased() == "ollama",
@@ -792,6 +785,41 @@ public struct BurnBarProviderRouter: Sendable {
         }
 
         return wireModel(for: matchedModel, requestedModel: modelName)
+    }
+
+    private func dynamicOpenAICompatibleModel(
+        named modelName: String,
+        in configuration: BurnBarResolvedProviderConfiguration
+    ) -> BurnBarCatalogModel? {
+        guard allowDynamicOpenAICompatibleModels,
+              configuration.provider.formatFamily == .openaiCompat,
+              configuration.provider.capabilities.contains(.routing),
+              let template = configuration.preferredModels.first ?? configuration.provider.models.first(where: { $0.visibility == .public }) else {
+            return nil
+        }
+
+        let trimmed = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let normalized = trimmed.lowercased()
+        let capabilityTemplate = configuration.provider.models.first(where: { $0.matches(modelName: normalized) }) ?? template
+
+        return BurnBarCatalogModel(
+            id: trimmed,
+            displayName: trimmed,
+            visibility: .hidden,
+            aliases: [trimmed],
+            matchers: [],
+            pricing: capabilityTemplate.pricing,
+            capabilityClassID: trimmed,
+            capabilityClassRank: capabilityTemplate.capabilityClassRank
+        )
+    }
+
+    private func isOllamaCloudBaseURL(_ rawURL: String) -> Bool {
+        guard let host = URL(string: rawURL)?.host?.lowercased() else {
+            return false
+        }
+        return host == "ollama.com" || host.hasSuffix(".ollama.com")
     }
 
     private func wireModel(

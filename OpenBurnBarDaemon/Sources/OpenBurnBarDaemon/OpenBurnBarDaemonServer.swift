@@ -13,6 +13,7 @@ public actor BurnBarDaemonServer {
     private let clientRegistry: BurnBarClientRegistry
     private let runService: BurnBarRunService
     private let toolingProxy: BurnBarToolingProxyService
+    private let computerUseService: ComputerUseService
     private let missionControlService: any BurnBarMissionControlServing
     private let indexedSearch: BurnBarIndexedSearchService?
     private let gatewayServer: BurnBarHTTPGatewayServer?
@@ -62,6 +63,7 @@ public actor BurnBarDaemonServer {
             connectorPlaneService: resolvedRunService.connectorPlaneService,
             browserToolService: resolvedRunService.browserToolService
         )
+        self.computerUseService = ComputerUseService()
         self.rateLimiter = rateLimiter ?? BurnBarRateLimiter(configuration: configuration.socketRateLimit)
         // VAL-DAEMON-011: Wire a concrete execution readiness gate with fail-closed semantics.
         // When gate data is unavailable (no config, no connector plane), the gate returns a failure
@@ -531,6 +533,78 @@ public actor BurnBarDaemonServer {
                     id: typedRequest.id,
                     protocolVersion: BurnBarProtocolVersion.current,
                     result: try await toolingProxy.performBrowserAction(typedRequest.params)
+                )
+                return encode(response)
+            case .computerUseSessionStart:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<ComputerUseSessionStartRequest>.self,
+                    from: requestData
+                )
+                let result: ComputerUseSessionStartResponse = try await computerUseService.startSession(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                )
+                return encode(response)
+            case .computerUseInvoke:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<ComputerUseInvokeRequest>.self,
+                    from: requestData
+                )
+                let result: ComputerUseInvokeResponse = try await computerUseService.invoke(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                )
+                return encode(response)
+            case .computerUseApprovalPending:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<ComputerUseApprovalPendingRequest>.self,
+                    from: requestData
+                )
+                let result: ComputerUseApprovalPendingResponse = await computerUseService.pendingApprovals(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                )
+                return encode(response)
+            case .computerUseApprovalRespond:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<ComputerUseApprovalRespondRequest>.self,
+                    from: requestData
+                )
+                let result: ComputerUseApprovalRespondResponse = await computerUseService.respondToApproval(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                )
+                return encode(response)
+            case .computerUsePanicHalt:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<ComputerUsePanicHaltRequest>.self,
+                    from: requestData
+                )
+                let result: ComputerUsePanicHaltResponse = try await computerUseService.panicHalt(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
+                )
+                return encode(response)
+            case .computerUseAuditExport:
+                let typedRequest = try decoder.decode(
+                    BurnBarRPCRequestEnvelopeWithParams<ComputerUseAuditExportRequest>.self,
+                    from: requestData
+                )
+                let result: ComputerUseAuditExportResponse = try await computerUseService.exportAudit(typedRequest.params)
+                let response = BurnBarRPCResponseEnvelope(
+                    id: typedRequest.id,
+                    protocolVersion: BurnBarProtocolVersion.current,
+                    result: result
                 )
                 return encode(response)
             case .controllerSummary:

@@ -448,6 +448,10 @@ final class CLIBridge: ObservableObject {
         hermesModels: [HermesAdvertisedModel],
         models: [OpenAICompatibleAdvertisedModel]
     ) {
-        await OpenAICompatibleModelProbe.probeWithModels(baseURL: baseURL, bearerToken: bearerToken)
+        await OpenAICompatibleModelProbe.probeWithModels(
+            baseURL: baseURL,
+            bearerToken: bearerToken,
+            timeout: 8
+        )
     }
 }

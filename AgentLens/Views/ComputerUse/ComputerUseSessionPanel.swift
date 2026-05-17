@@ -11,6 +11,8 @@ import OpenBurnBarComputerUseCore
 /// the phone (Decision 6).
 public struct ComputerUseSessionPanel: View {
     @ObservedObject var model: ComputerUseSessionPanelModel
+    @State private var showingScopeEditor = false
+
     public init(model: ComputerUseSessionPanelModel) { self.model = model }
 
     public var body: some View {
@@ -25,6 +27,17 @@ public struct ComputerUseSessionPanel: View {
         }
         .padding(24)
         .frame(width: 720, height: 530)
+        .sheet(isPresented: $showingScopeEditor) {
+            ComputerUseScopeRuleEditor(
+                builtInDenies: model.scopeRules.filter { $0.effect == .deny && $0.origin == .builtIn },
+                currentContext: model.currentScopePreviewContext
+            ) { rule in
+                model.addRule(rule)
+                showingScopeEditor = false
+            } onCancel: {
+                showingScopeEditor = false
+            }
+        }
     }
 
     private var header: some View {
@@ -100,7 +113,10 @@ public struct ComputerUseSessionPanel: View {
                 .padding(.horizontal, 8)
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 5))
             }
-            Button("+ Add scope rule") { model.requestAddRule() }
+            Button("+ Add scope rule") {
+                model.requestAddRule()
+                showingScopeEditor = true
+            }
                 .buttonStyle(.borderless)
                 .font(.system(size: 12, weight: .medium))
         }
@@ -193,10 +209,12 @@ public final class ComputerUseSessionPanelModel: ObservableObject {
     @Published public var recentAuditEntries: [HermesRealtimeRelayActionLogEntry] = []
     @Published public var auditHeadHashHex: String?
     @Published public var currentSessionStartedAt: Date?
+    @Published public var currentScopePreviewContext = ComputerUseScopeContext()
 
     public var setTrustMode: (ComputerUseTrustMode) -> Void = { _ in }
     public var removeRule: (ComputerUseScopeRuleID) -> Void = { _ in }
     public var requestAddRule: () -> Void = {}
+    public var addRule: (ComputerUseScopeRule) -> Void = { _ in }
     public var panicHalt: () -> Void = {}
 
     public init() {}

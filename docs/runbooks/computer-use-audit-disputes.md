@@ -4,10 +4,10 @@
 
 When a user claims an action was unauthorized:
 
-1. **Collect the export.** Ask for `~/Downloads/cu-<sessionId>.tar.gz`. The export ships under their iCloud device-bound signature — verify the signature first.
+1. **Collect the export.** Ask for `~/Downloads/cu-<sessionId>.tar.gz` and its `{archive}.sig.json` sidecar. The current implementation signs with an OpenBurnBar device-local Ed25519 export key. The master plan's Apple/iCloud device-certificate signer remains a rollout blocker until that identity is wired or the plan is formally amended.
 2. **Validate the chain.** `swift run validate-computer-use-audit-chain <unpacked-dir>` — runs `ComputerUseAuditChain.validate(at:sessionManifestHashHex:expectedHeadHashHex:)` and prints the result.
 3. **Cross-reference the server-side rollup.** Read `users/{uid}/computer_use_sessions/{sessionId}` for the manifest hash and `users/{uid}/computer_use_actions/*` for the per-action audit headers (which carry parent-hash + descriptor-hash but never screenshots).
-4. **Check OpenTimestamps** (Phase 13 sessions only): `ots verify chain.jsonl.ots`. A confirmed proof is non-repudiable.
+4. **Check OpenTimestamps** (Phase 13 sessions only): call `validateOpenTimestampsProof` with the signed-in user's UID, session ID, audit head hash, `.ots` proof bytes, and optional `chain.jsonl` bytes. The function first checks the submitted head against `users/{uid}/computer_use_sessions/{sessionId}.auditHeadHashHex`, then runs `ots verify chain.jsonl.ots` if the runtime has the OpenTimestamps CLI installed. If it returns `ots_verifier_unavailable`, run `ots verify chain.jsonl.ots` from a support workstation that has the official verifier.
 5. **Diff.** If chain validates and rolls up matches, the action was authorized. The audit summary, screenshot hash, and approving surface (`mac` / `phone` / `trusted_scope`) are all in the entry.
 6. **If chain does NOT validate:** the export was tampered with locally — non-repudiable proof of post-hoc edit. Capture the `firstInvalidEntryIndex` + `firstInvalidReason` and surface it to the user.
 7. **If chain validates but the user still disputes:** check `approvedBy`. Was it `phone` while the user was at lunch? Their paired iPhone may have been operated by someone else — pivot to the device-pairing audit (see `media-rollout-status.md` § pairing rotation).

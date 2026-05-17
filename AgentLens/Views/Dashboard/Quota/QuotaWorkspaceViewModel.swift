@@ -14,6 +14,7 @@ struct SubscriptionEntry: Identifiable, Hashable {
     let storageScope: ProviderAccountStorageScope?
     let hourlyBucket: ProviderQuotaBucket?
     let weeklyOrMonthlyBucket: ProviderQuotaBucket?
+    let primaryDisplayableBucket: ProviderQuotaBucket?
     let primaryBucket: ProviderQuotaBucket
     let allDisplayableBuckets: [ProviderQuotaBucket]
     let pressure: Double
@@ -24,8 +25,14 @@ struct SubscriptionEntry: Identifiable, Hashable {
     let lastValidatedAt: Date?
 
     var remainingPercentRounded: Int {
+        guard primaryDisplayableBucket != nil else { return 0 }
         let frac = max(0.0, min(1.0, 1.0 - pressure))
         return Int((frac * 100).rounded())
+    }
+
+    var remainingPercentText: String {
+        guard primaryDisplayableBucket != nil else { return "—" }
+        return "\(remainingPercentRounded)%"
     }
 }
 
@@ -129,17 +136,6 @@ final class QuotaWorkspaceViewModel {
             }
 
             let isConnected = quotaService.hasConnectedQuotaAccount(for: provider, dataStore: dataStore)
-            if let rollup = quotaService.snapshot(for: provider),
-               rollup.hasDisplayableQuotaSignal {
-                let entry = Self.makeEntry(
-                    provider: provider,
-                    snapshot: rollup,
-                    isRefreshing: quotaService.isRefreshing(provider)
-                )
-                byID[entry.id] = entry
-                continue
-            }
-
             let fallbackAccountSnapshots = allAccountSnapshots.filter { snapshot in
                 guard !snapshot.hasDisplayableQuotaSignal else { return false }
                 return isConnected || snapshot.accountID != nil || snapshot.source != .unavailable
@@ -153,6 +149,17 @@ final class QuotaWorkspaceViewModel {
                     )
                     byID[entry.id] = entry
                 }
+                continue
+            }
+
+            if let rollup = quotaService.snapshot(for: provider),
+               rollup.hasDisplayableQuotaSignal {
+                let entry = Self.makeEntry(
+                    provider: provider,
+                    snapshot: rollup,
+                    isRefreshing: quotaService.isRefreshing(provider)
+                )
+                byID[entry.id] = entry
                 continue
             }
 
@@ -265,6 +272,7 @@ final class QuotaWorkspaceViewModel {
             storageScope: snapshot.accountStorageScope,
             hourlyBucket: snapshot.hourlyBucket,
             weeklyOrMonthlyBucket: snapshot.weeklyBucket ?? displayable.first { $0.windowKind == .monthly },
+            primaryDisplayableBucket: primary,
             primaryBucket: primary ?? ProviderQuotaBucket(
                 key: "unavailable",
                 label: snapshot.statusMessage,

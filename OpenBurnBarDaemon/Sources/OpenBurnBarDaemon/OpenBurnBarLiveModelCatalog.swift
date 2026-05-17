@@ -63,6 +63,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
     public let capabilities: [String]
     public let quotaState: BurnBarLiveModelQuotaState
     public let enabled: Bool
+    public let advertisementEnabled: Bool
     public let routeEligible: Bool
     public let lastRefreshAt: Date?
     public let lastError: String?
@@ -79,6 +80,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
         capabilities: [String],
         quotaState: BurnBarLiveModelQuotaState,
         enabled: Bool,
+        advertisementEnabled: Bool = true,
         routeEligible: Bool,
         lastRefreshAt: Date? = nil,
         lastError: String? = nil
@@ -94,6 +96,7 @@ public struct BurnBarLiveAdvertisedModel: Codable, Hashable, Sendable {
         self.capabilities = capabilities
         self.quotaState = quotaState
         self.enabled = enabled
+        self.advertisementEnabled = advertisementEnabled
         self.routeEligible = routeEligible
         self.lastRefreshAt = lastRefreshAt
         self.lastError = lastError
@@ -252,6 +255,8 @@ public struct BurnBarLiveModelCatalog: Sendable {
             let wireModelID = advertisedModelID(for: model, providerID: configuration.provider.id)
             let liveModel = liveRefresh?.advertisedModels.first { $0.id.caseInsensitiveCompare(wireModelID) == .orderedSame }
             let liveConfirmed = liveIDSet?.contains(wireModelID.lowercased())
+            let liveBlocksRouting = liveRefresh?.blocksRouting == true
+            let advertisementEnabled = configuration.settings.isModelAdvertisementEnabled(wireModelID)
             let liveError: String? = {
                 if let error = liveRefresh?.error {
                     return error
@@ -273,10 +278,12 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 capabilities: capabilities,
                 quotaState: account.quotaState,
                 enabled: account.enabled,
+                advertisementEnabled: advertisementEnabled,
                 routeEligible: providerCanRoute
                     && account.enabled
                     && account.hasCredential
                     && isEligibleQuotaState(account.quotaState)
+                    && !liveBlocksRouting
                     && (liveConfirmed ?? true),
                 lastRefreshAt: liveRefresh?.refreshedAt ?? account.lastRefreshAt,
                 lastError: liveError
@@ -290,6 +297,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
         var seenIDs = Set(configuredRows.map { $0.id.lowercased() })
         let liveRows = (liveRefresh?.advertisedModels ?? []).compactMap { liveModel -> BurnBarLiveAdvertisedModel? in
             guard seenIDs.insert(liveModel.id.lowercased()).inserted else { return nil }
+            let advertisementEnabled = configuration.settings.isModelAdvertisementEnabled(liveModel.id)
             return BurnBarLiveAdvertisedModel(
                 id: liveModel.id,
                 displayName: liveModel.displayName,
@@ -302,10 +310,12 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 capabilities: capabilities,
                 quotaState: account.quotaState,
                 enabled: account.enabled,
+                advertisementEnabled: advertisementEnabled,
                 routeEligible: providerCanRoute
                     && account.enabled
                     && account.hasCredential
-                    && isEligibleQuotaState(account.quotaState),
+                    && isEligibleQuotaState(account.quotaState)
+                    && liveRefresh?.blocksRouting != true,
                 lastRefreshAt: liveRefresh?.refreshedAt ?? account.lastRefreshAt,
                 lastError: account.lastError
             )
@@ -329,6 +339,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
         let refreshedAt: Date
         let error: String?
         let isAuthoritative: Bool
+        let blocksRouting: Bool
     }
 
     private struct DiscoveredModel: Sendable {
@@ -406,16 +417,19 @@ public struct BurnBarLiveModelCatalog: Sendable {
                     sourceKind: "daemon_provider_config",
                     refreshedAt: Date(),
                     error: "Live \(endpointLabel) refresh returned an invalid response.",
-                    isAuthoritative: false
+                    isAuthoritative: false,
+                    blocksRouting: false
                 )
             }
+            let blocksRouting = httpResponse.statusCode == 401 || httpResponse.statusCode == 403
             guard (200..<300).contains(httpResponse.statusCode) else {
                 return LiveRefreshResult(
                     advertisedModels: [],
                     sourceKind: "daemon_provider_config",
                     refreshedAt: Date(),
                     error: "Live \(endpointLabel) refresh failed with HTTP \(httpResponse.statusCode).",
-                    isAuthoritative: false
+                    isAuthoritative: false,
+                    blocksRouting: blocksRouting
                 )
             }
             let discovered = try Self.parseModelsResponse(data, providerID: configuration.provider.id)
@@ -424,7 +438,8 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 sourceKind: sourceKind,
                 refreshedAt: Date(),
                 error: nil,
-                isAuthoritative: true
+                isAuthoritative: true,
+                blocksRouting: false
             )
         } catch {
             return LiveRefreshResult(
@@ -432,7 +447,8 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 sourceKind: "daemon_provider_config",
                 refreshedAt: Date(),
                 error: "Live \(endpointLabel) refresh failed: \(error.localizedDescription)",
-                isAuthoritative: false
+                isAuthoritative: false,
+                blocksRouting: false
             )
         }
     }

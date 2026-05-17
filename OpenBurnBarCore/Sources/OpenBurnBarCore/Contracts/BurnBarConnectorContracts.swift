@@ -324,17 +324,20 @@ public struct BurnBarBrowserActionRequest: Codable, Hashable, Sendable {
     public let url: String
     public let preferredEngine: BurnBarBrowserEngineKind?
     public let maxLinks: Int
+    public let arguments: BurnBarBrowserActionArguments?
 
     public init(
         action: BurnBarBrowserActionKind,
         url: String,
         preferredEngine: BurnBarBrowserEngineKind? = nil,
-        maxLinks: Int = 10
+        maxLinks: Int = 10,
+        arguments: BurnBarBrowserActionArguments? = nil
     ) {
         self.action = action
         self.url = url
         self.preferredEngine = preferredEngine
         self.maxLinks = maxLinks
+        self.arguments = arguments
     }
 }
 

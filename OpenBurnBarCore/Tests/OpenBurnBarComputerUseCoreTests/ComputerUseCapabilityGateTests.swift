@@ -84,6 +84,29 @@ final class ComputerUseCapabilityGateTests: XCTestCase {
         )
     }
 
+    func testPhoneOriginatedMacInputRequiresPhoneControlEntitlement() {
+        let entitlement = ComputerUseEntitlementSnapshot(
+            isActive: true,
+            allowsBrowser: true,
+            allowsSystem: true,
+            allowsPhoneControl: false
+        )
+        let context = ComputerUseCapabilityContext(
+            entitlement: entitlement,
+            envelope: .initialNormal,
+            usage: ComputerUseQuotaUsage(dayKey: "2026-05-17"),
+            session: makeSession(),
+            concurrentSessionActive: false,
+            killSwitch: false,
+            accessibilityTrusted: true,
+            originatedFromPhone: true
+        )
+        XCTAssertEqual(
+            gate.check(action: macAction, scopeOutcome: .notMatched, accessibilityDeny: nil, context: context),
+            .denied(.entitlement)
+        )
+    }
+
     func testMacRequiresAccessibilityTrusted() {
         XCTAssertEqual(
             gate.check(action: macAction, scopeOutcome: .notMatched, accessibilityDeny: nil,

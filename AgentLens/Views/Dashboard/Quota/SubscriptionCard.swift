@@ -68,7 +68,7 @@ struct SubscriptionCard: View {
         .accessibilityLabel(
             "\(entry.provider.displayName)" +
             (entry.planTierBadge.map { " \($0)" } ?? "") +
-            ", \(entry.remainingPercentRounded) percent remaining" +
+            (entry.primaryDisplayableBucket == nil ? ", quota signal unavailable" : ", \(entry.remainingPercentRounded) percent remaining") +
             (entry.nextResetDate.map { ", resets \($0.formatted(.relative(presentation: .numeric)))" } ?? "")
         )
     }
@@ -121,7 +121,7 @@ struct SubscriptionCard: View {
     private var mainRow: some View {
         HStack(alignment: .center, spacing: DesignSystem.Spacing.lg) {
             QuotaArcDial(
-                outer: entry.weeklyOrMonthlyBucket ?? entry.primaryBucket,
+                outer: entry.weeklyOrMonthlyBucket ?? entry.primaryDisplayableBucket,
                 inner: entry.hourlyBucket,
                 provider: entry.provider,
                 diameter: 138
@@ -422,13 +422,13 @@ struct SubscriptionListRow: View {
             QuotaDualWindowStrip(
                 hourlyBucket: entry.hourlyBucket,
                 weeklyBucket: entry.weeklyOrMonthlyBucket,
-                fallbackBucket: entry.primaryBucket,
+                fallbackBucket: entry.primaryDisplayableBucket,
                 provider: entry.provider,
                 isActive: entry.isRefreshing
             )
             .frame(maxWidth: .infinity)
 
-            Text("\(entry.remainingPercentRounded)%")
+            Text(entry.remainingPercentText)
                 .font(.system(size: 18, weight: .bold, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(theme.gradient)

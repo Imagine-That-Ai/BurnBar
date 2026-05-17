@@ -101,6 +101,67 @@ final class CLIBridgeTests: XCTestCase {
         )
     }
 
+    func test_chatSessionController_resolvedHermesModelSelection_familyOverrideUsesAdvertisedModelID() {
+        let advertised = [
+            HermesAdvertisedModel(id: "glm-4.7:cloud", displayName: "glm-4.7", family: .zai),
+            HermesAdvertisedModel(id: "minimax-m2.7-highspeed", displayName: "MiniMax-M2.7", family: .minimax)
+        ]
+
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "",
+            settingsOverride: "zai",
+            selectedFamily: nil,
+            advertisedModels: advertised,
+            gatewayDefault: "claude-haiku-4-5"
+        )
+
+        XCTAssertEqual(resolved, "glm-4.7:cloud")
+    }
+
+    func test_chatSessionController_resolvedHermesModelSelection_exactAdvertisedPanelSelectionWins() {
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "minimax-m2.7-highspeed",
+            settingsOverride: "zai",
+            selectedFamily: .zai,
+            advertisedModels: [
+                HermesAdvertisedModel(id: "minimax-m2.7-highspeed", displayName: "MiniMax-M2.7", family: .minimax),
+                HermesAdvertisedModel(id: "glm-4.7:cloud", displayName: "glm-4.7", family: .zai)
+            ],
+            gatewayDefault: "claude-haiku-4-5"
+        )
+
+        XCTAssertEqual(resolved, "minimax-m2.7-highspeed")
+    }
+
+    func test_chatSessionController_resolvedHermesModelSelection_stalePanelSelectionUsesLiveFamilyModel() {
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "minimax-m2.7:cloud",
+            settingsOverride: "zai",
+            selectedFamily: .zai,
+            advertisedModels: [
+                HermesAdvertisedModel(id: "minimax-m2.7-highspeed", displayName: "MiniMax-M2.7", family: .minimax),
+                HermesAdvertisedModel(id: "glm-4.7:cloud", displayName: "glm-4.7", family: .zai)
+            ],
+            gatewayDefault: "claude-haiku-4-5"
+        )
+
+        XCTAssertEqual(resolved, "minimax-m2.7-highspeed")
+    }
+
+    func test_chatSessionController_resolvedHermesModelSelection_familyOverrideFallsBackToGatewayDefaultWhenCatalogHasNoFamilyMatch() {
+        let resolved = ChatSessionController.resolvedHermesModelSelection(
+            panelSelection: "",
+            settingsOverride: "zai",
+            selectedFamily: .zai,
+            advertisedModels: [
+                HermesAdvertisedModel(id: "minimax-m2.7-highspeed", displayName: "MiniMax-M2.7", family: .minimax)
+            ],
+            gatewayDefault: "hermes-agent"
+        )
+
+        XCTAssertEqual(resolved, "hermes-agent")
+    }
+
     func test_openAICompatibleModelProbe_modelsRequestCarriesGatewayRelayTimeoutAndBearer() throws {
         let request = try XCTUnwrap(OpenAICompatibleModelProbe.modelsRequest(
             baseURL: URL(string: "http://127.0.0.1:8317/")!,

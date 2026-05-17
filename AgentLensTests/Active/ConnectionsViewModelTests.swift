@@ -402,6 +402,61 @@ final class ConnectionsViewModelTests: XCTestCase {
         XCTAssertEqual(readySlot.routeReadyCredentialSlots.map(\.slotID), ["default"])
     }
 
+    func test_daemonCredentialSlotProjectionIncludesCatalogOnlyRouteAccounts() {
+        let updatedAt = Date(timeIntervalSince1970: 1_773_700_000)
+        let now = Date(timeIntervalSince1970: 1_773_700_500)
+        let configuration = OpenBurnBarDaemonProviderConfiguration(
+            providerID: "deepseek",
+            provider: nil,
+            displayName: "DeepSeek",
+            isEnabled: true,
+            baseURL: "https://api.deepseek.com/v1",
+            preferredModelIDs: ["deepseek-chat"],
+            preferredCredentialSlotID: "default",
+            credentialSlots: [
+                OpenBurnBarDaemonProviderConfiguration.CredentialSlot(
+                    slotID: "default",
+                    label: "Default plan",
+                    isEnabled: true,
+                    status: .ready,
+                    cooldownUntil: nil,
+                    lastSelectedAt: updatedAt,
+                    lastQuotaRemainingPercent: nil,
+                    lastQuotaResetsAt: nil,
+                    lastStatusMessage: nil,
+                    updatedAt: updatedAt
+                ),
+                OpenBurnBarDaemonProviderConfiguration.CredentialSlot(
+                    slotID: "gmail",
+                    label: "gmail",
+                    isEnabled: true,
+                    status: .missingSecret,
+                    cooldownUntil: nil,
+                    lastSelectedAt: nil,
+                    lastQuotaRemainingPercent: nil,
+                    lastQuotaResetsAt: nil,
+                    lastStatusMessage: "Missing API key",
+                    updatedAt: updatedAt
+                ),
+            ]
+        )
+
+        let accounts = DaemonCredentialSlotAccountProjection.accounts(from: [configuration], now: now)
+
+        XCTAssertEqual(accounts.map(\.id), ["deepseek-default", "deepseek-gmail"])
+        XCTAssertEqual(accounts.map(\.providerID), [ProviderID(rawValue: "deepseek"), ProviderID(rawValue: "deepseek")])
+        XCTAssertEqual(accounts.map(\.status), [.connected, .error])
+        XCTAssertEqual(accounts.first?.label, "Default plan")
+        XCTAssertEqual(accounts.first?.identityHint, "Daemon credential slot")
+        XCTAssertEqual(accounts.first?.storageScope, .deviceKeychain)
+        XCTAssertEqual(accounts.first?.credentialKind, .bearer)
+        XCTAssertEqual(accounts.first?.isDefault, true)
+        XCTAssertEqual(accounts.first?.lastValidatedAt, updatedAt)
+        XCTAssertEqual(accounts.first?.lastRefreshAt, updatedAt)
+        XCTAssertEqual(accounts.last?.lastErrorCode, "missingSecret")
+        XCTAssertEqual(accounts.last?.updatedAt, now)
+    }
+
     private func makeProviderConfiguration(
         providerID: String,
         formatDisplayName: String,

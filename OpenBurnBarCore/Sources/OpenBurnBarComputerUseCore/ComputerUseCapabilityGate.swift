@@ -144,6 +144,7 @@ public struct ComputerUseCapabilityContext: Sendable {
     public let concurrentSessionActive: Bool
     public let killSwitch: Bool
     public let accessibilityTrusted: Bool
+    public let originatedFromPhone: Bool
 
     public init(
         entitlement: ComputerUseEntitlementSnapshot,
@@ -152,7 +153,8 @@ public struct ComputerUseCapabilityContext: Sendable {
         session: ComputerUseSessionState,
         concurrentSessionActive: Bool,
         killSwitch: Bool,
-        accessibilityTrusted: Bool
+        accessibilityTrusted: Bool,
+        originatedFromPhone: Bool = false
     ) {
         self.entitlement = entitlement
         self.envelope = envelope
@@ -161,6 +163,7 @@ public struct ComputerUseCapabilityContext: Sendable {
         self.concurrentSessionActive = concurrentSessionActive
         self.killSwitch = killSwitch
         self.accessibilityTrusted = accessibilityTrusted
+        self.originatedFromPhone = originatedFromPhone
     }
 }
 
@@ -198,6 +201,7 @@ public struct DefaultComputerUseCapabilityGate: ComputerUseCapabilityGate {
             if !context.entitlement.allowsBrowser { return .denied(.entitlement) }
         case .macInput, .macInspect:
             if !context.entitlement.allowsSystem { return .denied(.entitlement) }
+            if context.originatedFromPhone && !context.entitlement.allowsPhoneControl { return .denied(.entitlement) }
             if !context.accessibilityTrusted { return .denied(.accessibilityRevoked) }
         case .phoneIntent:
             if !context.entitlement.allowsPhoneControl { return .denied(.entitlement) }

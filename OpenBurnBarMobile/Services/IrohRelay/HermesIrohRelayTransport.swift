@@ -197,6 +197,25 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         )
     }
 
+    func openComputerUseControlStream(
+        uid: String,
+        connectionID: String,
+        relayPublicKey: Data
+    ) async throws -> any IrohRelayStream {
+        let publisher = IrohPairingPublisher(directory: directory)
+        let verifiedTarget = try await publisher.fetchAndVerify(
+            uid: uid,
+            connectionId: connectionID,
+            publicKey: relayPublicKey,
+            now: now()
+        )
+        let transport = try await transport()
+        return try await transport.connect(
+            to: verifiedTarget,
+            timeout: connectTimeout
+        )
+    }
+
     func sendStreaming(
         _ payload: HermesRelayPayload,
         timeout: TimeInterval,

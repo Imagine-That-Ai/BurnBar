@@ -163,6 +163,16 @@ protocol SettingsManagerProtocol: AnyObject {
     /// `NodeId` first, falling back to the WSS relay on any failure.
     var hermesIrohTransportEnabled: Bool { get set }
 
+    /// Computer Use rollout flags. The persisted camelCase properties mirror
+    /// Remote Config keys `computer_use_*` documented in the master plan.
+    var computerUseWatchEnabled: Bool { get set }
+    var computerUseBrowserEnabled: Bool { get set }
+    var computerUseSystemEnabled: Bool { get set }
+    var computerUsePhoneControlEnabled: Bool { get set }
+    var computerUseTrustedScopesEnabled: Bool { get set }
+    var computerUseAuditExportEnabled: Bool { get set }
+    var computerUseKillSwitch: Bool { get set }
+
     /// Whether OpenBurnBar should launch Hermes Dashboard and its local gateway on app startup.
     var launchHermesWithOpenBurnBar: Bool { get set }
 

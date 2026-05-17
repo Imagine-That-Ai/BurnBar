@@ -122,9 +122,38 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(colonRoute.providerID, "ollama")
         XCTAssertEqual(colonRoute.requestedModel, "some-new-model:cloud")
         XCTAssertEqual(colonRoute.resolvedModelID, "some-new-model")
+        XCTAssertEqual(colonRoute.modelCapabilityClassID, "some-new-model")
 
         let dashRoute = try await harness.router.route(modelName: "some-new-model-cloud", preferredProviderID: "ollama")
         XCTAssertEqual(dashRoute.resolvedModelID, "some-new-model")
+        XCTAssertEqual(dashRoute.modelCapabilityClassID, "some-new-model")
+    }
+
+    func testRouterDoesNotRouteUnsuffixedModelToOllamaCloud() async throws {
+        let harness = try makeHarness(name: "ollama-cloud-unsuffixed")
+        try await harness.configStore.setSecret("ollama-key", for: "ollama")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "ollama",
+                isEnabled: true,
+                baseURL: "https://ollama.com/api",
+                preferredModelIDs: ["deepseek-v4-flash"]
+            )
+        )
+
+        do {
+            _ = try await harness.router.route(modelName: "deepseek-v4-flash", preferredProviderID: "ollama")
+            XCTFail("Expected unsuffixed Ollama Cloud model to be rejected")
+        } catch let error as BurnBarProviderRouterError {
+            guard case .unsupportedModel(let modelID) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(modelID, "deepseek-v4-flash")
+        }
+
+        let cloudRoute = try await harness.router.route(modelName: "deepseek-v4-flash:cloud", preferredProviderID: "ollama")
+        XCTAssertEqual(cloudRoute.providerID, "ollama")
+        XCTAssertEqual(cloudRoute.resolvedModelID, "deepseek-v4-flash")
     }
 
     func testRouterExtractsOpenCodeGoKeyFromAuthJSON() async throws {
@@ -149,6 +178,30 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(route.providerID, "opencode")
         XCTAssertEqual(route.resolvedModelID, "kimi-k2.6")
         XCTAssertEqual(route.apiKey, "opencode-route-key")
+    }
+
+    func testRouterNormalizesOpenCodeRootURLToGoAPIBase() async throws {
+        let harness = try makeHarness(name: "opencode-root-url")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "opencode",
+                isEnabled: true,
+                baseURL: "https://opencode.ai",
+                preferredModelIDs: ["deepseek-v4-pro"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "opencode",
+            slotID: "primary",
+            label: "OpenCode Go",
+            apiKey: #"{"opencode-go":{"type":"api","key":"opencode-route-key"}}"#
+        )
+
+        let route = try await harness.router.route(modelName: "deepseek-v4-pro", preferredProviderID: "opencode")
+        XCTAssertEqual(route.providerID, "opencode")
+        XCTAssertEqual(route.baseURL, "https://opencode.ai/zen/go/v1")
+        XCTAssertEqual(route.resolvedModelID, "deepseek-v4-pro")
     }
 
     func testRouterRejectsOpenCodeAuthJSONWithoutGoRouteKey() async throws {

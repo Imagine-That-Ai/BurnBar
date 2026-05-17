@@ -319,6 +319,10 @@ struct RootNavigationView: View {
                     case .settings: SettingsHubView(authStore: authStore)
                     case .devices:  iPadDevicesSettingsView()
                     case .providers: ProviderConnectionsView(showsDoneButton: false)
+                    case .computerUse: AgentWatchScreen(
+                        authUID: authStore.currentIdentity?.uid,
+                        hermesService: hermesService
+                    )
                     }
                 }
                 .navigationDestination(for: TokenUsage.self) { usage in

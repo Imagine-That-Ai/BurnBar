@@ -27,18 +27,27 @@ import FirebaseCore
 @MainActor
 final class MacCloudEntitlementStore: ObservableObject {
     @Published private(set) var isActive: Bool = false
+    @Published private(set) var hostedComputerUseIsActive: Bool = false
     @Published private(set) var expirationDate: Date?
+    @Published private(set) var hostedComputerUseExpirationDate: Date?
     @Published private(set) var purchaseDate: Date?
+    @Published private(set) var hostedComputerUsePurchaseDate: Date?
     @Published private(set) var error: String?
 
     static let shared = MacCloudEntitlementStore()
 
     private var listener: ListenerRegistration?
+    private var computerUseListener: ListenerRegistration?
+    private var proMaxListener: ListenerRegistration?
     private var authHandle: AuthStateDidChangeListenerHandle?
     private var started = false
+    private var hostedComputerUseState: (isActive: Bool, expiresAt: Date?, purchase: Date?) = (false, nil, nil)
+    private var proMaxComputerUseState: (isActive: Bool, expiresAt: Date?, purchase: Date?) = (false, nil, nil)
 
     deinit {
         listener?.remove()
+        computerUseListener?.remove()
+        proMaxListener?.remove()
         if let authHandle {
             Auth.auth().removeStateDidChangeListener(authHandle)
         }
@@ -63,15 +72,25 @@ final class MacCloudEntitlementStore: ObservableObject {
     private func restartListener(uid: String?) {
         listener?.remove()
         listener = nil
+        computerUseListener?.remove()
+        computerUseListener = nil
+        proMaxListener?.remove()
+        proMaxListener = nil
         guard let uid else {
             isActive = false
+            hostedComputerUseIsActive = false
             expirationDate = nil
+            hostedComputerUseExpirationDate = nil
             purchaseDate = nil
+            hostedComputerUsePurchaseDate = nil
+            hostedComputerUseState = (false, nil, nil)
+            proMaxComputerUseState = (false, nil, nil)
             return
         }
-        listener = Firestore.firestore()
+        let entitlements = Firestore.firestore()
             .collection("users").document(uid)
             .collection("entitlements")
+        listener = entitlements
             .document("hosted_quota_sync")
             .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor in
@@ -89,20 +108,73 @@ final class MacCloudEntitlementStore: ObservableObject {
                         self.purchaseDate = nil
                         return
                     }
-                    self.apply(data: data)
+                    self.applyHostedQuota(data: data)
+                }
+            }
+        computerUseListener = entitlements
+            .document("hosted_computer_use_sync")
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        self.error = error.localizedDescription
+                        return
+                    }
+                    guard let data = snapshot?.data(), snapshot?.exists == true else {
+                        self.hostedComputerUseState = (false, nil, nil)
+                        self.publishComputerUseEntitlement()
+                        return
+                    }
+                    self.applyHostedComputerUse(data: data)
+                }
+            }
+        proMaxListener = entitlements
+            .document("burnbar_pro_max")
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        self.error = error.localizedDescription
+                        return
+                    }
+                    guard let data = snapshot?.data(), snapshot?.exists == true else {
+                        self.proMaxComputerUseState = (false, nil, nil)
+                        self.publishComputerUseEntitlement()
+                        return
+                    }
+                    self.proMaxComputerUseState = self.activeEntitlementState(data: data)
+                    self.publishComputerUseEntitlement()
                 }
             }
     }
 
-    private func apply(data: [String: Any]) {
-        let active = (data["active"] as? Bool) ?? false
-        let expiresAt = parseDate(data["expiresAt"]) ?? parseDate(data["expirationDate"])
-        let purchase = parseDate(data["originalPurchaseDate"]) ?? parseDate(data["purchaseDate"])
+    private func applyHostedQuota(data: [String: Any]) {
+        let state = activeEntitlementState(data: data)
+        isActive = state.isActive
+        expirationDate = state.expiresAt
+        purchaseDate = state.purchase
+    }
 
+    private func applyHostedComputerUse(data: [String: Any]) {
+        hostedComputerUseState = activeEntitlementState(data: data)
+        publishComputerUseEntitlement()
+    }
+
+    private func activeEntitlementState(data: [String: Any]) -> (isActive: Bool, expiresAt: Date?, purchase: Date?) {
+        let active = (data["active"] as? Bool) ?? false
+        let expiresAt = parseDate(data["expireAt"])
+            ?? parseDate(data["expiresAt"])
+            ?? parseDate(data["expirationDate"])
+        let purchase = parseDate(data["originalPurchaseDate"]) ?? parseDate(data["purchaseDate"])
         let notExpired = expiresAt.map { $0 > Date() } ?? true
-        isActive = active && notExpired
-        expirationDate = expiresAt
-        purchaseDate = purchase
+        return (active && notExpired, expiresAt, purchase)
+    }
+
+    private func publishComputerUseEntitlement() {
+        let effective = hostedComputerUseState.isActive ? hostedComputerUseState : proMaxComputerUseState
+        hostedComputerUseIsActive = effective.isActive
+        hostedComputerUseExpirationDate = effective.expiresAt
+        hostedComputerUsePurchaseDate = effective.purchase
     }
 
     private func parseDate(_ raw: Any?) -> Date? {

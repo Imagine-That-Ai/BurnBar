@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import CryptoKit
+import Security
 import OpenBurnBarCore
 import OpenBurnBarComputerUseCore
 
@@ -120,5 +121,83 @@ public struct Curve25519SigningKey: Sendable {
     public let privateKey: Curve25519SigningKey.Wrapped
     public typealias Wrapped = Curve25519.Signing.PrivateKey
     public init(privateKey: Wrapped) { self.privateKey = privateKey }
+}
+
+/// Persistent iOS signing identity for Phase 12 phone-control intents.
+///
+/// The public key is announced on the already-verified Computer Use control
+/// stream; the Mac registers it for that stream and then validates every
+/// `control.input` intent with monotonic counters.
+public final class PhoneControlSigningKeyStore: @unchecked Sendable {
+    public static let shared = PhoneControlSigningKeyStore()
+
+    private let service: String
+    private let account: String
+
+    public init(
+        service: String = "ai.openburnbar.phone-control",
+        account: String = "default-signing-key"
+    ) {
+        self.service = service
+        self.account = account
+    }
+
+    public func signingKey() throws -> Curve25519SigningKey {
+        if let existing = try load() {
+            return Curve25519SigningKey(privateKey: existing)
+        }
+        let created = Curve25519.Signing.PrivateKey()
+        try save(created)
+        return Curve25519SigningKey(privateKey: created)
+    }
+
+    public func peerNodeId(for key: Curve25519SigningKey) -> String {
+        "ios-phone-\(Self.hex(Data(key.privateKey.publicKey.rawRepresentation.prefix(12))))"
+    }
+
+    private func load() throws -> Curve25519.Signing.PrivateKey? {
+        var query = baseQuery()
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let data = item as? Data else {
+            throw KeyStoreError.keychainStatus(status)
+        }
+        return try Curve25519.Signing.PrivateKey(rawRepresentation: data)
+    }
+
+    private func save(_ key: Curve25519.Signing.PrivateKey) throws {
+        let data = key.rawRepresentation
+        var query = baseQuery()
+        query[kSecValueData as String] = data
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+        if status == errSecDuplicateItem {
+            let updateStatus = SecItemUpdate(baseQuery() as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+            guard updateStatus == errSecSuccess else { throw KeyStoreError.keychainStatus(updateStatus) }
+            return
+        }
+        guard status == errSecSuccess else { throw KeyStoreError.keychainStatus(status) }
+    }
+
+    private func baseQuery() -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+    }
+
+    private static func hex(_ bytes: Data) -> String {
+        bytes.map { String(format: "%02x", $0) }.joined()
+    }
+
+    public enum KeyStoreError: Error, Equatable {
+        case keychainStatus(OSStatus)
+    }
 }
 #endif

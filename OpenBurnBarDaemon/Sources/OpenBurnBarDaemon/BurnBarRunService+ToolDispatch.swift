@@ -22,6 +22,103 @@ extension BurnBarRunService {
         try await enqueueCompanionToolCall(invocation, for: &run)
     }
 
+    func dispatchBrowserToolCall(
+        for run: inout BurnBarManagedRun,
+        toolKind: BurnBarToolKind,
+        arguments: BurnBarJSONValue
+    ) async throws {
+        let invocation = BurnBarToolInvocation(
+            callID: UUID().uuidString,
+            runID: run.runID,
+            tool: toolKind,
+            arguments: arguments,
+            requestedBy: run.snapshot.clientID,
+            requestedAt: Date()
+        )
+        if try await requestMandatoryToolApprovalIfNeeded(for: &run, invocation: invocation) {
+            return
+        }
+        try await executeBrowserToolInvocation(invocation, for: &run)
+    }
+
+    func executeBrowserToolInvocation(
+        _ invocation: BurnBarToolInvocation,
+        for run: inout BurnBarManagedRun
+    ) async throws {
+        let started = Date()
+        let pendingSnapshot = BurnBarToolCallSnapshot(
+            callID: invocation.callID,
+            runID: invocation.runID,
+            tool: invocation.tool,
+            arguments: invocation.arguments,
+            status: .inProgress,
+            requestedBy: invocation.requestedBy,
+            requestedAt: invocation.requestedAt,
+            claimedBy: BurnBarRunService.controllerRuntimeClientID,
+            claimedAt: started
+        )
+        run.activeToolCallID = invocation.callID
+        run.pendingApprovalToolInvocation = nil
+        run.lastToolCall = pendingSnapshot
+        try transition(&run, to: .executingTool)
+        try await appendJournalEvent(
+            BurnBarRunJournalEvent(
+                runID: run.runID,
+                kind: .toolDispatched,
+                phase: run.snapshot.phase,
+                payload: try BurnBarJSONValue.fromEncodable(pendingSnapshot),
+                emittedAt: Date()
+            )
+        )
+
+        let response = try await browserToolService.performAction(
+            browserActionRequest(for: invocation)
+        )
+        let completedAt = Date()
+        let output = try BurnBarJSONValue.fromEncodable(response)
+        let error = response.ok ? nil : BurnBarToolExecutionError(
+            code: .unknown,
+            message: response.detail ?? response.summary
+        )
+        let completedSnapshot = BurnBarToolCallSnapshot(
+            callID: invocation.callID,
+            runID: invocation.runID,
+            tool: invocation.tool,
+            arguments: invocation.arguments,
+            status: response.ok ? .completed : .failed,
+            requestedBy: invocation.requestedBy,
+            requestedAt: invocation.requestedAt,
+            claimedBy: BurnBarRunService.controllerRuntimeClientID,
+            claimedAt: started,
+            completedAt: completedAt,
+            output: output,
+            error: error
+        )
+        run.lastToolCall = completedSnapshot
+        run.activeToolCallID = nil
+        try await appendJournalEvent(
+            BurnBarRunJournalEvent(
+                runID: run.runID,
+                kind: .toolCompleted,
+                phase: run.snapshot.phase,
+                payload: try BurnBarJSONValue.fromEncodable(completedSnapshot),
+                emittedAt: completedAt
+            )
+        )
+
+        if response.ok {
+            try applySuccessfulToolResult(completedSnapshot, to: &run)
+            try transition(&run, to: .planning, activeApprovalID: nil)
+            try await continueExecution(for: &run)
+        } else {
+            try await handleToolFailure(
+                error: error ?? BurnBarToolExecutionError(code: .unknown, message: response.summary),
+                callSnapshot: completedSnapshot,
+                run: &run
+            )
+        }
+    }
+
     func enqueueCompanionToolCall(
         _ invocation: BurnBarToolInvocation,
         for run: inout BurnBarManagedRun
@@ -47,7 +144,7 @@ extension BurnBarRunService {
         invocation: BurnBarToolInvocation
     ) async throws -> Bool {
         guard run.approvalRequest == nil,
-              invocation.tool == .applyPatch || invocation.tool == .runTerminal,
+              invocation.tool == .applyPatch || invocation.tool == .runTerminal || invocation.tool.isBrowserComputerUse,
               let approval = policyEngine.approvalDescriptor(
                   explicitApprovalRequired: true,
                   intent: run.intent,
@@ -85,6 +182,36 @@ extension BurnBarRunService {
             )
         )
         return true
+    }
+
+    private func browserActionRequest(for invocation: BurnBarToolInvocation) throws -> BurnBarBrowserActionRequest {
+        let encoded = try JSONEncoder().encode(invocation.arguments)
+        let arguments = try JSONDecoder().decode(BurnBarBrowserActionArguments.self, from: encoded)
+        let action: BurnBarBrowserActionKind
+        switch invocation.tool {
+        case .browserClick:
+            action = .click
+        case .browserFill:
+            action = .fill
+        case .browserGoto:
+            action = .goto
+        case .browserKey:
+            action = .key
+        case .browserSelect:
+            action = .select
+        case .browserScreenshot:
+            action = .screenshot
+        case .browserExtract:
+            action = .extract
+        default:
+            throw BurnBarAgentLoopServiceError.unsupportedAction("Tool \(invocation.tool.rawValue) is not a browser Computer Use tool.")
+        }
+        return BurnBarBrowserActionRequest(
+            action: action,
+            url: arguments.url ?? "about:blank",
+            preferredEngine: .playwright,
+            arguments: arguments
+        )
     }
 
     func applySuccessfulToolResult(

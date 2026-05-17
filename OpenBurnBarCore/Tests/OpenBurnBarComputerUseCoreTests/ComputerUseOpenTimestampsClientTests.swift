@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 @testable import OpenBurnBarComputerUseCore
 
 final class ComputerUseOpenTimestampsClientTests: XCTestCase {
@@ -20,7 +21,7 @@ final class ComputerUseOpenTimestampsClientTests: XCTestCase {
         }
     }
 
-    func testNotarizeHashesArbitraryHex() async {
+    func testNotarizeHashesChainFileBytes() async throws {
         // We don't make the network call here — instead inject a stub
         // URLSession that records the outgoing request body.
         let recorder = RecordingURLProtocol()
@@ -41,10 +42,16 @@ final class ComputerUseOpenTimestampsClientTests: XCTestCase {
             )!,
             data: Data([0xFE, 0xED, 0xFA, 0xCE])
         )
-        let proof = try? await client.notarize(auditChainHeadHashHex: chainHead)
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ots-chain-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        let chainURL = tmp.appendingPathComponent("chain.jsonl")
+        let chainBytes = Data("{\"head\":\"\(chainHead)\"}\n".utf8)
+        try chainBytes.write(to: chainURL)
+        let expectedDigest = Data(SHA256.hash(data: chainBytes))
+        let proof = try? await client.notarize(chainFileAt: chainURL)
         XCTAssertEqual(proof, Data([0xFE, 0xED, 0xFA, 0xCE]))
-        XCTAssertEqual(RecordingURLProtocol.lastBody?.count, 32,
-            "Calendar bodies must be exactly the 32-byte digest.")
+        XCTAssertEqual(RecordingURLProtocol.lastBody, expectedDigest)
         _ = recorder
     }
 

@@ -38,14 +38,12 @@ struct AssistantsPopoverChatView: View {
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, DesignSystem.Spacing.xs)
             .background(DesignSystem.Colors.surface.opacity(0.35))
-            OpenBurnBarHermesOperatingStrip(layer: operatingLayer)
-            Divider().background(runtimeDividerTint.opacity(0.3))
             chatThread
             Divider().background(runtimeDividerTint.opacity(0.3))
             inputRow
             bottomBar
         }
-        .frame(width: 340)
+        .frame(maxWidth: .infinity)
         .background(DesignSystem.Colors.background)
         .environment(\.hermesAtomNavigator, atomRouter)
         .popover(item: Binding(

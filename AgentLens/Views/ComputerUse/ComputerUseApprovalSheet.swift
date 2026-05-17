@@ -51,7 +51,17 @@ public struct ComputerUseApprovalSheet: View {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(.secondary.opacity(0.08))
                     .frame(width: 320, height: 180)
-                    .overlay(Text("Pre-action screenshot pending").font(.system(size: 11)))
+                    .overlay(alignment: .center) {
+                        VStack(spacing: 6) {
+                            Text(request.beforeScreenshotBlake3 == nil ? "Screenshot unavailable" : "Screenshot captured")
+                                .font(.system(size: 11, weight: .medium))
+                            if let hash = request.beforeScreenshotBlake3 {
+                                Text(String(hash.prefix(16)) + "..." + String(hash.suffix(8)))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
             }
 
             VStack(alignment: .leading, spacing: 6) {
