@@ -267,7 +267,7 @@ class HermesIrohRelayTransportTest {
             keyStore = keyStore,
             pairingDirectory = InMemoryIrohPairingDirectory(),
             pairingPublicKeyProvider = publicKeyProvider,
-            transportFactory = { clientTransport },
+            transportFactory = { _ -> clientTransport },
             auth = auth,
             connectTimeoutMillis = 500,
         )
@@ -327,6 +327,59 @@ class HermesIrohRelayTransportTest {
         hostTransport.shutdown()
     }
 
+    @Test
+    fun endpoint_bootstrap_receives_signed_pairing_relay_url() = runTest {
+        val uid = "uid-relay-url"
+        val connectionId = "conn-relay-url"
+        val nodeId = "host-${connectionId}"
+        val hostedRelayURL = "https://use1-1.relay.example.test/"
+        val hostTransport = LoopbackIrohRelayTransport(rendezvous, nodeId = nodeId)
+        val clientTransport = LoopbackIrohRelayTransport(rendezvous, nodeId = "client-${connectionId}")
+        hostTransport.start()
+        clientTransport.start()
+
+        val directory = InMemoryIrohPairingDirectory()
+        runBlocking {
+            directory.publish(makePairingRecord(uid, connectionId, nodeId, hostedRelayURL), uid)
+        }
+        var observedRelayURL: String? = null
+        val keyStore = mockk<HermesRelayKeyStore>(relaxed = true)
+        val publicKeyProvider = object : IrohPairingPublicKeyProviding {
+            override suspend fun fetchPublicKey(uid: String): ByteArray = pairingPublicKeyRaw
+        }
+        val transport = HermesIrohRelayTransport(
+            context = mockk(relaxed = true),
+            keyStore = keyStore,
+            pairingDirectory = directory,
+            pairingPublicKeyProvider = publicKeyProvider,
+            transportFactory = { relayURL ->
+                observedRelayURL = relayURL
+                clientTransport
+            },
+            auth = fakeAuth(uid),
+            connectTimeoutMillis = 2_000,
+        )
+
+        val payload = HermesRelayPayload(
+            operation = "models",
+            method = "GET",
+            path = "/v1/models",
+            connectionID = connectionId,
+            relayPublicKey = Base64.getEncoder().encodeToString(relayPublicX963),
+        )
+
+        val server = async {
+            val stream = hostTransport.accept(timeoutMillis = 5_000)
+            handleSingleRequest(stream, chunks = listOf("{}" to HermesRelayChunkKind.DATA))
+        }
+        transport.sendUnary(payload = payload, timeoutMillis = 5_000)
+        server.await()
+
+        assertEquals(hostedRelayURL, observedRelayURL)
+        clientTransport.shutdown()
+        hostTransport.shutdown()
+    }
+
     // --- Helpers ------------------------------------------------------
 
     private fun signPairing(payload: ByteArray): String {
@@ -336,13 +389,18 @@ class HermesIrohRelayTransportTest {
         return Base64.getEncoder().encodeToString(engine.sign())
     }
 
-    private fun makePairingRecord(uid: String, connectionId: String, nodeId: String): IrohPairingRecord {
+    private fun makePairingRecord(
+        uid: String,
+        connectionId: String,
+        nodeId: String,
+        relayURL: String? = null,
+    ): IrohPairingRecord {
         val now = System.currentTimeMillis()
         val payload = IrohPairingSignature.canonicalPayload(
             uid = uid,
             connectionId = connectionId,
             nodeId = nodeId,
-            relayURL = null,
+            relayURL = relayURL,
             directAddresses = emptyList(),
             publishedAtMillis = now,
             protocolVersion = IrohRelayProtocol.FRAME_PROTOCOL_VERSION,
@@ -351,6 +409,7 @@ class HermesIrohRelayTransportTest {
             uid = uid,
             connectionId = connectionId,
             nodeId = nodeId,
+            relayURL = relayURL,
             publishedAtMillis = now,
             signature = signPairing(payload),
         )
@@ -381,7 +440,7 @@ class HermesIrohRelayTransportTest {
             keyStore = keyStore,
             pairingDirectory = directory,
             pairingPublicKeyProvider = publicKeyProvider,
-            transportFactory = { clientTransport },
+            transportFactory = { _ -> clientTransport },
             auth = fakeAuth(uid),
             connectTimeoutMillis = 2_000,
         )

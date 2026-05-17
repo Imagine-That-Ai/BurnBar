@@ -782,12 +782,178 @@
     {
       "id": "opencode",
       "displayName": "OpenCode",
-      "baseURL": "https://opencode.ai",
+      "baseURL": "https://opencode.ai/zen/go/v1",
       "visibility": "public",
       "logoKey": "OpenCodeLogo",
-      "capabilities": ["accounting"],
+      "capabilities": ["routing", "accounting"],
       "formatFamily": "openai_compat",
-      "models": []
+      "models": [
+        {
+          "id": "opencode-kimi-k2.6-family",
+          "displayName": "Kimi K2.6",
+          "visibility": "public",
+          "aliases": ["kimi-k2.6"],
+          "matchers": [
+            { "all": ["kimi", "k2.6"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "kimi-k2.6",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "opencode-kimi-k2.5-family",
+          "displayName": "Kimi K2.5",
+          "visibility": "public",
+          "aliases": ["kimi-k2.5"],
+          "matchers": [
+            { "all": ["kimi", "k2.5"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "kimi-k2.5",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-glm-5.1-family",
+          "displayName": "GLM 5.1",
+          "visibility": "public",
+          "aliases": ["glm-5.1"],
+          "matchers": [
+            { "all": ["glm", "5.1"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "glm-5.1",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "opencode-glm-5-family",
+          "displayName": "GLM 5",
+          "visibility": "public",
+          "aliases": ["glm-5"],
+          "matchers": [
+            { "all": ["glm", "5"], "any": [], "none": ["5.1", "turbo", "code"] }
+          ],
+          "capabilityClassID": "glm-5",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-minimax-m2.7-family",
+          "displayName": "MiniMax M2.7",
+          "visibility": "public",
+          "aliases": ["minimax-m2.7"],
+          "matchers": [
+            { "all": ["minimax", "m2.7"], "any": [], "none": ["highspeed"] }
+          ],
+          "capabilityClassID": "minimax-m2.7",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "opencode-minimax-m2.5-family",
+          "displayName": "MiniMax M2.5",
+          "visibility": "public",
+          "aliases": ["minimax-m2.5"],
+          "matchers": [
+            { "all": ["minimax", "m2.5"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "minimax-m2.5",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-deepseek-v4-pro-family",
+          "displayName": "DeepSeek V4 Pro",
+          "visibility": "public",
+          "aliases": ["deepseek-v4-pro"],
+          "matchers": [
+            { "all": ["deepseek", "v4", "pro"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "deepseek-v4-pro",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "opencode-deepseek-v4-flash-family",
+          "displayName": "DeepSeek V4 Flash",
+          "visibility": "public",
+          "aliases": ["deepseek-v4-flash"],
+          "matchers": [
+            { "all": ["deepseek", "v4", "flash"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "deepseek-v4-flash",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-qwen3.6-plus-family",
+          "displayName": "Qwen 3.6 Plus",
+          "visibility": "public",
+          "aliases": ["qwen3.6-plus"],
+          "matchers": [
+            { "all": ["qwen3.6", "plus"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "qwen3.6-plus",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-qwen3.5-plus-family",
+          "displayName": "Qwen 3.5 Plus",
+          "visibility": "public",
+          "aliases": ["qwen3.5-plus"],
+          "matchers": [
+            { "all": ["qwen3.5", "plus"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "qwen3.5-plus",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-mimo-v2.5-pro-family",
+          "displayName": "Mimo V2.5 Pro",
+          "visibility": "public",
+          "aliases": ["mimo-v2.5-pro"],
+          "matchers": [
+            { "all": ["mimo", "v2.5", "pro"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "mimo-v2.5-pro",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "opencode-mimo-v2.5-family",
+          "displayName": "Mimo V2.5",
+          "visibility": "public",
+          "aliases": ["mimo-v2.5"],
+          "matchers": [
+            { "all": ["mimo", "v2.5"], "any": [], "none": ["pro"] }
+          ],
+          "capabilityClassID": "mimo-v2.5",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-mimo-v2-pro-family",
+          "displayName": "Mimo V2 Pro",
+          "visibility": "public",
+          "aliases": ["mimo-v2-pro"],
+          "matchers": [
+            { "all": ["mimo", "v2", "pro"], "any": [], "none": ["v2.5"] }
+          ],
+          "capabilityClassID": "mimo-v2-pro",
+          "capabilityClassRank": 80
+        },
+        {
+          "id": "opencode-mimo-v2-omni-family",
+          "displayName": "Mimo V2 Omni",
+          "visibility": "public",
+          "aliases": ["mimo-v2-omni"],
+          "matchers": [
+            { "all": ["mimo", "v2", "omni"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "mimo-v2-omni",
+          "capabilityClassRank": 60
+        },
+        {
+          "id": "opencode-hy3-preview-family",
+          "displayName": "HY3 Preview",
+          "visibility": "public",
+          "aliases": ["hy3-preview"],
+          "matchers": [
+            { "all": ["hy3"], "any": [], "none": [] }
+          ],
+          "capabilityClassID": "hy3-preview",
+          "capabilityClassRank": 60
+        }
+      ]
     },
     {
       "id": "google",
@@ -1791,6 +1957,22 @@
             "outputPerMToken": 2.4,
             "cacheReadPerMToken": 0.06
           }
+        },
+        {
+          "id": "minimax-m2.7-family",
+          "displayName": "MiniMax M2.7",
+          "visibility": "hidden",
+          "aliases": ["minimax-m2.7"],
+          "matchers": [
+            { "all": ["minimax", "m2.7"], "any": [], "none": ["highspeed"] }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.69,
+            "outputPerMToken": 0.69,
+            "cacheReadPerMToken": 0.07
+          },
+          "capabilityClassID": "minimax-m2.7",
+          "capabilityClassRank": 80
         },
         {
           "id": "minimax-m23-family",

@@ -164,9 +164,9 @@ public final class OpenBurnBarIrohFFIStream: IrohBackendStream, @unchecked Senda
     }
 
     public func close() async {
-        await withCheckedContinuation { continuation in
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             queue.async { [stream] in
-                _ = try? stream.close()
+                _ = try? stream.closeStream()
                 continuation.resume()
             }
         }

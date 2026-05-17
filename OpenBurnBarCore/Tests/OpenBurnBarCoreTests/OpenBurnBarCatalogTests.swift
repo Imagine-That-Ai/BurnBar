@@ -11,6 +11,20 @@ final class BurnBarCatalogTests: XCTestCase {
         XCTAssertEqual(catalog.suggestedModels(forProviderID: "zai").map(\.id), ["glm-5-turbo", "glm-5"])
     }
 
+    func test_catalogModelMissingPricingUsesFallbackPricing() throws {
+        let data = """
+        {
+          "id": "opencode-oauth",
+          "displayName": "OpenCode OAuth",
+          "visibility": "public"
+        }
+        """.data(using: .utf8)!
+
+        let model = try JSONDecoder().decode(BurnBarCatalogModel.self, from: data)
+
+        XCTAssertEqual(model.pricing, .defaultFallback)
+    }
+
     func test_catalogPricingLookup_usesMatcherRules() throws {
         let catalog = BurnBarCatalogLoader.bundledCatalog
 

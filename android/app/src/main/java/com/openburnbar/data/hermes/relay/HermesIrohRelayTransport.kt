@@ -72,7 +72,9 @@ class HermesIrohRelayTransport(
     private val pairingDirectory: IrohPairingDirectory,
     private val pairingPublicKeyProvider: IrohPairingPublicKeyProviding,
     private val auditLogger: IrohTransportAuditLogging = NoopIrohTransportAuditLogging,
-    private val transportFactory: () -> IrohRelayTransport = { defaultTransport(keyStore = HermesRelayKeyStore(context)) },
+    private val transportFactory: (String?) -> IrohRelayTransport = { relayURL ->
+        defaultTransport(keyStore = HermesRelayKeyStore(context), relayURL = relayURL)
+    },
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
     private val connectTimeoutMillis: Long = DEFAULT_CONNECT_TIMEOUT_MILLIS,
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
@@ -81,6 +83,7 @@ class HermesIrohRelayTransport(
     private val stateLock = Mutex()
     private var endpoint: IrohRelayTransport? = null
     private var startedOnce: Boolean = false
+    private var endpointRelayURL: String? = null
 
     override suspend fun sendUnary(payload: HermesRelayPayload, timeoutMillis: Long): String {
         // Unary forwards arrive as `.data` chunks. The Mac splits the
@@ -171,7 +174,7 @@ class HermesIrohRelayTransport(
             throw HermesRelayException("Could not verify iroh pairing record: ${err.message}")
         }
 
-        val transport = transport()
+        val transport = transport(verifiedTarget.relayURL)
         val dialTimeout = minOf(connectTimeoutMillis, timeoutMillis)
         val stream = try {
             withTimeoutOrNull(dialTimeout) {
@@ -238,7 +241,9 @@ class HermesIrohRelayTransport(
 
             val deadline = nowMillis() + timeoutMillis
             while (nowMillis() < deadline) {
-                val frame = stream.receive() ?: throw HermesRelayException("Iroh stream closed before completion.")
+                val remaining = deadline - nowMillis()
+                val frame = withTimeoutOrNull(remaining) { stream.receive() }
+                    ?: throw HermesRelayException("Iroh relay timed out before response.complete.")
                 if (frame.uid != uid || frame.connectionId != payload.connectionID || frame.requestId != requestId) continue
                 when (frame.type) {
                     HermesRealtimeRelayFrameType.RESPONSE_CHUNK -> {
@@ -249,7 +254,35 @@ class HermesIrohRelayTransport(
                             uid = uid,
                             connectionId = payload.connectionID,
                         ) ?: continue
+                        auditLogger.record(
+                            event = IrohTransportAuditEvent.STREAM_OPENED,
+                            uid = uid,
+                            connectionId = payload.connectionID,
+                            transport = IrohTransportSelection.IROH_DIRECT,
+                            rttMillis = null,
+                            detail = mapOf(
+                                "side" to "android",
+                                "stage" to "android_response_chunk_received",
+                                "requestId" to requestId,
+                                "sequence" to chunk.sequence.toString(),
+                                "kind" to chunk.kind.wireValue,
+                                "textBytes" to (chunk.text?.toByteArray(Charsets.UTF_8)?.size ?: 0).toString(),
+                            ),
+                        )
                         onChunk(chunk)
+                        auditLogger.record(
+                            event = IrohTransportAuditEvent.STREAM_OPENED,
+                            uid = uid,
+                            connectionId = payload.connectionID,
+                            transport = IrohTransportSelection.IROH_DIRECT,
+                            rttMillis = null,
+                            detail = mapOf(
+                                "side" to "android",
+                                "stage" to "android_response_chunk_processed",
+                                "requestId" to requestId,
+                                "sequence" to chunk.sequence.toString(),
+                            ),
+                        )
                     }
                     HermesRealtimeRelayFrameType.RESPONSE_COMPLETE -> {
                         auditLogger.record(
@@ -258,7 +291,11 @@ class HermesIrohRelayTransport(
                             connectionId = payload.connectionID,
                             transport = IrohTransportSelection.IROH_DIRECT,
                             rttMillis = ((nowMillis() - (deadline - timeoutMillis)).toInt()),
-                            detail = emptyMap(),
+                            detail = mapOf(
+                                "side" to "android",
+                                "stage" to "android_response_complete",
+                                "requestId" to requestId,
+                            ),
                         )
                         return
                     }
@@ -274,13 +311,18 @@ class HermesIrohRelayTransport(
         }
     }
 
-    private suspend fun transport(): IrohRelayTransport = stateLock.withLock {
+    private suspend fun transport(relayURL: String?): IrohRelayTransport = stateLock.withLock {
         val existing = endpoint
-        if (existing != null && startedOnce) return@withLock existing
-        val fresh = transportFactory()
+        val normalizedRelayURL = relayURL?.trim()?.takeIf { it.isNotEmpty() }
+        if (existing != null && startedOnce && endpointRelayURL == normalizedRelayURL) return@withLock existing
+        if (existing != null && startedOnce) {
+            runCatching { existing.shutdown() }
+        }
+        val fresh = transportFactory(normalizedRelayURL)
         endpoint = fresh
         fresh.start()
         startedOnce = true
+        endpointRelayURL = normalizedRelayURL
         fresh
     }
 
@@ -324,13 +366,13 @@ class HermesIrohRelayTransport(
         const val DEFAULT_CONNECT_TIMEOUT_MILLIS: Long = 5_000
 
         /** Factory used by production wiring — JNI transport if AAR available, loopback otherwise. */
-        fun defaultTransport(keyStore: HermesRelayKeyStore): IrohRelayTransport {
+        fun defaultTransport(keyStore: HermesRelayKeyStore, relayURL: String? = null): IrohRelayTransport {
             val secretProvider: () -> IrohSecretKeyMaterial = { keyStore.irohSecretKeyMaterial() }
             return if (OpenBurnBarIrohFfiBackend.isAvailable()) {
                 IrohJniTransport(
                     backend = OpenBurnBarIrohFfiBackend(),
                     secretProvider = secretProvider,
-                    relayURLProvider = { null },
+                    relayURLProvider = { relayURL },
                 )
             } else {
                 LoopbackIrohRelayTransport(rendezvous = LoopbackIrohRelayRendezvous())
@@ -360,17 +402,10 @@ class FirestoreIrohPairingDirectory(
             .collection("iroh_pairing").document(connectionId)
             .get().await()
         if (!snap.exists()) return null
-        @Suppress("UNCHECKED_CAST")
-        val directAddresses = (snap.get("directAddresses") as? List<String>) ?: emptyList()
-        return IrohPairingRecord(
-            uid = snap.getString("uid").orEmpty(),
-            connectionId = snap.getString("connectionId").orEmpty(),
-            nodeId = snap.getString("nodeId").orEmpty(),
-            relayURL = snap.getString("relayURL"),
-            directAddresses = directAddresses,
-            publishedAtMillis = snap.getLong("publishedAtMillis") ?: 0L,
-            protocolVersion = (snap.getLong("protocolVersion") ?: IrohRelayProtocol.FRAME_PROTOCOL_VERSION.toLong()).toInt(),
-            signature = snap.getString("signature").orEmpty(),
+        return decodeIrohPairingRecord(
+            documentId = snap.id,
+            uid = uid,
+            data = snap.data.orEmpty(),
         )
     }
 
@@ -382,8 +417,7 @@ class FirestoreIrohPairingDirectory(
 }
 
 private fun IrohPairingRecord.asMap(): Map<String, Any?> = mapOf(
-    "uid" to uid,
-    "connectionId" to connectionId,
+    "id" to connectionId,
     "nodeId" to nodeId,
     "relayURL" to relayURL,
     "directAddresses" to directAddresses,
@@ -392,19 +426,68 @@ private fun IrohPairingRecord.asMap(): Map<String, Any?> = mapOf(
     "signature" to signature,
 )
 
-/** Firestore-backed pairing public-key provider — reads from `hermes_relay_connections/{id}.pairing_public_key`. */
+internal fun decodeIrohPairingRecord(
+    documentId: String,
+    uid: String,
+    data: Map<String, Any?>,
+): IrohPairingRecord? {
+    val connectionId = (data["id"] as? String)
+        ?.takeIf { it.isNotBlank() }
+        ?: (data["connectionId"] as? String)?.takeIf { it.isNotBlank() }
+        ?: documentId.takeIf { it.isNotBlank() }
+        ?: return null
+    val nodeId = (data["nodeId"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+    val publishedAtMillis = data.longValue("publishedAtMillis") ?: return null
+    val signature = (data["signature"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+    val protocolVersion = (data.longValue("protocolVersion") ?: IrohRelayProtocol.FRAME_PROTOCOL_VERSION.toLong()).toInt()
+    val directAddresses = (data["directAddresses"] as? List<*>)
+        ?.mapNotNull { it as? String }
+        ?: emptyList()
+    return IrohPairingRecord(
+        uid = uid,
+        connectionId = connectionId,
+        nodeId = nodeId,
+        relayURL = data["relayURL"] as? String,
+        directAddresses = directAddresses,
+        publishedAtMillis = publishedAtMillis,
+        protocolVersion = protocolVersion,
+        signature = signature,
+    )
+}
+
+internal fun decodeIrohPairingPublicKey(data: Map<String, Any?>): ByteArray {
+    val raw = (data["publicKeyBase64"] as? String)
+        ?.takeIf { it.isNotBlank() }
+        ?: throw HermesRelayException("No paired Mac has published an iroh pairing public key yet.")
+    val decoded = try {
+        Base64.decode(raw, Base64.NO_WRAP)
+    } catch (_: IllegalArgumentException) {
+        throw HermesRelayException("Pairing public key is not valid base64.")
+    }
+    if (decoded.size != 32) {
+        throw HermesRelayException("Pairing public key is not a valid Ed25519 public key.")
+    }
+    return decoded
+}
+
+private fun Map<String, Any?>.longValue(key: String): Long? =
+    when (val value = this[key]) {
+        is Long -> value
+        is Int -> value.toLong()
+        is Number -> value.toLong()
+        else -> null
+    }
+
+/** Firestore-backed pairing public-key provider — reads from `iroh_pairing_keys/host.publicKeyBase64`. */
 class FirestoreIrohPairingPublicKeyProvider(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) : IrohPairingPublicKeyProviding {
     override suspend fun fetchPublicKey(uid: String): ByteArray {
         val snap = firestore.collection("users").document(uid)
-            .collection("hermes_relay_connections").get().await()
-        val doc = snap.documents.firstOrNull { it.getString("pairing_public_key") != null }
-            ?: throw HermesRelayException("No paired Mac has published an iroh pairing public key yet.")
-        val raw = doc.getString("pairing_public_key").orEmpty()
-        return try { Base64.decode(raw, Base64.NO_WRAP) }
-        catch (_: IllegalArgumentException) {
-            throw HermesRelayException("Pairing public key is not valid base64.")
-        }
+            .collection("iroh_pairing_keys")
+            .document("host")
+            .get()
+            .await()
+        return decodeIrohPairingPublicKey(snap.data.orEmpty())
     }
 }

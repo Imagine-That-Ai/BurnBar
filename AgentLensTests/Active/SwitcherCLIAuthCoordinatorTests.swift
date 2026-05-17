@@ -478,6 +478,7 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
         let coordinator = SwitcherCLIAuthCoordinator()
         let keys = coordinator.configEnvironmentKeys(for: .claude)
 
+        XCTAssertTrue(keys.contains("CLAUDE_CONFIG_DIR"))
         XCTAssertTrue(keys.contains("CLAUDE_CONFIG_PATH"))
     }
 

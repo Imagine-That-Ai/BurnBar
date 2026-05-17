@@ -144,7 +144,11 @@ public struct BurnBarLiveModelCatalog: Sendable {
             let capabilities = modelCapabilities(for: configuration.provider)
 
             if configuration.credentialSlots.isEmpty {
-                let hasCredential = hasUsableSecret(configuration.apiKey)
+                let apiKey = OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
+                    providerID: providerID,
+                    rawSecret: configuration.apiKey
+                )
+                let hasCredential = hasUsableSecret(apiKey)
                 let account = BurnBarLiveModelAccountDescriptor(
                     providerID: providerID,
                     providerName: providerName,
@@ -157,7 +161,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 let liveRefresh = await liveModels(
                     configuration: configuration,
                     account: account,
-                    apiKey: configuration.apiKey,
+                    apiKey: apiKey,
                     providerCanRoute: providerCanRoute
                 )
                 accounts.append(account)
@@ -173,7 +177,11 @@ public struct BurnBarLiveModelCatalog: Sendable {
 
             for resolvedSlot in configuration.credentialSlots {
                 let slot = resolvedSlot.slot
-                let hasCredential = hasUsableSecret(resolvedSlot.apiKey)
+                let apiKey = OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
+                    providerID: providerID,
+                    rawSecret: resolvedSlot.apiKey
+                )
+                let hasCredential = hasUsableSecret(apiKey)
                 let account = BurnBarLiveModelAccountDescriptor(
                     providerID: providerID,
                     providerName: providerName,
@@ -190,7 +198,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
                 let liveRefresh = await liveModels(
                     configuration: configuration,
                     account: account,
-                    apiKey: resolvedSlot.apiKey,
+                    apiKey: apiKey,
                     providerCanRoute: providerCanRoute
                 )
                 accounts.append(account)
@@ -237,19 +245,20 @@ public struct BurnBarLiveModelCatalog: Sendable {
             : nil
 
         let configuredRows = configuration.preferredModels.map { model in
-            let liveModel = liveRefresh?.advertisedModels.first { $0.id.caseInsensitiveCompare(model.id) == .orderedSame }
-            let liveConfirmed = liveIDSet?.contains(model.id.lowercased())
+            let wireModelID = advertisedModelID(for: model)
+            let liveModel = liveRefresh?.advertisedModels.first { $0.id.caseInsensitiveCompare(wireModelID) == .orderedSame }
+            let liveConfirmed = liveIDSet?.contains(wireModelID.lowercased())
             let liveError: String? = {
                 if let error = liveRefresh?.error {
                     return error
                 }
                 if liveConfirmed == false {
-                    return "Configured model '\(model.id)' was not advertised by \(configuration.provider.displayName)'s live /models endpoint."
+                    return "Configured model '\(wireModelID)' was not advertised by \(configuration.provider.displayName)'s live /models endpoint."
                 }
                 return account.lastError
             }()
             return BurnBarLiveAdvertisedModel(
-                id: model.id,
+                id: wireModelID,
                 displayName: liveModel?.displayName ?? model.displayName,
                 providerID: configuration.provider.id,
                 providerName: configuration.provider.displayName,
@@ -299,6 +308,15 @@ public struct BurnBarLiveModelCatalog: Sendable {
         }
 
         return configuredRows + liveRows
+    }
+
+    private func advertisedModelID(for model: BurnBarCatalogModel) -> String {
+        guard model.id.lowercased().hasSuffix("-family"),
+              let alias = model.aliases.first?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !alias.isEmpty else {
+            return model.id
+        }
+        return alias
     }
 
     private struct LiveRefreshResult: Sendable {

@@ -400,7 +400,7 @@ final class SwitcherCLIAuthCoordinator {
         case .codex:
             return ["CODEX_HOME", "CODEX_CONFIG_PATH"]
         case .claude:
-            return ["CLAUDE_CONFIG_PATH"]
+            return ["CLAUDE_CONFIG_DIR", "CLAUDE_CONFIG_PATH"]
         case .opencode:
             return []
         }

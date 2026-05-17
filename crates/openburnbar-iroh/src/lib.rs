@@ -38,6 +38,20 @@ uniffi::setup_scaffolding!();
 /// ALPN we negotiate over QUIC. Bumping this string forces a clean upgrade
 /// boundary across iOS + Mac, mirroring `IrohRelayProtocol.alpn` in Swift.
 pub const OPENBURNBAR_ALPN: &[u8] = b"openburnbar/1";
+const OPENBURNBAR_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(1);
+const OPENBURNBAR_MAX_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+
+pub(crate) fn openburnbar_transport_config() -> Result<iroh::endpoint::TransportConfig, IrohFfiError>
+{
+    let mut transport_config = iroh::endpoint::TransportConfig::default();
+    transport_config.keep_alive_interval(Some(OPENBURNBAR_KEEP_ALIVE_INTERVAL));
+    transport_config.max_idle_timeout(Some(
+        OPENBURNBAR_MAX_IDLE_TIMEOUT
+            .try_into()
+            .map_err(IrohFfiError::runtime)?,
+    ));
+    Ok(transport_config)
+}
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum IrohFfiError {
@@ -47,37 +61,37 @@ pub enum IrohFfiError {
     InvalidNodeId,
     #[error("endpoint not initialized")]
     EndpointNotInitialized,
-    #[error("connect failed: {message}")]
-    ConnectFailed { message: String },
-    #[error("stream failed: {message}")]
-    StreamFailed { message: String },
-    #[error("accept failed: {message}")]
-    AcceptFailed { message: String },
-    #[error("shutdown failed: {message}")]
-    ShutdownFailed { message: String },
-    #[error("runtime failed: {message}")]
-    RuntimeFailed { message: String },
+    #[error("connect failed: {detail}")]
+    ConnectFailed { detail: String },
+    #[error("stream failed: {detail}")]
+    StreamFailed { detail: String },
+    #[error("accept failed: {detail}")]
+    AcceptFailed { detail: String },
+    #[error("shutdown failed: {detail}")]
+    ShutdownFailed { detail: String },
+    #[error("runtime failed: {detail}")]
+    RuntimeFailed { detail: String },
 }
 
 impl IrohFfiError {
     fn connect<E: std::fmt::Display>(error: E) -> Self {
         Self::ConnectFailed {
-            message: error.to_string(),
+            detail: error.to_string(),
         }
     }
     fn stream<E: std::fmt::Display>(error: E) -> Self {
         Self::StreamFailed {
-            message: error.to_string(),
+            detail: error.to_string(),
         }
     }
     fn accept<E: std::fmt::Display>(error: E) -> Self {
         Self::AcceptFailed {
-            message: error.to_string(),
+            detail: error.to_string(),
         }
     }
     fn runtime<E: std::fmt::Display>(error: E) -> Self {
         Self::RuntimeFailed {
-            message: error.to_string(),
+            detail: error.to_string(),
         }
     }
 }
@@ -169,7 +183,7 @@ impl IrohStream {
     }
 
     /// Close the stream cleanly. Idempotent.
-    pub fn close(self: Arc<Self>) -> Result<(), IrohFfiError> {
+    pub fn close_stream(self: Arc<Self>) -> Result<(), IrohFfiError> {
         let runtime_handle = self.runtime_handle.clone();
         runtime_handle.block_on(async move {
             let mut guard = self.inner.lock().await;
@@ -242,11 +256,12 @@ impl IrohEndpointHandle {
                     .parse()
                     .map_err(
                         |err: iroh::RelayUrlParseError| IrohFfiError::RuntimeFailed {
-                            message: format!("invalid relay url: {err}"),
+                            detail: format!("invalid relay url: {err}"),
                         },
                     )?;
             RelayMode::Custom(RelayMap::from(url))
         };
+        let transport_config = openburnbar_transport_config()?;
 
         let endpoint = runtime
             .block_on(async {
@@ -254,6 +269,7 @@ impl IrohEndpointHandle {
                     .secret_key(secret_key.clone())
                     .alpns(vec![OPENBURNBAR_ALPN.to_vec()])
                     .relay_mode(relay_mode)
+                    .transport_config(transport_config)
                     .discovery_n0()
                     .bind()
                     .await
@@ -265,7 +281,7 @@ impl IrohEndpointHandle {
                 tokio::time::timeout(Duration::from_secs(10), endpoint.home_relay().initialized())
                     .await
                     .map_err(|_| IrohFfiError::RuntimeFailed {
-                        message: "iroh endpoint did not select a home relay within 10s".into(),
+                        detail: "iroh endpoint did not select a home relay within 10s".into(),
                     })?;
             let published_relay_url = if configured_relay_url.is_empty() {
                 selected_relay_url.to_string()
@@ -279,7 +295,7 @@ impl IrohEndpointHandle {
             )
             .await
             .map_err(|_| IrohFfiError::RuntimeFailed {
-                message: "iroh endpoint did not publish direct addresses within 10s".into(),
+                detail: "iroh endpoint did not publish direct addresses within 10s".into(),
             })?
             .into_iter()
             .map(|addr| addr.addr.to_string())
@@ -349,7 +365,7 @@ impl IrohEndpointHandle {
         } else {
             Some(relay_url.parse().map_err(|err: iroh::RelayUrlParseError| {
                 IrohFfiError::ConnectFailed {
-                    message: format!("invalid relay url: {err}"),
+                    detail: format!("invalid relay url: {err}"),
                 }
             })?)
         };
@@ -359,7 +375,7 @@ impl IrohEndpointHandle {
             .map(|addr| {
                 addr.parse::<SocketAddr>()
                     .map_err(|err| IrohFfiError::ConnectFailed {
-                        message: format!("invalid direct address {addr}: {err}"),
+                        detail: format!("invalid direct address {addr}: {err}"),
                     })
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -384,7 +400,7 @@ impl IrohEndpointHandle {
             })
             .await
             .map_err(|_| IrohFfiError::ConnectFailed {
-                message: "iroh connect timed out".into(),
+                detail: "iroh connect timed out".into(),
             })??;
             Ok(Arc::new(IrohStream {
                 inner: Mutex::new(Some(IrohStreamInner {
@@ -427,7 +443,7 @@ impl IrohEndpointHandle {
                         .accept()
                         .await
                         .ok_or_else(|| IrohFfiError::AcceptFailed {
-                            message: "iroh endpoint closed before accepting".into(),
+                            detail: "iroh endpoint closed before accepting".into(),
                         })?;
                 let conn = incoming.await.map_err(IrohFfiError::accept)?;
                 let (send, recv) = conn.accept_bi().await.map_err(IrohFfiError::stream)?;
@@ -435,7 +451,7 @@ impl IrohEndpointHandle {
             })
             .await
             .map_err(|_| IrohFfiError::AcceptFailed {
-                message: "iroh accept timed out".into(),
+                detail: "iroh accept timed out".into(),
             })??;
             Ok(Arc::new(IrohStream {
                 inner: Mutex::new(Some(IrohStreamInner {

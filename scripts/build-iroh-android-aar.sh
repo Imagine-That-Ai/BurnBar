@@ -231,7 +231,22 @@ BINDGEN_TARGET="$(abi_to_rust_target "${BINDGEN_ABI}")"
 HOST_SO="${CRATE_DIR}/target/${BINDGEN_TARGET}/${PROFILE_DIR}/libopenburnbar_iroh.so"
 [[ -f "${HOST_SO}" ]] || HOST_SO="${ARCHS_DIR}/${BINDGEN_ABI}/libopenburnbar_iroh.so"
 
+if [[ "${PROFILE}" != "debug" ]]; then
+  log "building debug metadata library for Kotlin bindgen (${BINDGEN_ABI})"
+  (
+    cd "${CRATE_DIR}"
+    ANDROID_NDK_HOME="${ANDROID_NDK_HOME}" \
+    PATH="${HOME}/.cargo/bin:${PATH}" \
+      "${CARGO_BIN}" ndk \
+        -t "${BINDGEN_ABI}" \
+        -o "${BUILD_DIR}/bindgen-jni" \
+        build --lib
+  )
+  HOST_SO="${CRATE_DIR}/target/${BINDGEN_TARGET}/debug/libopenburnbar_iroh.so"
+fi
+
 rm -rf "${GENERATED_KT_DIR}"
+rm -rf "${BUILD_DIR}/kotlin-out"
 mkdir -p "${GENERATED_KT_DIR}"
 log "generating kotlin bindings via pinned UniFFI helper (${BINDGEN_ABI})"
 (

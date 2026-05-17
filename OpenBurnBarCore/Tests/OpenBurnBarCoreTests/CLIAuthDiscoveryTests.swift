@@ -41,4 +41,12 @@ final class CLIAuthDiscoveryTests: XCTestCase {
 
         XCTAssertEqual(value, "alberto8793@icloud.com")
     }
+
+    func test_claudeStatusEnvironment_usesConfigDirForScopedProfiles() {
+        let scopedPath = "/tmp/openburnbar-scoped-claude"
+        let environment = CLIAuthDiscovery.claudeStatusEnvironment(configDirectory: scopedPath)
+
+        XCTAssertEqual(environment["CLAUDE_CONFIG_DIR"], scopedPath)
+        XCTAssertEqual(environment["CLAUDE_CONFIG_PATH"], scopedPath)
+    }
 }

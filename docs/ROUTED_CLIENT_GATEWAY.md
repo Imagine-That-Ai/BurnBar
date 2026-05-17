@@ -1,8 +1,9 @@
-# Routed Client Gateway — the Fire Hydrant
+# Routed Client Gateway
 
 OpenBurnBar exposes selected routed models through the local daemon's gateway
 so supported clients can share the same provider rotation policy. The gateway
-runs on `127.0.0.1:8317` and is the named "Fire Hydrant" in user-facing copy.
+runs on `127.0.0.1:8317` by default and appears in the app as the local
+OpenBurnBar gateway.
 
 ## Router modes
 
@@ -14,7 +15,7 @@ OpenBurnBar now has a persisted router mode. Existing installs default to
 | **Provider-Family Failover** | Extends capacity across multiple accounts or subscriptions for the selected provider family. A Codex route stays with Codex accounts, a Claude route stays with Claude accounts, and a Z.ai route stays with Z.ai accounts. The exact selected account/model stays active while it is healthy. | It does not treat unrelated providers as one generic coding quota pool. It will not send Codex traffic to Claude, or Claude traffic to Z.ai, just because another provider has quota or looks cheaper. |
 | **Intelligent Model Router** | Ranks compatible routes using task intent, model capability, quota/account health, local availability, cost, latency, context-window, reliability, and benchmark freshness signals. User pinning, provider-family constraints, auth, quota exhaustion, safety, and availability still win. | It is advisory, not absolute. In v1 it stays within the request wire-format pool; it does not translate OpenAI Chat Completions traffic into Anthropic Messages traffic or vice versa. |
 
-The routing cockpit in Settings -> Routing pools exposes the mode toggle and
+The routing cockpit in Settings -> Agents -> CLIs exposes the mode toggle and
 shows the current mode, selected route, active route, next fallback, blocked
 routes, latest sanitized routing reason, and benchmark freshness status when
 Intelligent Model Router is enabled.
@@ -91,9 +92,11 @@ healthy candidate in the same pool.
   plus Anthropic-compatible `/v1/messages`.
 - **Usage attribution:** proxied local-client calls record as `OpenBurnBar Gateway`.
 
-Droid/Factory, Forge, OpenCode and Codex are client targets, not new upstream
-providers. Their requests still route through the same upstream accounts and
-credential slots configured in OpenBurnBar.
+Droid/Factory, Forge, OpenCode and Codex are client targets. Their requests
+still route through the same upstream accounts and credential slots configured
+in OpenBurnBar. OpenCode Go can also be added as an upstream provider: paste an
+`opencode-go` auth JSON/key in Accounts, and BurnBar routes through
+`https://opencode.ai/zen/go/v1` like any other OpenAI-compatible provider.
 
 ## Format-family enforcement
 
@@ -123,12 +126,12 @@ lives in `OpenBurnBarHTTPGatewayServerTests.swift`:
 ## Setup
 
 1. Open OpenBurnBar on the Mac that will run the client.
-2. Open Settings -> Routing pools and use **Use local defaults** if the
+2. Open Settings -> Agents -> CLIs and use **Use local defaults** if the
    gateway is not already on. This enables the loopback gateway at
    `127.0.0.1:8317`.
 3. Add at least one provider account in the matching pool. Add a second
    account or key in that pool if you want failover to have somewhere to go.
-4. In Settings -> Routing pools -> Client apps:
+4. In Settings -> Agents -> CLIs:
    - wire Codex CLI through `~/.codex/config.toml`;
    - sync Droid/Factory through `~/.factory/settings.local.json`,
      `~/.factory/settings.json`, and `~/.factory/config.json`;
@@ -148,9 +151,9 @@ before replacing prior OpenBurnBar entries.
 
 | Client | File | OpenBurnBar-owned keys |
 |---|---|---|
-| Droid/Factory | `~/.factory/settings.local.json` | `customModels` entries with provider `generic-chat-completion-api`, `id = custom:OpenBurnBar-<model>-<index>`, and display names prefixed `OpenBurnBar` |
-| Droid/Factory | `~/.factory/settings.json` | `customModels` entries with provider `generic-chat-completion-api`, `id = custom:OpenBurnBar-<model>-<index>`, and display names prefixed `OpenBurnBar` |
-| Droid/Factory | `~/.factory/config.json` | `custom_models` entries with provider `generic-chat-completion-api` and display names prefixed `OpenBurnBar` |
+| Droid/Factory | `~/.factory/settings.local.json` | `customModels` entries with `provider = openai` for models served by OpenAI-shaped upstream accounts and `generic-chat-completion-api` for other OpenAI-compatible chat models; `id = custom:OpenBurnBar-<model>-<index>`; display names prefixed `OpenBurnBar` |
+| Droid/Factory | `~/.factory/settings.json` | Same `customModels` entries as `settings.local.json`, kept in sync because Factory/Droid has used both files across versions |
+| Droid/Factory | `~/.factory/config.json` | `custom_models` entries with the same provider adapter choice and display names prefixed `OpenBurnBar` |
 | OpenCode | `~/.config/opencode/opencode.json` | `provider.openburnbar`; default `model` only when no model is set |
 | Claude Code | `~/.claude/settings.json` | `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_AUTH_TOKEN`, plus a marker key `env.OPENBURNBAR_WIRED` so the helper can detect its own previous wiring |
 | Codex CLI | `~/.codex/config.toml` | Sentinel-fenced `[model_providers.openburnbar]` block bounded by `# openburnbar:routing — start` / `# openburnbar:routing — end`, with `wire_api = "responses"`. Activate by setting `model_provider = "openburnbar"` in the Codex profile you want routed. |
@@ -166,23 +169,28 @@ reversible by hand if the helper is ever uninstalled.
 
 ## Wiring routed CLI clients from the Mac app
 
-`Settings → Routing pools` exposes a setup checklist and OpenBurnBar-owned client
-rows for each pool. Two modes:
+`Settings -> Agents -> CLIs` exposes OpenBurnBar-owned client rows for each
+supported CLI. For Droid, the button is intentionally direct: `Connect + Sync`
+on first setup, then `Sync models` after the row is connected.
 
-1. **Config-file mode (toggle)** — writes the env / TOML block listed above,
+Two modes:
+
+1. **Config-file mode (button)** — writes the env / TOML block listed above,
    then runs a 1-token probe (`POST /v1/messages` for Claude Code, `POST
    /v1/responses` for Codex, and `POST /v1/chat/completions` for Forge) to confirm the gateway actually
-   serves the wired client before reporting success. Toggle off to remove the
+   serves the wired client before reporting success. Disconnect to remove the
    OpenBurnBar block.
 2. **Shell-snippet mode (button)** — opens a copy/pasteable
    `export ANTHROPIC_BASE_URL=…` / `export OPENAI_BASE_URL=…` block for
    users on managed dotfiles or non-standard shells. No file writes.
 
-Droid/Factory uses a sync button instead of a toggle because Factory consumes
-custom model arrays, not a sentinel block. OpenBurnBar writes `provider:
-`generic-chat-completion-api` custom models pointed at the local Hydrant
-gateway, removes stale local VibeProxy entries on that gateway port, and then
-uses the shared OpenAI-family probe to prove the pool responds.
+Droid/Factory consumes custom model arrays, not a sentinel block. Pressing
+`Connect + Sync` or `Sync models` asks the local gateway for live `/v1/models`,
+filters to route-eligible OpenAI-compatible models, and rewrites OpenBurnBar's
+entries in `~/.factory/settings.local.json`, `~/.factory/settings.json`, and
+`~/.factory/config.json`. Stale OpenBurnBar or local VibeProxy entries on the
+gateway port are removed during each sync, so Droid only sees the current
+BurnBar catalog. The shared OpenAI-family probe runs after the write.
 
 Codex's ChatGPT-auth mode (browser session cookies) cannot be routed through
 a generic proxy; only the API-key path participates in the OpenAI-family pool

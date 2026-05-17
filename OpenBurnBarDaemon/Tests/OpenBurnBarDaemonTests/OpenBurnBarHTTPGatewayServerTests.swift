@@ -195,10 +195,10 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(primary["route_eligible"] as? Bool, true)
         XCTAssertTrue((primary["capabilities"] as? [String] ?? []).contains("openai_compat"))
 
-        let backup = try XCTUnwrap(data.first { ($0["account_id"] as? String) == "backup" })
-        XCTAssertEqual(backup["quota_state"] as? String, "exhausted")
-        XCTAssertEqual(backup["route_eligible"] as? Bool, false)
-        XCTAssertEqual(backup["last_error"] as? String, "Backup exhausted")
+        XCTAssertFalse(
+            data.contains { ($0["account_id"] as? String) == "backup" },
+            "/v1/models must not advertise exhausted or otherwise unroutable accounts to external clients."
+        )
     }
 
     func testGatewayModelsPrunesRemovedCredentialSlotsFromLiveCatalog() async throws {
@@ -256,7 +256,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/v1/models"])
     }
 
-    func testGatewayModelsMarksConfiguredModelIneligibleWhenLiveEndpointOmitsIt() async throws {
+    func testGatewayModelsHidesConfiguredModelWhenLiveEndpointOmitsIt() async throws {
         GatewayUpstreamURLProtocol.enqueue(
             status: 200,
             body: #"{"object":"list","data":[{"id":"glm-5-lite"}]}"#
@@ -276,18 +276,40 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(response.statusCode, 200)
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let data = try XCTUnwrap(object["data"] as? [[String: Any]])
-        let primary = try XCTUnwrap(data.first {
+        XCTAssertFalse(data.contains {
             ($0["account_id"] as? String) == "primary" && ($0["id"] as? String) == "glm-5-turbo"
-        })
-        XCTAssertEqual(primary["id"] as? String, "glm-5-turbo")
-        XCTAssertEqual(primary["route_eligible"] as? Bool, false)
-        XCTAssertTrue(
-            ((primary["last_error"] as? String) ?? "").contains("was not advertised"),
-            "body was: \(String(decoding: body, as: UTF8.self))"
-        )
+        }, "External /v1/models must hide configured catalog rows the live upstream did not advertise.")
         let live = try XCTUnwrap(data.first { ($0["id"] as? String) == "glm-5-lite" })
         XCTAssertEqual(live["route_eligible"] as? Bool, true)
         XCTAssertEqual(live["source_kind"] as? String, "upstream_models_endpoint")
+    }
+
+    func testGatewayModelsDoesNotAdvertiseMissingCredentialCatalogRows() async throws {
+        let harness = try GatewayHarness()
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "moonshot",
+                isEnabled: true,
+                baseURL: "https://api.moonshot.ai/v1",
+                preferredModelIDs: ["kimi-k2.5"]
+            )
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        XCTAssertFalse(
+            data.contains { ($0["id"] as? String) == "kimi-k2.5" },
+            "/v1/models must not advertise provider catalog rows that have no usable credential."
+        )
     }
 
     func testGatewayRoutesModelDiscoveredFromLiveModelsEndpoint() async throws {
@@ -333,6 +355,134 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/chat/completions"])
         XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"glm-5-live-new""#) == true)
+    }
+
+    func testGatewayModelsOnlyAdvertisesMiniMaxLiveModelsTheRouterCanServe() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"MiniMax-M2.7","display_name":"MiniMax M2.7"}]}"#
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"chatcmpl-minimax","object":"chat.completion","model":"MiniMax-M2.7","choices":[{"index":0,"message":{"role":"assistant","content":"minimax answered"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}"#
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "minimax",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["minimax-m2.7-highspeed"],
+                preferredCredentialSlotID: "default"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "minimax",
+            slotID: "default",
+            label: "MiniMax API",
+            apiKey: "sk-cp-minimax-route-key"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (modelsResponse, modelsBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+        XCTAssertEqual(modelsResponse.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: modelsBody) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        XCTAssertTrue(
+            data.contains {
+                ($0["id"] as? String) == "MiniMax-M2.7"
+                    && ($0["provider_id"] as? String) == "minimax"
+                    && ($0["route_eligible"] as? Bool) == true
+            },
+            "/v1/models may advertise a live upstream model only when /v1/chat/completions can route the same id."
+        )
+
+        let (chatResponse, chatBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"MiniMax-M2.7","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(chatResponse.statusCode, 200, "body was: \(String(decoding: chatBody, as: UTF8.self))")
+        XCTAssertTrue(String(decoding: chatBody, as: UTF8.self).contains("minimax answered"))
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/chat/completions"])
+        XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"MiniMax-M2.7""#) == true)
+    }
+
+    func testGatewayRoutesOpenCodeAuthJSONThroughOpenAICompatibleGateway() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"kimi-k2.6","display_name":"Kimi K2.6"}]}"#
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"id":"chatcmpl-opencode","object":"chat.completion","model":"kimi-k2.6","choices":[{"index":0,"message":{"role":"assistant","content":"opencode answered"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}"#
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "opencode",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/zen/go/v1",
+                preferredModelIDs: ["kimi-k2.6"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "opencode",
+            slotID: "primary",
+            label: "OpenCode Go",
+            apiKey: #"{"opencode-go":{"type":"api","key":"opencode-route-key"}}"#
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (modelsResponse, modelsBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+        XCTAssertEqual(modelsResponse.statusCode, 200)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: modelsBody) as? [String: Any])
+        let data = try XCTUnwrap(object["data"] as? [[String: Any]])
+        XCTAssertTrue(data.contains { ($0["id"] as? String) == "kimi-k2.6" && ($0["provider_id"] as? String) == "opencode" })
+
+        let (chatResponse, chatBody) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"kimi-k2.6","messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(chatResponse.statusCode, 200, "body was: \(String(decoding: chatBody, as: UTF8.self))")
+        XCTAssertTrue(String(decoding: chatBody, as: UTF8.self).contains("opencode answered"))
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/zen/go/v1/models", "/zen/go/v1/chat/completions"])
+        XCTAssertEqual(upstreamRequests.last?.authorization, "Bearer opencode-route-key")
+        XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"kimi-k2.6""#) == true)
     }
 
     func testGatewayChatCompletionsStopsBeforeSendingWhenNoEligibleRouteExists() async throws {
@@ -776,9 +926,9 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.count, 1)
         XCTAssertEqual(upstreamRequests[0].path, "/anthropic/v1/messages")
-        // sk-ant-… credentials must travel as x-api-key, not Authorization.
+        // Console API keys must travel as x-api-key, not Authorization.
         XCTAssertNil(upstreamRequests[0].authorization)
-        XCTAssertEqual(upstreamRequests[0].xApiKey, "sk-ant-primary-key")
+        XCTAssertEqual(upstreamRequests[0].xApiKey, "sk-ant-api03-primary-key")
         XCTAssertEqual(upstreamRequests[0].anthropicVersion, "2023-06-01")
         XCTAssertTrue(upstreamRequests[0].body.contains(#""model":"claude-sonnet-4-6""#))
 
@@ -787,6 +937,66 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(usage[0].providerID, "anthropic")
         XCTAssertEqual(usage[0].inputTokens, 17)
         XCTAssertEqual(usage[0].outputTokens, 4)
+    }
+
+    func testGatewaySendsClaudeOAuthTokenAsBearer() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_oauth_1",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-sonnet-4-6",
+              "content": [{"type": "text", "text": "hello from oauth"}],
+              "stop_reason": "end_turn",
+              "usage": {
+                "input_tokens": 8,
+                "output_tokens": 3,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/anthropic/v1",
+                preferredModelIDs: ["claude-sonnet-4-6-family"],
+                preferredCredentialSlotID: "oauth"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: "oauth",
+            label: "Claude OAuth",
+            apiKey: "sk-ant-oat01-test-token"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, _) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"claude-sonnet-4-6","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.count, 1)
+        XCTAssertNil(upstreamRequests[0].xApiKey)
+        XCTAssertEqual(upstreamRequests[0].authorization, "Bearer sk-ant-oat01-test-token")
     }
 
     func testGatewayFailsOverAnthropicAccountOnQuotaExhausted() async throws {
@@ -838,8 +1048,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.count, 2)
-        XCTAssertEqual(upstreamRequests[0].xApiKey, "sk-ant-primary-key")
-        XCTAssertEqual(upstreamRequests[1].xApiKey, "sk-ant-backup-key")
+        XCTAssertEqual(upstreamRequests[0].xApiKey, "sk-ant-api03-primary-key")
+        XCTAssertEqual(upstreamRequests[1].xApiKey, "sk-ant-api03-backup-key")
 
         let snapshot = try await harness.configStore.snapshot()
         let slots = try XCTUnwrap(snapshot.providerSettings(id: "anthropic")?.credentialSlots)
@@ -1086,8 +1296,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
         XCTAssertEqual(upstreamRequests.count, 2, clientName)
-        XCTAssertEqual(upstreamRequests[0].xApiKey, "sk-ant-primary-key", clientName)
-        XCTAssertEqual(upstreamRequests[1].xApiKey, "sk-ant-backup-key", clientName)
+        XCTAssertEqual(upstreamRequests[0].xApiKey, "sk-ant-api03-primary-key", clientName)
+        XCTAssertEqual(upstreamRequests[1].xApiKey, "sk-ant-api03-backup-key", clientName)
 
         let snapshot = try await harness.configStore.snapshot()
         let slots = try XCTUnwrap(snapshot.providerSettings(id: "anthropic")?.credentialSlots)
@@ -1385,7 +1595,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             providerID: "anth-alpha",
             slotID: "primary",
             label: "Anth Alpha Pro",
-            apiKey: "sk-ant-alpha-key"
+            apiKey: "sk-ant-api03-alpha-key"
         )
         _ = try await harness.configStore.upsertProvider(
             BurnBarProviderSettings(
@@ -1400,7 +1610,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             providerID: "anth-beta",
             slotID: "primary",
             label: "Anth Beta Base",
-            apiKey: "sk-ant-beta-key"
+            apiKey: "sk-ant-api03-beta-key"
         )
         try await harness.configStore.setRouterMode(.intelligentModelRouter)
     }
@@ -1615,13 +1825,13 @@ private final class GatewayHarness {
             providerID: "anthropic",
             slotID: "primary",
             label: "Primary",
-            apiKey: "sk-ant-primary-key"
+            apiKey: "sk-ant-api03-primary-key"
         )
         _ = try await configStore.upsertCredentialSlot(
             providerID: "anthropic",
             slotID: "backup",
             label: "Backup",
-            apiKey: "sk-ant-backup-key"
+            apiKey: "sk-ant-api03-backup-key"
         )
     }
 

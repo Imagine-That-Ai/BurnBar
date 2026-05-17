@@ -113,6 +113,21 @@ struct RoutingClientAdvertisedModel: Sendable, Equatable {
         return !text.contains("anthropic")
             && !text.contains("claude")
     }
+
+    /// Factory Droid has distinct BYOK provider adapters. BurnBar's gateway
+    /// supports both `/v1/responses` and `/v1/chat/completions`, so models
+    /// served by OpenAI-shaped upstream accounts should use Factory's
+    /// `openai` adapter while the rest of BurnBar's OpenAI-compatible catalog
+    /// stays on the generic chat-completions adapter. Provider identity, not
+    /// the model string alone, is the safe discriminator: non-OpenAI
+    /// providers can legitimately serve models with `gpt` in the name.
+    var droidProviderType: String {
+        let providerText = "\(providerID) \(providerName)".lowercased()
+        if providerText.contains("openai") || providerText.contains("azure openai") {
+            return "openai"
+        }
+        return "generic-chat-completion-api"
+    }
 }
 
 /// Why a wiring operation could not complete. Surfaces should display
@@ -139,9 +154,9 @@ enum RoutingClientWiringError: LocalizedError, Sendable, Equatable {
         case .probeFailed(let detail):
             return "Probe failed: \(detail)"
         case .alreadyEnabled:
-            return "This client is already wired through the Hydrant."
+            return "This client is already wired through the OpenBurnBar gateway."
         case .notEnabled:
-            return "This client is not currently wired through the Hydrant."
+            return "This client is not currently wired through the OpenBurnBar gateway."
         }
     }
 }
@@ -301,7 +316,7 @@ struct RoutingClientWiring {
                 if let root = try? readJSONObject(at: url) {
                     let settingsModels = (root["customModels"] as? [[String: Any]]) ?? []
                     let configModels = (root["custom_models"] as? [[String: Any]]) ?? []
-                    if (settingsModels + configModels).contains(where: isOpenBurnBarDroidModel) {
+                    if (settingsModels + configModels).contains(where: { isOpenBurnBarDroidModel($0) }) {
                         return true
                     }
                 }
@@ -345,26 +360,26 @@ struct RoutingClientWiring {
         switch target {
         case .claudeCode:
             return """
-            # OpenBurnBar — wire Claude Code through the Hydrant
+            # OpenBurnBar — wire Claude Code through the local gateway
             export ANTHROPIC_BASE_URL=\(baseURL)
             export ANTHROPIC_AUTH_TOKEN=\(token)
             """
         case .codex:
             return """
-            # OpenBurnBar — wire Codex CLI through the Hydrant
+            # OpenBurnBar — wire Codex CLI through the local gateway
             # `OPENAI_*` env vars are enough on their own — Codex picks them
             # up automatically and bypasses any config-file wiring. If you
             # also want a named provider entry (so `codex --profile
-            # openburnbar` works), the OpenBurnBar Settings → Routing pools
-            # toggle writes one for you in ~/.codex/config.toml.
+            # openburnbar` works), OpenBurnBar Settings -> Agents -> CLIs
+            # writes one for you in ~/.codex/config.toml.
             export OPENAI_BASE_URL=\(openAIBaseURL)
             export OPENAI_API_KEY=\(token)
             export OPENBURNBAR_GATEWAY_TOKEN=\(token)
             """
         case .opencode:
             return """
-            # OpenBurnBar — wire OpenCode CLI through the Hydrant
-            # The config-file toggle adds provider.openburnbar to
+            # OpenBurnBar — wire OpenCode CLI through the local gateway
+            # The Settings -> Agents -> CLIs Connect button adds provider.openburnbar to
             # ~/.config/opencode/opencode.json.
             export OPENBURNBAR_GATEWAY_TOKEN=\(token)
             export OPENAI_BASE_URL=\(openAIBaseURL)
@@ -372,8 +387,8 @@ struct RoutingClientWiring {
             """
         case .forge:
             return """
-            # OpenBurnBar — wire Forge CLI through the Hydrant
-            # The config-file toggle adds a Forge provider named `openburnbar`
+            # OpenBurnBar — wire Forge CLI through the local gateway
+            # The Settings -> Agents -> CLIs Connect button adds a Forge provider named `openburnbar`
             # at ~/forge/.forge.toml. This env var supplies its api_key_var.
             export OPENBURNBAR_GATEWAY_TOKEN=\(token)
             export OPENAI_BASE_URL=\(openAIBaseURL)
@@ -381,9 +396,9 @@ struct RoutingClientWiring {
             """
         case .droid:
             return """
-            # OpenBurnBar — wire Droid CLI through the Hydrant
-            # The config-file toggle writes OpenBurnBar models into the known
-            # Droid / Factory config files under ~/.factory/.
+            # OpenBurnBar — wire Droid CLI through the local gateway
+            # In OpenBurnBar Settings -> Agents -> CLIs, press Connect + Sync
+            # or Sync models to write live BurnBar models under ~/.factory/.
             export OPENBURNBAR_GATEWAY_TOKEN=\(token)
             export OPENAI_BASE_URL=\(openAIBaseURL)
             export OPENAI_API_KEY=\(token)
@@ -659,7 +674,7 @@ struct RoutingClientWiring {
         //     codex --profile openburnbar
         //
         // The user still needs to export OPENBURNBAR_GATEWAY_TOKEN so Codex
-        // can read the bearer at runtime. The Settings → Routing pools card
+        // can read the bearer at runtime. The Settings -> Agents -> CLIs row
         // shows the exact export command and the shell-snippet sheet
         // includes it verbatim.
         let modelLine = firstOpenAICompatibleModel(advertisedModels)
@@ -667,13 +682,13 @@ struct RoutingClientWiring {
             ?? ""
         return """
         \(Self.sentinelStart)
-        # Managed by OpenBurnBar. Edit Settings → Routing pools to change.
+        # Managed by OpenBurnBar. Edit Settings -> Agents -> CLIs to change.
         # To activate this provider:
         #   1. export OPENBURNBAR_GATEWAY_TOKEN='<your gateway token>'
         #   2. codex --profile openburnbar
         # Or set OPENAI_BASE_URL/OPENAI_API_KEY directly and skip the profile.
         [model_providers.openburnbar]
-        name = "OpenBurnBar Hydrant"
+        name = "OpenBurnBar Gateway"
         base_url = "\(gateway.baseURL)/v1"
         env_key = "OPENBURNBAR_GATEWAY_TOKEN"
         wire_api = "responses"
@@ -781,7 +796,7 @@ struct RoutingClientWiring {
         // in deliberately.
         """
         \(Self.sentinelStart)
-        # Managed by OpenBurnBar. Edit Settings → Routing pools to change.
+        # Managed by OpenBurnBar. Edit Settings -> Agents -> CLIs to change.
         # To activate in Forge, select provider `openburnbar` or set it in
         # your Forge session after exporting OPENBURNBAR_GATEWAY_TOKEN.
         [[providers]]
@@ -858,7 +873,7 @@ struct RoutingClientWiring {
     ) throws -> URL? {
         var (root, backupURL) = try loadJSONObjectWithBackup(at: url)
         var customModels = (root["customModels"] as? [[String: Any]]) ?? []
-        customModels.removeAll(where: isOpenBurnBarDroidModel)
+        customModels.removeAll { isOpenBurnBarDroidModel($0, gateway: gateway) }
         let startIndex = customModels.count
         customModels.append(contentsOf: liveModels.enumerated().map { offset, model in
             droidSettingsStyleModelEntry(
@@ -879,7 +894,7 @@ struct RoutingClientWiring {
     ) throws {
         var (root, _) = try loadJSONObjectWithBackup(at: url)
         var customModels = (root["custom_models"] as? [[String: Any]]) ?? []
-        customModels.removeAll(where: isOpenBurnBarDroidModel)
+        customModels.removeAll { isOpenBurnBarDroidModel($0, gateway: gateway) }
         customModels.append(contentsOf: liveModels.map { model in
             [
                 "model_display_name": "OpenBurnBar \(model.displayName.isEmpty ? model.id : model.displayName)",
@@ -887,7 +902,7 @@ struct RoutingClientWiring {
                 "base_url": "\(gateway.baseURL)/v1",
                 "api_key": gateway.effectiveClientToken,
                 "max_output_tokens": 8192,
-                "provider": "generic-chat-completion-api",
+                "provider": model.droidProviderType,
             ] as [String: Any]
         })
         root["custom_models"] = customModels
@@ -907,7 +922,7 @@ struct RoutingClientWiring {
             "apiKey": gateway.effectiveClientToken,
             "displayName": "OpenBurnBar \(model.displayName.isEmpty ? model.id : model.displayName)",
             "maxOutputTokens": 8192,
-            "provider": "generic-chat-completion-api",
+            "provider": model.droidProviderType,
         ]
     }
 
@@ -931,10 +946,10 @@ struct RoutingClientWiring {
         from root: inout [String: Any]
     ) -> Bool {
         guard var customModels = root[key] as? [[String: Any]],
-              customModels.contains(where: isOpenBurnBarDroidModel) else {
+              customModels.contains(where: { isOpenBurnBarDroidModel($0) }) else {
             return false
         }
-        customModels.removeAll(where: isOpenBurnBarDroidModel)
+        customModels.removeAll { isOpenBurnBarDroidModel($0) }
         if customModels.isEmpty {
             root.removeValue(forKey: key)
         } else {
@@ -951,14 +966,17 @@ struct RoutingClientWiring {
         ]
     }
 
-    private func isOpenBurnBarDroidModel(_ entry: [String: Any]) -> Bool {
+    private func isOpenBurnBarDroidModel(
+        _ entry: [String: Any],
+        gateway: RoutingClientGateway? = nil
+    ) -> Bool {
         let provider = (entry["provider"] as? String)?.lowercased()
         let id = (entry["id"] as? String)?.lowercased()
         let displayName = (entry["displayName"] as? String)?.lowercased()
             ?? (entry["model_display_name"] as? String)?.lowercased()
         let model = (entry["model"] as? String)?.lowercased()
         let baseURL = (entry["baseUrl"] as? String) ?? (entry["base_url"] as? String)
-        let isGatewayEntry = baseURL.map(isLocalGatewayURL) == true
+        let isGatewayEntry = baseURL.map { isLocalGatewayURL($0) || matchesGatewayURL($0, gateway: gateway) } == true
         return provider == "openburnbar"
             || id?.hasPrefix("custom:openburnbar") == true
             || id?.hasPrefix("openburnbar:") == true
@@ -977,6 +995,19 @@ struct RoutingClientWiring {
               let host = components.host?.lowercased(),
               host == "127.0.0.1" || host == "localhost",
               components.port == 8317 else {
+            return false
+        }
+        return true
+    }
+
+    private func matchesGatewayURL(_ rawValue: String, gateway: RoutingClientGateway?) -> Bool {
+        guard let gateway,
+              let components = URLComponents(string: rawValue.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let gatewayComponents = URLComponents(string: gateway.baseURL),
+              let host = components.host?.lowercased(),
+              let gatewayHost = gatewayComponents.host?.lowercased(),
+              host == gatewayHost,
+              components.port == gatewayComponents.port else {
             return false
         }
         return true

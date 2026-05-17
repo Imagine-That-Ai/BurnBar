@@ -13,11 +13,10 @@ import com.openburnbar.irohrelay.NoopIrohTransportAuditLogging
  *
  *   1. If the kill switch is set (`hermes_iroh_transport_enabled`
  *      remote-config flag returns false), skip iroh entirely.
- *   2. Otherwise attempt iroh; on `TimedOut` / `StreamRejected` /
- *      `EndpointNotReady` / `Shutdown`, audit a fallback event and
- *      delegate to the Firestore client. Decode errors and unknown
- *      throwables propagate (they almost certainly indicate a server
- *      bug we want to surface, not a transport drop).
+ *   2. Otherwise attempt iroh. Unary control-plane calls may fall back
+ *      to Firestore, but streaming chat surfaces direct iroh failures
+ *      instead of silently rerouting the selected model through a
+ *      different relay path.
  */
 class HermesCompositeRelayTransport(
     private val iroh: HermesRelayTransporting,
@@ -49,7 +48,12 @@ class HermesCompositeRelayTransport(
             iroh.sendStreaming(payload, timeoutMillis, onSseEvent)
         } catch (err: IrohRelayTransportError) {
             auditFallback(payload, err)
-            firestoreFallback.sendStreaming(payload, timeoutMillis, onSseEvent)
+            throw HermesRelayException(
+                "Iroh direct Hermes relay failed before the selected Mac harness completed: " +
+                    "${err.message ?: err.javaClass.simpleName}. No Firestore fallback was attempted, " +
+                    "so the selected model is not silently rerouted.",
+                err,
+            )
         }
     }
 

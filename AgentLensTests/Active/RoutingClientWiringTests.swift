@@ -395,6 +395,133 @@ final class RoutingClientWiringTests: XCTestCase {
         }
     }
 
+    func test_wireDroid_resyncReplacesStaleOpenBurnBarModelsWithLiveCatalog() throws {
+        let wiring = makeWiring()
+        let gateway = exampleGateway(token: "droid-token")
+
+        _ = try wiring.wire(
+            target: .droid,
+            gateway: gateway,
+            advertisedModels: liveGatewayModels()
+        )
+
+        let refreshedModels = [
+            RoutingClientAdvertisedModel(
+                id: "kimi-k2.6",
+                displayName: "Kimi K2.6",
+                providerID: "opencode",
+                providerName: "OpenCode",
+                routeEligible: true
+            ),
+            RoutingClientAdvertisedModel(
+                id: "claude-sonnet-4-6",
+                displayName: "Claude Sonnet 4.6",
+                providerID: "anthropic",
+                providerName: "Anthropic",
+                routeEligible: true
+            )
+        ]
+
+        _ = try wiring.wire(
+            target: .droid,
+            gateway: gateway,
+            advertisedModels: refreshedModels
+        )
+
+        let settingsLocalRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/settings.local.json"))
+        let settingsLocalModels = try XCTUnwrap(settingsLocalRoot["customModels"] as? [[String: Any]])
+        XCTAssertEqual(settingsLocalModels.map { $0["model"] as? String }, ["kimi-k2.6"])
+        XCTAssertFalse(settingsLocalModels.contains { ($0["model"] as? String) == "glm-5" })
+        XCTAssertFalse(settingsLocalModels.contains { ($0["model"] as? String) == "minimax-m2.7" })
+
+        let settingsRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/settings.json"))
+        let settingsModels = try XCTUnwrap(settingsRoot["customModels"] as? [[String: Any]])
+        XCTAssertEqual(settingsModels.map { $0["model"] as? String }, ["kimi-k2.6"])
+
+        let configRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/config.json"))
+        let configModels = try XCTUnwrap(configRoot["custom_models"] as? [[String: Any]])
+        XCTAssertEqual(configModels.map { $0["model"] as? String }, ["kimi-k2.6"])
+    }
+
+    func test_wireDroid_usesFactoryProviderAdapterMatchingModelFamily() throws {
+        let wiring = makeWiring()
+        let gateway = exampleGateway(token: "droid-token")
+        let models = [
+            RoutingClientAdvertisedModel(
+                id: "gpt-5-codex",
+                displayName: "GPT-5 Codex",
+                providerID: "openai",
+                providerName: "OpenAI",
+                routeEligible: true
+            ),
+            RoutingClientAdvertisedModel(
+                id: "kimi-k2.6",
+                displayName: "Kimi K2.6",
+                providerID: "moonshot",
+                providerName: "Kimi",
+                routeEligible: true
+            ),
+            RoutingClientAdvertisedModel(
+                id: "gpt-oss-120b",
+                displayName: "GPT OSS 120B",
+                providerID: "ollama_cloud",
+                providerName: "Ollama Cloud",
+                routeEligible: true
+            )
+        ]
+
+        _ = try wiring.wire(
+            target: .droid,
+            gateway: gateway,
+            advertisedModels: models
+        )
+
+        let settingsRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/settings.local.json"))
+        let settingsModels = try XCTUnwrap(settingsRoot["customModels"] as? [[String: Any]])
+        XCTAssertEqual(settingsModels.map { $0["provider"] as? String }, ["openai", "generic-chat-completion-api", "generic-chat-completion-api"])
+
+        let configRoot = try loadJSONObject(at: tempHome.appendingPathComponent(".factory/config.json"))
+        let configModels = try XCTUnwrap(configRoot["custom_models"] as? [[String: Any]])
+        XCTAssertEqual(configModels.map { $0["provider"] as? String }, ["openai", "generic-chat-completion-api", "generic-chat-completion-api"])
+    }
+
+    func test_wireDroid_resyncRemovesCurrentGatewayEntriesOnCustomPort() throws {
+        let wiring = makeWiring()
+        let gateway = RoutingClientGateway(host: "127.0.0.1", port: 9432, authToken: "droid-token")
+        let settingsURL = tempHome.appendingPathComponent(".factory/settings.local.json")
+        try FileManager.default.createDirectory(
+            at: settingsURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("""
+        {
+          "customModels": [
+            {"model": "user-local", "displayName": "User Local", "provider": "generic-chat-completion-api", "baseUrl": "http://127.0.0.1:11434/v1"},
+            {"model": "stale-openburnbar", "provider": "generic-chat-completion-api", "baseUrl": "http://127.0.0.1:9432/v1"}
+          ]
+        }
+        """.utf8).write(to: settingsURL)
+
+        _ = try wiring.wire(
+            target: .droid,
+            gateway: gateway,
+            advertisedModels: [
+                RoutingClientAdvertisedModel(
+                    id: "kimi-k2.6",
+                    displayName: "Kimi K2.6",
+                    providerID: "moonshot",
+                    providerName: "Kimi",
+                    routeEligible: true
+                )
+            ]
+        )
+
+        let settingsRoot = try loadJSONObject(at: settingsURL)
+        let settingsModels = try XCTUnwrap(settingsRoot["customModels"] as? [[String: Any]])
+        XCTAssertEqual(settingsModels.map { $0["model"] as? String }, ["user-local", "kimi-k2.6"])
+        XCTAssertEqual(settingsModels.first?["baseUrl"] as? String, "http://127.0.0.1:11434/v1")
+    }
+
     func test_wireOpenCode_writesLiveCatalogModels() throws {
         let wiring = makeWiring()
         let change = try wiring.wire(

@@ -97,6 +97,8 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// the dial timeout so a transient hosted-relay bootstrap miss does not
     /// abort before the retry path can recover.
     static let defaultBootstrapStartupTimeout: TimeInterval = 30
+    private nonisolated static let minimumControlPlaneRequestTimeout: TimeInterval = 90
+    private nonisolated static let responseCompleteGraceTimeout: TimeInterval = 15
 
     private let directory: any IrohPairingDirectory
     private let transportFactory: @MainActor () -> any IrohRelayTransport
@@ -447,11 +449,17 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         try await stream.send(startFrame)
 
         let started = Date()
-        let deadline = started.addingTimeInterval(timeout)
+        let effectiveTimeout = Self.effectiveRequestTimeout(
+            operation: payload.operation,
+            requestedTimeout: timeout
+        )
+        var deadline = started.addingTimeInterval(effectiveTimeout)
         var receivedChunkCount = 0
         var didRecordFirstChunk = false
-        while Date() < deadline {
-            guard let frame = try await stream.receive() else {
+        while true {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { break }
+            guard let frame = try await Self.receiveFrame(from: stream, timeout: remaining) else {
                 throw HermesServiceError.relayUnavailable("Iroh stream closed before completion.")
             }
             guard frame.uid == uid,
@@ -463,6 +471,10 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             case .responseChunk:
                 guard let chunk = try chunkRecord(from: frame, keyData: keyData, uid: uid, connectionID: payload.connectionID, requestID: requestID) else { continue }
                 receivedChunkCount += 1
+                let graceDeadline = Date().addingTimeInterval(Self.responseCompleteGraceTimeout)
+                if deadline < graceDeadline {
+                    deadline = graceDeadline
+                }
                 if !didRecordFirstChunk {
                     didRecordFirstChunk = true
                     let rtt = Int(Date().timeIntervalSince(started) * 1000)
@@ -511,6 +523,46 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             }
         }
         throw HermesServiceError.relayTimeout
+    }
+
+    private nonisolated static func effectiveRequestTimeout(
+        operation: HermesRelayOperation,
+        requestedTimeout: TimeInterval
+    ) -> TimeInterval {
+        switch operation {
+        case .chatCompletions:
+            return requestedTimeout
+        case .models, .sessions, .sessionDetail, .profiles, .jobs:
+            return max(requestedTimeout, minimumControlPlaneRequestTimeout)
+        }
+    }
+
+    private nonisolated static func receiveFrame(
+        from stream: any IrohRelayStream,
+        timeout: TimeInterval
+    ) async throws -> HermesRealtimeRelayFrame? {
+        guard timeout > 0 else {
+            throw HermesServiceError.relayTimeout
+        }
+        return try await withThrowingTaskGroup(of: HermesRealtimeRelayFrame?.self) { group in
+            group.addTask {
+                try await stream.receive()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: timeoutNanoseconds(timeout))
+                throw HermesServiceError.relayTimeout
+            }
+            guard let frame = try await group.next() else {
+                throw HermesServiceError.relayTimeout
+            }
+            group.cancelAll()
+            return frame
+        }
+    }
+
+    private nonisolated static func timeoutNanoseconds(_ timeout: TimeInterval) -> UInt64 {
+        let capped = min(max(timeout, 0.001), 3_600)
+        return UInt64(capped * 1_000_000_000)
     }
 
     private func auditDetail(

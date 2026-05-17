@@ -110,7 +110,7 @@ impl IrohBlobNode {
         } else {
             let url: RelayUrl = relay_url.parse().map_err(|err: iroh::RelayUrlParseError| {
                 IrohFfiError::RuntimeFailed {
-                    message: format!("invalid relay url: {err}"),
+                    detail: format!("invalid relay url: {err}"),
                 }
             })?;
             RelayMode::Custom(RelayMap::from(url))
@@ -118,14 +118,16 @@ impl IrohBlobNode {
 
         let store_path = PathBuf::from(&store_dir);
         std::fs::create_dir_all(&store_path).map_err(|err| IrohFfiError::RuntimeFailed {
-            message: format!("create store dir {store_dir}: {err}"),
+            detail: format!("create store dir {store_dir}: {err}"),
         })?;
+        let transport_config = crate::openburnbar_transport_config()?;
 
         let (endpoint, store, router, identity) = runtime.block_on(async {
             let endpoint = Endpoint::builder()
                 .secret_key(secret_key.clone())
                 .alpns(vec![iroh_blobs::ALPN.to_vec()])
                 .relay_mode(relay_mode)
+                .transport_config(transport_config)
                 .bind()
                 .await
                 .map_err(IrohFfiError::runtime)?;
@@ -134,7 +136,7 @@ impl IrohBlobNode {
                 FsStore::load(&store_path)
                     .await
                     .map_err(|err| IrohFfiError::RuntimeFailed {
-                        message: format!("FsStore::load({store_dir}): {err}"),
+                        detail: format!("FsStore::load({store_dir}): {err}"),
                     })?;
 
             let blobs = BlobsProtocol::new(&store, endpoint.clone(), None);
@@ -182,19 +184,19 @@ impl IrohBlobNode {
         let path = PathBuf::from(&local_path);
         if !path.is_file() {
             return Err(IrohFfiError::RuntimeFailed {
-                message: format!("publish_blob: not a file: {local_path}"),
+                detail: format!("publish_blob: not a file: {local_path}"),
             });
         }
 
         block_on(async move {
             let abs_path =
                 std::path::absolute(&path).map_err(|err| IrohFfiError::RuntimeFailed {
-                    message: format!("absolute({}): {err}", path.display()),
+                    detail: format!("absolute({}): {err}", path.display()),
                 })?;
 
             let tag = store.blobs().add_path(abs_path).await.map_err(|err| {
                 IrohFfiError::RuntimeFailed {
-                    message: format!("add_path: {err}"),
+                    detail: format!("add_path: {err}"),
                 }
             })?;
 
@@ -223,14 +225,14 @@ impl IrohBlobNode {
 
         let trimmed = ticket_text.trim().to_string();
         let ticket = BlobTicket::from_str(&trimmed).map_err(|err| IrohFfiError::StreamFailed {
-            message: format!("invalid blob ticket: {err}"),
+            detail: format!("invalid blob ticket: {err}"),
         })?;
         let dest_path = PathBuf::from(&destination);
 
         block_on(async move {
             let abs_dest =
                 std::path::absolute(&dest_path).map_err(|err| IrohFfiError::RuntimeFailed {
-                    message: format!("absolute({}): {err}", dest_path.display()),
+                    detail: format!("absolute({}): {err}", dest_path.display()),
                 })?;
 
             // Resume probe: if the destination already exists, capture
@@ -244,7 +246,7 @@ impl IrohBlobNode {
                 .download(ticket.hash(), Some(ticket.node_addr().node_id))
                 .await
                 .map_err(|err| IrohFfiError::StreamFailed {
-                    message: format!("blob download: {err}"),
+                    detail: format!("blob download: {err}"),
                 })?;
 
             store
@@ -252,7 +254,7 @@ impl IrohBlobNode {
                 .export(ticket.hash(), &abs_dest)
                 .await
                 .map_err(|err| IrohFfiError::RuntimeFailed {
-                    message: format!("blob export: {err}"),
+                    detail: format!("blob export: {err}"),
                 })?;
 
             let bytes_total = std::fs::metadata(&abs_dest).map(|m| m.len()).unwrap_or(0);
@@ -310,7 +312,7 @@ impl IrohBlobNode {
 pub fn parse_blob_ticket(text: String) -> Result<BlobTicketBytes, IrohFfiError> {
     let trimmed = text.trim();
     let ticket = BlobTicket::from_str(trimmed).map_err(|err| IrohFfiError::StreamFailed {
-        message: format!("invalid blob ticket: {err}"),
+        detail: format!("invalid blob ticket: {err}"),
     })?;
     Ok(BlobTicketBytes {
         text: ticket.to_string(),
@@ -360,8 +362,8 @@ mod tests {
     fn parse_blob_ticket_rejects_garbage() {
         let err = parse_blob_ticket("not-a-real-ticket".into()).unwrap_err();
         match err {
-            IrohFfiError::StreamFailed { message } => {
-                assert!(message.starts_with("invalid blob ticket"));
+            IrohFfiError::StreamFailed { detail } => {
+                assert!(detail.starts_with("invalid blob ticket"));
             }
             other => panic!("unexpected error: {other:?}"),
         }

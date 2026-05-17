@@ -57,6 +57,20 @@ final class ConnectionsViewModelTests: XCTestCase {
         XCTAssertEqual(settings.gatewayPort, 8317, "Connect must fill in the default gateway port")
     }
 
+    func test_connectRestartsGatewayAfterEnablingIt() async {
+        var restartCount = 0
+
+        await viewModel.connect(
+            target: .claudeCode,
+            settings: settings,
+            restartGateway: {
+                restartCount += 1
+            }
+        )
+
+        XCTAssertEqual(restartCount, 1, "Connect must restart the daemon after enabling the gateway so the local port actually comes up.")
+    }
+
     // MARK: - Wiring actually writes the config
 
     func test_connect_writesClientConfigFile() async throws {
@@ -81,6 +95,135 @@ final class ConnectionsViewModelTests: XCTestCase {
         case let other:
             XCTFail("Expected .connected or .degraded after Connect, got \(other)")
         }
+    }
+
+    func test_syncModels_ignoresDuplicateTapWhileAlreadyBusy() async {
+        var restartCount = 0
+        viewModel.appStates[.droid] = .syncingModels
+
+        await viewModel.syncModels(
+            target: .droid,
+            settings: settings,
+            restartGateway: {
+                restartCount += 1
+            }
+        )
+
+        XCTAssertEqual(restartCount, 0, "A second Sync models tap while syncing must not restart or rewrite concurrently.")
+        XCTAssertEqual(viewModel.state(for: .droid), .syncingModels)
+    }
+
+    func test_refreshProxyModelCatalog_usesLiveGatewayFetcher() async {
+        settings.gatewayHost = "127.0.0.1"
+        settings.gatewayPort = 8317
+        settings.gatewayAuthToken = "catalog-token"
+
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyCatalogFetcher: { gateway in
+                XCTAssertEqual(gateway.baseURL, "http://127.0.0.1:8317")
+                XCTAssertEqual(gateway.authToken, "catalog-token")
+                return [
+                    ProxyAdvertisedModel(
+                        modelID: "MiniMax-M2.7",
+                        displayName: "MiniMax M2.7",
+                        providerID: "minimax",
+                        providerName: "MiniMax",
+                        accountID: "acct_minimax",
+                        accountLabel: "MiniMax primary",
+                        sourceID: "minimax#acct_minimax",
+                        sourceKind: "provider_account",
+                        quotaState: "healthy",
+                        routeEligible: true,
+                        capabilities: ["openai_compat", "routing"],
+                        lastError: nil
+                    ),
+                    ProxyAdvertisedModel(
+                        modelID: "deepseek-v4-flash",
+                        displayName: "DeepSeek V4 Flash",
+                        providerID: "deepseek",
+                        providerName: "DeepSeek",
+                        accountID: "acct_deepseek",
+                        accountLabel: "DeepSeek reserve",
+                        sourceID: "deepseek#acct_deepseek",
+                        sourceKind: "provider_account",
+                        quotaState: "healthy",
+                        routeEligible: true,
+                        capabilities: ["openai_compat", "routing"],
+                        lastError: nil
+                    )
+                ]
+            }
+        )
+
+        await viewModel.refreshProxyModelCatalog(settings: settings)
+
+        XCTAssertEqual(viewModel.proxyModels.map(\.modelID), ["deepseek-v4-flash", "MiniMax-M2.7"])
+        XCTAssertEqual(viewModel.proxyModels.map(\.providerID), ["deepseek", "minimax"])
+        if case .loaded = viewModel.proxyModelCatalogState {
+            // expected
+        } else {
+            XCTFail("Expected loaded catalog state, got \(viewModel.proxyModelCatalogState)")
+        }
+    }
+
+    func test_refreshProxyModelCatalog_surfacesGatewayFailure() async {
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyCatalogFetcher: { _ in throw ProxyCatalogTestError.offline }
+        )
+
+        await viewModel.refreshProxyModelCatalog(settings: settings)
+
+        XCTAssertTrue(viewModel.proxyModels.isEmpty)
+        if case .error(let message, _) = viewModel.proxyModelCatalogState {
+            XCTAssertEqual(message, "Gateway offline")
+        } else {
+            XCTFail("Expected error catalog state, got \(viewModel.proxyModelCatalogState)")
+        }
+    }
+
+    func test_refreshProxyModelCatalog_keepsSameModelDistinctBySourceID() async {
+        viewModel = ConnectionsViewModel(
+            wiringFactory: { RoutingClientWiring(home: self.tempHome) },
+            proxyCatalogFetcher: { _ in
+                [
+                    ProxyAdvertisedModel(
+                        modelID: "shared-model",
+                        displayName: "Shared Model",
+                        providerID: "openai-compatible",
+                        providerName: "OpenAI Compatible",
+                        accountID: "default",
+                        accountLabel: "Primary",
+                        sourceID: "provider-a#default",
+                        sourceKind: "upstream_models_endpoint",
+                        quotaState: "healthy",
+                        routeEligible: true,
+                        capabilities: ["openai_compat"],
+                        lastError: nil
+                    ),
+                    ProxyAdvertisedModel(
+                        modelID: "shared-model",
+                        displayName: "Shared Model",
+                        providerID: "openai-compatible",
+                        providerName: "OpenAI Compatible",
+                        accountID: "default",
+                        accountLabel: "Reserve",
+                        sourceID: "provider-b#default",
+                        sourceKind: "upstream_models_endpoint",
+                        quotaState: "healthy",
+                        routeEligible: true,
+                        capabilities: ["openai_compat"],
+                        lastError: nil
+                    )
+                ]
+            }
+        )
+
+        await viewModel.refreshProxyModelCatalog(settings: settings)
+
+        XCTAssertEqual(Set(viewModel.proxyModels.map(\.id)).count, 2)
+        XCTAssertEqual(viewModel.proxyModels.map(\.sourceID), ["provider-a#default", "provider-b#default"])
     }
 
     func test_disconnect_unwiresButLeavesGatewayEnabled() async {
@@ -220,4 +363,10 @@ final class ConnectionsViewModelTests: XCTestCase {
             ] : []
         )
     }
+}
+
+private enum ProxyCatalogTestError: LocalizedError {
+    case offline
+
+    var errorDescription: String? { "Gateway offline" }
 }

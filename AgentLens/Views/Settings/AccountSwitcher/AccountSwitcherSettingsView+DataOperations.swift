@@ -277,16 +277,18 @@ extension AccountSwitcherSettingsView {
 
         switch result {
         case .readyToPersist(let updatedProfile), .requiresConfirmation(let updatedProfile, _, _):
-            guard let detected = normalizedAccountLabel(updatedProfile.cliMetadata?.accountDescription) else {
-                cliAddResultMessage = "\(request.providerLabel) login finished, but BurnBar could not identify which account was logged in. No profile was added."
-                return
-            }
-            if let duplicate = duplicateCLIProfile(cliType: request.cliType, accountDescription: detected) {
+            let detected = normalizedAccountLabel(updatedProfile.cliMetadata?.accountDescription)
+            if let detected,
+               let duplicate = duplicateCLIProfile(cliType: request.cliType, accountDescription: detected) {
                 cliAddResultMessage = "Already added: \(duplicate.displayName) is connected to \(detected). Sign into a different \(request.providerLabel) account to create \(request.nextSlotLabel)."
                 return
             }
             if persistNewCLIAccount(updatedProfile, for: request.cliType) {
-                cliAddResultMessage = "Added \(request.nextSlotLabel): \(detected). Quota will refresh automatically."
+                if let detected {
+                    cliAddResultMessage = "Added \(request.nextSlotLabel): \(detected). Quota will refresh automatically."
+                } else {
+                    cliAddResultMessage = "Added \(request.nextSlotLabel). \(request.providerLabel) is connected, but it did not return an account label yet."
+                }
                 pendingCLIAddRequest = nil
             } else if cliAddResultMessage == nil {
                 cliAddResultMessage = "Failed to save \(request.nextSlotLabel)."

@@ -28,6 +28,10 @@ final class HermesRelayHostFanout: HermesRealtimeRelayHosting {
     /// document advertises today. The iroh host publishes its NodeId via a
     /// separate `iroh_pairing` document iOS reads directly, so it does not
     /// need to round-trip through `publishableRelayURLString`.
+    var isReady: Bool {
+        primary.isReady || fallback.isReady
+    }
+
     var publishableRelayURLString: String? {
         fallback.publishableRelayURLString
     }
@@ -37,8 +41,9 @@ final class HermesRelayHostFanout: HermesRealtimeRelayHosting {
         // Boot the iroh host best-effort. A failure here (e.g., missing
         // xcframework, missing pairing key) must not take the WSS host
         // offline — that would be a regression vs. the v1 cascade.
-        _ = await primary.start(uid: uid, connectionID: connectionID)
-        return await fallback.start(uid: uid, connectionID: connectionID)
+        let primaryStarted = await primary.start(uid: uid, connectionID: connectionID)
+        let fallbackStarted = await fallback.start(uid: uid, connectionID: connectionID)
+        return primaryStarted || fallbackStarted
     }
 
     func stop() {

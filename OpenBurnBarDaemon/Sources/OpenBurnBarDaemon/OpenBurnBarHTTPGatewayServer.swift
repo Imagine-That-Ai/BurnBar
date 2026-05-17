@@ -314,15 +314,59 @@ public actor BurnBarHTTPGatewayServer {
 
     private func handleModels() async -> GatewayHTTPResponse {
         do {
+            let catalog = configStore.catalogSupport.catalog
+            let router = BurnBarProviderRouter(
+                configStore: configStore,
+                logger: BurnBarDaemonLogger(category: "gateway-router"),
+                allowDynamicOpenAICompatibleModels: true
+            )
             let snapshot = try await BurnBarLiveModelCatalog(
                 configStore: configStore,
                 session: modelCatalogSession
             ).snapshot()
-            let models = snapshot.models.map(ModelDescriptor.init(model:))
+            var models: [ModelDescriptor] = []
+            for model in snapshot.models where model.routeEligible {
+                guard model.capabilities.contains(BurnBarProviderFormatFamily.openaiCompat.rawValue) else {
+                    continue
+                }
+                if await canRouteAdvertisedModel(model, router: router, catalog: catalog) {
+                    models.append(ModelDescriptor(model: model))
+                }
+            }
             return jsonResponse(status: 200, body: encodeBody(ModelsResponse(data: models)))
         } catch {
             logger.error("gateway_models_error", metadata: ["error": "\(error)"])
             return jsonResponse(status: 500, body: errorBody("internal error"))
+        }
+    }
+
+    private func canRouteAdvertisedModel(
+        _ model: BurnBarLiveAdvertisedModel,
+        router: BurnBarProviderRouter,
+        catalog: BurnBarCatalog
+    ) async -> Bool {
+        do {
+            let requiredCapabilityClassID = capabilityClassID(forModelName: model.id, catalog: catalog)
+            let routes = try await router.candidateRoutes(
+                modelName: model.id,
+                requestedFormatFamily: .openaiCompat,
+                requiredCapabilityClassID: requiredCapabilityClassID
+            )
+            return routes.contains { route in
+                route.providerID == model.providerID
+                    && (route.credentialSlotID ?? "legacy") == model.accountID
+            }
+        } catch {
+            logger.warning(
+                "gateway_models_route_verification_failed",
+                metadata: [
+                    "model": model.id,
+                    "provider": model.providerID,
+                    "account": model.accountID,
+                    "error": "\(error)"
+                ]
+            )
+            return false
         }
     }
 

@@ -148,7 +148,7 @@ class MainActivity : ComponentActivity() {
                     ?: "Respond with exactly: android iroh ok"
 
                 service.sendMessage(prompt, model)
-                val deadline = System.currentTimeMillis() + 90_000L
+                val deadline = System.currentTimeMillis() + ANDROID_HERMES_IROH_E2E_TIMEOUT_MILLIS
                 while (System.currentTimeMillis() < deadline) {
                     val assistant = service.messages.value.lastOrNull { it.role == "assistant" }
                     if (assistant != null && !service.isStreaming.value) {
@@ -184,5 +184,6 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_E2E_HERMES_CONNECTION_ID = "openburnbar.e2e.hermesConnectionId"
         const val EXTRA_E2E_HERMES_MODEL = "openburnbar.e2e.hermesModel"
         const val EXTRA_E2E_HERMES_PROMPT = "openburnbar.e2e.hermesPrompt"
+        private const val ANDROID_HERMES_IROH_E2E_TIMEOUT_MILLIS = 600_000L
     }
 }

@@ -29,7 +29,7 @@ class MercuryAudioDatagramChannel internal constructor(
     /** `timeoutMillis` is the per-call wait ceiling; receivers loop tightly. */
     suspend fun recv(timeoutMillis: Int): ByteArray? = withContext(dispatcher) {
         try {
-            nativeHandle.javaClass.getMethod("recv", Int::class.javaPrimitiveType)
+            nativeHandle.javaClass.irohGeneratedMethod("recv", javaPrimitiveInt)
                 .invoke(nativeHandle, timeoutMillis) as ByteArray?
         } catch (t: Throwable) {
             throw IrohBackendError.StreamFailed(t.message ?: t.javaClass.simpleName)
@@ -38,7 +38,7 @@ class MercuryAudioDatagramChannel internal constructor(
 
     suspend fun close() = withContext(dispatcher) {
         try {
-            nativeHandle.javaClass.getMethod("close").invoke(nativeHandle)
+            nativeHandle.javaClass.getMethod("closeChannel").invoke(nativeHandle)
         } catch (_: Throwable) {
             // idempotent close.
         }
@@ -47,7 +47,7 @@ class MercuryAudioDatagramChannel internal constructor(
 
     suspend fun maxDatagramSize(): Int = withContext(dispatcher) {
         try {
-            (nativeHandle.javaClass.getMethod("maxDatagramSize").invoke(nativeHandle) as Int)
+            (nativeHandle.javaClass.irohGeneratedMethod("maxDatagramSize").invoke(nativeHandle) as Int)
         } catch (t: Throwable) {
             throw IrohBackendError.RuntimeFailed(t.message ?: t.javaClass.simpleName)
         }

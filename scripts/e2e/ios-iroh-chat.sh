@@ -222,6 +222,19 @@ resolve_model_if_needed() {
     echo "Resolved --model auto to live BurnBar model: ${MODEL}"
 }
 
+wait_for_burnbar_gateway() {
+    local deadline=$((SECONDS + 60))
+    while [[ "${SECONDS}" -lt "${deadline}" ]]; do
+        if curl -fsS --max-time 3 "http://127.0.0.1:8317/v1/models" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 2
+    done
+    echo "BurnBar daemon gateway did not become reachable at http://127.0.0.1:8317/v1/models." >&2
+    echo "Mac host log: ${MAC_HOST_LOG}" >&2
+    exit 1
+}
+
 if [[ "${START_HOST}" -eq 1 ]]; then
     if [[ ! -x "${MAC_HOST_APP}" ]]; then
         echo "Mac host executable missing or not executable: ${MAC_HOST_APP}" >&2
@@ -244,6 +257,7 @@ if [[ "${START_HOST}" -eq 1 ]]; then
     fi
     echo "  macHostPid=${HOST_PID}"
     echo "  macHostLog=${MAC_HOST_LOG}"
+    wait_for_burnbar_gateway
 fi
 
 resolve_model_if_needed
@@ -295,6 +309,9 @@ while [[ "${SECONDS}" -lt "${DEADLINE}" ]]; do
                 side: (.fields.detail.mapValue.fields.side.stringValue // ""),
                 requestId: (.fields.detail.mapValue.fields.requestId.stringValue // ""),
                 requestedModel: (.fields.detail.mapValue.fields.requestedModel.stringValue // ""),
+                operation: (.fields.detail.mapValue.fields.operation.stringValue // ""),
+                path: (.fields.detail.mapValue.fields.path.stringValue // ""),
+                done: (.fields.detail.mapValue.fields.done.stringValue // ""),
                 networkInterfaces: (.fields.detail.mapValue.fields.networkInterfaces.stringValue // ""),
                 error: (.fields.detail.mapValue.fields.error.stringValue // "")
               }
@@ -312,7 +329,19 @@ while [[ "${SECONDS}" -lt "${DEADLINE}" ]]; do
     FALLBACK_COUNT="$(jq '[.[] | select(.eventType == "iroh_fallback_to_wss")] | length' <<<"${POST_LAUNCH_EVENTS}")"
     FAILURE_COUNT="$(jq '[.[] | select(.eventType == "iroh_stream_failed")] | length' <<<"${POST_LAUNCH_EVENTS}")"
     INTERFACE_COUNT="$(jq --arg iface "${EXPECTED_INTERFACE}" '[.[] | select(.networkInterfaces | split(",") | index($iface))] | length' <<<"${POST_LAUNCH_EVENTS}")"
-    COMPLETE_COUNT="$(jq '[.[] | select(.eventType == "iroh_stream_closed" and .stage == "ios_response_complete")] | length' <<<"${POST_LAUNCH_EVENTS}")"
+    CHAT_PROOF="$(
+        jq --arg model "${MODEL}" '
+          ([.[] | select(.stage == "host_forward_chat_start" and .requestedModel == $model) | .requestId] | unique) as $chatIds
+          | {
+              start: ($chatIds | length),
+              hostComplete: ([.[] | select(.stage == "host_forward_chat_complete" and (.requestId as $id | $chatIds | index($id)))] | length),
+              iosComplete: ([.[] | select(.eventType == "iroh_stream_closed" and .stage == "ios_response_complete" and (.requestId as $id | $chatIds | index($id)))] | length)
+            }
+        ' <<<"${POST_LAUNCH_EVENTS}"
+    )"
+    CHAT_START_COUNT="$(jq -r '.start' <<<"${CHAT_PROOF}")"
+    CHAT_HOST_COMPLETE_COUNT="$(jq -r '.hostComplete' <<<"${CHAT_PROOF}")"
+    CHAT_IOS_COMPLETE_COUNT="$(jq -r '.iosComplete' <<<"${CHAT_PROOF}")"
 
     if [[ "${FALLBACK_COUNT}" -gt 0 ]]; then
         echo "FAIL: WSS fallback recorded after launch." >&2
@@ -326,18 +355,22 @@ while [[ "${SECONDS}" -lt "${DEADLINE}" ]]; do
         write_events_if_requested
         exit 1
     fi
-    if [[ "${INTERFACE_COUNT}" -gt 0 && "${COMPLETE_COUNT}" -gt 0 ]]; then
-        echo "PASS: expected interface and ios_response_complete observed with no WSS fallback."
-        jq '.[] | select(.networkInterfaces != "" or .stage == "ios_response_complete")' <<<"${POST_LAUNCH_EVENTS}"
+    if [[ "${INTERFACE_COUNT}" -gt 0 && "${CHAT_START_COUNT}" -gt 0 && "${CHAT_HOST_COMPLETE_COUNT}" -gt 0 && "${CHAT_IOS_COMPLETE_COUNT}" -gt 0 ]]; then
+        echo "PASS: expected interface and selected-model chat completion observed with no WSS fallback."
+        jq --arg model "${MODEL}" '
+          ([.[] | select(.stage == "host_forward_chat_start" and .requestedModel == $model) | .requestId] | unique) as $chatIds
+          | .[]
+          | select(.networkInterfaces != "" or (.requestId as $id | $chatIds | index($id)))
+        ' <<<"${POST_LAUNCH_EVENTS}"
         write_events_if_requested
         exit 0
     fi
 
-    echo "Waiting: interfaceMatches=${INTERFACE_COUNT} iosResponseComplete=${COMPLETE_COUNT}"
+    echo "Waiting: interfaceMatches=${INTERFACE_COUNT} chatStart=${CHAT_START_COUNT} chatHostComplete=${CHAT_HOST_COMPLETE_COUNT} chatIosComplete=${CHAT_IOS_COMPLETE_COUNT}"
     sleep "${POLL_INTERVAL}"
 done
 
-echo "FAIL: timed out waiting for expected interface and ios_response_complete." >&2
+echo "FAIL: timed out waiting for expected interface and selected-model chat completion." >&2
 echo "Launch JSON: ${LAUNCH_JSON}" >&2
 echo "Launch log: ${LAUNCH_LOG}" >&2
 if [[ -n "${LAST_POLL_ERROR}" ]]; then

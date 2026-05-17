@@ -1,5 +1,52 @@
 # Hermes iroh Rollout Status
 
+## 2026-05-17T03:40Z — iOS and Android selected-model iroh proof green
+
+**Gate status:** targeted selected-model blocker closed on physical iPhone and
+physical Android. Full production rollout gates still require the broader
+multi-run soak entries below.
+
+Completed:
+- Fixed the mobile selected-model path so explicit Hermes relay model choices
+  are honored even when the relay catalog is empty or stale.
+- Rebuilt the iroh Apple xcframework and Swift bindings after the Rust UniFFI
+  close-method rename, then repaired the Swift bridge callsite.
+- Repaired shared CLI auth discovery so the iOS target no longer compiles a
+  macOS-only `homeDirectoryForCurrentUser` path.
+- Installed the rebuilt Android debug APK on physical Android
+  `R3CXB0CNS0J` and the rebuilt iOS app on physical iPhone
+  `AFB07C15-AD18-5EFA-AD1C-CADB4F286797`.
+- Verified Android and iOS both route the explicit
+  `minimax-m2.7-highspeed` model over `iroh-direct` through the hosted relay,
+  with no WSS fallback and no silent reroute to a default GPT model.
+
+Verification:
+- macOS host build:
+  `xcodebuild build -quiet -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS' -derivedDataPath build/DerivedData-mac-livefix -skipPackagePluginValidation -skipMacroValidation`
+- iOS build:
+  `xcodebuild build -quiet -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobile -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData-ios-livefix -skipPackagePluginValidation -skipMacroValidation`
+- Android focused tests + APK:
+  `cd android && ./gradlew :openburnbar-iroh-relay:testDebugUnitTest :app:testDebugUnitTest --tests com.openburnbar.HermesServiceTest --tests com.openburnbar.data.hermes.relay.HermesRelayDiscoverySchemaTest --tests com.openburnbar.data.hermes.relay.HermesIrohRelayTransportTest --tests com.openburnbar.data.hermes.relay.HermesCompositeRelayTransportTest :app:assembleDebug --no-daemon`
+- Android physical smoke:
+  `Android Hermes iroh E2E complete model=minimax-m2.7-highspeed responseChars=3042`,
+  request `iroh_1f0421a4-13f4-4ed1-83ed-fe3be90a1443`. Audit trail shows
+  `host_forward_chat_start` with `requestedModel=minimax-m2.7-highspeed`,
+  `host_forward_chat_complete done=true`, Android
+  `android_response_chunk_received` / `android_response_chunk_processed`,
+  then `android_response_complete`.
+- iOS physical smoke:
+  `scripts/e2e/ios-iroh-chat.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --device AFB07C15-AD18-5EFA-AD1C-CADB4F286797 --wait-for-device-seconds 60 --expect-interface wifi --model minimax-m2.7-highspeed --prompt 'Reply exactly: ok-current-ios-minimax-18' --poll-seconds 600 --poll-interval 5 --events-output /tmp/openburnbar-ios-current-minimax-18-events.json --no-start-host`
+  passed. Request `iroh_79058de1-ffdb-49c0-a28c-9503a545569b` shows
+  `host_forward_chat_start` with `requestedModel=minimax-m2.7-highspeed`,
+  `host_forward_chat_complete done=true`, and `ios_response_complete` on
+  `networkInterfaces=wifi`.
+
+Next action:
+- The immediate "changing models does not do anything" blocker is closed for
+  iOS and Android. Continue broader production rollout/soak only when the
+  remaining rollout gates require it; no repeat 10-pass iOS gate was needed for
+  this targeted model-selection fix.
+
 ## 2026-05-16T18:35Z — Android AAR bindgen repair validated locally
 
 **Gate status:** Android AAR CI repair ready to push; cellular iPhone gate

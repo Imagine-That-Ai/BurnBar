@@ -30,8 +30,9 @@ typealias MediaControlStreamRegistrar = @Sendable (
 /// crypto envelope and forwarding logic are byte-identical to the WSS
 /// `HermesRealtimeRelayHostClient`.
 final class IrohRelayRequestHandler: Sendable {
-    private static let chatForwardTimeout: TimeInterval = 300
+    private static let chatForwardTimeout: TimeInterval = 600
     private static let unaryForwardTimeout: TimeInterval = 20
+    private static let streamSendTimeoutNanoseconds: UInt64 = 120_000_000_000
 
     private let relayKeyStore: HermesRelayKeyStore
     private let urlSession: URLSession
@@ -517,7 +518,7 @@ final class IrohRelayRequestHandler: Sendable {
             )
         }
         let responseBody: Data
-        if operation == .models {
+        if operation == .models, !Self.usesBurnBarGateway(operation) {
             responseBody = await enrichedModelsBody(primaryBody: body)
         } else {
             responseBody = body
@@ -548,7 +549,10 @@ final class IrohRelayRequestHandler: Sendable {
             }
             path = "api/sessions/\(sessionID)"
         }
-        let base = hermesBaseURLWithTrailingSlash()
+        let useBurnBarGateway = Self.usesBurnBarGateway(operation)
+        let base = useBurnBarGateway
+            ? burnBarGatewayBaseURLWithTrailingSlash()
+            : hermesBaseURLWithTrailingSlash()
         guard let url = URL(string: path, relativeTo: base)?.absoluteURL else {
             throw IrohRelayHostError.invalidPath
         }
@@ -560,7 +564,9 @@ final class IrohRelayRequestHandler: Sendable {
         )
         request.httpMethod = operation == .chatCompletions ? "POST" : "GET"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = useBurnBarGateway
+            ? burnBarGatewayAuthToken()
+            : settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         if !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -571,6 +577,32 @@ final class IrohRelayRequestHandler: Sendable {
             request.httpBody = body
         }
         return request
+    }
+
+    nonisolated static func usesBurnBarGateway(_ operation: HermesRelayOperation) -> Bool {
+        switch operation {
+        case .chatCompletions, .models:
+            return true
+        case .sessions, .profiles, .jobs, .sessionDetail:
+            return false
+        }
+    }
+
+    @MainActor
+    private func burnBarGatewayBaseURLWithTrailingSlash() -> URL {
+        let settings = settingsManager as? SettingsManager
+        let rawHost = settings?.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines) ?? "127.0.0.1"
+        let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
+        let port = max(settings?.gatewayPort ?? 8317, 1)
+        let base = URL(string: "http://\(host):\(port)") ?? URL(string: "http://127.0.0.1:8317")!
+        if base.absoluteString.hasSuffix("/") { return base }
+        return URL(string: "\(base.absoluteString)/") ?? base
+    }
+
+    @MainActor
+    private func burnBarGatewayAuthToken() -> String {
+        let settings = settingsManager as? SettingsManager
+        return settings?.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     @MainActor
@@ -627,7 +659,7 @@ final class IrohRelayRequestHandler: Sendable {
                 kind: kind.rawValue
             )
         )
-        try await stream.send(
+        try await sendFrameWithTimeout(
             HermesRealtimeRelayFrame(
                 type: .responseChunk,
                 uid: uid,
@@ -638,7 +670,16 @@ final class IrohRelayRequestHandler: Sendable {
                     kind: kind,
                     ciphertext: ciphertext
                 )
-            )
+            ),
+            stage: "response_chunk_send",
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            extra: [
+                "sequence": String(sequence),
+                "kind": kind.rawValue
+            ],
+            stream: stream
         )
     }
 
@@ -649,14 +690,20 @@ final class IrohRelayRequestHandler: Sendable {
         chunkCount: Int,
         stream: any IrohRelayStream
     ) async throws {
-        try await stream.send(
+        try await sendFrameWithTimeout(
             HermesRealtimeRelayFrame(
                 type: .responseComplete,
                 uid: uid,
                 connectionId: connectionID,
                 requestId: requestID,
                 payload: HermesRealtimeRelayPayload(chunkCount: chunkCount)
-            )
+            ),
+            stage: "response_complete_send",
+            uid: uid,
+            connectionID: connectionID,
+            requestID: requestID,
+            extra: ["chunkCount": String(chunkCount)],
+            stream: stream
         )
     }
 
@@ -672,7 +719,47 @@ final class IrohRelayRequestHandler: Sendable {
             requestId: frame.requestId,
             payload: HermesRealtimeRelayPayload(error: String(message.prefix(2_000)))
         )
-        try await stream.send(response)
+        try await sendFrameWithTimeout(
+            response,
+            stage: "response_error_send",
+            uid: frame.uid,
+            connectionID: frame.connectionId,
+            requestID: frame.requestId,
+            stream: stream
+        )
+    }
+
+    private func sendFrameWithTimeout(
+        _ frame: HermesRealtimeRelayFrame,
+        stage: String,
+        uid: String,
+        connectionID: String,
+        requestID: String?,
+        extra: [String: String] = [:],
+        stream: any IrohRelayStream
+    ) async throws {
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    try await stream.send(frame)
+                }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: Self.streamSendTimeoutNanoseconds)
+                    throw IrohRelayHostError.streamSendTimeout(stage: stage)
+                }
+                _ = try await group.next()
+                group.cancelAll()
+            }
+        } catch {
+            await auditStage(
+                "\(stage)_failed",
+                uid: uid,
+                connectionID: connectionID,
+                requestID: requestID,
+                extra: extra.merging(["error": String(error.localizedDescription.prefix(256))]) { current, _ in current }
+            )
+            throw error
+        }
     }
 
     private func auditStage(
@@ -1021,6 +1108,7 @@ enum IrohRelayHostError: LocalizedError {
     case invalidResponse
     case httpStatus(code: Int, body: String?, requestedModel: String?)
     case upstreamError(String)
+    case streamSendTimeout(stage: String)
 
     var errorDescription: String? {
         switch self {
@@ -1036,6 +1124,8 @@ enum IrohRelayHostError: LocalizedError {
             )
         case .upstreamError(let message):
             return message
+        case .streamSendTimeout(let stage):
+            return "Iroh relay stalled while sending \(stage) to the mobile client."
         }
     }
 }

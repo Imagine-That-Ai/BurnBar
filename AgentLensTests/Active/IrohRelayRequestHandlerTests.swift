@@ -2,6 +2,13 @@ import XCTest
 @testable import OpenBurnBar
 
 final class IrohRelayRequestHandlerTests: XCTestCase {
+    func test_usesBurnBarGatewayForOpenAICompatibleRelaySurface() {
+        XCTAssertTrue(IrohRelayRequestHandler.usesBurnBarGateway(.models))
+        XCTAssertTrue(IrohRelayRequestHandler.usesBurnBarGateway(.chatCompletions))
+        XCTAssertFalse(IrohRelayRequestHandler.usesBurnBarGateway(.sessions))
+        XCTAssertFalse(IrohRelayRequestHandler.usesBurnBarGateway(.sessionDetail))
+    }
+
     func test_isSSEDoneLine_acceptsOpenAISentinelWithWhitespace() {
         XCTAssertTrue(IrohRelayRequestHandler.isSSEDoneLine("data: [DONE]"))
         XCTAssertTrue(IrohRelayRequestHandler.isSSEDoneLine(" data:   [DONE] \r"))

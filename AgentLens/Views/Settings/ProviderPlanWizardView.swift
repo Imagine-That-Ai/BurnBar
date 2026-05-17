@@ -2106,6 +2106,29 @@ struct ProviderPlanWizardView: View {
                     .buttonStyle(.plain)
                     .disabled(isAddingExternalAccount)
                 }
+                if method.isOpenCodeAuthJSON {
+                    Button {
+                        importOpenCodeAuthJSON()
+                    } label: {
+                        HStack(spacing: 3) {
+                            if isImportingCredential {
+                                ProgressView()
+                                    .controlSize(.mini)
+                            } else {
+                                Image(systemName: "key.fill")
+                                    .font(.system(size: 9, weight: .semibold))
+                            }
+                            Text(isImportingCredential ? "Checking" : "Use current OpenCode")
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        .foregroundStyle(DesignSystem.Colors.blaze)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(DesignSystem.Colors.blaze.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isImportingCredential)
+                }
                 Button {
                     withAnimation(.snappy) { showAPIKey.toggle() }
                 } label: {
@@ -2155,6 +2178,21 @@ struct ProviderPlanWizardView: View {
                     text: credentialImportMessage
                 )
                 .padding(.top, DesignSystem.Spacing.xs)
+
+                if method.isClaudeOAuthBearer,
+                   !apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   canProceedFromCredential {
+                    Button {
+                        navigateForward()
+                    } label: {
+                        Label("Continue to save", systemImage: "arrow.right.circle.fill")
+                            .font(DesignSystem.Typography.tiny)
+                            .fontWeight(.semibold)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignSystem.Colors.blaze)
+                    .padding(.top, DesignSystem.Spacing.xs)
+                }
             }
         }
     }
@@ -2771,9 +2809,9 @@ struct ProviderPlanWizardView: View {
                 await MainActor.run {
                     apiKeyInput = credentials.accessToken
                     if let accountLabel, !accountLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        credentialImportMessage = "Imported \(accountLabel)'s Claude OAuth token. Save this account to make Claude route through BurnBar."
+                        credentialImportMessage = "Imported \(accountLabel)'s Claude OAuth token. The token is hidden below; continue and Save & Connect so Claude is advertised as route-ready."
                     } else {
-                        credentialImportMessage = "Imported the signed-in Claude Code OAuth token. Save this account to make Claude route through BurnBar."
+                        credentialImportMessage = "Imported the signed-in Claude Code OAuth token. The token is hidden below; continue and Save & Connect so Claude is advertised as route-ready."
                     }
                     isImportingCredential = false
                     scheduleQuotaProbe()
@@ -2787,6 +2825,39 @@ struct ProviderPlanWizardView: View {
                         credentialImportMessage = "\(error.localizedDescription) Opening Claude Code login; finish sign-in, then press Use current Claude login again."
                         openExternalLogin(for: method)
                     }
+                }
+            }
+        }
+    }
+
+    private func importOpenCodeAuthJSON() {
+        guard selectedAuthMethod?.isOpenCodeAuthJSON == true else { return }
+
+        isImportingCredential = true
+        credentialImportMessage = nil
+        quotaProbeError = nil
+        quotaProbeResult = nil
+
+        Task {
+            do {
+                let authURL = URL(fileURLWithPath: NSHomeDirectory())
+                    .appendingPathComponent(".local/share/opencode/auth.json", isDirectory: false)
+                let data = try Data(contentsOf: authURL)
+                guard let json = String(data: data, encoding: .utf8),
+                      json.localizedCaseInsensitiveContains("opencode-go"),
+                      json.localizedCaseInsensitiveContains("\"key\"") else {
+                    throw ProviderPlanWizardError.message("OpenCode auth.json did not contain an opencode-go route key.")
+                }
+                await MainActor.run {
+                    apiKeyInput = json
+                    credentialImportMessage = "Imported the signed-in OpenCode auth.json. The token is hidden below; continue and Save & Connect so OpenCode models are route-ready."
+                    isImportingCredential = false
+                    scheduleQuotaProbe()
+                }
+            } catch {
+                await MainActor.run {
+                    isImportingCredential = false
+                    credentialImportMessage = "Could not read ~/.local/share/opencode/auth.json. Sign in to OpenCode, or paste another account's opencode-go auth JSON."
                 }
             }
         }
@@ -3322,6 +3393,10 @@ private extension BurnBarProviderAuthMethod {
 
     var isClaudeOAuthBearer: Bool {
         id == "anthropic-claude-oauth"
+    }
+
+    var isOpenCodeAuthJSON: Bool {
+        id == "opencode-auth-json"
     }
 }
 

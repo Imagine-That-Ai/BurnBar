@@ -1063,11 +1063,11 @@ final class HermesRelayHostService {
             realtimeRelayClient.stop()
             realtimeRegistered = false
         }
-        let realtimeRelayURL = realtimeRegistered ? realtimeRelayClient.publishableRelayURLString : nil
-        let realtimeReady = realtimeRelayURL != nil
+        let realtimeReady = realtimeRegistered && realtimeRelayClient.isReady
         if realtimeRegistered && !realtimeReady {
             realtimeRelayClient.stop()
         }
+        let realtimeRelayURL = realtimeReady ? realtimeRelayClient.publishableRelayURLString : nil
         var capabilities = ["chat_completions", "remote_relay"]
         if realtimeReady {
             capabilities.append(HermesRealtimeRelayProtocol.capability)
@@ -1087,10 +1087,13 @@ final class HermesRelayHostService {
         ]
         if let relayURL = realtimeRelayURL {
             data["realtimeRelayURL"] = relayURL
+        } else {
+            data["realtimeRelayURL"] = FieldValue.delete()
+        }
+        if realtimeReady {
             data["realtimeRelayLastSeenAt"] = now
             data["realtimeRelayProtocolVersion"] = HermesRealtimeRelayProtocol.version
         } else {
-            data["realtimeRelayURL"] = FieldValue.delete()
             data["realtimeRelayLastSeenAt"] = FieldValue.delete()
             data["realtimeRelayProtocolVersion"] = FieldValue.delete()
         }
@@ -1295,7 +1298,7 @@ final class HermesRelayHostService {
             throw HermesRelayHostError.httpStatus(statusCode)
         }
         let responseBody: Data
-        if operation == .models {
+        if operation == .models, !Self.usesBurnBarGateway(operation) {
             responseBody = await enrichedModelsBody(primaryBody: body)
         } else {
             responseBody = body
@@ -1365,13 +1368,19 @@ final class HermesRelayHostService {
 
     private func makeForwardRequest(operation: HermesRelayOperation, data: [String: Any]) throws -> URLRequest {
         let path = try relayPath(operation: operation, data: data)
-        guard let url = URL(string: path, relativeTo: hermesBaseURLWithTrailingSlash())?.absoluteURL else {
+        let useBurnBarGateway = Self.usesBurnBarGateway(operation)
+        let base = useBurnBarGateway
+            ? burnBarGatewayBaseURLWithTrailingSlash()
+            : hermesBaseURLWithTrailingSlash()
+        guard let url = URL(string: path, relativeTo: base)?.absoluteURL else {
             throw HermesRelayHostError.invalidPath
         }
-        var request = URLRequest(url: url, timeoutInterval: operation == .chatCompletions ? 120 : 20)
+        var request = URLRequest(url: url, timeoutInterval: operation == .chatCompletions ? 300 : 20)
         request.httpMethod = operation == .chatCompletions ? "POST" : "GET"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = useBurnBarGateway
+            ? settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            : settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         if !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -1383,6 +1392,15 @@ final class HermesRelayHostService {
             request.httpBody = bodyData
         }
         return request
+    }
+
+    private static func usesBurnBarGateway(_ operation: HermesRelayOperation) -> Bool {
+        switch operation {
+        case .chatCompletions, .models:
+            return true
+        case .sessions, .profiles, .jobs, .sessionDetail:
+            return false
+        }
     }
 
     static func enrichedModelsBody(
@@ -1593,6 +1611,15 @@ final class HermesRelayHostService {
 
     private func hermesBaseURLWithTrailingSlash() -> URL {
         let url = hermesBaseURL()
+        if url.absoluteString.hasSuffix("/") { return url }
+        return URL(string: "\(url.absoluteString)/") ?? url
+    }
+
+    private func burnBarGatewayBaseURLWithTrailingSlash() -> URL {
+        let rawHost = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
+        let port = max(settingsManager.gatewayPort, 1)
+        let url = URL(string: "http://\(host):\(port)") ?? URL(string: "http://127.0.0.1:8317")!
         if url.absoluteString.hasSuffix("/") { return url }
         return URL(string: "\(url.absoluteString)/") ?? url
     }

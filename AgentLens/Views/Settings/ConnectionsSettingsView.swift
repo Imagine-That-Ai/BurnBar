@@ -121,6 +121,7 @@ struct ConnectionsSettingsView: View {
             viewModel.refreshWiringState()
             await daemonManager.refreshHealth()
             loadAccountData()
+            await viewModel.refreshProxyModelCatalog(settings: settingsManager)
             await quotaService.refreshIfNeeded(dataStore: dataStore)
         }
     }
@@ -283,6 +284,22 @@ struct ConnectionsSettingsView: View {
                 Spacer()
             }
 
+            ProxyModelCatalogPanel(
+                models: viewModel.proxyModels,
+                state: viewModel.proxyModelCatalogState,
+                endpoint: gatewayModelsEndpoint,
+                onRefresh: {
+                    Task { await viewModel.refreshProxyModelCatalog(settings: settingsManager) }
+                },
+                onStartGateway: {
+                    Task {
+                        viewModel.enableLocalGateway(settings: settingsManager)
+                        await restartLocalGateway()
+                        await viewModel.refreshProxyModelCatalog(settings: settingsManager)
+                    }
+                }
+            )
+
             if !hasAnyAccount {
                 Text("Add an account first, then connect Claude Code, Codex, OpenCode, Forge, or Droid to use it.")
                     .font(DesignSystem.Typography.caption)
@@ -301,9 +318,34 @@ struct ConnectionsSettingsView: View {
                             target: target,
                             state: viewModel.state(for: target),
                             isDisabled: !hasAccountFor(target: target),
-                            onConnect: { Task { await viewModel.connect(target: target, settings: settingsManager) } },
+                            onConnect: {
+                                Task {
+                                    await viewModel.connect(
+                                        target: target,
+                                        settings: settingsManager,
+                                        restartGateway: restartLocalGateway
+                                    )
+                                }
+                            },
                             onTest: { Task { await viewModel.test(target: target, settings: settingsManager) } },
-                            onRepair: { Task { await viewModel.connect(target: target, settings: settingsManager) } },
+                            onSyncModels: {
+                                Task {
+                                    await viewModel.syncModels(
+                                        target: target,
+                                        settings: settingsManager,
+                                        restartGateway: restartLocalGateway
+                                    )
+                                }
+                            },
+                            onRepair: {
+                                Task {
+                                    await viewModel.connect(
+                                        target: target,
+                                        settings: settingsManager,
+                                        restartGateway: restartLocalGateway
+                                    )
+                                }
+                            },
                             onDisconnect: { Task { await viewModel.disconnect(target: target) } },
                             onShowSnippet: { viewModel.snippetTarget = target },
                             onRevealFile: { viewModel.revealConfigFile(target: target) },
@@ -323,6 +365,14 @@ struct ConnectionsSettingsView: View {
             for: target,
             configurations: daemonManager.providerConfigurations
         )
+    }
+
+    private var gatewayModelsEndpoint: String {
+        let host = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "127.0.0.1"
+            : settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let port = settingsManager.gatewayPort > 0 ? settingsManager.gatewayPort : 8317
+        return "http://\(host):\(port)/v1/models"
     }
 
     // MARK: - Advanced
@@ -543,6 +593,11 @@ struct ConnectionsSettingsView: View {
         loadSwitcherProfiles()
         refreshExternalAuthStates()
         viewModel.refreshWiringState()
+    }
+
+    private func restartLocalGateway() async {
+        await daemonManager.installAndStart()
+        await daemonManager.refreshHealth()
     }
 
     private var accountGroups: [AccountGroup] {
@@ -1241,6 +1296,472 @@ private struct ConnectionQuotaWindowPills: View {
     }
 }
 
+// MARK: - Proxy Model Catalog
+
+private struct ProxyModelCatalogPanel: View {
+    let models: [ProxyAdvertisedModel]
+    let state: ProxyModelCatalogState
+    let endpoint: String
+    let onRefresh: () -> Void
+    let onStartGateway: () -> Void
+
+    @State private var copiedEndpoint = false
+    @State private var expandedProviderIDs: Set<String> = []
+
+    private var groups: [ProxyModelProviderGroup] {
+        Dictionary(grouping: models, by: \.providerID)
+            .map { providerID, rows in
+                let sortedRows = rows.sorted {
+                    $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+                }
+                return ProxyModelProviderGroup(
+                    providerID: providerID,
+                    providerName: sortedRows.first?.providerName ?? providerID,
+                    models: sortedRows
+                )
+            }
+            .sorted {
+                $0.providerName.localizedCaseInsensitiveCompare($1.providerName) == .orderedAscending
+            }
+    }
+
+    private var routeReadyCount: Int {
+        models.filter(\.routeEligible).count
+    }
+
+    private var status: (label: String, systemImage: String, tint: Color) {
+        switch state {
+        case .idle:
+            return ("Not checked", "circle.dashed", DesignSystem.Colors.textMuted)
+        case .loading:
+            return ("Refreshing", "arrow.triangle.2.circlepath", DesignSystem.Colors.textSecondary)
+        case .loaded:
+            if models.isEmpty {
+                return ("No routes", "exclamationmark.circle.fill", DesignSystem.Colors.warning)
+            }
+            if routeReadyCount == 0 {
+                return ("0 ready", "exclamationmark.circle.fill", DesignSystem.Colors.warning)
+            }
+            if routeReadyCount == models.count {
+                return ("\(models.count) ready", "checkmark.seal.fill", DesignSystem.Colors.success)
+            }
+            return ("\(routeReadyCount)/\(models.count) ready", "exclamationmark.triangle.fill", DesignSystem.Colors.warning)
+        case .error:
+            return ("Gateway offline", "bolt.slash.fill", DesignSystem.Colors.error)
+        }
+    }
+
+    private var statusDetail: String {
+        switch state {
+        case .idle:
+            return "Not checked yet"
+        case .loading:
+            return "Refreshing now"
+        case .loaded(let lastRefresh):
+            return "Last refreshed \(lastRefresh.formatted(date: .omitted, time: .shortened))"
+        case .error(_, let lastAttempt):
+            return "Last attempt \(lastAttempt.formatted(date: .omitted, time: .shortened))"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            Divider().background(DesignSystem.Colors.border.opacity(0.7))
+            content
+        }
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.42))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(status.tint.opacity(0.35), lineWidth: 1)
+        )
+        .shadow(color: status.tint.opacity(0.08), radius: 18, x: 0, y: 10)
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(status.tint.opacity(0.14))
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(status.tint)
+            }
+            .frame(width: 38, height: 38)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Text("BurnBar proxy models")
+                        .font(DesignSystem.Typography.body)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    statusPill
+                }
+                Text(endpoint)
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                Text(statusDetail)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            }
+            .layoutPriority(1)
+
+            Spacer(minLength: DesignSystem.Spacing.md)
+
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Button(action: copyEndpoint) {
+                    Label(copiedEndpoint ? "Copied" : "Copy URL", systemImage: copiedEndpoint ? "checkmark" : "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Button(action: onRefresh) {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(state.isLoading)
+            }
+            .fixedSize()
+        }
+        .padding(DesignSystem.Spacing.md)
+    }
+
+    private var statusPill: some View {
+        HStack(spacing: 4) {
+            if state.isLoading {
+                ProgressView()
+                    .controlSize(.mini)
+                    .frame(width: 10, height: 10)
+            } else {
+                Image(systemName: status.systemImage)
+                    .font(.system(size: 9, weight: .bold))
+            }
+            Text(status.label)
+                .font(DesignSystem.Typography.tiny)
+                .fontWeight(.semibold)
+        }
+        .foregroundStyle(status.tint)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(status.tint.opacity(0.12))
+        .clipShape(Capsule())
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch state {
+        case .idle:
+            catalogMessage(
+                title: "Check the live proxy catalog",
+                message: "Refresh to read the exact models BurnBar is advertising through the local OpenAI-compatible gateway.",
+                systemImage: "point.3.connected.trianglepath.dotted",
+                tint: DesignSystem.Colors.textSecondary,
+                actionTitle: "Refresh",
+                action: onRefresh
+            )
+        case .loading where models.isEmpty:
+            catalogMessage(
+                title: "Reading live catalog",
+                message: "Checking the local gateway for advertised models.",
+                systemImage: "waveform.path.ecg",
+                tint: DesignSystem.Colors.textSecondary,
+                actionTitle: nil,
+                action: nil
+            )
+        case .error(let message, _):
+            catalogMessage(
+                title: "Gateway is not advertising models",
+                message: message,
+                systemImage: "network.slash",
+                tint: DesignSystem.Colors.error,
+                actionTitle: "Start gateway",
+                action: onStartGateway
+            )
+        case .loaded where models.isEmpty:
+            catalogMessage(
+                title: "No models are available",
+                message: "Add or enable a provider account with quota, then refresh this catalog.",
+                systemImage: "tray",
+                tint: DesignSystem.Colors.warning,
+                actionTitle: "Refresh",
+                action: onRefresh
+            )
+        default:
+            VStack(alignment: .leading, spacing: 0) {
+                catalogStats
+                ForEach(groups) { group in
+                    ProxyModelProviderSection(
+                        group: group,
+                        isExpanded: expandedProviderIDs.contains(group.id),
+                        onToggleExpanded: { toggleProvider(group.id) }
+                    )
+                    if group.id != groups.last?.id {
+                        Divider().background(DesignSystem.Colors.border.opacity(0.45))
+                    }
+                }
+            }
+        }
+    }
+
+    private func toggleProvider(_ id: String) {
+        if expandedProviderIDs.contains(id) {
+            expandedProviderIDs.remove(id)
+        } else {
+            expandedProviderIDs.insert(id)
+        }
+    }
+
+    private var catalogStats: some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            metricPill("\(models.count)", "models", tint: DesignSystem.Colors.success)
+            metricPill("\(routeReadyCount)", "ready", tint: routeReadyCount == models.count ? DesignSystem.Colors.success : DesignSystem.Colors.warning)
+            metricPill("\(groups.count)", "providers", tint: DesignSystem.Colors.ember)
+            metricPill("\(Set(models.map(\.accountID)).count)", "accounts", tint: DesignSystem.Colors.textSecondary)
+            Spacer()
+        }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, DesignSystem.Spacing.sm)
+        .background(DesignSystem.Colors.background.opacity(0.32))
+    }
+
+    private func metricPill(_ value: String, _ label: String, tint: Color) -> some View {
+        HStack(spacing: 4) {
+            Text(value)
+                .font(DesignSystem.Typography.monoTiny)
+                .fontWeight(.bold)
+            Text(label)
+                .font(DesignSystem.Typography.tiny)
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(tint.opacity(0.10))
+        .clipShape(Capsule())
+    }
+
+    private func catalogMessage(
+        title: String,
+        message: String,
+        systemImage: String,
+        tint: Color,
+        actionTitle: String?,
+        action: (() -> Void)?
+    ) -> some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text(message)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: DesignSystem.Spacing.sm)
+            if let actionTitle, let action {
+                Button(action: action) {
+                    Label(
+                        actionTitle,
+                        systemImage: actionTitle == "Refresh" ? "arrow.clockwise" : "play.circle.fill"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+    }
+
+    private func copyEndpoint() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(endpoint, forType: .string)
+        copiedEndpoint = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            copiedEndpoint = false
+        }
+    }
+}
+
+private struct ProxyModelProviderGroup: Identifiable {
+    let providerID: String
+    let providerName: String
+    let models: [ProxyAdvertisedModel]
+
+    var id: String { providerID }
+}
+
+private struct ProxyModelProviderSection: View {
+    let group: ProxyModelProviderGroup
+    let isExpanded: Bool
+    let onToggleExpanded: () -> Void
+
+    private let collapsedLimit = 5
+
+    private var provider: AgentProvider? {
+        AgentProvider.fromCatalogProviderID(group.providerID)
+    }
+
+    private var visibleModels: [ProxyAdvertisedModel] {
+        isExpanded ? group.models : Array(group.models.prefix(collapsedLimit))
+    }
+
+    private var hiddenCount: Int {
+        max(0, group.models.count - visibleModels.count)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                if let provider {
+                    ProviderLogoView(provider: provider, size: 20)
+                } else {
+                    Image(systemName: "shippingbox.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .frame(width: 20, height: 20)
+                }
+                Text(group.providerName)
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                Text("\(group.models.count)")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(DesignSystem.Colors.background.opacity(0.55))
+                    .clipShape(Capsule())
+                Spacer()
+            }
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.top, DesignSystem.Spacing.md)
+            .padding(.bottom, DesignSystem.Spacing.xs)
+
+            ForEach(visibleModels) { model in
+                ProxyModelRow(model: model)
+            }
+
+            if hiddenCount > 0 || isExpanded {
+                Button(action: onToggleExpanded) {
+                    Label(
+                        isExpanded ? "Show fewer" : "Show \(hiddenCount) more",
+                        systemImage: isExpanded ? "chevron.up" : "chevron.down"
+                    )
+                    .font(DesignSystem.Typography.tiny)
+                    .fontWeight(.semibold)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DesignSystem.Colors.ember)
+                .padding(.horizontal, DesignSystem.Spacing.md)
+                .padding(.top, 5)
+                .padding(.bottom, DesignSystem.Spacing.sm)
+            }
+        }
+    }
+}
+
+private struct ProxyModelRow: View {
+    let model: ProxyAdvertisedModel
+
+    private var routeTint: Color {
+        if model.routeEligible { return DesignSystem.Colors.success }
+        return model.lastError == nil ? DesignSystem.Colors.warning : DesignSystem.Colors.error
+    }
+
+    private var quotaTint: Color {
+        switch model.quotaState.lowercased() {
+        case "healthy", "available", "ok":
+            return DesignSystem.Colors.success
+        case "exhausted", "auth_failed", "missing_credential", "disabled":
+            return DesignSystem.Colors.error
+        case "cooling_down", "limited", "unknown":
+            return DesignSystem.Colors.warning
+        default:
+            return DesignSystem.Colors.textSecondary
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: DesignSystem.Spacing.sm) {
+            Circle()
+                .fill(routeTint)
+                .frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(model.displayName)
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    Text(model.modelID)
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                    Text("•")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.7))
+                    Text(model.accountLabel)
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text("•")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.7))
+                    Text(model.sourceKind.replacingOccurrences(of: "_", with: " "))
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            Spacer(minLength: DesignSystem.Spacing.sm)
+            tag(model.quotaState.replacingOccurrences(of: "_", with: " "), tint: quotaTint)
+            tag(model.routeEligible ? "route ready" : "blocked", tint: routeTint)
+        }
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, 7)
+        .contentShape(Rectangle())
+        .help(model.lastError ?? "\(model.modelID) via \(model.providerName) source \(model.sourceID)")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilitySummary)
+    }
+
+    private func tag(_ label: String, tint: Color) -> some View {
+        Text(label)
+            .font(DesignSystem.Typography.tiny)
+            .fontWeight(.semibold)
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(tint.opacity(0.10))
+            .clipShape(Capsule())
+    }
+
+    private var accessibilitySummary: String {
+        let route = model.routeEligible ? "route ready" : "blocked"
+        let quota = model.quotaState.replacingOccurrences(of: "_", with: " ")
+        return "\(model.displayName), \(model.providerName), \(model.accountLabel), \(quota), \(route)"
+    }
+}
+
 // MARK: - App Connect Row
 
 /// One row per CLI in the Apps section. The button is **smart** — it auto-
@@ -1251,6 +1772,7 @@ private struct AppConnectRow: View {
     let isDisabled: Bool
     let onConnect: () -> Void
     let onTest: () -> Void
+    let onSyncModels: () -> Void
     let onRepair: () -> Void
     let onDisconnect: () -> Void
     let onShowSnippet: () -> Void
@@ -1333,7 +1855,7 @@ private struct AppConnectRow: View {
         }
         switch state {
         case .connected: return DesignSystem.Colors.success
-        case .connecting, .probing: return DesignSystem.Colors.textSecondary
+        case .connecting, .syncingModels, .probing: return DesignSystem.Colors.textSecondary
         case .degraded: return DesignSystem.Colors.warning
         case .error: return DesignSystem.Colors.error
         case .notConnected, .unknown: return DesignSystem.Colors.textMuted
@@ -1349,7 +1871,11 @@ private struct AppConnectRow: View {
     private var statusText: String? {
         switch state {
         case .connected:
+            if target == .droid {
+                return isDisabled ? missingRouteText : "Droid models synced from BurnBar's live catalog"
+            }
             return isDisabled ? missingRouteText : "Connected via local gateway"
+        case .syncingModels: return "Syncing models…"
         case .connecting: return "Connecting…"
         case .probing: return "Testing…"
         case .degraded(let message):
@@ -1379,15 +1905,15 @@ private struct AppConnectRow: View {
         switch state {
         case .notConnected, .unknown:
             Button(action: onConnect) {
-                Text("Connect")
+                Text(target == .droid ? "Connect + Sync" : "Connect")
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)
             .disabled(isDisabled)
-        case .connecting:
+        case .connecting, .syncingModels:
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text("Connecting…")
+                Text(state == .syncingModels ? "Syncing…" : "Connecting…")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
@@ -1399,11 +1925,12 @@ private struct AppConnectRow: View {
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             }
         case .connected:
-            Button(action: onTest) {
-                Text("Test")
+            Button(action: target == .droid ? onSyncModels : onTest) {
+                Text(target == .droid ? "Sync models" : "Test")
             }
             .buttonStyle(.bordered)
             .controlSize(.regular)
+            .disabled(isDisabled)
         case .degraded:
             Button(action: onRepair) {
                 Text("Repair")

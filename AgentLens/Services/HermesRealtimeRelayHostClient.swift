@@ -5,6 +5,7 @@ import OpenBurnBarCore
 
 @MainActor
 protocol HermesRealtimeRelayHosting: AnyObject {
+    var isReady: Bool { get }
     var publishableRelayURLString: String? { get }
 
     @discardableResult
@@ -276,8 +277,6 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
               (200..<300).contains(statusCode) else {
             throw HermesRealtimeRelayHostError.invalidResponse
         }
-        // Models enrichment happens server-side in CloudSyncService;
-        // the realtime relay host client returns the raw body verbatim.
         return String(data: body, encoding: .utf8) ?? ""
     }
 
@@ -300,13 +299,19 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
             }
             path = "api/sessions/\(sessionID)"
         }
-        guard let url = URL(string: path, relativeTo: hermesBaseURLWithTrailingSlash())?.absoluteURL else {
+        let useBurnBarGateway = Self.usesBurnBarGateway(operation)
+        let base = useBurnBarGateway
+            ? burnBarGatewayBaseURLWithTrailingSlash()
+            : hermesBaseURLWithTrailingSlash()
+        guard let url = URL(string: path, relativeTo: base)?.absoluteURL else {
             throw HermesRealtimeRelayHostError.invalidPath
         }
-        var request = URLRequest(url: url, timeoutInterval: operation == .chatCompletions ? 120 : 20)
+        var request = URLRequest(url: url, timeoutInterval: operation == .chatCompletions ? 600 : 20)
         request.httpMethod = operation == .chatCompletions ? "POST" : "GET"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let token = settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = useBurnBarGateway
+            ? settingsManager.gatewayAuthToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            : settingsManager.hermesBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
         if !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -317,6 +322,15 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
             request.httpBody = body
         }
         return request
+    }
+
+    private static func usesBurnBarGateway(_ operation: HermesRelayOperation) -> Bool {
+        switch operation {
+        case .chatCompletions, .models:
+            return true
+        case .sessions, .profiles, .jobs, .sessionDetail:
+            return false
+        }
     }
 
     private func sendChunk(
@@ -461,6 +475,15 @@ final class HermesRealtimeRelayHostClient: HermesRealtimeRelayHosting {
 
     private func hermesBaseURLWithTrailingSlash() -> URL {
         let url = hermesBaseURL()
+        if url.absoluteString.hasSuffix("/") { return url }
+        return URL(string: "\(url.absoluteString)/") ?? url
+    }
+
+    private func burnBarGatewayBaseURLWithTrailingSlash() -> URL {
+        let rawHost = settingsManager.gatewayHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let host = (rawHost.isEmpty || rawHost == "0.0.0.0" || rawHost == "::") ? "127.0.0.1" : rawHost
+        let port = max(settingsManager.gatewayPort, 1)
+        let url = URL(string: "http://\(host):\(port)") ?? URL(string: "http://127.0.0.1:8317")!
         if url.absoluteString.hasSuffix("/") { return url }
         return URL(string: "\(url.absoluteString)/") ?? url
     }

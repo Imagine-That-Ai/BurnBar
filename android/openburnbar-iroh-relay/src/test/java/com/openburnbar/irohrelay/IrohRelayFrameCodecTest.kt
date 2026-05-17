@@ -44,6 +44,34 @@ class IrohRelayFrameCodecTest {
     }
 
     @Test
+    fun request_start_wire_json_uses_swift_codable_keys() {
+        val frame = HermesRealtimeRelayFrame(
+            type = HermesRealtimeRelayFrameType.REQUEST_START,
+            uid = "user-1",
+            connectionId = "conn-1",
+            requestId = "req-1",
+            payload = HermesRealtimeRelayPayload(
+                operation = "chatCompletions",
+                method = "POST",
+                payloadCiphertext = "BBB=",
+                wrappedKey = "AAA=",
+                relayEncryption = "p256-hkdf-sha256-aesgcm",
+                relayKeyVersion = 1,
+            ),
+        )
+        val envelope = codec.encode(frame)
+        val length = ((envelope[0].toInt() and 0xff) shl 24) or
+            ((envelope[1].toInt() and 0xff) shl 16) or
+            ((envelope[2].toInt() and 0xff) shl 8) or
+            (envelope[3].toInt() and 0xff)
+        val json = String(envelope.copyOfRange(4, 4 + length), Charsets.UTF_8)
+        assertEquals(
+            """{"type":"request.start","uid":"user-1","connectionId":"conn-1","requestId":"req-1","protocolVersion":1,"payload":{"operation":"chatCompletions","method":"POST","payloadCiphertext":"BBB=","wrappedKey":"AAA=","relayEncryption":"p256-hkdf-sha256-aesgcm","relayKeyVersion":1}}""",
+            json,
+        )
+    }
+
+    @Test
     fun decode_rejects_oversize_length_prefix() {
         val codec = IrohRelayFrameCodec(maxFrameBytes = 16)
         val envelope = ByteArray(4 + 32) { 0 }

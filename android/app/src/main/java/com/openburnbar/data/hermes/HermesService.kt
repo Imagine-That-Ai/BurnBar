@@ -16,6 +16,7 @@ import com.openburnbar.data.hermes.relay.HermesRelayOperationName
 import com.openburnbar.data.hermes.relay.FirestoreIrohPairingDirectory
 import com.openburnbar.data.hermes.relay.FirestoreIrohPairingPublicKeyProvider
 import com.openburnbar.data.hermes.relay.FirestoreRelayShim
+import com.openburnbar.data.hermes.relay.AndroidIrohTransportAuditLogger
 import com.openburnbar.data.hermes.relay.HermesCompositeRelayTransport
 import com.openburnbar.data.hermes.relay.HermesIrohRelayTransport
 import com.openburnbar.data.hermes.relay.HermesRelayPayload
@@ -44,6 +45,8 @@ enum class HermesRelayCapability {
 
 /** Thrown when Hermes returns 401/403 so callers can show an actionable message. */
 class HermesUnauthorizedException(message: String) : RuntimeException(message)
+
+private const val RELAY_CHAT_COMPLETION_TIMEOUT_MILLIS = 600_000L
 
 data class HermesMessage(
     val id: String = "",
@@ -287,11 +290,7 @@ class HermesService(
         // intents and deep-link prompts can still re-enter here.
         if (_isStreaming.value) return
 
-        val resolvedModelName = chatTilePreferences.selectedHermesModelOverride
-            ?.trim()?.takeIf { it.isNotEmpty() }
-            ?: _selectedModelID.value?.trim()?.takeIf { it.isNotEmpty() }
-            ?: modelName.trim().takeIf { it.isNotEmpty() }
-            ?: "hermes"
+        val resolvedModelName = resolvedModelNameForSend(modelName)
         if (_currentThreadID.value == null) _currentThreadID.value = UUID.randomUUID().toString()
         if (_currentConversationID.value == null) {
             _currentConversationID.value = conversationIdHint ?: UUID.randomUUID().toString()
@@ -360,6 +359,16 @@ class HermesService(
                 }
             }
         }
+    }
+
+    internal fun resolvedModelNameForSend(modelName: String): String {
+        val explicit = modelName.trim()
+            .takeIf { it.isNotEmpty() }
+            ?.takeUnless { it.equals("hermes", ignoreCase = true) || it.equals("auto", ignoreCase = true) }
+        return explicit
+            ?: chatTilePreferences.selectedHermesModelOverride?.trim()?.takeIf { it.isNotEmpty() }
+            ?: _selectedModelID.value?.trim()?.takeIf { it.isNotEmpty() }
+            ?: "hermes"
     }
 
     fun clearMessages() {
@@ -782,7 +791,7 @@ class HermesService(
                     relayEncryption = descriptor.relayEncryption,
                     relayKeyVersion = descriptor.relayKeyVersion,
                 ),
-                timeoutMillis = 30_000L,
+                timeoutMillis = RELAY_CHAT_COMPLETION_TIMEOUT_MILLIS,
             ) { text ->
                 // The host forwards SSE chunks verbatim; each chunk may
                 // span multiple `data:` lines and the terminating `[DONE]`.

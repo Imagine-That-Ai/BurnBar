@@ -50,9 +50,9 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         request.setValue(anthropicVersion, forHTTPHeaderField: "anthropic-version")
 
         // Anthropic accepts two distinct credential shapes:
-        //   1. `sk-ant-…` API keys via the `x-api-key` header (Console keys).
+        //   1. `sk-ant-api…` API keys via the `x-api-key` header (Console keys).
         //   2. OAuth bearer tokens via `Authorization: Bearer …` (Pro/Team
-        //      session tokens issued by claude.ai).
+        //      session tokens issued by claude.ai, including `sk-ant-oat…`).
         // Choose the right header based on the credential prefix so a single
         // routing pool can mix both kinds of accounts.
         applyAnthropicAuth(apiKey: route.apiKey, to: &request)
@@ -84,7 +84,7 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
 
     private func applyAnthropicAuth(apiKey: String, to request: inout URLRequest) {
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasPrefix("sk-ant-") {
+        if Self.isConsoleAPIKey(trimmed) {
             request.setValue(trimmed, forHTTPHeaderField: "x-api-key")
             return
         }
@@ -92,6 +92,10 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
         // Anthropic's auth layer decide. We never accept tokens we can't
         // confidently route, so this fallback is safe.
         request.setValue("Bearer \(trimmed)", forHTTPHeaderField: "Authorization")
+    }
+
+    private static func isConsoleAPIKey(_ credential: String) -> Bool {
+        credential.lowercased().hasPrefix("sk-ant-api")
     }
 
     // MARK: - Body rewriting

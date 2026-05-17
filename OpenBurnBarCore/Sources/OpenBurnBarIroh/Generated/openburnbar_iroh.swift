@@ -521,7 +521,7 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
  * state.
  */
 public protocol IrohBlobNodeProtocol : AnyObject {
-    
+
     /**
      * Spin up the blob endpoint with the supplied secret key + on-disk
      * store directory. `relay_url` empty → n0's public relay set;
@@ -530,7 +530,7 @@ public protocol IrohBlobNodeProtocol : AnyObject {
      * `media.blob.advertise` ticket-host hint.
      */
     func bootstrap(secret: IrohSecretKeyMaterial, storeDir: String, relayUrl: String) throws  -> IrohNodeIdentity
-    
+
     /**
      * Dial the ticket's source node, download the blob, write it to
      * `destination`. Returns transfer stats. Resume across reconnects
@@ -538,25 +538,25 @@ public protocol IrohBlobNodeProtocol : AnyObject {
      * flips true if any partial state was found at start.
      */
     func fetchBlob(ticketText: String, destination: String) throws  -> BlobTransferStats
-    
+
     /**
      * Returns the cached identity if `bootstrap` has been called.
      */
     func identity() throws  -> IrohNodeIdentity
-    
+
     /**
      * Hash + ingest a local file into the blob store, return a ticket
      * the receiver can use to fetch it. Idempotent — same file content
      * produces the same hash and the same ticket bytes.
      */
     func publishBlob(localPath: String) throws  -> BlobTicketBytes
-    
+
     /**
      * Tear down the router, close the endpoint, drop the store and
      * runtime. Idempotent.
      */
-    func shutdown() throws 
-    
+    func shutdown() throws
+
 }
 
 /**
@@ -619,9 +619,9 @@ public convenience init() {
         try! rustCall { uniffi_openburnbar_iroh_fn_free_irohblobnode(pointer, $0) }
     }
 
-    
 
-    
+
+
     /**
      * Spin up the blob endpoint with the supplied secret key + on-disk
      * store directory. `relay_url` empty → n0's public relay set;
@@ -638,7 +638,7 @@ open func bootstrap(secret: IrohSecretKeyMaterial, storeDir: String, relayUrl: S
     )
 })
 }
-    
+
     /**
      * Dial the ticket's source node, download the blob, write it to
      * `destination`. Returns transfer stats. Resume across reconnects
@@ -653,7 +653,7 @@ open func fetchBlob(ticketText: String, destination: String)throws  -> BlobTrans
     )
 })
 }
-    
+
     /**
      * Returns the cached identity if `bootstrap` has been called.
      */
@@ -663,7 +663,7 @@ open func identity()throws  -> IrohNodeIdentity {
     )
 })
 }
-    
+
     /**
      * Hash + ingest a local file into the blob store, return a ticket
      * the receiver can use to fetch it. Idempotent — same file content
@@ -676,7 +676,7 @@ open func publishBlob(localPath: String)throws  -> BlobTicketBytes {
     )
 })
 }
-    
+
     /**
      * Tear down the router, close the endpoint, drop the store and
      * runtime. Idempotent.
@@ -686,7 +686,7 @@ open func shutdown()throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.
     )
 }
 }
-    
+
 
 }
 
@@ -745,17 +745,219 @@ public func FfiConverterTypeIrohBlobNode_lower(_ value: IrohBlobNode) -> UnsafeM
 
 
 /**
+ * A single datagram channel — one `Connection` dedicated to small,
+ * unreliable, unordered packets. Audio only for now; future video
+ * callers should NOT reuse this object — they get their own QUIC
+ * streams per GOP per the master plan.
+ */
+public protocol IrohDatagramChannelProtocol : AnyObject {
+
+    /**
+     * Cleanly close the underlying connection. Idempotent.
+     */
+    func closeChannel() throws
+
+    /**
+     * Maximum datagram payload size negotiated for this connection.
+     * Returns 0 if datagrams aren't supported (peer disabled them).
+     */
+    func maxDatagramSize() throws  -> UInt32
+
+    /**
+     * Receive one datagram with a bounded wait. Returns `None` if the
+     * peer closed the connection before a packet arrived. `timeout_millis`
+     * is the per-call ceiling — receivers should drive a tight loop at
+     * the Opus framing cadence (20 ms) plus a small safety margin.
+     */
+    func recv(timeoutMillis: UInt32) throws  -> Data?
+
+    /**
+     * Send a single datagram. Length is the in-flight MTU (1200 bytes on
+     * most networks) — anything larger fails with `StreamFailed`. The
+     * sender is responsible for keeping each Opus packet under the MTU.
+     */
+    func send(packet: Data) throws
+
+}
+
+/**
+ * A single datagram channel — one `Connection` dedicated to small,
+ * unreliable, unordered packets. Audio only for now; future video
+ * callers should NOT reuse this object — they get their own QUIC
+ * streams per GOP per the master plan.
+ */
+open class IrohDatagramChannel:
+    IrohDatagramChannelProtocol {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_openburnbar_iroh_fn_clone_irohdatagramchannel(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_openburnbar_iroh_fn_free_irohdatagramchannel(pointer, $0) }
+    }
+
+
+
+
+    /**
+     * Cleanly close the underlying connection. Idempotent.
+     */
+open func closeChannel()throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+    uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_close_channel(self.uniffiClonePointer(),$0
+    )
+}
+}
+
+    /**
+     * Maximum datagram payload size negotiated for this connection.
+     * Returns 0 if datagrams aren't supported (peer disabled them).
+     */
+open func maxDatagramSize()throws  -> UInt32 {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+    uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_max_datagram_size(self.uniffiClonePointer(),$0
+    )
+})
+}
+
+    /**
+     * Receive one datagram with a bounded wait. Returns `None` if the
+     * peer closed the connection before a packet arrived. `timeout_millis`
+     * is the per-call ceiling — receivers should drive a tight loop at
+     * the Opus framing cadence (20 ms) plus a small safety margin.
+     */
+open func recv(timeoutMillis: UInt32)throws  -> Data? {
+    return try  FfiConverterOptionData.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+    uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_recv(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(timeoutMillis),$0
+    )
+})
+}
+
+    /**
+     * Send a single datagram. Length is the in-flight MTU (1200 bytes on
+     * most networks) — anything larger fails with `StreamFailed`. The
+     * sender is responsible for keeping each Opus packet under the MTU.
+     */
+open func send(packet: Data)throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+    uniffi_openburnbar_iroh_fn_method_irohdatagramchannel_send(self.uniffiClonePointer(),
+        FfiConverterData.lower(packet),$0
+    )
+}
+}
+
+
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeIrohDatagramChannel: FfiConverter {
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = IrohDatagramChannel
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> IrohDatagramChannel {
+        return IrohDatagramChannel(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: IrohDatagramChannel) -> UnsafeMutableRawPointer {
+        return value.uniffiClonePointer()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IrohDatagramChannel {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: IrohDatagramChannel, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIrohDatagramChannel_lift(_ pointer: UnsafeMutableRawPointer) throws -> IrohDatagramChannel {
+    return try FfiConverterTypeIrohDatagramChannel.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIrohDatagramChannel_lower(_ value: IrohDatagramChannel) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeIrohDatagramChannel.lower(value)
+}
+
+
+
+
+/**
  * Wraps an `iroh::Endpoint` and exposes the eight-function surface the Swift
  * `OpenBurnBarIrohEndpoint` actor calls into.
  */
 public protocol IrohEndpointHandleProtocol : AnyObject {
-    
+
+    /**
+     * Block waiting for an inbound Mercury audio datagram connection.
+     * Mac uses this in a loop on a dedicated accept task; iOS / Android
+     * dial outbound and rarely accept.
+     */
+    func acceptDatagramChannel(timeoutSeconds: UInt32) throws  -> IrohDatagramChannel
+
     /**
      * Block waiting for one inbound bidirectional stream. Returns once the
      * remote opens its first bi-stream after a successful ALPN handshake.
      */
     func acceptOne(timeoutSeconds: UInt32) throws  -> IrohStream
-    
+
     /**
      * Spawn the iroh endpoint with the supplied 32-byte secret key. Idempotent
      * per handle; calling twice replaces the inner endpoint. Returns the
@@ -768,23 +970,31 @@ public protocol IrohEndpointHandleProtocol : AnyObject {
      * phases 1-5).
      */
     func bootstrap(secret: IrohSecretKeyMaterial, relayUrl: String) throws  -> IrohNodeIdentity
-    
+
     /**
      * Dial a remote node by NodeId (base32 surface form) and open one
      * bidirectional stream. The caller is responsible for stream lifetime.
      */
     func connect(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32) throws  -> IrohStream
-    
+
     /**
      * Returns the cached identity if `bootstrap` has been called.
      */
     func identity() throws  -> IrohNodeIdentity
-    
+
+    /**
+     * Dial a remote NodeId on the Mercury audio ALPN and return a
+     * datagram-only channel. The chat ALPN endpoint must already be
+     * bootstrapped — this method reuses the same iroh `Endpoint` so it
+     * shares discovery + relay state.
+     */
+    func openDatagramChannel(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32) throws  -> IrohDatagramChannel
+
     /**
      * Cleanly close the endpoint. After shutdown the handle is unusable.
      */
-    func shutdown() throws 
-    
+    func shutdown() throws
+
 }
 
 /**
@@ -845,9 +1055,22 @@ public convenience init() {
         try! rustCall { uniffi_openburnbar_iroh_fn_free_irohendpointhandle(pointer, $0) }
     }
 
-    
 
-    
+
+
+    /**
+     * Block waiting for an inbound Mercury audio datagram connection.
+     * Mac uses this in a loop on a dedicated accept task; iOS / Android
+     * dial outbound and rarely accept.
+     */
+open func acceptDatagramChannel(timeoutSeconds: UInt32)throws  -> IrohDatagramChannel {
+    return try  FfiConverterTypeIrohDatagramChannel.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+    uniffi_openburnbar_iroh_fn_method_irohendpointhandle_accept_datagram_channel(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(timeoutSeconds),$0
+    )
+})
+}
+
     /**
      * Block waiting for one inbound bidirectional stream. Returns once the
      * remote opens its first bi-stream after a successful ALPN handshake.
@@ -859,7 +1082,7 @@ open func acceptOne(timeoutSeconds: UInt32)throws  -> IrohStream {
     )
 })
 }
-    
+
     /**
      * Spawn the iroh endpoint with the supplied 32-byte secret key. Idempotent
      * per handle; calling twice replaces the inner endpoint. Returns the
@@ -879,7 +1102,7 @@ open func bootstrap(secret: IrohSecretKeyMaterial, relayUrl: String)throws  -> I
     )
 })
 }
-    
+
     /**
      * Dial a remote node by NodeId (base32 surface form) and open one
      * bidirectional stream. The caller is responsible for stream lifetime.
@@ -894,7 +1117,7 @@ open func connect(nodeId: String, relayUrl: String, directAddresses: [String], t
     )
 })
 }
-    
+
     /**
      * Returns the cached identity if `bootstrap` has been called.
      */
@@ -904,7 +1127,24 @@ open func identity()throws  -> IrohNodeIdentity {
     )
 })
 }
-    
+
+    /**
+     * Dial a remote NodeId on the Mercury audio ALPN and return a
+     * datagram-only channel. The chat ALPN endpoint must already be
+     * bootstrapped — this method reuses the same iroh `Endpoint` so it
+     * shares discovery + relay state.
+     */
+open func openDatagramChannel(nodeId: String, relayUrl: String, directAddresses: [String], timeoutSeconds: UInt32)throws  -> IrohDatagramChannel {
+    return try  FfiConverterTypeIrohDatagramChannel.lift(try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+    uniffi_openburnbar_iroh_fn_method_irohendpointhandle_open_datagram_channel(self.uniffiClonePointer(),
+        FfiConverterString.lower(nodeId),
+        FfiConverterString.lower(relayUrl),
+        FfiConverterSequenceString.lower(directAddresses),
+        FfiConverterUInt32.lower(timeoutSeconds),$0
+    )
+})
+}
+
     /**
      * Cleanly close the endpoint. After shutdown the handle is unusable.
      */
@@ -913,7 +1153,7 @@ open func shutdown()throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.
     )
 }
 }
-    
+
 
 }
 
@@ -976,24 +1216,24 @@ public func FfiConverterTypeIrohEndpointHandle_lower(_ value: IrohEndpointHandle
  * can keep the send/recv halves alive across UniFFI boundaries.
  */
 public protocol IrohStreamProtocol : AnyObject {
-    
+
     /**
      * Close the stream cleanly. Idempotent.
      */
-    func close() throws 
-    
+    func closeStream() throws
+
     /**
      * Read one length-prefixed JSON frame off the stream. Returns `None` on
      * clean stream close.
      */
     func recvFrame() throws  -> Data?
-    
+
     /**
      * Write a length-prefixed JSON frame onto the stream. Length prefix is
      * a big-endian u32 — matches `IrohRelayWireFormat.lengthPrefix` in Swift.
      */
-    func sendFrame(frame: Data) throws 
-    
+    func sendFrame(frame: Data) throws
+
 }
 
 /**
@@ -1047,18 +1287,18 @@ open class IrohStream:
         try! rustCall { uniffi_openburnbar_iroh_fn_free_irohstream(pointer, $0) }
     }
 
-    
 
-    
+
+
     /**
      * Close the stream cleanly. Idempotent.
      */
-open func close()throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
-    uniffi_openburnbar_iroh_fn_method_irohstream_close(self.uniffiClonePointer(),$0
+open func closeStream()throws  {try rustCallWithError(FfiConverterTypeIrohFfiError.lift) {
+    uniffi_openburnbar_iroh_fn_method_irohstream_close_stream(self.uniffiClonePointer(),$0
     )
 }
 }
-    
+
     /**
      * Read one length-prefixed JSON frame off the stream. Returns `None` on
      * clean stream close.
@@ -1069,7 +1309,7 @@ open func recvFrame()throws  -> Data? {
     )
 })
 }
-    
+
     /**
      * Write a length-prefixed JSON frame onto the stream. Length prefix is
      * a big-endian u32 — matches `IrohRelayWireFormat.lengthPrefix` in Swift.
@@ -1080,7 +1320,7 @@ open func sendFrame(frame: Data)throws  {try rustCallWithError(FfiConverterTypeI
     )
 }
 }
-    
+
 
 }
 
@@ -1261,9 +1501,9 @@ public struct FfiConverterTypeBlobTransferStats: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BlobTransferStats {
         return
             try BlobTransferStats(
-                bytesTotal: FfiConverterUInt64.read(from: &buf), 
-                blake3Hash: FfiConverterString.read(from: &buf), 
-                durationMillis: FfiConverterUInt64.read(from: &buf), 
+                bytesTotal: FfiConverterUInt64.read(from: &buf),
+                blake3Hash: FfiConverterString.read(from: &buf),
+                durationMillis: FfiConverterUInt64.read(from: &buf),
                 didResume: FfiConverterBool.read(from: &buf)
         )
     }
@@ -1408,9 +1648,9 @@ public struct FfiConverterTypeIrohNodeIdentity: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IrohNodeIdentity {
         return
             try IrohNodeIdentity(
-                rawPublicKey: FfiConverterData.read(from: &buf), 
-                nodeId: FfiConverterString.read(from: &buf), 
-                relayUrl: FfiConverterString.read(from: &buf), 
+                rawPublicKey: FfiConverterData.read(from: &buf),
+                nodeId: FfiConverterString.read(from: &buf),
+                relayUrl: FfiConverterString.read(from: &buf),
                 directAddresses: FfiConverterSequenceString.read(from: &buf)
         )
     }
@@ -1503,20 +1743,20 @@ public func FfiConverterTypeIrohSecretKeyMaterial_lower(_ value: IrohSecretKeyMa
 
 public enum IrohFfiError {
 
-    
-    
+
+
     case InvalidSecretKey
     case InvalidNodeId
     case EndpointNotInitialized
-    case ConnectFailed(message: String
+    case ConnectFailed(detail: String
     )
-    case StreamFailed(message: String
+    case StreamFailed(detail: String
     )
-    case AcceptFailed(message: String
+    case AcceptFailed(detail: String
     )
-    case ShutdownFailed(message: String
+    case ShutdownFailed(detail: String
     )
-    case RuntimeFailed(message: String
+    case RuntimeFailed(detail: String
     )
 }
 
@@ -1531,26 +1771,26 @@ public struct FfiConverterTypeIrohFfiError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
-        
 
-        
+
+
         case 1: return .InvalidSecretKey
         case 2: return .InvalidNodeId
         case 3: return .EndpointNotInitialized
         case 4: return .ConnectFailed(
-            message: try FfiConverterString.read(from: &buf)
+            detail: try FfiConverterString.read(from: &buf)
             )
         case 5: return .StreamFailed(
-            message: try FfiConverterString.read(from: &buf)
+            detail: try FfiConverterString.read(from: &buf)
             )
         case 6: return .AcceptFailed(
-            message: try FfiConverterString.read(from: &buf)
+            detail: try FfiConverterString.read(from: &buf)
             )
         case 7: return .ShutdownFailed(
-            message: try FfiConverterString.read(from: &buf)
+            detail: try FfiConverterString.read(from: &buf)
             )
         case 8: return .RuntimeFailed(
-            message: try FfiConverterString.read(from: &buf)
+            detail: try FfiConverterString.read(from: &buf)
             )
 
          default: throw UniffiInternalError.unexpectedEnumCase
@@ -1560,46 +1800,46 @@ public struct FfiConverterTypeIrohFfiError: FfiConverterRustBuffer {
     public static func write(_ value: IrohFfiError, into buf: inout [UInt8]) {
         switch value {
 
-        
 
-        
-        
+
+
+
         case .InvalidSecretKey:
             writeInt(&buf, Int32(1))
-        
-        
+
+
         case .InvalidNodeId:
             writeInt(&buf, Int32(2))
-        
-        
+
+
         case .EndpointNotInitialized:
             writeInt(&buf, Int32(3))
-        
-        
-        case let .ConnectFailed(message):
+
+
+        case let .ConnectFailed(detail):
             writeInt(&buf, Int32(4))
-            FfiConverterString.write(message, into: &buf)
-            
-        
-        case let .StreamFailed(message):
+            FfiConverterString.write(detail, into: &buf)
+
+
+        case let .StreamFailed(detail):
             writeInt(&buf, Int32(5))
-            FfiConverterString.write(message, into: &buf)
-            
-        
-        case let .AcceptFailed(message):
+            FfiConverterString.write(detail, into: &buf)
+
+
+        case let .AcceptFailed(detail):
             writeInt(&buf, Int32(6))
-            FfiConverterString.write(message, into: &buf)
-            
-        
-        case let .ShutdownFailed(message):
+            FfiConverterString.write(detail, into: &buf)
+
+
+        case let .ShutdownFailed(detail):
             writeInt(&buf, Int32(7))
-            FfiConverterString.write(message, into: &buf)
-            
-        
-        case let .RuntimeFailed(message):
+            FfiConverterString.write(detail, into: &buf)
+
+
+        case let .RuntimeFailed(detail):
             writeInt(&buf, Int32(8))
-            FfiConverterString.write(message, into: &buf)
-            
+            FfiConverterString.write(detail, into: &buf)
+
         }
     }
 }
@@ -1690,6 +1930,15 @@ public func irohBlobsCrateVersion() -> String {
     )
 })
 }
+/**
+ * Exported constant so platform code never has to hardcode the ALPN.
+ */
+public func mercuryAudioAlpn() -> Data {
+    return try!  FfiConverterData.lift(try! rustCall() {
+    uniffi_openburnbar_iroh_fn_func_mercury_audio_alpn($0
+    )
+})
+}
 public func openburnbarAlpn() -> Data {
     return try!  FfiConverterData.lift(try! rustCall() {
     uniffi_openburnbar_iroh_fn_func_openburnbar_alpn($0
@@ -1739,6 +1988,9 @@ private var initializationResult: InitializationResult = {
     if (uniffi_openburnbar_iroh_checksum_func_iroh_blobs_crate_version() != 22686) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openburnbar_iroh_checksum_func_mercury_audio_alpn() != 47377) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openburnbar_iroh_checksum_func_openburnbar_alpn() != 35230) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -1763,6 +2015,21 @@ private var initializationResult: InitializationResult = {
     if (uniffi_openburnbar_iroh_checksum_method_irohblobnode_shutdown() != 36452) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_close_channel() != 19565) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_max_datagram_size() != 21433) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_recv() != 55876) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_iroh_checksum_method_irohdatagramchannel_send() != 45879) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_datagram_channel() != 10477) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_accept_one() != 41643) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -1775,10 +2042,13 @@ private var initializationResult: InitializationResult = {
     if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_identity() != 41818) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_open_datagram_channel() != 37751) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openburnbar_iroh_checksum_method_irohendpointhandle_shutdown() != 5484) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openburnbar_iroh_checksum_method_irohstream_close() != 38198) {
+    if (uniffi_openburnbar_iroh_checksum_method_irohstream_close_stream() != 48508) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openburnbar_iroh_checksum_method_irohstream_recv_frame() != 37160) {

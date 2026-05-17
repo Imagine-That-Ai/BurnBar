@@ -547,19 +547,19 @@ public enum BurnBarProviderAuthRegistry {
                 id: "opencode-auth-json",
                 kind: .sessionToken,
                 displayName: "OpenCode auth.json",
-                summary: "Tracks OpenCode Go quota from local or self-hosted stats.",
-                helperText: "Use ~/.local/share/opencode/auth.json only in your local OpenCode install or your own self-hosted quota runner. OpenBurnBar-hosted OpenCode credential refresh is disabled until OpenCode exposes a public account quota API.",
+                summary: "Routes OpenCode Go models and tracks local/self-hosted quota stats.",
+                helperText: "Paste the opencode-go entry from ~/.local/share/opencode/auth.json, or the full auth.json. OpenBurnBar extracts the route key and sends requests to OpenCode Go's OpenAI-compatible gateway.",
                 placeholder: "{\"opencode-go\":{\"type\":\"...\",\"key\":\"...\"}}",
                 dashboardURL: "https://opencode.ai/docs/go/",
-                dashboardLabel: "OpenCode Go quota docs",
-                storage: .appKeychain(account: "opencode_auth_json"),
-                unlocksProxyRouting: false,
+                dashboardLabel: "OpenCode Go docs",
+                storage: .daemonSlotMirroredToKeychain(account: "opencode_auth_json"),
+                unlocksProxyRouting: true,
                 unlocksQuotaRefresh: true
             )
         ],
-        summary: "OpenCode Go quota and account tracking.",
-        proxyHint: "Tracking only here. Route the OpenCode CLI through OpenBurnBar from Routing pools.",
-        quotaHint: "Supports local and self-hosted quota refresh for OpenCode Go accounts. Hosted OpenCode refresh is not offered without a public quota API."
+        summary: "OpenCode Go routing, quota, and account tracking.",
+        proxyHint: "Routed through OpenCode Go's OpenAI-compatible /zen/go/v1 gateway.",
+        quotaHint: "Local/self-hosted quota refresh reads OpenCode CLI stats; route credentials can be added as separate BurnBar accounts."
     )
 
     private static let googleDescriptor = BurnBarProviderAuthDescriptor(

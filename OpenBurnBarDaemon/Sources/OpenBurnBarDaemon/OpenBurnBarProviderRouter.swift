@@ -452,10 +452,10 @@ public struct BurnBarProviderRouter: Sendable {
             }
 
             let slotsWithSecret = enabledSlots.filter { resolvedSlot in
-                guard let key = resolvedSlot.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) else {
-                    return false
-                }
-                return !key.isEmpty
+                OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
+                    providerID: configuration.provider.id,
+                    rawSecret: resolvedSlot.apiKey
+                ) != nil
             }
             if slotsWithSecret.isEmpty {
                 return .missingCredential(configuration.provider.id)
@@ -521,20 +521,26 @@ public struct BurnBarProviderRouter: Sendable {
     ) async {
         guard let slotID = route.credentialSlotID else { return }
         let now = Date()
-        var status: BurnBarProviderCredentialSlotStatus = .coolingDown
-        var cooldownUntil = Calendar.current.date(byAdding: .minute, value: 5, to: now)
+        let cooldown = Calendar.current.date(byAdding: .minute, value: 5, to: now)
+        var status: BurnBarProviderCredentialSlotStatus?
+        var cooldownUntil: Date?
         if let providerError = error as? BurnBarProviderExecutorError,
            case .upstreamError(let statusCode, let body) = providerError {
             let lowerBody = body.lowercased()
             if statusCode == 401 || statusCode == 403 {
                 status = .missingSecret
                 cooldownUntil = nil
+            } else if statusCode == 429 || lowerBody.contains("rate limit") || lowerBody.contains("rate_limit") {
+                status = .coolingDown
+                cooldownUntil = cooldown
             } else if statusCode == 402
                 || lowerBody.contains("quota")
                 || lowerBody.contains("insufficient")
                 || lowerBody.contains("exhaust") {
                 status = .exhausted
                 cooldownUntil = nil
+            } else {
+                return
             }
         } else {
             let lowercasedDescription = error.localizedDescription.lowercased()
@@ -543,14 +549,22 @@ public struct BurnBarProviderRouter: Sendable {
                 || lowercasedDescription.contains("exhaust") {
                 status = .exhausted
                 cooldownUntil = nil
+            } else if lowercasedDescription.contains("rate limit")
+                || lowercasedDescription.contains("rate_limit")
+                || lowercasedDescription.contains("429") {
+                status = .coolingDown
+                cooldownUntil = cooldown
             } else if lowercasedDescription.contains("401")
                 || lowercasedDescription.contains("403")
                 || lowercasedDescription.contains("invalid api key") {
                 status = .missingSecret
                 cooldownUntil = nil
+            } else {
+                return
             }
         }
 
+        guard let status else { return }
         do {
             try await configStore.updateCredentialSlotStatus(
                 providerID: route.providerID,
@@ -617,7 +631,10 @@ public struct BurnBarProviderRouter: Sendable {
                 }
 
                 for slot in sortedSlots {
-                    guard let key = slot.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
+                    guard let key = OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
+                        providerID: configuration.provider.id,
+                        rawSecret: slot.apiKey
+                    ) else {
                         continue
                     }
                     routes.append(
@@ -664,8 +681,10 @@ public struct BurnBarProviderRouter: Sendable {
     }
 
     private func effectiveAPIKey(for configuration: BurnBarResolvedProviderConfiguration) -> String? {
-        if let apiKey = configuration.apiKey?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !apiKey.isEmpty {
+        if let apiKey = OpenBurnBarProviderCredentialNormalizer.routingAPIKey(
+            providerID: configuration.provider.id,
+            rawSecret: configuration.apiKey
+        ) {
             return apiKey
         }
 
@@ -752,31 +771,42 @@ public struct BurnBarProviderRouter: Sendable {
         for model: BurnBarCatalogModel,
         requestedModel: String
     ) -> BurnBarCatalogModel {
-        guard model.id.lowercased().hasSuffix("-family"),
-              model.aliases.isEmpty == false else {
+        let aliases = model.aliases
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard aliases.isEmpty == false else {
             return model
         }
 
         let normalizedRequestedModel = requestedModel
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-        let matchedAlias = model.aliases.first(where: { $0.lowercased() == normalizedRequestedModel })
-        let wireModelID = (matchedAlias ?? model.aliases.first ?? model.id)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let matchedAlias = aliases.first(where: { $0.lowercased() == normalizedRequestedModel })
+        let isVirtualFamily = model.id.lowercased().hasSuffix("-family")
+
+        let wireModelID: String
+        if isVirtualFamily {
+            wireModelID = matchedAlias ?? aliases.first ?? model.id
+        } else if let matchedAlias {
+            wireModelID = matchedAlias
+        } else {
+            return model
+        }
 
         guard wireModelID.isEmpty == false,
               wireModelID.lowercased() != model.id.lowercased() else {
             return model
         }
 
+        let capabilityClassID = model.capabilityClassID ?? (isVirtualFamily ? nil : wireModelID)
         return BurnBarCatalogModel(
             id: wireModelID,
             displayName: model.displayName,
             visibility: model.visibility,
-            aliases: model.aliases,
+            aliases: aliases,
             matchers: model.matchers,
             pricing: model.pricing,
-            capabilityClassID: model.capabilityClassID,
+            capabilityClassID: capabilityClassID,
             capabilityClassRank: model.capabilityClassRank
         )
     }
@@ -809,23 +839,31 @@ public struct BurnBarProviderRouter: Sendable {
         configurations: [BurnBarResolvedProviderConfiguration]
     ) -> String? {
         guard routerMode == .providerFamilyFailover else { return nil }
-        let enabledMatches = configurations.filter { configuration in
+        let matchingConfigurations = configurations.filter { configuration in
             configuration.settings.isEnabled
                 && (requestedFormatFamily == nil || configuration.provider.formatFamily == requestedFormatFamily)
                 && resolveModel(named: modelName, in: configuration) != nil
         }
-        if enabledMatches.count == 1 {
-            return enabledMatches[0].provider.id
+
+        let routableMatches = matchingConfigurations.filter { configuration in
+            !selectRoutes(for: modelName, configurations: [configuration]).isEmpty
         }
+        if routableMatches.count == 1 {
+            return routableMatches[0].provider.id
+        }
+        if routableMatches.count > 1 {
+            return nil
+        }
+        if matchingConfigurations.count == 1 {
+            return matchingConfigurations[0].provider.id
+        }
+
         if let catalogProviderID = configStore.catalogSupport.catalog.vendorForModel(named: modelName)?.id {
-            if enabledMatches.contains(where: { $0.provider.id == catalogProviderID }) {
-                return catalogProviderID
-            }
-            if enabledMatches.isEmpty {
+            if matchingConfigurations.isEmpty {
                 return catalogProviderID
             }
         }
-        return enabledMatches.first?.provider.id
+        return nil
     }
 
     public func persistDecisionIfNeeded(

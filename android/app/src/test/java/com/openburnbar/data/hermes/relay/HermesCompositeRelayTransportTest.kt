@@ -85,25 +85,25 @@ class HermesCompositeRelayTransportTest {
     }
 
     @Test
-    fun streaming_cascades_then_forwards_sse_events() = runTest {
+    fun streaming_surfaces_iroh_error_without_firestore_fallback() = runTest {
         val iroh = mockk<HermesRelayTransporting>()
         val firestore = mockk<HermesRelayTransporting>()
         coEvery { iroh.sendStreaming(payload, any(), any()) } throws IrohRelayTransportError.StreamRejected("flow")
-        val captured = mutableListOf<String>()
-        coEvery { firestore.sendStreaming(payload, any(), any()) } answers {
-            val cb = thirdArg<suspend (String) -> Unit>()
-            kotlinx.coroutines.runBlocking {
-                cb("chunk-a")
-                cb("chunk-b")
-            }
-        }
 
         val composite = HermesCompositeRelayTransport(
             iroh = iroh,
             firestoreFallback = firestore,
         )
-        composite.sendStreaming(payload, 100) { captured.add(it) }
-        assertEquals(listOf("chunk-a", "chunk-b"), captured)
+        val err = assertThrows(HermesRelayException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                composite.sendStreaming(payload, 100) {}
+            }
+        }
+        assertEquals(
+            "Iroh direct Hermes relay failed before the selected Mac harness completed: flow. No Firestore fallback was attempted, so the selected model is not silently rerouted.",
+            err.message,
+        )
+        coVerify(exactly = 0) { firestore.sendStreaming(any(), any(), any()) }
     }
 
     @Test

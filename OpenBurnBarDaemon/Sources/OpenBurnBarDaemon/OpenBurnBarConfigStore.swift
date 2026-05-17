@@ -210,6 +210,8 @@ public actor BurnBarConfigStore {
                 existing.label = resolvedLabel
                 existing.isEnabled = isEnabled
                 existing.status = isEnabled ? .ready : .disabled
+                existing.cooldownUntil = nil
+                existing.lastStatusMessage = nil
                 existing.updatedAt = Date()
                 mutable.credentialSlots[index] = existing
                 updatedSlot = existing

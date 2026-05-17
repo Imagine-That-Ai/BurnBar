@@ -15,6 +15,7 @@ enum AppConnectState: Equatable {
     case unknown
     case notConnected
     case connecting
+    case syncingModels
     case connected
     case probing
     case degraded(message: String)
@@ -22,9 +23,40 @@ enum AppConnectState: Equatable {
 
     var isBusy: Bool {
         switch self {
-        case .connecting, .probing: return true
+        case .connecting, .syncingModels, .probing: return true
         default: return false
         }
+    }
+}
+
+// MARK: - Proxy Model Catalog
+
+struct ProxyAdvertisedModel: Identifiable, Equatable, Sendable {
+    var id: String { "\(modelID)|\(providerID)|\(sourceID)" }
+
+    let modelID: String
+    let displayName: String
+    let providerID: String
+    let providerName: String
+    let accountID: String
+    let accountLabel: String
+    let sourceID: String
+    let sourceKind: String
+    let quotaState: String
+    let routeEligible: Bool
+    let capabilities: [String]
+    let lastError: String?
+}
+
+enum ProxyModelCatalogState: Equatable {
+    case idle
+    case loading
+    case loaded(lastRefresh: Date)
+    case error(message: String, lastAttempt: Date)
+
+    var isLoading: Bool {
+        if case .loading = self { return true }
+        return false
     }
 }
 
@@ -55,10 +87,21 @@ final class ConnectionsViewModel {
     /// delay so the UI can show a one-shot confirmation.
     var copiedSnippetTarget: RoutingClientWiringTarget?
 
-    private let wiringFactory: () -> RoutingClientWiring
+    /// The exact model rows currently advertised by the local BurnBar
+    /// OpenAI-compatible gateway. This backs the forward-facing catalog panel
+    /// on Settings -> Agents -> CLIs.
+    var proxyModels: [ProxyAdvertisedModel] = []
+    var proxyModelCatalogState: ProxyModelCatalogState = .idle
 
-    init(wiringFactory: @escaping () -> RoutingClientWiring = { RoutingClientWiring() }) {
+    private let wiringFactory: () -> RoutingClientWiring
+    private let proxyCatalogFetcher: (RoutingClientGateway) async throws -> [ProxyAdvertisedModel]
+
+    init(
+        wiringFactory: @escaping () -> RoutingClientWiring = { RoutingClientWiring() },
+        proxyCatalogFetcher: @escaping (RoutingClientGateway) async throws -> [ProxyAdvertisedModel] = ConnectionsViewModel.fetchProxyModels
+    ) {
         self.wiringFactory = wiringFactory
+        self.proxyCatalogFetcher = proxyCatalogFetcher
     }
 
     // MARK: - Wiring state
@@ -71,7 +114,7 @@ final class ConnectionsViewModel {
             // Preserve transient states (connecting/probing) — only flip
             // between connected and notConnected when we know.
             switch appStates[target] {
-            case .connecting, .probing:
+            case .connecting, .syncingModels, .probing:
                 continue
             default:
                 appStates[target] = wired ? .connected : .notConnected
@@ -91,10 +134,47 @@ final class ConnectionsViewModel {
     /// affordance instead of a stack of error pills.
     func connect(
         target: RoutingClientWiringTarget,
-        settings: SettingsManager
+        settings: SettingsManager,
+        restartGateway: (() async -> Void)? = nil
     ) async {
-        appStates[target] = .connecting
+        await wireAndProbe(
+            target: target,
+            settings: settings,
+            restartGateway: restartGateway,
+            busyState: .connecting
+        )
+    }
+
+    /// Refresh the target's model entries from the live BurnBar catalog and
+    /// rewrite its local config. For Droid this is the main "add my BurnBar
+    /// models to Droid" action: it replaces stale OpenBurnBar custom models
+    /// in Factory's known config files with the route-eligible `/v1/models`
+    /// list currently advertised by the local gateway.
+    func syncModels(
+        target: RoutingClientWiringTarget,
+        settings: SettingsManager,
+        restartGateway: (() async -> Void)? = nil
+    ) async {
+        await wireAndProbe(
+            target: target,
+            settings: settings,
+            restartGateway: restartGateway,
+            busyState: .syncingModels
+        )
+    }
+
+    private func wireAndProbe(
+        target: RoutingClientWiringTarget,
+        settings: SettingsManager,
+        restartGateway: (() async -> Void)?,
+        busyState: AppConnectState
+    ) async {
+        guard appStates[target]?.isBusy != true else { return }
+        appStates[target] = busyState
         ensureLocalGateway(settings: settings)
+        if let restartGateway {
+            await restartGateway()
+        }
         let gateway = makeGateway(from: settings)
         let wiring = wiringFactory()
         let advertisedModels = await wiring.advertisedModels(gateway: gateway)
@@ -197,6 +277,74 @@ final class ConnectionsViewModel {
         wiringFactory().configURL(for: target).path
     }
 
+    // MARK: - Proxy catalog
+
+    func refreshProxyModelCatalog(settings: SettingsManager) async {
+        guard !proxyModelCatalogState.isLoading else { return }
+        proxyModelCatalogState = .loading
+        let gateway = makeGateway(from: settings)
+        do {
+            let models = try await proxyCatalogFetcher(gateway)
+            proxyModels = models.sorted {
+                if $0.providerName.localizedCaseInsensitiveCompare($1.providerName) != .orderedSame {
+                    return $0.providerName.localizedCaseInsensitiveCompare($1.providerName) == .orderedAscending
+                }
+                return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+            }
+            proxyModelCatalogState = .loaded(lastRefresh: Date())
+        } catch {
+            proxyModels = []
+            proxyModelCatalogState = .error(message: Self.catalogErrorDescription(error), lastAttempt: Date())
+        }
+    }
+
+    func enableLocalGateway(settings: SettingsManager) {
+        ensureLocalGateway(settings: settings)
+    }
+
+    private static func fetchProxyModels(gateway: RoutingClientGateway) async throws -> [ProxyAdvertisedModel] {
+        guard let url = URL(string: gateway.baseURL)?.appending(path: "v1/models") else {
+            throw ProxyModelCatalogError.invalidGatewayURL
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        if !gateway.authToken.isEmpty {
+            request.setValue("Bearer \(gateway.authToken)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw ProxyModelCatalogError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = Self.gatewayErrorMessage(from: data)
+            throw ProxyModelCatalogError.http(status: http.statusCode, message: message)
+        }
+        let envelope: ProxyModelEnvelope
+        do {
+            envelope = try JSONDecoder().decode(ProxyModelEnvelope.self, from: data)
+        } catch {
+            throw ProxyModelCatalogError.decoding
+        }
+        return envelope.data.compactMap(ProxyAdvertisedModel.init(row:))
+    }
+
+    private static func gatewayErrorMessage(from data: Data) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return object["error"] as? String
+    }
+
+    private static func catalogErrorDescription(_ error: Error) -> String {
+        if let localized = error as? LocalizedError,
+           let description = localized.errorDescription,
+           !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return description
+        }
+        return error.localizedDescription
+    }
+
     // MARK: - Helpers
 
     private func makeGateway(from settings: SettingsManager) -> RoutingClientGateway {
@@ -218,5 +366,87 @@ final class ConnectionsViewModel {
         settings.gatewayHost = "127.0.0.1"
         settings.gatewayPort = 8317
         settings.gatewayEnabled = true
+    }
+}
+
+private enum ProxyModelCatalogError: LocalizedError {
+    case invalidGatewayURL
+    case invalidResponse
+    case decoding
+    case http(status: Int, message: String?)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidGatewayURL:
+            return "The local gateway URL is not valid."
+        case .invalidResponse:
+            return "The local gateway did not return a valid HTTP response."
+        case .decoding:
+            return "The local gateway returned a malformed /v1/models catalog."
+        case .http(let status, let message):
+            if let message, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "The local gateway returned HTTP \(status). \(message)"
+            }
+            return "The local gateway returned HTTP \(status)."
+        }
+    }
+}
+
+private struct ProxyModelEnvelope: Decodable {
+    let data: [ProxyModelRow]
+}
+
+private struct ProxyModelRow: Decodable {
+    let id: String
+    let ownedBy: String?
+    let providerID: String?
+    let providerName: String?
+    let accountID: String?
+    let accountLabel: String?
+    let sourceID: String?
+    let sourceKind: String?
+    let displayName: String?
+    let capabilities: [String]?
+    let quotaState: String?
+    let enabled: Bool?
+    let routeEligible: Bool?
+    let lastError: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case ownedBy = "owned_by"
+        case providerID = "provider_id"
+        case providerName = "provider_name"
+        case accountID = "account_id"
+        case accountLabel = "account_label"
+        case sourceID = "source_id"
+        case sourceKind = "source_kind"
+        case displayName = "display_name"
+        case capabilities
+        case quotaState = "quota_state"
+        case enabled
+        case routeEligible = "route_eligible"
+        case lastError = "last_error"
+    }
+}
+
+private extension ProxyAdvertisedModel {
+    init?(row: ProxyModelRow) {
+        let modelID = row.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !modelID.isEmpty else { return nil }
+        let providerID = (row.providerID ?? row.ownedBy ?? "openburnbar")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        self.modelID = modelID
+        self.displayName = (row.displayName?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? modelID
+        self.providerID = providerID.isEmpty ? "openburnbar" : providerID
+        self.providerName = (row.providerName?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? self.providerID
+        self.accountID = (row.accountID?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "default"
+        self.accountLabel = (row.accountLabel?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? self.accountID
+        self.sourceID = (row.sourceID?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "\(self.providerID)#\(self.accountID)"
+        self.sourceKind = (row.sourceKind?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "gateway"
+        self.quotaState = (row.quotaState?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? "unknown"
+        self.routeEligible = row.routeEligible ?? (row.enabled == true)
+        self.capabilities = row.capabilities ?? []
+        self.lastError = row.lastError
     }
 }

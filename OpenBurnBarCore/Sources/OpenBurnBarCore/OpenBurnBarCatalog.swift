@@ -78,6 +78,17 @@ public struct BurnBarModelMatcher: Codable, Hashable, Sendable {
 }
 
 public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case displayName
+        case visibility
+        case aliases
+        case matchers
+        case pricing
+        case capabilityClassID
+        case capabilityClassRank
+    }
+
     public let id: String
     public let displayName: String
     public let visibility: BurnBarCatalogVisibility
@@ -110,6 +121,18 @@ public struct BurnBarCatalogModel: Codable, Hashable, Sendable {
         self.pricing = pricing
         self.capabilityClassID = capabilityClassID
         self.capabilityClassRank = capabilityClassRank
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.displayName = try container.decode(String.self, forKey: .displayName)
+        self.visibility = try container.decode(BurnBarCatalogVisibility.self, forKey: .visibility)
+        self.aliases = try container.decodeIfPresent([String].self, forKey: .aliases) ?? []
+        self.matchers = try container.decodeIfPresent([BurnBarModelMatcher].self, forKey: .matchers) ?? []
+        self.pricing = try container.decodeIfPresent(BurnBarModelPricing.self, forKey: .pricing) ?? .defaultFallback
+        self.capabilityClassID = try container.decodeIfPresent(String.self, forKey: .capabilityClassID)
+        self.capabilityClassRank = try container.decodeIfPresent(Int.self, forKey: .capabilityClassRank)
     }
 
     public func matches(modelName: String) -> Bool {

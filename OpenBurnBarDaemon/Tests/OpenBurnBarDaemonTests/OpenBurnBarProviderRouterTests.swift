@@ -39,6 +39,79 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(route.resolvedModelID, "minimax-m2.7-highspeed")
     }
 
+    func testRouterUsesExactAdvertisedAliasForNonFamilyModels() async throws {
+        let harness = try makeHarness(name: "deepseek-live-alias")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "deepseek",
+                isEnabled: true,
+                baseURL: "https://api.deepseek.com/v1",
+                preferredModelIDs: ["deepseek-chat"],
+                preferredCredentialSlotID: "default"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "deepseek",
+            slotID: "default",
+            label: "DeepSeek API",
+            apiKey: "deepseek-key"
+        )
+
+        let route = try await harness.router.route(
+            modelName: "deepseek-v4-flash",
+            preferredProviderID: "deepseek",
+            requestedFormatFamily: .openaiCompat,
+            requiredCapabilityClassID: "deepseek-v4-flash"
+        )
+
+        XCTAssertEqual(route.providerID, "deepseek")
+        XCTAssertEqual(route.resolvedModelID, "deepseek-v4-flash")
+        XCTAssertEqual(route.modelCapabilityClassID, "deepseek-v4-flash")
+    }
+
+    func testRouterDoesNotPinAdvertisedModelToUncredentialedBrokerFamily() async throws {
+        let harness = try makeHarness(name: "deepseek-live-alias-broker")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "opencode",
+                isEnabled: true,
+                baseURL: "https://opencode.ai/zen/go/v1",
+                preferredModelIDs: ["opencode-deepseek-v4-flash-family"],
+                preferredCredentialSlotID: "opencode"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "opencode",
+            slotID: "opencode",
+            label: "OpenCode",
+            apiKey: ""
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "deepseek",
+                isEnabled: true,
+                baseURL: "https://api.deepseek.com/v1",
+                preferredModelIDs: ["deepseek-chat"],
+                preferredCredentialSlotID: "deepseek"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "deepseek",
+            slotID: "deepseek",
+            label: "DeepSeek API",
+            apiKey: "deepseek-key"
+        )
+
+        let route = try await harness.router.route(
+            modelName: "deepseek-v4-flash",
+            requestedFormatFamily: .openaiCompat,
+            requiredCapabilityClassID: "deepseek-v4-flash"
+        )
+
+        XCTAssertEqual(route.providerID, "deepseek")
+        XCTAssertEqual(route.resolvedModelID, "deepseek-v4-flash")
+    }
+
     func testRouterPreservesUnlistedOllamaCloudAliasAsDirectCloudModelID() async throws {
         let harness = try makeHarness(name: "ollama-cloud-family")
         try await harness.configStore.setSecret("ollama-key", for: "ollama")
@@ -58,6 +131,59 @@ final class BurnBarProviderRouterTests: XCTestCase {
 
         let dashRoute = try await harness.router.route(modelName: "some-new-model-cloud", preferredProviderID: "ollama")
         XCTAssertEqual(dashRoute.resolvedModelID, "some-new-model")
+    }
+
+    func testRouterExtractsOpenCodeGoKeyFromAuthJSON() async throws {
+        let harness = try makeHarness(name: "opencode-auth-json")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "opencode",
+                isEnabled: true,
+                baseURL: "https://opencode.ai/zen/go/v1",
+                preferredModelIDs: ["kimi-k2.6"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "opencode",
+            slotID: "primary",
+            label: "OpenCode Go",
+            apiKey: #"{"opencode-go":{"type":"api","key":"opencode-route-key"}}"#
+        )
+
+        let route = try await harness.router.route(modelName: "kimi-k2.6", preferredProviderID: "opencode")
+        XCTAssertEqual(route.providerID, "opencode")
+        XCTAssertEqual(route.resolvedModelID, "kimi-k2.6")
+        XCTAssertEqual(route.apiKey, "opencode-route-key")
+    }
+
+    func testRouterRejectsOpenCodeAuthJSONWithoutGoRouteKey() async throws {
+        let harness = try makeHarness(name: "opencode-invalid-auth-json")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "opencode",
+                isEnabled: true,
+                baseURL: "https://opencode.ai/zen/go/v1",
+                preferredModelIDs: ["kimi-k2.6"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "opencode",
+            slotID: "primary",
+            label: "Wrong OpenCode account",
+            apiKey: #"{"some-other-provider":{"type":"api","key":"do-not-use-this"}}"#
+        )
+
+        do {
+            _ = try await harness.router.route(modelName: "kimi-k2.6", preferredProviderID: "opencode")
+            XCTFail("Expected missing credential error")
+        } catch let error as BurnBarProviderRouterError {
+            guard case .missingCredential(let providerID) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(providerID, "opencode")
+        }
     }
 
     func testRouterUsesProviderAliasForVirtualFamilyModelIDs() async throws {
@@ -186,6 +312,86 @@ final class BurnBarProviderRouterTests: XCTestCase {
         let snapshot = try await harness.configStore.snapshot()
         let slotStatus = snapshot.providerSettings(id: "zai")?.credentialSlots.first(where: { $0.slotID == "slot-a" })?.status
         XCTAssertEqual(slotStatus, .exhausted)
+    }
+
+    func testRepairedCredentialSlotClearsStaleCooldownAndError() async throws {
+        let harness = try makeHarness(name: "repair-clears-stale-status")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "deepseek",
+                isEnabled: true,
+                baseURL: "https://api.deepseek.com/v1",
+                preferredModelIDs: ["deepseek-chat"]
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "deepseek",
+            slotID: "default",
+            label: "Default plan",
+            apiKey: "old-key"
+        )
+
+        let failedRoute = try await harness.router.route(modelName: "deepseek-chat")
+        await harness.router.markRouteFailure(
+            failedRoute,
+            error: BurnBarProviderExecutorError.upstreamError(429, "rate limited")
+        )
+
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "deepseek",
+            slotID: "default",
+            label: "Default plan",
+            apiKey: "new-key"
+        )
+
+        let snapshot = try await harness.configStore.snapshot()
+        let repairedSlot = snapshot.providerSettings(id: "deepseek")?.credentialSlots.first(where: { $0.slotID == "default" })
+        XCTAssertEqual(repairedSlot?.status, .ready)
+        XCTAssertNil(repairedSlot?.cooldownUntil)
+        XCTAssertNil(repairedSlot?.lastStatusMessage)
+    }
+
+    func testRouterDoesNotPoisonCredentialSlotForInvalidRequestError() async throws {
+        let harness = try makeHarness(name: "invalid-request-does-not-poison-slot")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://api.anthropic.com/v1",
+                preferredModelIDs: ["claude-opus-4-7-family"],
+                preferredCredentialSlotID: "icloud"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: "icloud",
+            label: "iCloud",
+            apiKey: "sk-ant-oat01-test"
+        )
+
+        let route = try await harness.router.route(
+            modelName: "claude-opus-4-7",
+            requestedFormatFamily: .anthropic
+        )
+        await harness.router.markRouteFailure(
+            route,
+            error: BurnBarProviderExecutorError.upstreamError(
+                400,
+                #"{"type":"error","error":{"type":"invalid_request_error","message":"context_management: Extra inputs are not permitted"}}"#
+            )
+        )
+
+        let snapshot = try await harness.configStore.snapshot()
+        let slot = snapshot.providerSettings(id: "anthropic")?.credentialSlots.first(where: { $0.slotID == "icloud" })
+        XCTAssertEqual(slot?.status, .ready)
+        XCTAssertNil(slot?.cooldownUntil)
+        XCTAssertNil(slot?.lastStatusMessage)
+
+        let candidates = try await harness.router.candidateRoutes(
+            modelName: "claude-opus-4-7",
+            requestedFormatFamily: .anthropic
+        )
+        XCTAssertEqual(candidates.map(\.credentialSlotID), ["icloud"])
     }
 
     func testOllamaRouterRotatesSlotsAndSkipsExhaustedPlan() async throws {

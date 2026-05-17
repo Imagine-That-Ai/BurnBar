@@ -669,6 +669,7 @@ final class HermesService {
     private let favoriteModelsDefaultsKey = "hermes.favoriteModelIDs"
     private var selectedModelWasExplicit = false
     private let remoteRelayChatCompletionTimeout: TimeInterval = 360
+    private let remoteRelayControlPlaneTimeout: TimeInterval = 90
     /// Catalog of `MobileTool` implementations the chat surface advertises to
     /// the upstream LLM. Defaults to the canonical production set; tests
     /// inject custom catalogs (empty for "no tools" runs, fakes for
@@ -1274,7 +1275,7 @@ final class HermesService {
         }
         if modelOptions.isEmpty {
             if selectedConnection.mode == .relayLink,
-               selectedConnection.advertisedModel?.nilIfBlank == selectedModelID {
+               (selectedModelWasExplicit || selectedConnection.advertisedModel?.nilIfBlank == selectedModelID) {
                 return selectedModelID
             }
             if selectedModelWasExplicit {
@@ -1626,6 +1627,9 @@ final class HermesService {
 
     private func ensureRelayModelCatalogLoadedBeforeSend() async {
         guard selectedConnection.mode == .relayLink, modelOptions.isEmpty else { return }
+        if selectedModelWasExplicit, selectedModelID?.nilIfBlank != nil {
+            return
+        }
         await loadModels(generation: runtimeGeneration)
     }
 
@@ -2193,7 +2197,7 @@ final class HermesService {
         if let selectedModelID = selectedModelID?.nilIfBlank {
             if modelOptions.isEmpty {
                 if selectedConnection.mode == .relayLink,
-                   selectedConnection.advertisedModel?.nilIfBlank == selectedModelID {
+                   (selectedModelWasExplicit || selectedConnection.advertisedModel?.nilIfBlank == selectedModelID) {
                     return selectedModelID
                 }
                 if selectedModelWasExplicit {
@@ -2222,7 +2226,7 @@ final class HermesService {
             if selectedConnection.mode == .relayLink {
                 _ = try await relayTransport.sendUnary(
                     relayPayload(operation: .models, method: "GET", path: "/v1/models"),
-                    timeout: 20
+                    timeout: remoteRelayControlPlaneTimeout
                 )
                 guard generation == nil || generation == runtimeGeneration else { return }
                 isReachable = true
@@ -2263,7 +2267,7 @@ final class HermesService {
             if selectedConnection.mode == .relayLink {
                 data = try await relayTransport.sendUnary(
                     relayPayload(operation: .models, method: "GET", path: "/v1/models"),
-                    timeout: 20
+                    timeout: remoteRelayControlPlaneTimeout
                 )
             } else {
                 let (directData, response) = try await urlSession.data(for: makeRequest(path: "/v1/models", timeout: 8))

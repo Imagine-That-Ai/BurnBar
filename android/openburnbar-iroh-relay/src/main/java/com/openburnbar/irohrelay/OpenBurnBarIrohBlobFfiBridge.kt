@@ -1,5 +1,6 @@
 package com.openburnbar.irohrelay
 
+import java.lang.reflect.InvocationTargetException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -18,29 +19,36 @@ class OpenBurnBarIrohBlobFfiBackend(
         storeDirectoryPath: String,
         relayURL: String?,
     ): IrohEndpointIdentity = withContext(dispatcher) {
-        val companion = blobNodeClass().getMethod("Companion").invoke(null)
-            ?: error("uniffi.openburnbar_iroh.IrohBlobNode.Companion missing")
-        val instance = blobNodeClass().getMethod("\$create").invoke(companion)
-            ?: error("IrohBlobNode constructor returned null")
+        val instance = reflected("IrohBlobNode.constructor") {
+            blobNodeClass()
+                .getDeclaredConstructor()
+                .newInstance()
+        } ?: error("IrohBlobNode constructor returned null")
         node = instance
         val secretMaterial = run {
             val cls = secretKeyMaterialClass()
             val ctor = cls.constructors.first { it.parameterTypes.size == 1 }
             ctor.newInstance(secret)
         }
-        val identity = blobNodeClass()
-            .getMethod("bootstrap", secretKeyMaterialClass(), String::class.java, String::class.java)
-            .invoke(instance, secretMaterial, storeDirectoryPath, relayURL.orEmpty())
-            ?: throw IrohBlobBackendError.NotInitialized
+        val identity = reflected("IrohBlobNode.bootstrap") {
+            blobNodeClass()
+                .getMethod("bootstrap", secretKeyMaterialClass(), String::class.java, String::class.java)
+                .invoke(instance, secretMaterial, storeDirectoryPath, relayURL.orEmpty())
+        } ?: throw IrohBlobBackendError.NotInitialized
         mapIdentity(identity)
     }
 
     override suspend fun publishBlob(localPath: String): String = withContext(dispatcher) {
         val instance = node ?: throw IrohBlobBackendError.NotInitialized
-        val ticket = blobNodeClass()
-            .getMethod("publishBlob", String::class.java)
-            .invoke(instance, localPath)
-            ?: throw IrohBlobBackendError.PublishFailed("publishBlob returned null")
+        val ticket = try {
+            reflected("IrohBlobNode.publishBlob") {
+                blobNodeClass()
+                    .getMethod("publishBlob", String::class.java)
+                    .invoke(instance, localPath)
+            } ?: throw IrohBlobBackendError.PublishFailed("publishBlob returned null")
+        } catch (err: IrohBackendError.RuntimeFailed) {
+            throw IrohBlobBackendError.PublishFailed(err.detail)
+        }
         // BlobTicketBytes is a uniffi record with a `text` field.
         ticket.javaClass.getMethod("getText").invoke(ticket) as String
     }
@@ -48,10 +56,15 @@ class OpenBurnBarIrohBlobFfiBackend(
     override suspend fun fetchBlob(ticketText: String, destination: String): BlobTransferStats =
         withContext(dispatcher) {
             val instance = node ?: throw IrohBlobBackendError.NotInitialized
-            val stats = blobNodeClass()
-                .getMethod("fetchBlob", String::class.java, String::class.java)
-                .invoke(instance, ticketText, destination)
-                ?: throw IrohBlobBackendError.FetchFailed("fetchBlob returned null")
+            val stats = try {
+                reflected("IrohBlobNode.fetchBlob") {
+                    blobNodeClass()
+                        .getMethod("fetchBlob", String::class.java, String::class.java)
+                        .invoke(instance, ticketText, destination)
+                } ?: throw IrohBlobBackendError.FetchFailed("fetchBlob returned null")
+            } catch (err: IrohBackendError.RuntimeFailed) {
+                throw IrohBlobBackendError.FetchFailed(err.detail)
+            }
             val cls = stats.javaClass
             BlobTransferStats(
                 bytesTotal = (cls.getMethod("getBytesTotal").invoke(stats) as Long),
@@ -63,7 +76,9 @@ class OpenBurnBarIrohBlobFfiBackend(
 
     override suspend fun identity(): IrohEndpointIdentity = withContext(dispatcher) {
         val instance = node ?: throw IrohBlobBackendError.NotInitialized
-        val identity = blobNodeClass().getMethod("identity").invoke(instance)
+        val identity = reflected("IrohBlobNode.identity") {
+            blobNodeClass().getMethod("identity").invoke(instance)
+        }
             ?: throw IrohBlobBackendError.NotInitialized
         mapIdentity(identity)
     }
@@ -71,7 +86,9 @@ class OpenBurnBarIrohBlobFfiBackend(
     override suspend fun shutdown() = withContext(dispatcher) {
         val instance = node ?: return@withContext
         try {
-            blobNodeClass().getMethod("shutdown").invoke(instance)
+            reflected("IrohBlobNode.shutdown") {
+                blobNodeClass().getMethod("shutdown").invoke(instance)
+            }
         } catch (_: Throwable) {
             // best-effort.
         }
@@ -91,6 +108,15 @@ class OpenBurnBarIrohBlobFfiBackend(
             relayURL = relayURL.ifEmpty { null },
             directAddresses = directAddresses,
         )
+    }
+
+    private inline fun <T> reflected(operation: String, block: () -> T): T {
+        try {
+            return block()
+        } catch (err: InvocationTargetException) {
+            val cause = err.targetException ?: err.cause ?: err
+            throw IrohBackendError.RuntimeFailed("$operation failed: ${cause.javaClass.name}: ${cause.message ?: "no message"}")
+        }
     }
 
     companion object {

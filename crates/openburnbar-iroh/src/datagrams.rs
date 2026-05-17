@@ -80,7 +80,7 @@ impl IrohDatagramChannel {
     }
 
     /// Cleanly close the underlying connection. Idempotent.
-    pub fn close(self: Arc<Self>) -> Result<(), IrohFfiError> {
+    pub fn close_channel(self: Arc<Self>) -> Result<(), IrohFfiError> {
         let handle = self.runtime_handle.clone();
         handle.block_on(async move {
             if let Some(inner) = self.inner.lock().await.take() {
@@ -135,23 +135,21 @@ impl IrohEndpointHandle {
         let mut node_addr = NodeAddr::new(target);
         let relay = relay_url.trim();
         if !relay.is_empty() {
-            let url: RelayUrl =
-                relay
-                    .parse()
-                    .map_err(|err: iroh::RelayUrlParseError| IrohFfiError::ConnectFailed {
-                        message: format!("invalid relay url: {err}"),
-                    })?;
+            let url: RelayUrl = relay.parse().map_err(|err: iroh::RelayUrlParseError| {
+                IrohFfiError::ConnectFailed {
+                    detail: format!("invalid relay url: {err}"),
+                }
+            })?;
             node_addr = node_addr.with_relay_url(url);
         }
         let parsed_addresses = direct_addresses
             .into_iter()
             .filter(|addr| !addr.trim().is_empty())
             .map(|addr| {
-                addr.parse::<std::net::SocketAddr>().map_err(|err| {
-                    IrohFfiError::ConnectFailed {
-                        message: format!("invalid direct address {addr}: {err}"),
-                    }
-                })
+                addr.parse::<std::net::SocketAddr>()
+                    .map_err(|err| IrohFfiError::ConnectFailed {
+                        detail: format!("invalid direct address {addr}: {err}"),
+                    })
             })
             .collect::<Result<Vec<_>, _>>()?;
         if !parsed_addresses.is_empty() {
@@ -207,7 +205,7 @@ fn connect_audio(
         let conn = tokio::time::timeout(timeout, endpoint.connect(node_addr, MERCURY_AUDIO_ALPN))
             .await
             .map_err(|_| IrohFfiError::ConnectFailed {
-                message: "iroh audio connect timed out".into(),
+                detail: "iroh audio connect timed out".into(),
             })?
             .map_err(IrohFfiError::connect)?;
         Ok(conn)
@@ -221,16 +219,17 @@ fn accept_audio(
 ) -> Result<Connection, IrohFfiError> {
     runtime_handle.block_on(async move {
         let conn = tokio::time::timeout(timeout, async {
-            let incoming = endpoint.accept().await.ok_or_else(|| {
-                IrohFfiError::AcceptFailed {
-                    message: "iroh endpoint closed before accepting".into(),
-                }
-            })?;
+            let incoming = endpoint
+                .accept()
+                .await
+                .ok_or_else(|| IrohFfiError::AcceptFailed {
+                    detail: "iroh endpoint closed before accepting".into(),
+                })?;
             incoming.await.map_err(IrohFfiError::accept)
         })
         .await
         .map_err(|_| IrohFfiError::AcceptFailed {
-            message: "iroh audio accept timed out".into(),
+            detail: "iroh audio accept timed out".into(),
         })??;
         Ok(conn)
     })

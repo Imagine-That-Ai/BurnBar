@@ -1,5 +1,7 @@
 package com.openburnbar.irohrelay
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -22,6 +24,8 @@ data class HermesRealtimeRelayFrame(
     val uid: String,
     val connectionId: String,
     val requestId: String? = null,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
     val protocolVersion: Int = HermesRealtimeRelayProtocol.VERSION,
     val runtime: String? = null,
     val payload: HermesRealtimeRelayPayload? = null,

@@ -50,15 +50,61 @@ data class HermesRelayConnectionDescriptor(
     val updatedAt: Long? = null,
 )
 
+internal fun decodeHermesRelayConnectionDescriptor(
+    documentId: String,
+    data: Map<String, Any?>,
+): HermesRelayConnectionDescriptor? {
+    val publicKey = data.stringField("relayPublicKey", "relay_public_key") ?: return null
+    return HermesRelayConnectionDescriptor(
+        id = data.stringField("id") ?: documentId,
+        displayName = data.stringField("displayName", "display_name") ?: "Hermes relay",
+        relayPublicKey = publicKey,
+        relayKeyVersion = data.longField("relayKeyVersion", "relay_key_version")?.toInt(),
+        relayEncryption = data.stringField("relayEncryption", "relay_encryption") ?: HermesRelayCrypto.ALGORITHM,
+        advertisedModel = data.stringField("advertisedModel", "advertised_model"),
+        capabilities = data.stringListField("capabilities"),
+        status = data.stringField("status") ?: "online",
+        updatedAt = data.millisField("updatedAt", "updated_at"),
+    )
+}
+
+private fun Map<String, Any?>.stringField(vararg names: String): String? =
+    names.firstNotNullOfOrNull { name ->
+        (this[name] as? String)?.takeIf { it.isNotBlank() }
+    }
+
+private fun Map<String, Any?>.longField(vararg names: String): Long? =
+    names.firstNotNullOfOrNull { name ->
+        when (val value = this[name]) {
+            is Number -> value.toLong()
+            is String -> value.toLongOrNull()
+            else -> null
+        }
+    }
+
+private fun Map<String, Any?>.stringListField(name: String): List<String> =
+    (this[name] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+
+private fun Map<String, Any?>.millisField(vararg names: String): Long? =
+    names.firstNotNullOfOrNull { name ->
+        when (val value = this[name]) {
+            is Timestamp -> value.toDate().time
+            is Date -> value.time
+            is Number -> value.toLong()
+            is String -> runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()
+            else -> null
+        }
+    }
+
 /**
  * Firestore-backed Hermes relay client. Wire-shape identical to the iOS
  * `HermesService` Firestore-relay path so a Mac host can decrypt
  * Android-originated requests and vice-versa.
  *
- * Envelope contract (`users/{uid}/hermes_relay_connections/{id}.*`) for
+ * Envelope contract (`users/{uid}/hermes_connections/{id}.*`) for
  * connection discovery:
- *   - `relay_public_key`, `relay_encryption`, `relay_key_version`,
- *     `display_name`, `advertised_model`, `capabilities`, `status`.
+ *   - `relayPublicKey`, `relayEncryption`, `relayKeyVersion`,
+ *     `displayName`, `advertisedModel`, `capabilities`, `status`.
  *
  * Envelope contract (`users/{uid}/hermes_relay_requests/{id}.*`) for
  * outbound requests:
@@ -87,23 +133,23 @@ class HermesRelayClient(
         val uid = auth.currentUser?.uid
             ?: throw HermesRelayException("Sign in to Firebase to use Hermes relay.")
         val snapshot = firestore.collection("users").document(uid)
+            .collection("hermes_connections")
+            .get()
+            .await()
+        val descriptors = snapshot.documents.mapNotNull { doc ->
+            decodeHermesRelayConnectionDescriptor(doc.id, doc.data.orEmpty())
+        }
+        if (descriptors.isNotEmpty()) return descriptors
+
+        // Older Android/Mac betas wrote relay-only docs under this legacy
+        // collection. Keep it as a fallback so existing users are not stranded
+        // while the canonical Hermes connection schema rolls forward.
+        val legacySnapshot = firestore.collection("users").document(uid)
             .collection("hermes_relay_connections")
             .get()
             .await()
-        return snapshot.documents.mapNotNull { doc ->
-            val publicKey = doc.getString("relay_public_key") ?: return@mapNotNull null
-            HermesRelayConnectionDescriptor(
-                id = doc.id,
-                displayName = doc.getString("display_name") ?: "Hermes relay",
-                relayPublicKey = publicKey,
-                relayKeyVersion = doc.getLong("relay_key_version")?.toInt(),
-                relayEncryption = doc.getString("relay_encryption") ?: HermesRelayCrypto.ALGORITHM,
-                advertisedModel = doc.getString("advertised_model"),
-                capabilities = (doc.get("capabilities") as? List<*>)?.mapNotNull { it as? String }
-                    ?: emptyList(),
-                status = doc.getString("status") ?: "online",
-                updatedAt = doc.getTimestamp("updated_at")?.toDate()?.time,
-            )
+        return legacySnapshot.documents.mapNotNull { doc ->
+            decodeHermesRelayConnectionDescriptor(doc.id, doc.data.orEmpty())
         }
     }
 

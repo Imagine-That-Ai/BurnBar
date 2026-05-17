@@ -555,6 +555,7 @@
 		7B490A396AFCD92E3C2E5A7C /* CloudSubscriptionEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE5269AD1C5167318413B954 /* CloudSubscriptionEnvironment.swift */; };
 		7B747EF0A62B1E7435724FC1 /* SignInScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC18FE1B33E3727F9BE456DF /* SignInScene.swift */; };
 		7B79DBE38D7E147C62C559FC /* OpenBurnBarDaemonUsageSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73438FC7327CCD82631B6597 /* OpenBurnBarDaemonUsageSyncService.swift */; };
+		7BD9BAF845684C08ACBE81C7 /* OpenBurnBarProviderCredentialNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A8C824D93D5454FBC8264E4 /* OpenBurnBarProviderCredentialNormalizer.swift */; };
 		7B9653B94BD92DFBD39D0482 /* OpenBurnBarDaemonSupervisorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E39C7CAE7FB7A671740836C8 /* OpenBurnBarDaemonSupervisorTests.swift */; };
 		7BB04F13A559DB09AACDF841 /* SettingsItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94B6BCF9BB4A8801F0E15D8 /* SettingsItem.swift */; };
 		7BED57D445758FFFB27D288B /* ChatPanelContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36A6EA559F8C473593FBB21C /* ChatPanelContent.swift */; };
@@ -690,6 +691,7 @@
 		96B13F7644E8499274D24069 /* test_hermesToolCard_expanded.hermesToolCard-expanded-light.png in Resources */ = {isa = PBXBuildFile; fileRef = D5E1E750C1F65C710DA3FBA4 /* test_hermesToolCard_expanded.hermesToolCard-expanded-light.png */; };
 		96B75C397842A4BBFB4E1C23 /* WarpParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD2B5094E9BB6A9FE57E86B9 /* WarpParser.swift */; };
 		9761B5F39EDC06F8DFC1672B /* OpenBurnBarWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7C1239D91C79E0EED5BB3810 /* OpenBurnBarWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		981F8D9C0D4B4B69A47F3D50 /* OpenBurnBarDaemonExecutable in Embed Daemon Helper */ = {isa = PBXBuildFile; fileRef = 6044009B4E07BA0C57DA0C22 /* OpenBurnBarDaemonExecutable */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		97D845FE76AD7949C43C2C2A /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9938DE874B649B0B03BF9C /* LiveActivityManager.swift */; };
 		97FECF7878D0953B7D256FE7 /* OpenBurnBarOperatingLayer+ControllerActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 543F73304B70E79C61DE709F /* OpenBurnBarOperatingLayer+ControllerActions.swift */; };
 		9805B55234B6D6196D923E04 /* MacInsightAggregator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A326E4D1ECD9BA73EA43D6 /* MacInsightAggregator.swift */; };
@@ -1214,17 +1216,28 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		68093FD2CB89FFF33810DF23 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
+			68093FD2CB89FFF33810DF23 /* Embed Foundation Extensions */ = {
+				isa = PBXCopyFilesBuildPhase;
+				buildActionMask = 2147483647;
+				dstPath = "";
+				dstSubfolderSpec = 13;
 			files = (
 				9761B5F39EDC06F8DFC1672B /* OpenBurnBarWidget.appex in Embed Foundation Extensions */,
 			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
+				name = "Embed Foundation Extensions";
+				runOnlyForDeploymentPostprocessing = 0;
+			};
+			98A8E2D4283242DC99896E64 /* Embed Daemon Helper */ = {
+				isa = PBXCopyFilesBuildPhase;
+				buildActionMask = 2147483647;
+				dstPath = Contents/Helpers;
+				dstSubfolderSpec = 1;
+				files = (
+					981F8D9C0D4B4B69A47F3D50 /* OpenBurnBarDaemonExecutable in Embed Daemon Helper */,
+				);
+				name = "Embed Daemon Helper";
+				runOnlyForDeploymentPostprocessing = 0;
+			};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -1567,6 +1580,7 @@
 		47B8DE0356660C0BD268609A /* DataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataStore.swift; sourceTree = "<group>"; };
 		47C67F5217DCDB4EA62809D9 /* CastWizardModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CastWizardModelTests.swift; sourceTree = "<group>"; };
 		47CC953F97E00C0BFF1C5DE0 /* OpenBurnBarLiveModelCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarLiveModelCatalog.swift; sourceTree = "<group>"; };
+		4A8C824D93D5454FBC8264E4 /* OpenBurnBarProviderCredentialNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarProviderCredentialNormalizer.swift; sourceTree = "<group>"; };
 		483FD7BD23ED1CEDD2FC39FD /* MercuryCrest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryCrest.swift; sourceTree = "<group>"; };
 		48656C10F6FB8F85655840CA /* MacMediaCapabilityGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacMediaCapabilityGateTests.swift; sourceTree = "<group>"; };
 		48AB0EAC811CB251FE3A177B /* HermesInsightServiceBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesInsightServiceBridge.swift; sourceTree = "<group>"; };
@@ -3352,6 +3366,7 @@
 				44C0AD0CE2F28F0025752B15 /* OpenBurnBarPlannerService.swift */,
 				4BD031B278AC43BCDD83F108 /* OpenBurnBarPolicyEngine.swift */,
 				6F8D650218AA61CD75C4E456 /* OpenBurnBarProviderCatalogSupport.swift */,
+				4A8C824D93D5454FBC8264E4 /* OpenBurnBarProviderCredentialNormalizer.swift */,
 				53295D45BA1AAB3F00108760 /* OpenBurnBarProviderExecutor.swift */,
 				95E07CECD3131B8FBF94BC42 /* OpenBurnBarProviderRouter.swift */,
 				3CABDAE429354EB81C318D91 /* OpenBurnBarRecoveryEngine.swift */,
@@ -4659,12 +4674,13 @@
 		44D5E48B577F4746577F9F94 /* OpenBurnBar */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5C166547F70E015F29ECE07F /* Build configuration list for PBXNativeTarget "OpenBurnBar" */;
-			buildPhases = (
-				EF7D3D6CF9326CBCD20C7DF5 /* Sources */,
-				BF543DDDE8456E6E5033A02D /* Resources */,
-				FAA70BABCC5CB9EA6AEC9DB9 /* Frameworks */,
-				F19F6F508537047AB82F67A8 /* Configure Firebase Auth Resources */,
-			);
+				buildPhases = (
+					EF7D3D6CF9326CBCD20C7DF5 /* Sources */,
+					BF543DDDE8456E6E5033A02D /* Resources */,
+					FAA70BABCC5CB9EA6AEC9DB9 /* Frameworks */,
+					98A8E2D4283242DC99896E64 /* Embed Daemon Helper */,
+					F19F6F508537047AB82F67A8 /* Configure Firebase Auth Resources */,
+				);
 			buildRules = (
 			);
 			dependencies = (
@@ -5139,6 +5155,7 @@
 				300E6F9838BCC41854719A73 /* OpenBurnBarPlannerService.swift in Sources */,
 				37C8EFADA507646EC2376B1A /* OpenBurnBarPolicyEngine.swift in Sources */,
 				9C2A8BB528323A26961A063B /* OpenBurnBarProviderCatalogSupport.swift in Sources */,
+				7BD9BAF845684C08ACBE81C7 /* OpenBurnBarProviderCredentialNormalizer.swift in Sources */,
 				9CDBF5B51383299D35621DD8 /* OpenBurnBarProviderExecutor.swift in Sources */,
 				7F5FBAAAB172437E83F7CB3A /* OpenBurnBarProviderRouter.swift in Sources */,
 				3CFDCB2E216C6FD47FF906F4 /* OpenBurnBarRecoveryEngine.swift in Sources */,
