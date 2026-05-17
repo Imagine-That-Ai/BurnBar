@@ -40,17 +40,15 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
         let context = LAContext()
         context.interactionNotAllowed = true
         let account = "connector.\(connector.rawValue).credential"
-        var query: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecUseAuthenticationContext as String: context,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
         ]
-        if #unavailable(macOS 11.0) {
-            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
-        }
         var item: CFTypeRef?
         let status = withKeychainUserInteractionDisabled {
             SecItemCopyMatching(query as CFDictionary, &item)

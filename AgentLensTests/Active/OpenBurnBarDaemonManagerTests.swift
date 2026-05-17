@@ -288,6 +288,26 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         XCTAssertEqual(snapshot.providerConfigurations.last?.baseURL, "https://api.minimax.io/v1")
     }
 
+    func test_providerQuotaRefreshDoesNotMarkDaemonOwnedSlotMissingWhenAppSecretMirrorIsAbsent() throws {
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: projectRoot.appendingPathComponent("AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonManager+ProviderConfig.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            source.contains("New provider slots are daemon-owned."),
+            "Quota refresh must treat app-side keychain misses as unknown daemon-owned credentials, not missing credentials."
+        )
+        XCTAssertFalse(
+            source.contains("} else {\n                        slot.status = .missingSecret\n                        slot.lastStatusMessage = \"Missing API key\""),
+            "The post-save quota refresh path must not overwrite daemon-owned credential slots as missing when the app-side mirror is empty."
+        )
+    }
+
     func test_usageSync_importsDaemonUsageIntoLocalShape() throws {
         let harness = try makeRuntimePathsHarness(name: "usage-import")
         defer { harness.cleanup() }

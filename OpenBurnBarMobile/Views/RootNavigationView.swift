@@ -31,6 +31,7 @@ struct RootNavigationView: View {
     @State private var motionStore = MotionStore()
     @State private var insightsDashboardStore = DashboardStore()
     @State private var missionActivityCenter = MobileMissionActivityCenter()
+    @State private var missionConsoleHost = MobileMissionConsoleHost()
     @State private var showHermesSheet = false
     @State private var subscriptionStore = HostedQuotaSubscriptionStore()
 
@@ -102,6 +103,7 @@ struct RootNavigationView: View {
         .task(id: authStore.currentIdentity?.uid) { await subscriptionStore.load() }
         .task(id: authStore.currentIdentity?.uid) { applyHermesE2EPromptIfNeeded() }
         .task { missionActivityCenter.start() }
+        .task { missionConsoleHost.start() }
         .onAppear {
             applyScreenshotRouteIfNeeded()
             applyHermesE2EPromptIfNeeded()
@@ -286,30 +288,37 @@ struct RootNavigationView: View {
 
     @ViewBuilder
     private var detail: some View {
-        NavigationStack {
-            Group {
-                switch selection {
-                case .pulse:    PulseView(router: router)
-                case .burn:     BurnView()
-                case .insights: AgentInsightsTabScreen(dashboardStore: insightsDashboardStore, hermesService: hermesService)
-                case .streams:  StreamsView()
-                case .hermes:   HermesConversationListView(service: hermesService)
-                case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
-                case .settings: SettingsHubView(authStore: authStore)
-                case .devices:  iPadDevicesSettingsView()
-                case .providers: ProviderConnectionsView(showsDoneButton: false)
+        if selection == .hermes {
+            HermesSquareSplitLayout(
+                hermesService: hermesService,
+                missionHost: missionConsoleHost
+            )
+        } else {
+            NavigationStack {
+                Group {
+                    switch selection {
+                    case .pulse:    PulseView(router: router)
+                    case .burn:     BurnView()
+                    case .insights: AgentInsightsTabScreen(dashboardStore: insightsDashboardStore, hermesService: hermesService)
+                    case .streams:  StreamsView()
+                    case .hermes:   EmptyView()
+                    case .you:      YouView(authStore: authStore, syncStore: syncHealthStore, devicesStore: devicesStore)
+                    case .settings: SettingsHubView(authStore: authStore)
+                    case .devices:  iPadDevicesSettingsView()
+                    case .providers: ProviderConnectionsView(showsDoneButton: false)
+                    }
                 }
-            }
-            .navigationDestination(for: YouRoute.self) { route in
-                switch route {
-                case .sync:     CloudSyncDetailsView(syncStore: syncHealthStore)
-                case .settings: SettingsHubView(authStore: authStore)
-                case .devices:  iPadDevicesSettingsView()
-                case .providers: ProviderConnectionsView(showsDoneButton: false)
+                .navigationDestination(for: YouRoute.self) { route in
+                    switch route {
+                    case .sync:     CloudSyncDetailsView(syncStore: syncHealthStore)
+                    case .settings: SettingsHubView(authStore: authStore)
+                    case .devices:  iPadDevicesSettingsView()
+                    case .providers: ProviderConnectionsView(showsDoneButton: false)
+                    }
                 }
-            }
-            .navigationDestination(for: TokenUsage.self) { usage in
-                SessionDetailView(usage: usage)
+                .navigationDestination(for: TokenUsage.self) { usage in
+                    SessionDetailView(usage: usage)
+                }
             }
         }
     }

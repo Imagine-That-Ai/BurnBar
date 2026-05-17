@@ -114,6 +114,7 @@ struct ProviderPlanWizardView: View {
     @State private var isOpeningExternalLogin = false
     @State private var isAddingExternalAccount = false
     @State private var externalAccountActionMessage: String?
+    @State private var editingCredentialSlot: EditingCredentialSlot?
 
     // Strategy step state
     @State private var selectedStrategy: ProviderPlanStrategy = .auto
@@ -131,6 +132,12 @@ struct ProviderPlanWizardView: View {
         let slotID: String
         let slotLabel: String
         var id: String { slotID }
+    }
+
+    private struct EditingCredentialSlot: Identifiable {
+        let providerID: String
+        let slotID: String
+        var id: String { "\(providerID):\(slotID)" }
     }
 
     private struct ExternalAccountDeleteTarget: Identifiable {
@@ -253,7 +260,8 @@ struct ProviderPlanWizardView: View {
         }
         let trimmedLabel = planLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !trimmedLabel.isEmpty && !trimmedKey.isEmpty
+        guard !trimmedLabel.isEmpty, !trimmedKey.isEmpty else { return false }
+        return selectedAuthMethod?.validate(trimmedKey).isWarning != true
     }
 
     // MARK: - Body
@@ -1264,9 +1272,22 @@ struct ProviderPlanWizardView: View {
                 }
             }
         } else if slot.status == .missingSecret {
-            Text("Missing credential")
-                .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.error)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Missing API key")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.error)
+                if let message = slot.lastStatusMessage, !message.isEmpty, message != "Missing API key" {
+                    Text(message)
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text("Replace the credential to route Ollama Cloud.")
+                        .font(DesignSystem.Typography.monoTiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+            }
         } else {
             Text("Quota will refresh after first use")
                 .font(DesignSystem.Typography.tiny)
@@ -1277,6 +1298,12 @@ struct ProviderPlanWizardView: View {
     @ViewBuilder
     private func slotActionRow(_ slot: OpenBurnBarDaemonProviderConfiguration.CredentialSlot, provider: OpenBurnBarDaemonProviderConfiguration) -> some View {
         HStack(spacing: 4) {
+            if slot.status == .missingSecret {
+                slotButton("key.fill", help: "Replace missing credential", tint: DesignSystem.Colors.blaze) {
+                    startCredentialRepairFlow(provider: provider, slot: slot)
+                }
+            }
+
             if provider.preferredCredentialSlotID != slot.slotID && slot.isEnabled {
                 slotButton("star", help: "Mark preferred") {
                     Task {
@@ -2658,6 +2685,7 @@ struct ProviderPlanWizardView: View {
         apiKeyInput = ""
         credentialStorageOverride = nil
         credentialStorageOverrideVisibleToken = nil
+        editingCredentialSlot = nil
         showAPIKey = false
         quotaProbeResult = nil
         quotaProbeError = nil
@@ -2740,6 +2768,35 @@ struct ProviderPlanWizardView: View {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             currentStep = step
         }
+    }
+
+    private func startCredentialRepairFlow(
+        provider: OpenBurnBarDaemonProviderConfiguration,
+        slot: OpenBurnBarDaemonProviderConfiguration.CredentialSlot
+    ) {
+        let descriptor = self.descriptor(for: provider.providerID)
+        selectedProviderID = provider.providerID
+        selectedAuthMethodID = descriptor.primaryMethod.id
+        planLabel = slot.label
+        apiKeyInput = ""
+        credentialStorageOverride = nil
+        credentialStorageOverrideVisibleToken = nil
+        editingCredentialSlot = EditingCredentialSlot(
+            providerID: provider.providerID,
+            slotID: slot.slotID
+        )
+        showAPIKey = false
+        quotaProbeResult = nil
+        quotaProbeError = nil
+        quotaProbePercent = nil
+        externalAuthInfo = nil
+        externalAuthMessage = nil
+        externalAccountActionMessage = nil
+        isOpeningExternalLogin = false
+        isAddingExternalAccount = false
+        selectedStrategy = slot.isEnabled ? .preferred : .backup
+        saveError = nil
+        navigateToStep(.credential)
     }
 
     // MARK: - Quota Probe
@@ -3294,6 +3351,10 @@ struct ProviderPlanWizardView: View {
         }
 
         guard !apiKey.isEmpty, (!method.storage.usesDaemonSlot || !label.isEmpty) else { return }
+        guard !method.validate(apiKey).isWarning else {
+            saveError = method.validate(apiKey).message ?? "Enter a valid credential before saving."
+            return
+        }
 
         isSaving = true
         saveError = nil
@@ -3302,12 +3363,24 @@ struct ProviderPlanWizardView: View {
             do {
                 let newSlotID: String?
                 if method.storage.usesDaemonSlot {
-                    newSlotID = try await daemonManager.addProviderCredentialSlotReturningID(
-                        providerID: providerID,
-                        label: label,
-                        apiKey: storageCredential,
-                        isEnabled: selectedStrategy != .backup
-                    )
+                    if let editingCredentialSlot,
+                       editingCredentialSlot.providerID == providerID {
+                        try await daemonManager.updateProviderCredentialSlotOrThrow(
+                            providerID: providerID,
+                            slotID: editingCredentialSlot.slotID,
+                            label: label,
+                            isEnabled: selectedStrategy != .backup,
+                            apiKey: storageCredential
+                        )
+                        newSlotID = editingCredentialSlot.slotID
+                    } else {
+                        newSlotID = try await daemonManager.addProviderCredentialSlotReturningID(
+                            providerID: providerID,
+                            label: label,
+                            apiKey: storageCredential,
+                            isEnabled: selectedStrategy != .backup
+                        )
+                    }
                 } else {
                     newSlotID = nil
                 }
@@ -3347,6 +3420,7 @@ struct ProviderPlanWizardView: View {
 
                 await MainActor.run {
                     isSaving = false
+                    editingCredentialSlot = nil
                     activeProviderID = providerID
                     navigateToStep(.dashboard)
                 }

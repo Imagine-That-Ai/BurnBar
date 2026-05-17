@@ -314,6 +314,7 @@ public struct BurnBarSwitcherKeychainCredentialStore: BurnBarSwitcherCredentialP
         let context = LAContext()
         context.interactionNotAllowed = true
         query[kSecUseAuthenticationContext as String] = context
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
 
         var item: CFTypeRef?
         let status = withKeychainUserInteractionDisabled {

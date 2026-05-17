@@ -1,0 +1,80 @@
+{
+  "identifier": "OpenBurnBarComputerUse",
+  "nonRenewingSubscriptions": [],
+  "products": [],
+  "settings": {},
+  "subscriptionGroups": [
+    {
+      "id": "HOSTEDCOMPUTERUSE",
+      "localizations": [
+        {
+          "description": "Lets an AI agent operate your Mac with your approval — watched live on your phone.",
+          "displayName": "OpenBurnBar Computer Use",
+          "locale": "en_US"
+        }
+      ],
+      "name": "OpenBurnBar Computer Use",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "14.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "CUMONTH1",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Lets an AI agent drive Chrome and your Mac with your approval. Includes phone-as-controller, tamper-evident audit log, and audit export.",
+              "displayName": "OpenBurnBar Computer Use Monthly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.openburnbar.hostedComputerUseSync.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "OpenBurnBar Computer Use Monthly",
+          "subscriptionGroupID": "HOSTEDCOMPUTERUSE",
+          "type": "RecurringSubscription"
+        }
+      ]
+    },
+    {
+      "id": "BURNBARPROMAX",
+      "localizations": [
+        {
+          "description": "Everything in OpenBurnBar Cloud + Mercury Media + Computer Use.",
+          "displayName": "OpenBurnBar Pro Max",
+          "locale": "en_US"
+        }
+      ],
+      "name": "OpenBurnBar Pro Max",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "24.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "PROMAXMONTH1",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Cloud quota sync + Mercury media + Computer Use, bundled.",
+              "displayName": "OpenBurnBar Pro Max Monthly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.openburnbar.proMax.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "OpenBurnBar Pro Max Monthly",
+          "subscriptionGroupID": "BURNBARPROMAX",
+          "type": "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 2,
+    "minor": 0
+  }
+}

@@ -133,8 +133,7 @@ public struct BurnBarLiveModelCatalog: Sendable {
 
     public func snapshot(now: Date = Date()) async throws -> BurnBarLiveModelCatalogSnapshot {
         let configurations = try await configStore.resolvedConfigurations()
-        var models: [BurnBarLiveAdvertisedModel] = []
-        var accounts: [BurnBarLiveModelAccountDescriptor] = []
+        var contexts: [AccountRefreshContext] = []
 
         for configuration in configurations {
             let providerID = configuration.provider.id
@@ -158,19 +157,13 @@ public struct BurnBarLiveModelCatalog: Sendable {
                     hasCredential: hasCredential,
                     quotaState: providerEnabled ? (hasCredential ? .unknown : .missingCredential) : .disabled
                 )
-                let liveRefresh = await liveModels(
+                contexts.append(AccountRefreshContext(
+                    index: contexts.count,
                     configuration: configuration,
                     account: account,
                     apiKey: apiKey,
-                    providerCanRoute: providerCanRoute
-                )
-                accounts.append(account)
-                models.append(contentsOf: advertisedModels(
-                    configuration: configuration,
-                    account: account,
                     providerCanRoute: providerCanRoute,
-                    capabilities: capabilities,
-                    liveRefresh: liveRefresh
+                    capabilities: capabilities
                 ))
                 continue
             }
@@ -195,21 +188,30 @@ public struct BurnBarLiveModelCatalog: Sendable {
                     lastRefreshAt: slot.updatedAt,
                     lastError: slot.lastStatusMessage
                 )
-                let liveRefresh = await liveModels(
+                contexts.append(AccountRefreshContext(
+                    index: contexts.count,
                     configuration: configuration,
                     account: account,
                     apiKey: apiKey,
-                    providerCanRoute: providerCanRoute
-                )
-                accounts.append(account)
-                models.append(contentsOf: advertisedModels(
-                    configuration: configuration,
-                    account: account,
                     providerCanRoute: providerCanRoute,
-                    capabilities: capabilities,
-                    liveRefresh: liveRefresh
+                    capabilities: capabilities
                 ))
             }
+        }
+
+        let liveRefreshes = await liveRefreshes(for: contexts)
+        var models: [BurnBarLiveAdvertisedModel] = []
+        var accounts: [BurnBarLiveModelAccountDescriptor] = []
+        for context in contexts.sorted(by: { $0.index < $1.index }) {
+            let liveRefresh = liveRefreshes[context.index]
+            accounts.append(context.account)
+            models.append(contentsOf: advertisedModels(
+                configuration: context.configuration,
+                account: context.account,
+                providerCanRoute: context.providerCanRoute,
+                capabilities: context.capabilities,
+                liveRefresh: liveRefresh
+            ))
         }
 
         return BurnBarLiveModelCatalogSnapshot(
@@ -330,6 +332,41 @@ public struct BurnBarLiveModelCatalog: Sendable {
     private struct DiscoveredModel: Sendable {
         let id: String
         let displayName: String
+    }
+
+    private struct AccountRefreshContext: Sendable {
+        let index: Int
+        let configuration: BurnBarResolvedProviderConfiguration
+        let account: BurnBarLiveModelAccountDescriptor
+        let apiKey: String?
+        let providerCanRoute: Bool
+        let capabilities: [String]
+    }
+
+    private func liveRefreshes(
+        for contexts: [AccountRefreshContext]
+    ) async -> [Int: LiveRefreshResult] {
+        await withTaskGroup(of: (Int, LiveRefreshResult?).self) { group in
+            for context in contexts {
+                group.addTask {
+                    let result = await liveModels(
+                        configuration: context.configuration,
+                        account: context.account,
+                        apiKey: context.apiKey,
+                        providerCanRoute: context.providerCanRoute
+                    )
+                    return (context.index, result)
+                }
+            }
+
+            var results: [Int: LiveRefreshResult] = [:]
+            for await (index, result) in group {
+                if let result {
+                    results[index] = result
+                }
+            }
+            return results
+        }
     }
 
     private func liveModels(

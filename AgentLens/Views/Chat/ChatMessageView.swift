@@ -254,19 +254,17 @@ struct ChatMessageView: View {
         let shape = isUser ? ChatBubbleStyle.userShape() : ChatBubbleStyle.assistantShape()
         let stroke = isUser ? ChatBubbleStyle.userStroke : (isHermes ? DesignSystem.Colors.hermesMercury : ChatBubbleStyle.assistantStroke)
         let alignment: HorizontalAlignment = isUser ? .trailing : .leading
-        let display = text + (appendCaret ? "▍" : "")
         // Use atom-aware Hermes rendering for completed Hermes assistant turns;
         // fall back to plain `Text` for user messages, error states, and live
         // streaming chunks (atom layout would thrash on every chunk).
         let useHermesRichRendering = !isUser && isHermes && !appendCaret && !text.isEmpty
 
-        if !display.isEmpty || appendCaret {
+        if !text.isEmpty || appendCaret {
             proseBubbleBody(
                 isUser: isUser,
                 text: text,
-                display: display,
                 useHermesRichRendering: useHermesRichRendering,
-                isStreaming: appendCaret,
+                appendCaret: appendCaret,
                 alignment: alignment
             )
                 .padding(.horizontal, DesignSystem.Spacing.md + 2)
@@ -317,21 +315,97 @@ struct ChatMessageView: View {
     private func proseBubbleBody(
         isUser: Bool,
         text: String,
-        display: String,
         useHermesRichRendering: Bool,
-        isStreaming: Bool,
+        appendCaret: Bool,
         alignment: HorizontalAlignment
     ) -> some View {
+        ChatLimitedProseTextView(
+            text: text,
+            appendCaret: appendCaret,
+            useHermesRichRendering: useHermesRichRendering,
+            alignment: alignment,
+            isUser: isUser
+        )
+    }
+}
+
+// MARK: - Oversized Chat Text Guard
+
+struct ChatMessageTextPresentation: Equatable {
+    let visibleText: String
+    let hiddenCharacterCount: Int
+
+    var isLimited: Bool { hiddenCharacterCount > 0 }
+}
+
+enum ChatMessageTextLimiter {
+    static let defaultVisibleCharacterLimit = 12_000
+
+    static func presentation(
+        for text: String,
+        expanded: Bool,
+        visibleCharacterLimit: Int = defaultVisibleCharacterLimit
+    ) -> ChatMessageTextPresentation {
+        guard !expanded, visibleCharacterLimit > 0, text.count > visibleCharacterLimit else {
+            return ChatMessageTextPresentation(visibleText: text, hiddenCharacterCount: 0)
+        }
+
+        let end = text.index(text.startIndex, offsetBy: visibleCharacterLimit)
+        return ChatMessageTextPresentation(
+            visibleText: String(text[..<end]),
+            hiddenCharacterCount: text.count - visibleCharacterLimit
+        )
+    }
+}
+
+private struct ChatLimitedProseTextView: View {
+    let text: String
+    let appendCaret: Bool
+    let useHermesRichRendering: Bool
+    let alignment: HorizontalAlignment
+    let isUser: Bool
+
+    @State private var isExpanded = false
+
+    private var presentation: ChatMessageTextPresentation {
+        ChatMessageTextLimiter.presentation(
+            for: text,
+            expanded: isExpanded || appendCaret
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: alignment, spacing: 8) {
+            renderedText
+
+            if presentation.isLimited {
+                Button {
+                    isExpanded = true
+                } label: {
+                    Text("Show full message (\(presentation.hiddenCharacterCount.formatted()) more characters)")
+                        .font(DesignSystem.Typography.tiny)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(isUser ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.hermesAureate)
+                }
+                .buttonStyle(.plain)
+                .help("Render the full stored chat message")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var renderedText: some View {
+        let display = presentation.visibleText + (appendCaret ? "▍" : "")
         if useHermesRichRendering {
             StreamingBubble(
-                text: text,
+                text: presentation.visibleText,
                 isStreaming: false,
                 isError: false,
                 baseSize: 14,
                 lineHeight: 20
             ) {
                 HermesRichBubble(
-                    text: text,
+                    text: presentation.visibleText,
                     baseColor: DesignSystem.Colors.textPrimary,
                     mentionColor: DesignSystem.Colors.hermesAureate,
                     codeColor: DesignSystem.Colors.textPrimary,
@@ -344,7 +418,7 @@ struct ChatMessageView: View {
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .multilineTextAlignment(alignment == .trailing ? .trailing : .leading)
                 .textSelection(.enabled)
-                .animation(.easeOut(duration: 0.12), value: text.count)
+                .animation(.easeOut(duration: 0.12), value: display.count)
         }
     }
 }

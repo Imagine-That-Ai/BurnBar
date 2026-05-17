@@ -923,6 +923,68 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertTrue(usage.isEmpty)
     }
 
+    func testGatewayModelsRefreshesProviderAccountsConcurrently() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        let modelsBody = #"{"object":"list","data":[{"id":"glm-5-turbo"},{"id":"MiniMax-M2.7"},{"id":"deepseek-v4-flash"}]}"#
+        for _ in 0..<3 {
+            GatewayUpstreamURLProtocol.enqueue(
+                status: 200,
+                body: modelsBody,
+                delayNanoseconds: 1_000_000_000
+            )
+        }
+
+        let harness = try GatewayHarness(modelCatalogSession: session)
+        try await harness.configureZAIProviderForGateway()
+        _ = try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "minimax",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["minimax-m2.7-highspeed"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "minimax",
+            slotID: "primary",
+            label: "MiniMax API",
+            apiKey: "minimax-route-key"
+        )
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "deepseek",
+                isEnabled: true,
+                baseURL: "https://gateway-upstream.test/v1",
+                preferredModelIDs: ["deepseek-v4-flash"],
+                preferredCredentialSlotID: "primary"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "deepseek",
+            slotID: "primary",
+            label: "DeepSeek API",
+            apiKey: "deepseek-route-key"
+        )
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let startedAt = Date()
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "GET",
+            path: "/v1/models"
+        )
+        let elapsed = Date().timeIntervalSince(startedAt)
+
+        XCTAssertEqual(response.statusCode, 200, String(decoding: body, as: UTF8.self))
+        XCTAssertLessThan(elapsed, 2.2, "Live model refresh should fan out; sequential 1s provider probes make CLI clients look offline.")
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().filter { $0.path == "/v1/models" }.count, 3)
+    }
+
     func testGatewayRoutesOpenCodeAuthJSONThroughOpenAICompatibleGateway() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
@@ -3096,16 +3158,17 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
     private struct Response {
         let status: Int
         let body: Data
+        let delayNanoseconds: UInt64
     }
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var queuedResponses: [Response] = []
     nonisolated(unsafe) private static var requests: [GatewayUpstreamRequest] = []
 
-    static func enqueue(status: Int, body: String) {
+    static func enqueue(status: Int, body: String, delayNanoseconds: UInt64 = 0) {
         lock.lock()
         defer { lock.unlock() }
-        queuedResponses.append(Response(status: status, body: Data(body.utf8)))
+        queuedResponses.append(Response(status: status, body: Data(body.utf8), delayNanoseconds: delayNanoseconds))
     }
 
     static func recordedRequests() -> [GatewayUpstreamRequest] {
@@ -3132,7 +3195,7 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
     override func startLoading() {
         Self.lock.lock()
         let response = Self.queuedResponses.isEmpty
-            ? Response(status: 500, body: Data(#"{"error":"missing fixture"}"#.utf8))
+            ? Response(status: 500, body: Data(#"{"error":"missing fixture"}"#.utf8), delayNanoseconds: 0)
             : Self.queuedResponses.removeFirst()
         Self.requests.append(
             GatewayUpstreamRequest(
@@ -3150,6 +3213,17 @@ private final class GatewayUpstreamURLProtocol: URLProtocol {
         )
         Self.lock.unlock()
 
+        if response.delayNanoseconds > 0 {
+            Task {
+                try? await Task.sleep(nanoseconds: response.delayNanoseconds)
+                self.send(response)
+            }
+            return
+        }
+        send(response)
+    }
+
+    private func send(_ response: Response) {
         let httpResponse = HTTPURLResponse(
             url: request.url!,
             statusCode: response.status,

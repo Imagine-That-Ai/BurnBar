@@ -50,6 +50,12 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     /// waiting for an active iOS-initiated chat request.
     var mediaControlRegistrar: MediaControlStreamRegistrar?
     var cliChatDispatcher: CLIAgentRelayChatDispatcher?
+    /// Phase 12 — Computer Use control plane. Receives `control.input`,
+    /// `control.classify`, `control.action.log.entry`, and
+    /// `control.approval.{request,response}` frames. Set by
+    /// `ComputerUseSessionCoordinator` when a session opens; cleared on
+    /// session end.
+    var controlDispatcher: ControlFrameDispatcher?
     /// Per-stream serve tasks spawned by `acceptLoop`. Tracked so `stop()`
     /// can cancel them deterministically instead of letting them outlive the
     /// host.
@@ -224,6 +230,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
                     settingsManager: settingsManager,
                     mediaDispatcher: mediaDispatcher,
                     mediaControlRegistrar: mediaControlRegistrar,
+                    controlDispatcher: controlDispatcher,
                     cliChatDispatcher: cliChatDispatcher,
                     auditLogger: auditLogger
                 )

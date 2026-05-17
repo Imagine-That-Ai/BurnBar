@@ -409,8 +409,10 @@ extension OpenBurnBarDaemonManager {
                             }
                         }
                     } else {
-                        slot.status = .missingSecret
-                        slot.lastStatusMessage = "Missing API key"
+                        // New provider slots are daemon-owned. The app process cannot read
+                        // those secrets, so a miss in the old app-side keychain namespace
+                        // must not be treated as a missing daemon credential.
+                        continue
                     }
 
                     slot.updatedAt = Date()

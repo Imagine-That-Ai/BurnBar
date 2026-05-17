@@ -161,6 +161,13 @@ final class QuotaWorkspaceViewModel {
     }
 
     func aggregateSummary() -> AggregateSummary {
+        Self.aggregate(entries)
+    }
+
+    /// Computes the same summary off an arbitrary subset of entries — used by
+    /// the workspace when the user has pivoted to a single provider via the
+    /// constellation hero.
+    static func aggregate(_ entries: [SubscriptionEntry]) -> AggregateSummary {
         let active = entries.count
         var wide = 0
         var narrow = 0

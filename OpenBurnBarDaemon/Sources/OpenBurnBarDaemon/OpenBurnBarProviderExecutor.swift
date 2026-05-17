@@ -1485,11 +1485,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecUseAuthenticationContext as String: context,
         ]
-        // Daemon reads must never surface interactive keychain prompts.
-        // LAContext.interactionNotAllowed handles this on macOS 11+.
-        if #unavailable(macOS 11.0) {
-            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
-        }
+        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
         var item: CFTypeRef?
         let status = withKeychainUserInteractionDisabled {
             SecItemCopyMatching(query as CFDictionary, &item)

@@ -57,6 +57,8 @@ public enum BurnBarConfigStoreError: Error, LocalizedError {
     case unsupportedProvider(String)
     case invalidBaseURL(String)
     case unsupportedModel(providerID: String, modelID: String)
+    case missingCredential(providerID: String)
+    case credentialReadbackFailed(providerID: String, slotID: String)
 
     public var errorDescription: String? {
         switch self {
@@ -66,6 +68,10 @@ public enum BurnBarConfigStoreError: Error, LocalizedError {
             return "Provider '\(providerID)' must have a non-empty base URL."
         case .unsupportedModel(let providerID, let modelID):
             return "Model '\(modelID)' is not supported for provider '\(providerID)'."
+        case .missingCredential(let providerID):
+            return "Provider '\(providerID)' needs a non-empty credential before it can be routed."
+        case .credentialReadbackFailed(let providerID, let slotID):
+            return "Provider '\(providerID)' credential slot '\(slotID)' was not readable after saving."
         }
     }
 }
@@ -200,6 +206,20 @@ public actor BurnBarConfigStore {
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedLabel = normalizedLabel.isEmpty ? "Plan \(slotID ?? "")".trimmingCharacters(in: .whitespacesAndNewlines) : normalizedLabel
         let resolvedSlotID = (slotID?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 } ?? UUID().uuidString
+        guard key.isEmpty == false else {
+            throw BurnBarConfigStoreError.missingCredential(providerID: normalizedProviderID)
+        }
+
+        let secretStoreKey = slotSecretStoreKey(providerID: normalizedProviderID, slotID: resolvedSlotID)
+        try await secretStore.setSecret(key, for: secretStoreKey)
+        guard let persistedKey = try await secretStore.secret(for: secretStoreKey),
+              persistedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            try? await secretStore.setSecret(nil, for: secretStoreKey)
+            throw BurnBarConfigStoreError.credentialReadbackFailed(
+                providerID: normalizedProviderID,
+                slotID: resolvedSlotID
+            )
+        }
 
         var updatedSlot = BurnBarProviderCredentialSlot(slotID: resolvedSlotID, label: resolvedLabel, isEnabled: isEnabled, status: isEnabled ? .ready : .disabled)
         let updatedSettings = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
@@ -224,16 +244,13 @@ public actor BurnBarConfigStore {
             return mutable
         }
 
-        if key.isEmpty == false {
-            try await secretStore.setSecret(key, for: slotSecretStoreKey(providerID: normalizedProviderID, slotID: resolvedSlotID))
-        }
-
         logger.notice(
             "provider_slot_upserted",
             metadata: [
                 "provider_id": normalizedProviderID,
                 "slot_id": resolvedSlotID,
-                "slots": "\(updatedSettings.credentialSlots.count)"
+                "slots": "\(updatedSettings.credentialSlots.count)",
+                "secret_readback": "true"
             ]
         )
         return updatedSlot

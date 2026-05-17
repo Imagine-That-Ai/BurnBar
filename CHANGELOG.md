@@ -60,6 +60,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (matching `OpenBurnBarPlaywrightLifecycle.pinnedPlaywrightVersion`).
 
 ### Fixed
+- **Hermes Square now opens from the iPad sidebar.** The iPad Hermes
+  destination uses the shared `HermesSquareSplitLayout` with the live mobile
+  mission host instead of falling back to the legacy conversation list, so
+  iPad gets the same Square inbox, pinned grid, approvals, missions, search,
+  and detail layout as the compact mobile surface.
 - **macOS Google SSO keychain recovery.** Firebase Auth access-group binding
   now retries after clearing stale default Firebase Auth keychain rows, including
   the current `firebase_auth_1_<app>_firebase_user` row used by Firebase 11.x.

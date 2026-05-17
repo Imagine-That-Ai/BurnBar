@@ -80,12 +80,6 @@ final class BurnBarProviderRouterTests: XCTestCase {
                 preferredCredentialSlotID: "opencode"
             )
         )
-        _ = try await harness.configStore.upsertCredentialSlot(
-            providerID: "opencode",
-            slotID: "opencode",
-            label: "OpenCode",
-            apiKey: ""
-        )
         _ = try await harness.configStore.upsertProvider(
             BurnBarProviderSettings(
                 providerID: "deepseek",

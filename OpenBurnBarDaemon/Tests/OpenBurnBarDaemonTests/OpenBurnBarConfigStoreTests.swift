@@ -61,6 +61,12 @@ final class BurnBarConfigStoreTests: XCTestCase {
             sourceWrapsSecurityCall(switcherSource, call: "SecItemCopyMatching"),
             "Switcher keychain reads must not be able to show login-keychain prompts."
         )
+        for source in [connectorSource, providerSource, switcherSource] {
+            XCTAssertTrue(
+                source.contains("kSecUseAuthenticationUI as String") && source.contains("kSecUseAuthenticationUIFail"),
+                "Daemon keychain reads must explicitly fail instead of opening macOS SecurityAgent UI."
+            )
+        }
     }
 
     func testSnapshotDefaultsToAllCatalogProviders() async throws {
@@ -191,6 +197,62 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertTrue(configuration.hasCredential)
         XCTAssertEqual(configuration.apiKey, "slot-zai-key")
         XCTAssertEqual(configuration.credentialSlots.first?.apiKey, "slot-zai-key")
+    }
+
+    func testCredentialSlotUpsertRequiresDaemonReadableSecretBeforePersistingSlot() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-config-store-unreadable-slot-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+
+        let configStore = BurnBarConfigStore(
+            fileURL: rootURL.appendingPathComponent("provider-config.json", isDirectory: false),
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: UnreadableSecretStore(),
+            logger: BurnBarDaemonLogger(category: "config-store-tests")
+        )
+
+        do {
+            _ = try await configStore.upsertCredentialSlot(
+                providerID: "ollama",
+                slotID: "gmail",
+                label: "gmail",
+                apiKey: "sk-ollama-test-key",
+                isEnabled: true
+            )
+            XCTFail("Expected unreadable slot secret to fail the upsert.")
+        } catch let error as BurnBarConfigStoreError {
+            guard case .credentialReadbackFailed(let providerID, let slotID) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(providerID, "ollama")
+            XCTAssertEqual(slotID, "gmail")
+        }
+
+        let snapshot = try await configStore.snapshot()
+        XCTAssertTrue(snapshot.providerSettings(id: "ollama")?.credentialSlots.isEmpty ?? false)
+    }
+
+    func testCredentialSlotUpsertRejectsEmptyRouteCredential() async throws {
+        let harness = try makeHarness(name: "empty-slot-secret")
+
+        do {
+            _ = try await harness.configStore.upsertCredentialSlot(
+                providerID: "ollama",
+                slotID: "gmail",
+                label: "gmail",
+                apiKey: " ",
+                isEnabled: true
+            )
+            XCTFail("Expected empty slot credential to fail the upsert.")
+        } catch let error as BurnBarConfigStoreError {
+            guard case .missingCredential(let providerID) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(providerID, "ollama")
+        }
+
+        let snapshot = try await harness.configStore.snapshot()
+        XCTAssertTrue(snapshot.providerSettings(id: "ollama")?.credentialSlots.isEmpty ?? false)
     }
 
     func testKeychainSecretStoreFallsBackToHermesCredentialPoolWithoutPrompt() async throws {
@@ -589,6 +651,14 @@ private actor SlotOnlySecretStore: BurnBarProviderSecretStoring {
             )
         }
         return nil
+    }
+
+    func setSecret(_ secret: String?, for providerID: String) async throws {}
+}
+
+private actor UnreadableSecretStore: BurnBarProviderSecretStoring {
+    func secret(for providerID: String) async throws -> String? {
+        nil
     }
 
     func setSecret(_ secret: String?, for providerID: String) async throws {}

@@ -424,6 +424,7 @@ public enum BurnBarProviderAuthRegistry {
                 summary: "Routes CLI traffic through the Ollama Cloud gateway.",
                 helperText: "Generate a key at ollama.com/settings/keys. Signing in to Ollama Cloud shows quota and account state; this API key is what makes BurnBar proxy requests.",
                 placeholder: "sk-ollama-…",
+                prefixHint: "sk-",
                 dashboardURL: "https://ollama.com/settings/keys",
                 dashboardLabel: "Ollama Cloud keys",
                 storage: .daemonSlot,

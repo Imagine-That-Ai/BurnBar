@@ -278,6 +278,74 @@ final class InsightAnalysisTests: XCTestCase {
         XCTAssertTrue(result.generatedWidgets.contains { $0.widget.title == "Benchmark-aware model board" })
     }
 
+    func testRuleBasedAnalysisMergesEquivalentModelIDsBeforeBenchmarkAdvice() async throws {
+        var snapshot = InsightTestFixtures.twoWeeksOfUsage()
+        snapshot.modelBenchmarks = [
+            .init(
+                id: "aa-gpt-55-coding",
+                source: "artificial_analysis",
+                sourceURL: "https://artificialanalysis.ai/",
+                attribution: "Artificial Analysis",
+                fetchedAt: snapshot.generatedAt,
+                modelID: "gpt-5.5",
+                providerID: "openai",
+                taskCategory: "coding",
+                score: 0.91,
+                rank: 1,
+                costSignal: 0.28,
+                confidence: 0.82,
+                freshness: "fresh",
+                blendedCostPerMtoken: 8.50
+            )
+        ]
+        var context = try InsightAggregator().buildContext(
+            snapshot: snapshot,
+            filter: InsightFilter(window: .last7d),
+            includedDataSources: ["datastore_usage", "provider_summaries", "model_benchmarks"]
+        )
+        context.digest.models.append(contentsOf: [
+            .init(
+                id: "gpt-5.5",
+                providerID: "openai",
+                costUSD: 3.25,
+                totalTokens: 12_000,
+                sessionCount: 2,
+                avgCostPerSession: 1.625,
+                cacheHitRate: 0.1,
+                topInferredTaskTitles: ["UI polish"],
+                topProjects: ["project_a"]
+            ),
+            .init(
+                id: "gpt-5-5",
+                providerID: "openai",
+                costUSD: 1.75,
+                totalTokens: 8_000,
+                sessionCount: 1,
+                avgCostPerSession: 1.75,
+                cacheHitRate: 0.2,
+                topInferredTaskTitles: ["Routing cleanup"],
+                topProjects: ["project_b"]
+            )
+        ])
+
+        let result = try await RuleBasedInsightAnalysisEngine(platform: .iOS).analyze(
+            .init(
+                prompt: "Which model should I use?",
+                context: context,
+                selectedModel: .init(
+                    providerKey: "local-rules",
+                    modelID: "local-rules-v1",
+                    displayName: "Local rules",
+                    egressTier: .localOnly
+                ),
+                instruction: .defaultBrief
+            )
+        )
+
+        XCTAssertTrue(result.contextBudget.includedDataSources.contains("model_benchmarks"))
+        XCTAssertTrue(result.generatedWidgets.contains { $0.widget.title == "Benchmark-aware model board" })
+    }
+
     func testOrchestratedEngineWritesAuditAndCachesResult() async throws {
         let snapshot = InsightTestFixtures.twoWeeksOfUsage()
         let context = try InsightAggregator().buildContext(
