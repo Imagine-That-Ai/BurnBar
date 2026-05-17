@@ -703,6 +703,7 @@
 		94517151F589DFA401790F09 /* test_narrativeCard_withData.narrativeCard-light.png in Resources */ = {isa = PBXBuildFile; fileRef = 7771F7D3C409A7675F61423C /* test_narrativeCard_withData.narrativeCard-light.png */; };
 		94B05D6D961268C1BEF53D44 /* MenuBarPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CC3C32451CCFA9E72801274 /* MenuBarPopoverView.swift */; };
 		6B8568EC97A270BE3FBDB649 /* MercuryTraySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5482B31C7996BC92C37C709 /* MercuryTraySection.swift */; };
+		6364BE2C10E31F44C9BEE46C /* MercuryGlobalChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1E95232A61D3BB728A574E /* MercuryGlobalChrome.swift */; };
 		94D85F9864D324F96E64D7EE /* SettingsAnchorModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 751AB22DFD33D8774CE5181B /* SettingsAnchorModifiers.swift */; };
 		95406583F02761037CFBCD9B /* InsightsRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 819AA443BFF77CAC7BBAFE92 /* InsightsRootView.swift */; };
 		954081EF2DC0AB239982AA65 /* OpenBurnBarHTTPGatewayServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B806C0B716771E4783E000 /* OpenBurnBarHTTPGatewayServer.swift */; };
@@ -2007,6 +2008,7 @@
 		9BE8799D6566A48FD78190F4 /* SkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonView.swift; sourceTree = "<group>"; };
 		9CC3C32451CCFA9E72801274 /* MenuBarPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPopoverView.swift; sourceTree = "<group>"; };
 		C5482B31C7996BC92C37C709 /* MercuryTraySection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryTraySection.swift; sourceTree = "<group>"; };
+		3A1E95232A61D3BB728A574E /* MercuryGlobalChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryGlobalChrome.swift; sourceTree = "<group>"; };
 		9CDDBEA1D627E38E221DB3AC /* AppearanceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettings.swift; sourceTree = "<group>"; };
 		9D60B67D37E96E17752FBC58 /* ProviderAccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccountStore.swift; sourceTree = "<group>"; };
 		9D8680A0BE66B864A7DC7EDB /* iOSDeviceKeypair.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSDeviceKeypair.swift; sourceTree = "<group>"; };
@@ -3641,6 +3643,7 @@
 				542C9A68E09ABC5FE52CE3DD /* CallHUD.swift */,
 				4C4A13FBDCD0E2012BA91A48 /* IncomingCallSheet.swift */,
 				A7AF4252A4EA8F47FAC31AE4 /* MediaPermissionsView.swift */,
+				3A1E95232A61D3BB728A574E /* MercuryGlobalChrome.swift */,
 				FCB66482125F10DB879E2CB6 /* MercuryRing.swift */,
 				06043391A2F17D35DB555B50 /* PaperclipButton.swift */,
 				C403FDB65CEA7BD7FC89B67D /* ScreenShareViewer.swift */,
@@ -6227,6 +6230,7 @@
 				ED2A44CD95CC351058E02F24 /* MembershipBand.swift in Sources */,
 				94B05D6D961268C1BEF53D44 /* MenuBarPopoverView.swift in Sources */,
 				6B8568EC97A270BE3FBDB649 /* MercuryTraySection.swift in Sources */,
+				6364BE2C10E31F44C9BEE46C /* MercuryGlobalChrome.swift in Sources */,
 				15931A972934051AB196E45E /* MercuryCrest.swift in Sources */,
 				40ED337E190CA33C14A9E25C /* MercuryFoilCard.swift in Sources */,
 				379BBE41EFCC3609CAC05247 /* MercuryRing.swift in Sources */,
