@@ -220,6 +220,32 @@ final class OpenBurnBarRuntimeContext {
         self.operatingLayer = operatingLayer
     }
 
+    func startRelayServices() {
+        let hermesRelayHost: HermesRelayHostService
+        if let existingRelayHost = hermesRelayHostService {
+            hermesRelayHost = existingRelayHost
+        } else {
+            hermesRelayHost = HermesRelayHostService(
+                accountManager: accountManager,
+                settingsManager: settingsManager
+            )
+            hermesRelayHostService = hermesRelayHost
+        }
+        hermesRelayHost.start()
+
+        let piRelayHost: PiAgentCloudRelayHostService
+        if let existingPiRelayHost = piAgentRelayHostService {
+            piRelayHost = existingPiRelayHost
+        } else {
+            piRelayHost = PiAgentCloudRelayHostService(
+                accountManager: accountManager,
+                settingsManager: settingsManager
+            )
+            piAgentRelayHostService = piRelayHost
+        }
+        piRelayHost.start()
+    }
+
     func startSmartDisplayServices() {
         let smartHubBridge: SmartHubBridgeController
         if let existingSmartHubBridge = smartHubBridgeController {

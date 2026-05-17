@@ -80,7 +80,11 @@ private fun usageMetricsForWindow(
 }
 
 private val TokenUsage.effectiveTimeMillis: Long
-    get() = listOf(timestamp, startTime, endTime, updatedAt, createdAt).firstOrNull { it > 0L } ?: 0L
+    get() {
+        val eventTimes = listOf(timestamp, startTime, endTime).filter { it > 0L }
+        eventTimes.maxOrNull()?.let { return it }
+        return listOf(updatedAt, createdAt).firstOrNull { it > 0L } ?: 0L
+    }
 
 private val TokenUsage.effectiveTotalTokens: Long
     get() {

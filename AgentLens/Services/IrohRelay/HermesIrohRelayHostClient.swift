@@ -67,7 +67,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
         publicKeyPublisher: IrohPairingPublicKeyPublishing = IrohPairingPublicKeyPublisher.shared,
         auditLogger: any IrohTransportAuditLogging = FirestoreIrohAuditLogger.shared,
         urlSession: URLSession = .shared,
-        pairingPublishInterval: TimeInterval = 15 * 60,
+        pairingPublishInterval: TimeInterval = 60,
         transportFactory: @escaping @MainActor (HermesIrohRelayHostClient) -> any IrohRelayTransport = { _ in
             HermesIrohRelayHostClient.defaultTransport()
         }
@@ -95,6 +95,7 @@ final class HermesIrohRelayHostClient: HermesRealtimeRelayHosting {
     @discardableResult
     func start(uid: String, connectionID: String) async -> Bool {
         if transport != nil, readyUID == uid, readyConnectionID == connectionID {
+            await refreshPairingRecord(uid: uid, connectionID: connectionID)
             return true
         }
         stop()

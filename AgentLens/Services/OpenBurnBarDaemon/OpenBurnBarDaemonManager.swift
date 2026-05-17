@@ -206,6 +206,7 @@ final class OpenBurnBarDaemonManager {
     let usageSyncService: OpenBurnBarDaemonUsageSyncService
     let settingsManager: SettingsManager
     weak var dataStore: DataStore?
+    private var uploadPendingUsageAfterImport: (() async -> Void)?
 
     var status: OpenBurnBarDaemonStatus = .checking
     var lastError: String?
@@ -228,12 +229,14 @@ final class OpenBurnBarDaemonManager {
         settingsManager: SettingsManager = .shared,
         paths: OpenBurnBarDaemonRuntimePaths = .live(),
         dependencies: OpenBurnBarDaemonDependencies = .live(),
-        usageSyncService: OpenBurnBarDaemonUsageSyncService? = nil
+        usageSyncService: OpenBurnBarDaemonUsageSyncService? = nil,
+        uploadPendingUsageAfterImport: (() async -> Void)? = nil
     ) {
         self.settingsManager = settingsManager
         self.paths = paths
         self.dependencies = dependencies
         self.usageSyncService = usageSyncService ?? OpenBurnBarDaemonUsageSyncService(paths: paths)
+        self.uploadPendingUsageAfterImport = uploadPendingUsageAfterImport
     }
 
     /// Unix socket RPC uses blocking `connect`/`read` loops. Must not run on the main actor or the UI hangs.
@@ -261,8 +264,13 @@ final class OpenBurnBarDaemonManager {
         }
     }
 
-    func attach(dataStore: DataStore) {
+    func attach(dataStore: DataStore, cloudSyncService: CloudSyncService? = nil) {
         self.dataStore = dataStore
+        if let cloudSyncService {
+            uploadPendingUsageAfterImport = { [weak cloudSyncService] in
+                await cloudSyncService?.uploadPending()
+            }
+        }
         OpenBurnBarDaemonLocalNotificationRelay.shared.start()
         exportControllerActivitySnapshot()
         Task {
@@ -367,6 +375,7 @@ final class OpenBurnBarDaemonManager {
                 recentEvents = loadRecentDaemonEvents()
                 controllerProjects = projects
                 runtimeStateSource = .daemonRPC
+                await uploadImportedUsageIfNeeded(snapshot)
                 return
             } catch {
                 runtimeStateSource = .localFallback
@@ -391,6 +400,12 @@ final class OpenBurnBarDaemonManager {
         recentEvents = loadRecentDaemonEvents()
         controllerProjects = []
         runtimeStateSource = .localFallback
+        await uploadImportedUsageIfNeeded(snapshot)
+    }
+
+    private func uploadImportedUsageIfNeeded(_ snapshot: OpenBurnBarDaemonRuntimeSnapshot) async {
+        guard snapshot.ledgerRecordCount > 0, let uploadPendingUsageAfterImport else { return }
+        await uploadPendingUsageAfterImport()
     }
 
     func performBusyWork(_ operation: () async throws -> Void) async {

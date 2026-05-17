@@ -89,7 +89,7 @@ healthy candidate in the same pool.
   routed via the `x-api-key` header), Anthropic Pro/Team (OAuth bearer via
   the `Authorization: Bearer` header).
 - **Endpoint shape:** OpenAI-compatible `/v1/models`, `/v1/chat/completions`,
-  plus Anthropic-compatible `/v1/messages`.
+  `/v1/responses`, plus Anthropic-compatible `/v1/messages`.
 - **Usage attribution:** proxied local-client calls record as `OpenBurnBar Gateway`.
 
 Droid/Factory, Forge, OpenCode and Codex are client targets. Their requests
@@ -116,6 +116,12 @@ lives in `OpenBurnBarHTTPGatewayServerTests.swift`:
   to backup.
 - `testForgeOpenAICompatRequestFailsOverWhenPrimaryQuotaExhausted` —
   Forge-shaped `/v1/chat/completions` request fails over from primary to backup.
+- `testGatewayResponsesFallsBackToChatCompletionsWhenProviderDoesNotExposeResponses` —
+  Codex-style `/v1/responses` works when the advertised provider only exposes
+  chat completions.
+- `testGatewayResponsesStreamingFallbackEmitsResponsesEvents` —
+  streaming `/v1/responses` fallback emits Responses API SSE events, not raw
+  chat-completion chunks.
 - `testClaudeCodeAnthropicRequestFailsOverWhenPrimaryQuotaExhausted` —
   Claude Code-shaped `/v1/messages` request fails over from primary to backup.
 - `testGatewayMessagesReturns503WhenOnlyOpenAICompatProvidersConfigured` —

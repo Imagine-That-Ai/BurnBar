@@ -1185,6 +1185,13 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(creds.rateLimitTier, "default_claude_max_20x")
         XCTAssertEqual(creds.organizationUuid, "abc-123")
         XCTAssertEqual(creds.planDisplayName, "Max")
+        let routePayload = creds.routeCredentialStoragePayload()
+        let routePayloadCreds = try XCTUnwrap(ClaudeCredentialsReader.decode(Data(routePayload.utf8)))
+        XCTAssertEqual(routePayloadCreds.accessToken, "sk-ant-oat-real")
+        XCTAssertEqual(routePayloadCreds.refreshToken, "sk-ant-ort-real")
+        XCTAssertEqual(routePayloadCreds.subscriptionType, "max")
+        XCTAssertEqual(routePayloadCreds.rateLimitTier, "default_claude_max_20x")
+        XCTAssertEqual(routePayloadCreds.organizationUuid, "abc-123")
         // 1778310120051 ms ≈ 2026-04-26 — well in the future from
         // today's session date but exercise the parser regardless.
         XCTAssertNotNil(creds.expiresAt)

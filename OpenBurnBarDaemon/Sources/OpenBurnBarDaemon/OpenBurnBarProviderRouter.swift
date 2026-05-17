@@ -530,15 +530,18 @@ public struct BurnBarProviderRouter: Sendable {
             if statusCode == 401 || statusCode == 403 {
                 status = .missingSecret
                 cooldownUntil = nil
-            } else if statusCode == 429 || lowerBody.contains("rate limit") || lowerBody.contains("rate_limit") {
-                status = .coolingDown
-                cooldownUntil = cooldown
             } else if statusCode == 402
                 || lowerBody.contains("quota")
                 || lowerBody.contains("insufficient")
                 || lowerBody.contains("exhaust") {
                 status = .exhausted
                 cooldownUntil = nil
+            } else if statusCode == 429 || lowerBody.contains("rate limit") || lowerBody.contains("rate_limit") {
+                if Self.shouldPreserveSlotAvailabilityForRateLimit(route) {
+                    return
+                }
+                status = .coolingDown
+                cooldownUntil = cooldown
             } else {
                 return
             }
@@ -552,6 +555,9 @@ public struct BurnBarProviderRouter: Sendable {
             } else if lowercasedDescription.contains("rate limit")
                 || lowercasedDescription.contains("rate_limit")
                 || lowercasedDescription.contains("429") {
+                if Self.shouldPreserveSlotAvailabilityForRateLimit(route) {
+                    return
+                }
                 status = .coolingDown
                 cooldownUntil = cooldown
             } else if lowercasedDescription.contains("401")
@@ -576,6 +582,18 @@ public struct BurnBarProviderRouter: Sendable {
         } catch {
             logger.silentFailure("update_credential_slot_status_failure", error: error)
         }
+    }
+
+    private static func shouldPreserveSlotAvailabilityForRateLimit(_ route: BurnBarProviderRoute) -> Bool {
+        guard route.providerID.caseInsensitiveCompare("anthropic") == .orderedSame,
+              route.formatFamily == .anthropic else {
+            return false
+        }
+
+        let normalizedKey = route.apiKey
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return normalizedKey.hasPrefix("sk-ant-oat")
     }
 
     public func markRouteSuccess(_ route: BurnBarProviderRoute) async {

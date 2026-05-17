@@ -207,7 +207,8 @@ final class BurnBarConfigStoreTests: XCTestCase {
 
         let store = BurnBarKeychainSecretStore(
             service: "com.openburnbar.tests.missing.\(UUID().uuidString)",
-            hermesCredentialPoolURL: authURL
+            hermesCredentialPoolURL: authURL,
+            fallbackSecretFileURL: nil
         )
 
         let secret = try await store.secret(for: "minimax.slot.default")
@@ -219,18 +220,16 @@ final class BurnBarConfigStoreTests: XCTestCase {
         let service = "com.openburnbar.tests.keychain.\(UUID().uuidString)"
         let providerSlotKey = "zai.slot.default"
         let account = "provider.\(providerSlotKey).apiKey"
+        let fallbackURL = temporaryFallbackVaultURL()
         defer {
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service,
-                kSecAttrAccount as String: account
-            ]
-            SecItemDelete(query as CFDictionary)
+            deleteKeychainSecret(service: service, account: account)
+            removeFallbackVault(fallbackURL)
         }
 
         let store = BurnBarKeychainSecretStore(
             service: service,
-            hermesCredentialPoolURL: nil
+            hermesCredentialPoolURL: nil,
+            fallbackSecretFileURL: fallbackURL
         )
 
         try await store.setSecret("zai-keychain-secret", for: providerSlotKey)
@@ -239,27 +238,132 @@ final class BurnBarConfigStoreTests: XCTestCase {
         XCTAssertEqual(secret, "zai-keychain-secret")
     }
 
+    func testKeychainSecretStoreRecreatesExistingSlotSecretOnOverwrite() async throws {
+        let service = "com.openburnbar.tests.keychain.recreate.\(UUID().uuidString)"
+        let providerSlotKey = "anthropic.slot.max"
+        let account = "provider.\(providerSlotKey).apiKey"
+        let fallbackURL = temporaryFallbackVaultURL()
+        defer {
+            deleteKeychainSecret(service: service, account: account)
+            removeFallbackVault(fallbackURL)
+        }
+
+        try addKeychainSecret(
+            "old-oauth-token",
+            service: service,
+            account: account,
+            comment: "stale-access-marker"
+        )
+
+        let store = BurnBarKeychainSecretStore(
+            service: service,
+            hermesCredentialPoolURL: nil,
+            fallbackSecretFileURL: fallbackURL
+        )
+        try await store.setSecret("new-oauth-token", for: providerSlotKey)
+
+        let secret = try await store.secret(for: providerSlotKey)
+        XCTAssertEqual(secret, "new-oauth-token")
+        let attributes = try XCTUnwrap(keychainAttributes(service: service, account: account))
+        XCTAssertNil(attributes[kSecAttrComment as String], "Overwriting a provider slot should recreate the row, not preserve stale keychain metadata.")
+        XCTAssertEqual(try fallbackSecret(in: fallbackURL, account: account), "new-oauth-token")
+    }
+
+    func testKeychainSecretStoreReadsContinuityVaultWhenKeychainRowIsUnavailable() async throws {
+        let service = "com.openburnbar.tests.keychain.continuity.\(UUID().uuidString)"
+        let providerSlotKey = "anthropic.slot.max"
+        let account = "provider.\(providerSlotKey).apiKey"
+        let fallbackURL = temporaryFallbackVaultURL()
+        defer {
+            deleteKeychainSecret(service: service, account: account)
+            removeFallbackVault(fallbackURL)
+        }
+
+        let store = BurnBarKeychainSecretStore(
+            service: service,
+            hermesCredentialPoolURL: nil,
+            fallbackSecretFileURL: fallbackURL
+        )
+        try await store.setSecret("new-oauth-token", for: providerSlotKey)
+        deleteKeychainSecret(service: service, account: account)
+
+        let secret = try await store.secret(for: providerSlotKey)
+        XCTAssertEqual(secret, "new-oauth-token")
+    }
+
+    func testKeychainSecretStoreRefreshesStoredClaudeOAuthPayloadWhenExpired() async throws {
+        ClaudeOAuthRefreshURLProtocol.reset()
+        ClaudeOAuthRefreshURLProtocol.enqueue(
+            status: 200,
+            body: #"{"access_token":"refreshed-oauth-token","refresh_token":"new-refresh-token","expires_in":28800}"#
+        )
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [ClaudeOAuthRefreshURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+
+        let service = "com.openburnbar.tests.keychain.oauth-refresh.\(UUID().uuidString)"
+        let providerSlotKey = "anthropic.slot.max"
+        let account = "provider.\(providerSlotKey).apiKey"
+        let fallbackURL = temporaryFallbackVaultURL()
+        defer {
+            deleteKeychainSecret(service: service, account: account)
+            removeFallbackVault(fallbackURL)
+            ClaudeOAuthRefreshURLProtocol.reset()
+        }
+
+        let expiredAtMilliseconds = Date().addingTimeInterval(-120).timeIntervalSince1970 * 1000
+        let storedPayload = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "expired-oauth-token",
+            "refreshToken": "old-refresh-token",
+            "expiresAt": \(expiredAtMilliseconds),
+            "subscriptionType": "max",
+            "rateLimitTier": "default_claude_max_20x"
+          },
+          "organizationUuid": "org-test"
+        }
+        """
+        let store = BurnBarKeychainSecretStore(
+            service: service,
+            hermesCredentialPoolURL: nil,
+            fallbackSecretFileURL: fallbackURL,
+            claudeOAuthRefreshSession: session
+        )
+        try await store.setSecret(storedPayload, for: providerSlotKey)
+
+        let secret = try await store.secret(for: providerSlotKey)
+        XCTAssertEqual(secret, "refreshed-oauth-token")
+        XCTAssertEqual(ClaudeOAuthRefreshURLProtocol.recordedRequestBodies(), [
+            "grant_type=refresh_token&refresh_token=old-refresh-token&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+        ])
+        let refreshedPayload = try fallbackSecret(in: fallbackURL, account: account)
+        let oauth = try XCTUnwrap(claudeOAuthPayload(from: refreshedPayload))
+        XCTAssertEqual(oauth["accessToken"] as? String, "refreshed-oauth-token")
+        XCTAssertEqual(oauth["refreshToken"] as? String, "new-refresh-token")
+        XCTAssertEqual(oauth["subscriptionType"] as? String, "max")
+        XCTAssertEqual(oauth["rateLimitTier"] as? String, "default_claude_max_20x")
+    }
+
     func testKeychainSecretStorePrefersDaemonServiceAndCanReadLegacyService() async throws {
         let primaryService = "com.openburnbar.tests.keychain.primary.\(UUID().uuidString)"
         let legacyService = "com.openburnbar.tests.keychain.legacy.\(UUID().uuidString)"
         let providerSlotKey = "anthropic.slot.default"
         let account = "provider.\(providerSlotKey).apiKey"
+        let fallbackURL = temporaryFallbackVaultURL()
         defer {
             for service in [primaryService, legacyService] {
-                let query: [String: Any] = [
-                    kSecClass as String: kSecClassGenericPassword,
-                    kSecAttrService as String: service,
-                    kSecAttrAccount as String: account
-                ]
-                SecItemDelete(query as CFDictionary)
+                deleteKeychainSecret(service: service, account: account)
             }
+            removeFallbackVault(fallbackURL)
         }
 
         try addKeychainSecret("legacy-secret", service: legacyService, account: account)
         let legacyOnlyStore = BurnBarKeychainSecretStore(
             service: primaryService,
             legacyServices: [legacyService],
-            hermesCredentialPoolURL: nil
+            hermesCredentialPoolURL: nil,
+            fallbackSecretFileURL: fallbackURL
         )
         let legacySecret = try await legacyOnlyStore.secret(for: providerSlotKey)
         XCTAssertEqual(legacySecret, "legacy-secret")
@@ -303,7 +407,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
 }
 
 #if os(macOS)
-private func addKeychainSecret(_ secret: String, service: String, account: String) throws {
+private func addKeychainSecret(_ secret: String, service: String, account: String, comment: String? = nil) throws {
     let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
         kSecAttrService as String: service,
@@ -311,9 +415,141 @@ private func addKeychainSecret(_ secret: String, service: String, account: Strin
         kSecValueData as String: Data(secret.utf8),
         kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
     ]
-    let status = SecItemAdd(query as CFDictionary, nil)
+    var createQuery = query
+    if let comment {
+        createQuery[kSecAttrComment as String] = comment
+    }
+    let status = SecItemAdd(createQuery as CFDictionary, nil)
     guard status == errSecSuccess else {
         throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+    }
+}
+
+private func deleteKeychainSecret(service: String, account: String) {
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: service,
+        kSecAttrAccount as String: account
+    ]
+    SecItemDelete(query as CFDictionary)
+}
+
+private func keychainAttributes(service: String, account: String) -> [String: Any]? {
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: service,
+        kSecAttrAccount as String: account,
+        kSecReturnAttributes as String: true,
+        kSecMatchLimit as String: kSecMatchLimitOne
+    ]
+    var item: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &item)
+    guard status == errSecSuccess else {
+        return nil
+    }
+    return item as? [String: Any]
+}
+
+private func temporaryFallbackVaultURL() -> URL {
+    FileManager.default.temporaryDirectory
+        .appendingPathComponent("openburnbar-secret-continuity-\(UUID().uuidString)", isDirectory: true)
+        .appendingPathComponent("provider-secrets.continuity.json", isDirectory: false)
+}
+
+private func removeFallbackVault(_ fallbackURL: URL) {
+    try? FileManager.default.removeItem(at: fallbackURL.deletingLastPathComponent())
+}
+
+private func fallbackSecret(in fallbackURL: URL, account: String) throws -> String? {
+    let data = try Data(contentsOf: fallbackURL)
+    let root = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let secrets = try XCTUnwrap(root["secrets"] as? [String: String])
+    return secrets[account]
+}
+
+private func claudeOAuthPayload(from storedSecret: String?) throws -> [String: Any]? {
+    guard let storedSecret,
+          let data = storedSecret.data(using: .utf8),
+          let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return nil
+    }
+    return root["claudeAiOauth"] as? [String: Any]
+}
+
+private final class ClaudeOAuthRefreshURLProtocol: URLProtocol {
+    private struct Response {
+        let status: Int
+        let body: Data
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var queuedResponses: [Response] = []
+    nonisolated(unsafe) private static var requestBodies: [String] = []
+
+    static func enqueue(status: Int, body: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        queuedResponses.append(Response(status: status, body: Data(body.utf8)))
+    }
+
+    static func recordedRequestBodies() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return requestBodies
+    }
+
+    static func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        queuedResponses = []
+        requestBodies = []
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        request.url?.host == "platform.claude.com"
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        Self.lock.lock()
+        let response = Self.queuedResponses.isEmpty
+            ? Response(status: 500, body: Data(#"{"error":"missing fixture"}"#.utf8))
+            : Self.queuedResponses.removeFirst()
+        Self.requestBodies.append(Self.bodyString(from: request))
+        Self.lock.unlock()
+
+        let httpResponse = HTTPURLResponse(
+            url: request.url!,
+            statusCode: response.status,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: httpResponse, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: response.body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    private static func bodyString(from request: URLRequest) -> String {
+        if let body = request.httpBody {
+            return String(data: body, encoding: .utf8) ?? ""
+        }
+        guard let stream = request.httpBodyStream else { return "" }
+        stream.open()
+        defer { stream.close() }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count <= 0 { break }
+            data.append(contentsOf: buffer.prefix(count))
+        }
+        return String(data: data, encoding: .utf8) ?? ""
     }
 }
 #endif

@@ -98,6 +98,32 @@ final class AssistantModelMergerTests: XCTestCase {
         XCTAssertEqual(rows[0].reachability, .liveOnRelay)
     }
 
+    func test_liveAliasWinsAndUsesExactRelayModelID() {
+        let live = [HermesRuntimeModelOption(
+            providerID: "minimax",
+            providerName: "MiniMax",
+            modelID: "MiniMax-M2.7",
+            displayName: "MiniMax M2.7"
+        )]
+        let catalog = [AssistantModelOption(
+            providerID: "minimax",
+            providerName: "MiniMax",
+            modelID: "minimax-m2-7",
+            displayName: "MiniMax M2.7",
+            tier: "flagship"
+        )]
+        let rows = AssistantModelMerger.merge(
+            runtime: .hermes,
+            liveRelay: live,
+            catalog: catalog,
+            connectedProviderIDs: []
+        )
+
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].option.modelID, "MiniMax-M2.7")
+        XCTAssertEqual(rows[0].reachability, .liveOnRelay)
+    }
+
     func test_liveOnlyModelsAppendedAfterCatalog() {
         // Relay advertises a model the catalog hasn't seen yet — trust
         // the relay and append at the end.

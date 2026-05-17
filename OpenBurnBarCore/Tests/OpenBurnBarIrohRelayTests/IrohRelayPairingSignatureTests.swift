@@ -78,8 +78,7 @@ final class IrohRelayPairingSignatureTests: XCTestCase {
             publishedAtMillis: Int64(signedAt.timeIntervalSince1970 * 1000),
             with: keypair.signingKey
         )
-        // 25h later
-        let later = signedAt.addingTimeInterval(25 * 60 * 60)
+        let later = signedAt.addingTimeInterval(IrohPairingFreshness.maximumAgeSeconds + 1)
         XCTAssertThrowsError(try IrohPairingSignature.verify(record, publicKey: keypair.publicKeyRaw, now: later)) { error in
             XCTAssertEqual(error as? IrohPairingError, .expired)
         }

@@ -10,6 +10,18 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         super.tearDown()
     }
 
+    private func enqueueOpenAIModelCatalog(_ modelIDs: [String], times: Int = 1) {
+        let rows = modelIDs.map { id in
+            #"{"id":"\#(id)","display_name":"\#(id)"}"#
+        }.joined(separator: ",")
+        for _ in 0..<times {
+            GatewayUpstreamURLProtocol.enqueue(
+                status: 200,
+                body: #"{"object":"list","data":[\#(rows)]}"#
+            )
+        }
+    }
+
     func testGatewayConfigurationValidationRejectsUnsafeHosts() {
         XCTAssertEqual(
             BurnBarGatewayConfiguration(isEnabled: true, host: "0.0.0.0", port: 8317, authToken: nil).validationError,
@@ -195,6 +207,19 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(primary["route_eligible"] as? Bool, true)
         XCTAssertTrue((primary["capabilities"] as? [String] ?? []).contains("openai_compat"))
 
+        let codexModels = try XCTUnwrap(object["models"] as? [[String: Any]])
+        let codexPrimary = try XCTUnwrap(codexModels.first {
+            ($0["slug"] as? String) == "glm-5-turbo"
+        })
+        XCTAssertEqual(codexPrimary["display_name"] as? String, "GLM-5 Turbo")
+        XCTAssertEqual(codexPrimary["shell_type"] as? String, "shell_command")
+        XCTAssertEqual(codexPrimary["visibility"] as? String, "list")
+        XCTAssertEqual(codexPrimary["supported_in_api"] as? Bool, true)
+        XCTAssertEqual(codexPrimary["base_instructions"] as? String, "You are Codex, a coding agent.")
+        let truncationPolicy = try XCTUnwrap(codexPrimary["truncation_policy"] as? [String: Any])
+        XCTAssertEqual(truncationPolicy["mode"] as? String, "tokens")
+        XCTAssertEqual(truncationPolicy["limit"] as? Int, 65_536)
+
         XCTAssertFalse(
             data.contains { ($0["account_id"] as? String) == "backup" },
             "/v1/models must not advertise exhausted or otherwise unroutable accounts to external clients."
@@ -322,6 +347,10 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         GatewayUpstreamURLProtocol.enqueue(
             status: 200,
+            body: #"{"object":"list","data":[{"id":"glm-5-live-new","display_name":"GLM-5 Live New"}]}"#
+        )
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
             body: #"{"id":"chatcmpl-live","object":"chat.completion","model":"glm-5-live-new","choices":[{"index":0,"message":{"role":"assistant","content":"live model answered"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}"#
         )
         let harness = try GatewayHarness(
@@ -353,7 +382,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         XCTAssertEqual(chatResponse.statusCode, 200, "body was: \(String(decoding: chatBody, as: UTF8.self))")
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
-        XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/chat/completions"])
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/models", "/v1/chat/completions"])
         XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"glm-5-live-new""#) == true)
     }
 
@@ -361,6 +390,10 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"MiniMax-M2.7","display_name":"MiniMax M2.7"}]}"#
+        )
         GatewayUpstreamURLProtocol.enqueue(
             status: 200,
             body: #"{"object":"list","data":[{"id":"MiniMax-M2.7","display_name":"MiniMax M2.7"}]}"#
@@ -420,7 +453,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(chatResponse.statusCode, 200, "body was: \(String(decoding: chatBody, as: UTF8.self))")
         XCTAssertTrue(String(decoding: chatBody, as: UTF8.self).contains("minimax answered"))
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
-        XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/chat/completions"])
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/models", "/v1/chat/completions"])
         XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"MiniMax-M2.7""#) == true)
     }
 
@@ -428,6 +461,10 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"kimi-k2.6","display_name":"Kimi K2.6"}]}"#
+        )
         GatewayUpstreamURLProtocol.enqueue(
             status: 200,
             body: #"{"object":"list","data":[{"id":"kimi-k2.6","display_name":"Kimi K2.6"}]}"#
@@ -480,9 +517,40 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(chatResponse.statusCode, 200, "body was: \(String(decoding: chatBody, as: UTF8.self))")
         XCTAssertTrue(String(decoding: chatBody, as: UTF8.self).contains("opencode answered"))
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
-        XCTAssertEqual(upstreamRequests.map(\.path), ["/zen/go/v1/models", "/zen/go/v1/chat/completions"])
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/zen/go/v1/models", "/zen/go/v1/models", "/zen/go/v1/chat/completions"])
         XCTAssertEqual(upstreamRequests.last?.authorization, "Bearer opencode-route-key")
         XCTAssertTrue(upstreamRequests.last?.body.contains(#""model":"kimi-k2.6""#) == true)
+    }
+
+    func testGatewayChatCompletionsRejectsUnadvertisedModelBeforeUpstream() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"glm-5-turbo","display_name":"GLM-5 Turbo"}]}"#
+        )
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.configStore.removeCredentialSlot(providerID: "zai", slotID: "backup")
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"not-advertised-anywhere","messages":[{"role":"user","content":"hello"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 503)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("No eligible route for not-advertised-anywhere"), "body was: \(bodyText)")
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests().map(\.path), ["/v1/models"])
     }
 
     func testGatewayChatCompletionsStopsBeforeSendingWhenNoEligibleRouteExists() async throws {
@@ -531,6 +599,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["glm-5-turbo"], times: 2)
         GatewayUpstreamURLProtocol.enqueue(
             status: 200,
             body: """
@@ -548,7 +617,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
 
         let harness = try GatewayHarness(
-            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
         )
         try await harness.configureZAIProviderForGateway()
         try await harness.start()
@@ -566,10 +636,10 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let bodyText = String(decoding: body, as: UTF8.self)
         XCTAssertTrue(bodyText.contains("responses answered"))
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
-        XCTAssertEqual(upstreamRequests.count, 1)
-        XCTAssertEqual(upstreamRequests[0].path, "/v1/responses")
-        XCTAssertEqual(upstreamRequests[0].authorization, "Bearer primary-key")
-        XCTAssertTrue(upstreamRequests[0].body.contains(#""model":"glm-5-turbo""#))
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/models", "/v1/responses"])
+        let responseRequest = try XCTUnwrap(upstreamRequests.last)
+        XCTAssertEqual(responseRequest.authorization, "Bearer primary-key")
+        XCTAssertTrue(responseRequest.body.contains(#""model":"glm-5-turbo""#))
 
         let usage = try await harness.usageRecorder.recentUsage(limit: 5)
         XCTAssertEqual(usage.count, 1)
@@ -579,10 +649,251 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(usage[0].outputTokens, 4)
     }
 
+    func testGatewayResponsesFallsBackToChatCompletionsWhenProviderDoesNotExposeResponses() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["glm-5-turbo"], times: 2)
+        GatewayUpstreamURLProtocol.enqueue(status: 404, body: "404 page not found")
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "chatcmpl_test",
+              "object": "chat.completion",
+              "model": "glm-5-turbo",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "fallback answered"
+                  },
+                  "finish_reason": "stop"
+                }
+              ],
+              "usage": {
+                "prompt_tokens": 3,
+                "completion_tokens": 4
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/responses",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"glm-5-turbo","input":"hello","max_output_tokens":5}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains(#""object":"response""#), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains(#""output_text":"fallback answered""#), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains(#""input_tokens":3"#), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains(#""output_tokens":4"#), "body was: \(bodyText)")
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/models", "/v1/responses", "/v1/chat/completions"])
+        let chatRequest = try XCTUnwrap(upstreamRequests.last)
+        XCTAssertEqual(chatRequest.authorization, "Bearer primary-key")
+        XCTAssertTrue(chatRequest.body.contains(#""model":"glm-5-turbo""#), "body was: \(chatRequest.body)")
+        XCTAssertTrue(chatRequest.body.contains(#""messages""#), "body was: \(chatRequest.body)")
+        XCTAssertTrue(chatRequest.body.contains(#""max_tokens":5"#), "body was: \(chatRequest.body)")
+    }
+
+    func testGatewayResponsesFallbackMapsDeveloperRoleToSystemForChatProviders() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["glm-5-turbo"], times: 2)
+        GatewayUpstreamURLProtocol.enqueue(status: 404, body: "404 page not found")
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "chatcmpl_test",
+              "object": "chat.completion",
+              "model": "glm-5-turbo",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "developer mapped"
+                  },
+                  "finish_reason": "stop"
+                }
+              ]
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, _) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/responses",
+            headers: ["Content-Type": "application/json"],
+            body: Data(
+                #"""
+                {
+                  "model": "glm-5-turbo",
+                  "instructions": "You are Codex.",
+                  "messages": [
+                    {
+                      "role": "developer",
+                      "content": [
+                        {
+                          "type": "input_text",
+                          "text": "follow this developer instruction"
+                        }
+                      ]
+                    },
+                    {
+                      "role": "user",
+                      "content": "hello"
+                    }
+                  ],
+                  "tools": [
+                    {
+                      "type": "function",
+                      "name": "shell_command",
+                      "description": "Run a command.",
+                      "parameters": {
+                        "type": "object",
+                        "properties": {
+                          "cmd": { "type": "string" }
+                        }
+                      }
+                    },
+                    {
+                      "type": "namespace",
+                      "name": "mcp__playwright__",
+                      "description": "Nested namespace tools are Responses-only and must not be forwarded as fake chat functions.",
+                      "tools": [
+                        {
+                          "type": "function",
+                          "name": "browser_click",
+                          "parameters": {
+                            "type": "object",
+                            "properties": {}
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "tool_choice": {
+                    "type": "function",
+                    "name": "shell_command"
+                  },
+                  "parallel_tool_calls": true,
+                  "reasoning": { "effort": "low" },
+                  "metadata": { "client": "codex" }
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/models", "/v1/responses", "/v1/chat/completions"])
+        let chatRequest = try XCTUnwrap(upstreamRequests.last)
+        let requestData = Data(chatRequest.body.utf8)
+        let forwarded = try XCTUnwrap(JSONSerialization.jsonObject(with: requestData) as? [String: Any])
+        let messages = try XCTUnwrap(forwarded["messages"] as? [[String: Any]])
+        XCTAssertEqual(messages.map { $0["role"] as? String }, ["system", "user"])
+        let systemContent = try XCTUnwrap(messages.first?["content"] as? String)
+        XCTAssertTrue(systemContent.contains("You are Codex."))
+        XCTAssertTrue(systemContent.contains("follow this developer instruction"))
+        let tools = try XCTUnwrap(forwarded["tools"] as? [[String: Any]])
+        XCTAssertEqual(tools.count, 1)
+        let firstTool = try XCTUnwrap(tools.first)
+        XCTAssertEqual(firstTool["type"] as? String, "function")
+        let function = try XCTUnwrap(firstTool["function"] as? [String: Any])
+        XCTAssertEqual(function["name"] as? String, "shell_command")
+        XCTAssertEqual(function["description"] as? String, "Run a command.")
+        XCTAssertNotNil(function["parameters"] as? [String: Any])
+        let toolChoice = try XCTUnwrap(forwarded["tool_choice"] as? [String: Any])
+        XCTAssertEqual(toolChoice["type"] as? String, "function")
+        XCTAssertEqual((toolChoice["function"] as? [String: Any])?["name"] as? String, "shell_command")
+        XCTAssertNil(forwarded["parallel_tool_calls"])
+        XCTAssertNil(forwarded["reasoning"])
+        XCTAssertNil(forwarded["metadata"])
+    }
+
+    func testGatewayResponsesStreamingFallbackEmitsResponsesEvents() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["glm-5-turbo"], times: 2)
+        GatewayUpstreamURLProtocol.enqueue(status: 404, body: "404 page not found")
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            data: {"id":"chatcmpl_test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"stream "},"finish_reason":null}]}
+
+            data: {"id":"chatcmpl_test","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"fallback"},"finish_reason":null}]}
+
+            data: [DONE]
+
+            """
+        )
+
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/responses",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"glm-5-turbo","input":"hello","stream":true}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        let bodyText = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(bodyText.contains("event: response.created"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("event: response.output_item.added"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("event: response.content_part.added"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("event: response.output_text.delta"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains(#""delta":"stream ""#), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains(#""delta":"fallback""#), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("event: response.content_part.done"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("event: response.output_item.done"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("event: response.completed"), "body was: \(bodyText)")
+        XCTAssertTrue(bodyText.contains("data: [DONE]"), "body was: \(bodyText)")
+        let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/models", "/v1/responses", "/v1/chat/completions"])
+        XCTAssertTrue(upstreamRequests.last?.body.contains(#""stream":true"#) == true)
+    }
+
     func testGatewayProxiesChatCompletionsAndFailsOverExhaustedPlan() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["glm-5-turbo"], times: 2)
         GatewayUpstreamURLProtocol.enqueue(
             status: 402,
             body: #"{"error":{"message":"quota exceeded"}}"#
@@ -607,7 +918,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
 
         let harness = try GatewayHarness(
-            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
         )
         try await harness.configureZAIProviderForGateway()
         try await harness.start()
@@ -626,10 +938,12 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertTrue(bodyText.contains("backup plan answered"))
 
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
-        XCTAssertEqual(upstreamRequests.count, 2)
-        XCTAssertEqual(upstreamRequests[0].authorization, "Bearer primary-key")
-        XCTAssertEqual(upstreamRequests[1].authorization, "Bearer backup-key")
-        XCTAssertTrue(upstreamRequests.allSatisfy { $0.body.contains(#""model":"glm-5-turbo""#) })
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/models", "/v1/chat/completions", "/v1/chat/completions"])
+        let chatRequests = upstreamRequests.filter { $0.path == "/v1/chat/completions" }
+        XCTAssertEqual(chatRequests.count, 2)
+        XCTAssertEqual(chatRequests[0].authorization, "Bearer primary-key")
+        XCTAssertEqual(chatRequests[1].authorization, "Bearer backup-key")
+        XCTAssertTrue(chatRequests.allSatisfy { $0.body.contains(#""model":"glm-5-turbo""#) })
 
         let snapshot = try await harness.configStore.snapshot()
         let slots = try XCTUnwrap(snapshot.providerSettings(id: "zai")?.credentialSlots)
@@ -669,6 +983,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["shared-code-model"], times: 2)
         GatewayUpstreamURLProtocol.enqueue(
             status: 429,
             body: #"{"error":{"message":"rate limited"}}"#
@@ -676,7 +991,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         let harness = try GatewayHarness(
             catalog: capabilityClassGatewayCatalog(),
-            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
         )
         try await configureCapabilityClassProviders(harness: harness)
         try await harness.start()
@@ -695,13 +1011,15 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("downgrade is disabled"))
 
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
-        XCTAssertEqual(upstreamRequests.count, 1, "Gateway must not jump to a lower capability class after a retryable failure.")
+        let chatRequests = upstreamRequests.filter { $0.path == "/v1/chat/completions" }
+        XCTAssertEqual(chatRequests.count, 1, "Gateway must not jump to a lower capability class after a retryable failure.")
     }
 
     func testGatewayKeepsOriginalFailureForNonFailoverErrorsEvenWhenLowerTierExists() async throws {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["shared-code-model"], times: 2)
         GatewayUpstreamURLProtocol.enqueue(
             status: 400,
             body: #"{"error":{"message":"invalid request payload"}}"#
@@ -709,7 +1027,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         let harness = try GatewayHarness(
             catalog: capabilityClassGatewayCatalog(),
-            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
         )
         try await configureCapabilityClassProviders(harness: harness)
         try await harness.start()
@@ -723,12 +1042,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             body: Data(#"{"model":"shared-code-model","messages":[{"role":"user","content":"hello"}]}"#.utf8)
         )
 
-        XCTAssertEqual(response.statusCode, 502)
+        XCTAssertEqual(response.statusCode, 400)
         let bodyText = String(decoding: body, as: UTF8.self)
-        XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("routing failed"))
+        XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("invalid request payload"))
+        XCTAssertFalse(bodyText.localizedCaseInsensitiveContains("routing failed"))
         XCTAssertFalse(bodyText.localizedCaseInsensitiveContains("downgrade is disabled"))
+        let chatRequests = GatewayUpstreamURLProtocol.recordedRequests().filter { $0.path == "/v1/chat/completions" }
         XCTAssertEqual(
-            GatewayUpstreamURLProtocol.recordedRequests().count,
+            chatRequests.count,
             1,
             "Gateway should surface the original fatal provider error instead of reporting downgrade blocking."
         )
@@ -794,9 +1115,10 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             body: Data(#"{"model":"shared-claude-model","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}"#.utf8)
         )
 
-        XCTAssertEqual(response.statusCode, 502)
+        XCTAssertEqual(response.statusCode, 400)
         let bodyText = String(decoding: body, as: UTF8.self)
-        XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("routing failed"))
+        XCTAssertTrue(bodyText.localizedCaseInsensitiveContains("invalid request payload"))
+        XCTAssertFalse(bodyText.localizedCaseInsensitiveContains("routing failed"))
         XCTAssertFalse(bodyText.localizedCaseInsensitiveContains("downgrade is disabled"))
         XCTAssertEqual(
             GatewayUpstreamURLProtocol.recordedRequests().count,
@@ -809,6 +1131,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["deepseek-v4-flash"], times: 2)
         GatewayUpstreamURLProtocol.enqueue(
             status: 429,
             body: #"{"error":"quota exhausted"}"#
@@ -829,7 +1152,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
 
         let harness = try GatewayHarness(
-            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
         )
         try await harness.configureOllamaProviderForGateway()
         try await harness.start()
@@ -851,19 +1175,19 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertTrue(bodyText.contains(#""completion_tokens":5"#))
 
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
-        guard upstreamRequests.count == 2 else {
-            XCTFail("Expected two upstream requests after primary Ollama slot exhaustion, got \(upstreamRequests)")
+        let chatRequests = upstreamRequests.filter { $0.path == "/api/chat" }
+        guard chatRequests.count == 2 else {
+            XCTFail("Expected two upstream chat requests after primary Ollama slot exhaustion, got \(upstreamRequests)")
             return
         }
-        XCTAssertTrue(upstreamRequests.allSatisfy { $0.path == "/api/chat" })
-        XCTAssertEqual(upstreamRequests[0].authorization, "Bearer primary-ollama-key")
-        XCTAssertEqual(upstreamRequests[1].authorization, "Bearer backup-ollama-key")
-        XCTAssertTrue(upstreamRequests.allSatisfy { $0.body.contains(#""model":"deepseek-v4-flash""#) })
-        XCTAssertTrue(upstreamRequests.allSatisfy { !$0.body.contains(#""deepseek-v4-flash:cloud""#) })
-        XCTAssertTrue(upstreamRequests.allSatisfy { $0.body.contains(#""think":"high""#) })
-        XCTAssertTrue(upstreamRequests.allSatisfy { $0.body.contains(#""num_predict":64"#) })
-        XCTAssertTrue(upstreamRequests.allSatisfy { !$0.body.contains("reasoning_effort") })
-        XCTAssertTrue(upstreamRequests.allSatisfy { !$0.body.contains("stream_options") })
+        XCTAssertEqual(chatRequests[0].authorization, "Bearer primary-ollama-key")
+        XCTAssertEqual(chatRequests[1].authorization, "Bearer backup-ollama-key")
+        XCTAssertTrue(chatRequests.allSatisfy { $0.body.contains(#""model":"deepseek-v4-flash""#) })
+        XCTAssertTrue(chatRequests.allSatisfy { !$0.body.contains(#""deepseek-v4-flash:cloud""#) })
+        XCTAssertTrue(chatRequests.allSatisfy { $0.body.contains(#""think":"high""#) })
+        XCTAssertTrue(chatRequests.allSatisfy { $0.body.contains(#""num_predict":64"#) })
+        XCTAssertTrue(chatRequests.allSatisfy { !$0.body.contains("reasoning_effort") })
+        XCTAssertTrue(chatRequests.allSatisfy { !$0.body.contains("stream_options") })
 
         let snapshot = try await harness.configStore.snapshot()
         let slots = try XCTUnwrap(snapshot.providerSettings(id: "ollama")?.credentialSlots)
@@ -937,6 +1261,53 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(usage[0].providerID, "anthropic")
         XCTAssertEqual(usage[0].inputTokens, 17)
         XCTAssertEqual(usage[0].outputTokens, 4)
+    }
+
+    func testGatewayStripsClaudeCodeContextManagementBeforeAnthropicProxy() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: """
+            {
+              "id": "msg_context_management_stripped",
+              "type": "message",
+              "role": "assistant",
+              "model": "claude-sonnet-4-6",
+              "content": [{"type": "text", "text": "clean request"}],
+              "stop_reason": "end_turn",
+              "usage": {
+                "input_tokens": 8,
+                "output_tokens": 2,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0
+              }
+            }
+            """
+        )
+
+        let harness = try GatewayHarness(
+            anthropicExecutor: BurnBarAnthropicProviderExecutor(session: session)
+        )
+        try await harness.configureAnthropicProviderForGateway()
+        try await harness.start()
+        defer { Task { await harness.stop() } }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/messages",
+            headers: ["Content-Type": "application/json"],
+            body: Data(#"{"model":"claude-sonnet-4-6","max_tokens":64,"context_management":{"edits":[{"type":"clear_tool_uses_20250919","trigger":{"type":"input_tokens","value":100000},"keep":{"type":"tool_uses","value":10}}]},"messages":[{"role":"user","content":"hi"}]}"#.utf8)
+        )
+
+        XCTAssertEqual(response.statusCode, 200)
+        XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("clean request"))
+
+        let upstreamRequest = try XCTUnwrap(GatewayUpstreamURLProtocol.recordedRequests().first)
+        XCTAssertFalse(upstreamRequest.body.contains("context_management"))
+        XCTAssertTrue(upstreamRequest.body.contains(#""model":"claude-sonnet-4-6""#))
     }
 
     func testGatewaySendsClaudeOAuthTokenAsBearer() async throws {
@@ -1175,6 +1546,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["glm-5-turbo"], times: 2)
         GatewayUpstreamURLProtocol.enqueue(
             status: 429,
             body: #"{"error":{"message":"quota exhausted"}}"#
@@ -1199,7 +1571,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
 
         let harness = try GatewayHarness(
-            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
         )
         try await harness.configureZAIProviderForGateway()
         try await harness.start()
@@ -1226,9 +1599,11 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertTrue(bodyText.contains("\(clientName) backup answered"), clientName)
 
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
-        XCTAssertEqual(upstreamRequests.count, 2, clientName)
-        XCTAssertEqual(upstreamRequests[0].authorization, "Bearer primary-key", clientName)
-        XCTAssertEqual(upstreamRequests[1].authorization, "Bearer backup-key", clientName)
+        XCTAssertEqual(upstreamRequests.map(\.path), ["/v1/models", "/v1/models", "/v1/chat/completions", "/v1/chat/completions"], clientName)
+        let chatRequests = upstreamRequests.filter { $0.path == "/v1/chat/completions" }
+        XCTAssertEqual(chatRequests.count, 2, clientName)
+        XCTAssertEqual(chatRequests[0].authorization, "Bearer primary-key", clientName)
+        XCTAssertEqual(chatRequests[1].authorization, "Bearer backup-key", clientName)
 
         let snapshot = try await harness.configStore.snapshot()
         let slots = try XCTUnwrap(snapshot.providerSettings(id: "zai")?.credentialSlots)
@@ -1309,6 +1684,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["shared-code-model"], times: 2)
         GatewayUpstreamURLProtocol.enqueue(
             status: 429,
             body: #"{"error":{"message":"rate limit exceeded","type":"rate_limit_error","code":"rate_limit_exceeded"}}"#
@@ -1316,7 +1692,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         let harness = try GatewayHarness(
             catalog: capabilityClassGatewayCatalog(),
-            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
         )
         try await configureCapabilityClassProviders(harness: harness)
         try await harness.start()
@@ -1337,8 +1714,9 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             "Gateway must report downgrade disabled when catalog-resolved capability class is exhausted."
         )
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
+        let chatRequests = upstreamRequests.filter { $0.path == "/v1/chat/completions" }
         XCTAssertEqual(
-            upstreamRequests.count, 1,
+            chatRequests.count, 1,
             "Gateway must only attempt the catalog-resolved same-class route (pro), not fall through to base."
         )
     }
@@ -1396,6 +1774,7 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
         let session = URLSession(configuration: sessionConfig)
+        enqueueOpenAIModelCatalog(["shared-pro-model"], times: 2)
         GatewayUpstreamURLProtocol.enqueue(
             status: 429,
             body: #"{"error":{"message":"rate limit exceeded","type":"rate_limit_error","code":"rate_limit_exceeded"}}"#
@@ -1407,7 +1786,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         let harness = try GatewayHarness(
             catalog: catalog,
-            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session)
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(session: session),
+            modelCatalogSession: session
         )
         _ = try await harness.configStore.upsertProvider(
             BurnBarProviderSettings(
@@ -1453,8 +1833,9 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
 
         XCTAssertEqual(response.statusCode, 200, "Gateway must succeed by failing over to same-class alt provider.")
         let upstreamRequests = GatewayUpstreamURLProtocol.recordedRequests()
-        XCTAssertEqual(upstreamRequests.count, 2, "Gateway must try alpha-pro first, then alt-pro on 429.")
-        let requestPaths = upstreamRequests.map(\.path)
+        let chatRequests = upstreamRequests.filter { $0.path == "/v1/chat/completions" }
+        XCTAssertEqual(chatRequests.count, 2, "Gateway must try alpha-pro first, then alt-pro on 429.")
+        let requestPaths = chatRequests.map(\.path)
         XCTAssertTrue(
             requestPaths.allSatisfy { !$0.contains("alpha-base") },
             "Gateway must not try the base-tier route when same-class pro alternatives exist."

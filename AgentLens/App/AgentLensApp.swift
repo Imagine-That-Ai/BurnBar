@@ -751,6 +751,7 @@ struct OpenBurnBarApp: App {
             chatController: controller,
             operatingLayer: layer
         )
+        context.startRelayServices()
         context.startSmartDisplayServices()
         return context
     }
@@ -1114,30 +1115,7 @@ struct OpenBurnBarApp: App {
                         }
                         context.cloudSyncService = sync
 
-                        let hermesRelayHost: HermesRelayHostService
-                        if let existingRelayHost = context.hermesRelayHostService {
-                            hermesRelayHost = existingRelayHost
-                        } else {
-                            hermesRelayHost = HermesRelayHostService(
-                                accountManager: context.accountManager,
-                                settingsManager: context.settingsManager
-                            )
-                        }
-                        context.hermesRelayHostService = hermesRelayHost
-                        hermesRelayHost.start()
-
-                        let piRelayHost: PiAgentCloudRelayHostService
-                        if let existingPiRelayHost = context.piAgentRelayHostService {
-                            piRelayHost = existingPiRelayHost
-                        } else {
-                            piRelayHost = PiAgentCloudRelayHostService(
-                                accountManager: context.accountManager,
-                                settingsManager: context.settingsManager
-                            )
-                        }
-                        context.piAgentRelayHostService = piRelayHost
-                        piRelayHost.start()
-
+                        context.startRelayServices()
                         context.startSmartDisplayServices()
 
                         let mirror: ICloudSessionMirrorService
@@ -1163,7 +1141,7 @@ struct OpenBurnBarApp: App {
                         context.aggregator = aggregator
                         context.operatingLayer.aggregator = aggregator
                         context.operatingLayer.chatController = context.chatController
-                        context.daemonManager.attach(dataStore: context.dataStore)
+                        context.daemonManager.attach(dataStore: context.dataStore, cloudSyncService: sync)
                         context.cursorConnectorManager.attach(dataStore: context.dataStore)
                         context.quotaService.startAutomaticRefresh(dataStore: context.dataStore)
                         if !hasShownInitialDashboard {

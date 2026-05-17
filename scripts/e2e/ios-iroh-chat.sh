@@ -34,6 +34,7 @@ BUNDLE_ID="com.openburnbar.app"
 UID_VALUE=""
 EXPECTED_INTERFACE="cellular"
 MODEL="auto"
+EXPECTED_REQUESTED_MODEL=""
 PROMPT="Reply exactly: ok"
 RELAY_URL="https://use1-1.relay.alberto8793.burnbar.iroh.link/"
 POLL_SECONDS=420
@@ -58,6 +59,9 @@ Options:
   --bundle-id <id>            iOS app bundle id. Default: com.openburnbar.app
   --relay-url <url>           Hosted relay URL.
   --model <id|auto>           Hermes model for the hidden E2E prompt. Default: auto from live /v1/models.
+  --expect-requested-model <id>
+                              Model id expected in host_forward_chat_start. Defaults to --model.
+                              Use this when the app should canonicalize an old catalog alias.
   --prompt <text>             Hidden E2E prompt text.
   --expect-interface <name>   Required iOS networkInterfaces value. Default: cellular
   --poll-seconds <seconds>    Max Firestore polling time. Default: 420
@@ -79,6 +83,7 @@ while [[ $# -gt 0 ]]; do
         --uid) UID_VALUE="$2"; shift 2 ;;
         --relay-url) RELAY_URL="$2"; shift 2 ;;
         --model) MODEL="$2"; shift 2 ;;
+        --expect-requested-model) EXPECTED_REQUESTED_MODEL="$2"; shift 2 ;;
         --prompt) PROMPT="$2"; shift 2 ;;
         --expect-interface) EXPECTED_INTERFACE="$2"; shift 2 ;;
         --poll-seconds) POLL_SECONDS="$2"; shift 2 ;;
@@ -261,12 +266,16 @@ if [[ "${START_HOST}" -eq 1 ]]; then
 fi
 
 resolve_model_if_needed
+if [[ -z "${EXPECTED_REQUESTED_MODEL}" ]]; then
+    EXPECTED_REQUESTED_MODEL="${MODEL}"
+fi
 
 echo "E2E: iOS Hermes iroh hosted-relay path"
 echo "  project=${PROJECT}"
 echo "  uid=${UID_VALUE}"
 echo "  device=${DEVICE_ID}"
 echo "  model=${MODEL}"
+echo "  expectedRequestedModel=${EXPECTED_REQUESTED_MODEL}"
 echo "  expectedNetworkInterface=${EXPECTED_INTERFACE}"
 echo "  startedAt=${STARTED_AT}"
 
@@ -330,7 +339,7 @@ while [[ "${SECONDS}" -lt "${DEADLINE}" ]]; do
     FAILURE_COUNT="$(jq '[.[] | select(.eventType == "iroh_stream_failed")] | length' <<<"${POST_LAUNCH_EVENTS}")"
     INTERFACE_COUNT="$(jq --arg iface "${EXPECTED_INTERFACE}" '[.[] | select(.networkInterfaces | split(",") | index($iface))] | length' <<<"${POST_LAUNCH_EVENTS}")"
     CHAT_PROOF="$(
-        jq --arg model "${MODEL}" '
+        jq --arg model "${EXPECTED_REQUESTED_MODEL}" '
           ([.[] | select(.stage == "host_forward_chat_start" and .requestedModel == $model) | .requestId] | unique) as $chatIds
           | {
               start: ($chatIds | length),
@@ -357,7 +366,7 @@ while [[ "${SECONDS}" -lt "${DEADLINE}" ]]; do
     fi
     if [[ "${INTERFACE_COUNT}" -gt 0 && "${CHAT_START_COUNT}" -gt 0 && "${CHAT_HOST_COMPLETE_COUNT}" -gt 0 && "${CHAT_IOS_COMPLETE_COUNT}" -gt 0 ]]; then
         echo "PASS: expected interface and selected-model chat completion observed with no WSS fallback."
-        jq --arg model "${MODEL}" '
+        jq --arg model "${EXPECTED_REQUESTED_MODEL}" '
           ([.[] | select(.stage == "host_forward_chat_start" and .requestedModel == $model) | .requestId] | unique) as $chatIds
           | .[]
           | select(.networkInterfaces != "" or (.requestId as $id | $chatIds | index($id)))

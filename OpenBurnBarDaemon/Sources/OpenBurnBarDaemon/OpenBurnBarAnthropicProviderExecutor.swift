@@ -105,6 +105,11 @@ public struct BurnBarAnthropicProviderExecutor: Sendable {
             return body
         }
         json["model"] = resolvedModelID
+        // Claude Code's first-party client can send fields that are valid for
+        // its native transport but rejected by the public Messages endpoint.
+        // BurnBar routes through /v1/messages, so strip known transport-only
+        // keys instead of making Claude retry a deterministic 400 forever.
+        json.removeValue(forKey: "context_management")
         return try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
     }
 

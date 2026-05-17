@@ -304,7 +304,9 @@ struct AssistantModelPickerSheet: View {
                           reachability: AssistantModelMerger.Row.Reachability = .liveOnRelay,
                           isFavoriteToggleable: Bool,
                           isFavorite: Bool) -> some View {
-        let isSelected = currentModelID() == option.modelID && reachability == .liveOnRelay
+        let isSelected = currentModelID().map {
+            AssistantModelIDCanonicalizer.lookupKey($0) == AssistantModelIDCanonicalizer.lookupKey(option.modelID)
+        } == true && reachability == .liveOnRelay
         let isUnreachable = reachability == .unreachable
         let rowOpacity: Double = isUnreachable ? 0.55 : 1.0
 

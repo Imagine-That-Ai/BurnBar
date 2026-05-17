@@ -79,13 +79,13 @@ enum AssistantModelIDCanonicalizer {
     static func lookupKey(_ raw: String) -> String {
         canonicalized(raw)
             .lowercased()
-            .filter(\.isLetterOrNumber)
+            .filter { $0.isLetter || $0.isNumber }
     }
 
     static func familyKey(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-            .filter(\.isLetterOrNumber)
+            .filter { $0.isLetter || $0.isNumber }
     }
 
     static func resolveRouteEligibleModelID(

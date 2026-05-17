@@ -197,13 +197,15 @@ class FirestoreRepository {
     }
 
     fun listenToUsageSince(startDate: Long): Flow<List<TokenUsage>> = callbackFlow {
-        // `startTime` is written as a Firestore `Timestamp` (see iOS
+        // `endTime` is written as a Firestore `Timestamp` (see iOS
         // `UsageSyncService.swift`). Querying with an ISO-8601 string
         // cutoff crosses Firestore's type-order boundary and matches zero
         // documents, surfacing as empty Pulse live data for 1M / 1H / 1D.
+        // End time is the live attribution field: some gateway/session rows
+        // keep their start time fixed while token totals continue advancing.
         val listener = usageCollection
-            .whereGreaterThanOrEqualTo("startTime", Timestamp(Date(startDate)))
-            .orderBy("startTime", Query.Direction.DESCENDING)
+            .whereGreaterThanOrEqualTo("endTime", Timestamp(Date(startDate)))
+            .orderBy("endTime", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) { close(error); return@addSnapshotListener }
                 trySend(snapshot?.documents?.mapNotNull { it.toTokenUsage() } ?: emptyList())

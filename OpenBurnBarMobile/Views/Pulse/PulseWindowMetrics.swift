@@ -74,7 +74,7 @@ enum PulseWindowMetricBuilder {
     }
 
     private static func eventDate(for usage: TokenUsage) -> Date {
-        usage.startTime
+        max(usage.startTime, usage.endTime)
     }
 }
 

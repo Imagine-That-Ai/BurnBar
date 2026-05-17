@@ -696,7 +696,7 @@ final class HermesService {
         connections.filter { connection in
             connection.mode == .relayLink
                 && connection.status == .online
-                && Self.hasUsableRelayEncryption(connection)
+                && Self.hasUsableRelayConnection(connection)
         }
     }
 
@@ -733,7 +733,11 @@ final class HermesService {
         self.defaults = defaults
         self.history = history
         self.toolCatalog = toolCatalog
-        self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        self.selectedModelID = Self.restoredModelID(
+            defaults.string(forKey: selectedModelDefaultsKey),
+            defaults: defaults,
+            key: selectedModelDefaultsKey
+        )
         self.selectedModelWasExplicit = self.selectedModelID?.nilIfBlank != nil
         self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
         history.loadFromDiskIfNeeded()
@@ -795,10 +799,14 @@ final class HermesService {
             if let targetID,
                let current = connections.first(where: { $0.id == targetID }),
                current.mode == .relayLink {
-                if Self.hasUsableRelayEncryption(current), current.id == selectedConnection.id {
+                if Self.hasUsableRelayConnection(current), current.id == selectedConnection.id {
                     selectedConnection = current
-                } else if Self.hasUsableRelayEncryption(current) {
+                } else if Self.hasUsableRelayConnection(current) {
                     _ = selectConnection(current)
+                } else if Self.hasUsableRelayEncryption(current) {
+                    selectedConnection = .localDefault
+                    defaults.removeObject(forKey: selectedConnectionDefaultsKey)
+                    runtimeErrorText = "That Mac relay stopped checking in. Open or restart OpenBurnBar on the Mac, then refresh."
                 } else {
                     selectedConnection = .localDefault
                     defaults.removeObject(forKey: selectedConnectionDefaultsKey)
@@ -834,6 +842,11 @@ final class HermesService {
                 runtimeErrorText = lastError
                 return false
             }
+            guard Self.isRelayConnectionFresh(connection) else {
+                lastError = "That Mac relay stopped checking in. Open or restart OpenBurnBar on the Mac, then refresh."
+                runtimeErrorText = lastError
+                return false
+            }
             endpoint = nil
         } else if let validated = Self.validatedEndpointURL(connection.endpointURL ?? "") {
             endpoint = validated
@@ -845,7 +858,11 @@ final class HermesService {
         runtimeGeneration += 1
         selectedConnection = connection
         selectedSessionID = nil
-        selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        selectedModelID = Self.restoredModelID(
+            defaults.string(forKey: selectedModelDefaultsKey),
+            defaults: defaults,
+            key: selectedModelDefaultsKey
+        )
         selectedModelWasExplicit = selectedModelID?.nilIfBlank != nil
         sessions = []
         profiles = []
@@ -1197,16 +1214,20 @@ final class HermesService {
     }
 
     func selectModel(_ option: HermesRuntimeModelOption) {
-        if !modelOptions.isEmpty,
-           !modelOptions.contains(where: { $0.modelID == option.modelID && $0.isRouteEligible }) {
+        let requested = AssistantModelIDCanonicalizer.canonicalized(option.modelID)
+        let resolved = !modelOptions.isEmpty
+            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(requested, in: modelOptions)
+            : requested
+        if !modelOptions.isEmpty, resolved == nil {
             let message = "Selected Hermes model '\(option.modelID)' is not advertised by this Mac relay. Pick a live model from the relay list or refresh/restart the Mac Hermes gateway."
             lastError = message
             runtimeErrorText = message
             return
         }
-        selectedModelID = option.modelID
+        let modelID = resolved ?? requested
+        selectedModelID = modelID
         selectedModelWasExplicit = true
-        defaults.set(option.modelID, forKey: selectedModelDefaultsKey)
+        defaults.set(modelID, forKey: selectedModelDefaultsKey)
         runtimeErrorText = nil
         lastError = nil
     }
@@ -1215,6 +1236,29 @@ final class HermesService {
         selectedModelID = nil
         selectedModelWasExplicit = false
         defaults.removeObject(forKey: selectedModelDefaultsKey)
+    }
+
+    private static func restoredModelID(_ stored: String?, defaults: UserDefaults, key: String) -> String? {
+        guard let stored = stored?.nilIfBlank else { return nil }
+        let canonical = AssistantModelIDCanonicalizer.canonicalized(stored)
+        if canonical != stored {
+            defaults.set(canonical, forKey: key)
+        }
+        return canonical
+    }
+
+    private func canonicalizedSelectedModelID(_ modelID: String) -> String {
+        let canonical = AssistantModelIDCanonicalizer.canonicalized(modelID)
+        persistResolvedSelectedModelID(canonical)
+        return canonical
+    }
+
+    private func persistResolvedSelectedModelID(_ modelID: String) {
+        guard selectedModelID != modelID else { return }
+        selectedModelID = modelID
+        if selectedModelWasExplicit {
+            defaults.set(modelID, forKey: selectedModelDefaultsKey)
+        }
     }
 
     #if DEBUG
@@ -1232,13 +1276,20 @@ final class HermesService {
             }
             return
         }
-        guard modelOptions.isEmpty || modelOptions.contains(where: { $0.modelID == trimmed && $0.isRouteEligible }) else {
+        let canonical = AssistantModelIDCanonicalizer.canonicalized(trimmed)
+        let resolved = !modelOptions.isEmpty
+            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(canonical, in: modelOptions)
+            : canonical
+        guard modelOptions.isEmpty || resolved != nil else {
             lastError = "Selected Hermes model '\(trimmed)' is not available on this Mac relay. Pick another model or refresh/restart the Mac Hermes gateway."
             runtimeErrorText = lastError
             return
         }
-        selectedModelID = trimmed
+        selectedModelID = resolved ?? canonical
         selectedModelWasExplicit = true
+        if let selectedModelID {
+            defaults.set(selectedModelID, forKey: selectedModelDefaultsKey)
+        }
     }
     #endif
 
@@ -1275,16 +1326,19 @@ final class HermesService {
         }
         if modelOptions.isEmpty {
             if selectedConnection.mode == .relayLink,
-               (selectedModelWasExplicit || selectedConnection.advertisedModel?.nilIfBlank == selectedModelID) {
-                return selectedModelID
+               relayConnectionAlreadyAdvertises(modelID: selectedModelID) {
+                return canonicalizedSelectedModelID(selectedModelID)
             }
             if selectedModelWasExplicit {
                 throw HermesServiceError.selectedModelCatalogUnavailable(selectedModelID)
             }
-        } else if !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
+        } else if let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
+            persistResolvedSelectedModelID(resolved)
+            return resolved
+        } else {
             throw HermesServiceError.selectedModelUnavailable(selectedModelID)
         }
-        return selectedModelID
+        return canonicalizedSelectedModelID(selectedModelID)
     }
 
     /// Retry the most recent user turn. Strips any assistant messages
@@ -1627,7 +1681,8 @@ final class HermesService {
 
     private func ensureRelayModelCatalogLoadedBeforeSend() async {
         guard selectedConnection.mode == .relayLink, modelOptions.isEmpty else { return }
-        if selectedModelWasExplicit, selectedModelID?.nilIfBlank != nil {
+        if let selectedModelID = selectedModelID?.nilIfBlank,
+           relayConnectionAlreadyAdvertises(modelID: selectedModelID) {
             return
         }
         await loadModels(generation: runtimeGeneration)
@@ -2178,10 +2233,12 @@ final class HermesService {
 
     private var activeModelName: String? {
         if let selectedModelID,
-           let option = modelOptions.first(where: { $0.modelID == selectedModelID }) {
+           let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions),
+           let option = modelOptions.first(where: { $0.modelID == resolved }) {
             return option.displayName.nilIfBlank ?? option.modelID.nilIfBlank
         }
-        return selectedModelID?.nilIfBlank ?? selectedConnection.advertisedModel?.nilIfBlank
+        return selectedModelID?.nilIfBlank.map(AssistantModelIDCanonicalizer.canonicalized)
+            ?? selectedConnection.advertisedModel?.nilIfBlank
     }
 
     /// Raw model id we send in the `"model"` field of the chat completion
@@ -2197,16 +2254,19 @@ final class HermesService {
         if let selectedModelID = selectedModelID?.nilIfBlank {
             if modelOptions.isEmpty {
                 if selectedConnection.mode == .relayLink,
-                   (selectedModelWasExplicit || selectedConnection.advertisedModel?.nilIfBlank == selectedModelID) {
-                    return selectedModelID
+                   relayConnectionAlreadyAdvertises(modelID: selectedModelID) {
+                    return canonicalizedSelectedModelID(selectedModelID)
                 }
                 if selectedModelWasExplicit {
                     throw HermesServiceError.selectedModelCatalogUnavailable(selectedModelID)
                 }
-            } else if !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
+            } else if let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
+                persistResolvedSelectedModelID(resolved)
+                return resolved
+            } else {
                 throw HermesServiceError.selectedModelUnavailable(selectedModelID)
             }
-            return selectedModelID
+            return canonicalizedSelectedModelID(selectedModelID)
         }
         if !modelOptions.isEmpty {
             guard let routeEligibleModelID = Self.preferredRouteEligibleModelID(
@@ -2220,14 +2280,23 @@ final class HermesService {
         return selectedConnection.advertisedModel?.nilIfBlank ?? "hermes"
     }
 
+    private func relayConnectionAlreadyAdvertises(modelID: String) -> Bool {
+        guard selectedConnection.mode == .relayLink,
+              let advertised = selectedConnection.advertisedModel?.nilIfBlank else {
+            return false
+        }
+        return AssistantModelIDCanonicalizer.canonicalized(advertised) == AssistantModelIDCanonicalizer.canonicalized(modelID)
+    }
+
     func checkReachability(generation: Int? = nil) async {
         do {
             guard generation == nil || generation == runtimeGeneration else { return }
             if selectedConnection.mode == .relayLink {
-                _ = try await relayTransport.sendUnary(
-                    relayPayload(operation: .models, method: "GET", path: "/v1/models"),
-                    timeout: remoteRelayControlPlaneTimeout
-                )
+                guard Self.hasUsableRelayConnection(selectedConnection) else {
+                    isReachable = false
+                    runtimeErrorText = "That Mac relay stopped checking in. Open or restart OpenBurnBar on the Mac, then refresh."
+                    return
+                }
                 guard generation == nil || generation == runtimeGeneration else { return }
                 isReachable = true
             } else {
@@ -2285,7 +2354,11 @@ final class HermesService {
                 )
             }
             modelOptions = options
-            if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
+            if let selectedModelID,
+               let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
+                persistResolvedSelectedModelID(resolved)
+                runtimeErrorText = nil
+            } else if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
                 if selectedModelWasExplicit {
                     runtimeErrorText = "Selected Hermes model '\(selectedModelID)' is not advertised by this Mac relay. Pick a listed model or refresh the Mac provider catalog."
                 } else {
@@ -2879,6 +2952,20 @@ final class HermesService {
     private static func hasUsableRelayEncryption(_ connection: HermesConnectionRecord) -> Bool {
         connection.relayEncryption == HermesRelayCrypto.algorithm
             && (connection.relayPublicKey?.isEmpty == false)
+    }
+
+    private nonisolated static let relayFreshnessWindow: TimeInterval = 3 * 60
+
+    private static func hasUsableRelayConnection(_ connection: HermesConnectionRecord) -> Bool {
+        hasUsableRelayEncryption(connection) && isRelayConnectionFresh(connection)
+    }
+
+    static func isRelayConnectionFresh(_ connection: HermesConnectionRecord, now: Date = Date()) -> Bool {
+        guard connection.mode == .relayLink else { return true }
+        let heartbeat = connection.realtimeRelayLastSeenAt
+            ?? connection.lastSeenAt
+            ?? connection.updatedAt
+        return now.timeIntervalSince(heartbeat) <= relayFreshnessWindow
     }
 
     private static func encodeStringArray(_ values: [String]) -> String {

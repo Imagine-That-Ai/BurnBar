@@ -72,7 +72,11 @@ final class OpenClawService {
          defaults: UserDefaults = .standard) {
         self.urlSession = urlSession
         self.defaults = defaults
-        self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        self.selectedModelID = Self.restoredModelID(
+            defaults.string(forKey: selectedModelDefaultsKey),
+            defaults: defaults,
+            key: selectedModelDefaultsKey
+        )
         self.selectedModelWasExplicit = self.selectedModelID?.nonEmpty != nil
         self.favoriteModelIDs = Self.decodeStringArray(
             defaults.string(forKey: favoriteModelsDefaultsKey)
@@ -96,9 +100,14 @@ final class OpenClawService {
     }
 
     func selectModel(_ option: HermesRuntimeModelOption) {
-        selectedModelID = option.modelID
+        let requested = AssistantModelIDCanonicalizer.canonicalized(option.modelID)
+        let resolved = !modelOptions.isEmpty
+            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(requested, in: modelOptions)
+            : requested
+        let modelID = resolved ?? requested
+        selectedModelID = modelID
         selectedModelWasExplicit = true
-        defaults.set(option.modelID, forKey: selectedModelDefaultsKey)
+        defaults.set(modelID, forKey: selectedModelDefaultsKey)
     }
 
     func clearSelectedModel() {
@@ -113,11 +122,13 @@ final class OpenClawService {
             guard !modelOptions.isEmpty else {
                 throw OpenClawServiceError.selectedModelCatalogUnavailable(selectedModelID)
             }
-            guard modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) else {
+            guard let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) else {
                 throw OpenClawServiceError.selectedModelUnavailable(selectedModelID)
             }
+            persistResolvedSelectedModelID(resolved)
+            return resolved
         }
-        return selectedModelID
+        return canonicalizedSelectedModelID(selectedModelID)
     }
 
     func isFavoriteModel(_ option: HermesRuntimeModelOption) -> Bool {
@@ -136,7 +147,10 @@ final class OpenClawService {
 
     var selectedModelOption: HermesRuntimeModelOption? {
         guard let selectedModelID else { return nil }
-        return modelOptions.first { $0.modelID == selectedModelID }
+        guard let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) else {
+            return nil
+        }
+        return modelOptions.first { $0.modelID == resolved }
     }
 
     // MARK: - HTTP
@@ -176,7 +190,11 @@ final class OpenClawService {
         do {
             let (data, _) = try await urlSession.data(for: request)
             modelOptions = Self.parseModels(data: data)
-            if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
+            if let selectedModelID,
+               let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
+                persistResolvedSelectedModelID(resolved)
+                runtimeErrorText = nil
+            } else if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
                 if selectedModelWasExplicit {
                     runtimeErrorText = "Selected OpenClaw model '\(selectedModelID)' is not advertised by this Mac OpenClaw harness. Pick a listed model or refresh the Mac provider catalog."
                 } else {
@@ -193,6 +211,29 @@ final class OpenClawService {
             }
         } catch {
             runtimeErrorText = "Failed to list OpenClaw models: \(error.localizedDescription)"
+        }
+    }
+
+    private static func restoredModelID(_ stored: String?, defaults: UserDefaults, key: String) -> String? {
+        guard let stored = stored?.nonEmpty else { return nil }
+        let canonical = AssistantModelIDCanonicalizer.canonicalized(stored)
+        if canonical != stored {
+            defaults.set(canonical, forKey: key)
+        }
+        return canonical
+    }
+
+    private func canonicalizedSelectedModelID(_ modelID: String) -> String {
+        let canonical = AssistantModelIDCanonicalizer.canonicalized(modelID)
+        persistResolvedSelectedModelID(canonical)
+        return canonical
+    }
+
+    private func persistResolvedSelectedModelID(_ modelID: String) {
+        guard selectedModelID != modelID else { return }
+        selectedModelID = modelID
+        if selectedModelWasExplicit {
+            defaults.set(modelID, forKey: selectedModelDefaultsKey)
         }
     }
 

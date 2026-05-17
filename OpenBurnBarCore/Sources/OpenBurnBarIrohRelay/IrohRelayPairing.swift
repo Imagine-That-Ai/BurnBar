@@ -68,8 +68,10 @@ public enum IrohPairingError: Error, Equatable, Sendable {
 /// Defaults used when iOS verifies an inbound pairing record.
 public enum IrohPairingFreshness {
     /// Reject records older than this when verifying. Mirrors the heartbeat
-    /// cadence on the Mac side (30s) plus generous slack for clock skew.
-    public static let maximumAgeSeconds: TimeInterval = 24 * 60 * 60
+    /// cadence on the Mac side (30s) plus generous slack for clock skew and
+    /// momentary background stalls. Older records describe a Mac endpoint that
+    /// may no longer own the advertised NodeAddr and must not be dialed.
+    public static let maximumAgeSeconds: TimeInterval = 3 * 60
 }
 
 /// Signer + verifier. Mac owns a signing identity persisted in Keychain by

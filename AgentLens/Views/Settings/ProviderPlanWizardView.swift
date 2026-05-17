@@ -99,6 +99,8 @@ struct ProviderPlanWizardView: View {
     // Credential step state
     @State private var planLabel = ""
     @State private var apiKeyInput = ""
+    @State private var credentialStorageOverride: String?
+    @State private var credentialStorageOverrideVisibleToken: String?
     @State private var showAPIKey = false
     @State private var isProbingQuota = false
     @State private var quotaProbeResult: String?
@@ -653,6 +655,8 @@ struct ProviderPlanWizardView: View {
                 Button {
                     selectedProviderID = nil
                     selectedAuthMethodID = nil
+                    credentialStorageOverride = nil
+                    credentialStorageOverrideVisibleToken = nil
                     navigateToStep(.provider)
                 } label: {
                     HStack(spacing: DesignSystem.Spacing.sm) {
@@ -1651,6 +1655,8 @@ struct ProviderPlanWizardView: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 selectedAuthMethodID = method.id
                 apiKeyInput = ""
+                credentialStorageOverride = nil
+                credentialStorageOverrideVisibleToken = nil
                 quotaProbeResult = nil
                 quotaProbeError = nil
                 externalAuthInfo = nil
@@ -2044,6 +2050,8 @@ struct ProviderPlanWizardView: View {
                 Button {
                     if let pasted = NSPasteboard.general.string(forType: .string) {
                         apiKeyInput = pasted
+                        credentialStorageOverride = nil
+                        credentialStorageOverrideVisibleToken = nil
                         credentialImportMessage = nil
                         scheduleQuotaProbe()
                     }
@@ -2648,6 +2656,8 @@ struct ProviderPlanWizardView: View {
         selectedAuthMethodID = descriptor.primaryMethod.id
         planLabel = ""
         apiKeyInput = ""
+        credentialStorageOverride = nil
+        credentialStorageOverrideVisibleToken = nil
         showAPIKey = false
         quotaProbeResult = nil
         quotaProbeError = nil
@@ -2797,6 +2807,8 @@ struct ProviderPlanWizardView: View {
 
         isImportingCredential = true
         credentialImportMessage = nil
+        credentialStorageOverride = nil
+        credentialStorageOverrideVisibleToken = nil
         quotaProbeError = nil
         quotaProbeResult = nil
 
@@ -2808,6 +2820,8 @@ struct ProviderPlanWizardView: View {
                 ).load(allowUserInteraction: true)
                 await MainActor.run {
                     apiKeyInput = credentials.accessToken
+                    credentialStorageOverride = credentials.routeCredentialStoragePayload()
+                    credentialStorageOverrideVisibleToken = credentials.accessToken
                     if let accountLabel, !accountLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         credentialImportMessage = "Imported \(accountLabel)'s Claude OAuth token. The token is hidden below; continue and Save & Connect so Claude is advertised as route-ready."
                     } else {
@@ -2835,6 +2849,8 @@ struct ProviderPlanWizardView: View {
 
         isImportingCredential = true
         credentialImportMessage = nil
+        credentialStorageOverride = nil
+        credentialStorageOverrideVisibleToken = nil
         quotaProbeError = nil
         quotaProbeResult = nil
 
@@ -2850,6 +2866,8 @@ struct ProviderPlanWizardView: View {
                 }
                 await MainActor.run {
                     apiKeyInput = json
+                    credentialStorageOverride = nil
+                    credentialStorageOverrideVisibleToken = nil
                     credentialImportMessage = "Imported the signed-in OpenCode auth.json. The token is hidden below; continue and Save & Connect so OpenCode models are route-ready."
                     isImportingCredential = false
                     scheduleQuotaProbe()
@@ -3255,6 +3273,9 @@ struct ProviderPlanWizardView: View {
 
         let label = planLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         let apiKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let storageCredential = credentialStorageOverrideVisibleToken == apiKey
+            ? (credentialStorageOverride ?? apiKey)
+            : apiKey
         if method.usesExternalLogin {
             refreshExternalAuthStateIfNeeded()
             guard externalAuthInfo?.isWizardConnected == true else {
@@ -3278,7 +3299,7 @@ struct ProviderPlanWizardView: View {
                     newSlotID = try await daemonManager.addProviderCredentialSlotReturningID(
                         providerID: providerID,
                         label: label,
-                        apiKey: apiKey,
+                        apiKey: storageCredential,
                         isEnabled: selectedStrategy != .backup
                     )
                 } else {
@@ -3288,7 +3309,7 @@ struct ProviderPlanWizardView: View {
                 if let mirrorAccount = method.storage.mirrorAccountIdentifier {
                     do {
                         try await MainActor.run {
-                            try ProviderAPIKeyStore.shared.setAPIKey(apiKey, for: mirrorAccount)
+                            try ProviderAPIKeyStore.shared.setAPIKey(storageCredential, for: mirrorAccount)
                         }
                     } catch {
                         AppLogger.dataStore.silentFailure(

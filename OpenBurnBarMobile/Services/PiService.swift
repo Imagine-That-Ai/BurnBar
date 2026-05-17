@@ -259,7 +259,11 @@ final class PiService {
         self.defaults = defaults
         self.history = history
         self.toolCatalog = toolCatalog
-        self.selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        self.selectedModelID = Self.restoredModelID(
+            defaults.string(forKey: selectedModelDefaultsKey),
+            defaults: defaults,
+            key: selectedModelDefaultsKey
+        )
         self.selectedModelWasExplicit = self.selectedModelID?.nilIfBlank != nil
         self.favoriteModelIDs = Self.decodeStringArray(defaults.string(forKey: favoriteModelsDefaultsKey))
         // Restore previously-added direct URLs.
@@ -304,7 +308,11 @@ final class PiService {
     func selectConnection(_ connection: PiConnectionRecord) -> Bool {
         guard connections.contains(where: { $0.id == connection.id }) else { return false }
         selectedConnection = connection
-        selectedModelID = defaults.string(forKey: selectedModelDefaultsKey)
+        selectedModelID = Self.restoredModelID(
+            defaults.string(forKey: selectedModelDefaultsKey),
+            defaults: defaults,
+            key: selectedModelDefaultsKey
+        )
         selectedModelWasExplicit = selectedModelID?.nilIfBlank != nil
         modelOptions = []
         defaults.set(connection.id, forKey: selectedConnectionDefaultsKey)
@@ -351,9 +359,14 @@ final class PiService {
     }
 
     func selectModel(_ option: HermesRuntimeModelOption) {
-        selectedModelID = option.modelID
+        let requested = AssistantModelIDCanonicalizer.canonicalized(option.modelID)
+        let resolved = !modelOptions.isEmpty
+            ? AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(requested, in: modelOptions)
+            : requested
+        let modelID = resolved ?? requested
+        selectedModelID = modelID
         selectedModelWasExplicit = true
-        defaults.set(option.modelID, forKey: selectedModelDefaultsKey)
+        defaults.set(modelID, forKey: selectedModelDefaultsKey)
     }
 
     func clearSelectedModel() {
@@ -368,11 +381,36 @@ final class PiService {
             guard !modelOptions.isEmpty else {
                 throw PiServiceError.selectedModelCatalogUnavailable(selectedModelID)
             }
-            guard modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) else {
+            guard let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) else {
                 throw PiServiceError.selectedModelUnavailable(selectedModelID)
             }
+            persistResolvedSelectedModelID(resolved)
+            return resolved
         }
-        return selectedModelID
+        return canonicalizedSelectedModelID(selectedModelID)
+    }
+
+    private static func restoredModelID(_ stored: String?, defaults: UserDefaults, key: String) -> String? {
+        guard let stored = stored?.nilIfBlank else { return nil }
+        let canonical = AssistantModelIDCanonicalizer.canonicalized(stored)
+        if canonical != stored {
+            defaults.set(canonical, forKey: key)
+        }
+        return canonical
+    }
+
+    private func canonicalizedSelectedModelID(_ modelID: String) -> String {
+        let canonical = AssistantModelIDCanonicalizer.canonicalized(modelID)
+        persistResolvedSelectedModelID(canonical)
+        return canonical
+    }
+
+    private func persistResolvedSelectedModelID(_ modelID: String) {
+        guard selectedModelID != modelID else { return }
+        selectedModelID = modelID
+        if selectedModelWasExplicit {
+            defaults.set(modelID, forKey: selectedModelDefaultsKey)
+        }
     }
 
     func isFavoriteModel(_ option: HermesRuntimeModelOption) -> Bool {
@@ -778,7 +816,11 @@ final class PiService {
             let (data, _) = try await urlSession.data(for: request)
             let decoded = Self.parseModels(data: data)
             modelOptions = decoded
-            if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
+            if let selectedModelID,
+               let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) {
+                persistResolvedSelectedModelID(resolved)
+                runtimeErrorText = nil
+            } else if let selectedModelID, !modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) {
                 if selectedModelWasExplicit {
                     runtimeErrorText = "Selected Pi model '\(selectedModelID)' is not advertised by this Mac Pi harness. Pick a listed model or refresh the Mac provider catalog."
                 } else {
@@ -804,11 +846,13 @@ final class PiService {
                 guard !modelOptions.isEmpty else {
                     throw PiServiceError.selectedModelCatalogUnavailable(selectedModelID)
                 }
-                guard modelOptions.contains(where: { $0.modelID == selectedModelID && $0.isRouteEligible }) else {
+                guard let resolved = AssistantModelIDCanonicalizer.resolveRouteEligibleModelID(selectedModelID, in: modelOptions) else {
                     throw PiServiceError.selectedModelUnavailable(selectedModelID)
                 }
+                persistResolvedSelectedModelID(resolved)
+                return resolved
             }
-            return selectedModelID
+            return canonicalizedSelectedModelID(selectedModelID)
         }
         return selectedConnection.advertisedModel?.nilIfBlank ?? "pi"
     }

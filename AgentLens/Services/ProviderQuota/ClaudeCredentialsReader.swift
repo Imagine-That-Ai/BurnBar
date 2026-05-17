@@ -88,6 +88,28 @@ struct ClaudeOAuthCredentials: Sendable, Equatable {
         if tier.contains("enterprise") { return "Enterprise" }
         return subscriptionType.isEmpty ? "Claude" : subscriptionType.capitalized
     }
+
+    /// Storage payload for BurnBar's Anthropic route credential slot.
+    ///
+    /// The UI still displays/probes `accessToken`, but saving the full OAuth
+    /// payload lets the daemon refresh the bearer later instead of making the
+    /// user re-import Claude Code whenever the access token expires.
+    func routeCredentialStoragePayload() -> String {
+        var oauth: [String: Any] = ["accessToken": accessToken]
+        if let refreshToken { oauth["refreshToken"] = refreshToken }
+        if let expiresAt { oauth["expiresAt"] = expiresAt.timeIntervalSince1970 * 1000 }
+        if !subscriptionType.isEmpty { oauth["subscriptionType"] = subscriptionType }
+        if !rateLimitTier.isEmpty { oauth["rateLimitTier"] = rateLimitTier }
+
+        var root: [String: Any] = ["claudeAiOauth": oauth]
+        if let organizationUuid { root["organizationUuid"] = organizationUuid }
+
+        guard let data = try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys]),
+              let payload = String(data: data, encoding: .utf8) else {
+            return accessToken
+        }
+        return payload
+    }
 }
 
 protocol ClaudeCredentialsReading: Sendable {

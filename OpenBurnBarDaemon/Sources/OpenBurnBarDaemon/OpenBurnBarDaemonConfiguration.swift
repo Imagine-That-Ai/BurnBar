@@ -28,6 +28,10 @@ public enum BurnBarDaemonPaths {
         supportDirectoryURL.appendingPathComponent("provider-config.json", isDirectory: false)
     }
 
+    public static var defaultProviderSecretContinuityURL: URL {
+        supportDirectoryURL.appendingPathComponent("provider-secrets.continuity.json", isDirectory: false)
+    }
+
     public static var defaultUsageLedgerURL: URL {
         supportDirectoryURL.appendingPathComponent("usage-events.jsonl", isDirectory: false)
     }

@@ -76,6 +76,31 @@ final class OpenClawServiceTests: XCTestCase {
                        "qwen3-coder:30b")
     }
 
+    func test_selectModelResolvesLegacyCatalogAliasToLiveOpenClawModel() {
+        let suiteName = "OpenClawServiceTests-alias-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let service = OpenClawService(urlSession: .shared, defaults: defaults)
+        let live = HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5.4-mini",
+            displayName: "GPT-5.4 mini",
+            routeEligible: true
+        )
+        service.modelOptions = [live]
+
+        service.selectModel(HermesRuntimeModelOption(
+            providerID: "openai",
+            providerName: "OpenAI",
+            modelID: "gpt-5-4-mini",
+            displayName: "GPT-5.4 mini"
+        ))
+
+        XCTAssertEqual(service.selectedModelID, "gpt-5.4-mini")
+        XCTAssertEqual(defaults.string(forKey: "openClaw.selectedModelID"), "gpt-5.4-mini")
+    }
+
     func test_clearSelectedModelRemovesPersistedDefault() {
         let defaults = UserDefaults(suiteName: "OpenClawServiceTests-clear")!
         defaults.removePersistentDomain(forName: "OpenClawServiceTests-clear")
@@ -142,7 +167,7 @@ final class OpenClawServiceTests: XCTestCase {
         let option = AssistantModelOption(
             providerID: "openai",
             providerName: "OpenAI",
-            modelID: "gpt-5-5",
+            modelID: "gpt-5.5",
             displayName: "GPT-5.5"
         )
         CLIAgentModelPreferences.setPreferredModelID("gpt-5-5", for: .codex, defaults: defaults)
@@ -153,7 +178,11 @@ final class OpenClawServiceTests: XCTestCase {
             options: [option]
         )
 
-        XCTAssertEqual(modelID, "gpt-5-5")
+        XCTAssertEqual(modelID, "gpt-5.5")
+        XCTAssertEqual(
+            CLIAgentModelPreferences.preferredModelID(for: .codex, defaults: defaults),
+            "gpt-5.5"
+        )
     }
 
     func test_cliAgentPreferredModelValidationFailsWhenSelectedCodexModelDisappears() {

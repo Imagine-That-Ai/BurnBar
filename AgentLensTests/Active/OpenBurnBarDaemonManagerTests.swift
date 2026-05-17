@@ -383,6 +383,55 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
     }
 
     @MainActor
+    func test_managerUploadsPendingUsageAfterDaemonImport() async throws {
+        let harness = try makeRuntimePathsHarness(name: "daemon-import-cloud-upload")
+        defer { harness.cleanup() }
+
+        try fallbackUsageLines().write(to: harness.paths.usageLedgerURL, atomically: true, encoding: .utf8)
+        let store = try makeInMemoryStore()
+        var uploadCalls = 0
+
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: OpenBurnBarDaemonDependencies(
+                fileManager: .default,
+                runProcess: { _, _ in "" },
+                resolveDaemonBinary: { nil },
+                requestHealth: { _ in throw POSIXError(.ECONNREFUSED) },
+                requestConfig: { _ in BurnBarProviderConfigurationSnapshot(providers: []) },
+                updateConfig: { _, snapshot in snapshot },
+                requestRecentUsage: { _, _ in [] },
+                requestControllerProjects: { _ in [] },
+                upsertControllerProject: { _, project in project },
+                recordControllerReviewRun: { _, run in
+                    BurnBarControllerReviewRunRecordResponse(
+                        run: run,
+                        summary: BurnBarControllerSummary(
+                            updatedAt: Date(),
+                            counts: BurnBarControllerCounts(
+                                projectCount: 0,
+                                pendingQuestionCount: 0,
+                                openFollowupCount: 0,
+                                activeMissionCount: 0,
+                                staleProjectCount: 0
+                            ),
+                            freshness: .missing
+                        )
+                    )
+                }
+            ),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default),
+            uploadPendingUsageAfterImport: { uploadCalls += 1 }
+        )
+
+        manager.dataStore = store
+        await manager.refreshHealth()
+
+        XCTAssertEqual(uploadCalls, 1)
+        XCTAssertEqual(try store.fetchUnsynced().count, 2)
+    }
+
+    @MainActor
     func test_managerExportsControllerActivitySnapshotFromLocalData() async throws {
         let harness = try makeRuntimePathsHarness(name: "activity-export")
         defer { harness.cleanup() }

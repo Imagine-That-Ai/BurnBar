@@ -46,6 +46,7 @@ models into the client config automatically:
 - For OpenAI-compatible providers that expose `/models`, BurnBar lists upstream-advertised models for eligible accounts and hides missing-credential, disabled, exhausted, and cooling-down rows.
 - Each model row includes provider id, account id, account label, capabilities, quota state, enabled state, route eligibility, and last refresh fields.
 - `/v1/chat/completions` and `/v1/responses` stop before contacting an upstream provider when the selected model has no eligible route.
+- `/v1/responses` first uses an upstream Responses endpoint when the provider has one. If an advertised OpenAI-compatible provider only exposes chat completions, BurnBar translates the request through `/v1/chat/completions` and returns a Responses-shaped JSON or SSE stream so Codex-style clients still work.
 - Same-provider account failover can happen only through eligible accounts that advertise the requested model.
 - BurnBar does not silently substitute a stale default model.
 - CLI wiring fails before editing a client when BurnBar has no route-eligible advertised models for that client family.

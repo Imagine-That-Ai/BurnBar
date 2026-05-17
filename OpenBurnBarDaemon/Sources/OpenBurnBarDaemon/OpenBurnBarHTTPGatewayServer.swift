@@ -370,6 +370,53 @@ public actor BurnBarHTTPGatewayServer {
         }
     }
 
+    private func openAIAdvertisedRouteKeys(for modelID: String) async throws -> Set<String> {
+        let normalizedModelID = modelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalizedModelID.isEmpty == false else { return [] }
+
+        let catalog = configStore.catalogSupport.catalog
+        let router = BurnBarProviderRouter(
+            configStore: configStore,
+            logger: BurnBarDaemonLogger(category: "gateway-router"),
+            allowDynamicOpenAICompatibleModels: true
+        )
+        let snapshot = try await BurnBarLiveModelCatalog(
+            configStore: configStore,
+            session: modelCatalogSession
+        ).snapshot()
+
+        var routeKeys = Set<String>()
+        for model in snapshot.models where model.routeEligible {
+            guard model.capabilities.contains(BurnBarProviderFormatFamily.openaiCompat.rawValue),
+                  advertisedModel(model.id, matchesRequestedModelID: normalizedModelID, providerID: model.providerID, catalog: catalog) else {
+                continue
+            }
+            guard await canRouteAdvertisedModel(model, router: router, catalog: catalog) else {
+                continue
+            }
+            routeKeys.insert(routeKey(providerID: model.providerID, slotID: model.accountID == "legacy" ? nil : model.accountID))
+        }
+        return routeKeys
+    }
+
+    private func advertisedModel(
+        _ advertisedModelID: String,
+        matchesRequestedModelID normalizedRequestedModelID: String,
+        providerID: String,
+        catalog: BurnBarCatalog
+    ) -> Bool {
+        let normalizedAdvertisedModelID = advertisedModelID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedAdvertisedModelID.isEmpty else { return false }
+        if normalizedAdvertisedModelID == normalizedRequestedModelID {
+            return true
+        }
+
+        return catalog.models(forProviderID: providerID).contains { model in
+            model.matches(modelName: normalizedRequestedModelID)
+                && model.matches(modelName: normalizedAdvertisedModelID)
+        }
+    }
+
     // MARK: - /v1/chat/completions
 
     private func handleChatCompletions(body: String?) async -> GatewayHTTPResponse {
@@ -394,6 +441,11 @@ public actor BurnBarHTTPGatewayServer {
         }
 
         do {
+            let advertisedRouteKeys = try await openAIAdvertisedRouteKeys(for: modelID)
+            guard advertisedRouteKeys.isEmpty == false else {
+                return noEligibleRouteResponse(modelID: modelID)
+            }
+
             let router = BurnBarProviderRouter(
                 configStore: configStore,
                 logger: BurnBarDaemonLogger(category: "gateway-router"),
@@ -411,7 +463,9 @@ public actor BurnBarHTTPGatewayServer {
                 requiredCapabilityClassID: resolvedCapabilityClassID
             )
             await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
-            let rankedRoutes = ranking.rankedRoutes.map(\.route)
+            let rankedRoutes = ranking.rankedRoutes
+                .map(\.route)
+                .filter { advertisedRouteKeys.contains(routeKey(providerID: $0.providerID, slotID: $0.credentialSlotID)) }
             guard rankedRoutes.isEmpty == false else {
                 return noEligibleRouteResponse(modelID: modelID)
             }
@@ -475,8 +529,10 @@ public actor BurnBarHTTPGatewayServer {
                 )
             }
 
-            let message = lastError?.localizedDescription ?? "no eligible route for \(modelID)"
-            return jsonResponse(status: 502, body: errorBody("routing failed: \(message)"))
+            if let lastError {
+                return providerFailureResponse(lastError)
+            }
+            return noEligibleRouteResponse(modelID: modelID)
         } catch let error as BurnBarProviderRouterError {
             logger.error("gateway_route_error", metadata: ["model": modelID, "error": "\(error)"])
             return noEligibleRouteResponse(modelID: modelID)
@@ -510,6 +566,11 @@ public actor BurnBarHTTPGatewayServer {
         }
 
         do {
+            let advertisedRouteKeys = try await openAIAdvertisedRouteKeys(for: modelID)
+            guard advertisedRouteKeys.isEmpty == false else {
+                return noEligibleRouteResponse(modelID: modelID)
+            }
+
             let router = BurnBarProviderRouter(
                 configStore: configStore,
                 logger: BurnBarDaemonLogger(category: "gateway-router-responses"),
@@ -527,7 +588,9 @@ public actor BurnBarHTTPGatewayServer {
                 requiredCapabilityClassID: resolvedCapabilityClassID
             )
             await router.persistDecisionIfNeeded(ranking: ranking, modelName: modelID)
-            let routes = ranking.rankedRoutes.map(\.route)
+            let routes = ranking.rankedRoutes
+                .map(\.route)
+                .filter { advertisedRouteKeys.contains(routeKey(providerID: $0.providerID, slotID: $0.credentialSlotID)) }
             guard routes.isEmpty == false else {
                 return noEligibleRouteResponse(modelID: modelID)
             }
@@ -561,8 +624,10 @@ public actor BurnBarHTTPGatewayServer {
                 }
             }
 
-            let message = lastError?.localizedDescription ?? "no eligible route for \(modelID)"
-            return jsonResponse(status: 502, body: errorBody("routing failed: \(message)"))
+            if let lastError {
+                return providerFailureResponse(lastError)
+            }
+            return noEligibleRouteResponse(modelID: modelID)
         } catch let error as BurnBarProviderRouterError {
             logger.error("gateway_responses_route_error", metadata: ["model": modelID, "error": "\(error)"])
             return noEligibleRouteResponse(modelID: modelID)
@@ -678,12 +743,33 @@ public actor BurnBarHTTPGatewayServer {
                 )
             }
 
-            let message = lastError?.localizedDescription ?? "no eligible route for \(modelID)"
-            return jsonResponse(status: 502, body: errorBody("routing failed: \(message)"))
+            if let lastError {
+                return providerFailureResponse(lastError)
+            }
+            return noEligibleRouteResponse(modelID: modelID)
         } catch {
             logger.error("gateway_anthropic_route_error", metadata: ["model": modelID, "error": "\(error)"])
             return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
         }
+    }
+
+    private func providerFailureResponse(_ error: Error) -> GatewayHTTPResponse {
+        if let providerError = error as? BurnBarProviderExecutorError,
+           case .upstreamError(let statusCode, let body) = providerError {
+            let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedBody.isEmpty {
+                return GatewayHTTPResponse(
+                    status: statusCode,
+                    headers: ["Content-Type": "application/json"],
+                    body: Data(trimmedBody.utf8)
+                )
+            }
+            return jsonResponse(
+                status: statusCode,
+                body: errorBody("upstream provider returned HTTP \(statusCode)")
+            )
+        }
+        return jsonResponse(status: 502, body: errorBody("routing failed: \(error.localizedDescription)"))
     }
 
     private func noEligibleRouteResponse(modelID: String) -> GatewayHTTPResponse {
@@ -691,6 +777,10 @@ public actor BurnBarHTTPGatewayServer {
             status: 503,
             body: errorBody("No eligible route for \(modelID). Add or enable an account/provider that serves this model.")
         )
+    }
+
+    private func routeKey(providerID: String, slotID: String?) -> String {
+        "\(providerID)#\(slotID ?? "legacy")"
     }
 
     private func recordUsageIfAvailable(
@@ -962,6 +1052,12 @@ public actor BurnBarHTTPGatewayServer {
     private struct ModelsResponse: Encodable {
         let object = "list"
         let data: [ModelDescriptor]
+        let models: [CodexModelDescriptor]
+
+        init(data: [ModelDescriptor]) {
+            self.data = data
+            self.models = data.map(CodexModelDescriptor.init(model:))
+        }
     }
 
     private struct ModelDescriptor: Encodable {
@@ -1017,6 +1113,118 @@ public actor BurnBarHTTPGatewayServer {
             case routeEligible = "route_eligible"
             case lastRefreshAt = "last_refresh_at"
             case lastError = "last_error"
+        }
+    }
+
+    private struct CodexModelDescriptor: Encodable {
+        let slug: String
+        let displayName: String
+        let description: String?
+        let defaultReasoningLevel: String?
+        let supportedReasoningLevels: [ReasoningLevel]
+        let shellType: String
+        let visibility: String
+        let supportedInAPI: Bool
+        let priority: Int
+        let additionalSpeedTiers: [String]
+        let serviceTiers: [String]
+        let availabilityNux: String?
+        let upgrade: String?
+        let baseInstructions: String
+        let modelMessages: String?
+        let supportsReasoningSummaries: Bool
+        let defaultReasoningSummary: String
+        let supportVerbosity: Bool
+        let defaultVerbosity: String?
+        let applyPatchToolType: String?
+        let webSearchToolType: String
+        let truncationPolicy: TruncationPolicy
+        let supportsParallelToolCalls: Bool
+        let supportsImageDetailOriginal: Bool
+        let contextWindow: Int
+        let maxContextWindow: Int?
+        let autoCompactTokenLimit: Int?
+        let effectiveContextWindowPercent: Int
+        let experimentalSupportedTools: [String]
+        let inputModalities: [String]
+        let supportsSearchTool: Bool
+
+        init(model: ModelDescriptor) {
+            self.slug = model.id
+            self.displayName = model.displayName
+            self.description = "\(model.providerName) via OpenBurnBar (\(model.accountLabel))"
+            self.defaultReasoningLevel = nil
+            self.supportedReasoningLevels = []
+            self.shellType = "shell_command"
+            self.visibility = "list"
+            self.supportedInAPI = true
+            self.priority = 10_000
+            self.additionalSpeedTiers = []
+            self.serviceTiers = []
+            self.availabilityNux = nil
+            self.upgrade = nil
+            self.baseInstructions = "You are Codex, a coding agent."
+            self.modelMessages = nil
+            self.supportsReasoningSummaries = false
+            self.defaultReasoningSummary = "auto"
+            self.supportVerbosity = false
+            self.defaultVerbosity = nil
+            self.applyPatchToolType = nil
+            self.webSearchToolType = "text"
+            self.truncationPolicy = TruncationPolicy(mode: "tokens", limit: 65_536)
+            self.supportsParallelToolCalls = false
+            self.supportsImageDetailOriginal = false
+            self.contextWindow = 65_536
+            self.maxContextWindow = nil
+            self.autoCompactTokenLimit = nil
+            self.effectiveContextWindowPercent = 95
+            self.experimentalSupportedTools = []
+            self.inputModalities = ["text"]
+            self.supportsSearchTool = false
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case slug
+            case displayName = "display_name"
+            case description
+            case defaultReasoningLevel = "default_reasoning_level"
+            case supportedReasoningLevels = "supported_reasoning_levels"
+            case shellType = "shell_type"
+            case visibility
+            case supportedInAPI = "supported_in_api"
+            case priority
+            case additionalSpeedTiers = "additional_speed_tiers"
+            case serviceTiers = "service_tiers"
+            case availabilityNux = "availability_nux"
+            case upgrade
+            case baseInstructions = "base_instructions"
+            case modelMessages = "model_messages"
+            case supportsReasoningSummaries = "supports_reasoning_summaries"
+            case defaultReasoningSummary = "default_reasoning_summary"
+            case supportVerbosity = "support_verbosity"
+            case defaultVerbosity = "default_verbosity"
+            case applyPatchToolType = "apply_patch_tool_type"
+            case webSearchToolType = "web_search_tool_type"
+            case truncationPolicy = "truncation_policy"
+            case supportsParallelToolCalls = "supports_parallel_tool_calls"
+            case supportsImageDetailOriginal = "supports_image_detail_original"
+            case contextWindow = "context_window"
+            case maxContextWindow = "max_context_window"
+            case autoCompactTokenLimit = "auto_compact_token_limit"
+            case effectiveContextWindowPercent = "effective_context_window_percent"
+            case experimentalSupportedTools = "experimental_supported_tools"
+            case inputModalities = "input_modalities"
+            case supportsSearchTool = "supports_search_tool"
+        }
+
+        struct ReasoningLevel: Encodable {
+            let effort: String
+            let description: String
+        }
+
+        struct TruncationPolicy: Encodable {
+            let mode: String
+            let limit: Int
         }
     }
 

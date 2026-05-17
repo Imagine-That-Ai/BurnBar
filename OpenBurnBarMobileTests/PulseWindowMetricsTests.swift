@@ -71,6 +71,25 @@ final class PulseWindowMetricsTests: XCTestCase {
         XCTAssertEqual(aged.total.costUsd, 0, accuracy: 0.001)
     }
 
+    func testLiveWindowUsesSessionEndTimeForAdvancingRows() {
+        let calendar = gregorianUTC()
+        let now = calendar.date(from: DateComponents(year: 2026, month: 5, day: 13, hour: 18, minute: 30, second: 0))!
+        let row = usage(
+            id: 1,
+            cost: 4,
+            tokens: 400,
+            start: now.addingTimeInterval(-90 * 60),
+            end: now.addingTimeInterval(-30)
+        )
+
+        let minute = PulseWindowMetricBuilder.metrics(scope: .minute, rollupTotals: [:], liveUsages: [row], now: now, calendar: calendar)
+        let hour = PulseWindowMetricBuilder.metrics(scope: .hour, rollupTotals: [:], liveUsages: [row], now: now, calendar: calendar)
+
+        XCTAssertEqual(minute.total.requests, 1)
+        XCTAssertEqual(minute.total.tokens, 400)
+        XCTAssertEqual(hour.total.requests, 1)
+    }
+
     private func gregorianUTC() -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -78,6 +97,10 @@ final class PulseWindowMetricsTests: XCTestCase {
     }
 
     private func usage(id: Int, cost: Double, tokens: Int, at date: Date) -> TokenUsage {
+        usage(id: id, cost: cost, tokens: tokens, start: date, end: date)
+    }
+
+    private func usage(id: Int, cost: Double, tokens: Int, start: Date, end: Date) -> TokenUsage {
         TokenUsage(
             id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", id))!,
             provider: .codex,
@@ -87,9 +110,9 @@ final class PulseWindowMetricsTests: XCTestCase {
             inputTokens: tokens,
             outputTokens: 0,
             costUSD: cost,
-            startTime: date,
-            endTime: date,
-            createdAt: date
+            startTime: start,
+            endTime: end,
+            createdAt: start
         )
     }
 }

@@ -373,6 +373,13 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
                 onChunk: onChunk
             )
             await stream.close()
+            if payload.operation == .chatCompletions {
+                startMediaControlCoordinatorIfNeeded(
+                    uid: uid,
+                    connectionID: payload.connectionID,
+                    pairingPublicKey: publicKey
+                )
+            }
         } catch {
             await stream.close()
             throw error
@@ -390,20 +397,6 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         networkAuditDetail: [String: String],
         onChunk: @MainActor (HermesRelayChunkRecord) throws -> Void
     ) async throws {
-        // 2a. Mercury Phase 1b — once we know the pairing-public-key
-        // triple is good (i.e., the dial above succeeded), kick off
-        // the persistent media control stream exactly once. Subsequent
-        // sends short-circuit because the coordinator keeps itself
-        // alive + reconnects on its own.
-        if mediaControlCoordinator == nil, let receiver = mediaControlReceiver {
-            startMediaControlCoordinator(
-                uid: uid,
-                connectionID: payload.connectionID,
-                pairingPublicKey: publicKey,
-                receiver: receiver
-            )
-        }
-
         let requestID = "iroh_\(UUID().uuidString.lowercased())"
         let keyData = try HermesRelayCrypto.generateSymmetricKeyData()
         let bodyString = payload.body.flatMap { String(data: $0, encoding: .utf8) }
@@ -570,6 +563,23 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         _ networkDetail: [String: String]
     ) -> [String: String] {
         detail.merging(networkDetail) { current, _ in current }
+    }
+
+    @MainActor
+    private func startMediaControlCoordinatorIfNeeded(
+        uid: String,
+        connectionID: String,
+        pairingPublicKey: Data
+    ) {
+        guard mediaControlCoordinator == nil, let receiver = mediaControlReceiver else {
+            return
+        }
+        startMediaControlCoordinator(
+            uid: uid,
+            connectionID: connectionID,
+            pairingPublicKey: pairingPublicKey,
+            receiver: receiver
+        )
     }
 
     @MainActor

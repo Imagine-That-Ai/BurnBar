@@ -80,4 +80,47 @@ class PulseWindowMetricsTest {
         assertEquals(0, aged.requestValue)
         assertEquals(0.0, aged.value, 0.001)
     }
+
+    @Test
+    fun `live windows use session end time for advancing rows`() {
+        val now = 1_768_306_400_000L
+        val rollups = UsageRollups()
+        val usages = listOf(
+            TokenUsage(
+                id = "advancing-session",
+                costUsd = 4.0,
+                totalTokens = 400,
+                startTime = now - 90L * 60L * 1_000L,
+                endTime = now - 30_000L
+            )
+        )
+
+        val minute = pulseWindowMetrics(PulseTimelineScope.MINUTE, rollups, usages, now)
+        val hour = pulseWindowMetrics(PulseTimelineScope.HOUR, rollups, usages, now)
+
+        assertEquals(1, minute.requestValue)
+        assertEquals(400L, minute.tokenValue)
+        assertEquals(1, hour.requestValue)
+    }
+
+    @Test
+    fun `sync update timestamps do not make old events look live`() {
+        val now = 1_768_306_400_000L
+        val rollups = UsageRollups()
+        val usages = listOf(
+            TokenUsage(
+                id = "old-event-fresh-sync",
+                costUsd = 4.0,
+                totalTokens = 400,
+                startTime = now - 2L * 60L * 60L * 1_000L,
+                endTime = now - 2L * 60L * 60L * 1_000L,
+                updatedAt = now - 30_000L
+            )
+        )
+
+        val minute = pulseWindowMetrics(PulseTimelineScope.MINUTE, rollups, usages, now)
+
+        assertEquals(0, minute.requestValue)
+        assertEquals(0L, minute.tokenValue)
+    }
 }

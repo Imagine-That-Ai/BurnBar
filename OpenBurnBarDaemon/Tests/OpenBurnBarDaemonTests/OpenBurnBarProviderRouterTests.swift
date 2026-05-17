@@ -394,6 +394,49 @@ final class BurnBarProviderRouterTests: XCTestCase {
         XCTAssertEqual(candidates.map(\.credentialSlotID), ["icloud"])
     }
 
+    func testRouterDoesNotPoisonAnthropicOAuthSlotForModelScopedRateLimit() async throws {
+        let harness = try makeHarness(name: "anthropic-oauth-rate-limit-does-not-poison-slot")
+        _ = try await harness.configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "anthropic",
+                isEnabled: true,
+                baseURL: "https://api.anthropic.com/v1",
+                preferredModelIDs: ["claude-opus-4-7-family"],
+                preferredCredentialSlotID: "icloud"
+            )
+        )
+        _ = try await harness.configStore.upsertCredentialSlot(
+            providerID: "anthropic",
+            slotID: "icloud",
+            label: "iCloud",
+            apiKey: "sk-ant-oat01-test"
+        )
+
+        let route = try await harness.router.route(
+            modelName: "claude-opus-4-7",
+            requestedFormatFamily: .anthropic
+        )
+        await harness.router.markRouteFailure(
+            route,
+            error: BurnBarProviderExecutorError.upstreamError(
+                429,
+                #"{"type":"error","error":{"type":"rate_limit_error","message":"Error"}}"#
+            )
+        )
+
+        let snapshot = try await harness.configStore.snapshot()
+        let slot = snapshot.providerSettings(id: "anthropic")?.credentialSlots.first(where: { $0.slotID == "icloud" })
+        XCTAssertEqual(slot?.status, .ready)
+        XCTAssertNil(slot?.cooldownUntil)
+        XCTAssertNil(slot?.lastStatusMessage)
+
+        let candidates = try await harness.router.candidateRoutes(
+            modelName: "claude-opus-4-7",
+            requestedFormatFamily: .anthropic
+        )
+        XCTAssertEqual(candidates.map(\.credentialSlotID), ["icloud"])
+    }
+
     func testOllamaRouterRotatesSlotsAndSkipsExhaustedPlan() async throws {
         let harness = try makeHarness(name: "ollama-slot-rotation")
         _ = try await harness.configStore.upsertProvider(
