@@ -1117,6 +1117,11 @@ struct OpenBurnBarApp: App {
 
                         context.startRelayServices()
                         context.startSmartDisplayServices()
+                        // Mercury Phase 8 — mount the user-facing
+                        // services after relay services so the iroh
+                        // client exists and we can attach the router
+                        // to its control-stream dispatcher.
+                        context.startMercuryServices()
 
                         let mirror: ICloudSessionMirrorService
                         if let existingMirror = context.iCloudSessionMirrorService {

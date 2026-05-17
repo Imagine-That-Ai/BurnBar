@@ -73,11 +73,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `refreshIfNeeded` as the single source of truth for staleness, and a new
   `ClaudeStatuslineWatcher` FS-event watcher fires
   `ProviderQuotaService.refreshClaudeFromStatuslineHook` the moment Claude's
-  CLI writes a fresh statusline payload. The hook path deliberately does
+  CLI rewrites the statusline snapshot. The hook path deliberately does
   not bump `lastFetch`, so a chatty Claude session can no longer gate the
-  next all-provider tick and starve Codex/Cursor/etc. Self-heals across
-  Claude's atomic write (`cp tmp → snapshot.json`) by closing the stale FD
-  on rename/delete and re-arming after a 250 ms backoff.
+  next all-provider tick and starve Codex/Cursor/etc. The watcher uses
+  exponential backoff (250 ms → 30 s) when the file is absent, so machines
+  without Claude installed don't burn syscalls on a 4 Hz reopen loop. It
+  also defends against future bridge variants that use atomic
+  `mv tmp → snapshot` writes by re-arming the FD on `.rename`/`.delete`
+  events; the current `cp`-based wrapper writes in place, but the
+  defensive path costs nothing and absorbs the change automatically.
 - **Factory Droid Max can route as a strict same-model failover provider.**
   Factory is now in the daemon provider catalog with Standard and Droid Core
   lanes separated. Gateway requests for Factory Standard models run through a

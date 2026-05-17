@@ -1228,6 +1228,9 @@
 				739D57940865EC6BBB6A29BB /* ComputerUseDaemonApprovalPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA5E4F59A42FE7446FF0F03 /* ComputerUseDaemonApprovalPresenter.swift */; };
 			38022CDCCBA6C9FDDD8F70C6 /* PhoneControlAuthorityPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6658DCC2654EF59AD45D0018 /* PhoneControlAuthorityPublisher.swift */; };
 				7EDAE88DA784BC4B377AF6B2 /* ComputerUseRuntimeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB83D80039ECD4F384242378 /* ComputerUseRuntimeController.swift */; };
+				F09D12BF6073F60D849E1C91 /* MercuryConsentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46DD7A00C05E7EA7DA34A9FE /* MercuryConsentStore.swift */; };
+		81E764908BA7C7A888C83D65 /* MercuryPeerSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8DF1CAF99F673CFA4863F37 /* MercuryPeerSource.swift */; };
+		D56AB777C05B5171FCAB930A /* MercuryRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33BF24EC57BB6F4EB4ED7A0C /* MercuryRouter.swift */; };
 		/* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -2508,6 +2511,9 @@
 				2EA5E4F59A42FE7446FF0F03 /* ComputerUseDaemonApprovalPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComputerUseDaemonApprovalPresenter.swift; path = AgentLens/Services/ComputerUse/ComputerUseDaemonApprovalPresenter.swift; sourceTree = SOURCE_ROOT; };
 			6658DCC2654EF59AD45D0018 /* PhoneControlAuthorityPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PhoneControlAuthorityPublisher.swift; path = OpenBurnBarMobile/Services/ComputerUse/PhoneControlAuthorityPublisher.swift; sourceTree = SOURCE_ROOT; };
 				DB83D80039ECD4F384242378 /* ComputerUseRuntimeController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ComputerUseRuntimeController.swift; path = AgentLens/Services/ComputerUse/ComputerUseRuntimeController.swift; sourceTree = SOURCE_ROOT; };
+				46DD7A00C05E7EA7DA34A9FE /* MercuryConsentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MercuryConsentStore.swift; path = AgentLens/Services/Media/MercuryConsentStore.swift; sourceTree = SOURCE_ROOT; };
+		F8DF1CAF99F673CFA4863F37 /* MercuryPeerSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MercuryPeerSource.swift; path = AgentLens/Services/Media/MercuryPeerSource.swift; sourceTree = SOURCE_ROOT; };
+		33BF24EC57BB6F4EB4ED7A0C /* MercuryRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MercuryRouter.swift; path = AgentLens/Services/Media/MercuryRouter.swift; sourceTree = SOURCE_ROOT; };
 		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -6451,6 +6457,9 @@
 					E5B78DB0F58FD66627838F1C /* ComputerUseRemoteConfigNotifications.swift in Sources */,
 					845771CBD3C955A2A45B3966 /* OpenBurnBarDaemonManager+ComputerUse.swift in Sources */,
 					739D57940865EC6BBB6A29BB /* ComputerUseDaemonApprovalPresenter.swift in Sources */,
+				F09D12BF6073F60D849E1C91 /* MercuryConsentStore.swift in Sources */,
+				81E764908BA7C7A888C83D65 /* MercuryPeerSource.swift in Sources */,
+				D56AB777C05B5171FCAB930A /* MercuryRouter.swift in Sources */,
 					);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

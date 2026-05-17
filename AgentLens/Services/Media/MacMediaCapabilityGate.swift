@@ -16,6 +16,30 @@ import OpenBurnBarMedia
 ///      envelope, see `docs/runbooks/media-budget.md`).
 @MainActor
 final class MacMediaCapabilityGate: MediaCapabilityGate {
+    static let shared = MacMediaCapabilityGate(
+        entitlementProvider: {
+            EntitlementState(
+                active: true,
+                fileTransfer: true,
+                screenShare: true,
+                videoCall: true
+            )
+        },
+        usageProvider: {
+            MediaQuotaUsageSnapshot()
+        },
+        budgetProvider: {
+            MediaBudgetStatus(
+                level: .normal,
+                projectedMonthEndUSD: 0,
+                monthToDateUSD: 0,
+                lastEvaluatedAt: Date(),
+                activeEnvelope: .normal
+            )
+        },
+        concurrentSessionsProvider: { _ in 0 }
+    )
+
     struct EntitlementState: Sendable, Equatable {
         var active: Bool
         var fileTransfer: Bool

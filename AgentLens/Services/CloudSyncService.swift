@@ -867,6 +867,11 @@ final class HermesRelayHostService {
     /// sends.
     @MainActor private(set) var mercuryFileTransfer: MacFileTransferService?
 
+    /// Mercury Phase 8 — the registry the iroh client hands inbound
+    /// `media.control` streams to. Surfaced so the runtime context can
+    /// build `MercuryPeerSource` against the same registry instance.
+    @MainActor private(set) var mercuryControlStreamRegistry: MediaControlStreamRegistry?
+
     init(
         db: Firestore = Firestore.firestore(),
         accountManager: AccountManager = .shared,
@@ -912,6 +917,7 @@ final class HermesRelayHostService {
                 // don't link the xcframework (loopback dev path).
                 if let fileTransferService = MediaFileTransferServiceFactory.make() {
                     let controlRegistry = MediaControlStreamRegistry()
+                    self.mercuryControlStreamRegistry = controlRegistry
                     let macFileTransfer = MacFileTransferService(
                         service: fileTransferService,
                         settingsProvider: { @MainActor [settingsManager] in
@@ -958,6 +964,19 @@ final class HermesRelayHostService {
             irohClient.setControlDispatcher(dispatcher)
         } else if let fanout = realtimeRelayClient as? HermesRelayHostFanout {
             fanout.setControlDispatcher(dispatcher)
+        }
+    }
+
+    /// Mercury Phase 8 — attach the router so the persistent
+    /// `media.control` stream's read loop fans inbound mirror /
+    /// presence frames into it. The closure stays alive as long as
+    /// `mercuryFileTransfer` does, which matches the lifetime of the
+    /// iroh client.
+    @MainActor
+    func attachMercuryRouter(_ router: MercuryRouter) {
+        guard let transfer = mercuryFileTransfer else { return }
+        transfer.setMercuryDispatcher { @Sendable frame, reply in
+            await router.handleFrame(frame, replySender: reply)
         }
     }
 
