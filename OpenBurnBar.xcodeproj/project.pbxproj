@@ -702,6 +702,7 @@
 		94376D6F32DD4963E2960FD8 /* HermesSquareRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A073A273133ED15E42551A /* HermesSquareRoot.swift */; };
 		94517151F589DFA401790F09 /* test_narrativeCard_withData.narrativeCard-light.png in Resources */ = {isa = PBXBuildFile; fileRef = 7771F7D3C409A7675F61423C /* test_narrativeCard_withData.narrativeCard-light.png */; };
 		94B05D6D961268C1BEF53D44 /* MenuBarPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CC3C32451CCFA9E72801274 /* MenuBarPopoverView.swift */; };
+		6B8568EC97A270BE3FBDB649 /* MercuryTraySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5482B31C7996BC92C37C709 /* MercuryTraySection.swift */; };
 		94D85F9864D324F96E64D7EE /* SettingsAnchorModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 751AB22DFD33D8774CE5181B /* SettingsAnchorModifiers.swift */; };
 		95406583F02761037CFBCD9B /* InsightsRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 819AA443BFF77CAC7BBAFE92 /* InsightsRootView.swift */; };
 		954081EF2DC0AB239982AA65 /* OpenBurnBarHTTPGatewayServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B806C0B716771E4783E000 /* OpenBurnBarHTTPGatewayServer.swift */; };
@@ -2005,6 +2006,7 @@
 		9BB20EB48DFA90D2334CD879 /* UsageAggregationAndMoodBandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAggregationAndMoodBandTests.swift; sourceTree = "<group>"; };
 		9BE8799D6566A48FD78190F4 /* SkeletonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonView.swift; sourceTree = "<group>"; };
 		9CC3C32451CCFA9E72801274 /* MenuBarPopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPopoverView.swift; sourceTree = "<group>"; };
+		C5482B31C7996BC92C37C709 /* MercuryTraySection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MercuryTraySection.swift; sourceTree = "<group>"; };
 		9CDDBEA1D627E38E221DB3AC /* AppearanceSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettings.swift; sourceTree = "<group>"; };
 		9D60B67D37E96E17752FBC58 /* ProviderAccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccountStore.swift; sourceTree = "<group>"; };
 		9D8680A0BE66B864A7DC7EDB /* iOSDeviceKeypair.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSDeviceKeypair.swift; sourceTree = "<group>"; };
@@ -3617,6 +3619,7 @@
 				829B818D9E89E2B78A6B0B16 /* HermesPopoverStrip.swift */,
 				40CA8A85C922A5AE09E8BC9F /* InsightCardView.swift */,
 				9CC3C32451CCFA9E72801274 /* MenuBarPopoverView.swift */,
+				C5482B31C7996BC92C37C709 /* MercuryTraySection.swift */,
 				CAAA8506BBCF5F3956DD7A2F /* OnboardingView.swift */,
 				2AB6EE338EFA834B39EBFF1D /* PopoverQuickSwitchView.swift */,
 			);
@@ -6223,6 +6226,7 @@
 				294CCDD27249550573765EDB /* MediaSessionCoordinator.swift in Sources */,
 				ED2A44CD95CC351058E02F24 /* MembershipBand.swift in Sources */,
 				94B05D6D961268C1BEF53D44 /* MenuBarPopoverView.swift in Sources */,
+				6B8568EC97A270BE3FBDB649 /* MercuryTraySection.swift in Sources */,
 				15931A972934051AB196E45E /* MercuryCrest.swift in Sources */,
 				40ED337E190CA33C14A9E25C /* MercuryFoilCard.swift in Sources */,
 				379BBE41EFCC3609CAC05247 /* MercuryRing.swift in Sources */,

@@ -1069,7 +1069,8 @@ struct OpenBurnBarApp: App {
                                     openDashboard(context: context)
                                 }
                             )
-                        }
+                        },
+                        runtimeContext: context
                     )
                     .environment(context.settingsManager)
                 case .failed(let failure):
@@ -1307,6 +1308,22 @@ struct OpenBurnBarApp: App {
                 }
                 #endif
             }
+
+        // Mercury Phase 8 — global chrome window. Hosts the
+        // `IncomingCallSheet` (when an iPhone asks to mirror) and the
+        // `CallHUD` (while a mirror is active), independent of the
+        // menu-bar popover's open state. Auto-shows when the router
+        // transitions out of `.idle`/`.cooldown`; auto-hides otherwise.
+        if let context = startupState.runtimeContext,
+           let router = context.mercuryRouter,
+           let peerSource = context.mercuryPeerSource,
+           let hud = context.mercuryCallHUDState {
+            MercuryGlobalChrome(
+                router: router,
+                peerSource: peerSource,
+                hudState: hud
+            )
+        }
     }
 }
 

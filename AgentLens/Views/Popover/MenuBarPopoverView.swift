@@ -17,6 +17,10 @@ struct MenuBarPopoverView: View {
     var chatController: ChatSessionController?
     var onOpenDashboardWithChat: (() -> Void)?
     var onOpenOnboardingWizard: (() -> Void)?
+    /// Mercury Phase 8 — when present, the popover renders a Mercury
+    /// tray section with the live indicator + outbound triggers.
+    /// Left optional so previews + onboarding paths can omit it.
+    var runtimeContext: OpenBurnBarRuntimeContext?
 
     @AppStorage("hasOnboarded") private var hasOnboarded = false
     @State private var showScanFlash = false
@@ -51,7 +55,14 @@ struct MenuBarPopoverView: View {
 
     private var availableTraySections: [PopoverTraySection] {
         PopoverTraySection.allCases.filter { section in
-            section != .chat || chatController != nil
+            switch section {
+            case .chat:
+                return chatController != nil
+            case .mercury:
+                return runtimeContext?.mercuryRouter != nil
+            default:
+                return true
+            }
         }
     }
 
@@ -279,6 +290,23 @@ struct MenuBarPopoverView: View {
             )
             .padding(.horizontal, DesignSystem.Spacing.sm)
             .padding(.vertical, DesignSystem.Spacing.xs)
+        case .mercury:
+            if let router = runtimeContext?.mercuryRouter,
+               let peerSource = runtimeContext?.mercuryPeerSource {
+                MercuryTraySection(
+                    router: router,
+                    peerSource: peerSource,
+                    fileTransferService: runtimeContext?.hermesRelayHostService?.mercuryFileTransfer,
+                    voipCallTrigger: runtimeContext?.voipCallTrigger,
+                    consentStore: runtimeContext?.mercuryConsentStore,
+                    uidProvider: { [weak runtimeContext] in
+                        runtimeContext?.accountManager.userID
+                    },
+                    onDismissPopover: { dismiss() }
+                )
+                .padding(.horizontal, DesignSystem.Spacing.sm)
+                .padding(.vertical, DesignSystem.Spacing.xs)
+            }
         }
     }
 
@@ -1017,6 +1045,7 @@ private enum PopoverTraySection: String, CaseIterable, Identifiable {
     case insights
     case summary
     case providers
+    case mercury
     case chat
     case quickSwitch
 
@@ -1030,6 +1059,8 @@ private enum PopoverTraySection: String, CaseIterable, Identifiable {
             return "Summary"
         case .providers:
             return "Providers"
+        case .mercury:
+            return "Mercury"
         case .chat:
             return "Chat"
         case .quickSwitch:
