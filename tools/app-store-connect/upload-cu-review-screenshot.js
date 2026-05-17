@@ -74,6 +74,21 @@ function ascApi(method, p, body, token, extraHeaders={}) {
   });
 }
 
+async function deleteExistingReviewScreenshots(subId, token) {
+  const subscription = await ascApi(
+    'GET',
+    `/v1/subscriptions/${subId}?include=appStoreReviewScreenshot`,
+    undefined,
+    token,
+  );
+  const existing = (subscription.included || [])
+    .filter((entry) => entry.type === 'subscriptionAppStoreReviewScreenshots');
+  for (const screenshot of existing) {
+    await ascApi('DELETE', `/v1/subscriptionAppStoreReviewScreenshots/${screenshot.id}`, undefined, token);
+    console.log(`  deleted prior screenshot ${screenshot.id}`);
+  }
+}
+
 function putBytes(uploadUrl, headersList, bytes) {
   return new Promise((resolve, reject) => {
     const u = new URL(uploadUrl);
@@ -102,6 +117,7 @@ async function uploadFor(subId, imagePath, token, dryRun) {
     console.log(`  [DRY] would upload ${fileName} (${fileSize} bytes) for sub ${subId}`);
     return;
   }
+  await deleteExistingReviewScreenshots(subId, token);
   // 1. Create the screenshot reservation.
   const createBody = {
     data: {
