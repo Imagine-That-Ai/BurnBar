@@ -40,7 +40,7 @@ final class VerdictCacheTests: XCTestCase {
 
     func testStalenessFiresAtTTLBoundary() async {
         let cache = VerdictCache(storage: .memoryOnly)
-        let base = Date()
+        let base = Date(timeIntervalSince1970: 1_779_012_000) // 2026-05-16 12:00:00 UTC
         let v = makeVerdict(generatedAt: base)
         await cache.write(v, deviceID: "dev", now: base)
         let fresh = await cache.read(window: .today, deviceID: "dev",
