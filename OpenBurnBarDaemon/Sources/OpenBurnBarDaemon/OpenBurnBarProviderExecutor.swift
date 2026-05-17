@@ -1078,12 +1078,43 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
         }
 
         let decoded = try JSONDecoder().decode(OllamaNativeChatResponse.self, from: responseBody)
+        try validateOllamaNativeChatResponse(decoded, modelID: modelID)
         let body = try openAICompletionBodyFromOllama(decoded, modelID: modelID)
         return BurnBarProviderProxyResponse(
             statusCode: 200,
             contentType: "application/json",
             body: body,
             usage: ollamaProxyUsage(requestBody: requestBody, response: decoded)
+        )
+    }
+
+    private static func validateOllamaNativeChatResponse(
+        _ response: OllamaNativeChatResponse,
+        modelID: String
+    ) throws {
+        let content = response.message?.content?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard content.isEmpty else { return }
+
+        let doneReason = response.doneReason?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard doneReason == "length" || doneReason == "max_tokens" else {
+            return
+        }
+
+        let thinking = response.message?.thinking?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let detail: String
+        if thinking.isEmpty {
+            detail = "Upstream returned no assistant text for \(modelID) because it hit the output token limit before producing final content. Increase max_tokens/max_output_tokens or choose a non-reasoning model."
+        } else {
+            detail = "Upstream returned reasoning-only output for \(modelID) and hit the output token limit before final assistant text. Increase max_tokens/max_output_tokens or choose a non-reasoning model."
+        }
+
+        throw BurnBarProviderExecutorError.upstreamError(
+            502,
+            Self.openAICompatibleErrorBody(message: detail, code: "empty_assistant_content")
         )
     }
 

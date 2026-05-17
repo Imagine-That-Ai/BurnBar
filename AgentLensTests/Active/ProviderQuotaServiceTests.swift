@@ -4,6 +4,10 @@ import XCTest
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
+private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
+private typealias ProviderQuotaSnapshot = OpenBurnBar.ProviderQuotaSnapshot
+private typealias ProviderQuotaWindowKind = OpenBurnBar.ProviderQuotaWindowKind
+
 @MainActor
 final class ProviderQuotaServiceTests: XCTestCase {
     private var tempDirectories: [URL] = []
@@ -4973,14 +4977,14 @@ extension ProviderQuotaServiceTests {
         let hourly = try XCTUnwrap(result.hourlyBucket)
         XCTAssertEqual(hourly.usedValue, 100)
         XCTAssertEqual(hourly.limitValue, 200)
-        XCTAssertEqual(hourly.usedPercent, 50, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(hourly.usedPercent), 50, accuracy: 0.001)
         // Earliest resetsAt wins.
         XCTAssertEqual(hourly.resetsAt, now.addingTimeInterval(60 * 60))
 
         let weekly = try XCTUnwrap(result.weeklyBucket)
         XCTAssertEqual(weekly.usedValue, 700)
         XCTAssertEqual(weekly.limitValue, 2000)
-        XCTAssertEqual(weekly.usedPercent, 35, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(weekly.usedPercent), 35, accuracy: 0.001)
     }
 
     func test_cumulativeSnapshot_recomputesUsedPercentFromSums() throws {
@@ -5014,8 +5018,9 @@ extension ProviderQuotaServiceTests {
             )
         )
         let hourly = try XCTUnwrap(merged.hourlyBucket)
-        XCTAssertEqual(hourly.usedPercent, 190.0 / 1100.0 * 100, accuracy: 0.01)
-        XCTAssertNotEqual(hourly.usedPercent, 50, accuracy: 1)
+        let hourlyUsedPercent = try XCTUnwrap(hourly.usedPercent)
+        XCTAssertEqual(hourlyUsedPercent, 190.0 / 1100.0 * 100, accuracy: 0.01)
+        XCTAssertNotEqual(hourlyUsedPercent, 50, accuracy: 1)
     }
 
     func test_cumulativeSnapshot_marksEstimatedIfAnyInputEstimated() throws {

@@ -11,3 +11,4 @@
 
 - Resolved model: minimax-m2.7-highspeed
 
+- Run 01: failed (cellular), exit 1

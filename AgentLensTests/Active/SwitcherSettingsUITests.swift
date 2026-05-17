@@ -3,6 +3,9 @@ import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
+private typealias ProviderQuotaBucket = OpenBurnBar.ProviderQuotaBucket
+private typealias ProviderQuotaSnapshot = OpenBurnBar.ProviderQuotaSnapshot
+
 // MARK: - Switcher Settings UI Tests
 
 /// Unit tests for the Account Switcher Settings view.

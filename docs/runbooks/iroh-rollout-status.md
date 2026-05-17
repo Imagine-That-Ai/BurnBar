@@ -1,5 +1,79 @@
 # Hermes iroh Rollout Status
 
+## 2026-05-17T20:46Z — local PR Swift and computer-use CI blockers repaired
+
+**Gate status:** the latest pushed branch still has failing GitHub checks until
+these local repairs are committed and pushed, but the two observed Swift
+failure modes now reproduce green locally. Production rollout remains blocked
+on the real cellular/different-network Gate C/D and Phase E soak.
+
+Completed:
+- Repaired the `computer-use-loopback-test` SwiftPM compile failure by making
+  `AgentInsightsView` helpers pure: the view now reads the `@MainActor`
+  `AgentInsightsViewModel` in `body`/content and passes the bundle or error
+  message into helper views instead of reading actor-isolated properties from
+  nonisolated helpers.
+- Repaired the PR Harness daemon failure where an Ollama native/cloud
+  reasoning-only `done_reason=length` response with empty assistant content was
+  normalized into HTTP 200. The native Ollama path now rejects that shape with
+  HTTP 502 and `empty_assistant_content`, matching the OpenAI-compatible path.
+
+Verification:
+- `cd OpenBurnBarCore && swift test --filter "OpenBurnBarComputerUseCoreTests"`
+  passed 83 tests.
+- `cd OpenBurnBarDaemon && swift test --filter "BurnBarHTTPGatewayServerTests/testGatewayRejectsOllamaCloudLengthResponseWithoutAssistantText"`
+  passed 1 test.
+- `OPENBURNBAR_ENABLE_COVERAGE=YES ./scripts/test-openburnbar-swift.sh` passed:
+  `OpenBurnBarCore` executed 903 tests with 2 skips and 0 failures, and
+  `OpenBurnBarDaemon` executed 297 tests with 0 failures.
+
+Next action:
+- Commit/push these local repairs when the other in-flight repo edits are ready
+  to publish, then wait for fresh GitHub checks. Separately, rerun the physical
+  iPhone Gate C/D once the phone is on real cellular/different-network topology.
+
+## 2026-05-17T20:40Z — focused macOS gate green, cellular gate attempted but phone was on Wi-Fi
+
+**Gate status:** current local app/daemon verification is green, and the latest
+physical-iPhone request proved selected-model forwarding over iroh with zero
+WSS fallback. It does not satisfy the different-network/cellular Gate C/D
+because the iPhone audit reported `networkInterfaces=wifi`.
+
+Completed:
+- Confirmed the current macOS app and daemon are running locally. The daemon
+  health endpoint on `127.0.0.1:8317` returned
+  `{"version":"0.1.3-beta.1","ok":true}` and `/v1/models` advertised 47
+  models, including `minimax-m2.7-highspeed`.
+- Fixed the local app-test compile blocker by disambiguating app quota model
+  types from `OpenBurnBarCore` types and unwrapping optional quota percentages
+  in the cumulative quota tests.
+- Re-ran the focused macOS app gate for the settings/quota paths. The selected
+  Xcode test run passed 6 tests with 0 failures.
+- Ran the formal physical-iPhone Gate C/D runner against the current Mac daemon
+  with `--interfaces cellular`, `--model minimax-m2.7-highspeed`, and
+  `--no-start-host`.
+
+Verification:
+- Focused Xcode gate:
+  `xcodebuild test -project OpenBurnBar.xcodeproj -scheme OpenBurnBar -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData-ci-focused -only-testing:OpenBurnBarTests/OpenBurnBarDaemonManagerTests/test_usageSync_keepsCatalogOnlyProviderIdentityUnmappedForBranding -only-testing:OpenBurnBarTests/SettingsManifestCoverageTests/test_eachTabHasAtLeastOneEntry -only-testing:OpenBurnBarTests/QuotaSettingsTests -skipPackagePluginValidation -skipMacroValidation`
+  passed.
+- Cellular-attempt command:
+  `scripts/e2e/ios-iroh-gate.sh --uid 6YTomKTKdQdpvIJgmz6VTIrrQ4w1 --runs 10 --interfaces cellular --device AFB07C15-AD18-5EFA-AD1C-CADB4F286797 --wait-for-device-seconds 600 --wait-for-device-interval 5 --model minimax-m2.7-highspeed --prompt 'Reply exactly: ok-ios-cellular-gate' --poll-seconds 600 --poll-interval 5 --output-dir docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260517-current-cellular --no-start-host`
+  stopped on run 1 because the expected interface was `cellular` but the phone
+  reported `wifi`.
+- Request `iroh_23eced2c-6cc4-47aa-8c54-841e3e20b446` still proves the routing
+  path worked: the Mac emitted `host_forward_chat_start` with
+  `requestedModel=minimax-m2.7-highspeed`, then `host_forward_chat_complete`
+  with `done=true`; iOS emitted `ios_response_complete`; the exported events
+  contain zero `iroh_fallback_to_wss` events.
+- Evidence files live under
+  `docs/runbooks/iroh-dev-validation/ios-iroh-gate-20260517-current-cellular/`.
+
+Next action:
+- Put the physical iPhone on real cellular/different-network topology and rerun
+  the same Gate C/D command. If it passes 10 consecutive runs, proceed to Phase
+  E internal soak/TestFlight and production rollout approvals.
+
 ## 2026-05-17T20:03Z — current macOS app relaunched, iPhone selected-model Wi-Fi proof green
 
 **Gate status:** fresh current-app Wi-Fi proof is green for physical iPhone, but
