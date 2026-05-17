@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OpenBurnBarMedia
 
 struct DataStoreStartupFailure: Identifiable, Equatable {
     let id: UUID
@@ -197,6 +198,18 @@ final class OpenBurnBarRuntimeContext {
     #endif
     let chatController: ChatSessionController
     let operatingLayer: OpenBurnBarOperatingLayer
+
+    // MARK: - Mercury Phase 8 — user-facing surfaces
+
+    /// Live-share / file-transfer / call brain. Mounted into the
+    /// menu-bar popover via `MercuryTraySection` and into the app
+    /// scene root via `MercuryGlobalChrome`.
+    var mercuryPeerSource: MercuryPeerSource?
+    var mercurySessionCoordinator: MediaSessionCoordinator?
+    var mercuryRouter: MercuryRouter?
+    var mercuryCallHUDState: CallHUDState?
+    var mercuryConsentStore: MercuryConsentStore?
+    var voipCallTrigger: VoIPCallTrigger?
 
     init(
         dataStore: DataStore,
@@ -398,5 +411,51 @@ final class OpenBurnBarRuntimeContext {
             routedClientWiringSentry = sentry
         }
         sentry.start(settingsManager: settingsManager)
+    }
+
+    /// Mercury Phase 8 — construct the user-facing service stack:
+    /// peer source, session coordinator, consent store, router. The
+    /// router is attached to the CloudSync iroh client's control
+    /// stream dispatcher so inbound `media.mirror.request` /
+    /// `media.presence.heartbeat` frames flow into it. The popover
+    /// section + scene-root chrome read state off these published
+    /// objects.
+    ///
+    /// Idempotent: calling more than once does nothing.
+    func startMercuryServices() {
+        guard mercuryRouter == nil else { return }
+        let consent = MercuryConsentStore()
+        let peerSource = makeMercuryPeerSource()
+        let session = MediaSessionCoordinator(capabilityGate: MacMediaCapabilityGate.shared)
+        let hud = CallHUDState()
+        let router = MercuryRouter(
+            sessionCoordinator: session,
+            peerSource: peerSource,
+            consentStore: consent
+        )
+
+        self.mercuryConsentStore = consent
+        self.mercuryPeerSource = peerSource
+        self.mercurySessionCoordinator = session
+        self.mercuryCallHUDState = hud
+        self.mercuryRouter = router
+        self.voipCallTrigger = VoIPCallTrigger()
+
+        peerSource.start()
+
+        // Attach to the live iroh host's control stream. The relay host
+        // owns the persistent `media.control` registry; CloudSyncService
+        // only owns Firestore sync.
+        hermesRelayHostService?.attachMercuryRouter(router)
+    }
+
+    private func makeMercuryPeerSource() -> MercuryPeerSource {
+        let registry = hermesRelayHostService?.mercuryControlStreamRegistry
+            ?? MediaControlStreamRegistry()
+        let manager = accountManager
+        return MercuryPeerSource(
+            registry: registry,
+            uidProvider: { manager.userID }
+        )
     }
 }
