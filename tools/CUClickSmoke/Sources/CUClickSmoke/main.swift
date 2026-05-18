@@ -20,6 +20,9 @@ enum CUClickSmokeError: Error, CustomStringConvertible {
     case calculatorLaunchFailed
     case calculatorProcessMissing
     case calculatorResultMismatch(run: Int, observed: [String])
+    case textEditLaunchFailed
+    case textEditProcessMissing
+    case textEditResultMismatch(run: Int, path: String, reason: String)
 
     var description: String {
         switch self {
@@ -32,6 +35,10 @@ enum CUClickSmokeError: Error, CustomStringConvertible {
         case .calculatorProcessMissing: return "calculator_process_missing"
         case .calculatorResultMismatch(let run, let observed):
             return "calculator_result_mismatch(run=\(run), observed=\(observed.joined(separator: "|")))"
+        case .textEditLaunchFailed: return "textedit_launch_failed"
+        case .textEditProcessMissing: return "textedit_process_missing"
+        case .textEditResultMismatch(let run, let path, let reason):
+            return "textedit_result_mismatch(run=\(run), path=\(path), reason=\(reason))"
         }
     }
 }
@@ -103,7 +110,18 @@ func typeText(_ text: String) throws -> Double {
     return Date().timeIntervalSince(started) * 1000.0
 }
 
-func pressKey(_ name: String) throws -> Double {
+func cgFlags(for modifiers: [String]) -> CGEventFlags {
+    let normalized = MacInputCore.modifiers(for: modifiers)
+    var flags: CGEventFlags = []
+    if normalized.contains(.command) { flags.insert(.maskCommand) }
+    if normalized.contains(.alternate) { flags.insert(.maskAlternate) }
+    if normalized.contains(.control) { flags.insert(.maskControl) }
+    if normalized.contains(.shift) { flags.insert(.maskShift) }
+    if normalized.contains(.function) { flags.insert(.maskSecondaryFn) }
+    return flags
+}
+
+func pressKey(_ name: String, modifiers: [String] = []) throws -> Double {
     if !axTrusted(prompt: false) {
         let promptShown = !axTrusted(prompt: true)
         throw CUClickSmokeError.accessibilityDenied(promptShown: promptShown)
@@ -114,6 +132,9 @@ func pressKey(_ name: String) throws -> Double {
         throw CUClickSmokeError.eventCreationFailed
     }
     let started = Date()
+    let flags = cgFlags(for: modifiers)
+    down.flags = flags
+    up.flags = flags
     down.post(tap: .cghidEventTap)
     up.post(tap: .cghidEventTap)
     return Date().timeIntervalSince(started) * 1000.0
@@ -215,6 +236,85 @@ func runCalculatorScenario(runs: Int) throws {
     }
 }
 
+@discardableResult
+func launchTextEdit(fileURL: URL) throws -> NSRunningApplication {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+    process.arguments = ["-a", "TextEdit", fileURL.path]
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+        throw CUClickSmokeError.textEditLaunchFailed
+    }
+
+    let deadline = Date().addingTimeInterval(5)
+    while Date() < deadline {
+        if let app = NSWorkspace.shared.runningApplications.first(where: {
+            $0.bundleIdentifier == "com.apple.TextEdit"
+        }) {
+            app.activate(options: [.activateAllWindows])
+            Thread.sleep(forTimeInterval: 0.4)
+            return app
+        }
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+    }
+    throw CUClickSmokeError.textEditProcessMissing
+}
+
+func runTextEditScenario(runs: Int) throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("openburnbar-cu-textedit-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+    var durations: [Double] = []
+    var failures = 0
+
+    for run in 1...runs {
+        let text = "OpenBurnBar TextEdit loopback run \(run)"
+        let fileURL = directory.appendingPathComponent("run-\(String(format: "%03d", run)).rtf")
+        try "{\\rtf1\\ansi\\deff0\n}\n".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let app = try launchTextEdit(fileURL: fileURL)
+        app.activate(options: [.activateAllWindows])
+        Thread.sleep(forTimeInterval: 0.25)
+
+        let started = Date()
+        try pressKey("a", modifiers: ["cmd"])
+        Thread.sleep(forTimeInterval: 0.04)
+        try pressKey("b", modifiers: ["cmd"])
+        Thread.sleep(forTimeInterval: 0.04)
+        _ = try typeText(text)
+        Thread.sleep(forTimeInterval: 0.05)
+        try pressKey("s", modifiers: ["cmd"])
+        Thread.sleep(forTimeInterval: 0.35)
+        let elapsed = Date().timeIntervalSince(started) * 1000.0
+
+        let contents = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+        let hasText = contents.contains(text)
+        let hasBoldMarker = contents.contains("\\b") || contents.contains("\\b0")
+        if hasText && hasBoldMarker {
+            durations.append(elapsed)
+            print("[cu-click-smoke] textedit run \(run)/\(runs) PASS in \(String(format: "%.2f", elapsed)) ms")
+        } else {
+            failures += 1
+            let reason = "hasText=\(hasText), hasBoldMarker=\(hasBoldMarker)"
+            print("[cu-click-smoke] textedit run \(run)/\(runs) FAIL \(reason) path=\(fileURL.path)")
+        }
+
+        _ = try? pressKey("w", modifiers: ["cmd"])
+        Thread.sleep(forTimeInterval: 0.08)
+    }
+
+    let sorted = durations.sorted()
+    let p50 = sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, sorted.count / 2)]
+    let p95Index = sorted.isEmpty ? 0 : min(sorted.count - 1, Int((Double(sorted.count - 1) * 0.95).rounded()))
+    let p95 = sorted.isEmpty ? 0 : sorted[p95Index]
+    print("[cu-click-smoke] textedit summary pass=\(durations.count) fail=\(failures) p50_ms=\(String(format: "%.2f", p50)) p95_ms=\(String(format: "%.2f", p95)) dir=\(directory.path)")
+    if failures > 0 {
+        throw CUClickSmokeError.textEditResultMismatch(run: failures, path: directory.path, reason: "one_or_more_runs_failed")
+    }
+}
+
 // MARK: - main
 
 let args = CommandLine.arguments
@@ -230,6 +330,8 @@ if let scenarioIndex = args.firstIndex(of: "--scenario"), args.count > scenarioI
         switch scenario {
         case "calculator":
             try runCalculatorScenario(runs: runs)
+        case "textedit":
+            try runTextEditScenario(runs: runs)
         default:
             print("[cu-click-smoke] FAIL unknown_scenario=\(scenario)")
             exit(4)

@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import OpenBurnBarCore
+import OpenBurnBarMedia
 
 // MARK: - Agent Identity Registry (Hermes Square §6.2)
 //
@@ -25,7 +26,16 @@ final class AgentIdentityRegistry {
     /// Local persisted installs. Hydrated from `UserDefaults`.
     private var userInstalledManifests: [AgentManifest]
 
+    /// Mercury Phase 8 — the paired Mac peer snapshot, set by
+    /// `MercuryPeerSource` so the registry can resolve
+    /// `device://paired-mac/<connectionID>` URIs to a synthesized
+    /// `AgentIdentity` without polluting the persistent identities
+    /// list. Reset to `nil` when the Mac goes offline; the tile reads
+    /// the new availability automatically.
+    var pairedMacPeer: MercuryPeer?
+
     private static let userInstallsKey = "square.installedManifests.v1"
+    static let pairedMacURIPrefix = "device://paired-mac/"
 
     init(seed: [AgentIdentity] = AgentIdentity.defaultBuiltIns) {
         self.userInstalledManifests = Self.loadUserInstalls()
@@ -36,7 +46,41 @@ final class AgentIdentityRegistry {
 
     /// Look up by URI.
     func identity(for uri: String) -> AgentIdentity? {
-        identities.first { $0.id == uri }
+        if let cached = identities.first(where: { $0.id == uri }) {
+            return cached
+        }
+        if uri.hasPrefix(Self.pairedMacURIPrefix), let peer = pairedMacPeer {
+            return synthesizedMacIdentity(from: peer, uri: uri)
+        }
+        return nil
+    }
+
+    /// Build the synthesized "My Mac" identity from the peer snapshot.
+    /// Used by the pinned tile + Mercury Live sheet. Not stored in
+    /// `identities` to avoid persisting an ephemeral peer in the
+    /// long-lived registry.
+    func synthesizedMacIdentity(
+        from peer: MercuryPeer,
+        uri: String? = nil
+    ) -> AgentIdentity {
+        let resolvedURI = uri ?? "\(Self.pairedMacURIPrefix)\(peer.connectionID)"
+        let availability: AgentIdentity.Availability = peer.isOnline ? .online : .offline
+        return AgentIdentity(
+            id: resolvedURI,
+            runtimeID: nil,
+            displayName: peer.displayName.isEmpty ? "My Mac" : peer.displayName,
+            glyph: "🖥",
+            paletteHex: "8B9DC3", // mercury silver
+            tier: .service,
+            availability: availability,
+            installSource: .builtIn,
+            capabilities: .empty,
+            dispatchTransport: .nativeRelay,
+            personas: [],
+            lastSevenDays: nil,
+            lastRefreshedAt: peer.lastSeenAt,
+            tagline: "Mirror, call, or send a file"
+        )
     }
 
     /// Built-ins only.
