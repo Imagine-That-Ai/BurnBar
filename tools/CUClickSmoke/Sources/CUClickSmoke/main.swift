@@ -332,6 +332,7 @@ func runTextEditScenario(runs: Int) throws {
 
     for run in 1...runs {
         let text = "openburnbar textedit loopback run \(run)"
+        let expectedFragment = "textedit loopback run \(run)"
         let fileURL = directory.appendingPathComponent("run-\(String(format: "%03d", run)).rtf")
         try "{\\rtf1\\ansi\\deff0\n}\n".write(to: fileURL, atomically: true, encoding: .utf8)
 
@@ -351,13 +352,21 @@ func runTextEditScenario(runs: Int) throws {
         _ = try typeKeyText(text)
         Thread.sleep(forTimeInterval: 0.05)
         _ = try pressKey("s", modifiers: ["cmd"])
-        Thread.sleep(forTimeInterval: 0.35)
         let elapsed = Date().timeIntervalSince(started) * 1000.0
 
-        let contents = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-        let hasText = contents.contains(text)
-        let hasBoldMarker = contents.contains("\\b") || contents.contains("\\b0")
-        if hasText && hasBoldMarker {
+        var contents = ""
+        var hasText = false
+        var hasBoldMarker = false
+        let deadline = Date().addingTimeInterval(2)
+        repeat {
+            Thread.sleep(forTimeInterval: 0.1)
+            contents = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+            hasText = contents.contains(expectedFragment)
+            hasBoldMarker = contents.contains("\\b") || contents.contains("\\b0")
+        } while Date() < deadline && !(hasText && hasBoldMarker)
+
+        let pass = hasText && hasBoldMarker
+        if pass {
             durations.append(elapsed)
             print("[cu-click-smoke] textedit run \(run)/\(runs) PASS in \(String(format: "%.2f", elapsed)) ms")
         } else {
@@ -366,8 +375,10 @@ func runTextEditScenario(runs: Int) throws {
             print("[cu-click-smoke] textedit run \(run)/\(runs) FAIL \(reason) path=\(fileURL.path)")
         }
 
-        _ = try? pressKey("w", modifiers: ["cmd"])
-        Thread.sleep(forTimeInterval: 0.08)
+        if pass {
+            _ = try? pressKey("w", modifiers: ["cmd"])
+            Thread.sleep(forTimeInterval: 0.08)
+        }
     }
 
     let sorted = durations.sorted()

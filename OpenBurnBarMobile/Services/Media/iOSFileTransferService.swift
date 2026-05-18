@@ -22,6 +22,12 @@ import UIKit
 ///   5. UI surfaces (Phase 2) read the `lastReceivedManifest` publisher.
 @MainActor
 final class iOSFileTransferService: ObservableObject {
+    /// Mercury Phase 8 — singleton accessor populated by `AppDelegate`
+    /// after `configureMercuryFileTransfer()` builds the receiver. Lets
+    /// the Mercury Live sheet drive outbound sends without threading
+    /// the receiver through the SwiftUI tree.
+    static var current: iOSFileTransferService?
+
     enum Failure: Error, LocalizedError {
         case backendUnavailable
         case fileMissing(URL)

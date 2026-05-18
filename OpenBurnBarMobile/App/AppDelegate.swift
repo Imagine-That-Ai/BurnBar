@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             }
         )
         self.iOSFileTransfer = receiver
+        iOSFileTransferService.current = receiver
         HermesIrohRelayTransport.shared.mediaDispatcher = { @Sendable frame, ackSender in
             await receiver.handleAdvertise(frame: frame, ackSender: ackSender)
         }
