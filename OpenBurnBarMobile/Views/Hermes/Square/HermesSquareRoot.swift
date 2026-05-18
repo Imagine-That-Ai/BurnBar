@@ -1,5 +1,7 @@
 import SwiftUI
 import OpenBurnBarCore
+import OpenBurnBarMedia
+import FirebaseAuth
 
 // MARK: - Hermes Square Root (Hermes Square §3 / §6.2)
 //
@@ -282,14 +284,14 @@ struct HermesSquareRoot: View {
                         .foregroundStyle(DesignSystemColors.textMuted)
                 }
             case .mercuryLive(let connectionID):
-                if let coordinator = mercuryControlStreamCoordinator,
+                if let coordinator = HermesIrohRelayTransport.shared.currentMediaControlCoordinator,
                    let peer = mercuryPeerSource.peer {
                     MercuryLiveSheet(
                         connectionID: connectionID,
                         peer: peer,
                         controlStreamCoordinator: coordinator,
-                        fileTransferService: fileTransferReceiver,
-                        uidProvider: { uidProviderResolved() }
+                        fileTransferService: iOSFileTransferService.current,
+                        uidProvider: { Auth.auth().currentUser?.uid }
                     )
                 } else {
                     Text("Mercury unavailable")

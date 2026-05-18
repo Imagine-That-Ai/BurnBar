@@ -254,9 +254,12 @@ func runCalculatorScenario(runs: Int) throws {
 
 @discardableResult
 func launchTextEdit(fileURL: URL) throws -> NSRunningApplication {
+    let existingPids = Set(NSWorkspace.shared.runningApplications
+        .filter { $0.bundleIdentifier == "com.apple.TextEdit" }
+        .map(\.processIdentifier))
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    process.arguments = ["-a", "TextEdit", fileURL.path]
+    process.arguments = ["-n", "-a", "TextEdit", fileURL.path]
     try process.run()
     process.waitUntilExit()
     guard process.terminationStatus == 0 else {
@@ -266,10 +269,10 @@ func launchTextEdit(fileURL: URL) throws -> NSRunningApplication {
     let deadline = Date().addingTimeInterval(5)
     while Date() < deadline {
         if let app = NSWorkspace.shared.runningApplications.first(where: {
-            $0.bundleIdentifier == "com.apple.TextEdit"
+            $0.bundleIdentifier == "com.apple.TextEdit" && !existingPids.contains($0.processIdentifier)
         }) {
             app.activate(options: [.activateAllWindows])
-            Thread.sleep(forTimeInterval: 0.4)
+            Thread.sleep(forTimeInterval: 0.7)
             return app
         }
         RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
@@ -338,10 +341,10 @@ func runTextEditScenario(runs: Int) throws {
 
         let app = try launchTextEdit(fileURL: fileURL)
         app.activate(options: [.activateAllWindows])
-        Thread.sleep(forTimeInterval: 0.25)
+        Thread.sleep(forTimeInterval: 0.45)
         if let center = focusedWindowCenter(app: app) {
             _ = try clickAt(x: center.x, y: center.y)
-            Thread.sleep(forTimeInterval: 0.12)
+            Thread.sleep(forTimeInterval: 0.2)
         }
 
         let started = Date()
@@ -377,8 +380,10 @@ func runTextEditScenario(runs: Int) throws {
 
         if pass {
             _ = try? pressKey("w", modifiers: ["cmd"])
-            Thread.sleep(forTimeInterval: 0.08)
+            Thread.sleep(forTimeInterval: 0.2)
         }
+        app.terminate()
+        Thread.sleep(forTimeInterval: 0.15)
     }
 
     let sorted = durations.sorted()
