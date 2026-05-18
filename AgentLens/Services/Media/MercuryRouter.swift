@@ -41,6 +41,14 @@ final class MercuryRouter: ObservableObject {
         /// The original frame, kept for the ack `requestID` correlation
         /// and so we can construct the reply on the right stream.
         fileprivate let frame: HermesRealtimeRelayFrame
+        /// The reply sender that delivered this request. Stored here so
+        /// `respond()` can emit the ack on the correct stream even when
+        /// interleaved presence heartbeats have arrived since.
+        fileprivate let replySender: (@Sendable (HermesRealtimeRelayFrame) async throws -> Void)
+
+        static func == (lhs: PendingRequest, rhs: PendingRequest) -> Bool {
+            lhs.id == rhs.id
+        }
     }
 
     /// Closure that obtains a `MediaStreamSink` for a freshly-accepted
@@ -64,11 +72,12 @@ final class MercuryRouter: ObservableObject {
     private let clock: @Sendable () -> Date
 
     private var mirrorSinkFactory: MirrorSinkFactory?
-    private var activeReplySender: (@Sendable (HermesRealtimeRelayFrame) async throws -> Void)?
-    /// The most recent request frame seen by the dispatcher. We need
-    /// its uid + connectionId to stamp outgoing acks correctly so the
-    /// iOS-side read loop's `frame.uid == uid` guard accepts them.
-    private var activeRequestFrame: HermesRealtimeRelayFrame?
+    /// The frame + reply sender from the most recently accepted request.
+    /// Used by `stopMirror` so we can emit a `denied` ack when the host
+    /// ends the mirror via the CallHUD, even though `pendingRequest` was
+    /// cleared on accept.
+    private var activeSessionSender: (@Sendable (HermesRealtimeRelayFrame) async throws -> Void)?
+    private var activeSessionFrame: HermesRealtimeRelayFrame?
     private var cooldownTask: Task<Void, Never>?
 
     init(
@@ -76,7 +85,7 @@ final class MercuryRouter: ObservableObject {
         peerSource: MercuryPeerSource,
         consentStore: MercuryConsentStore,
         cooldownSeconds: TimeInterval = 30,
-        clock: @escaping @Sendable () -> Date = Date.init
+        clock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.sessionCoordinator = sessionCoordinator
         self.peerSource = peerSource
@@ -91,14 +100,13 @@ final class MercuryRouter: ObservableObject {
     }
 
     /// Closure entry point handed to `MacFileTransferService` via
-    /// `setMercuryDispatcher`. Routes by frame type and stores the
-    /// `replySender` so we can ack the active request later.
+    /// `setMercuryDispatcher`. Routes by frame type. Mirror frames
+    /// capture the reply sender in the `PendingRequest` so later
+    /// accepts/declines send acks on the correct stream.
     func handleFrame(
         _ frame: HermesRealtimeRelayFrame,
         replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
-        activeReplySender = replySender
-        activeRequestFrame = frame
         switch frame.type {
         case .mediaPresenceHeartbeat:
             if let heartbeat = frame.media?.presence {
@@ -127,7 +135,9 @@ final class MercuryRouter: ObservableObject {
         await respond(
             requestID: request.id,
             decision: .denied,
-            detail: "Declined by user"
+            detail: "Declined by user",
+            frame: request.frame,
+            replySender: request.replySender
         )
         pendingRequest = nil
         startCooldown(seconds: Int(cooldownSeconds))
@@ -144,14 +154,20 @@ final class MercuryRouter: ObservableObject {
         default:
             requestID = ""
         }
-        if !requestID.isEmpty {
+        if !requestID.isEmpty,
+           let sender = activeSessionSender,
+           let sessionFrame = activeSessionFrame {
             await respond(
                 requestID: requestID,
                 decision: .denied,
-                detail: "Host ended mirror"
+                detail: "Host ended mirror",
+                frame: sessionFrame,
+                replySender: sender
             )
         }
         pendingRequest = nil
+        activeSessionSender = nil
+        activeSessionFrame = nil
         startCooldown(seconds: Int(cooldownSeconds))
     }
 
@@ -169,7 +185,9 @@ final class MercuryRouter: ObservableObject {
                 requestID: req.requestId,
                 decision: .coolingDown,
                 detail: "Cooling down",
-                cooldownSecondsRemaining: remaining
+                cooldownSecondsRemaining: remaining,
+                frame: frame,
+                replySender: replySender
             )
             return
         }
@@ -179,7 +197,9 @@ final class MercuryRouter: ObservableObject {
             await respond(
                 requestID: req.requestId,
                 decision: .busy,
-                detail: "Another mirror is in progress"
+                detail: "Another mirror is in progress",
+                frame: frame,
+                replySender: replySender
             )
             return
         }
@@ -187,7 +207,9 @@ final class MercuryRouter: ObservableObject {
             await respond(
                 requestID: req.requestId,
                 decision: .busy,
-                detail: "A mirror is starting"
+                detail: "A mirror is starting",
+                frame: frame,
+                replySender: replySender
             )
             return
         }
@@ -196,7 +218,8 @@ final class MercuryRouter: ObservableObject {
             id: req.requestId,
             requesterName: req.requesterDisplayName,
             requestedAt: req.requestedAt,
-            frame: frame
+            frame: frame,
+            replySender: replySender
         )
 
         // Consent fast-path: if the user has flipped "Always allow my
@@ -222,7 +245,9 @@ final class MercuryRouter: ObservableObject {
             await respond(
                 requestID: request.id,
                 decision: .unsupported,
-                detail: "Mac has no mirror transport configured"
+                detail: "Mac has no mirror transport configured",
+                frame: request.frame,
+                replySender: request.replySender
             )
             phase = .idle
             return
@@ -232,7 +257,9 @@ final class MercuryRouter: ObservableObject {
                 await respond(
                     requestID: request.id,
                     decision: .unsupported,
-                    detail: "Malformed request payload"
+                    detail: "Malformed request payload",
+                    frame: request.frame,
+                    replySender: request.replySender
                 )
                 phase = .idle
                 return
@@ -246,15 +273,23 @@ final class MercuryRouter: ObservableObject {
             await respond(
                 requestID: request.id,
                 decision: .accepted,
-                detail: nil
+                detail: nil,
+                frame: request.frame,
+                replySender: request.replySender
             )
+            // Remember the session so stopMirror can ack when the
+            // host ends the mirror via the CallHUD.
+            activeSessionSender = request.replySender
+            activeSessionFrame = request.frame
             phase = .streaming(requestID: request.id, since: clock())
         } catch {
             lastError = error.localizedDescription
             await respond(
                 requestID: request.id,
                 decision: .unsupported,
-                detail: error.localizedDescription
+                detail: error.localizedDescription,
+                frame: request.frame,
+                replySender: request.replySender
             )
             phase = .idle
         }
@@ -264,7 +299,9 @@ final class MercuryRouter: ObservableObject {
         requestID: String,
         decision: HermesRealtimeRelayMirrorAck.Decision,
         detail: String?,
-        cooldownSecondsRemaining: Int? = nil
+        cooldownSecondsRemaining: Int? = nil,
+        frame: HermesRealtimeRelayFrame,
+        replySender: @escaping @Sendable (HermesRealtimeRelayFrame) async throws -> Void
     ) async {
         let ack = HermesRealtimeRelayMirrorAck(
             requestId: requestID,
@@ -272,16 +309,14 @@ final class MercuryRouter: ObservableObject {
             detail: detail,
             cooldownSecondsRemaining: cooldownSecondsRemaining
         )
-        guard let sender = activeReplySender,
-              let requestFrame = activeRequestFrame else { return }
         let outbound = HermesRealtimeRelayFrame(
             type: .mediaMirrorAck,
-            uid: requestFrame.uid,
-            connectionId: requestFrame.connectionId,
+            uid: frame.uid,
+            connectionId: frame.connectionId,
             requestId: requestID,
             media: HermesRealtimeRelayMediaPayload(mirrorAck: ack)
         )
-        try? await sender(outbound)
+        try? await replySender(outbound)
     }
 
     private func startCooldown(seconds: Int) {

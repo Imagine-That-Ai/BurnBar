@@ -33,6 +33,7 @@ struct MercuryLiveSheet: View {
     @State private var isShowingFileImporter = false
     @State private var sendingFile = false
     @State private var pulseTrigger = false
+    @AppStorage("mercuryPinnedTileEnabled") private var mercuryPinnedTileEnabled: Bool = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
 
@@ -52,6 +53,13 @@ struct MercuryLiveSheet: View {
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
             }
+            Divider()
+            Toggle(isOn: $mercuryPinnedTileEnabled) {
+                Text("Show My Mac on Hermes Square")
+                    .font(.subheadline)
+            }
+            .toggleStyle(.switch)
+            .accessibilityLabel("Show My Mac tile on Hermes Square pinned grid")
             Spacer(minLength: 0)
         }
         .padding(28)

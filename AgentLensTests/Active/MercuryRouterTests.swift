@@ -14,7 +14,7 @@ final class MercuryRouterTests: XCTestCase {
     private func makeRouter(
         consent: Bool = false,
         cooldownSeconds: TimeInterval = 30,
-        clock: @escaping @Sendable () -> Date = Date.init
+        clock: @escaping @Sendable () -> Date = { Date() }
     ) -> (router: MercuryRouter, sink: AckSink) {
         let registry = MediaControlStreamRegistry()
         let peerSource = MercuryPeerSource(

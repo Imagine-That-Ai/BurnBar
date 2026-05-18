@@ -8,31 +8,10 @@ import OpenBurnBarMedia
 ///   • `.streaming` → render a floating `CallHUD` so the user can end
 ///     the mirror without re-opening the popover.
 ///
-/// `MercuryGlobalChrome` is attached as a `WindowGroup` sibling in
-/// `AgentLensApp` (or as a `.sheet` overlay on the main window). It
-/// observes `MercuryRouter` directly so phase changes drive the
-/// presentation without re-pumping state through the popover.
-@MainActor
-struct MercuryGlobalChrome: Scene {
-    @ObservedObject var router: MercuryRouter
-    @ObservedObject var peerSource: MercuryPeerSource
-    @ObservedObject var hudState: CallHUDState
-
-    var body: some Scene {
-        // The chrome lives in its own window so it can present over the
-        // menu bar popover, Settings, Dashboard, anything. The window is
-        // hidden when `phase == .idle || .cooldown`.
-        WindowGroup(id: "mercury.chrome") {
-            MercuryChromeRoot(
-                router: router,
-                peerSource: peerSource,
-                hudState: hudState
-            )
-        }
-        .windowResizability(.contentSize)
-    }
-}
-
+/// Instantiated as a raw `WindowGroup(id: "mercury.chrome")` sibling
+/// in `AgentLensApp.body` so phase changes drive the presentation
+/// without re-pumping state through the popover.
+///
 /// Inner SwiftUI root that consumes the published router phase and
 /// shows either the incoming-call sheet, the call HUD, or nothing.
 @MainActor

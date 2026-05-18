@@ -203,7 +203,7 @@ final class OpenBurnBarRuntimeContext {
 
     /// Live-share / file-transfer / call brain. Mounted into the
     /// menu-bar popover via `MercuryTraySection` and into the app
-    /// scene root via `MercuryGlobalChrome`.
+    /// scene root via a `WindowGroup` hosting `MercuryChromeRoot`.
     var mercuryPeerSource: MercuryPeerSource?
     var mercurySessionCoordinator: MediaSessionCoordinator?
     var mercuryRouter: MercuryRouter?
@@ -290,6 +290,9 @@ final class OpenBurnBarRuntimeContext {
             controller.attach(relayHostService: relayHost)
         }
         controller.startPanicMonitoring()
+        #if DEBUG
+        controller.startE2EProofSessionIfRequested()
+        #endif
     }
     #endif
 

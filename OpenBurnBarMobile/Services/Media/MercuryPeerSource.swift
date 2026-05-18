@@ -37,7 +37,7 @@ final class MercuryPeerSource: ObservableObject {
         transport: HermesIrohRelayTransport = .shared,
         displayNameProvider: @escaping @MainActor () -> String? = { nil },
         pollInterval: TimeInterval = 1.0,
-        clock: @escaping @Sendable () -> Date = Date.init
+        clock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.transport = transport
         self.displayNameProvider = displayNameProvider
