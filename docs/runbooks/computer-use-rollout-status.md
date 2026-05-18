@@ -62,10 +62,11 @@ Phase rollout log. One entry per phase ship — appended-to as flags advance thr
   - `MacInputController` (CGEvent wrapper, display-bounds gated, delegates to `MacInputCore`)
   - `MacAccessibilityInspector` (AX role/subrole + deny-region matcher)
   - `ComputerUseRuntimeController` owns app-side Path C sessions, attaches the active coordinator to `HermesRelayHostService`, starts panic monitoring, and backs `ComputerUseSettingsView`
+  - `ComputerUseService` daemon facade rejects app-owned `system` / `agent_watch` starts early with `unsupportedDaemonMode`; daemon-owned sessions are Browser/Path B only
   - `ComputerUsePanicHaltCoordinator` (hotkey + auth-gate + remote-config kill paths); daemon-wide panic accepts `sessionId = "*"` and the app startup presenter installs the hotkey coordinator for daemon-owned sessions
   - `ComputerUseSetupWizard` Accessibility-permission flow
   - `#if !DISTRIBUTION_MAS` compile-out applied to MacInputController, MacAccessibilityInspector, ComputerUseSetupWizard, PhoneControlReceiver
-- **Test coverage:** 9 MacInputCore tests (virtual-key map, modifier flags, display-bounds containment) · MAS compile-out proof: `xcodebuild ... OTHER_SWIFT_FLAGS='$(inherited) -D DISTRIBUTION_MAS' build` exit 0
+- **Test coverage:** 9 MacInputCore tests (virtual-key map, modifier flags, display-bounds containment) · `ComputerUseRunCoordinatorTests` proves daemon `ComputerUseService` rejects app-owned Path A/C modes at session start · MAS compile-out proof: `xcodebuild ... OTHER_SWIFT_FLAGS='$(inherited) -D DISTRIBUTION_MAS' build` exit 0
 - **Acceptance gate remaining:**
   - [ ] ≥ 14-day Phase 9 soak with ≥ 95% success rate
   - [x] MAS `DISTRIBUTION_MAS` compile-out build proof

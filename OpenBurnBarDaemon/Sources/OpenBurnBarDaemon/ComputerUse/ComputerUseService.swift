@@ -7,8 +7,9 @@ import OpenBurnBarComputerUseCore
 ///
 /// The Mac app still owns interactive approval UI and Mac-wide CGEvent
 /// dispatch. This service makes the wire contracts reachable, owns
-/// browser-session Playwright drivers, and fails closed when an invoke
-/// would require UI approval that the daemon cannot collect itself.
+/// browser-session Playwright drivers, and rejects app-owned modes
+/// (`agent_watch` and `system`) at session start so callers cannot create
+/// a daemon session that appears valid but can never dispatch Path A/C.
 public actor ComputerUseService {
     public enum ServiceError: Error, Sendable, Equatable {
         case invalidMode(String)
