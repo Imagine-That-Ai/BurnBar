@@ -75,6 +75,7 @@ import com.openburnbar.ui.theme.AuroraTypography
 @Composable
 fun SettingsRootScreen(
     onBack: (() -> Unit)? = null,
+    onComputerUse: (() -> Unit)? = null,
     onMenuBarPrefs: @Composable (onBack: () -> Unit) -> Unit,
 ) {
     val router = remember { SettingsRouter() }
@@ -85,7 +86,7 @@ fun SettingsRootScreen(
         label = "settings-page"
     ) { page ->
         when (page) {
-            SettingsPageRoute.ROOT -> SettingsRootContent(router = router, onBack = onBack)
+            SettingsPageRoute.ROOT -> SettingsRootContent(router = router, onBack = onBack, onComputerUse = onComputerUse)
             SettingsPageRoute.SMART_DISPLAYS -> SmartDisplayDeepLinkWrapper(
                 router = router,
                 onBack = { router.page = SettingsPageRoute.ROOT }
@@ -99,6 +100,7 @@ fun SettingsRootScreen(
 private fun SettingsRootContent(
     router: SettingsRouter,
     onBack: (() -> Unit)?,
+    onComputerUse: (() -> Unit)?,
 ) {
     val isDark = isSystemInDarkTheme()
     var searchMode by rememberSaveable { mutableStateOf(false) }
@@ -265,7 +267,7 @@ private fun SettingsRootList(router: SettingsRouter) {
                 title = "Computer Use",
                 subtitle = "Agent Watch, phone takeover, approvals, and audit chain",
                 pageRoute = SettingsPageRoute.ROOT,
-                onTap = {}
+                onTap = { onComputerUse?.invoke() }
             ),
             RootRow(
                 anchor = SettingsAnchor.PERSISTENT_NOTIFICATION,
