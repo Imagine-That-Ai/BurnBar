@@ -49,9 +49,28 @@ final class MediaControlStreamCoordinator: ObservableObject {
 
     private var currentStream: (any IrohRelayStream)?
     private var supervisorTask: Task<Void, Never>?
+    private var heartbeatTask: Task<Void, Never>?
     private var streamReadyContinuations: [CheckedContinuation<any IrohRelayStream, Error>] = []
     private var activeUID: String?
     private var activeConnectionID: String?
+
+    /// Mercury Phase 8 — iOS receives ack frames from the Mac in
+    /// response to `mediaMirrorRequest` sends. The Hermes Square root
+    /// installs a handler that maps `.accepted` → push to
+    /// `ScreenShareViewerView`; other decisions → surface a toast.
+    var mirrorAckHandler: ((HermesRealtimeRelayMirrorAck) async -> Void)?
+
+    /// Mercury Phase 8 — opt-in display name that piggybacks on the
+    /// presence heartbeat so the Mac can render it in the popover.
+    /// Defaults to `UIDevice.current.name` at start time but can be
+    /// overridden by tests or accessibility paths.
+    var heartbeatDeviceNameProvider: @MainActor () -> String = {
+        #if canImport(UIKit)
+        return UIDevice.current.name
+        #else
+        return ""
+        #endif
+    }
 
     init(
         dialer: @escaping StreamDialer,
@@ -78,6 +97,8 @@ final class MediaControlStreamCoordinator: ObservableObject {
     func stop() async {
         supervisorTask?.cancel()
         supervisorTask = nil
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
         if let currentStream {
             await currentStream.close()
         }
@@ -137,10 +158,17 @@ final class MediaControlStreamCoordinator: ObservableObject {
                 phase = .live
                 resolvePending(with: stream)
 
+                // Mercury Phase 8 — spawn the heartbeat task once the
+                // stream is live. Cancelled inside `stop()` or when the
+                // supervisor loop iterates after a peer-close.
+                startHeartbeatIfNeeded(uid: uid, connectionID: connectionID)
+
                 // Drive the read loop. When it returns (peer close or
                 // error) we'll fall through to the reconnect arm.
                 await readLoop(stream: stream, uid: uid, connectionID: connectionID)
 
+                heartbeatTask?.cancel()
+                heartbeatTask = nil
                 currentStream = nil
                 if Task.isCancelled { break }
                 // Peer closed cleanly — quick retry once before the
@@ -182,6 +210,17 @@ final class MediaControlStreamCoordinator: ObservableObject {
                     // "delivered". For Phase 1b we only need to log;
                     // Phase 2 wires this into per-row UI state.
                     break
+                case .mediaMirrorAck:
+                    if let ack = frame.media?.mirrorAck,
+                       let handler = mirrorAckHandler {
+                        await handler(ack)
+                    }
+                case .mediaMirrorRequest:
+                    // iOS is the requester, not the receiver.
+                    continue
+                case .mediaPresenceHeartbeat:
+                    // Outbound-only from iOS.
+                    continue
                 case .mediaClassify:
                     // Re-classification mid-stream — protocol noise.
                     continue
@@ -193,6 +232,37 @@ final class MediaControlStreamCoordinator: ObservableObject {
             // Surface as a soft failure; supervisor handles reconnect.
             phase = .reconnecting(nextAttemptIn: initialBackoff)
         }
+    }
+
+    private func startHeartbeatIfNeeded(uid: String, connectionID: String) {
+        heartbeatTask?.cancel()
+        heartbeatTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 60_000_000_000) // 60s
+                guard !Task.isCancelled, let self else { return }
+                await self.sendHeartbeat(uid: uid, connectionID: connectionID)
+            }
+        }
+    }
+
+    private func sendHeartbeat(uid: String, connectionID: String) async {
+        let beat = HermesRealtimeRelayPresenceHeartbeat(
+            sentAt: Date(),
+            deviceDisplayName: heartbeatDeviceNameProvider(),
+            capabilities: [
+                MercuryPeer.Feature.mirrorViewer.rawValue,
+                MercuryPeer.Feature.fileSend.rawValue,
+                MercuryPeer.Feature.fileReceive.rawValue,
+                MercuryPeer.Feature.callReceive.rawValue
+            ]
+        )
+        let frame = HermesRealtimeRelayFrame(
+            type: .mediaPresenceHeartbeat,
+            uid: uid,
+            connectionId: connectionID,
+            media: HermesRealtimeRelayMediaPayload(presence: beat)
+        )
+        try? await send(frame: frame)
     }
 
     private func nextBackoff(attempt: Int) -> TimeInterval {

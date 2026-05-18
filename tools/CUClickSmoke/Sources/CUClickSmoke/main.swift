@@ -140,6 +140,22 @@ func pressKey(_ name: String, modifiers: [String] = []) throws -> Double {
     return Date().timeIntervalSince(started) * 1000.0
 }
 
+func typeKeyText(_ text: String) throws -> Double {
+    let started = Date()
+    for char in text {
+        switch char {
+        case "a"..."z", "0"..."9":
+            _ = try pressKey(String(char))
+        case " ":
+            _ = try pressKey("space")
+        default:
+            _ = try typeText(String(char))
+        }
+        Thread.sleep(forTimeInterval: 0.025)
+    }
+    return Date().timeIntervalSince(started) * 1000.0
+}
+
 @discardableResult
 func launchCalculator() throws -> NSRunningApplication {
     let calculatorURL = URL(fileURLWithPath: "/System/Applications/Calculator.app", isDirectory: true)
@@ -261,6 +277,51 @@ func launchTextEdit(fileURL: URL) throws -> NSRunningApplication {
     throw CUClickSmokeError.textEditProcessMissing
 }
 
+func focusedWindowCenter(app: NSRunningApplication) -> (x: Int, y: Int)? {
+    let appElement = AXUIElementCreateApplication(app.processIdentifier)
+    var focusedWindow: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(
+        appElement,
+        kAXFocusedWindowAttribute as CFString,
+        &focusedWindow
+    ) == .success, let window = focusedWindow else {
+        return nil
+    }
+
+    let windowElement = window as! AXUIElement
+    AXUIElementPerformAction(windowElement, kAXRaiseAction as CFString)
+
+    var targetPosition = CGPoint(x: 120, y: 120)
+    var targetSize = CGSize(width: 900, height: 700)
+    if let positionValue = AXValueCreate(.cgPoint, &targetPosition) {
+        AXUIElementSetAttributeValue(windowElement, kAXPositionAttribute as CFString, positionValue)
+    }
+    if let sizeValue = AXValueCreate(.cgSize, &targetSize) {
+        AXUIElementSetAttributeValue(windowElement, kAXSizeAttribute as CFString, sizeValue)
+    }
+    Thread.sleep(forTimeInterval: 0.08)
+
+    var rawPosition: CFTypeRef?
+    var rawSize: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(windowElement, kAXPositionAttribute as CFString, &rawPosition) == .success,
+          AXUIElementCopyAttributeValue(windowElement, kAXSizeAttribute as CFString, &rawSize) == .success,
+          let positionValue = rawPosition,
+          let sizeValue = rawSize else {
+        return nil
+    }
+
+    var position = CGPoint.zero
+    var size = CGSize.zero
+    guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &position),
+          AXValueGetValue(sizeValue as! AXValue, .cgSize, &size) else {
+        return nil
+    }
+    return (
+        x: Int(position.x + size.width / 2),
+        y: Int(position.y + min(size.height - 80, size.height / 2))
+    )
+}
+
 func runTextEditScenario(runs: Int) throws {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("openburnbar-cu-textedit-\(UUID().uuidString)", isDirectory: true)
@@ -270,22 +331,26 @@ func runTextEditScenario(runs: Int) throws {
     var failures = 0
 
     for run in 1...runs {
-        let text = "OpenBurnBar TextEdit loopback run \(run)"
+        let text = "openburnbar textedit loopback run \(run)"
         let fileURL = directory.appendingPathComponent("run-\(String(format: "%03d", run)).rtf")
         try "{\\rtf1\\ansi\\deff0\n}\n".write(to: fileURL, atomically: true, encoding: .utf8)
 
         let app = try launchTextEdit(fileURL: fileURL)
         app.activate(options: [.activateAllWindows])
         Thread.sleep(forTimeInterval: 0.25)
+        if let center = focusedWindowCenter(app: app) {
+            _ = try clickAt(x: center.x, y: center.y)
+            Thread.sleep(forTimeInterval: 0.12)
+        }
 
         let started = Date()
-        try pressKey("a", modifiers: ["cmd"])
+        _ = try pressKey("a", modifiers: ["cmd"])
         Thread.sleep(forTimeInterval: 0.04)
-        try pressKey("b", modifiers: ["cmd"])
+        _ = try pressKey("b", modifiers: ["cmd"])
         Thread.sleep(forTimeInterval: 0.04)
-        _ = try typeText(text)
+        _ = try typeKeyText(text)
         Thread.sleep(forTimeInterval: 0.05)
-        try pressKey("s", modifiers: ["cmd"])
+        _ = try pressKey("s", modifiers: ["cmd"])
         Thread.sleep(forTimeInterval: 0.35)
         let elapsed = Date().timeIntervalSince(started) * 1000.0
 
