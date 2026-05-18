@@ -576,6 +576,46 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         XCTAssertNil(secondState)
     }
 
+    func testDaemonServiceRejectsAppOwnedSystemSessionEarly() async throws {
+        let service = ComputerUseService(
+            auditBaseDirectory: testAuditBaseDirectory(),
+            bridgeScriptURL: testAuditBaseDirectory().appendingPathComponent("missing-bridge.js")
+        )
+
+        do {
+            _ = try await service.startSession(
+                ComputerUseSessionStartRequest(
+                    mode: ComputerUseMode.system.rawValue,
+                    trustMode: ComputerUseTrustMode.manual.rawValue,
+                    clientID: BurnBarClientID(rawValue: "test-client")
+                )
+            )
+            XCTFail("Expected daemon service to reject app-owned System mode")
+        } catch let error as ComputerUseService.ServiceError {
+            XCTAssertEqual(error, .unsupportedDaemonMode(ComputerUseMode.system.rawValue))
+        }
+    }
+
+    func testDaemonServiceRejectsAppOwnedAgentWatchSessionEarly() async throws {
+        let service = ComputerUseService(
+            auditBaseDirectory: testAuditBaseDirectory(),
+            bridgeScriptURL: testAuditBaseDirectory().appendingPathComponent("missing-bridge.js")
+        )
+
+        do {
+            _ = try await service.startSession(
+                ComputerUseSessionStartRequest(
+                    mode: ComputerUseMode.agentWatch.rawValue,
+                    trustMode: ComputerUseTrustMode.manual.rawValue,
+                    clientID: BurnBarClientID(rawValue: "test-client")
+                )
+            )
+            XCTFail("Expected daemon service to reject app-owned Agent Watch mode")
+        } catch let error as ComputerUseService.ServiceError {
+            XCTAssertEqual(error, .unsupportedDaemonMode(ComputerUseMode.agentWatch.rawValue))
+        }
+    }
+
     // MARK: - Helpers
 
     private func waitForCondition(

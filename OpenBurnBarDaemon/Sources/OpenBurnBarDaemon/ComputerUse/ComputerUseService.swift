@@ -15,6 +15,7 @@ public actor ComputerUseService {
         case invalidTrustMode(String)
         case invalidSession(String)
         case bridgeScriptMissing
+        case unsupportedDaemonMode(String)
         case unsupportedDaemonApprovalPath
     }
 
@@ -65,6 +66,15 @@ public actor ComputerUseService {
         }
         guard let trustMode = ComputerUseTrustMode(rawValue: request.trustMode) else {
             throw ServiceError.invalidTrustMode(request.trustMode)
+        }
+        guard mode == .browser else {
+            // Path A and Path C are app-owned because they depend on the
+            // Mac app's live relay session, approval UI, AX trust state,
+            // and CGEvent dispatcher. The daemon owns only Path B browser
+            // Playwright sessions; fail early instead of starting a session
+            // that would later deny every System-mode action through a fake
+            // `accessibilityTrusted: false` capability.
+            throw ServiceError.unsupportedDaemonMode(mode.rawValue)
         }
 
         let sessionId = ComputerUseSessionID.newRandom()
