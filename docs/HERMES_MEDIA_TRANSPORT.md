@@ -19,7 +19,10 @@ All media rides the same iroh QUIC mesh and the same `openburnbar/1` ALPN as Her
 | `media.screen.video` | 1 per GOP (~60 frames at 30 fps) | Mac → iOS | Reliable, ordered, stream-per-GOP for head-of-line isolation | 3 |
 | `media.video.{out,in}` | 1 per direction per GOP | Bidirectional | Reliable, ordered, stream-per-GOP | 5 |
 | `media.audio.{out,in}` | none — datagrams | Bidirectional | QUIC datagrams (RTP-style) | 4 |
-| `media.control` | 1 per session | Bidirectional | Reliable — RTCP-style sender reports, BWE, mute, terminate | 3 |
+| `media.control` | 1 per session | Bidirectional | Reliable — RTCP-style sender reports, BWE, mute, terminate, mirror request/ack, presence heartbeat | 3 |
+| `media.mirror.request` | 1 per request | iOS → Mac | Reliable, on existing control stream (JSON envelope) | Phase 8 |
+| `media.mirror.ack` | 1 per request | Mac → iOS | Reliable, on existing control stream (JSON envelope) | Phase 8 |
+| `media.presence.heartbeat` | 1 per 60s | iOS → Mac | Reliable, on existing control stream (JSON envelope) | Phase 8 |
 
 ## Phase 1 — file transfer over iroh-blobs
 
@@ -66,6 +69,90 @@ Stubs to be filled in as each phase ships. Each phase append:
 - Wire-layout deltas (frame fields, datagram framing).
 - New UniFFI surface, if any.
 - Migration / compat notes if any prior frame field changed semantics.
+
+## Mirror request / ack / presence (Phase 8)
+
+These three frame types ride the existing `media.control` stream — no new ALPN. The Mac's `MacFileTransferService` read-loop routes them to `MercuryRouter`; the iOS `MediaControlStreamCoordinator` read-loop handles acknowledgements and sends periodic heartbeats.
+
+### `media.mirror.request` (iOS → Mac)
+
+The iOS user taps "Ask to Mirror" in the Mercury Live sheet. The frame carries:
+
+```json
+{
+  "type": "media.mirror.request",
+  "uid": "u1",
+  "connectionId": "c1",
+  "requestId": "req_abc",
+  "media": {
+    "mirrorRequest": {
+      "requestId": "req_abc",
+      "requestedAt": 1700000000,
+      "requesterDisplayName": "Alberto's iPhone",
+      "streamClass": "media.screen.video"
+    }
+  }
+}
+```
+
+- `requestId`: iOS-generated UUID, echoed in the ack for correlation.
+- `streamClass`: which `MediaStreamClass` the requester wants (v1 always `media.screen.video`).
+- The Mac arbitrates via `MercuryRouter`, consulting cooldown and consent state before ringing the user.
+
+### `media.mirror.ack` (Mac → iOS)
+
+The Mac's reply, emitted on every request path:
+
+```json
+{
+  "type": "media.mirror.ack",
+  "uid": "u1",
+  "connectionId": "c1",
+  "requestId": "req_abc",
+  "media": {
+    "mirrorAck": {
+      "requestId": "req_abc",
+      "decision": "accepted"
+    }
+  }
+}
+```
+
+Decision enum: `accepted`, `denied`, `cooling_down`, `unsupported`, `busy`.
+
+- `cooldownSecondsRemaining` (int, optional): populated only when `decision == "cooling_down"`. Omitted from the wire otherwise so older decoders stay byte-identical.
+- `detail` (string, optional): free-text surfaced in the iOS banner.
+
+On `.accepted`, the iOS `mirrorAckHandler` pushes to `ScreenShareViewerView`. Other decisions surface a toast in `MercuryLiveSheet`.
+
+### `media.presence.heartbeat` (iOS → Mac)
+
+Sent every 60s once the control stream is `.live`. Fire-and-forget (no ack):
+
+```json
+{
+  "type": "media.presence.heartbeat",
+  "uid": "u1",
+  "connectionId": "c1",
+  "media": {
+    "presence": {
+      "sentAt": 1700000100,
+      "deviceDisplayName": "Alberto's iPhone",
+      "capabilities": ["mirror.viewer", "file.send", "file.receive", "call.receive"]
+    }
+  }
+}
+```
+
+- `capabilities`: string array of `MercuryPeer.Feature` raw values. Unknown strings are silently dropped by `MercuryPeer.Feature` decoding so future capabilities don't break old peers.
+- The Mac `MercuryRouter.handleFrame` feeds the payload into `MercuryPeerSource.ingestHeartbeat` so the popover's "Call iPhone" / "Send File" buttons gate on online state.
+
+### Ordering rules
+
+- Mirror request and ack are **synchronous request-response**: iOS waits for the ack before presenting the viewer.
+- Cooldown is **server-authoritative**: the Mac rejects requests during cooldown; iOS never pre-emptively enforces it.
+- Presence is **unidirectional**: only iOS sends heartbeats; the Mac is always assumed online when the control stream is live.
+- All three ride the same reliable stream as file-transfer traffic. Ordering within stream is preserved.
 
 ## Cross-references
 

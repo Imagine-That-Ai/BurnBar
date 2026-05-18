@@ -28,6 +28,10 @@ struct MediaPermissionsView: View {
     @State private var mic: PermissionStatus = .notRequested
     @State private var isRequestingCamera = false
     @State private var isRequestingMic = false
+    /// Mercury Phase 8 — consent for iPhone-initiated mirror requests.
+    /// Backed by `UserDefaults` via `MercuryConsentStore`. Surfaced here
+    /// so users can find it without having to open the menu-bar popover.
+    @StateObject private var consentStore = MercuryConsentStore()
 
     var body: some View {
         ScrollView {
@@ -36,6 +40,7 @@ struct MediaPermissionsView: View {
                 screenShareCard
                 voiceCallCard
                 videoCallCard
+                mercuryConsentCard
                 privacyFooter
             }
             .padding(DesignSystem.Spacing.lg)
@@ -127,6 +132,34 @@ struct MediaPermissionsView: View {
     }
 
     // MARK: - Footer
+
+    private var mercuryConsentCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Auto-accept mirror from iPhone")
+                .font(DesignSystem.Typography.body)
+                .fontWeight(.semibold)
+            Text("When on, your paired iPhone can start a screen share without asking each time. Turn off to require an Accept tap on every request.")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Toggle(isOn: $consentStore.alwaysAllow) {
+                Text("Always allow my iPhone to mirror this Mac")
+                    .font(DesignSystem.Typography.body)
+            }
+            .toggleStyle(.switch)
+            .accessibilityLabel("Always allow my iPhone to mirror this Mac")
+        }
+        .padding(DesignSystem.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.36))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .stroke(DesignSystem.Colors.border.opacity(0.45), lineWidth: 0.5)
+        )
+    }
 
     private var privacyFooter: some View {
         HStack(alignment: .top, spacing: DesignSystem.Spacing.sm) {

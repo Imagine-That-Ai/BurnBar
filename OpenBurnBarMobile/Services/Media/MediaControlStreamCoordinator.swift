@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 import OpenBurnBarCore
 import OpenBurnBarIrohRelay
 import OpenBurnBarMedia

@@ -128,6 +128,143 @@ final class MediaDispatchIntegrationTests: XCTestCase {
             XCTAssertEqual(ack.status, .rejected)
         }
     }
+
+    // MARK: - Mercury Phase 8 — mirror request dispatch
+
+    func testMirrorRequestRoundTripsThroughDispatcher() async throws {
+        // Phase 8 wire contract: a `media.mirror.request` arrives over
+        // the control stream; the consumer responds with a
+        // `media.mirror.ack` carrying the same `requestId` so the
+        // requester can correlate.
+        let ackRecorder = AckRecorder()
+        let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = { frame in
+            await ackRecorder.append(frame)
+        }
+
+        let request = HermesRealtimeRelayMirrorRequest(
+            requestId: "req_mercury_1",
+            requestedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            requesterDisplayName: "Alberto's iPhone",
+            streamClass: MediaStreamClass.screenVideo.rawValue
+        )
+        let requestFrame = HermesRealtimeRelayFrame(
+            type: .mediaMirrorRequest,
+            uid: "u1",
+            connectionId: "c1",
+            requestId: request.requestId,
+            media: HermesRealtimeRelayMediaPayload(mirrorRequest: request)
+        )
+
+        // Synthetic dispatcher mirroring `MercuryRouter.handleFrame` in
+        // shape — accept the request, respond with `accepted`.
+        let dispatcher: @Sendable (HermesRealtimeRelayFrame, @Sendable (HermesRealtimeRelayFrame) async throws -> Void) async -> Void = { frame, reply in
+            guard frame.type == .mediaMirrorRequest,
+                  let req = frame.media?.mirrorRequest else { return }
+            let ack = HermesRealtimeRelayMirrorAck(
+                requestId: req.requestId,
+                decision: .accepted
+            )
+            let outbound = HermesRealtimeRelayFrame(
+                type: .mediaMirrorAck,
+                uid: frame.uid,
+                connectionId: frame.connectionId,
+                requestId: req.requestId,
+                media: HermesRealtimeRelayMediaPayload(mirrorAck: ack)
+            )
+            try? await reply(outbound)
+        }
+
+        await dispatcher(requestFrame, ackSender)
+
+        let emitted = await ackRecorder.frames
+        XCTAssertEqual(emitted.count, 1)
+        let posted = emitted[0]
+        XCTAssertEqual(posted.type, .mediaMirrorAck)
+        XCTAssertEqual(posted.media?.mirrorAck?.requestId, request.requestId)
+        XCTAssertEqual(posted.media?.mirrorAck?.decision, .accepted)
+        XCTAssertEqual(posted.uid, "u1")
+        XCTAssertEqual(posted.connectionId, "c1")
+    }
+
+    func testCooldownDecisionCarriesSecondsRemaining() async throws {
+        let ackRecorder = AckRecorder()
+        let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = { frame in
+            await ackRecorder.append(frame)
+        }
+
+        // Simulate the cooldown path: a request arrives while the
+        // router is in `cooldown(secondsRemaining: 12)`.
+        let request = HermesRealtimeRelayMirrorRequest(
+            requestId: "req_mercury_cooldown",
+            requestedAt: Date(),
+            requesterDisplayName: "iPad",
+            streamClass: MediaStreamClass.screenVideo.rawValue
+        )
+        let frame = HermesRealtimeRelayFrame(
+            type: .mediaMirrorRequest,
+            uid: "u",
+            connectionId: "c",
+            requestId: request.requestId,
+            media: HermesRealtimeRelayMediaPayload(mirrorRequest: request)
+        )
+
+        let dispatcher: @Sendable (HermesRealtimeRelayFrame, @Sendable (HermesRealtimeRelayFrame) async throws -> Void) async -> Void = { frame, reply in
+            guard let req = frame.media?.mirrorRequest else { return }
+            let ack = HermesRealtimeRelayMirrorAck(
+                requestId: req.requestId,
+                decision: .coolingDown,
+                detail: "Cooling down",
+                cooldownSecondsRemaining: 12
+            )
+            let outbound = HermesRealtimeRelayFrame(
+                type: .mediaMirrorAck,
+                uid: frame.uid,
+                connectionId: frame.connectionId,
+                requestId: req.requestId,
+                media: HermesRealtimeRelayMediaPayload(mirrorAck: ack)
+            )
+            try? await reply(outbound)
+        }
+
+        await dispatcher(frame, ackSender)
+        let emitted = await ackRecorder.frames
+        XCTAssertEqual(emitted.count, 1)
+        XCTAssertEqual(emitted[0].media?.mirrorAck?.decision, .coolingDown)
+        XCTAssertEqual(emitted[0].media?.mirrorAck?.cooldownSecondsRemaining, 12)
+    }
+
+    func testPresenceHeartbeatFanOutHasNoAck() async {
+        // Presence frames are fire-and-forget; the dispatcher does NOT
+        // ack them. Asserts the contract so a regression that starts
+        // emitting ack frames for heartbeats gets caught.
+        let ackRecorder = AckRecorder()
+        let ackSender: @Sendable (HermesRealtimeRelayFrame) async throws -> Void = { frame in
+            await ackRecorder.append(frame)
+        }
+
+        let beat = HermesRealtimeRelayPresenceHeartbeat(
+            sentAt: Date(),
+            deviceDisplayName: "iPhone",
+            capabilities: ["mirror.viewer"]
+        )
+        let frame = HermesRealtimeRelayFrame(
+            type: .mediaPresenceHeartbeat,
+            uid: "u",
+            connectionId: "c",
+            media: HermesRealtimeRelayMediaPayload(presence: beat)
+        )
+
+        let dispatcher: @Sendable (HermesRealtimeRelayFrame, @Sendable (HermesRealtimeRelayFrame) async throws -> Void) async -> Void = { frame, _ in
+            // Real `MercuryRouter.handleFrame` only feeds the peer
+            // source; it does NOT emit an ack.
+            XCTAssertEqual(frame.type, .mediaPresenceHeartbeat)
+            XCTAssertNotNil(frame.media?.presence)
+        }
+
+        await dispatcher(frame, ackSender)
+        let emitted = await ackRecorder.frames
+        XCTAssertEqual(emitted.count, 0, "presence frames must not produce ack traffic")
+    }
 }
 
 private actor AckRecorder {

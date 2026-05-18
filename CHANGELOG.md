@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Mercury Media user-facing surfaces (Phase 8)
+- **iOS Hermes Square "My Mac" tile.** An auto-pinned tile in the Hermes Square
+  pinned grid that opens a Mercury Live sheet with three actions: Ask to Mirror
+  (sends `media.mirror.request` over the iroh control stream), Call Mac (existing
+  VoIP path), and Send File (UIDocumentPicker → iroh-blobs transfer). The tile
+  resolves from the paired Mac peer presence and carries the mercury-silver palette.
+- **Mac menu-bar popover Mercury section.** A new `.mercury` tray section (between
+  Providers and Chat) with a live `MercuryRing` indicator, paired-device label,
+  monospaced phase string, and three outbound buttons: Call iPhone, Send File, and
+  Settings. Gated on `runtimeContext.mercuryRouter != nil` for builds without the
+  iroh xcframework.
+- **Three new iroh control-stream frame types.** `media.mirror.request`,
+  `media.mirror.ack`, and `media.presence.heartbeat` ride the existing
+  `media.control` stream. No new ALPN. Codable with full forward-compat
+  (optional fields omitted from the wire, unknown capability strings silently
+  filtered).
+- **`MercuryPeer` shared model.** Cross-platform `Codable Sendable` snapshot
+  (connectionID, displayName, isOnline, lastSeenAt, capabilities). Mac and iOS
+  each get a platform-specific `MercuryPeerSource` ObservableObject.
+- **`MercuryRouter` (Mac).** Arbitrates inbound mirror requests — cooldown gating
+  (30s default), consent fast-path ("Always allow my iPhone"), IncomingCallSheet
+  presentation. Emits `media.mirror.ack` on every path. Wired through
+  `OpenBurnBarRuntimeContext.startMercuryServices()` and
+  `CloudSyncService.attachMercuryRouter(_:)`.
+- **`MercuryGlobalChrome`.** App-scene-root overlay that presents
+  `IncomingCallSheet` on `.ringing` (visible even when popover is closed) and
+  `CallHUD` on `.streaming`.
+- **Settings + consent.** Mac: "Always allow my iPhone to mirror this Mac"
+  toggle in `MediaPermissionsView`. iOS: "Show My Mac on Hermes Square"
+  toggle in `MediaSettingsView`.
+- **Test coverage.** 19 SPM tests (8 protocol + 6 peer + 5 dispatch),
+  5 MercuryRouter behavioral tests, 4 iOS registry URI tests — all green.
+
 ### Added — Computer Use (Phases 8–13, flagged off)
 - **Phase 8 substrate.** `MediaStreamClass` gains `control.surface.frame`,
   `control.action.log`, `control.input`, `control.approval`; the four route
