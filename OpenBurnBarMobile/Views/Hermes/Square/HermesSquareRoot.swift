@@ -219,6 +219,17 @@ struct HermesSquareRoot: View {
         .sheet(isPresented: $isShowingVoice) {
             voiceSheetContent
         }
+        .task {
+            // Mercury Phase 8 — start the peer-presence loop. The peer
+            // source polls `HermesIrohRelayTransport`'s control-stream
+            // phase and updates `registry.pairedMacPeer` so the pinned
+            // tile resolver can synthesize the "My Mac" identity.
+            mercuryPeerSource.start()
+        }
+        .onChange(of: mercuryPeerSource.peer) { _, newPeer in
+            registry.pairedMacPeer = newPeer
+            autoPinPairedMacIfNeeded(peer: newPeer)
+        }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
@@ -676,6 +687,20 @@ struct HermesSquareRoot: View {
             return
         }
         navTarget = .brandZone(uri)
+    }
+
+    /// Mercury Phase 8 — idempotent auto-pin of the "My Mac" tile when
+    /// the peer source first resolves a live peer. Re-runs only when
+    /// the connection id changes (rare). The `mercuryPinnedTileEnabled`
+    /// AppStorage flag lets the user opt out from the Mercury Live
+    /// sheet's settings toggle.
+    private func autoPinPairedMacIfNeeded(peer: MercuryPeer?) {
+        guard mercuryPinnedTileEnabled, let peer else { return }
+        let uri = "\(AgentIdentityRegistry.pairedMacURIPrefix)\(peer.connectionID)"
+        let grid = PinnedAgentGridConfig.from(jsonString: pinnedJSON)
+        guard !grid.pinnedURIs.contains(uri) else { return }
+        let updated = grid.pinning(uri).sanitized()
+        pinnedJSON = updated.jsonString()
     }
 
     private func handleThreadTap(_ item: ThreadInboxItem) {
