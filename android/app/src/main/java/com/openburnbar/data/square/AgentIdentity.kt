@@ -1,6 +1,7 @@
 package com.openburnbar.data.square
 
 import com.openburnbar.data.hermes.AssistantRuntimeID
+import com.openburnbar.data.hermes.HermesConnectionRecord
 
 // MARK: - Agent Identity (Hermes Square §6.1)
 //
@@ -227,6 +228,34 @@ data class AgentIdentity(
             val token = uri.substring(prefix.length)
             return AssistantRuntimeID.values().firstOrNull { it.token == token }
         }
+
+        const val PAIRED_MAC_URI_PREFIX = "device://paired-mac/"
+
+        fun pairedMacURI(connectionID: String): String =
+            "$PAIRED_MAC_URI_PREFIX$connectionID"
+
+        fun pairedMac(connection: HermesConnectionRecord): AgentIdentity =
+            AgentIdentity(
+                id = pairedMacURI(connection.id),
+                runtimeID = null,
+                displayName = connection.displayName.ifBlank { "My Mac" },
+                glyph = "🖥",
+                paletteHex = "8B9DC3",
+                tier = AgentTier.SERVICE,
+                availability = when (connection.status.name.lowercase()) {
+                    "online" -> AgentAvailability.ONLINE
+                    "offline" -> AgentAvailability.OFFLINE
+                    "degraded" -> AgentAvailability.DEGRADED
+                    else -> AgentAvailability.UNKNOWN
+                },
+                installSource = AgentInstallSource.BuiltIn,
+                capabilities = AgentCapabilities.EMPTY,
+                dispatchTransport = AgentDispatchTransport.NativeRelay,
+                personas = emptyList(),
+                lastSevenDays = null,
+                lastRefreshedAtEpoch = connection.lastSeenAt ?: connection.updatedAt,
+                tagline = "Mirror, call, or control this Mac"
+            )
 
         fun builtIn(
             runtime: AssistantRuntimeID,

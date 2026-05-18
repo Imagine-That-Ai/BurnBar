@@ -80,6 +80,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.hermes.AssistantRuntimeID
+import com.openburnbar.data.hermes.HermesConnectionMode
+import com.openburnbar.data.hermes.HermesConnectionStatus
+import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.missions.ApprovalAsk
 import com.openburnbar.data.missions.ApprovalDecision
 import com.openburnbar.data.missions.ApprovalPolicy
@@ -119,6 +122,7 @@ fun HermesSquareScreen(
 ) {
     val context = LocalContext.current
     val registry = remember { AgentIdentityRegistry.shared() }
+    val hermesService = remember(context) { HermesService(appContext = context.applicationContext) }
     val inbox = remember { ThreadInboxStore.shared() }
     val activityStore: ActivityStore = viewModel()
     val cloudHits by activityStore.cloudSearchHits.collectAsStateWithLifecycle()
@@ -133,6 +137,7 @@ fun HermesSquareScreen(
     val groupSnapshot by missionGroupObserver.snapshot.collectAsStateWithLifecycle()
     val snapshotsBySession by rollbackService.snapshotsBySession.collectAsStateWithLifecycle()
     val projectSummaries by projectsStore.summaries.collectAsStateWithLifecycle()
+    val hermesConnections by hermesService.connections.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     val pinnedPrefs = remember {
@@ -175,6 +180,19 @@ fun HermesSquareScreen(
         missionHost.start()
         rollbackService.startObservingRequests()
         projectsStore.load()
+        hermesService.refreshRelayConnections()
+    }
+
+    LaunchedEffect(hermesConnections) {
+        val mac = hermesConnections
+            .filter { it.mode == HermesConnectionMode.RELAY_LINK && it.status == HermesConnectionStatus.ONLINE }
+            .maxByOrNull { it.lastSeenAt ?: it.updatedAt }
+        if (mac != null) {
+            val identity = registry.upsertPairedMac(mac)
+            if (!pinned.pinnedURIs.contains(identity.id)) {
+                persistPinned(pinned.pinning(identity.id).sanitized())
+            }
+        }
     }
 
     // Whenever the mission host surfaces new active missions, observe each

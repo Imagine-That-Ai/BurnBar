@@ -3,6 +3,7 @@ package com.openburnbar.data.square
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.openburnbar.data.hermes.HermesConnectionRecord
 
 // MARK: - Agent Identity Registry (Android parity)
 //
@@ -18,6 +19,17 @@ class AgentIdentityRegistry private constructor() {
         private set
 
     fun identity(uri: String): AgentIdentity? = identities.firstOrNull { it.id == uri }
+
+    fun upsertPairedMac(connection: HermesConnectionRecord): AgentIdentity {
+        val identity = AgentIdentity.pairedMac(connection)
+        identities = if (identities.any { it.id == identity.id }) {
+            identities.map { if (it.id == identity.id) identity else it }
+        } else {
+            identities + identity
+        }
+        lastRefreshedAtEpoch = System.currentTimeMillis()
+        return identity
+    }
 
     val builtIns: List<AgentIdentity>
         get() = identities.filter { it.installSource is AgentInstallSource.BuiltIn }
