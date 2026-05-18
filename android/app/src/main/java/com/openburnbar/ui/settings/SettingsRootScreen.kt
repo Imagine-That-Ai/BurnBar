@@ -172,13 +172,16 @@ private fun SettingsRootContent(
         if (router.isSearching) {
             SettingsSearchResultsScreen(router = router)
         } else {
-            SettingsRootList(router = router)
+            SettingsRootList(router = router, onComputerUse = onComputerUse)
         }
     }
 }
 
 @Composable
-private fun SettingsRootList(router: SettingsRouter) {
+private fun SettingsRootList(
+    router: SettingsRouter,
+    onComputerUse: (() -> Unit)?,
+) {
     val listState = rememberLazyListState()
 
     // Map anchor ids to LazyColumn indexes so the router can scroll.
